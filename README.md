@@ -63,7 +63,7 @@ Container container = Freeway.create(
 
 ## Build
 
-Requires **JDK 25** (preview features enabled).
+Requires **JDK 25**.
 
 ```bash
 # full build + tests
