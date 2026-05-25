@@ -197,7 +197,7 @@ final class RobahoWebSocketSession extends WebSocket implements WebSocketSession
                 throw new IllegalArgumentException("Unsupported websocket close code: " + code
                     + ". Standard codes: 1000-1015, registered: 3000-3999, private: 4000-4999");
             }
-            closeCode = CloseCode.Unknown;
+            closeCode = CloseCode.GoingAway;
         }
         super.close(closeCode, reason, false);
     }

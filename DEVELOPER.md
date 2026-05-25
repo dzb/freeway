@@ -270,6 +270,36 @@ int[] counts = db.sql("INSERT INTO log (msg) VALUES (?)")
     .execute();
 ```
 
+### Named Parameters
+
+SQL uses `:name` or `#name` syntax for named placeholders, with values supplied via `.param(name, value)`:
+
+```java
+// Named parameters — use :name or #name in SQL
+List<User> users = db.sql("SELECT * FROM users WHERE name = :name AND active = #active")
+    .param("name", "Alice")
+    .param("active", true)
+    .list(User.class);
+
+// Mixed with Collection expansion (IN clause)
+List<User> users = db.sql("SELECT * FROM users WHERE id IN (:ids)")
+    .param("ids", List.of(1, 2, 3))
+    .list(User.class);
+```
+
+> **Note**: Named and positional parameters cannot be mixed. Once you use `.param(name, value)`, all placeholders must be named.
+
+Batch queries also support named parameters:
+
+```java
+db.batch("INSERT INTO users(name, active) VALUES (:name, :active)")
+    .named(List.of(
+        Map.of("name", "Alice", "active", true),
+        Map.of("name", "Bob", "active", false)
+    ))
+    .execute();
+```
+
 ### Transactions
 
 ```java
