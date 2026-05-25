@@ -1,0 +1,8 @@
+{
+  "app": {
+    "description": "Profiled IoC container"
+  },
+  "server": {
+    "host": "dev.localhost"
+  }
+}

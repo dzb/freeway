@@ -1,0 +1,184 @@
+package com.jujin.freeway2.db;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * 命名参数解析和混合参数使用的边缘情况测试。
+ */
+class NamedParamEdgeCaseTest {
+
+    @Test
+    void namedParameters() {
+        String dbName = uniqueDb("named");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint primary key, name varchar(16))").execute();
+            db.sql("insert into t values (1, 'alpha'), (2, 'beta')").execute();
+
+            List<NameEntry> results = db.sql("select id, name from t where id = #id")
+                .param("id", 1L)
+                .list(NameEntry.class);
+            assertEquals(1, results.size());
+            assertEquals(1L, results.get(0).id());
+            assertEquals("alpha", results.get(0).name());
+        }
+    }
+
+    @Test
+    void namedParametersWithCollectionExpansion() {
+        String dbName = uniqueDb("named_coll");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint primary key, name varchar(16))").execute();
+            db.sql("insert into t values (1, 'a'), (2, 'b'), (3, 'c')").execute();
+
+            List<NameEntry> results = db.sql("select id, name from t where id in (#ids) order by id")
+                .param("ids", List.of(1L, 3L))
+                .list(NameEntry.class);
+            assertEquals(2, results.size());
+            assertEquals(1L, results.get(0).id());
+            assertEquals(3L, results.get(1).id());
+        }
+    }
+
+    @Test
+    void namedParametersUsedMultipleTimes() {
+        String dbName = uniqueDb("named_multi");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (x bigint, y bigint)").execute();
+            db.sql("insert into t values (10, 20), (10, 30)").execute();
+
+            // #min 被多次使用
+            List<Pair> results = db.sql("select x, y from t where x >= #min and y >= #min order by y")
+                .param("min", 10L)
+                .list(Pair.class);
+            assertEquals(2, results.size());
+            assertEquals(10L, results.get(0).x());
+            assertEquals(20L, results.get(0).y());
+        }
+    }
+
+    @Test
+    void namedParameterRejectsMissingKeys() {
+        String dbName = uniqueDb("named_missing");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint)").execute();
+
+            assertThrows(SqlException.class,
+                () -> db.sql("select id from t where id = #missing").list(Long.class));
+        }
+    }
+
+    @Test
+    void namedParameterRejectsExtraKeys() {
+        String dbName = uniqueDb("named_extra");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint)").execute();
+            db.sql("insert into t values (1)").execute();
+
+            assertThrows(SqlException.class,
+                () -> db.sql("select id from t where id = #id")
+                    .param("id", 1L)
+                    .param("extra", "x")
+                    .one(Long.class));
+        }
+    }
+
+    @Test
+    void sqlWithStringLiteralContainingHash() {
+        String dbName = uniqueDb("named_literal");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint, label varchar(32))").execute();
+            db.sql("insert into t values (1, 'a#b')").execute();
+
+            // # 号在字符串字面量中，不应被解析为命名参数
+            List<NameEntry> results = db.sql("select id, label as name from t where label = '#literal'")
+                .list(NameEntry.class);
+            assertEquals(0, results.size());
+
+            // 用实际值查
+            List<NameEntry> actual = db.sql("select id, label as name from t where label = ?", "a#b")
+                .list(NameEntry.class);
+            assertEquals(1, actual.size());
+            assertEquals("a#b", actual.get(0).name());
+        }
+    }
+
+    @Test
+    void namedParametersInBatch() {
+        String dbName = uniqueDb("named_batch");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint primary key, label varchar(16))").execute();
+
+            int[] counts = db.batch("insert into t (id, label) values (#id, #label)")
+                .named(List.of(
+                    Map.of("id", 1L, "label", "a"),
+                    Map.of("id", 2L, "label", "b")
+                ))
+                .execute();
+            assertArrayEquals(new int[]{1, 1}, counts);
+
+            List<NameEntry> rows = db.sql("select id, label as name from t order by id")
+                .list(NameEntry.class);
+            assertEquals(2, rows.size());
+            assertEquals(new NameEntry(1L, "a"), rows.get(0));
+            assertEquals(new NameEntry(2L, "b"), rows.get(1));
+        }
+    }
+
+    @Test
+    void namedBatchRejectsMissingKeys() {
+        String dbName = uniqueDb("named_batch_missing");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint, label varchar(16))").execute();
+
+            assertThrows(SqlException.class,
+                () -> db.batch("insert into t values (#id, #label)")
+                    .named(List.of(Map.of("id", 1L)))
+                    .execute());
+        }
+    }
+
+    @Test
+    void mixedPositionalAndNamedRejected() {
+        String dbName = uniqueDb("mixed_reject");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint)").execute();
+
+            assertThrows(SqlException.class,
+                () -> db.sql("select id from t where id = #id", 1L)
+                    .param("id", 1L));
+        }
+    }
+
+    // ====================== 辅助 ======================
+
+    private static DatabaseBuilder builder(String name) {
+        return new DatabaseBuilder()
+            .url("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
+            .username("sa")
+            .password("");
+    }
+
+    private static String uniqueDb(String prefix) {
+        return "freeway2_named_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
+    }
+
+    public record NameEntry(long id, String name) {
+    }
+
+    public record Pair(long x, long y) {
+    }
+}

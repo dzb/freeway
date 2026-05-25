@@ -1,0 +1,9 @@
+{
+  "app": {
+    "description": "Standalone IoC container",
+    "version": "1.0.0"
+  },
+  "server": {
+    "host": "localhost"
+  }
+}

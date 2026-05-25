@@ -1,0 +1,280 @@
+package com.jujin.freeway2.db.internal;
+
+import com.jujin.freeway2.db.DatabaseStats;
+import com.jujin.freeway2.db.SqlException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public final class ConnectionPool implements AutoCloseable {
+    private static final Logger logger = LoggerFactory.getLogger(ConnectionPool.class);
+    private static final Duration FRESH_IDLE_THRESHOLD = Duration.ofSeconds(5);
+
+    private final PoolConfig config;
+    private final Semaphore semaphore;
+    private final ConcurrentLinkedDeque<PooledConnection> idle;
+    private final AtomicInteger total;
+    private volatile boolean closed;
+    private Thread cleanThread;
+
+    ConnectionPool(PoolConfig config) {
+        this.config = config;
+        this.semaphore = new Semaphore(config.maxSize());
+        this.idle = new ConcurrentLinkedDeque<>();
+        this.total = new AtomicInteger();
+        warmUp();
+        startCleaner();
+    }
+
+    PooledConnection borrow() {
+        ensureOpen();
+        try {
+            if (!semaphore.tryAcquire(config.connectionTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
+                throw new SqlException(
+                    "Connection pool exhausted after " + config.connectionTimeout()
+                );
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SqlException("Interrupted while waiting for a connection", e);
+        }
+
+        boolean success = false;
+        try {
+            PooledConnection conn = idle.pollFirst();
+            if (conn != null) {
+                if (conn.isFresh(FRESH_IDLE_THRESHOLD) || isValid(conn)) {
+                    success = true;
+                    return conn;
+                }
+                destroy(conn);
+            }
+
+            conn = createConnection();
+            total.incrementAndGet();
+            success = true;
+            return conn;
+        } finally {
+            if (!success) {
+                semaphore.release();
+            }
+        }
+    }
+
+    void release(PooledConnection conn) {
+        if (conn == null) {
+            return;
+        }
+        if (closed || !isAlive(conn)) {
+            destroy(conn);
+            semaphore.release();
+            return;
+        }
+        conn.markReturned();
+        idle.offerFirst(conn);
+        semaphore.release();
+    }
+
+    DatabaseStats stats() {
+        return new DatabaseStats(
+            total.get() - idle.size(),
+            idle.size(),
+            total.get(),
+            semaphore.getQueueLength(),
+            config.maxSize()
+        );
+    }
+
+    @Override
+    public void close() {
+        closed = true;
+
+        if (cleanThread != null && cleanThread != Thread.currentThread()) {
+            cleanThread.interrupt();
+            try {
+                cleanThread.join(config.connectionTimeout().toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        PooledConnection conn;
+        while ((conn = idle.pollFirst()) != null) {
+            closePhysical(conn);
+            total.decrementAndGet();
+        }
+
+        long deadline = System.nanoTime() + config.connectionTimeout().toNanos();
+        while (total.get() > 0 && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        while ((conn = idle.pollFirst()) != null) {
+            closePhysical(conn);
+            total.decrementAndGet();
+        }
+
+        int remaining = total.get();
+        if (remaining > 0) {
+            logger.warn("Database closed with {} active connection(s) still in use", remaining);
+        }
+    }
+
+    private void warmUp() {
+        for (int i = 0; i < config.minIdle(); i++) {
+            if (!semaphore.tryAcquire()) {
+                break;
+            }
+            try {
+                PooledConnection conn = createConnection();
+                total.incrementAndGet();
+                idle.offerFirst(conn);
+                semaphore.release();
+            } catch (Exception e) {
+                semaphore.release();
+                break;
+            }
+        }
+    }
+
+    private void startCleaner() {
+        cleanThread = Thread.ofVirtual()
+            .name("freeway2-db-cleaner")
+            .start(() -> {
+                while (!closed) {
+                    try {
+                        Thread.sleep(config.cleanInterval().toMillis());
+                        if (closed) {
+                            break;
+                        }
+                        clean();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            });
+    }
+
+    private void clean() {
+        Instant now = Instant.now();
+        var it = idle.iterator();
+        while (it.hasNext()) {
+            PooledConnection conn = it.next();
+            if (conn.isExpired(now, config.maxLifetime(), config.maxIdleTime())) {
+                it.remove();
+                closePhysical(conn);
+                total.decrementAndGet();
+            }
+        }
+
+        int needed = config.minIdle() - idle.size();
+        for (int i = 0; i < needed; i++) {
+            if (total.get() >= config.maxSize()) {
+                break;
+            }
+            if (!semaphore.tryAcquire()) {
+                break;
+            }
+            try {
+                PooledConnection conn = createConnection();
+                total.incrementAndGet();
+                idle.offerFirst(conn);
+                semaphore.release();
+            } catch (Exception e) {
+                semaphore.release();
+                break;
+            }
+        }
+    }
+
+    private PooledConnection createConnection() {
+        try {
+            Properties properties = new Properties();
+            properties.setProperty("user", config.username());
+            properties.setProperty("password", config.password());
+            Connection jdbcConn = DriverManager.getConnection(config.url(), properties);
+            jdbcConn.setAutoCommit(true);
+
+            int healthTimeoutSec = (int) Math.max(
+                1,
+                (config.healthCheckTimeout().toMillis() + 999) / 1000
+            );
+            if (!jdbcConn.isValid(healthTimeoutSec)) {
+                try {
+                    jdbcConn.close();
+                } catch (SQLException ignored) {
+                }
+                throw new SqlException("Newly created connection failed health check: " + config.url());
+            }
+            return new PooledConnection(jdbcConn, Instant.now());
+        } catch (SQLException e) {
+            throw new SqlException("Failed to create connection: " + e.getMessage(), e);
+        }
+    }
+
+    private boolean isValid(PooledConnection conn) {
+        return isAlive(conn) && healthCheck(conn);
+    }
+
+    private boolean isAlive(PooledConnection conn) {
+        return !conn.isExpired(Instant.now(), config.maxLifetime(), config.maxIdleTime());
+    }
+
+    private boolean healthCheck(PooledConnection conn) {
+        try {
+            Connection jdbcConn = conn.jdbcConnection();
+            int timeoutSec = (int) Math.max(
+                1,
+                (config.healthCheckTimeout().toMillis() + 999) / 1000
+            );
+            if (!jdbcConn.isValid(timeoutSec)) {
+                return false;
+            }
+            String query = config.healthCheckQuery();
+            if (query != null && !query.isBlank()) {
+                try (Statement stmt = jdbcConn.createStatement()) {
+                    stmt.setQueryTimeout(timeoutSec);
+                    stmt.execute(query);
+                }
+            }
+            return true;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    private void closePhysical(PooledConnection conn) {
+        try {
+            conn.jdbcConnection().close();
+        } catch (SQLException e) {
+            logger.trace("Error closing physical connection", e);
+        }
+    }
+
+    private void destroy(PooledConnection conn) {
+        closePhysical(conn);
+        total.decrementAndGet();
+    }
+
+    private void ensureOpen() {
+        if (closed) {
+            throw new SqlException("Database is closed");
+        }
+    }
+}
