@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 public record WebServerConfig(String host, int port, int backlog, int shutdownGraceSeconds) {
     public WebServerConfig {

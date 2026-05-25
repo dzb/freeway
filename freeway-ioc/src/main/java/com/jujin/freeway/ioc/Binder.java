@@ -1,7 +1,7 @@
-package com.jujin.freeway2.ioc;
+package com.jujin.freeway.ioc;
 
-import com.jujin.freeway2.ioc.extension.Contributions;
-import com.jujin.freeway2.ioc.extension.MappedContributions;
+import com.jujin.freeway.ioc.extension.Contributions;
+import com.jujin.freeway.ioc.extension.MappedContributions;
 
 public interface Binder {
     <T> Binding<T> bind(Class<T> type);

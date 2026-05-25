@@ -1,10 +1,10 @@
-package com.jujin.freeway2.db.migration;
+package com.jujin.freeway.db.migration;
 
-import com.jujin.freeway2.db.Database;
-import com.jujin.freeway2.db.DatabaseConfig;
-import com.jujin.freeway2.db.DbModule;
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Freeway2;
+import com.jujin.freeway.db.Database;
+import com.jujin.freeway.db.DatabaseConfig;
+import com.jujin.freeway.db.DbModule;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -39,12 +39,12 @@ class MigrationRunnerTest {
 
     @Test
     void runsClasspathMigrationsInOrder() {
-        String dbName = "freeway2_migration_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_migration_" + UUID.randomUUID().toString().replace('-', '_');
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
 
-        Container container = Freeway2.create(new DbModule());
+        Container container = Freeway.create(new DbModule());
         Database db = container.get(Database.class);
         MigrationRunner runner = container.get(MigrationRunner.class);
 

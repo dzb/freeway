@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -315,7 +315,7 @@ class RowMappingTest {
     }
 
     private static String uniqueDb(String prefix) {
-        return "freeway2_mapping_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
+        return "freeway_mapping_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
     }
 
     // ====================== 测试用数据类型 ======================

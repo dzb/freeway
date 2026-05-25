@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
@@ -54,7 +54,7 @@ final class RobahoWebEngine implements WebEngine {
             }
         });
         server.start();
-        LOG.info("Freeway2 web engine started on {}:{}", config.host(), server.getAddress().getPort());
+        LOG.info("Freeway web engine started on {}:{}", config.host(), server.getAddress().getPort());
         return new HttpServerHandle(server, executor, config.shutdownGraceSeconds(), config.host());
     }
 
@@ -104,7 +104,7 @@ final class RobahoWebEngine implements WebEngine {
                     executor.shutdownNow();
                     Thread.currentThread().interrupt();
                 }
-                LOG.info("Freeway2 web engine stopped");
+                LOG.info("Freeway web engine stopped");
             }
         }
     }

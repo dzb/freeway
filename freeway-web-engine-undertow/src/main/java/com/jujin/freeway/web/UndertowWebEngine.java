@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import io.undertow.Handlers;
 import io.undertow.Undertow;
@@ -51,7 +51,7 @@ final class UndertowWebEngine implements WebEngine {
             .setHandler(gracefulShutdown)
             .build();
         server.start();
-        LOG.info("Freeway2 undertow web engine started on {}:{}", config.host(), listenerPort(server));
+        LOG.info("Freeway undertow web engine started on {}:{}", config.host(), listenerPort(server));
         return new UndertowHandle(server, gracefulShutdown, config.shutdownGraceSeconds(), config.host());
     }
 
@@ -170,7 +170,7 @@ final class UndertowWebEngine implements WebEngine {
                 Thread.currentThread().interrupt();
             } finally {
                 server.stop();
-                LOG.info("Freeway2 undertow web engine stopped");
+                LOG.info("Freeway undertow web engine stopped");
             }
         }
     }

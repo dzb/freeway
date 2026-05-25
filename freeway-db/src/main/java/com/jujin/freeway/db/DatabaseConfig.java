@@ -1,6 +1,6 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
-import com.jujin.freeway2.ioc.annotation.Value;
+import com.jujin.freeway.ioc.annotation.Value;
 import java.time.Duration;
 import java.util.Objects;
 

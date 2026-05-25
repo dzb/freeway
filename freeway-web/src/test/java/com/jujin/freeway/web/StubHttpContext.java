@@ -1,6 +1,6 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.commons.scalar.Coercer;
+import com.jujin.freeway.commons.scalar.Coercer;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;

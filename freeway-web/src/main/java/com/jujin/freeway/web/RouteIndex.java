@@ -1,6 +1,6 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.annotation.ExtensionPoint;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;

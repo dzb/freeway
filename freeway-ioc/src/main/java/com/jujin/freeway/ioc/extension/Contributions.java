@@ -1,4 +1,4 @@
-package com.jujin.freeway2.ioc.extension;
+package com.jujin.freeway.ioc.extension;
 
 public interface Contributions<T> {
     void add(T value);

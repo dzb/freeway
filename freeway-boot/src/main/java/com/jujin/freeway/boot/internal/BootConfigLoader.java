@@ -1,7 +1,7 @@
-package com.jujin.freeway2.boot.internal;
+package com.jujin.freeway.boot.internal;
 
-import com.jujin.freeway2.commons.json.JsonUtils;
-import com.jujin.freeway2.commons.json.JsonObject;
+import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.commons.json.JsonObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedHashMap;

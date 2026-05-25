@@ -1,7 +1,7 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.commons.json.JsonUtils;
-import com.jujin.freeway2.commons.scalar.Coercer;
+import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.commons.scalar.Coercer;
 import java.lang.reflect.Type;
 import java.util.Objects;
 

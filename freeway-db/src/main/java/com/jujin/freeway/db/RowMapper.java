@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

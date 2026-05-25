@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;

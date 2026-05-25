@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 public final class RequestBodyTooLargeException extends RuntimeException {
     private final long maxSize;

@@ -1,4 +1,4 @@
-package com.jujin.freeway2.commons.bean;
+package com.jujin.freeway.commons.bean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

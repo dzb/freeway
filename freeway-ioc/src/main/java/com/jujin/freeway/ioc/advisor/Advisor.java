@@ -1,4 +1,4 @@
-package com.jujin.freeway2.ioc.advisor;
+package com.jujin.freeway.ioc.advisor;
 
 import java.util.function.Predicate;
 

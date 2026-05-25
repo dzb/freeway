@@ -1,6 +1,6 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.annotation.Value;
+import com.jujin.freeway.ioc.annotation.Value;
 import java.util.Objects;
 
 public final class CorsFilter implements HttpFilter {

@@ -1,10 +1,10 @@
-package com.jujin.freeway2.ioc.internal;
+package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway2.ioc.Binding;
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.ServiceId;
-import com.jujin.freeway2.ioc.Scope;
-import com.jujin.freeway2.ioc.advisor.Advisor;
+import com.jujin.freeway.ioc.Binding;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.ServiceId;
+import com.jujin.freeway.ioc.Scope;
+import com.jujin.freeway.ioc.advisor.Advisor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;

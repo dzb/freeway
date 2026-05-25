@@ -1,8 +1,8 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.Binder;
-import com.jujin.freeway2.ioc.Module;
-import com.jujin.freeway2.ioc.ServiceId;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.ServiceId;
 
 public final class JettyWebEngineModule implements Module {
     @Override

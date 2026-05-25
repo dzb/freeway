@@ -1,10 +1,10 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
-import com.jujin.freeway2.db.internal.DatabaseImpl;
-import com.jujin.freeway2.db.internal.DatabaseHubImpl;
-import com.jujin.freeway2.ioc.Binder;
-import com.jujin.freeway2.ioc.Module;
-import com.jujin.freeway2.commons.scalar.CoercionRule;
+import com.jujin.freeway.db.internal.DatabaseImpl;
+import com.jujin.freeway.db.internal.DatabaseHubImpl;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.commons.scalar.CoercionRule;
 import java.time.Duration;
 
 public final class DbModule implements Module {

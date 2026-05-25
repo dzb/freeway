@@ -1,7 +1,7 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Freeway2;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -37,7 +37,7 @@ class WebSocketLifecycleTest {
         AtomicBoolean opened = new AtomicBoolean();
         AtomicBoolean errored = new AtomicBoolean();
 
-        container = Freeway2.create(
+        container = Freeway.create(
             new WebModule(),
             new RobahoWebEngineModule(),
             binder -> binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/ws",

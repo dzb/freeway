@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 import java.util.List;
 import java.util.Map;
@@ -173,7 +173,7 @@ class NamedParamEdgeCaseTest {
     }
 
     private static String uniqueDb(String prefix) {
-        return "freeway2_named_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
+        return "freeway_named_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
     }
 
     public record NameEntry(long id, String name) {

@@ -1,7 +1,7 @@
-package com.jujin.freeway2.db.internal;
+package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway2.db.DatabaseStats;
-import com.jujin.freeway2.db.SqlException;
+import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.SqlException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -154,7 +154,7 @@ public final class ConnectionPool implements AutoCloseable {
 
     private void startCleaner() {
         cleanThread = Thread.ofVirtual()
-            .name("freeway2-db-cleaner")
+            .name("freeway-db-cleaner")
             .start(() -> {
                 while (!closed) {
                     try {

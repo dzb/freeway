@@ -5,14 +5,14 @@
 Zero classpath scanning. Compose-first API. No magic.
 
 ```
-freeway2-commons        — minimal shared utilities, JSON, SLF4J-over-JUL provider
-freeway2-ioc            — lightweight IoC container (bind, inject, coerce, advise)
-freeway2-boot           — application launcher, config, profiles, lifecycle
-freeway2-web            — thin HTTP/WebSocket layer (routing, filters, static, multipart)
-  freeway2-web-engine-robaho   — zero-dep HTTP engine (default)
-  freeway2-web-engine-undertow — Undertow transport adapter
-  freeway2-web-engine-jetty    — Jetty transport adapter
-freeway2-db             — JDBC data access (pooling, transactions, migrations)
+freeway-commons        — minimal shared utilities, JSON, SLF4J-over-JUL provider
+freeway-ioc            — lightweight IoC container (bind, inject, coerce, advise)
+freeway-boot           — application launcher, config, profiles, lifecycle
+freeway-web            — thin HTTP/WebSocket layer (routing, filters, static, multipart)
+  freeway-web-engine-robaho   — zero-dep HTTP engine (default)
+  freeway-web-engine-undertow — Undertow transport adapter
+  freeway-web-engine-jetty    — Jetty transport adapter
+freeway-db             — JDBC data access (pooling, transactions, migrations)
 ```
 
 ### Philosophy
@@ -20,7 +20,7 @@ freeway2-db             — JDBC data access (pooling, transactions, migrations)
 Freeway 2 is a **compose-first** framework. Instead of scanning the classpath, you explicitly wire modules together:
 
 ```java
-Freeway2.create(
+Freeway.create(
     binder -> binder.bind(Greeter.class).to(GreeterImpl.class),
     binder -> binder.bind(Store.class).to(Store.class)
 );
@@ -54,7 +54,7 @@ app.close();
 Or compose inline without a class:
 
 ```java
-Container container = Freeway2.create(
+Container container = Freeway.create(
     binder -> binder.bind(Greeter.class).to(GreeterImpl.class)
 );
 ```
@@ -70,16 +70,16 @@ Requires **JDK 25** (preview features enabled).
 mvn test
 
 # focused module
-mvn -pl freeway2-ioc test
-mvn -pl freeway2-web -am test
-mvn -pl freeway2-db -am test
+mvn -pl freeway-ioc test
+mvn -pl freeway-web -am test
+mvn -pl freeway-db -am test
 ```
 
 ---
 
 ## Modules at a Glance
 
-### IoC (`freeway2-ioc`)
+### IoC (`freeway-ioc`)
 
 The heart of the framework. A container that binds interfaces to implementations with:
 
@@ -93,7 +93,7 @@ The heart of the framework. A container that binds interfaces to implementations
 - **Extension points** — `binder.contribute(X.class).add(...)` for plugin-style aggregation
 - **Advisors (AOP)** — `binder.bind(X.class).to(Y.class).advise(...)` for method interception
 
-### Boot (`freeway2-boot`)
+### Boot (`freeway-boot`)
 
 Application lifecycle management:
 
@@ -102,7 +102,7 @@ Application lifecycle management:
 - **Profiles** — `--freeway.profile=dev` activates profile-specific config
 - **Config providers** — properties files, JSON, environment, system properties, CLI args
 
-### Web (`freeway2-web`)
+### Web (`freeway-web`)
 
 A thin HTTP layer with:
 
@@ -124,7 +124,7 @@ web.engine=undertow
 web.engine=jetty
 ```
 
-### DB (`freeway2-db`)
+### DB (`freeway-db`)
 
 Minimal JDBC data access layer:
 

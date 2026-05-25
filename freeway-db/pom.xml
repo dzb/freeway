@@ -5,20 +5,20 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.jujin</groupId>
+        <groupId>com.jujin8.freeway</groupId>
         <artifactId>freeway-2-parent</artifactId>
         <version>1.0.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway2-db</artifactId>
-    <name>Freeway2 :: DB</name>
-    <description>Minimal JDBC data access layer for freeway2</description>
+    <artifactId>freeway-db</artifactId>
+    <name>Freeway :: DB</name>
+    <description>Minimal JDBC data access layer for freeway</description>
 
     <dependencies>
         <dependency>
-            <groupId>com.jujin</groupId>
-            <artifactId>freeway2-ioc</artifactId>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-ioc</artifactId>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

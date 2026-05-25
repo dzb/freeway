@@ -1,4 +1,4 @@
-package com.jujin.freeway2.ioc;
+package com.jujin.freeway.ioc;
 
 import org.junit.jupiter.api.Test;
 

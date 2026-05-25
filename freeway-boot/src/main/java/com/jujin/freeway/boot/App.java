@@ -1,7 +1,7 @@
-package com.jujin.freeway2.boot;
+package com.jujin.freeway.boot;
 
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.ServiceId;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.ServiceId;
 
 public interface App extends AutoCloseable {
     Container container();

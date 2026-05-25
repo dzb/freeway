@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 public interface WebServerHandle extends AutoCloseable {
     String host();

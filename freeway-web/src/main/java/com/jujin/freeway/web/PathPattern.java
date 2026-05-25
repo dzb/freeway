@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;

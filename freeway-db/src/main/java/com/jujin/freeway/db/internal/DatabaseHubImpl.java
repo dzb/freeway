@@ -1,8 +1,8 @@
-package com.jujin.freeway2.db.internal;
+package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway2.db.Database;
-import com.jujin.freeway2.db.DatabaseHub;
-import com.jujin.freeway2.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.db.Database;
+import com.jujin.freeway.db.DatabaseHub;
+import com.jujin.freeway.ioc.annotation.ExtensionPoint;
 import java.util.Map;
 
 public final class DatabaseHubImpl implements DatabaseHub {

@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MultipartFormTest {
     @Test
     void parsesFieldsAndFiles() throws Exception {
-        String boundary = "----Freeway2Boundary";
+        String boundary = "----FreewayBoundary";
         byte[] body = (
             "--" + boundary + "\r\n"
                 + "Content-Disposition: form-data; name=\"title\"\r\n"

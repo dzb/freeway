@@ -1,7 +1,7 @@
-package com.jujin.freeway2.ioc.internal;
+package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway2.ioc.extension.Contributions;
-import com.jujin.freeway2.ioc.extension.MappedContributions;
+import com.jujin.freeway.ioc.extension.Contributions;
+import com.jujin.freeway.ioc.extension.MappedContributions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

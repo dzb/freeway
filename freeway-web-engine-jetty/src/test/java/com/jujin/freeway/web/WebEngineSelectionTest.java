@@ -1,8 +1,8 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Freeway2;
-import com.jujin.freeway2.ioc.ServiceId;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.ServiceId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +20,7 @@ class WebEngineSelectionTest {
 
     @Test
     void exposesJettyEngineSeamByServiceId() {
-        container = Freeway2.create(new WebModule(), new JettyWebEngineModule());
+        container = Freeway.create(new WebModule(), new JettyWebEngineModule());
         assertInstanceOf(JettyWebEngine.class, container.get(WebEngine.class, ServiceId.of("jetty")));
     }
 }

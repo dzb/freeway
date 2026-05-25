@@ -1,9 +1,9 @@
-package com.jujin.freeway2.ioc.internal;
+package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway2.ioc.Binder;
-import com.jujin.freeway2.ioc.Binding;
-import com.jujin.freeway2.ioc.extension.Contributions;
-import com.jujin.freeway2.ioc.extension.MappedContributions;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Binding;
+import com.jujin.freeway.ioc.extension.Contributions;
+import com.jujin.freeway.ioc.extension.MappedContributions;
 import java.util.Objects;
 
 final class BinderImpl implements Binder {

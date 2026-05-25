@@ -1,7 +1,7 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
-import com.jujin.freeway2.db.internal.DatabaseImpl;
-import com.jujin.freeway2.db.internal.RowMapperRegistry;
+import com.jujin.freeway.db.internal.DatabaseImpl;
+import com.jujin.freeway.db.internal.RowMapperRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;

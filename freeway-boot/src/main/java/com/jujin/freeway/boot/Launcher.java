@@ -1,12 +1,12 @@
-package com.jujin.freeway2.boot;
+package com.jujin.freeway.boot;
 
-import com.jujin.freeway2.boot.internal.BootConfigLoader;
-import com.jujin.freeway2.boot.internal.BootConfigLoader.BootConfigLayers;
-import com.jujin.freeway2.boot.internal.BootConfig;
-import com.jujin.freeway2.boot.internal.BootConfigModule;
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Freeway2;
-import com.jujin.freeway2.ioc.Module;
+import com.jujin.freeway.boot.internal.BootConfigLoader;
+import com.jujin.freeway.boot.internal.BootConfigLoader.BootConfigLayers;
+import com.jujin.freeway.boot.internal.BootConfig;
+import com.jujin.freeway.boot.internal.BootConfigModule;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.Module;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,8 +37,8 @@ public final class Launcher {
         BootConfigLayers layers = BootConfigLoader.loadLayers(effectiveLoader, args);
         List<Module> modules = loadModules(primaryModule, effectiveLoader, layers);
 
-        LOG.info("Starting freeway2 application with {} module(s)", modules.size());
-        Container container = Freeway2.create(modules.toArray(Module[]::new));
+        LOG.info("Starting freeway application with {} module(s)", modules.size());
+        Container container = Freeway.create(modules.toArray(Module[]::new));
         return new AppImpl(container, new BootConfig(layers.merged(), layers.profiles()));
     }
 

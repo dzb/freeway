@@ -1,8 +1,8 @@
-package com.jujin.freeway2.ioc.internal;
+package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway2.ioc.advisor.Advisor;
-import com.jujin.freeway2.ioc.advisor.MethodAdvice;
-import com.jujin.freeway2.ioc.advisor.MethodInvocation;
+import com.jujin.freeway.ioc.advisor.Advisor;
+import com.jujin.freeway.ioc.advisor.MethodAdvice;
+import com.jujin.freeway.ioc.advisor.MethodInvocation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;

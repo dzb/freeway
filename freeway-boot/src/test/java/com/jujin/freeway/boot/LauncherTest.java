@@ -1,9 +1,9 @@
-package com.jujin.freeway2.boot;
+package com.jujin.freeway.boot;
 
-import com.jujin.freeway2.ioc.Binder;
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Module;
-import com.jujin.freeway2.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

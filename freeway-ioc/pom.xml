@@ -4,20 +4,20 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.jujin</groupId>
+        <groupId>com.jujin8.freeway</groupId>
         <artifactId>freeway-2-parent</artifactId>
         <version>1.0.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway2-ioc</artifactId>
-    <name>Freeway2 :: IoC</name>
+    <artifactId>freeway-ioc</artifactId>
+    <name>Freeway :: IoC</name>
     <description>Clean-slate IoC container draft</description>
 
     <dependencies>
         <dependency>
-            <groupId>com.jujin</groupId>
-            <artifactId>freeway2-commons</artifactId>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-commons</artifactId>
         </dependency>
 
         <dependency>

@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 import java.time.Duration;
 import java.util.List;
@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DatabaseBuilderTest {
     @Test
     void overlaysAnExistingConfig() {
-        String dbName = "freeway2_builder_overlay_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_builder_overlay_" + UUID.randomUUID().toString().replace('-', '_');
         DatabaseConfig base = new DatabaseConfig(
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "sa",

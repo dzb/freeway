@@ -1,10 +1,10 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.AfterRealized;
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.ServiceId;
-import com.jujin.freeway2.ioc.annotation.ExtensionPoint;
-import com.jujin.freeway2.ioc.annotation.Value;
+import com.jujin.freeway.ioc.AfterRealized;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.ServiceId;
+import com.jujin.freeway.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.annotation.Value;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -102,7 +102,7 @@ public final class WebServer implements AutoCloseable, AfterRealized {
         WebServerHandle h = this.handle;
         if (h != null) {
             h.close();
-            LOG.info("Freeway2 web server stopped");
+            LOG.info("Freeway web server stopped");
         }
     }
 
@@ -123,7 +123,7 @@ public final class WebServer implements AutoCloseable, AfterRealized {
                 throw new RuntimeException("Failed to start web engine " + webEngineId, ex);
             }
             this.handle = h;
-            LOG.info("Freeway2 web server started on {}:{}", h.host(), h.port());
+            LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
             return h;
         }
     }

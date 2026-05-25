@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.jujin.freeway2.commons.scalar.Coercer;
-import com.jujin.freeway2.commons.scalar.DefaultCoercer;
+import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.scalar.DefaultCoercer;
 
 public abstract class HttpContext {
     private static final Pattern CHARSET_PATTERN = Pattern.compile("(?i)\\bcharset=([^\\s;]+)");

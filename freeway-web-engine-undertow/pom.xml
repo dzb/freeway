@@ -5,20 +5,20 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.jujin</groupId>
+        <groupId>com.jujin8.freeway</groupId>
         <artifactId>freeway-2-parent</artifactId>
         <version>1.0.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway2-web-engine-undertow</artifactId>
-    <name>Freeway2 :: Web Engine :: Undertow</name>
-    <description>Undertow transport adapter for freeway2 web</description>
+    <artifactId>freeway-web-engine-undertow</artifactId>
+    <name>Freeway :: Web Engine :: Undertow</name>
+    <description>Undertow transport adapter for freeway web</description>
 
     <dependencies>
         <dependency>
-            <groupId>com.jujin</groupId>
-            <artifactId>freeway2-web</artifactId>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-web</artifactId>
         </dependency>
         <dependency>
             <groupId>io.undertow</groupId>
@@ -30,8 +30,8 @@
             <artifactId>slf4j-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.jujin</groupId>
-            <artifactId>freeway2-boot</artifactId>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-boot</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

@@ -1,7 +1,7 @@
-package com.jujin.freeway2.ioc.internal;
+package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway2.ioc.symbol.SymbolProvider;
-import com.jujin.freeway2.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;

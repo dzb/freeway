@@ -1,8 +1,8 @@
-package com.jujin.freeway2.db.migration;
+package com.jujin.freeway.db.migration;
 
-import com.jujin.freeway2.db.Database;
-import com.jujin.freeway2.db.SqlException;
-import com.jujin.freeway2.ioc.annotation.Value;
+import com.jujin.freeway.db.Database;
+import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.ioc.annotation.Value;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;

@@ -1,4 +1,4 @@
-package com.jujin.freeway2.commons.logging;
+package com.jujin.freeway.commons.logging;
 
 import org.slf4j.spi.MDCAdapter;
 

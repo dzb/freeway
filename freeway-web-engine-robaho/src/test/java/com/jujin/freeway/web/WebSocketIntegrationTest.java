@@ -1,7 +1,7 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Freeway2;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -34,7 +34,7 @@ class WebSocketIntegrationTest {
         System.setProperty("web.server.host", "127.0.0.1");
         System.setProperty("web.server.port", String.valueOf(port));
 
-        container = Freeway2.create(
+        container = Freeway.create(
             new WebModule(),
             new RobahoWebEngineModule(),
             binder -> binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/api",

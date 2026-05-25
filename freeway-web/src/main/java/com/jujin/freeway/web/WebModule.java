@@ -1,7 +1,7 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.Binder;
-import com.jujin.freeway2.ioc.Module;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Module;
 import java.util.Map;
 
 public final class WebModule implements Module {

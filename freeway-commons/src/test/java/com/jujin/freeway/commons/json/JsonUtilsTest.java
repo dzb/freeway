@@ -1,4 +1,4 @@
-package com.jujin.freeway2.commons.json;
+package com.jujin.freeway.commons.json;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;

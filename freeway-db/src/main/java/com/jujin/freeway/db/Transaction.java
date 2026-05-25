@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 public interface Transaction extends AutoCloseable {
     Query sql(String sql, Object... params);

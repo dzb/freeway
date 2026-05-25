@@ -1,4 +1,4 @@
-package com.jujin.freeway2.commons.bean;
+package com.jujin.freeway.commons.bean;
 
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;

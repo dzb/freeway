@@ -1,27 +1,27 @@
-package com.jujin.freeway2.ioc.internal;
+package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway2.ioc.AfterRealized;
-import com.jujin.freeway2.ioc.Binding;
-import com.jujin.freeway2.ioc.Binder;
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Scope;
-import com.jujin.freeway2.ioc.ServiceId;
-import com.jujin.freeway2.ioc.annotation.Inject;
-import com.jujin.freeway2.ioc.annotation.Named;
-import com.jujin.freeway2.commons.bean.BeanIntrospector;
-import com.jujin.freeway2.commons.bean.BeanConstructor;
-import com.jujin.freeway2.commons.bean.BeanPlan;
-import com.jujin.freeway2.commons.bean.BeanProperty;
-import com.jujin.freeway2.commons.bean.BeanParameter;
-import com.jujin.freeway2.commons.scalar.Coercer;
-import com.jujin.freeway2.commons.scalar.CoercionRule;
-import com.jujin.freeway2.commons.scalar.DefaultCoercer;
-import com.jujin.freeway2.ioc.annotation.ExtensionPoint;
-import com.jujin.freeway2.ioc.annotation.IntermediateType;
-import com.jujin.freeway2.ioc.annotation.Symbol;
-import com.jujin.freeway2.ioc.symbol.SymbolProvider;
-import com.jujin.freeway2.ioc.symbol.SymbolSource;
-import com.jujin.freeway2.ioc.annotation.Value;
+import com.jujin.freeway.ioc.AfterRealized;
+import com.jujin.freeway.ioc.Binding;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Scope;
+import com.jujin.freeway.ioc.ServiceId;
+import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.annotation.Named;
+import com.jujin.freeway.commons.bean.BeanIntrospector;
+import com.jujin.freeway.commons.bean.BeanConstructor;
+import com.jujin.freeway.commons.bean.BeanPlan;
+import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.bean.BeanParameter;
+import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.scalar.CoercionRule;
+import com.jujin.freeway.commons.scalar.DefaultCoercer;
+import com.jujin.freeway.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.annotation.IntermediateType;
+import com.jujin.freeway.ioc.annotation.Symbol;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.annotation.Value;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.annotation.Annotation;
@@ -52,7 +52,7 @@ public final class ContainerImpl implements Container {
     private final DefaultProxyFactory proxyFactory;
     private final ExtensionRegistry extensionRegistry;
 
-    public ContainerImpl(Collection<? extends com.jujin.freeway2.ioc.Module> modules) {
+    public ContainerImpl(Collection<? extends com.jujin.freeway.ioc.Module> modules) {
         this.symbolSource = DefaultSymbolSource.standard();
         this.coercer = new DefaultCoercer();
         this.proxyFactory = new DefaultProxyFactory();
@@ -74,9 +74,9 @@ public final class ContainerImpl implements Container {
         register(binding);
     }
 
-    private void loadModules(Collection<? extends com.jujin.freeway2.ioc.Module> modules) {
+    private void loadModules(Collection<? extends com.jujin.freeway.ioc.Module> modules) {
         Binder binder = new BinderImpl(this);
-        for (com.jujin.freeway2.ioc.Module module : modules == null ? List.<com.jujin.freeway2.ioc.Module>of() : List.copyOf(modules)) {
+        for (com.jujin.freeway.ioc.Module module : modules == null ? List.<com.jujin.freeway.ioc.Module>of() : List.copyOf(modules)) {
             module.bind(binder);
         }
     }

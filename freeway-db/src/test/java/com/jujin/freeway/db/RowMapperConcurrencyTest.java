@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +19,7 @@ class RowMapperConcurrencyTest {
     /** Record 映射的并发安全 */
     @Test
     void concurrentRecordMapping() throws Exception {
-        String dbName = "freeway2_conc_record_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_conc_record_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
@@ -55,7 +55,7 @@ class RowMapperConcurrencyTest {
     /** Bean 映射的并发安全 */
     @Test
     void concurrentBeanMapping() throws Exception {
-        String dbName = "freeway2_conc_bean_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_conc_bean_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
@@ -94,7 +94,7 @@ class RowMapperConcurrencyTest {
     /** 简单类型映射的并发安全（createSimple 路径） */
     @Test
     void concurrentSimpleMapping() throws Exception {
-        String dbName = "freeway2_conc_simple_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_conc_simple_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
@@ -126,7 +126,7 @@ class RowMapperConcurrencyTest {
     /** 自定义 RowMapper 的并发安全 */
     @Test
     void concurrentCustomMapper() throws Exception {
-        String dbName = "freeway2_conc_custom_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_conc_custom_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
@@ -163,7 +163,7 @@ class RowMapperConcurrencyTest {
     /** 多类型混合并发 + 多次迭代 */
     @Test
     void mixedConcurrentWorkload() throws Exception {
-        String dbName = "freeway2_conc_mixed_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_conc_mixed_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")

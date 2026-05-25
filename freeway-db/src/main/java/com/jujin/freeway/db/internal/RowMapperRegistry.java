@@ -1,10 +1,10 @@
-package com.jujin.freeway2.db.internal;
+package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway2.db.RowMapper;
-import com.jujin.freeway2.db.RowMapping;
-import com.jujin.freeway2.db.SqlException;
-import com.jujin.freeway2.commons.scalar.Coercer;
-import com.jujin.freeway2.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.db.RowMapper;
+import com.jujin.freeway.db.RowMapping;
+import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.ioc.annotation.ExtensionPoint;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.invoke.MethodHandle;

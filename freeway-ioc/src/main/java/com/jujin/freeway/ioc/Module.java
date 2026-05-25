@@ -1,4 +1,4 @@
-package com.jujin.freeway2.ioc;
+package com.jujin.freeway.ioc;
 
 public interface Module {
     void bind(Binder binder);

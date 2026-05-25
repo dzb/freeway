@@ -1,8 +1,8 @@
-package com.jujin.freeway2.ioc.internal;
+package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway2.commons.bean.MethodHandleUtils;
-import com.jujin.freeway2.ioc.advisor.MethodAdvice;
-import com.jujin.freeway2.ioc.advisor.MethodInvocation;
+import com.jujin.freeway.commons.bean.MethodHandleUtils;
+import com.jujin.freeway.ioc.advisor.MethodAdvice;
+import com.jujin.freeway.ioc.advisor.MethodInvocation;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;

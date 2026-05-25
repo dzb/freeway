@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db.internal;
+package com.jujin.freeway.db.internal;
 
 import java.time.Duration;
 import java.util.Objects;
@@ -27,7 +27,7 @@ record PoolConfig(
         Objects.requireNonNull(healthCheckTimeout, "healthCheckTimeout");
     }
 
-    static PoolConfig from(com.jujin.freeway2.db.DatabaseConfig config) {
+    static PoolConfig from(com.jujin.freeway.db.DatabaseConfig config) {
         return new PoolConfig(
             config.url(),
             config.username(),

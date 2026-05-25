@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 public class SqlException extends RuntimeException {
     public SqlException(String message) {

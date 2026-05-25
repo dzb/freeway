@@ -1,6 +1,6 @@
-package com.jujin.freeway2.boot.internal;
+package com.jujin.freeway.boot.internal;
 
-import com.jujin.freeway2.boot.AppConfig;
+import com.jujin.freeway.boot.AppConfig;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;

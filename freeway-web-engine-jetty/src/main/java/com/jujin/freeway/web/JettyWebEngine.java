@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -76,7 +76,7 @@ final class JettyWebEngine implements WebEngine {
         }
 
         int port = currentPort(server);
-        LOG.info("Freeway2 jetty web engine started on {}:{}", config.host(), port);
+        LOG.info("Freeway jetty web engine started on {}:{}", config.host(), port);
         return new JettyHandle(server, graceful, config.shutdownGraceSeconds(), config.host(), port);
     }
 
@@ -205,7 +205,7 @@ final class JettyWebEngine implements WebEngine {
                 } catch (Exception ex) {
                     throw new IllegalStateException("Failed to stop Jetty server", ex);
                 }
-                LOG.info("Freeway2 jetty web engine stopped");
+                LOG.info("Freeway jetty web engine stopped");
             }
         }
     }

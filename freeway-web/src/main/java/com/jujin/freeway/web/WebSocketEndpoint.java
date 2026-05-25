@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 /**
  * Opens a websocket connection for a mounted route.

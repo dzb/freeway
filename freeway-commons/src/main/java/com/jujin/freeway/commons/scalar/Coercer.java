@@ -1,4 +1,4 @@
-package com.jujin.freeway2.commons.scalar;
+package com.jujin.freeway.commons.scalar;
 
 @FunctionalInterface
 public interface Coercer {

@@ -1,9 +1,9 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.boot.App;
-import com.jujin.freeway2.boot.Launcher;
-import com.jujin.freeway2.ioc.Binder;
-import com.jujin.freeway2.ioc.Module;
+import com.jujin.freeway.boot.App;
+import com.jujin.freeway.boot.Launcher;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Module;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;

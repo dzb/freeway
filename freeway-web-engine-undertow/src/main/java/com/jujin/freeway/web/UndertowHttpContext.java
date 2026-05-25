@@ -1,4 +1,4 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.HttpString;

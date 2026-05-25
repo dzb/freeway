@@ -5,15 +5,15 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.jujin</groupId>
+        <groupId>com.jujin8.freeway</groupId>
         <artifactId>freeway-2-parent</artifactId>
         <version>1.0.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway2-commons</artifactId>
-    <name>Freeway2 :: Commons</name>
-    <description>Minimal shared utilities for freeway2 boot and logging</description>
+    <artifactId>freeway-commons</artifactId>
+    <name>Freeway :: Commons</name>
+    <description>Minimal shared utilities for freeway boot and logging</description>
 
     <dependencies>
         <dependency>

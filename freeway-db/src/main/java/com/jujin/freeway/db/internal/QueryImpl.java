@@ -1,7 +1,7 @@
-package com.jujin.freeway2.db.internal;
+package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway2.db.Query;
-import com.jujin.freeway2.db.SqlException;
+import com.jujin.freeway.db.Query;
+import com.jujin.freeway.db.SqlException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;

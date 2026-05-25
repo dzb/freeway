@@ -3,23 +3,23 @@
 ## Module Dependency Graph
 
 ```
-freeway2-commons
+freeway-commons
       ↑
-freeway2-ioc
+freeway-ioc
       ↑               ↑               ↑
-freeway2-boot    freeway2-web    freeway2-db
+freeway-boot    freeway-web    freeway-db
       ↑               ↑
       └─── engine adapters ───┘
-    freeway2-web-engine-robaho
-    freeway2-web-engine-undertow
-    freeway2-web-engine-jetty
+    freeway-web-engine-robaho
+    freeway-web-engine-undertow
+    freeway-web-engine-jetty
 ```
 
 Dependencies flow **downward** — core modules never depend on higher-level modules.
 
 ---
 
-## IoC Container (`freeway2-ioc`)
+## IoC Container (`freeway-ioc`)
 
 ### Core Interfaces
 
@@ -28,13 +28,13 @@ Dependencies flow **downward** — core modules never depend on higher-level mod
 | `Container` | Service locator: `get(Class)`, `get(Class, ServiceId)` |
 | `Module` | Entry point for binding: `bind(Binder)` |
 | `Binder` | Binding DSL: `bind(X).to(Y.class\|instance)` |
-| `Freeway2` | Bootstrap: `Freeway2.create(Module...)` |
+| `Freeway` | Bootstrap: `Freeway.create(Module...)` |
 | `ServiceId` | Named qualifier for multi-binding scenarios |
 
 ### Binding DSL
 
 ```java
-Container container = Freeway2.create(binder -> {
+Container container = Freeway.create(binder -> {
 
     // Simple binding
     binder.bind(Greeter.class).to(GreeterImpl.class);
@@ -131,7 +131,7 @@ binder.contribute(CoercionRule.class).add(new CoercionRule<>(
 Modules can be auto-discovered via the standard Java `ServiceLoader` mechanism:
 
 ```
-META-INF/services/com.jujin.freeway2.ioc.Module
+META-INF/services/com.jujin.freeway.ioc.Module
 -- content: fully qualified class name implementing Module
 ```
 
@@ -139,7 +139,7 @@ This is used by engine adapters and the DB module to auto-register themselves.
 
 ---
 
-## Boot (`freeway2-boot`)
+## Boot (`freeway-boot`)
 
 ### Launcher API
 
@@ -173,7 +173,7 @@ Activate with `--freeway.profile=dev` (or `-Dfreeway.profile=dev`). Multiple pro
 
 ---
 
-## Web Layer (`freeway2-web`)
+## Web Layer (`freeway-web`)
 
 ### Routing
 
@@ -240,7 +240,7 @@ The engine adapter implements the `WebServer` SPI. Each adapter module registers
 
 ---
 
-## DB Layer (`freeway2-db`)
+## DB Layer (`freeway-db`)
 
 ### Database Interface
 
@@ -358,10 +358,10 @@ analytics.sql("SELECT COUNT(*) FROM events").queryOne(Long.class);
 mvn test
 
 # Single module
-mvn -pl freeway2-ioc test
+mvn -pl freeway-ioc test
 
 # Module with dependencies
-mvn -pl freeway2-web -am test
+mvn -pl freeway-web -am test
 ```
 
 ### Writing Tests
@@ -371,7 +371,7 @@ The IoC container makes unit testing straightforward:
 ```java
 @Test
 void resolvesPrimaryBinding() {
-    Container container = Freeway2.create(
+    Container container = Freeway.create(
         binder -> binder.bind(Greeter.class).to(GreeterImpl.class)
     );
     Greeter greeter = container.get(Greeter.class);
@@ -398,10 +398,10 @@ void bootsWithFullStack() {
 
 ## Adding a New Web Engine Adapter
 
-1. Create module `freeway2-web-engine-{name}`
-2. Depend on `freeway2-web`
+1. Create module `freeway-web-engine-{name}`
+2. Depend on `freeway-web`
 3. Implement `WebServer` interface
-4. Register implementation in `META-INF/services/com.jujin.freeway2.ioc.Module`
+4. Register implementation in `META-INF/services/com.jujin.freeway.ioc.Module`
 5. Engine picks up automatically by setting `web.engine={name}`
 
 ---

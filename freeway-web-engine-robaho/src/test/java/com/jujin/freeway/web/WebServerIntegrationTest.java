@@ -1,7 +1,7 @@
-package com.jujin.freeway2.web;
+package com.jujin.freeway.web;
 
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Freeway2;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -39,11 +39,11 @@ class WebServerIntegrationTest {
         System.setProperty("web.server.host", "127.0.0.1");
         System.setProperty("web.server.port", String.valueOf(port));
 
-        Path staticRoot = Files.createTempDirectory("freeway2-static");
+        Path staticRoot = Files.createTempDirectory("freeway-static");
         Files.writeString(staticRoot.resolve("index.html"), "<html><body>home</body></html>");
         Files.writeString(staticRoot.resolve("app.js"), "console.log('ok');");
 
-        container = Freeway2.create(
+        container = Freeway.create(
             new WebModule(),
             new RobahoWebEngineModule(),
             binder -> binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hello"))),
@@ -165,7 +165,7 @@ class WebServerIntegrationTest {
         assertTrue(json.headers().firstValue("Content-Type").orElse("").contains("application/json"));
         assertTrue(json.body().contains("\"name\":\"freeway\""));
 
-        String boundary = "----Freeway2" + UUID.randomUUID().toString().replace("-", "");
+        String boundary = "----Freeway" + UUID.randomUUID().toString().replace("-", "");
         HttpResponse<String> upload = client.send(
             HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + port + "/upload"))

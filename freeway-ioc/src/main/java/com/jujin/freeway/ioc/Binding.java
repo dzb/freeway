@@ -1,6 +1,6 @@
-package com.jujin.freeway2.ioc;
+package com.jujin.freeway.ioc;
 
-import com.jujin.freeway2.ioc.advisor.Advisor;
+import com.jujin.freeway.ioc.advisor.Advisor;
 import java.util.function.Function;
 import java.util.function.Consumer;
 

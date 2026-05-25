@@ -1,15 +1,15 @@
-package com.jujin.freeway2.ioc;
+package com.jujin.freeway.ioc;
 
-import com.jujin.freeway2.ioc.ServiceId;
-import com.jujin.freeway2.ioc.annotation.Inject;
-import com.jujin.freeway2.ioc.annotation.Named;
-import com.jujin.freeway2.commons.scalar.Coercer;
-import com.jujin.freeway2.commons.scalar.CoercionRule;
-import com.jujin.freeway2.ioc.annotation.ExtensionPoint;
-import com.jujin.freeway2.ioc.annotation.IntermediateType;
-import com.jujin.freeway2.ioc.symbol.SymbolProvider;
-import com.jujin.freeway2.ioc.annotation.Symbol;
-import com.jujin.freeway2.ioc.annotation.Value;
+import com.jujin.freeway.ioc.ServiceId;
+import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.annotation.Named;
+import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.scalar.CoercionRule;
+import com.jujin.freeway.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.annotation.IntermediateType;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.annotation.Symbol;
+import com.jujin.freeway.ioc.annotation.Value;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -28,12 +28,12 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class Freeway2Test {
-    private static final String PORT_KEY = "freeway2.test.port";
-    private static final String NAME_KEY = "freeway2.test.name";
-    private static final String ENDPOINT_KEY = "freeway2.test.endpoint";
-    private static final String TIMEOUT_KEY = "freeway2.test.timeout";
-    private static final String APP_NAME_KEY = "freeway2.test.app.name";
+class FreewayTest {
+    private static final String PORT_KEY = "freeway.test.port";
+    private static final String NAME_KEY = "freeway.test.name";
+    private static final String ENDPOINT_KEY = "freeway.test.endpoint";
+    private static final String TIMEOUT_KEY = "freeway.test.timeout";
+    private static final String APP_NAME_KEY = "freeway.test.app.name";
     private String previousPort;
     private String previousName;
     private String previousEndpoint;
@@ -69,7 +69,7 @@ class Freeway2Test {
 
     @Test
     void bindsServicesAndResolvesById() {
-        Container container = Freeway2.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class).id(ServiceId.of("primary")));
+        Container container = Freeway.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class).id(ServiceId.of("primary")));
 
         Greeter service = container.get(Greeter.class);
         Greeter namedService = container.get(Greeter.class, ServiceId.of("primary"));
@@ -82,7 +82,7 @@ class Freeway2Test {
 
     @Test
     void resolvesPrimaryBindingWhenNoServiceIdIsProvided() {
-        Container container = Freeway2.create(
+        Container container = Freeway.create(
             binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal"))
         );
@@ -95,7 +95,7 @@ class Freeway2Test {
 
     @Test
     void resolvesExplicitNamedServiceInjection() {
-        Container container = Freeway2.create(
+        Container container = Freeway.create(
             binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal"))
         );
@@ -107,7 +107,7 @@ class Freeway2Test {
 
     @Test
     void resolvesExplicitInjectServiceIdSyntaxSugar() {
-        Container container = Freeway2.create(
+        Container container = Freeway.create(
             binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal"))
         );
@@ -119,7 +119,7 @@ class Freeway2Test {
 
     @Test
     void rejectsMultiplePrimaryBindingsForTheSameType() {
-        Container container = Freeway2.create(
+        Container container = Freeway.create(
             binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal")).primary()
         );
@@ -134,7 +134,7 @@ class Freeway2Test {
         System.setProperty(PORT_KEY, "8081");
         System.setProperty(NAME_KEY, "freeway");
 
-        Container container = Freeway2.create();
+        Container container = Freeway.create();
         ConfiguredService service = container.get(ConfiguredService.class);
 
         assertEquals(8081, service.port());
@@ -147,7 +147,7 @@ class Freeway2Test {
         System.setProperty(PORT_KEY, "9090");
         System.setProperty(NAME_KEY, "field-app");
 
-        Container container = Freeway2.create();
+        Container container = Freeway.create();
         FieldConfiguredService service = container.get(FieldConfiguredService.class);
 
         assertEquals(9090, service.port());
@@ -156,7 +156,7 @@ class Freeway2Test {
 
     @Test
     void coercesCommonTypes() {
-        Container container = Freeway2.create();
+        Container container = Freeway.create();
         Coercer coercer = container.get(Coercer.class);
 
         assertEquals(42, coercer.coerce("42", Integer.class));
@@ -168,7 +168,7 @@ class Freeway2Test {
     void modulesCanContributeCustomCoercions() {
         System.setProperty(ENDPOINT_KEY, "localhost:8088");
 
-        Container container = Freeway2.create(binder ->
+        Container container = Freeway.create(binder ->
             binder.contribute((Class) CoercionRule.class).add(new CoercionRule<>(
                 String.class,
                 Endpoint.class,
@@ -188,7 +188,7 @@ class Freeway2Test {
     void intermediateTypeCanBridgeCustomCoercions() {
         System.setProperty(TIMEOUT_KEY, "2500");
 
-        Container container = Freeway2.create(binder ->
+        Container container = Freeway.create(binder ->
             binder.contribute((Class) CoercionRule.class).add(new CoercionRule<>(
                 Integer.class,
                 Timeout.class,
@@ -203,18 +203,18 @@ class Freeway2Test {
 
     @Test
     void modulesCanContributeSymbolProviders() {
-        Container container = Freeway2.create(binder ->
-            binder.contribute(SymbolProvider.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway2" : null)
+        Container container = Freeway.create(binder ->
+            binder.contribute(SymbolProvider.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway" : null)
         );
 
         AppNameHolder holder = container.get(AppNameHolder.class);
 
-        assertEquals("freeway2", holder.name());
+        assertEquals("freeway", holder.name());
     }
 
     @Test
     void interfaceBindingsAreLazyUntilInvoked() {
-        Container container = Freeway2.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class));
+        Container container = Freeway.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class));
 
         Greeter service = container.get(Greeter.class);
 
@@ -229,7 +229,7 @@ class Freeway2Test {
     void adviceChainSupportsMultipleAdvisorsAndShortCircuit() {
         java.util.List<String> log = new java.util.ArrayList<>();
 
-        Container container = Freeway2.create(binder ->
+        Container container = Freeway.create(binder ->
             binder.bind(Greeter.class)
                 .to(GreeterImpl.class)
                 .advise(advisor -> advisor.wrap(
@@ -265,7 +265,7 @@ class Freeway2Test {
         AtomicInteger before = new AtomicInteger();
         AtomicInteger after = new AtomicInteger();
 
-        Container container = Freeway2.create(binder ->
+        Container container = Freeway.create(binder ->
             binder.bind(Greeter.class)
                 .to(GreeterImpl.class)
                 .advise(advisor -> advisor.wrap(
@@ -292,7 +292,7 @@ class Freeway2Test {
 
     @Test
     void extensionPointsAggregateContributions() {
-        Container container = Freeway2.create(
+        Container container = Freeway.create(
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
@@ -304,7 +304,7 @@ class Freeway2Test {
 
     @Test
     void mappedExtensionPointsAggregateKeyedContributions() {
-        Container container = Freeway2.create(
+        Container container = Freeway.create(
             binder -> binder.contributeMapped(AppFlag.class).put("debug", new AppFlag("debug", true)),
             binder -> binder.contributeMapped(AppFlag.class).put("timing", new AppFlag("timing", false))
         );
@@ -490,7 +490,7 @@ class Freeway2Test {
 
     @Test
     void prototypeBindingCreatesNewInstanceEachTime() {
-        Container container = Freeway2.create(binder ->
+        Container container = Freeway.create(binder ->
             binder.bind(Greeter.class).to(GreeterImpl.class).scope(Scope.PROTOTYPE)
         );
 
@@ -504,7 +504,7 @@ class Freeway2Test {
 
     @Test
     void rejectsDuplicateBinding() {
-        assertThrows(IllegalStateException.class, () -> Freeway2.create(binder -> {
+        assertThrows(IllegalStateException.class, () -> Freeway.create(binder -> {
             binder.bind(Greeter.class).to(GreeterImpl.class);
             binder.bind(Greeter.class).to(GreeterImpl.class);
         }));
@@ -512,7 +512,7 @@ class Freeway2Test {
 
     @Test
     void rejectsUnknownSymbol() {
-        Container container = Freeway2.create();
+        Container container = Freeway.create();
         RuntimeException ex = assertThrows(RuntimeException.class,
             () -> container.get(UnknownSymbolService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
@@ -520,7 +520,7 @@ class Freeway2Test {
 
     @Test
     void rejectsUnclosedSymbolExpression() {
-        Container container = Freeway2.create();
+        Container container = Freeway.create();
         RuntimeException ex = assertThrows(RuntimeException.class,
             () -> container.get(UnclosedSymbolService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
@@ -528,7 +528,7 @@ class Freeway2Test {
 
     @Test
     void rejectsMixedInjectAndConfiguredAnnotations() {
-        Container container = Freeway2.create(binder ->
+        Container container = Freeway.create(binder ->
             binder.bind(PaymentGateway.class).to(StripeGateway.class));
         RuntimeException ex = assertThrows(RuntimeException.class,
             () -> container.get(ConflictingAnnotationsService.class));
@@ -537,7 +537,7 @@ class Freeway2Test {
 
     @Test
     void rejectsAdvisorOnNonInterfaceType() {
-        Container container = Freeway2.create(binder ->
+        Container container = Freeway.create(binder ->
             binder.bind(GreeterImpl.class)
                 .to(GreeterImpl.class)
                 .advise(advisor -> advisor.wrap(

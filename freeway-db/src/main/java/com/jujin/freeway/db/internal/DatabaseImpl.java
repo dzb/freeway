@@ -1,12 +1,12 @@
-package com.jujin.freeway2.db.internal;
+package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway2.db.BatchQuery;
-import com.jujin.freeway2.db.Database;
-import com.jujin.freeway2.db.DatabaseConfig;
-import com.jujin.freeway2.db.DatabaseStats;
-import com.jujin.freeway2.db.Query;
-import com.jujin.freeway2.db.SqlException;
-import com.jujin.freeway2.db.Transaction;
+import com.jujin.freeway.db.BatchQuery;
+import com.jujin.freeway.db.Database;
+import com.jujin.freeway.db.DatabaseConfig;
+import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.Query;
+import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.db.Transaction;
 import java.sql.SQLException;
 import java.util.function.Consumer;
 import org.slf4j.Logger;

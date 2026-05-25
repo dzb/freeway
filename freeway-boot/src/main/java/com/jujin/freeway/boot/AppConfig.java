@@ -1,4 +1,4 @@
-package com.jujin.freeway2.boot;
+package com.jujin.freeway.boot;
 
 import java.util.List;
 import java.util.Map;

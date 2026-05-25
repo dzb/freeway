@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 import java.util.List;
 import java.util.UUID;
@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class QuerySemanticsTest {
     @Test
     void collectionExpansionWorksForPositionalParameters() {
-        String dbName = "freeway2_query_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_query_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
@@ -27,7 +27,7 @@ class QuerySemanticsTest {
 
     @Test
     void collectionExpansionRejectsTrailingPositionalParameters() {
-        String dbName = "freeway2_query_tail_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_query_tail_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
@@ -45,7 +45,7 @@ class QuerySemanticsTest {
 
     @Test
     void collectionExpansionRejectsUnknownNamedParameters() {
-        String dbName = "freeway2_query_named_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_query_named_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")

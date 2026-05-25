@@ -1,4 +1,4 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
 import java.util.List;
 import java.util.UUID;
@@ -115,6 +115,6 @@ class BatchQueryTest {
     }
 
     private static String uniqueDb(String prefix) {
-        return "freeway2_batch_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
+        return "freeway_batch_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
     }
 }

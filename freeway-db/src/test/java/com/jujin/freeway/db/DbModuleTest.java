@@ -1,7 +1,7 @@
-package com.jujin.freeway2.db;
+package com.jujin.freeway.db;
 
-import com.jujin.freeway2.ioc.Container;
-import com.jujin.freeway2.ioc.Freeway2;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
@@ -40,12 +40,12 @@ class DbModuleTest {
 
     @Test
     void moduleProvidesDatabaseQueriesTransactionsAndCustomMappers() {
-        String dbName = "freeway2_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_" + UUID.randomUUID().toString().replace('-', '_');
         System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
         System.setProperty(USER_KEY, "sa");
         System.setProperty(PASS_KEY, "");
 
-        try (Container container = Freeway2.create(
+        try (Container container = Freeway.create(
             new DbModule(),
             binder -> binder.contribute(RowMapping.class).add(
                 RowMapping.of(Money.class, (rs, rowNum) -> new Money(rs.getLong("amount_cents")))
@@ -97,7 +97,7 @@ class DbModuleTest {
 
     @Test
     void standaloneBuilderSupportsCustomMappings() {
-        String dbName = "freeway2_builder_" + UUID.randomUUID().toString().replace('-', '_');
+        String dbName = "freeway_builder_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
@@ -137,7 +137,7 @@ class DbModuleTest {
             .build();
 
         try {
-            Container container = Freeway2.create(
+            Container container = Freeway.create(
                 new DbModule(),
                 binder -> binder.contributeMapped(Database.class).put("primary", primary),
                 binder -> binder.contributeMapped(Database.class).put("audit", audit)
