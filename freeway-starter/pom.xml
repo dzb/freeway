@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.jujin8.freeway</groupId>
+        <artifactId>freeway-2-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>freeway-starter</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Freeway :: Starter</name>
+    <description>All-in-one starter that bundles all Freeway core modules.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-commons</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-ioc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-boot</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-web-engine-robaho</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-db</artifactId>
+        </dependency>
+    </dependencies>
+</project>

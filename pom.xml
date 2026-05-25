@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.jujin</groupId>
+    <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-2-parent</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
@@ -14,7 +14,28 @@
         A brand-new, modern, lightweight Java application framework built on JDK 25+.
         Compose-first, no classpath scanning, zero external dependencies for core modules.
     </description>
-    <url>https://github.com/bob-dev-77/freeway2</url>
+    <url>https://github.com/dzb/freeway</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>dzb</name>
+            <email>dzb2k9@outlook.com</email>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/dzb/freeway.git</connection>
+        <developerConnection>scm:git:https://github.com/dzb/freeway.git</developerConnection>
+        <url>https://github.com/dzb/freeway</url>
+    </scm>
 
     <properties>
         <maven.compiler.source>25</maven.compiler.source>
@@ -27,45 +48,50 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Freeway2 internal modules -->
+            <!-- Freeway internal modules -->
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-commons</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-commons</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-ioc</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-ioc</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-boot</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-boot</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-web</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-web</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-web-engine-robaho</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-web-engine-robaho</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-web-engine-undertow</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-web-engine-undertow</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-web-engine-jetty</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-web-engine-jetty</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.jujin</groupId>
-                <artifactId>freeway2-db</artifactId>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-db</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -106,17 +132,71 @@
                     <argLine>--enable-preview</argLine>
                 </configuration>
             </plugin>
+            <!-- Maven Central publishing -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.11.2</version>
+                <configuration>
+                    <doclint>none</doclint>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>3.2.7</version>
+                <executions>
+                    <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.9.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
     <modules>
-        <module>freeway2-commons</module>
-        <module>freeway2-ioc</module>
-        <module>freeway2-boot</module>
-        <module>freeway2-web</module>
-        <module>freeway2-web-engine-robaho</module>
-        <module>freeway2-web-engine-undertow</module>
-        <module>freeway2-web-engine-jetty</module>
-        <module>freeway2-db</module>
+        <module>freeway-commons</module>
+        <module>freeway-ioc</module>
+        <module>freeway-boot</module>
+        <module>freeway-web</module>
+        <module>freeway-web-engine-robaho</module>
+        <module>freeway-web-engine-undertow</module>
+        <module>freeway-web-engine-jetty</module>
+        <module>freeway-db</module>
+        <module>freeway-starter</module>
     </modules>
 </project>

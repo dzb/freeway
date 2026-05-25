@@ -1,4 +1,4 @@
-package com.jujin.freeway2.commons.json;
+package com.jujin.freeway.commons.json;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,11 +12,11 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import com.jujin.freeway2.commons.bean.BeanIntrospector;
-import com.jujin.freeway2.commons.bean.BeanPlan;
-import com.jujin.freeway2.commons.bean.BeanProperty;
-import com.jujin.freeway2.commons.scalar.Coercer;
-import com.jujin.freeway2.commons.scalar.DefaultCoercer;
+import com.jujin.freeway.commons.bean.BeanIntrospector;
+import com.jujin.freeway.commons.bean.BeanPlan;
+import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.scalar.DefaultCoercer;
 
 public final class JsonUtils {
     private static final DefaultCoercer DEFAULT_COERCER = new DefaultCoercer();
@@ -133,7 +133,7 @@ public final class JsonUtils {
      * 将任意 Java 对象归一化为 JSON 兼容结构（{@link JsonObject}、{@link JsonArray}、标量）。
      * <p>
      * 注意：{@link Iterable} 统一归一化为 {@link JsonArray}，会丢失有序性/唯一性等集合语义。
-     * 如需保留 {@link Set}、{@link java.util.Queue} 等语义，请在归一化前先显式转换。
+     * 如需保留 {@link java.util.Set}、{@link java.util.Queue} 等语义，请在归一化前先显式转换。
      */
     public static Object normalize(Object value) {
         if (value == null) {

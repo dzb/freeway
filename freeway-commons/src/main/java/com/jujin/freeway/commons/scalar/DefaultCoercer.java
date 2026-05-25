@@ -1,4 +1,4 @@
-package com.jujin.freeway2.commons.scalar;
+package com.jujin.freeway.commons.scalar;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -19,7 +19,6 @@ public final class DefaultCoercer implements Coercer {
      *   <li>如果存在自定义规则，则应用该规则进行转换</li>
      *   <li>如果不存在自定义规则，则使用缓存的默认转换逻辑</li>
      * </ol>
-     * </p>
      *
      * @param <T>        目标类型的泛型参数
      * @param input      待转换的输入对象，可以为 null
