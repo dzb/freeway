@@ -5,11 +5,11 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.jujin8.freeway</groupId>
-    <artifactId>freeway-2-parent</artifactId>
+    <artifactId>freeway-parent</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
 
-    <name>Freeway 2</name>
+    <name>Freeway</name>
     <description>
         A brand-new, modern, lightweight Java application framework built on JDK 25+.
         Compose-first, no classpath scanning, zero external dependencies for core modules.

@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.jujin8.freeway</groupId>
-        <artifactId>freeway-2-parent</artifactId>
+        <artifactId>freeway-parent</artifactId>
         <version>1.0.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
