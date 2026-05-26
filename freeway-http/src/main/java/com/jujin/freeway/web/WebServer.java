@@ -144,8 +144,7 @@ public final class WebServer implements AutoCloseable, AfterRealized {
             try (Socket s = new Socket(host, port)) {
                 s.getOutputStream().write("GET / HTTP/1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
                 s.setSoTimeout(1000);
-                InputStream in = s.getInputStream();
-                if (in.read() != -1) {
+                if (s.getInputStream().read() != -1) {
                     return;
                 }
             } catch (IOException ignored) {
