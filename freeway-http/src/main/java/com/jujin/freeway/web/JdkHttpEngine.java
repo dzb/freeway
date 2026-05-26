@@ -1,9 +1,11 @@
 package com.jujin.freeway.web;
 
+import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,6 +32,10 @@ final class JdkHttpEngine implements HttpEngine {
             RequestContext requestContext = createRequestContext(exchange);
             JdkHttpServerContext ctx = new JdkHttpServerContext(exchange, jsonCodec, requestContext);
             ctx.headerSet("X-Request-Id", requestContext.correlationId());
+            if (isWebSocketUpgrade(exchange.getRequestHeaders())) {
+                ctx.send(426, "WebSocket not supported by JDK engine; add freeway-http-robaho, freeway-http-undertow, or freeway-http-jetty to the classpath");
+                return;
+            }
             try {
                 handler.handle(ctx);
             } catch (Exception ex) {
@@ -42,6 +48,19 @@ final class JdkHttpEngine implements HttpEngine {
         server.start();
         LOG.info("Freeway JDK web engine started on {}:{}", config.host(), server.getAddress().getPort());
         return new HttpServerHandle(server, executor, config.shutdownGraceSeconds(), config.host());
+    }
+
+    private static boolean isWebSocketUpgrade(Headers headers) {
+        List<String> connection = headers.get("Connection");
+        List<String> upgrade = headers.get("Upgrade");
+        if (connection == null || upgrade == null) {
+            return false;
+        }
+        boolean connectionUpgrade = connection.stream().anyMatch(
+            v -> List.of(v.split("\\s*,\\s*")).stream().anyMatch("upgrade"::equalsIgnoreCase)
+        );
+        boolean websocketUpgrade = upgrade.stream().anyMatch("websocket"::equalsIgnoreCase);
+        return connectionUpgrade && websocketUpgrade;
     }
 
     private static RequestContext createRequestContext(HttpExchange exchange) {
