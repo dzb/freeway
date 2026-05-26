@@ -108,7 +108,7 @@ Application lifecycle management:
 
 A thin HTTP layer with:
 
-- **Routing** — explicit route registration via `RouteRegistry`
+- **Routing** — explicit route registration via `Route` and `RouteGroup` extensions
 - **Filters** — `HttpFilter` chain for request/response interception
 - **Exception mapping** — map exceptions to HTTP responses
 - **Static resources** — serve files from classpath or filesystem

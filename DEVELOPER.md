@@ -150,10 +150,6 @@ App app = Launcher.run(MyAppModule.class, args);
 
 // From a Module instance
 App app = Launcher.run(module);
-
-// With explicit configuration
-App app = Launcher.run(MyAppModule.class, new LauncherConfig()
-    .withDiscoveredModules(true));
 ```
 
 ### Config Cascade
@@ -259,51 +255,42 @@ The engine adapter implements the `HttpEngine` interface. Each adapter module re
 ```java
 Database db = container.get(Database.class);
 
-// Query
-List<User> users = db.sql("SELECT * FROM users WHERE active = ?")
-    .param(true)
-    .query(User.class);
+// Query — returns a list
+List<User> users = db.sql("SELECT * FROM users WHERE active = ?", true)
+    .list(User.class);
 
-// Single result
-User user = db.sql("SELECT * FROM users WHERE id = ?")
-    .param(42)
-    .queryOne(User.class);
+// Single result — returns Optional
+User user = db.sql("SELECT * FROM users WHERE id = ?", 42)
+    .one(User.class)
+    .orElseThrow();
 
-// Update
-int rows = db.sql("UPDATE users SET name = ? WHERE id = ?")
-    .param("Alice", 42)
-    .update();
-
-// Batch
-int[] counts = db.sql("INSERT INTO log (msg) VALUES (?)")
-    .batch()
-    .param("msg1")
-    .param("msg2")
-    .execute();
-```
-
-### Named Parameters
-
-SQL uses `:name` or `#name` syntax for named placeholders, with values supplied via `.param(name, value)`:
-
-```java
-// Named parameters — use :name or #name in SQL
-List<User> users = db.sql("SELECT * FROM users WHERE name = :name AND active = #active")
+// Named parameters — :name or #name syntax
+List<User> filtered = db.sql("SELECT * FROM users WHERE name = :name AND active = #active")
     .param("name", "Alice")
     .param("active", true)
     .list(User.class);
 
-// Mixed with Collection expansion (IN clause)
-List<User> users = db.sql("SELECT * FROM users WHERE id IN (:ids)")
+// IN clause with Collection expansion
+List<User> byIds = db.sql("SELECT * FROM users WHERE id IN (:ids)")
     .param("ids", List.of(1, 2, 3))
     .list(User.class);
+
+// Write operations
+int rows = db.sql("UPDATE users SET name = ? WHERE id = ?", "Alice", 42)
+    .execute();
 ```
 
-> **Note**: Named and positional parameters cannot be mixed. Once you use `.param(name, value)`, all placeholders must be named.
+> **Note**: Named (`.param(name, value)`) and positional (`.sql(sql, val1, val2)`) parameters cannot be mixed.
 
-Batch queries also support named parameters:
+### Batch Queries
 
 ```java
+// Positional batch
+int[] results = db.batch("INSERT INTO log (msg) VALUES (?)")
+    .rows(new Object[]{"msg1"}, new Object[]{"msg2"})
+    .execute();
+
+// Named batch
 db.batch("INSERT INTO users(name, active) VALUES (:name, :active)")
     .named(List.of(
         Map.of("name", "Alice", "active", true),
@@ -316,8 +303,8 @@ db.batch("INSERT INTO users(name, active) VALUES (:name, :active)")
 
 ```java
 db.transaction(tx -> {
-    tx.sql("UPDATE accounts SET balance = balance - 100 WHERE id = ?").param(1).update();
-    tx.sql("UPDATE accounts SET balance = balance + 100 WHERE id = ?").param(2).update();
+    tx.sql("UPDATE accounts SET balance = balance - 100 WHERE id = ?", 1).execute();
+    tx.sql("UPDATE accounts SET balance = balance + 100 WHERE id = ?", 2).execute();
     return true; // commit
 });
 ```
@@ -355,8 +342,8 @@ Migrations run automatically when the `Database` is first accessed. Each migrati
 
 ```java
 DatabaseHub hub = container.get(DatabaseHub.class);
-Database analytics = hub.database("analytics");
-analytics.sql("SELECT COUNT(*) FROM events").queryOne(Long.class);
+Database analytics = hub.get("analytics");
+analytics.sql("SELECT COUNT(*) FROM events").one(Long.class);
 ```
 
 ---
