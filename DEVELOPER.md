@@ -176,45 +176,55 @@ Activate with `--freeway.profile=dev` (or `-Dfreeway.profile=dev`). Multiple pro
 
 ## HTTP Layer (`freeway-http`)
 
+The `com.jujin.freeway.http` package uses a flat structure — all classes in one package, no sub-packages. This keeps imports simple and discoverable:
+
+| Category | Classes |
+|----------|---------|
+| Core API | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `HttpServerConfig`, `HttpServerHandle`, `HttpRequestHandler`, `JsonCodec`, `WebServer`, `ExceptionMapper`, `RouteHandler`, `RequestContext` |
+| WebSocket API | `WebSocketSession`, `WebSocketListener`, `WebSocketEndpoint`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketMatch`, `WebSocketIndex` |
+| Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathGroupSupport`, `PathPattern` |
+| Built-ins | `DefaultJsonCodec`, `DefaultRequestContext`, `CorsFilter`, `RequestTimingFilter`, `StaticResourceMount`, `StaticResources`, `MultipartForm`, `RequestBodyTooLargeException` |
+| JDK engine | `JdkHttpEngine`, `JdkHttpContext` (package-private, always available fallback) |
+
+The public API surface a typical application uses is 5–10 classes. Implementation details like `JdkHttpEngine` are package-private, isolating them from the public contract without needing directory-level separation.
+
 ### Routing
 
-Routes are registered via `RouteRegistry` (available in the container):
+Routes are registered via the extension point mechanism — contribute `Route` or `RouteGroup` instances in your module:
 
 ```java
-RouteRegistry routes = container.get(RouteRegistry.class);
-routes.get("/hello", ctx -> ctx.sendText("Hello!"));
-routes.post("/api/users", ctx -> {
-    User user = ctx.bodyJson(User.class);
-    ctx.sendJson(201, user);
-});
-routes.staticResources("/static", "/public");
+binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hello")));
+binder.contribute(Route.class).add(Route.post("/api/users", ctx -> {
+    ctx.sendJson(201, ctx.bodyAsJson(Map.class));
+}));
+binder.contribute(RouteGroup.class).add(RouteGroup.of("/api",
+    Route.get("/group", ctx -> ctx.send(200, "group")),
+    Route.get("/items/{id}", ctx -> ctx.send(200, ctx.pathVar("id")))
+));
 ```
 
 ### WebSocket
 
-```java
-routes.webSocket("/chat", session -> new WebSocketListener() {
-    @Override
-    public void onOpen(WebSocketSession session) {
-        System.out.println("Connected: " + session.path());
-    }
+WebSocket endpoints are registered via `WebSocketRoute` and `WebSocketGroup` contributions:
 
+```java
+binder.contribute(WebSocketRoute.class).add(WebSocketRoute.of("/chat", session -> new WebSocketListener() {
     @Override
-    public void onText(String text) {
+    public void onText(String text) throws Exception {
         session.sendText("Echo: " + text);
     }
-});
+}));
 ```
 
 ### Filters & Exception Mappers
 
 ```java
 // Global filter
-binder.contribute(HttpFilter.class).add((ctx, chain) -> {
+binder.contribute(HttpFilter.class).add((ctx, next) -> {
     long start = System.nanoTime();
-    chain.doFilter(ctx);
+    next.handle(ctx);
     long elapsed = System.nanoTime() - start;
-    ctx.header("X-Response-Time", String.valueOf(elapsed / 1_000_000));
+    ctx.headerSet("X-Response-Time", String.valueOf(elapsed / 1_000_000));
 });
 
 // Exception mapper
