@@ -87,7 +87,7 @@ public final class StaticResourceMount {
         }
         applyCacheHeaders(ctx, asset);
         if (isNotModified(ctx, asset)) {
-            ctx.status(304);
+            ctx.status(304).output(new byte[0]);
             return;
         }
         ctx.status(200);
