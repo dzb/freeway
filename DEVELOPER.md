@@ -7,12 +7,13 @@ freeway-commons
       ↑
 freeway-ioc
       ↑               ↑               ↑
-freeway-boot    freeway-web    freeway-db
+freeway-boot    freeway-http    freeway-db
       ↑               ↑
       └─── engine adapters ───┘
-    freeway-web-engine-robaho
-    freeway-web-engine-undertow
-    freeway-web-engine-jetty
+    freeway-http-jdk       (built-in, always available)
+    freeway-http-robaho    (default)
+    freeway-http-undertow
+    freeway-http-jetty
 ```
 
 Dependencies flow **downward** — core modules never depend on higher-level modules.
@@ -173,7 +174,7 @@ Activate with `--freeway.profile=dev` (or `-Dfreeway.profile=dev`). Multiple pro
 
 ---
 
-## Web Layer (`freeway-web`)
+## HTTP Layer (`freeway-http`)
 
 ### Routing
 
@@ -232,11 +233,12 @@ Set `web.engine` in config:
 
 | Value | Engine | Dependencies |
 |-------|--------|-------------|
-| `robaho` (default) | Robaho HTTP Server | Zero external deps |
+| `robaho` (default) | Robaho HTTP Server + WebSocket | Zero external deps |
+| `jdk` | JDK built-in HttpServer | Always available (HTTP only) |
 | `undertow` | Undertow 2.3 | `undertow-core` |
 | `jetty` | Jetty 12.1 | `jetty-server` + `jetty-websocket-server` |
 
-The engine adapter implements the `WebServer` SPI. Each adapter module registers itself via `ServiceLoader`.
+The engine adapter implements the `HttpEngine` interface. Each adapter module registers itself via `ServiceLoader`. The JDK engine is built into `freeway-http` and serves as automatic fallback when `robaho` is not on the classpath.
 
 ---
 
@@ -361,7 +363,7 @@ mvn test
 mvn -pl freeway-ioc test
 
 # Module with dependencies
-mvn -pl freeway-web -am test
+mvn -pl freeway-http -am test
 ```
 
 ### Writing Tests
@@ -396,19 +398,20 @@ void bootsWithFullStack() {
 
 ---
 
-## Adding a New Web Engine Adapter
+## Adding a New HTTP Engine Adapter
 
-1. Create module `freeway-web-engine-{name}`
-2. Depend on `freeway-web`
-3. Implement `WebServer` interface
-4. Register implementation in `META-INF/services/com.jujin.freeway.ioc.Module`
-5. Engine picks up automatically by setting `web.engine={name}`
+1. Create module `freeway-http-{name}`
+2. Depend on `freeway-http`
+3. Implement `HttpEngine` interface
+4. Register a `Module` in `META-INF/services/com.jujin.freeway.ioc.Module`
+5. Bind the engine class with an id: `binder.bind(MyEngine.class).to(MyEngine.class).id(ServiceId.of("my-engine"))`
+6. Users select it with `web.engine=my-engine`
 
 ---
 
 ## Code Style
 
 - Java 25 with preview features (`--enable-preview`)
-- No external dependencies for core modules (commons, ioc, boot, web, db)
+- No external dependencies for core modules (commons, ioc, boot, http, db)
 - Explicit over implicit — no annotation scanning, no bytecode manipulation
 - `compose-first` — wire everything in `Module.bind(Binder)`

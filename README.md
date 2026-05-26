@@ -8,11 +8,13 @@ Zero classpath scanning. Compose-first API. No magic.
 freeway-commons        — minimal shared utilities, JSON, SLF4J-over-JUL provider
 freeway-ioc            — lightweight IoC container (bind, inject, coerce, advise)
 freeway-boot           — application launcher, config, profiles, lifecycle
-freeway-web            — thin HTTP/WebSocket layer (routing, filters, static, multipart)
-  freeway-web-engine-robaho   — zero-dep HTTP engine (default)
-  freeway-web-engine-undertow — Undertow transport adapter
-  freeway-web-engine-jetty    — Jetty transport adapter
+freeway-http           — thin HTTP/WebSocket layer (routing, filters, static, multipart)
+  freeway-http-jdk          — JDK built-in HttpServer engine
+  freeway-http-robaho       — zero-dep HTTP engine with WebSocket (default)
+  freeway-http-undertow     — Undertow transport adapter
+  freeway-http-jetty        — Jetty transport adapter
 freeway-db             — JDBC data access (pooling, transactions, migrations)
+freeway-starter        — all-in-one dependency bundle
 ```
 
 ### Philosophy
@@ -71,7 +73,7 @@ mvn test
 
 # focused module
 mvn -pl freeway-ioc test
-mvn -pl freeway-web -am test
+mvn -pl freeway-http -am test
 mvn -pl freeway-db -am test
 ```
 
@@ -102,7 +104,7 @@ Application lifecycle management:
 - **Profiles** — `--freeway.profile=dev` activates profile-specific config
 - **Config providers** — properties files, JSON, environment, system properties, CLI args
 
-### Web (`freeway-web`)
+### HTTP (`freeway-http`)
 
 A thin HTTP layer with:
 
@@ -114,13 +116,14 @@ A thin HTTP layer with:
 - **WebSocket** — `WebSocketListener` with open/text/binary/close/error callbacks
 - **JSON** — built-in codec, no Jackson/Gson required
 - **CORS** — configurable cross-origin support
-- **Pluggable engines** — swap between Robaho (default, zero-dep), Undertow, or Jetty
+- **Pluggable engines** — JDK (built-in), Robaho (default, zero-dep + WebSocket), Undertow, or Jetty
 
 Switch engines with a single config:
 
 ```properties
+web.engine=robaho   # default (WebSocket support)
+web.engine=jdk      # JDK built-in (zero-dep, HTTP only)
 web.engine=undertow
-# or
 web.engine=jetty
 ```
 
