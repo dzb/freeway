@@ -6,6 +6,9 @@ import com.jujin.freeway.ioc.ServiceId;
 import com.jujin.freeway.ioc.annotation.ExtensionPoint;
 import com.jujin.freeway.ioc.annotation.Value;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -123,6 +126,7 @@ public final class WebServer implements AutoCloseable, AfterRealized {
                 throw new RuntimeException("Failed to start web engine " + webEngineId, ex);
             }
             this.handle = h;
+            awaitReady(h.host(), h.port());
             LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
             return h;
         }
@@ -132,6 +136,27 @@ public final class WebServer implements AutoCloseable, AfterRealized {
     public void afterRealized() {
         // 在容器 realize 之后（已逃出 computeIfAbsent 锁域）自动启动引擎
         ensureStarted();
+    }
+
+    private static void awaitReady(String host, int port) {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            try (Socket s = new Socket(host, port)) {
+                s.getOutputStream().write("GET / HTTP/1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                s.setSoTimeout(1000);
+                InputStream in = s.getInputStream();
+                if (in.read() != -1) {
+                    return;
+                }
+            } catch (IOException ignored) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
     }
 
     private static HttpEngine resolveEngine(Container container, String webEngineId) {

@@ -3,10 +3,7 @@ package com.jujin.freeway.web;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -57,7 +54,6 @@ final class RobahoWebEngine implements HttpEngine {
             }
         });
         server.start();
-        awaitReady(config.host(), server.getAddress().getPort());
         LOG.info("Freeway web engine started on {}:{}", config.host(), server.getAddress().getPort());
         return new HttpServerHandle(server, executor, config.shutdownGraceSeconds(), config.host());
     }
@@ -80,27 +76,6 @@ final class RobahoWebEngine implements HttpEngine {
             throw e;
         } catch (Exception e) {
             throw new IOException("WebSocket upgrade failed", e);
-        }
-    }
-
-    private static void awaitReady(String host, int port) {
-        long deadline = System.currentTimeMillis() + 10_000;
-        while (System.currentTimeMillis() < deadline) {
-            try (Socket s = new Socket(host, port)) {
-                s.getOutputStream().write("GET / HTTP/1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-                s.setSoTimeout(1000);
-                InputStream in = s.getInputStream();
-                if (in.read() != -1) {
-                    return;
-                }
-            } catch (IOException ignored) {
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
         }
     }
 
