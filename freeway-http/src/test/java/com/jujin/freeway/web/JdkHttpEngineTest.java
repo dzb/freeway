@@ -23,7 +23,6 @@ class JdkHttpEngineTest {
 
         Container c = Freeway.create(
             new WebModule(),
-            new JdkHttpEngineModule(),
             binder -> binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")))
         );
         c.get(WebServer.class);

@@ -170,8 +170,8 @@ public final class WebServer implements AutoCloseable, AfterRealized {
             if (!"robaho".equals(engineId)) {
                 throw new IllegalStateException("Unable to resolve web engine " + engineId, ex);
             }
-            LOG.warn("Default engine 'robaho' not found, falling back to any available engine");
-            return container.get(HttpEngine.class);
+            LOG.warn("Default engine 'robaho' not found, falling back to built-in JDK engine");
+            return container.get(HttpEngine.class, ServiceId.of("jdk"));
         }
     }
 

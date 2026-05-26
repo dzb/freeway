@@ -2,6 +2,7 @@ package com.jujin.freeway.web;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.ServiceId;
 import java.util.Map;
 
 public final class WebModule implements Module {
@@ -12,6 +13,7 @@ public final class WebModule implements Module {
         binder.bind(JsonCodec.class).to(DefaultJsonCodec.class);
         binder.bind(CorsFilter.class).to(CorsFilter.class);
         binder.bind(WebServer.class).to(WebServer.class);
+        binder.bind(JdkHttpEngine.class).to(JdkHttpEngine.class).id(ServiceId.of("jdk"));
 
         binder.contribute(HttpFilter.class).add(new RequestTimingFilter());
 

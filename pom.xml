@@ -86,11 +86,6 @@
             </dependency>
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-http-jdk</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
                 <artifactId>freeway-db</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -201,7 +196,6 @@
         <module>freeway-http-robaho</module>
         <module>freeway-http-undertow</module>
         <module>freeway-http-jetty</module>
-        <module>freeway-http-jdk</module>
         <module>freeway-db</module>
         <module>freeway-starter</module>
     </modules>
