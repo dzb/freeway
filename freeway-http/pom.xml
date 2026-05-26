@@ -11,9 +11,9 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway-boot</artifactId>
-    <name>Freeway :: Boot</name>
-    <description>Application bootstrap layer for freeway</description>
+    <artifactId>freeway-http</artifactId>
+    <name>Freeway :: HTTP</name>
+    <description>Thin HTTP layer for freeway</description>
 
     <dependencies>
         <dependency>
@@ -28,7 +28,6 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

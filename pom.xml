@@ -6,7 +6,7 @@
 
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-parent</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>pom</packaging>
 
     <name>Freeway Framework</name>
@@ -66,22 +66,22 @@
             </dependency>
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-web</artifactId>
+                <artifactId>freeway-http</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-web-engine-robaho</artifactId>
+                <artifactId>freeway-http-robaho</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-web-engine-undertow</artifactId>
+                <artifactId>freeway-http-undertow</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-web-engine-jetty</artifactId>
+                <artifactId>freeway-http-jetty</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -192,10 +192,10 @@
         <module>freeway-commons</module>
         <module>freeway-ioc</module>
         <module>freeway-boot</module>
-        <module>freeway-web</module>
-        <module>freeway-web-engine-robaho</module>
-        <module>freeway-web-engine-undertow</module>
-        <module>freeway-web-engine-jetty</module>
+        <module>freeway-http</module>
+        <module>freeway-http-robaho</module>
+        <module>freeway-http-undertow</module>
+        <module>freeway-http-jetty</module>
         <module>freeway-db</module>
         <module>freeway-starter</module>
     </modules>

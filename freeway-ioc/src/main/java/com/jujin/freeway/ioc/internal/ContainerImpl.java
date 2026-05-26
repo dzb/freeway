@@ -298,10 +298,27 @@ public final class ContainerImpl implements Container {
         return binding.type().cast(service);
     }
 
+    private final ThreadLocal<java.util.Set<ServiceKey>> realizeStack =
+        ThreadLocal.withInitial(java.util.HashSet::new);
+
     @SuppressWarnings("unchecked")
     private <T> T realize(BindingImpl<T> binding) {
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
-        return (T) targetCache.computeIfAbsent(key, k -> binding.directInstance());
+        java.util.Set<ServiceKey> stack = realizeStack.get();
+        if (!stack.add(key)) {
+            throw new IllegalStateException("Circular dependency detected: " + key);
+        }
+        try {
+            Object existing = targetCache.get(key);
+            if (existing != null) {
+                return (T) existing;
+            }
+            Object service = binding.directInstance();
+            Object previous = targetCache.putIfAbsent(key, service);
+            return (T) (previous != null ? previous : service);
+        } finally {
+            stack.remove(key);
+        }
     }
 
     @SuppressWarnings("unchecked")

@@ -11,24 +11,34 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway-boot</artifactId>
-    <name>Freeway :: Boot</name>
-    <description>Application bootstrap layer for freeway</description>
+    <artifactId>freeway-http-jetty</artifactId>
+    <name>Freeway :: HTTP :: Jetty</name>
+    <description>Jetty transport adapter for freeway web</description>
 
     <dependencies>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-ioc</artifactId>
+            <artifactId>freeway-http</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-commons</artifactId>
+            <groupId>org.eclipse.jetty</groupId>
+            <artifactId>jetty-server</artifactId>
+            <version>12.1.9</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.jetty.websocket</groupId>
+            <artifactId>jetty-websocket-jetty-server</artifactId>
+            <version>12.1.9</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
-
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-boot</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

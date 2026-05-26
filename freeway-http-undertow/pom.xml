@@ -11,24 +11,29 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway-boot</artifactId>
-    <name>Freeway :: Boot</name>
-    <description>Application bootstrap layer for freeway</description>
+    <artifactId>freeway-http-undertow</artifactId>
+    <name>Freeway :: HTTP :: Undertow</name>
+    <description>Undertow transport adapter for freeway web</description>
 
     <dependencies>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-ioc</artifactId>
+            <artifactId>freeway-http</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-commons</artifactId>
+            <groupId>io.undertow</groupId>
+            <artifactId>undertow-core</artifactId>
+            <version>2.3.24.Final</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
-
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-boot</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
