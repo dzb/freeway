@@ -1,1 +1,1 @@
-com.jujin.freeway.web.JettyWebEngineModule
+com.jujin.freeway.http.JettyWebEngineModule

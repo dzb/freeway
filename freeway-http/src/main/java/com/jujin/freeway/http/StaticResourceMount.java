@@ -1,0 +1,309 @@
+package com.jujin.freeway.http;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.Base64;
+import java.util.Locale;
+import java.util.Objects;
+
+public final class StaticResourceMount {
+    private static final long DEFAULT_CACHE_MAX_AGE_SECONDS = 86_400L;
+    private static final long MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024L; // 50MB
+    private static final DateTimeFormatter HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
+
+    private final String mountPath;
+    private final ResourceSource source;
+    private final long cacheMaxAgeSeconds;
+    private final boolean immutable;
+
+    private StaticResourceMount(String mountPath, ResourceSource source, long cacheMaxAgeSeconds, boolean immutable) {
+        this.mountPath = normalizeMount(mountPath);
+        this.source = Objects.requireNonNull(source, "source");
+        this.cacheMaxAgeSeconds = Math.max(0L, cacheMaxAgeSeconds);
+        this.immutable = immutable;
+    }
+
+    public static StaticResourceMount directory(String mountPath, Path root) {
+        return new StaticResourceMount(mountPath, new DirectoryResourceSource(root), DEFAULT_CACHE_MAX_AGE_SECONDS, false);
+    }
+
+    public static StaticResourceMount classpath(String mountPath, String resourceRoot) {
+        return new StaticResourceMount(mountPath, new ClasspathResourceSource(resourceRoot), DEFAULT_CACHE_MAX_AGE_SECONDS, false);
+    }
+
+    public StaticResourceMount cacheMaxAgeSeconds(long cacheMaxAgeSeconds) {
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable);
+    }
+
+    public StaticResourceMount immutable(boolean immutable) {
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable);
+    }
+
+    public String mountPath() {
+        return mountPath;
+    }
+
+    public long cacheMaxAgeSeconds() {
+        return cacheMaxAgeSeconds;
+    }
+
+    public boolean immutable() {
+        return immutable;
+    }
+
+    public boolean matches(String method, String path) {
+        if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
+            return false;
+        }
+        if ("/".equals(mountPath)) {
+            return path != null && path.startsWith("/");
+        }
+        return path != null && (path.equals(mountPath) || path.startsWith(mountPath + "/"));
+    }
+
+    public void serve(HttpContext ctx) throws IOException {
+        String relative = relativePath(ctx.path());
+        if (relative == null) {
+            ctx.send(404, "Not Found");
+            return;
+        }
+        StaticAsset asset = source.load(relative);
+        if (asset == null) {
+            ctx.send(404, "Not Found");
+            return;
+        }
+        applyCacheHeaders(ctx, asset);
+        if (isNotModified(ctx, asset)) {
+            ctx.status(304).output(new byte[0]);
+            return;
+        }
+        ctx.status(200);
+        ctx.headerSet("Content-Type", contentType(asset.name()));
+        ctx.headerSet("X-Content-Type-Options", "nosniff");
+        ctx.output(asset.bytes());
+    }
+
+    private String relativePath(String path) {
+        String normalized = HttpContext.blankToNull(path);
+        if (normalized == null) {
+            return null;
+        }
+        if ("/".equals(mountPath)) {
+            normalized = normalized.startsWith("/") ? normalized.substring(1) : normalized;
+        } else if (normalized.equals(mountPath)) {
+            normalized = "index.html";
+        } else if (normalized.startsWith(mountPath + "/")) {
+            normalized = normalized.substring(mountPath.length() + 1);
+        } else {
+            return null;
+        }
+        if (normalized.isBlank()) {
+            normalized = "index.html";
+        }
+        normalized = URLDecoder.decode(normalized, StandardCharsets.UTF_8);
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.isBlank()) {
+            return "index.html";
+        }
+        for (String segment : normalized.split("/")) {
+            if (segment.isBlank() || "..".equals(segment)) {
+                return null;
+            }
+        }
+        return normalized;
+    }
+
+    private void applyCacheHeaders(HttpContext ctx, StaticAsset asset) {
+        StringBuilder cacheControl = new StringBuilder("public, max-age=").append(cacheMaxAgeSeconds);
+        if (immutable) {
+            cacheControl.append(", immutable");
+        }
+        ctx.headerSet("Cache-Control", cacheControl.toString());
+        if (asset.lastModifiedMillis() > 0) {
+            ctx.headerSet("Last-Modified", httpDate(asset.lastModifiedMillis()));
+        }
+        ctx.headerSet("ETag", asset.etag());
+    }
+
+    private boolean isNotModified(HttpContext ctx, StaticAsset asset) {
+        String ifNoneMatch = HttpContext.blankToNull(ctx.header("If-None-Match"));
+        if (ifNoneMatch != null) {
+            return etagMatches(ifNoneMatch, asset.etag());
+        }
+        String ifModifiedSince = HttpContext.blankToNull(ctx.header("If-Modified-Since"));
+        if (ifModifiedSince == null || asset.lastModifiedMillis() <= 0) {
+            return false;
+        }
+        try {
+            Instant requested = ZonedDateTime.parse(ifModifiedSince, HTTP_DATE).toInstant();
+            Instant lastModified = Instant.ofEpochMilli(asset.lastModifiedMillis());
+            return !lastModified.isAfter(requested);
+        } catch (DateTimeParseException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean etagMatches(String header, String etag) {
+        for (String token : header.split(",")) {
+            String candidate = token.trim();
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            if ("*".equals(candidate)) {
+                return true;
+            }
+            if (candidate.startsWith("W/")) {
+                candidate = candidate.substring(2).trim();
+            }
+            if (candidate.equals(etag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String httpDate(long millis) {
+        return HTTP_DATE.format(ZonedDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneOffset.UTC));
+    }
+
+    private static String contentType(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            return "text/html; charset=utf-8";
+        }
+        if (lower.endsWith(".css")) {
+            return "text/css; charset=utf-8";
+        }
+        if (lower.endsWith(".js") || lower.endsWith(".mjs")) {
+            return "application/javascript; charset=utf-8";
+        }
+        if (lower.endsWith(".json")) {
+            return "application/json; charset=utf-8";
+        }
+        if (lower.endsWith(".txt")) {
+            return "text/plain; charset=utf-8";
+        }
+        if (lower.endsWith(".xml")) {
+            return "application/xml; charset=utf-8";
+        }
+        if (lower.endsWith(".svg")) {
+            return "image/svg+xml; charset=utf-8";
+        }
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lower.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (lower.endsWith(".ico")) {
+            return "image/x-icon";
+        }
+        return "application/octet-stream";
+    }
+
+    private static String normalizeMount(String mountPath) {
+        String mount = HttpContext.blankToNull(mountPath);
+        if (mount == null || "/".equals(mount)) {
+            return "/";
+        }
+        mount = mount.startsWith("/") ? mount : "/" + mount;
+        return mount.endsWith("/") ? mount.substring(0, mount.length() - 1) : mount;
+    }
+
+    private interface ResourceSource {
+        StaticAsset load(String relative) throws IOException;
+    }
+
+    private record StaticAsset(String name, byte[] bytes, long lastModifiedMillis) {
+        private StaticAsset {
+            name = Objects.requireNonNull(name, "name");
+            bytes = Objects.requireNonNull(bytes, "bytes");
+        }
+
+        String etag() {
+            return computeEtag(bytes);
+        }
+    }
+
+    private static final class DirectoryResourceSource implements ResourceSource {
+        private final Path root;
+
+        private DirectoryResourceSource(Path root) {
+            this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
+        }
+
+        @Override
+        public StaticAsset load(String relative) throws IOException {
+            Path candidate = root.resolve(relative).normalize();
+            if (!candidate.startsWith(root) || !Files.isRegularFile(candidate)) {
+                return null;
+            }
+            // reject symbolic links to prevent path traversal via symlink
+            if (Files.isSymbolicLink(candidate)) {
+                return null;
+            }
+            long size = Files.size(candidate);
+            if (size > MAX_FILE_SIZE_BYTES) {
+                throw new IOException("File too large: " + candidate.getFileName() + " (" + size + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
+            }
+            return new StaticAsset(candidate.getFileName().toString(), Files.readAllBytes(candidate), Files.getLastModifiedTime(candidate).toMillis());
+        }
+    }
+
+    private static final class ClasspathResourceSource implements ResourceSource {
+        private final String root;
+        private final ClassLoader loader;
+
+        private ClasspathResourceSource(String resourceRoot) {
+            String normalized = HttpContext.blankToNull(resourceRoot);
+            if (normalized == null) {
+                normalized = "";
+            }
+            normalized = normalized.startsWith("/") ? normalized.substring(1) : normalized;
+            normalized = normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized;
+            this.root = normalized;
+            this.loader = Thread.currentThread().getContextClassLoader();
+        }
+
+        @Override
+        public StaticAsset load(String relative) throws IOException {
+            String resourceName = root.isEmpty() ? relative : root + "/" + relative;
+            URL url = loader.getResource(resourceName);
+            if (url == null) {
+                return null;
+            }
+            URLConnection connection = url.openConnection();
+            try (InputStream in = connection.getInputStream()) {
+                return new StaticAsset(relative, in.readAllBytes(), connection.getLastModified());
+            }
+        }
+    }
+
+    private static String computeEtag(byte[] bytes) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(bytes);
+            return "\"sha256-" + Base64.getUrlEncoder().withoutPadding().encodeToString(hash) + "\"";
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 unavailable", ex);
+        }
+    }
+}
