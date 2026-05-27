@@ -1,9 +1,10 @@
 package com.jujin.freeway.boot;
 
+import com.jujin.freeway.boot.internal.BootConfig;
 import com.jujin.freeway.boot.internal.BootConfigLoader;
 import com.jujin.freeway.boot.internal.BootConfigLoader.BootConfigLayers;
-import com.jujin.freeway.boot.internal.BootConfig;
 import com.jujin.freeway.boot.internal.BootConfigModule;
+import com.jujin.freeway.boot.internal.FreewayLogging;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.Module;
@@ -16,6 +17,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class Launcher {
+
+    // ⭐ 在 LOG 字段之前执行，确保在 SLF4J 初始化前完成日志自动配置
+    static {
+        FreewayLogging.autoConfigure();
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(Launcher.class);
 
     private Launcher() {

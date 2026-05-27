@@ -35,4 +35,7 @@ Desktop.ini
 temp_*
 tmp/
 
+# Temp scripts
+_script_*.bat
+
 .soloncode/

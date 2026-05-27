@@ -156,6 +156,64 @@ App app = Launcher.run(module);
 
 `Launcher.run()` automatically registers a JVM shutdown hook (`freeway-shutdown-hook` thread) that calls `app.close()` on JVM termination, ensuring graceful cleanup of containers, connection pools, and engine resources.
 
+### Logging Autoconfigure
+
+Freeway ships with a built-in JUL (java.util.logging) adapter that implements the SLF4J 2.x `SLF4JServiceProvider` SPI. The adapter lives in `freeway-commons` but is **not** auto-registered via `ServiceLoader` — instead, `freeway-boot` makes a smart classpath detection at JVM startup.
+
+#### Strategy
+
+```
+Launcher static init
+       │
+       ▼
+FreewayLogging.autoConfigure()
+       │
+       ├── slf4j.provider 已设置? ──→ 尊重用户显式指定，跳过
+       │
+       └── 探测外部 Logger 实现
+               │
+          ┌────┴────┐
+          │有外部     │无外部
+          ▼           ▼
+        让路        设置 slf4j.provider
+        (SLF4J 通过  → 激活 JUL adapter
+         SPI 发现
+         外部 provider)
+```
+
+The detection is non-invasive — it uses `Class.forName()` to probe for well-known external provider classes without triggering SLF4J initialization:
+
+| 探测类 | 对应实现 |
+|--------|----------|
+| `ch.qos.logback.classic.spi.LogbackServiceProvider` | Logback 1.3+ (支持 SLF4J 2.x SPI) |
+| `org.apache.logging.slf4j.Log4jLoggerFactory` | Log4j2 SLF4J binding 2.x |
+| `org.slf4j.reload4j.Reload4jLoggerFactory` | Reload4j / Log4j 桥接 |
+| `org.slf4j.simple.SimpleServiceProvider` | slf4j-simple |
+
+#### Behavior Matrix
+
+| 场景 | classpath 上有 | 实际生效 |
+|------|----------------|----------|
+| 纯 Freeway 应用 | 只有 `freeway-commons` | ✅ JUL Logger |
+| Freeway + Logback | `logback-classic:1.3+` | ✅ Logback |
+| Freeway + Log4j2 | `log4j-slf4j2-impl` | ✅ Log4j2 |
+| 用户显式指定 | `-Dslf4j.provider=xxx` | ✅ 尊重用户选择 |
+
+#### Implementation
+
+The `FreewayLogging.autoConfigure()` call sits in `Launcher`'s static initializer — before any `LoggerFactory.getLogger()` call — ensuring the decision is made before SLF4J binds to a provider:
+
+```java
+public final class Launcher {
+    static {
+        FreewayLogging.autoConfigure();
+    }
+
+    private static final Logger LOG = LoggerFactory.getLogger(Launcher.class);
+    // ...
+}
+```
+
 ### Startup Timing
 
 On every launch, the elapsed startup time is logged to the console:
