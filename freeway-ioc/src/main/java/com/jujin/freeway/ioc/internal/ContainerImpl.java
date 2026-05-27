@@ -18,6 +18,8 @@ import com.jujin.freeway.commons.scalar.CoercionRule;
 import com.jujin.freeway.commons.scalar.DefaultCoercer;
 import com.jujin.freeway.ioc.annotation.ExtensionPoint;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
+import com.jujin.freeway.ioc.annotation.PostConstruct;
+import com.jujin.freeway.ioc.annotation.PreDestroy;
 import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -25,6 +27,7 @@ import com.jujin.freeway.ioc.annotation.Value;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -100,6 +103,23 @@ public final class ContainerImpl implements Container {
         RuntimeException failure = null;
         java.util.Set<Object> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         // 先拍快照再遍历，防止 close() 过程中回调 get() 修改 targetCache
+        // Phase 1: @PreDestroy
+        for (Object value : List.copyOf(targetCache.values())) {
+            if (!seen.add(value)) {
+                continue;
+            }
+            try {
+                invokePreDestroy(value);
+            } catch (Exception ex) {
+                if (failure == null) {
+                    failure = new RuntimeException("Unable to invoke @PreDestroy", ex);
+                } else {
+                    failure.addSuppressed(ex);
+                }
+            }
+        }
+        // Phase 2: AutoCloseable.close() (reuse seen to skip already-processed)
+        seen.clear();
         for (Object value : List.copyOf(targetCache.values())) {
             if (!(value instanceof AutoCloseable closeable) || !seen.add(value)) {
                 continue;
@@ -396,6 +416,72 @@ public final class ContainerImpl implements Container {
             return;
         }
         injectFields(instance);
+        invokePostConstruct(instance);
+    }
+
+    private static void invokePostConstruct(Object instance) {
+        Method method = findLifecycleMethod(instance.getClass(), PostConstruct.class);
+        if (method == null) {
+            return;
+        }
+        try {
+            method.invoke(instance);
+        } catch (Exception ex) {
+            throw new RuntimeException(
+                "@PostConstruct invocation failed on " + instance.getClass().getName(), ex
+            );
+        }
+    }
+
+    private static void invokePreDestroy(Object instance) {
+        Method method = findLifecycleMethod(instance.getClass(), PreDestroy.class);
+        if (method == null) {
+            return;
+        }
+        try {
+            method.invoke(instance);
+        } catch (Exception ex) {
+            throw new RuntimeException(
+                "@PreDestroy invocation failed on " + instance.getClass().getName(), ex
+            );
+        }
+    }
+
+    private static Method findLifecycleMethod(Class<?> clazz, Class<? extends java.lang.annotation.Annotation> annotationType) {
+        Method result = null;
+        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
+            Method found = null;
+            for (Method m : c.getDeclaredMethods()) {
+                if (!m.isAnnotationPresent(annotationType)) {
+                    continue;
+                }
+                if (m.getParameterCount() != 0 || m.getReturnType() != void.class
+                    || java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
+                    throw new IllegalArgumentException(
+                        "@" + annotationType.getSimpleName() + " method must be non-static, take no parameters, and return void: "
+                        + c.getName() + "." + m.getName()
+                    );
+                }
+                if (found != null) {
+                    throw new IllegalArgumentException(
+                        "Multiple @" + annotationType.getSimpleName() + " methods found in class "
+                        + c.getName()
+                    );
+                }
+                found = m;
+            }
+            if (found != null) {
+                if (result != null) {
+                    // Child already has one; we don't also invoke parent's
+                    continue;
+                }
+                result = found;
+            }
+        }
+        if (result != null) {
+            result.setAccessible(true);
+        }
+        return result;
     }
 
     private Object[] resolveArguments(List<BeanParameter> parameters) {

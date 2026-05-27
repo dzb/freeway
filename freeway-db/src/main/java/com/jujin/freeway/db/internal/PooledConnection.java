@@ -8,6 +8,7 @@ public final class PooledConnection {
     private final Connection jdbcConnection;
     private final Instant createdAt;
     private volatile Instant lastReturned;
+    private volatile Instant borrowedAt;  // null when idle, non-null when borrowed
 
     PooledConnection(Connection jdbcConnection, Instant createdAt) {
         this.jdbcConnection = jdbcConnection;
@@ -19,8 +20,25 @@ public final class PooledConnection {
         return jdbcConnection;
     }
 
+    void markBorrowed() {
+        this.borrowedAt = Instant.now();
+    }
+
     void markReturned() {
-        lastReturned = Instant.now();
+        this.lastReturned = Instant.now();
+        this.borrowedAt = null;
+    }
+
+    /**
+     * 连接被借出的时刻，null 表示空闲中。
+     */
+    Instant borrowedAt() {
+        return borrowedAt;
+    }
+
+    boolean isLeaked(Duration leakThreshold) {
+        Instant ba = borrowedAt;
+        return ba != null && Duration.between(ba, Instant.now()).compareTo(leakThreshold) > 0;
     }
 
     boolean isFresh(Duration threshold) {

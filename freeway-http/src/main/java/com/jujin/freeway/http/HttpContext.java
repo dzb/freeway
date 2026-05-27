@@ -120,6 +120,13 @@ public abstract class HttpContext {
 
     public abstract HttpContext output(byte[] data) throws IOException;
 
+    /**
+     * Switch this response to Server-Sent Events (SSE) mode.
+     * Sets {@code Content-Type: text/event-stream}, sends response headers with
+     * chunked transfer encoding, and returns a {@link SseEmitter} for writing events.
+     */
+    public abstract SseEmitter sse() throws IOException;
+
     public HttpContext output(String text) throws IOException {
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;

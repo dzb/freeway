@@ -34,3 +34,5 @@ Desktop.ini
 # Temp
 temp_*
 tmp/
+
+.soloncode/

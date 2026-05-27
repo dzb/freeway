@@ -100,6 +100,8 @@ The heart of the framework. A container that binds interfaces to implementations
 Application lifecycle management:
 
 - **`Launcher.run()`** — parses CLI args, loads config, discovers modules via SPI, starts the app
+- **Shutdown hook** — JVM shutdown hook auto-registered to close the `App` gracefully
+- **Startup timing** — logs elapsed startup time on console
 - **`App`** — owns config, profiles, and lifecycle; exposes the `Container`
 - **Profiles** — `--freeway.profile=dev` activates profile-specific config
 - **Config providers** — properties files, JSON, environment, system properties, CLI args
@@ -109,8 +111,12 @@ Application lifecycle management:
 A thin HTTP layer with:
 
 - **Routing** — explicit route registration via `Route` and `RouteGroup` extensions
+  - Trie-based route index for O(L) matching (L = path segment count)
+  - Path parameters with optional regex constraints (`{id:\\d+}`) and wildcards (`{path:.*}`)
+- **Request body binding** — `Route.post(path, BodyType.class, handler)` auto-deserializes and validates
+- **Server-Sent Events (SSE)** — `HttpContext.sse()` returns a `SseEmitter` for streaming events
 - **Filters** — `HttpFilter` chain for request/response interception
-- **Exception mapping** — map exceptions to HTTP responses
+- **Exception mapping** — map exceptions to HTTP responses (including `ValidationException`)
 - **Static resources** — serve files from classpath or filesystem
 - **Multipart upload** — file upload handling
 - **WebSocket** — `WebSocketListener` with open/text/binary/close/error callbacks
@@ -132,9 +138,11 @@ web.engine=jetty
 Minimal JDBC data access layer:
 
 - **`Database`** — core interface for SQL execution
-- **Connection pooling** — built-in pool, no HikariCP required
+- **Streaming queries** — `Query.stream()` returns a lazy `Stream<T>`, hold connection until closed
+- **Connection pooling** — built-in pool, no HikariCP required, with leak detection
 - **Transactions** — programmatic transaction control
-- **Row mappers** — map result sets to records/POJOs
+- **Row mappers** — map result sets to records/POJOs with cached column lookup
+- **Named parameters** — `:name` or `$name` syntax with Collection auto-expansion
 - **Migrations** — file-based schema migration (SQL files in `db/migration/`)
 - **`DatabaseHub`** — multi-datasource routing
 

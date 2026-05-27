@@ -19,10 +19,12 @@ import org.slf4j.LoggerFactory;
 public final class ConnectionPool implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(ConnectionPool.class);
     private static final Duration FRESH_IDLE_THRESHOLD = Duration.ofSeconds(5);
+    private static final Duration LEAK_THRESHOLD = Duration.ofSeconds(30);
 
     private final PoolConfig config;
     private final Semaphore semaphore;
     private final ConcurrentLinkedDeque<PooledConnection> idle;
+    private final ConcurrentLinkedDeque<PooledConnection> active;
     private final AtomicInteger total;
     private volatile boolean closed;
     private Thread cleanThread;
@@ -31,6 +33,7 @@ public final class ConnectionPool implements AutoCloseable {
         this.config = config;
         this.semaphore = new Semaphore(config.maxSize());
         this.idle = new ConcurrentLinkedDeque<>();
+        this.active = new ConcurrentLinkedDeque<>();
         this.total = new AtomicInteger();
         warmUp();
         startCleaner();
@@ -55,6 +58,8 @@ public final class ConnectionPool implements AutoCloseable {
             if (conn != null) {
                 if (conn.isFresh(FRESH_IDLE_THRESHOLD) || isValid(conn)) {
                     success = true;
+                    conn.markBorrowed();
+                    active.add(conn);
                     return conn;
                 }
                 destroy(conn);
@@ -63,6 +68,8 @@ public final class ConnectionPool implements AutoCloseable {
             conn = createConnection();
             total.incrementAndGet();
             success = true;
+            conn.markBorrowed();
+            active.add(conn);
             return conn;
         } finally {
             if (!success) {
@@ -75,6 +82,7 @@ public final class ConnectionPool implements AutoCloseable {
         if (conn == null) {
             return;
         }
+        active.remove(conn);
         if (closed || !isAlive(conn)) {
             destroy(conn);
             semaphore.release();
@@ -86,12 +94,19 @@ public final class ConnectionPool implements AutoCloseable {
     }
 
     DatabaseStats stats() {
+        int longLeased = 0;
+        for (PooledConnection conn : active) {
+            if (conn.isLeaked(LEAK_THRESHOLD)) {
+                longLeased++;
+            }
+        }
         return new DatabaseStats(
             total.get() - idle.size(),
             idle.size(),
             total.get(),
             semaphore.getQueueLength(),
-            config.maxSize()
+            config.maxSize(),
+            longLeased
         );
     }
 

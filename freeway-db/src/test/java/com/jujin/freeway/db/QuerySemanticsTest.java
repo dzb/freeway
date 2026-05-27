@@ -55,7 +55,7 @@ class QuerySemanticsTest {
         try (db) {
             assertThrows(
                 SqlException.class,
-                () -> db.sql("select 1 where 1 in (#ids)")
+                () -> db.sql("select 1 where 1 in ($ids)")
                     .param("ids", List.of(1, 2))
                     .param("extra", 3)
                     .one(Integer.class)

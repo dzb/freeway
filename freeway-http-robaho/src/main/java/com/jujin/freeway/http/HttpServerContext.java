@@ -119,6 +119,16 @@ final class HttpServerContext extends HttpContext {
     }
 
     @Override
+    public SseEmitter sse() throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+        exchange.getResponseHeaders().set("Connection", "keep-alive");
+        exchange.sendResponseHeaders(200, -1);
+        responded = true;
+        return new SseEmitter(exchange.getResponseBody());
+    }
+
+    @Override
     public RequestContext requestContext() {
         return requestContext;
     }

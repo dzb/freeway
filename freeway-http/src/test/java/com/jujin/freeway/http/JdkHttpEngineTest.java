@@ -7,9 +7,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 class JdkHttpEngineTest {
 
@@ -34,6 +37,41 @@ class JdkHttpEngineTest {
         );
         assertEquals(200, r.statusCode());
         assertEquals("pong", r.body());
+        c.close();
+    }
+
+    @Test
+    void sseStreamReturnsEvents() throws Exception {
+        int port;
+        try (ServerSocket s = new ServerSocket(0)) { port = s.getLocalPort(); }
+        System.setProperty("web.server.host", "127.0.0.1");
+        System.setProperty("web.server.port", String.valueOf(port));
+        System.setProperty("web.engine", "jdk");
+
+        CountDownLatch serverDone = new CountDownLatch(1);
+
+        Container c = Freeway.create(
+            new HttpModule(),
+            binder -> binder.contribute(Route.class).add(Route.get("/sse", ctx -> {
+                try (var emitter = ctx.sse()) {
+                    emitter.send("hello");
+                    emitter.send("world");
+                }
+                serverDone.countDown();
+            }))
+        );
+        c.get(WebServer.class);
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> r = client.send(
+            HttpRequest.newBuilder().uri(URI.create("http://127.0.0.1:" + port + "/sse")).GET().build(),
+            HttpResponse.BodyHandlers.ofString()
+        );
+        assertEquals(200, r.statusCode());
+        String ct = r.headers().firstValue("Content-Type").orElse("");
+        assertEquals("text/event-stream; charset=utf-8", ct);
+        assertEquals("data: hello\n\ndata: world\n\n", r.body());
+        assertTrue(serverDone.await(5, TimeUnit.SECONDS));
         c.close();
     }
 }

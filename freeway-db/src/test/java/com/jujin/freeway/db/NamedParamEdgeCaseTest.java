@@ -20,7 +20,7 @@ class NamedParamEdgeCaseTest {
             db.sql("create table t (id bigint primary key, name varchar(16))").execute();
             db.sql("insert into t values (1, 'alpha'), (2, 'beta')").execute();
 
-            List<NameEntry> results = db.sql("select id, name from t where id = #id")
+            List<NameEntry> results = db.sql("select id, name from t where id = $id")
                 .param("id", 1L)
                 .list(NameEntry.class);
             assertEquals(1, results.size());
@@ -37,7 +37,7 @@ class NamedParamEdgeCaseTest {
             db.sql("create table t (id bigint primary key, name varchar(16))").execute();
             db.sql("insert into t values (1, 'a'), (2, 'b'), (3, 'c')").execute();
 
-            List<NameEntry> results = db.sql("select id, name from t where id in (#ids) order by id")
+            List<NameEntry> results = db.sql("select id, name from t where id in ($ids) order by id")
                 .param("ids", List.of(1L, 3L))
                 .list(NameEntry.class);
             assertEquals(2, results.size());
@@ -54,8 +54,8 @@ class NamedParamEdgeCaseTest {
             db.sql("create table t (x bigint, y bigint)").execute();
             db.sql("insert into t values (10, 20), (10, 30)").execute();
 
-            // #min 被多次使用
-            List<Pair> results = db.sql("select x, y from t where x >= #min and y >= #min order by y")
+            // $min 被多次使用
+            List<Pair> results = db.sql("select x, y from t where x >= $min and y >= $min order by y")
                 .param("min", 10L)
                 .list(Pair.class);
             assertEquals(2, results.size());
@@ -72,7 +72,7 @@ class NamedParamEdgeCaseTest {
             db.sql("create table t (id bigint)").execute();
 
             assertThrows(SqlException.class,
-                () -> db.sql("select id from t where id = #missing").list(Long.class));
+                () -> db.sql("select id from t where id = $missing").list(Long.class));
         }
     }
 
@@ -85,7 +85,7 @@ class NamedParamEdgeCaseTest {
             db.sql("insert into t values (1)").execute();
 
             assertThrows(SqlException.class,
-                () -> db.sql("select id from t where id = #id")
+                () -> db.sql("select id from t where id = $id")
                     .param("id", 1L)
                     .param("extra", "x")
                     .one(Long.class));
@@ -93,23 +93,23 @@ class NamedParamEdgeCaseTest {
     }
 
     @Test
-    void sqlWithStringLiteralContainingHash() {
+    void sqlWithStringLiteralContainingDollar() {
         String dbName = uniqueDb("named_literal");
         Database db = builder(dbName).build();
         try (db) {
             db.sql("create table t (id bigint, label varchar(32))").execute();
-            db.sql("insert into t values (1, 'a#b')").execute();
+            db.sql("insert into t values (1, 'a$b')").execute();
 
-            // # 号在字符串字面量中，不应被解析为命名参数
-            List<NameEntry> results = db.sql("select id, label as name from t where label = '#literal'")
+            // $ 号在字符串字面量中，不应被解析为命名参数
+            List<NameEntry> results = db.sql("select id, label as name from t where label = '$literal'")
                 .list(NameEntry.class);
             assertEquals(0, results.size());
 
             // 用实际值查
-            List<NameEntry> actual = db.sql("select id, label as name from t where label = ?", "a#b")
+            List<NameEntry> actual = db.sql("select id, label as name from t where label = ?", "a$b")
                 .list(NameEntry.class);
             assertEquals(1, actual.size());
-            assertEquals("a#b", actual.get(0).name());
+            assertEquals("a$b", actual.get(0).name());
         }
     }
 
@@ -120,7 +120,7 @@ class NamedParamEdgeCaseTest {
         try (db) {
             db.sql("create table t (id bigint primary key, label varchar(16))").execute();
 
-            int[] counts = db.batch("insert into t (id, label) values (#id, #label)")
+            int[] counts = db.batch("insert into t (id, label) values ($id, $label)")
                 .named(List.of(
                     Map.of("id", 1L, "label", "a"),
                     Map.of("id", 2L, "label", "b")
@@ -144,7 +144,7 @@ class NamedParamEdgeCaseTest {
             db.sql("create table t (id bigint, label varchar(16))").execute();
 
             assertThrows(SqlException.class,
-                () -> db.batch("insert into t values (#id, #label)")
+                () -> db.batch("insert into t values ($id, $label)")
                     .named(List.of(Map.of("id", 1L)))
                     .execute());
         }
@@ -158,7 +158,7 @@ class NamedParamEdgeCaseTest {
             db.sql("create table t (id bigint)").execute();
 
             assertThrows(SqlException.class,
-                () -> db.sql("select id from t where id = #id", 1L)
+                () -> db.sql("select id from t where id = $id", 1L)
                     .param("id", 1L));
         }
     }

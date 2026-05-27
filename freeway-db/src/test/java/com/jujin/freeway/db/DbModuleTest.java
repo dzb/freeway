@@ -80,7 +80,7 @@ class DbModuleTest {
                 .list(Money.class);
             assertEquals(List.of(new Money(1250L), new Money(2250L)), moneyByCollection);
 
-            Money first = db.sql("select amount_cents from ledger where id = #id")
+            Money first = db.sql("select amount_cents from ledger where id = $id")
                 .param("id", 1L)
                 .one(Money.class)
                 .orElseThrow();

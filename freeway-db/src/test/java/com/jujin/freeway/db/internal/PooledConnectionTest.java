@@ -151,4 +151,52 @@ class PooledConnectionTest {
         pooled.markReturned();
         assertTrue(pooled.isFresh(Duration.ofSeconds(5)));
     }
+
+    @Test
+    void markBorrowedSetsBorrowedAt() {
+        var pooled = new PooledConnection(jdbcConn, Instant.now());
+        assertNull(pooled.borrowedAt());
+        pooled.markBorrowed();
+        assertNotNull(pooled.borrowedAt());
+    }
+
+    @Test
+    void markReturnedClearsBorrowedAt() {
+        var pooled = new PooledConnection(jdbcConn, Instant.now());
+        pooled.markBorrowed();
+        assertNotNull(pooled.borrowedAt());
+        pooled.markReturned();
+        assertNull(pooled.borrowedAt());
+    }
+
+    @Test
+    void isLeakedReturnsTrueWhenExceedsThreshold() throws Exception {
+        var pooled = new PooledConnection(jdbcConn, Instant.now());
+        pooled.markBorrowed();
+        // 等 10ms 确保超过 5ms 阈值（Windows 时钟颗粒度通常 ~15ms，10ms 足够）
+        Thread.sleep(10);
+        assertTrue(pooled.isLeaked(Duration.ofMillis(5)));
+    }
+
+    @Test
+    void isLeakedReturnsFalseWithinThreshold() {
+        var pooled = new PooledConnection(jdbcConn, Instant.now());
+        pooled.markBorrowed();
+        // 阈值 1 小时 → 肯定未超过
+        assertFalse(pooled.isLeaked(Duration.ofHours(1)));
+    }
+
+    @Test
+    void isLeakedReturnsFalseWhenNotBorrowed() {
+        var pooled = new PooledConnection(jdbcConn, Instant.now());
+        assertFalse(pooled.isLeaked(Duration.ofMillis(5)));
+    }
+
+    @Test
+    void isLeakedReturnsFalseAfterReturned() {
+        var pooled = new PooledConnection(jdbcConn, Instant.now());
+        pooled.markBorrowed();
+        pooled.markReturned();
+        assertFalse(pooled.isLeaked(Duration.ofMillis(5)));
+    }
 }

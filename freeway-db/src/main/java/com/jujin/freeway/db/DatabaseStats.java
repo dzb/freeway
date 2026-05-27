@@ -5,6 +5,7 @@ public record DatabaseStats(
     int idle,
     int total,
     int waiting,
-    int maxSize
+    int maxSize,
+    int longLeased
 ) {
 }

@@ -77,7 +77,7 @@ final class NamedParamParser {
                 }
                 continue;
             }
-            if ((c == ':' || c == '#') && i + 1 < len) {
+            if ((c == ':' || c == '$') && i + 1 < len) {
                 char next = sql.charAt(i + 1);
                 if (isValidParamStart(next)) {
                     int start = i + 1;

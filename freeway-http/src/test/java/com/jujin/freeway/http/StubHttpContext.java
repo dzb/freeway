@@ -107,6 +107,11 @@ final class StubHttpContext extends HttpContext {
     }
 
     @Override
+    public SseEmitter sse() {
+        throw new UnsupportedOperationException("SSE not supported in StubHttpContext");
+    }
+
+    @Override
     public RequestContext requestContext() {
         return requestContext;
     }

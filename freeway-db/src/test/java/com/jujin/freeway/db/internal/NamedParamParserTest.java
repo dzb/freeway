@@ -27,8 +27,8 @@ class NamedParamParserTest {
     }
 
     @Test
-    void hashNamedParam() {
-        var r = NamedParamParser.parse("select id from t where name = #name");
+    void dollarNamedParam() {
+        var r = NamedParamParser.parse("select id from t where name = $name");
         assertEquals(List.of("name"), r.names());
         assertEquals("select id from t where name = ?", r.jdbcSql());
     }
@@ -36,7 +36,7 @@ class NamedParamParserTest {
     @Test
     void multipleNamedParams() {
         var r = NamedParamParser.parse(
-            "select id from t where x = :x and y = #y and z = :z"
+            "select id from t where x = :x and y = $y and z = :z"
         );
         assertEquals(List.of("x", "y", "z"), r.names());
         assertEquals(
@@ -87,11 +87,11 @@ class NamedParamParserTest {
     }
 
     @Test
-    void hashWithoutParamNameIsNotParsed() {
-        // # 后跟非字母/下划线，不应被解析为参数
-        var r = NamedParamParser.parse("select id from t where x = #1");
+    void dollarWithoutParamNameIsNotParsed() {
+        // $ 后跟非字母/下划线，不应被解析为参数
+        var r = NamedParamParser.parse("select id from t where x = $1");
         assertEquals(List.of(), r.names());
-        assertEquals("select id from t where x = #1", r.jdbcSql());
+        assertEquals("select id from t where x = $1", r.jdbcSql());
     }
 
     // ===================== 字符串字面量隔离 =====================
@@ -99,11 +99,11 @@ class NamedParamParserTest {
     @Test
     void namedParamInsideSingleQuotesIsIgnored() {
         var r = NamedParamParser.parse(
-            "select id from t where label = '#literal'"
+            "select id from t where label = '$literal'"
         );
         assertEquals(List.of(), r.names());
         assertEquals(
-            "select id from t where label = '#literal'",
+            "select id from t where label = '$literal'",
             r.jdbcSql()
         );
     }
@@ -111,11 +111,11 @@ class NamedParamParserTest {
     @Test
     void namedParamInsideDoubleQuotesIsIgnored() {
         var r = NamedParamParser.parse(
-            "select id from t where label = \"#literal\""
+            "select id from t where label = \"$literal\""
         );
         assertEquals(List.of(), r.names());
         assertEquals(
-            "select id from t where label = \"#literal\"",
+            "select id from t where label = \"$literal\"",
             r.jdbcSql()
         );
     }
@@ -224,11 +224,11 @@ class NamedParamParserTest {
     }
 
     @Test
-    void hashSymbolInTableNameNotConfusedWithParam() {
-        // # 在标识符中间或末尾不是参数
-        var r = NamedParamParser.parse("select id from t#1");
+    void dollarSymbolInTableNameNotConfusedWithParam() {
+        // $ 在标识符中间或末尾不是参数
+        var r = NamedParamParser.parse("select id from t$1");
         assertEquals(List.of(), r.names());
-        assertEquals("select id from t#1", r.jdbcSql());
+        assertEquals("select id from t$1", r.jdbcSql());
     }
 
     @Test
@@ -244,9 +244,9 @@ class NamedParamParserTest {
     }
 
     @Test
-    void mixedColonAndHashParams() {
+    void mixedColonAndDollarParams() {
         var r = NamedParamParser.parse(
-            "select id from t where x = :x and y = #y"
+            "select id from t where x = :x and y = $y"
         );
         assertEquals(List.of("x", "y"), r.names());
         assertEquals(

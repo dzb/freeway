@@ -36,7 +36,7 @@ class BatchQueryTest {
         try (db) {
             db.sql("create table t (id bigint primary key, label varchar(16))").execute();
 
-            int[] counts = db.batch("insert into t (id, label) values (#id, #label)")
+            int[] counts = db.batch("insert into t (id, label) values ($id, $label)")
                 .named(List.of(
                     java.util.Map.of("id", 10L, "label", "x"),
                     java.util.Map.of("id", 20L, "label", "y")

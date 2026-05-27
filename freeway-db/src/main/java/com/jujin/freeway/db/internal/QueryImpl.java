@@ -13,6 +13,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 final class QueryImpl implements Query {
     private final DatabaseImpl db;
@@ -80,6 +85,46 @@ final class QueryImpl implements Query {
             }
         } catch (SQLException e) {
             throw new SqlException("Query failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public <T> Stream<T> stream(Class<T> targetType) {
+        try {
+            var ctx = borrow();
+            bindAll(ctx.stmt);
+            ctx.stmt.setFetchSize(100);
+            var rs = ctx.stmt.executeQuery();
+            var mapper = db.rowMappers().forType(targetType);
+
+            Spliterator<T> spliterator = new Spliterators.AbstractSpliterator<>(
+                Long.MAX_VALUE, Spliterator.ORDERED | Spliterator.NONNULL
+            ) {
+                private int rowNum;
+
+                @Override
+                public boolean tryAdvance(Consumer<? super T> action) {
+                    try {
+                        if (rs.next()) {
+                            action.accept(mapper.map(rs, rowNum++));
+                            return true;
+                        }
+                        return false;
+                    } catch (SQLException e) {
+                        throw new SqlException(
+                            "Stream query failed: " + e.getMessage(), e
+                        );
+                    }
+                }
+            };
+
+            return StreamSupport.stream(spliterator, false)
+                .onClose(() -> {
+                    try { rs.close(); } catch (SQLException ignored) { }
+                    ctx.close();
+                });
+        } catch (SQLException e) {
+            throw new SqlException("Stream query failed: " + e.getMessage(), e);
         }
     }
 

@@ -2,6 +2,7 @@ package com.jujin.freeway.http;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.regex.Pattern;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.Fields;
 
@@ -89,6 +91,34 @@ final class JettyHttpContext extends HttpContext {
             }
         }
         return cachedBody;
+    }
+
+    @Override
+    public SseEmitter sse() throws IOException {
+        response.setStatus(200);
+        response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/event-stream; charset=utf-8");
+        response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-cache");
+        response.getHeaders().put(HttpHeader.CONNECTION, "keep-alive");
+        responded = true;
+        return new SseEmitter(new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                write(new byte[]{(byte) b}, 0, 1);
+            }
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                if (len == 0) return;
+                response.write(true, ByteBuffer.wrap(b, off, len), Callback.NOOP);
+            }
+            @Override
+            public void flush() {
+                // Jetty flushes internally via write(true, ...)
+            }
+            @Override
+            public void close() {
+                callback.succeeded();
+            }
+        });
     }
 
     @Override

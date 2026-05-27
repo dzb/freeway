@@ -13,6 +13,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -115,60 +116,90 @@ public final class RowMapperRegistry {
     private <T> RowMapper<T> createRecord(Class<T> type) {
         RecordComponent[] components = type.getRecordComponents();
         MethodHandle constructor = canonicalConstructor(type, components);
+        String[] fieldNames = new String[components.length];
+        for (int i = 0; i < components.length; i++) {
+            fieldNames[i] = components[i].getName();
+        }
 
-        return (rs, rowNum) -> {
-            ResultSetMetaData meta = rs.getMetaData();
-            int[] columns = new int[components.length];
-            for (int i = 0; i < components.length; i++) {
-                columns[i] = findColumn(meta, components[i].getName());
-            }
-            Object[] args = new Object[components.length];
-            for (int i = 0; i < components.length; i++) {
-                int column = columns[i];
-                args[i] = column >= 1
-                    ? coerce(rs.getObject(column), components[i].getType())
-                    : defaultValue(components[i].getType());
-            }
-            try {
-                Object value = constructor.invokeWithArguments(args);
-                return type.cast(value);
-            } catch (Throwable e) {
-                throw new SqlException("Failed to construct " + type.getName(), e);
+        return new RowMapper<T>() {
+            private volatile int[] cachedColumns;
+            private volatile int cachedColumnCount;
+
+            @Override
+            public T map(ResultSet rs, int rowNum) throws SQLException {
+                int[] columns = this.cachedColumns;
+                int cc = this.cachedColumnCount;
+                if (columns == null || rs.getMetaData().getColumnCount() != cc) {
+                    columns = new int[components.length];
+                    ResultSetMetaData meta = rs.getMetaData();
+                    cc = meta.getColumnCount();
+                    for (int i = 0; i < components.length; i++) {
+                        columns[i] = findColumn(meta, fieldNames[i]);
+                    }
+                    this.cachedColumnCount = cc;
+                    this.cachedColumns = columns;
+                }
+                Object[] args = new Object[components.length];
+                for (int i = 0; i < components.length; i++) {
+                    int column = columns[i];
+                    args[i] = column >= 1
+                        ? coerce(rs.getObject(column), components[i].getType())
+                        : defaultValue(components[i].getType());
+                }
+                try {
+                    Object value = constructor.invokeWithArguments(args);
+                    return type.cast(value);
+                } catch (Throwable e) {
+                    throw new SqlException("Failed to construct " + type.getName(), e);
+                }
             }
         };
     }
 
     private <T> RowMapper<T> createBean(Class<T> type) {
         BeanPlan<T> plan = beanPlan(type);
-        return (rs, rowNum) -> {
-            ResultSetMetaData meta = rs.getMetaData();
-            int[] columns = new int[plan.names.length];
-            for (int i = 0; i < plan.names.length; i++) {
-                columns[i] = findColumn(meta, plan.names[i]);
-            }
-            T instance;
-            try {
-                Object value = plan.constructor.invokeWithArguments();
-                instance = type.cast(value);
-            } catch (Throwable e) {
-                throw new SqlException("Failed to construct " + type.getName(), e);
-            }
-            for (int i = 0; i < plan.names.length; i++) {
-                int column = columns[i];
-                if (column < 1) {
-                    continue;
+        return new RowMapper<T>() {
+            private volatile int[] cachedColumns;
+            private volatile int cachedColumnCount;
+
+            @Override
+            public T map(ResultSet rs, int rowNum) throws SQLException {
+                int[] columns = this.cachedColumns;
+                int cc = this.cachedColumnCount;
+                if (columns == null || rs.getMetaData().getColumnCount() != cc) {
+                    columns = new int[plan.names.length];
+                    ResultSetMetaData meta = rs.getMetaData();
+                    cc = meta.getColumnCount();
+                    for (int i = 0; i < plan.names.length; i++) {
+                        columns[i] = findColumn(meta, plan.names[i]);
+                    }
+                    this.cachedColumnCount = cc;
+                    this.cachedColumns = columns;
                 }
-                Object value = coerce(rs.getObject(column), plan.types[i]);
+                T instance;
                 try {
-                    plan.setters[i].invokeWithArguments(instance, value);
+                    Object value = plan.constructor.invokeWithArguments();
+                    instance = type.cast(value);
                 } catch (Throwable e) {
-                    throw new SqlException(
-                        "Failed to set " + plan.names[i] + " on " + type.getName(),
-                        e
-                    );
+                    throw new SqlException("Failed to construct " + type.getName(), e);
                 }
+                for (int i = 0; i < plan.names.length; i++) {
+                    int column = columns[i];
+                    if (column < 1) {
+                        continue;
+                    }
+                    Object value = coerce(rs.getObject(column), plan.types[i]);
+                    try {
+                        plan.setters[i].invokeWithArguments(instance, value);
+                    } catch (Throwable e) {
+                        throw new SqlException(
+                            "Failed to set " + plan.names[i] + " on " + type.getName(),
+                            e
+                        );
+                    }
+                }
+                return instance;
             }
-            return instance;
         };
     }
 

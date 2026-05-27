@@ -152,6 +152,18 @@ App app = Launcher.run(MyAppModule.class, args);
 App app = Launcher.run(module);
 ```
 
+### Shutdown Hook
+
+`Launcher.run()` automatically registers a JVM shutdown hook (`freeway-shutdown-hook` thread) that calls `app.close()` on JVM termination, ensuring graceful cleanup of containers, connection pools, and engine resources.
+
+### Startup Timing
+
+On every launch, the elapsed startup time is logged to the console:
+
+```
+INFO  - Started freeway application in 284 ms
+```
+
 ### Config Cascade
 
 Priority (high → low):
@@ -176,10 +188,11 @@ The `com.jujin.freeway.http` package uses a flat structure — all classes in on
 
 | Category | Classes |
 |----------|---------|
-| Core API | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `HttpServerConfig`, `HttpServerHandle`, `HttpRequestHandler`, `JsonCodec`, `WebServer`, `ExceptionMapper`, `RouteHandler`, `RequestContext` |
+| Core API | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `HttpServerConfig`, `HttpServerHandle`, `HttpRequestHandler`, `JsonCodec`, `WebServer`, `ExceptionMapper`, `RouteHandler`, `RequestContext`, `BodyHandler` |
 | WebSocket API | `WebSocketSession`, `WebSocketListener`, `WebSocketEndpoint`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketMatch`, `WebSocketIndex` |
+| SSE API | `SseEmitter`, `SseEvent` |
 | Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathGroupSupport`, `PathPattern` |
-| Built-ins | `DefaultJsonCodec`, `DefaultRequestContext`, `CorsFilter`, `RequestTimingFilter`, `StaticResourceMount`, `StaticResources`, `MultipartForm`, `RequestBodyTooLargeException` |
+| Built-ins | `DefaultJsonCodec`, `DefaultRequestContext`, `CorsFilter`, `RequestTimingFilter`, `StaticResourceMount`, `StaticResources`, `MultipartForm`, `RequestBodyTooLargeException`, `ValidationException` |
 | JDK engine | `JdkHttpEngine`, `JdkHttpContext` (package-private, always available fallback) |
 
 The public API surface a typical application uses is 5–10 classes. Implementation details like `JdkHttpEngine` are package-private, isolating them from the public contract without needing directory-level separation.
@@ -198,6 +211,57 @@ binder.contribute(RouteGroup.class).add(RouteGroup.of("/api",
     Route.get("/items/{id}", ctx -> ctx.send(200, ctx.pathVar("id")))
 ));
 ```
+
+Route paths support path parameters with optional regex constraints:
+
+| Pattern | Matches | Example |
+|---------|---------|--------|
+| `{id}` | any single segment | `/users/42` |
+| `{id:\\d+}` | digits only | `/users/42` (not `/users/abc`) |
+| `{path:.*}` | remaining path (wildcard) | `/files/a/b/c` |
+
+The route index uses a **trie** (prefix tree) internally, delivering O(L) lookup where L is the number of path segments — independent of total route count.
+
+### Request Body Binding with Validation
+
+`Route.post`, `Route.put`, and `Route.patch` accept a body type class for automatic JSON deserialization and bean validation:
+
+```java
+binder.contribute(Route.class).add(Route.post("/api/users", CreateUserRequest.class, (ctx, body) -> {
+    // body is already validated — type-safe, no manual deserialization needed
+    ctx.sendJson(201, Map.of("id", 1, "name", body.name()));
+}));
+
+binder.contribute(Route.class).add(Route.put("/api/users/{id}", UpdateUserRequest.class, (ctx, body) -> {
+    ctx.sendJson(200, Map.of("updated", true));
+}));
+```
+
+If validation fails, a `ValidationException` is thrown and automatically mapped to a `400 Bad Request` response with field-level error details.
+
+### Server-Sent Events (SSE)
+
+Call `HttpContext.sse()` to switch a response to SSE mode. Returns a `SseEmitter` for writing events:
+
+```java
+binder.contribute(Route.class).add(Route.get("/events", ctx -> {
+    try (var emitter = ctx.sse()) {
+        emitter.send("hello");                            // plain data event
+        emitter.send(new SseEvent("data", "evt1"));      // typed event
+        emitter.send(new SseEvent("payload", "msg-001", "update", 3000L)); // full event
+    }
+}));
+```
+
+`SseEvent` supports:
+| Field | Description |
+|-------|-------------|
+| `data` | Event data (required) |
+| `id` | Event ID for `Last-Event-ID` tracking |
+| `event` | Event type name (`event:` field) |
+| `retry` | Reconnection time in milliseconds |
+
+The emitter implements `AutoCloseable` — use try-with-resources for safe cleanup. SSE is supported on all HTTP engines (JDK, Robaho, Undertow, Jetty).
 
 ### WebSocket
 
@@ -233,6 +297,8 @@ binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
 });
 ```
 
+`ValidationException` is automatically mapped by `HttpModule` to a `400 Bad Request` with `{error, details}` payload — no manual exception mapper needed.
+
 ### Engine Selection
 
 Set `web.engine` in config:
@@ -264,8 +330,8 @@ User user = db.sql("SELECT * FROM users WHERE id = ?", 42)
     .one(User.class)
     .orElseThrow();
 
-// Named parameters — :name or #name syntax
-List<User> filtered = db.sql("SELECT * FROM users WHERE name = :name AND active = #active")
+// Named parameters — :name or $name syntax
+List<User> filtered = db.sql("SELECT * FROM users WHERE name = :name AND active = $active")
     .param("name", "Alice")
     .param("active", true)
     .list(User.class);
@@ -281,6 +347,20 @@ int rows = db.sql("UPDATE users SET name = ? WHERE id = ?", "Alice", 42)
 ```
 
 > **Note**: Named (`.param(name, value)`) and positional (`.sql(sql, val1, val2)`) parameters cannot be mixed.
+
+### Streaming Queries
+
+For large result sets, use `Query.stream()` — returns a lazy `Stream<T>` that fetches rows on demand. The underlying database connection is held open until the stream is closed:
+
+```java
+// Always use try-with-resources to ensure the connection is returned to the pool
+try (var stream = db.sql("SELECT * FROM users WHERE active = ?", true)
+                       .stream(User.class)) {
+    stream.forEach(user -> process(user));
+}
+```
+
+The stream uses a fetch size of 100 rows per network round-trip. Connection is returned to the pool automatically when the stream is closed (either via `close()` or a terminal operation like `collect()` inside try-with-resources).
 
 ### Batch Queries
 
@@ -322,6 +402,19 @@ db.minIdle=2
 db.connectionTimeout=5s
 db.maxLifetime=30m
 ```
+
+### Leak Detection
+
+The pool tracks active (borrowed) connections. `DatabaseStats.longLeased()` reports connections held longer than 30 seconds, helping detect connection leaks in application code. Query via:
+
+```java
+DatabaseStats stats = db.stats();
+int leaked = stats.longLeased(); // connections borrowed > 30s
+```
+
+### RowMapper Caching
+
+Row mappers for record and bean types cache column index lookups after the first row, avoiding repeated `ResultSetMetaData` calls across large result sets. The cache auto-invalidates when the result set's column count changes (e.g., across different queries on the same `PreparedStatement`).
 
 ### Migrations
 

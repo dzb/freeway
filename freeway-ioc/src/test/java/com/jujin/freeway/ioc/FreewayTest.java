@@ -3,6 +3,8 @@ package com.jujin.freeway.ioc;
 import com.jujin.freeway.ioc.ServiceId;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.Named;
+import com.jujin.freeway.ioc.annotation.PostConstruct;
+import com.jujin.freeway.ioc.annotation.PreDestroy;
 import com.jujin.freeway.commons.scalar.Coercer;
 import com.jujin.freeway.commons.scalar.CoercionRule;
 import com.jujin.freeway.ioc.annotation.ExtensionPoint;
@@ -563,5 +565,149 @@ class FreewayTest {
         @Inject
         @Value("${some.path}")
         private PaymentGateway gateway;
+    }
+
+    // ========== @PostConstruct / @PreDestroy tests ==========
+
+    @Test
+    void callsPostConstructAfterInjection() {
+        Container container = Freeway.create(binder ->
+            binder.bind(PostConstructBean.class).to(PostConstructBean.class)
+        );
+        PostConstructBean bean = container.get(PostConstructBean.class);
+
+        assertTrue(bean.initialized, "@PostConstruct should be called");
+    }
+
+    @Test
+    void callsPostConstructOnPrototypeScope() {
+        Container container = Freeway.create(binder ->
+            binder.bind(PostConstructBean.class).to(PostConstructBean.class).scope(Scope.PROTOTYPE)
+        );
+
+        PostConstructBean bean = container.get(PostConstructBean.class);
+        assertTrue(bean.initialized);
+    }
+
+    @Test
+    void callsPreDestroyOnClose() {
+        Container container = Freeway.create(binder ->
+            binder.bind(PreDestroyBean.class).to(PreDestroyBean.class)
+        );
+        PreDestroyBean bean = container.get(PreDestroyBean.class);
+
+        assertFalse(bean.destroyed);
+        container.close();
+        assertTrue(bean.destroyed, "@PreDestroy should be called on container close");
+    }
+
+    @Test
+    void preDestroyCalledBeforeAutoCloseable() {
+        Container container = Freeway.create(binder ->
+            binder.bind(LifecycleOrderBean.class).to(LifecycleOrderBean.class)
+        );
+        LifecycleOrderBean bean = container.get(LifecycleOrderBean.class);
+
+        container.close();
+
+        assertEquals("preDestroy,close", bean.order());
+    }
+
+    @Test
+    void rejectsInvalidPostConstructSignature() {
+        Container container = Freeway.create(binder ->
+            binder.bind(InvalidPostConstructBean.class).to(InvalidPostConstructBean.class)
+        );
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> container.get(InvalidPostConstructBean.class));
+        assertTrue(ex.getMessage().contains("@PostConstruct"));
+    }
+
+    @Test
+    void rejectsMultiplePostConstructInClass() {
+        Container container = Freeway.create(binder ->
+            binder.bind(DoublePostConstructBean.class).to(DoublePostConstructBean.class)
+        );
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> container.get(DoublePostConstructBean.class));
+        assertTrue(ex.getMessage().contains("Multiple @PostConstruct"));
+    }
+
+    @Test
+    void inheritedPostConstructFromParent() {
+        Container container = Freeway.create(binder ->
+            binder.bind(SubPostConstructBean.class).to(SubPostConstructBean.class)
+        );
+        SubPostConstructBean bean = container.get(SubPostConstructBean.class);
+
+        assertTrue(bean.parentInit, "parent @PostConstruct should be inherited");
+    }
+
+    // --- Test helpers for lifecycle annotations ---
+
+    public static final class PostConstructBean {
+        boolean initialized;
+
+        @PostConstruct
+        void init() {
+            initialized = true;
+        }
+    }
+
+    public static final class PreDestroyBean {
+        volatile boolean destroyed;
+
+        @PreDestroy
+        void cleanup() {
+            destroyed = true;
+        }
+    }
+
+    public static final class LifecycleOrderBean implements AutoCloseable {
+        final java.util.List<String> events = new java.util.ArrayList<>();
+
+        @PreDestroy
+        void preDestroy() {
+            events.add("preDestroy");
+        }
+
+        @Override
+        public void close() {
+            events.add("close");
+        }
+
+        String order() {
+            return String.join(",", events);
+        }
+    }
+
+    public static class ParentPostConstructBean {
+        boolean parentInit;
+
+        @PostConstruct
+        void parentInit() {
+            parentInit = true;
+        }
+    }
+
+    public static final class SubPostConstructBean extends ParentPostConstructBean {
+    }
+
+    public static final class DoublePostConstructBean {
+        @PostConstruct
+        void init1() {
+        }
+
+        @PostConstruct
+        void init2() {
+        }
+    }
+
+    public static final class InvalidPostConstructBean {
+        @PostConstruct
+        void init(String arg) {
+        }
     }
 }

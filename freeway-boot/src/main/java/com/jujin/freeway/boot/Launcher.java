@@ -33,13 +33,30 @@ public final class Launcher {
     }
 
     private static App start(ClassLoader loader, Module primaryModule, String... args) {
+        long startNanos = System.nanoTime();
         ClassLoader effectiveLoader = loader != null ? loader : Launcher.class.getClassLoader();
         BootConfigLayers layers = BootConfigLoader.loadLayers(effectiveLoader, args);
         List<Module> modules = loadModules(primaryModule, effectiveLoader, layers);
 
         LOG.info("Starting freeway application with {} module(s)", modules.size());
         Container container = Freeway.create(modules.toArray(Module[]::new));
-        return new AppImpl(container, new BootConfig(layers.merged(), layers.profiles()));
+        App app = new AppImpl(container, new BootConfig(layers.merged(), layers.profiles()));
+
+        registerShutdownHook(app);
+
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+        LOG.info("Started freeway application in {} ms", elapsedMs);
+        return app;
+    }
+
+    private static void registerShutdownHook(App app) {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                app.close();
+            } catch (Exception ex) {
+                LOG.warn("Error during shutdown", ex);
+            }
+        }, "freeway-shutdown-hook"));
     }
 
     private static List<Module> loadModules(Module primaryModule, ClassLoader effectiveLoader, BootConfigLayers layers) {

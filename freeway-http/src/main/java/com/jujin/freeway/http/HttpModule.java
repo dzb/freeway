@@ -25,6 +25,16 @@ public final class HttpModule implements Module {
                 ));
                 return true;
             }
+            if (ex instanceof ValidationException ve) {
+                var errors = ve.getResult().getErrors().stream()
+                    .map(e -> Map.of("field", e.getField(), "message", e.getMessage()))
+                    .toList();
+                ctx.sendJson(400, Map.of(
+                    "error", "Validation Failed",
+                    "details", errors
+                ));
+                return true;
+            }
             return false;
         });
     }

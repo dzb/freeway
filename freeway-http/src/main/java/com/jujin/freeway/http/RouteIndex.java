@@ -2,96 +2,269 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.ioc.annotation.ExtensionPoint;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
-
+/**
+ * 基于字典树（Trie）的 HTTP 路由索引。
+ * <p>
+ * 将路径按 "/" 拆分为段，逐段构建树形结构，支持静态段、路径参数
+ * （{name}）、正则约束参数（{name:\\d+}）和通配符（{path:.*}）。
+ * 匹配时间复杂度 O(L)，其中 L 为请求路径的段数，与路由总数无关。
+ */
 final class RouteIndex {
-    private final ConcurrentHashMap<String, List<RouteEntry>> routes = new ConcurrentHashMap<>();
+    private static final int MAX_REGEX_LENGTH = 64;
+
+    private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
 
     public RouteIndex(
         @ExtensionPoint(Route.class) Collection<Route> routes,
         @ExtensionPoint(RouteGroup.class) Collection<RouteGroup> groups
     ) {
+        // Phase 1: collect all routes
+        List<Route> all = new ArrayList<>();
         for (Route route : routes == null ? List.<Route>of() : routes) {
-            addRoute(route.method(), route.path(), route.handler());
+            all.add(route);
         }
         for (RouteGroup group : groups == null ? List.<RouteGroup>of() : groups) {
             for (Route route : group.expand()) {
-                addRoute(route.method(), route.path(), route.handler());
+                all.add(route);
             }
         }
-        // freeze all lists to allow lock-free concurrent reads
-        this.routes.replaceAll((k, v) -> List.copyOf(v));
+        // Phase 2: insert into trie — duplicate detection done at insert time
+        for (Route route : all) {
+            addRoute(route.method(), route.path(), route.handler());
+        }
+        // Phase 3: freeze all tries (no further structural changes)
+        for (TrieNode root : methodRoots.values()) {
+            root.freeze();
+        }
     }
 
     public int routeCount() {
-        return routes.values().stream().mapToInt(List::size).sum();
+        int count = 0;
+        for (TrieNode root : methodRoots.values()) {
+            count += countLeaves(root);
+        }
+        return count;
+    }
+
+    private static int countLeaves(TrieNode node) {
+        int n = node.handler != null ? 1 : 0;
+        if (node.literals != null) {
+            for (TrieNode child : node.literals.values()) {
+                n += countLeaves(child);
+            }
+        }
+        if (node.paramChild != null) {
+            n += countLeaves(node.paramChild);
+        }
+        return n;
     }
 
     private void addRoute(String method, String path, RouteHandler handler) {
         String key = method == null ? "" : method.toUpperCase();
-        List<RouteEntry> list = routes.computeIfAbsent(key, ignored -> new ArrayList<>());
-        synchronized (list) {
-            for (RouteEntry existing : list) {
-                if (existing.path().equals(path)) {
-                    throw new IllegalStateException("Duplicate route detected: " + key + " " + path);
+        TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
+        String[] segments = splitPath(path);
+        TrieNode current = root;
+        for (String seg : segments) {
+            if (seg.startsWith("{") && seg.endsWith("}")) {
+                String inner = seg.substring(1, seg.length() - 1);
+                String name;
+                Pattern regex = null;
+                int colon = inner.indexOf(':');
+                if (colon >= 0) {
+                    name = inner.substring(0, colon);
+                    String regexStr = inner.substring(colon + 1);
+                    if (regexStr.length() > MAX_REGEX_LENGTH) {
+                        throw new IllegalArgumentException(
+                            "Regex constraint too long (max " + MAX_REGEX_LENGTH + " chars): '" + regexStr + "' in path: " + path);
+                    }
+                    if (!".*".equals(regexStr)) {
+                        try {
+                            regex = Pattern.compile(regexStr);
+                        } catch (PatternSyntaxException e) {
+                            throw new IllegalArgumentException(
+                                "Invalid regex constraint '" + regexStr + "' for param '" + name + "' in path: " + path, e);
+                        }
+                    }
+                } else {
+                    name = inner;
                 }
+                boolean isWildcard = regex == null && colon >= 0; // {path:.*}
+                current = current.getOrCreateParam(name, regex, isWildcard);
+            } else {
+                current = current.getOrCreateLiteral(seg);
             }
-            list.add(new RouteEntry(key, path, handler));
         }
+        if (current.handler != null) {
+            throw new IllegalStateException("Duplicate route detected: " + key + " " + path);
+        }
+        current.handler = handler;
     }
 
     public RouteMatch match(String method, String path) {
         String key = method == null ? "" : method.toUpperCase();
-        List<RouteEntry> candidates = routes.get(key);
-        RouteMatch result = matchEntry(candidates, path);
+        TrieNode root = methodRoots.get(key);
+        RouteMatch result = matchTrie(root, path);
         if (result != null || !"HEAD".equals(key)) {
             return result;
         }
-        return matchEntry(routes.get("GET"), path);
+        // HEAD fallback to GET
+        return matchTrie(methodRoots.get("GET"), path);
     }
 
-    private RouteMatch matchEntry(List<RouteEntry> candidates, String path) {
-        if (candidates == null) {
+    private RouteMatch matchTrie(TrieNode root, String path) {
+        if (root == null) {
             return null;
         }
-        for (RouteEntry route : candidates) {
-            Map<String, String> vars = route.match(path);
-            if (vars != null) {
-                return new RouteMatch(route.handler(), vars);
+        String[] segments = splitPath(path);
+        Map<String, String> vars = new LinkedHashMap<>();
+        TrieNode current = root;
+        for (int i = 0; i < segments.length; i++) {
+            String seg = segments[i];
+            if (isPathTraversalSegment(seg)) {
+                return null;
+            }
+            // Try literal match first
+            TrieNode literal = current.literals != null ? current.literals.get(seg) : null;
+            if (literal != null) {
+                current = literal;
+                continue;
+            }
+            // Try param match
+            TrieNode param = current.paramChild;
+            if (param != null) {
+                // Wildcard consumes remaining segments
+                if (param.wildcard) {
+                    String remainder = String.join("/", Arrays.copyOfRange(segments, i, segments.length));
+                    if (remainder.isEmpty() || containsPathTraversal(remainder)) {
+                        return null;
+                    }
+                    vars.put(param.paramName, remainder);
+                    current = param;
+                    break;
+                }
+                // Regex constraint check
+                if (param.paramPattern != null && !param.paramPattern.matcher(seg).matches()) {
+                    return null;
+                }
+                vars.put(param.paramName, seg);
+                current = param;
+                continue;
+            }
+            return null;
+        }
+        if (current.handler == null) {
+            return null;
+        }
+        return new RouteMatch(current.handler, vars);
+    }
+
+    // ---- Trie node ----
+
+    private static final class TrieNode {
+        String segment;                     // literal segment
+        String paramName;                   // non-null for param nodes
+        Pattern paramPattern;               // regex constraint for param (null = any)
+        boolean wildcard;                   // {path:.*} wildcard
+        Map<String, TrieNode> literals;     // literal children
+        TrieNode paramChild;                // param child (at most one per node)
+        RouteHandler handler;               // non-null if route terminates here
+        boolean frozen;
+
+        TrieNode() {
+        }
+
+        TrieNode getOrCreateLiteral(String seg) {
+            if (frozen) {
+                throw new IllegalStateException("RouteIndex is frozen");
+            }
+            if (literals == null) {
+                literals = new LinkedHashMap<>();
+            }
+            return literals.computeIfAbsent(seg, k -> {
+                TrieNode n = new TrieNode();
+                n.segment = k;
+                return n;
+            });
+        }
+
+        TrieNode getOrCreateParam(String name, Pattern regex, boolean isWildcard) {
+            if (frozen) {
+                throw new IllegalStateException("RouteIndex is frozen");
+            }
+            if (paramChild == null) {
+                paramChild = new TrieNode();
+                paramChild.paramName = name;
+                paramChild.paramPattern = regex;
+                paramChild.wildcard = isWildcard;
+            } else {
+                // Multiple params at same level: validate compatibility
+                if (!paramChild.paramName.equals(name)) {
+                    throw new IllegalArgumentException(
+                        "Conflicting parameter names at same path level: '" + paramChild.paramName + "' vs '" + name + "'");
+                }
+            }
+            return paramChild;
+        }
+
+        void freeze() {
+            frozen = true;
+            if (literals != null) {
+                for (TrieNode child : literals.values()) {
+                    child.freeze();
+                }
+                literals = Map.copyOf(literals);
+            }
+            if (paramChild != null) {
+                paramChild.freeze();
             }
         }
-        return null;
     }
 
-    private static final class RouteEntry {
-        private final String method;
-        private final String path;
-        private final RouteHandler handler;
-        private final PathPattern pattern;
+    // ---- Path utilities ----
 
-        private RouteEntry(String method, String path, RouteHandler handler) {
-            this.method = method == null ? "" : method.toUpperCase();
-            this.path = path;
-            this.handler = handler;
-            this.pattern = new PathPattern(path);
+    private static String[] splitPath(String path) {
+        if (path == null || path.isEmpty() || "/".equals(path)) {
+            return new String[0];
         }
-
-        String path() {
-            return path;
+        String normalized = path.startsWith("/") ? path.substring(1) : path;
+        if (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
         }
-
-        RouteHandler handler() {
-            return handler;
+        if (normalized.isEmpty()) {
+            return new String[0];
         }
-
-        Map<String, String> match(String requestPath) {
-            return pattern.match(requestPath);
-        }
+        return normalized.split("/");
     }
+
+    private static boolean containsPathTraversal(String path) {
+        for (String seg : path.split("/")) {
+            if (isPathTraversalSegment(seg)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isPathTraversalSegment(String seg) {
+        if ("..".equals(seg) || seg.startsWith("..\\")) {
+            return true;
+        }
+        if (seg.indexOf('\0') >= 0) {
+            return true;
+        }
+        return false;
+    }
+
+    // ---- Result ----
 
     public record RouteMatch(RouteHandler handler, Map<String, String> pathVariables) {}
 }
