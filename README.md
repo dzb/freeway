@@ -159,9 +159,8 @@ Configuration flows in a layered cascade, from lowest to highest priority:
 2. `application.json`
 3. `application-{profile}.properties`
 4. `application-{profile}.json`
-5. Environment variables
-6. System properties
-7. CLI arguments
+5. Environment variables (`FREEWAY_` prefix)
+6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles with:
 

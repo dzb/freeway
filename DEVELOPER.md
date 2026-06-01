@@ -305,13 +305,12 @@ Lower-level modules that need static loggers should call `LoggingBootstrap.logge
 
 Config priority from high to low:
 
-1. CLI arguments: `--key=value`
-2. System properties: `-Dkey=value`
-3. Environment variables
-4. `application-{profile}.json`
-5. `application-{profile}.properties`
-6. `application.json`
-7. `application.properties`
+1. CLI arguments: `--key=value`, `-Dkey=value`
+2. Environment variables (`FREEWAY_` prefix)
+3. `application-{profile}.json`
+4. `application-{profile}.properties`
+5. `application.json`
+6. `application.properties`
 
 Profiles are activated with `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
 

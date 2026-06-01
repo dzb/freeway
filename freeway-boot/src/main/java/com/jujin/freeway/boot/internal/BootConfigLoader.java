@@ -201,11 +201,11 @@ public final class BootConfigLoader {
 
         public Map<String, String> merged() {
             Map<String, String> merged = new LinkedHashMap<>();
-            merged.putAll(environment);
             merged.putAll(properties);
             merged.putAll(json);
             merged.putAll(profileProperties);
             merged.putAll(profileJson);
+            merged.putAll(environment);
             merged.putAll(args);
             return Map.copyOf(merged);
         }
