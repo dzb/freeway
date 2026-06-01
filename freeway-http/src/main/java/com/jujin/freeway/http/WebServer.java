@@ -77,8 +77,8 @@ public final class WebServer implements AutoCloseable {
 
             @Override
             public WebSocketMatch websocket(String method, String path, String origin) {
-                String resolvedOrigin = corsFilter.resolveAllowedOrigin(origin);
-                if (resolvedOrigin == null && origin != null && !origin.isBlank()) {
+                String allowed = corsFilter.resolveAllowedOrigin(origin);
+                if (allowed == null && origin != null && !origin.isBlank()) {
                     LOG.warn("WebSocket upgrade rejected: origin '{}' not allowed for {}", origin, path);
                     return null;
                 }
@@ -153,10 +153,16 @@ public final class WebServer implements AutoCloseable {
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline) {
             try (Socket s = new Socket(host, port)) {
-                s.getOutputStream().write("GET / HTTP/1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
                 s.setSoTimeout(1000);
-                if (s.getInputStream().read() != -1) {
-                    return;
+                s.getOutputStream().write("GET / HTTP/1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                s.getOutputStream().flush();
+                byte[] buf = new byte[12];
+                int read = s.getInputStream().read(buf);
+                if (read >= 5) {
+                    String response = new String(buf, 0, read, StandardCharsets.US_ASCII);
+                    if (response.startsWith("HTTP/")) {
+                        return;
+                    }
                 }
             } catch (IOException ignored) {
                 try {

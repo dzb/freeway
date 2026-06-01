@@ -11,10 +11,12 @@ import java.util.function.Predicate;
 final class BindingIndex {
     private final java.util.Map<ServiceKey, BindingImpl<?>> bindings = new ConcurrentHashMap<>();
     private final Deque<ServiceKey> bindingOrder = new ConcurrentLinkedDeque<>();
+    private final java.util.Map<Class<?>, List<BindingImpl<?>>> typeIndex = new ConcurrentHashMap<>();
 
     void clear() {
         bindings.clear();
         bindingOrder.clear();
+        typeIndex.clear();
     }
 
     <T> void register(BindingImpl<T> binding) {
@@ -23,6 +25,7 @@ final class BindingIndex {
             throw duplicateMessage(binding.type().getName(), binding.id());
         }
         bindingOrder.addLast(key);
+        typeIndex.computeIfAbsent(binding.type(), k -> new ArrayList<>()).add(binding);
     }
 
     synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {
@@ -55,6 +58,20 @@ final class BindingIndex {
         bindingOrder.addAll(reordered);
         bindings.remove(previousKey);
         bindings.put(newKey, binding);
+        // Update type index
+        List<BindingImpl<?>> typeBindings = typeIndex.get(binding.type());
+        if (typeBindings != null) {
+            int idx = -1;
+            for (int i = 0; i < typeBindings.size(); i++) {
+                if (typeBindings.get(i) == binding) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx >= 0) {
+                typeBindings.set(idx, binding);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -78,6 +95,13 @@ final class BindingIndex {
 
     @SuppressWarnings("unchecked")
     <T> BindingImpl<T> findUnique(Class<T> type) {
+        List<BindingImpl<?>> typeBindings = typeIndex.get(type);
+        if (typeBindings == null || typeBindings.isEmpty()) {
+            return null;
+        }
+        if (typeBindings.size() == 1) {
+            return (BindingImpl<T>) typeBindings.getFirst();
+        }
         ScanResult<T> scan = scanBindings(type, binding -> type.isAssignableFrom(binding.type()), true);
         if (!scan.multiple()) {
             return scan.first();

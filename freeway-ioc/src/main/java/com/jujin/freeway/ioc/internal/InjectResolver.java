@@ -6,7 +6,7 @@ import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.scalar.Coercer;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.LoggerSource;
+import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Extension;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
@@ -25,10 +25,10 @@ import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 
-final class InjectionResolver {
+final class InjectResolver {
     private final ContainerImpl container;
 
-    InjectionResolver(ContainerImpl container) {
+    InjectResolver(ContainerImpl container) {
         this.container = Objects.requireNonNull(container, "container");
     }
 
@@ -123,7 +123,9 @@ final class InjectionResolver {
         if (targetType == String.class) {
             return container.get(String.class);
         }
-        return container.get(targetType);
+        Object service = container.get(targetType);
+        validateScopeCompatibility(ownerType, targetType, service);
+        return service;
     }
 
     private Object resolveInjected(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {
@@ -140,7 +142,9 @@ final class InjectionResolver {
             return loggerId == null ? container.loggerSource().get(ownerType) : container.loggerSource().get(loggerId);
         }
         String id = resolveId(lookup);
-        return id == null ? container.get(targetType) : container.get(targetType, id);
+        Object service = id == null ? container.get(targetType) : container.get(targetType, id);
+        validateScopeCompatibility(ownerType, targetType, service);
+        return service;
     }
 
     private Logger resolveLogger(Class<?> ownerType, AnnotationLookup lookup) {
@@ -252,6 +256,29 @@ final class InjectionResolver {
             return java.lang.reflect.Array.newInstance(rawClass(arrayType.getGenericComponentType()), 0).getClass();
         }
         throw new IllegalArgumentException("Unsupported parameter type: " + type.getTypeName());
+    }
+
+    private void validateScopeCompatibility(Class<?> ownerType, Class<?> targetType, Object service) {
+        if (service == null) {
+            return;
+        }
+        BindingImpl<?> ownerBinding = container.bindingIndex().findUnique(ownerType);
+        if (ownerBinding == null || ownerBinding.scope() != Scope.SINGLETON) {
+            return;
+        }
+        BindingImpl<?> targetBinding = container.bindingIndex().findUnique(targetType);
+        if (targetBinding == null || targetBinding.scope() != Scope.THREAD) {
+            return;
+        }
+        if (targetType.isInterface()) {
+            return;
+        }
+        throw new IllegalStateException(
+            "Singleton service " + ownerType.getName()
+                + " cannot directly inject thread-scoped concrete class "
+                + targetType.getName()
+                + ". Use an interface with proxy support instead."
+        );
     }
 
     private static String normalizedId(Annotation annotation) {

@@ -4,21 +4,21 @@
 
 Zero classpath scanning. Compose-first API. No magic.
 
-```
-freeway-commons        - minimal shared utilities, JSON, scalar coercion, logging fallback
-freeway-ioc            - lightweight IoC container: bind, inject, coerce, advise
-freeway-boot           - application launcher, config, profiles, runtime lifecycle
-freeway-http           - thin HTTP/WebSocket layer: routing, filters, static, multipart
-  built-in jdk engine       - JDK HttpServer engine, HTTP only
-  freeway-http-robaho       - zero-dep HTTP engine with WebSocket (default)
-  freeway-http-undertow     - Undertow transport adapter
-  freeway-http-jetty        - Jetty transport adapter
-freeway-db             - JDBC data access: pooling, transactions, migrations
-freeway-starter-boot   - boot application starter: commons + ioc + boot
-freeway-starter-web    - web starter: core + http + robaho
-freeway-starter-db     - database starter: core + db
-freeway-starter        - full-stack starter: web + db
-```
+| Module | Description |
+|--------|-------------|
+| `freeway-commons` | Shared utilities: JSON, scalar coercion, logging fallback |
+| `freeway-ioc` | IoC container: bind, inject, coerce, advise |
+| `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
+| `freeway-http` | HTTP/WebSocket layer: routing, filters, static, multipart |
+| `├ built-in` | JDK HttpServer engine, HTTP only |
+| `├ freeway-http-robaho` | Zero-dep engine with WebSocket (default) |
+| `├ freeway-http-undertow` | Undertow transport adapter |
+| `└ freeway-http-jetty` | Jetty transport adapter |
+| `freeway-db` | JDBC data access: pooling, transactions, migrations |
+| `freeway-starter-boot` | Boot starter: commons + ioc + boot |
+| `freeway-starter-web` | Web starter: core + http + robaho |
+| `freeway-starter-db` | Database starter: core + db |
+| `freeway-starter` | Full-stack starter: web + db |
 
 ## Philosophy
 

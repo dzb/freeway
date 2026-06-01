@@ -7,6 +7,30 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 final class JsonParser {
+    /**
+     * Maximum nesting depth for JSON objects and arrays.
+     * Prevents stack overflow attacks from deeply nested structures.
+     */
+    private static final int MAX_DEPTH = 1000;
+
+    /**
+     * Maximum length for JSON string values.
+     * Prevents OOM attacks from extremely long strings.
+     */
+    private static final int MAX_STRING_LENGTH = 10 * 1024 * 1024;
+
+    /**
+     * Maximum size for JSON arrays.
+     * Prevents OOM attacks from extremely large arrays.
+     */
+    private static final int MAX_ARRAY_SIZE = 1_000_000;
+
+    /**
+     * Maximum size for JSON objects.
+     * Prevents OOM attacks from extremely large objects.
+     */
+    private static final int MAX_OBJECT_SIZE = 1_000_000;
+
     private JsonParser() {
     }
 
@@ -61,7 +85,7 @@ final class JsonParser {
 
         private Object parse() {
             skipWhitespace();
-            Object value = parseValue();
+            Object value = parseValue(0);
             skipWhitespace();
             if (!eof()) {
                 throw error("Unexpected trailing content");
@@ -69,22 +93,25 @@ final class JsonParser {
             return value;
         }
 
-        private Object parseValue() {
+        private Object parseValue(int depth) {
+            if (depth > MAX_DEPTH) {
+                throw error("JSON nesting too deep (max " + MAX_DEPTH + " levels)");
+            }
             skipWhitespace();
             if (eof()) {
                 throw error("Unexpected end of input");
             }
             char c = peek();
             return switch (c) {
-                case '{' -> parseObjectValue();
-                case '[' -> parseArrayValue();
+                case '{' -> parseObjectValue(depth + 1);
+                case '[' -> parseArrayValue(depth + 1);
                 case '"' -> parseString();
                 case 't', 'f', 'n' -> parseLiteral();
                 default -> parseNumber();
             };
         }
 
-        private JsonObject parseObjectValue() {
+        private JsonObject parseObjectValue(int depth) {
             expect('{');
             JsonObject result = JsonUtils.object();
             skipWhitespace();
@@ -92,11 +119,14 @@ final class JsonParser {
                 return result;
             }
             while (true) {
+                if (result.size() >= MAX_OBJECT_SIZE) {
+                    throw error("JSON object too large (max " + MAX_OBJECT_SIZE + " entries)");
+                }
                 skipWhitespace();
                 String key = parseString();
                 skipWhitespace();
                 expect(':');
-                result.put(key, parseValue());
+                result.put(key, parseValue(depth));
                 skipWhitespace();
                 if (consume('}')) {
                     return result;
@@ -105,7 +135,7 @@ final class JsonParser {
             }
         }
 
-        private JsonArray parseArrayValue() {
+        private JsonArray parseArrayValue(int depth) {
             expect('[');
             JsonArray result = JsonUtils.array();
             skipWhitespace();
@@ -113,7 +143,10 @@ final class JsonParser {
                 return result;
             }
             while (true) {
-                result.add(parseValue());
+                if (result.size() >= MAX_ARRAY_SIZE) {
+                    throw error("JSON array too large (max " + MAX_ARRAY_SIZE + " elements)");
+                }
+                result.add(parseValue(depth));
                 skipWhitespace();
                 if (consume(']')) {
                     return result;
@@ -135,6 +168,9 @@ final class JsonParser {
                         throw error("Unescaped control character in string");
                     }
                     out.append(c);
+                    if (out.length() > MAX_STRING_LENGTH) {
+                        throw error("JSON string too long (max " + MAX_STRING_LENGTH + " characters)");
+                    }
                     continue;
                 }
                 if (eof()) {
@@ -150,6 +186,9 @@ final class JsonParser {
                     case 't' -> out.append('\t');
                     case 'u' -> out.append(parseUnicodeEscape());
                     default -> throw error("Unsupported escape sequence");
+                }
+                if (out.length() > MAX_STRING_LENGTH) {
+                    throw error("JSON string too long (max " + MAX_STRING_LENGTH + " characters)");
                 }
             }
             throw error("Unterminated string");

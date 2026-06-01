@@ -29,7 +29,7 @@ public final class ContainerImpl implements Container {
     private final ScopeGate scopeGate;
     private final ProxyFactory proxyFactory;
     private final ExtensionHub extensions;
-    private final InjectionResolver injectionResolver;
+    private final InjectResolver injectResolver;
     private final InstanceFactory instanceFactory;
     private final ScopeControl scopeControl;
     private final Shutdown shutdown;
@@ -51,7 +51,7 @@ public final class ContainerImpl implements Container {
         };
         this.proxyFactory = new ProxyFactoryDefault();
         this.extensions = new ExtensionHub();
-        this.injectionResolver = new InjectionResolver(this);
+        this.injectResolver = new InjectResolver(this);
         this.instanceFactory = new InstanceFactory(this);
         this.scopeControl = new ScopeControl(() -> closed);
         this.scopeGate = scopeControl::open;
@@ -74,6 +74,10 @@ public final class ContainerImpl implements Container {
 
     ExtensionHub extensions() {
         return extensions;
+    }
+
+    BindingIndex bindingIndex() {
+        return bindingIndex;
     }
 
     SymbolSource symbolSource() {
@@ -190,10 +194,10 @@ public final class ContainerImpl implements Container {
     }
 
     Object[] resolveArguments(Class<?> ownerType, List<BeanParameter> parameters) {
-        return injectionResolver.resolveArguments(ownerType, parameters);
+        return injectResolver.resolveArguments(ownerType, parameters);
     }
 
     private void injectFields(Object instance) {
-        injectionResolver.injectFields(instance);
+        injectResolver.injectFields(instance);
     }
 }
