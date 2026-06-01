@@ -11,11 +11,14 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * 基于字典树（Trie）的 HTTP 路由索引。
+ * Trie-based HTTP route index.
  * <p>
- * 将路径按 "/" 拆分为段，逐段构建树形结构，支持静态段、路径参数
- * （{name}）、正则约束参数（{name:\\d+}）和通配符（{path:.*}）。
- * 匹配时间复杂度 O(L)，其中 L 为请求路径的段数，与路由总数无关。 */
+ * Paths are split by "/" into segments and inserted segment-by-segment into a tree.
+ * Supports literal segments, path parameters ({name}), regex-constrained parameters
+ * ({name:\\d+}), and wildcards ({path:.*}).
+ * <p>
+ * Match complexity is O(L) where L is the number of segments in the request path,
+ * independent of the total route count. */
 final class RouteIndex {
     private static final int MAX_REGEX_LENGTH = 64;
 
@@ -226,10 +229,6 @@ final class RouteIndex {
             }
         }
     }
-
-    // ---- Path utilities ----
-
-    // ---- Result ----
 
     public record RouteMatch(RouteHandler handler, Map<String, String> pathVariables) {}
 }
