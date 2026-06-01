@@ -135,7 +135,7 @@ final class JdkHttpContext extends HttpContext {
         return requestContext;
     }
 
-    private static Map<String, List<String>> parseQueryParams(String rawQuery) {
+    static Map<String, List<String>> parseQueryParams(String rawQuery) {
         java.util.LinkedHashMap<String, List<String>> params = new java.util.LinkedHashMap<>();
         if (rawQuery == null || rawQuery.isBlank()) {
             return params;

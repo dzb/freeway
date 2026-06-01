@@ -34,7 +34,7 @@ final class RobahoWebSocketSession extends WebSocket implements WebSocketSession
         this.method = exchange.getRequestMethod();
         this.path = exchange.getRequestURI().getPath();
         this.pathVariables = pathVariables == null ? Map.of() : Map.copyOf(pathVariables);
-        this.queryParams = HttpServerContext.parseQueryParams(exchange.getRequestURI().getRawQuery());
+        this.queryParams = JdkHttpContext.parseQueryParams(exchange.getRequestURI().getRawQuery());
     }
 
     private final StringBuilder continuationBuffer = new StringBuilder();

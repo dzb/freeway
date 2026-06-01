@@ -30,7 +30,7 @@ final class RobahoWebEngine implements HttpEngine {
         server.setExecutor(executor);
         server.createContext("/", exchange -> {
             RequestContext requestContext = createRequestContext(exchange);
-            HttpServerContext ctx = new HttpServerContext(exchange, jsonCodec, requestContext);
+            JdkHttpContext ctx = new JdkHttpContext(exchange, jsonCodec, requestContext);
             ctx.headerSet("X-Request-Id", requestContext.correlationId());
             if (WebSocketHandler.isWebsocketRequested(exchange.getRequestHeaders())) {
                 String origin = exchange.getRequestHeaders().getFirst("Origin");
