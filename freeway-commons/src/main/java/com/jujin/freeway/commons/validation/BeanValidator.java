@@ -1,8 +1,12 @@
 package com.jujin.freeway.commons.validation;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 public final class BeanValidator {
 
@@ -74,15 +78,15 @@ public final class BeanValidator {
         if (value == null) return 0;
         if (value instanceof CharSequence s) return s.length();
         if (value instanceof Collection<?> c) return c.size();
-        if (value.getClass().isArray()) return java.lang.reflect.Array.getLength(value);
+        if (value.getClass().isArray()) return Array.getLength(value);
         return 0;
     }
 
     private static Field[] getAllFields(Class<?> clazz) {
-        java.util.List<Field> fields = new java.util.ArrayList<>();
+        List<Field> fields = new ArrayList<>();
         for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
             for (Field f : c.getDeclaredFields()) {
-                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                if (!Modifier.isStatic(f.getModifiers())) {
                     fields.add(f);
                 }
             }

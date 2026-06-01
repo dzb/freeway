@@ -16,6 +16,7 @@ import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.Collection;
@@ -246,6 +247,9 @@ final class InjectionResolver {
         }
         if (type instanceof ParameterizedType parameterizedType && parameterizedType.getRawType() instanceof Class<?> rawType) {
             return rawType;
+        }
+        if (type instanceof GenericArrayType arrayType) {
+            return java.lang.reflect.Array.newInstance(rawClass(arrayType.getGenericComponentType()), 0).getClass();
         }
         throw new IllegalArgumentException("Unsupported parameter type: " + type.getTypeName());
     }
