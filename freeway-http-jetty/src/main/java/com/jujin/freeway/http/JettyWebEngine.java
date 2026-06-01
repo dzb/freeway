@@ -134,8 +134,8 @@ final class JettyWebEngine implements HttpEngine {
     }
 
     private static RequestContext createRequestContext(Request request) {
-        String correlationId = request.getHeaders().get("X-Request-Id");
-        return correlationId != null && !correlationId.isBlank() ? RequestContext.create(correlationId) : RequestContext.create();
+        String correlationId = HttpContext.blankToNull(request.getHeaders().get("X-Request-Id"));
+        return correlationId != null ? RequestContext.create(correlationId) : RequestContext.create();
     }
 
     private static String method(Request request) {

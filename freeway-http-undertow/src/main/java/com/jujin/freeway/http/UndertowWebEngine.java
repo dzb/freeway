@@ -127,8 +127,8 @@ final class UndertowWebEngine implements HttpEngine {
     }
 
     private static RequestContext createRequestContext(HttpServerExchange exchange) {
-        String correlationId = exchange.getRequestHeaders().getFirst("X-Request-Id");
-        return correlationId != null && !correlationId.isBlank() ? RequestContext.create(correlationId) : RequestContext.create();
+        String correlationId = HttpContext.blankToNull(exchange.getRequestHeaders().getFirst("X-Request-Id"));
+        return correlationId != null ? RequestContext.create(correlationId) : RequestContext.create();
     }
 
     private static Map<String, String> snapshotPathVariables(Map<String, String> vars) {
