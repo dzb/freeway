@@ -96,9 +96,7 @@ final class JettyHttpContext extends HttpContext {
     @Override
     public SseEmitter sse() throws IOException {
         response.setStatus(200);
-        response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/event-stream; charset=utf-8");
-        response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-cache");
-        response.getHeaders().put(HttpHeader.CONNECTION, "keep-alive");
+        setupSseHeaders();
         responded = true;
         return new SseEmitter(new OutputStream() {
             @Override

@@ -89,9 +89,7 @@ final class UndertowHttpContext extends HttpContext {
     @Override
     public SseEmitter sse() throws IOException {
         exchange.setStatusCode(200);
-        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/event-stream; charset=utf-8");
-        exchange.getResponseHeaders().put(Headers.CACHE_CONTROL, "no-cache");
-        exchange.getResponseHeaders().put(Headers.CONNECTION, "keep-alive");
+        setupSseHeaders();
         exchange.startBlocking();
         responded = true;
         return new SseEmitter(exchange.getOutputStream());

@@ -120,9 +120,7 @@ final class JdkHttpContext extends HttpContext {
 
     @Override
     public SseEmitter sse() throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-        exchange.getResponseHeaders().set("Connection", "keep-alive");
+        setupSseHeaders();
         // JDK 25: sendResponseHeaders(200, -1) does not properly switch the response
         // body stream from PlaceholderOutputStream; use 0 instead.
         exchange.sendResponseHeaders(200, 0);

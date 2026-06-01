@@ -127,6 +127,12 @@ public abstract class HttpContext {
      */
     public abstract SseEmitter sse() throws IOException;
 
+    protected void setupSseHeaders() {
+        headerSet("Content-Type", "text/event-stream; charset=utf-8");
+        headerSet("Cache-Control", "no-cache");
+        headerSet("Connection", "keep-alive");
+    }
+
     public HttpContext output(String text) throws IOException {
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;
