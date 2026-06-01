@@ -11,7 +11,7 @@ import java.util.Map;
 
 final class BatchQueryImpl implements BatchQuery {
     private final DatabaseImpl db;
-    private final PooledConnection transactionConnection;
+    private final PooledConnection boundConnection;
     private final String sql;
     private final NamedParamParser.Result parsed;
     private List<Object[]> positionalRows = List.of();
@@ -19,11 +19,11 @@ final class BatchQueryImpl implements BatchQuery {
 
     BatchQueryImpl(
         DatabaseImpl db,
-        PooledConnection transactionConnection,
+        PooledConnection boundConnection,
         String sql
     ) {
         this.db = db;
-        this.transactionConnection = transactionConnection;
+        this.boundConnection = boundConnection;
         this.sql = sql;
         this.parsed = NamedParamParser.parse(sql);
     }
@@ -51,14 +51,18 @@ final class BatchQueryImpl implements BatchQuery {
 
     @Override
     public int[] execute() {
-        boolean ownConnection = transactionConnection == null;
-        PooledConnection conn = ownConnection ? db.pool().borrow() : transactionConnection;
+        boolean ownConnection = boundConnection == null;
+        PooledConnection conn = ownConnection ? db.pool().borrow() : boundConnection;
+        boolean autoCommitChanged = false;
         try {
-            var stmt = conn
+            if (ownConnection || conn.jdbcConnection().getAutoCommit()) {
+                conn.jdbcConnection().setAutoCommit(false);
+                autoCommitChanged = true;
+            }
+            try (PreparedStatement stmt = conn
                 .jdbcConnection()
-                .prepareStatement(parsed.jdbcSql(), Statement.NO_GENERATED_KEYS);
-            stmt.setQueryTimeout(db.queryTimeoutSeconds());
-            try {
+                .prepareStatement(parsed.jdbcSql(), Statement.NO_GENERATED_KEYS)) {
+                stmt.setQueryTimeout(db.queryTimeoutSeconds());
                 if (!namedRows.isEmpty()) {
                     for (var row : namedRows) {
                         bindRow(stmt, row);
@@ -72,16 +76,43 @@ final class BatchQueryImpl implements BatchQuery {
                         stmt.addBatch();
                     }
                 }
-                return stmt.executeBatch();
-            } finally {
-                stmt.close();
+                int[] counts = stmt.executeBatch();
+                if (autoCommitChanged) {
+                    conn.jdbcConnection().commit();
+                }
+                return counts;
+            } catch (SQLException e) {
+                if (autoCommitChanged) {
+                    rollbackQuietly(conn);
+                }
+                throw new SqlException("Batch execution failed: " + e.getMessage(), e);
             }
         } catch (SQLException e) {
+            if (autoCommitChanged) {
+                rollbackQuietly(conn);
+            }
             throw new SqlException("Batch execution failed: " + e.getMessage(), e);
         } finally {
+            if (autoCommitChanged) {
+                restoreAutoCommitQuietly(conn);
+            }
             if (ownConnection) {
                 db.pool().release(conn);
             }
+        }
+    }
+
+    private void rollbackQuietly(PooledConnection conn) {
+        try {
+            conn.jdbcConnection().rollback();
+        } catch (SQLException ignored) {
+        }
+    }
+
+    private void restoreAutoCommitQuietly(PooledConnection conn) {
+        try {
+            conn.jdbcConnection().setAutoCommit(true);
+        } catch (SQLException ignored) {
         }
     }
 

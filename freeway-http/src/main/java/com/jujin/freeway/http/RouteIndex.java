@@ -1,8 +1,7 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.annotation.Extension;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,20 +11,16 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * 基于字典树（Trie）的 HTTP 路由索引。
- * <p>
- * 将路径按 "/" 拆分为段，逐段构建树形结构，支持静态段、路径参数
- * （{name}）、正则约束参数（{name:\\d+}）和通配符（{path:.*}）。
- * 匹配时间复杂度 O(L)，其中 L 为请求路径的段数，与路由总数无关。
- */
+ * 鍩轰簬瀛楀吀鏍戯紙Trie锛夌殑 HTTP 璺敱绱㈠紩銆? * <p>
+ * 灏嗚矾寰勬寜 "/" 鎷嗗垎涓烘锛岄€愭鏋勫缓鏍戝舰缁撴瀯锛屾敮鎸侀潤鎬佹銆佽矾寰勫弬鏁? * 锛坽name}锛夈€佹鍒欑害鏉熷弬鏁帮紙{name:\\d+}锛夊拰閫氶厤绗︼紙{path:.*}锛夈€? * 鍖归厤鏃堕棿澶嶆潅搴?O(L)锛屽叾涓?L 涓鸿姹傝矾寰勭殑娈垫暟锛屼笌璺敱鎬绘暟鏃犲叧銆? */
 final class RouteIndex {
     private static final int MAX_REGEX_LENGTH = 64;
 
     private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
 
     public RouteIndex(
-        @ExtensionPoint(Route.class) Collection<Route> routes,
-        @ExtensionPoint(RouteGroup.class) Collection<RouteGroup> groups
+        @Extension(Route.class) Collection<Route> routes,
+        @Extension(RouteGroup.class) Collection<RouteGroup> groups
     ) {
         // Phase 1: collect all routes
         List<Route> all = new ArrayList<>();
@@ -37,7 +32,7 @@ final class RouteIndex {
                 all.add(route);
             }
         }
-        // Phase 2: insert into trie — duplicate detection done at insert time
+        // Phase 2: insert into trie 鈥?duplicate detection done at insert time
         for (Route route : all) {
             addRoute(route.method(), route.path(), route.handler());
         }
@@ -71,7 +66,7 @@ final class RouteIndex {
     private void addRoute(String method, String path, RouteHandler handler) {
         String key = method == null ? "" : method.toUpperCase();
         TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
-        String[] segments = splitPath(path);
+        String[] segments = PathPattern.splitPath(path);
         TrieNode current = root;
         for (String seg : segments) {
             if (seg.startsWith("{") && seg.endsWith("}")) {
@@ -124,12 +119,12 @@ final class RouteIndex {
         if (root == null) {
             return null;
         }
-        String[] segments = splitPath(path);
+        String[] segments = PathPattern.splitPath(path);
         Map<String, String> vars = new LinkedHashMap<>();
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
             String seg = segments[i];
-            if (isPathTraversalSegment(seg)) {
+            if (PathPattern.isPathTraversalSegment(seg)) {
                 return null;
             }
             // Try literal match first
@@ -143,8 +138,8 @@ final class RouteIndex {
             if (param != null) {
                 // Wildcard consumes remaining segments
                 if (param.wildcard) {
-                    String remainder = String.join("/", Arrays.copyOfRange(segments, i, segments.length));
-                    if (remainder.isEmpty() || containsPathTraversal(remainder)) {
+                    String remainder = String.join("/", java.util.Arrays.copyOfRange(segments, i, segments.length));
+                    if (remainder.isEmpty() || PathPattern.containsPathTraversal(remainder)) {
                         return null;
                     }
                     vars.put(param.paramName, remainder);
@@ -230,39 +225,6 @@ final class RouteIndex {
     }
 
     // ---- Path utilities ----
-
-    private static String[] splitPath(String path) {
-        if (path == null || path.isEmpty() || "/".equals(path)) {
-            return new String[0];
-        }
-        String normalized = path.startsWith("/") ? path.substring(1) : path;
-        if (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        if (normalized.isEmpty()) {
-            return new String[0];
-        }
-        return normalized.split("/");
-    }
-
-    private static boolean containsPathTraversal(String path) {
-        for (String seg : path.split("/")) {
-            if (isPathTraversalSegment(seg)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean isPathTraversalSegment(String seg) {
-        if ("..".equals(seg) || seg.startsWith("..\\")) {
-            return true;
-        }
-        if (seg.indexOf('\0') >= 0) {
-            return true;
-        }
-        return false;
-    }
 
     // ---- Result ----
 

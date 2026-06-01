@@ -76,6 +76,42 @@ class SQLTest {
     }
 
     @Test
+    void selectWithWhereGroup() {
+        SQL q = SQL.select("*").from("users")
+            .whereGroup(g -> g.where("status = ?", "ACTIVE")
+                .orWhere("role = ?", "admin"));
+        assertEquals("SELECT * FROM users WHERE (status = ? OR role = ?)", q.sql());
+        assertArrayEquals(new Object[]{"ACTIVE", "admin"}, q.args());
+    }
+
+    @Test
+    void selectWithNestedWhereGroup() {
+        SQL q = SQL.select("*").from("users")
+            .whereGroup(g -> g.where("tenant_id = ?", 7)
+                .whereGroup(h -> h.where("status = ?", "ACTIVE")
+                    .orWhere("role = ?", "admin")));
+        assertEquals("SELECT * FROM users WHERE (tenant_id = ? AND (status = ? OR role = ?))", q.sql());
+        assertArrayEquals(new Object[]{7, "ACTIVE", "admin"}, q.args());
+    }
+
+    @Test
+    void selectWithWhereNotGroup() {
+        SQL q = SQL.select("*").from("users")
+            .whereNotGroup(g -> g.where("deleted = ?", true)
+                .where("archived = ?", true));
+        assertEquals("SELECT * FROM users WHERE NOT (deleted = ? AND archived = ?)", q.sql());
+        assertArrayEquals(new Object[]{true, true}, q.args());
+    }
+
+    @Test
+    void joinMustBeClosedByOnBeforeNextClause() {
+        assertThrows(IllegalStateException.class, () ->
+            SQL.select("*").from("users")
+                .join("orders")
+                .where("orders.user_id = users.id"));
+    }
+
+    @Test
     void selectWithWhereOrWhereWhereNot() {
         SQL q = SQL.select("*").from("users")
             .where("a = ?", 1)
@@ -145,6 +181,88 @@ class SQLTest {
         assertArrayEquals(new Object[]{5}, q.args());
     }
 
+    @Test
+    void selectWithHavingGroup() {
+        SQL q = SQL.select("dept, count(*) as cnt").from("users")
+            .groupBy("dept")
+            .havingGroup(g -> g.where("cnt > ?", 5)
+                .whereNot("dept = ?", "tmp"));
+        assertEquals(
+            "SELECT dept, count(*) as cnt FROM users GROUP BY dept HAVING (cnt > ? AND NOT dept = ?)",
+            q.sql());
+        assertArrayEquals(new Object[]{5, "tmp"}, q.args());
+    }
+
+    @Test
+    void selectWithUnionAllAndOuterOrderBy() {
+        SQL left = SQL.select("id").from("active_users").where("status = ?", "A");
+        SQL right = SQL.select("id").from("archived_users").where("status = ?", "B");
+
+        SQL q = left.unionAll(right).orderBy("id DESC");
+
+        assertEquals(
+            "(SELECT id FROM active_users WHERE status = ?) UNION ALL (SELECT id FROM archived_users WHERE status = ?) ORDER BY id DESC",
+            q.sql());
+        assertArrayEquals(new Object[]{"A", "B"}, q.args());
+    }
+
+    @Test
+    void unionRejectsFurtherWhereClauses() {
+        assertThrows(IllegalStateException.class, () ->
+            SQL.select("*").from("users")
+                .union(SQL.select("*").from("archived_users"))
+                .where("id = ?", 1));
+    }
+
+    @Test
+    void selectWithCommonTableExpression() {
+        SQL activeUsers = SQL.select("id")
+            .from("users")
+            .where("status = ?", "ACTIVE");
+
+        SQL q = SQL.select("id")
+            .with("active_users", activeUsers)
+            .from("active_users")
+            .where("id > ?", 10);
+
+        assertEquals(
+            "WITH active_users AS (SELECT id FROM users WHERE status = ?) SELECT id FROM active_users WHERE id > ?",
+            q.sql());
+        assertArrayEquals(new Object[]{"ACTIVE", 10}, q.args());
+    }
+
+    @Test
+    void selectWithSubqueryArgument() {
+        SQL sub = SQL.select("user_id").from("orders").where("total > ?", 100);
+        SQL q = SQL.select("*").from("users").where("id in (?)", sub);
+        assertEquals("SELECT * FROM users WHERE id in (SELECT user_id FROM orders WHERE total > ?)", q.sql());
+        assertArrayEquals(new Object[]{100}, q.args());
+    }
+
+    @Test
+    void insertRejectsWhere() {
+        assertThrows(IllegalStateException.class, () ->
+            SQL.insert("users").where("id = ?", 1));
+    }
+
+    @Test
+    void selectRejectsSet() {
+        assertThrows(IllegalStateException.class, () ->
+            SQL.select("*").from("users").set("name = ?", "john"));
+    }
+
+    @Test
+    void updateRejectsGroupBy() {
+        assertThrows(IllegalStateException.class, () ->
+            SQL.update("users").groupBy("dept"));
+    }
+
+    @Test
+    void selectRejectsOnConflict() {
+        assertThrows(IllegalStateException.class, () ->
+            SQL.select("*").from("users").onConflict("id"));
+    }
+
     // ====================== UPDATE ======================
 
     @Test
@@ -173,6 +291,16 @@ class SQLTest {
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
+    @Test
+    void updateWithReturning() {
+        SQL q = SQL.update("users")
+            .set("name = ?", "john")
+            .where("id = ?", 1)
+            .returning("id");
+        assertEquals("UPDATE users SET name = ? WHERE id = ? RETURNING id", q.sql());
+        assertArrayEquals(new Object[]{"john", 1}, q.args());
+    }
+
     // ====================== INSERT ======================
 
     @Test
@@ -180,6 +308,34 @@ class SQLTest {
         SQL q = SQL.insert("users").set("name", "john").set("status", 1);
         assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.sql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
+    }
+
+    @Test
+    void insertWithReturning() {
+        SQL q = SQL.insert("users").set("name", "john").returning("id");
+        assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id", q.sql());
+        assertArrayEquals(new Object[]{"john"}, q.args());
+    }
+
+    @Test
+    void insertWithOnConflictDoNothing() {
+        SQL q = SQL.insert("users").set("id", 1).set("name", "john")
+            .onConflict("id")
+            .doNothing();
+        assertEquals("INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO NOTHING", q.sql());
+        assertArrayEquals(new Object[]{1, "john"}, q.args());
+    }
+
+    @Test
+    void insertWithOnConflictDoUpdateSet() {
+        SQL q = SQL.insert("users").set("id", 1).set("name", "john")
+            .onConflict("id")
+            .doUpdateSet("name = excluded.name")
+            .returning("id");
+        assertEquals(
+            "INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name RETURNING id",
+            q.sql());
+        assertArrayEquals(new Object[]{1, "john"}, q.args());
     }
 
     @Test

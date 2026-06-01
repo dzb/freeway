@@ -1,22 +1,18 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.ioc.AfterRealized;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.ServiceId;
-import com.jujin.freeway.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.annotation.Extension;
 import com.jujin.freeway.ioc.annotation.Value;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-public final class WebServer implements AutoCloseable, AfterRealized {
-    private static final Logger LOG = LoggerFactory.getLogger(WebServer.class);
+public final class WebServer implements AutoCloseable {
+    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(WebServer.class);
 
     private final RouteIndex routes;
     private final WebSocketIndex websocketIndex;
@@ -38,9 +34,9 @@ public final class WebServer implements AutoCloseable, AfterRealized {
         RouteIndex routes,
         WebSocketIndex websocketIndex,
         CorsFilter corsFilter,
-        @ExtensionPoint(StaticResourceMount.class) List<StaticResourceMount> staticMounts,
-        @ExtensionPoint(HttpFilter.class) List<HttpFilter> filters,
-        @ExtensionPoint(ExceptionMapper.class) List<ExceptionMapper> mappers,
+        @Extension(StaticResourceMount.class) List<StaticResourceMount> staticMounts,
+        @Extension(HttpFilter.class) List<HttpFilter> filters,
+        @Extension(ExceptionMapper.class) List<ExceptionMapper> mappers,
         Container container,
         @Value("${web.engine:robaho}") String webEngineId,
         @Value("${web.server.host:127.0.0.1}") String host,
@@ -81,7 +77,6 @@ public final class WebServer implements AutoCloseable, AfterRealized {
 
             @Override
             public WebSocketMatch websocket(String method, String path, String origin) {
-                // validate origin against CORS policy to prevent CSWSH
                 String resolvedOrigin = corsFilter.resolveAllowedOrigin(origin);
                 if (resolvedOrigin == null && origin != null && !origin.isBlank()) {
                     LOG.warn("WebSocket upgrade rejected: origin '{}' not allowed for {}", origin, path);
@@ -93,20 +88,42 @@ public final class WebServer implements AutoCloseable, AfterRealized {
     }
 
     public String host() {
-        return ensureStarted().host();
+        return requireStarted().host();
     }
 
     public int port() {
-        return ensureStarted().port();
+        return requireStarted().port();
+    }
+
+    public synchronized void start() {
+        ensureStarted();
+    }
+
+    public synchronized void stop() {
+        HttpServerHandle h = this.handle;
+        if (h == null) {
+            return;
+        }
+        this.handle = null;
+        h.close();
+        LOG.info("Freeway web server stopped");
+    }
+
+    public boolean running() {
+        return handle != null;
     }
 
     @Override
     public void close() {
+        stop();
+    }
+
+    private HttpServerHandle requireStarted() {
         HttpServerHandle h = this.handle;
-        if (h != null) {
-            h.close();
-            LOG.info("Freeway web server stopped");
+        if (h == null) {
+            throw new IllegalStateException("WebServer is not started");
         }
+        return h;
     }
 
     private HttpServerHandle ensureStarted() {
@@ -125,17 +142,11 @@ public final class WebServer implements AutoCloseable, AfterRealized {
             } catch (IOException ex) {
                 throw new RuntimeException("Failed to start web engine " + webEngineId, ex);
             }
-            this.handle = h;
             awaitReady(h.host(), h.port());
+            this.handle = h;
             LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
             return h;
         }
-    }
-
-    @Override
-    public void afterRealized() {
-        // 在容器 realize 之后（已逃出 computeIfAbsent 锁域）自动启动引擎
-        ensureStarted();
     }
 
     private static void awaitReady(String host, int port) {
@@ -164,13 +175,13 @@ public final class WebServer implements AutoCloseable, AfterRealized {
             engineId = "robaho";
         }
         try {
-            return container.get(HttpEngine.class, ServiceId.of(engineId));
+            return container.get(HttpEngine.class, engineId);
         } catch (RuntimeException ex) {
             if (!"robaho".equals(engineId)) {
                 throw new IllegalStateException("Unable to resolve web engine " + engineId, ex);
             }
             LOG.warn("Default engine 'robaho' not found, falling back to built-in JDK engine");
-            return container.get(HttpEngine.class, ServiceId.of("jdk"));
+            return container.get(HttpEngine.class, "jdk");
         }
     }
 
@@ -188,22 +199,21 @@ public final class WebServer implements AutoCloseable, AfterRealized {
     }
 
     private PreparedFilters prepareFilters(List<HttpFilter> filters) {
-        List<HttpFilter> normalized = new ArrayList<>();
-        RequestTimingFilter timingFilter = null;
+        List<HttpFilter> items = new ArrayList<>();
+        RequestTimingFilter timing = null;
         for (HttpFilter filter : filters == null ? List.<HttpFilter>of() : filters) {
-            if (filter instanceof RequestTimingFilter timing) {
-                if (timingFilter == null) {
-                    timingFilter = timing;
+            if (filter instanceof RequestTimingFilter candidate) {
+                if (timing == null) {
+                    timing = candidate;
                 }
             } else {
-                normalized.add(filter);
+                items.add(filter);
             }
         }
-        return new PreparedFilters(normalized, timingFilter != null ? timingFilter : new RequestTimingFilter());
+        return new PreparedFilters(items, timing != null ? timing : new RequestTimingFilter());
     }
 
     private void processRequest(HttpContext ctx) throws Exception {
-        // inner handler: health check, static resources, or route dispatch
         RouteHandler inner = request -> {
             if (healthEnabled && "GET".equalsIgnoreCase(request.method()) && healthPath.equals(request.path())) {
                 request.sendJson(200, java.util.Map.of("status", "ok"));
@@ -223,7 +233,6 @@ public final class WebServer implements AutoCloseable, AfterRealized {
             request.pathVariables(match.pathVariables());
             match.handler().handle(request);
         };
-        // cors filter + all user-defined filters wrap everything
         RouteHandler chain = buildChain(inner, this.filters);
         corsFilter.doFilter(ctx, chain);
     }

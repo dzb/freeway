@@ -13,7 +13,7 @@ public interface Binding<T> {
 
     Binding<T> scope(Scope scope);
 
-    Binding<T> id(ServiceId id);
+    Binding<T> id(String id);
 
     Binding<T> primary();
 

@@ -19,10 +19,10 @@ public interface RequestContext {
     Map<String, Object> attributes();
 
     static RequestContext create() {
-        return new DefaultRequestContext(java.util.UUID.randomUUID().toString().replace("-", ""), Instant.now());
+        return new RequestContextDefault(java.util.UUID.randomUUID().toString().replace("-", ""), Instant.now());
     }
 
     static RequestContext create(String correlationId) {
-        return new DefaultRequestContext(correlationId, Instant.now());
+        return new RequestContextDefault(correlationId, Instant.now());
     }
 }

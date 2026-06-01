@@ -33,68 +33,31 @@ public final class JsonArray {
     }
 
     public String getString(int index) {
-        Object value = get(index);
-        return value == null ? null : String.valueOf(value);
+        return JsonAccessors.string(get(index));
     }
 
     public Integer getInt(int index) {
-        Object value = get(index);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        return Integer.parseInt(String.valueOf(value));
+        return JsonAccessors.integer(get(index));
     }
 
     public Long getLong(int index) {
-        Object value = get(index);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        return Long.parseLong(String.valueOf(value));
+        return JsonAccessors.longValue(get(index));
     }
 
     public Double getDouble(int index) {
-        Object value = get(index);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        return Double.parseDouble(String.valueOf(value));
+        return JsonAccessors.doubleValue(get(index));
     }
 
     public Boolean getBoolean(int index) {
-        Object value = get(index);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Boolean b) {
-            return b;
-        }
-        return Boolean.parseBoolean(String.valueOf(value));
+        return JsonAccessors.booleanValue(get(index));
     }
 
     public JsonObject getObject(int index) {
-        Object value = get(index);
-        if (value instanceof JsonObject object) {
-            return object;
-        }
-        return null;
+        return JsonAccessors.object(get(index));
     }
 
     public JsonArray getArray(int index) {
-        Object value = get(index);
-        if (value instanceof JsonArray array) {
-            return array;
-        }
-        return null;
+        return JsonAccessors.array(get(index));
     }
 
     public int size() {

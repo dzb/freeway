@@ -6,7 +6,7 @@ import java.util.Objects;
 
 public record WebSocketGroup(String prefix, List<WebSocketRoute> routes) {
     public WebSocketGroup {
-        prefix = PathGroupSupport.normalizePrefix(prefix);
+        prefix = PathJoiner.normalizePrefix(prefix);
         routes = List.copyOf(routes);
     }
 
@@ -23,7 +23,7 @@ public record WebSocketGroup(String prefix, List<WebSocketRoute> routes) {
     public List<WebSocketRoute> expand() {
         List<WebSocketRoute> expanded = new ArrayList<>(routes.size());
         for (WebSocketRoute route : routes) {
-            expanded.add(WebSocketRoute.of(PathGroupSupport.join(prefix, route.path()), route.endpoint()));
+            expanded.add(WebSocketRoute.of(PathJoiner.join(prefix, route.path()), route.endpoint()));
         }
         return List.copyOf(expanded);
     }

@@ -6,7 +6,7 @@ import java.util.Objects;
 
 public record RouteGroup(String prefix, List<Route> routes) {
     public RouteGroup {
-        prefix = PathGroupSupport.normalizePrefix(prefix);
+        prefix = PathJoiner.normalizePrefix(prefix);
         routes = List.copyOf(routes);
     }
 
@@ -23,7 +23,7 @@ public record RouteGroup(String prefix, List<Route> routes) {
     public List<Route> expand() {
         List<Route> expanded = new ArrayList<>(routes.size());
         for (Route route : routes) {
-            expanded.add(Route.of(route.method(), PathGroupSupport.join(prefix, route.path()), route.handler()));
+            expanded.add(Route.of(route.method(), PathJoiner.join(prefix, route.path()), route.handler()));
         }
         return List.copyOf(expanded);
     }

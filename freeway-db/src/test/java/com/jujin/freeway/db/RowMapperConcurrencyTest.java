@@ -131,8 +131,7 @@ class RowMapperConcurrencyTest {
             .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
             .username("sa")
             .password("")
-            .mapping(RowMapping.of(Score.class, (rs, rowNum) ->
-                new Score(rs.getLong("id"), rs.getInt("score") * 2)))
+            .rowMapper(Score.class, (rs, rowNum) -> new Score(rs.getLong("id"), rs.getInt("score") * 2))
             .build();
 
         try (db) {

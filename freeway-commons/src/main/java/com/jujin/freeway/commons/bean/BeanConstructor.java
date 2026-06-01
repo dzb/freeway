@@ -69,13 +69,13 @@ public final class BeanConstructor {
         Parameter[] rawParameters = constructor.getParameters();
         List<BeanParameter> parameters = new ArrayList<>(rawParameters.length);
         for (Parameter parameter : rawParameters) {
-            parameters.add(new DefaultBeanParameter(parameter));
+            parameters.add(new BeanParameterDefault(parameter));
         }
         return parameters;
     }
 
-    private record DefaultBeanParameter(Type type, Annotation[] annotations) implements BeanParameter {
-        private DefaultBeanParameter(Parameter parameter) {
+    private record BeanParameterDefault(Type type, Annotation[] annotations) implements BeanParameter {
+        private BeanParameterDefault(Parameter parameter) {
             this(parameter.getParameterizedType(), parameter.getAnnotations());
         }
 

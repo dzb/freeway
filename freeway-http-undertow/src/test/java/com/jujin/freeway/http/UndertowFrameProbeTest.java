@@ -1,6 +1,6 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.boot.App;
+import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.Launcher;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UndertowFrameProbeTest {
-    private App app;
+    private AppRuntime app;
 
     @AfterEach
     void tearDown() {
@@ -41,7 +41,7 @@ class UndertowFrameProbeTest {
         System.setProperty("web.engine", "undertow");
 
         app = Launcher.run(new TestAppModule());
-        app.get(WebServer.class);
+        assertTrue(app.get(WebServer.class).running());
 
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(5000);

@@ -1,125 +1,230 @@
-# Freeway 2 Developer Guide
+﻿# Freeway 2 Developer Guide
+
+This document describes Freeway 2's design shape. It is intentionally biased toward the concepts a framework developer needs while keeping compatibility baggage out.
 
 ## Module Dependency Graph
 
 ```
-freeway-commons
-      ↑
-freeway-ioc
-      ↑               ↑               ↑
-freeway-boot    freeway-http    freeway-db
-      ↑               ↑
-      └─── engine adapters ───┘
-    freeway-http-jdk       (built-in, always available)
-    freeway-http-robaho    (default)
-    freeway-http-undertow
-    freeway-http-jetty
+freeway-starter
+      |
+freeway-starter-web                 freeway-starter-db
+      |                                     |
+freeway-starter-boot                   freeway-starter-boot
+      |                                     |
+freeway-boot        freeway-http        freeway-db
+      \                 |                 /
+       \                |                /
+              freeway-ioc
+                  |
+           freeway-commons
+
+freeway-http-robaho / freeway-http-undertow / freeway-http-jetty
+      |
+freeway-http
 ```
 
-Dependencies flow **downward** — core modules never depend on higher-level modules.
+Dependencies flow downward. Core modules do not depend on higher-level modules. Starter modules define fixed dependency bundles so applications do not need to assemble raw module graphs themselves.
 
----
+## Architecture Baseline
+
+Freeway 2 uses these architectural boundaries:
+
+- `Container` is the IoC boundary only. It exposes service lookup and close, not application runtime operations.
+- `AppRuntime` is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks.
+- Service ids are plain strings and are normalized internally. There is no public `ServiceId` type.
+- Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
+- Thread-scoped services use `ScopeGate.open()` to enter an execution boundary; this keeps lookup and scope entry separate.
+- `RuntimeHook` provides start/stop extension points for modules. Hooks are contributed through `Contributions<RuntimeHook>`.
+- Ordered list contributions are supported through `add(id, value).before(...)` and `.after(...)`.
+- HTTP startup no longer happens as a side effect of resolving `WebServer`. `HttpModule` contributes hook id `freeway.http.server`.
+- Logger access is represented by `LoggerSource`; commons provides non-invasive SLF4J-over-JUL fallback through `LoggingBootstrap`.
+- Default implementation class names use the `XDefault` suffix form to keep interface names dominant.
 
 ## IoC Container (`freeway-ioc`)
 
-### Core Interfaces
+### Core API
 
-| Interface | Purpose |
-|-----------|---------|
-| `Container` | Service locator: `get(Class)`, `get(Class, ServiceId)` |
-| `Module` | Entry point for binding: `bind(Binder)` |
-| `Binder` | Binding DSL: `bind(X).to(Y.class\|instance)` |
-| `Freeway` | Bootstrap: `Freeway.create(Module...)` |
-| `ServiceId` | Named qualifier for multi-binding scenarios |
+| Type | Purpose |
+|------|---------|
+| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `close()` |
+| `Module` | A module entry point: `bind(Binder)` |
+| `Binder` | Binding and contribution DSL |
+| `Binding` | Service binding configuration: target, id, primary, scope, advisor |
+| `Freeway` | Container bootstrap: `Freeway.create(Module...)` |
+| `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
+| `ScopeGate` | Opens a `Scope.THREAD` execution boundary |
+| `ScopeHandle` | Auto-closeable handle returned by `ScopeGate.open()` |
+| `LoggerSource` | Owner-aware logger factory service |
+
+`ServiceId` is intentionally not a public type. String ids keep the API direct:
+
+```java
+binder.bind(PaymentGateway.class)
+    .to(StripeGateway.class)
+    .id("stripe")
+    .primary();
+
+PaymentGateway gateway = container.get(PaymentGateway.class, "stripe");
+```
+
+Blank service ids are rejected. Internal normalization is handled by `ServiceIds`.
 
 ### Binding DSL
 
 ```java
 Container container = Freeway.create(binder -> {
-
-    // Simple binding
     binder.bind(Greeter.class).to(GreeterImpl.class);
 
-    // Named binding — resolve by ServiceId
     binder.bind(PaymentGateway.class)
         .to(StripeGateway.class)
-        .id(ServiceId.of("stripe"))
-        .primary();           // default when no id specified
+        .id("stripe")
+        .primary();
 
     binder.bind(PaymentGateway.class)
         .to(PaypalGateway.class)
-        .id(ServiceId.of("paypal"));
+        .id("paypal");
 
-    // Prototype scope — new instance per get()
-    binder.bind(Greeter.class)
-        .to(GreeterImpl.class)
-        .scope(Scope.PROTOTYPE);
+    binder.bind(RequestState.class)
+        .to(RequestState.class)
+        .scope(Scope.THREAD);
 
-    // Advisors (AOP) — intercept method calls
     binder.bind(Greeter.class)
         .to(GreeterImpl.class)
         .advise(advisor -> advisor.wrap(
             inv -> inv.method().getName().equals("greet"),
             inv -> {
-                System.out.println("before");
-                Object result = inv.proceed();
-                System.out.println("after");
-                return result;
+                long start = System.nanoTime();
+                try {
+                    return inv.proceed();
+                } finally {
+                    System.out.println(System.nanoTime() - start);
+                }
             }
         ));
 });
 ```
 
-> **Note**: Advisors only work with interface-to-class bindings. The container creates a JDK proxy. Bindings of concrete classes to themselves cannot be advised.
+Advisors require interface-to-class bindings because the container uses JDK proxies.
 
-### Symbol Injection (`@Symbol` / `@Value`)
+### Service Lifecycles
 
-Inject configuration values from system properties, environment, or config files:
+`scope()` is the only binding-time API for service lifecycle:
+
+| Scope | Meaning |
+|-------|---------|
+| `Scope.SINGLETON` | Default container-level singleton, closed by `Container.close()` |
+| `Scope.PROTOTYPE` | New instance per resolution, not retained by the container |
+| `Scope.THREAD` | One instance per active thread execution boundary |
+
+Thread scope is entered through the built-in `ScopeGate` service:
 
 ```java
-public record ConfiguredService(
+ScopeGate scopeGate = container.get(ScopeGate.class);
+try (ScopeHandle ignored = scopeGate.open()) {
+    RequestState state = container.get(RequestState.class);
+}
+```
+
+This keeps the API aligned with the binding DSL: `bind().scope(Scope.THREAD)` declares lifecycle, while `ScopeGate.open()` enters the boundary. Direct injection of a thread-scoped concrete service into a singleton is rejected because it would capture one boundary-local instance permanently. Thread-scoped interface services can be injected through lazy proxies.
+
+### Injection
+
+Constructor injection is preferred. Field injection is supported for concise application code and config values.
+
+```java
+public final class UserService {
+    private final UserRepository repository;
+
+    public UserService(UserRepository repository) {
+        this.repository = repository;
+    }
+
+    @Inject("audit")
+    private Logger audit;
+
+    @Inject("${server.port}")
+    private int port;
+}
+```
+
+Supported annotations live under `com.jujin.freeway.ioc.annotation` and include `@Inject`, `@Named`, `@Primary`, `@Symbol`, `@Value`, and `@Extension`.
+`@Extension` can be placed on `TYPE`, `FIELD`, and `PARAMETER`. On a type it supplies the default extension point for collection/map members in that class; member-level usage overrides the class default.
+
+### Symbol and Value Injection
+
+```java
+public record ServerConfig(
     @Symbol("server.port") int port,
-    @Value("${app.name}") String name
+    @Value("${app.name:freeway}") String appName
 ) {}
 ```
 
-| Annotation | Resolution |
-|------------|-----------|
-| `@Symbol("key")` | Strict: fails if key is missing |
-| `@Value("${key}")` | Lenient: expression syntax, supports defaults via `\${key:default}` |
+| Annotation | Behavior |
+|------------|----------|
+| `@Symbol("key")` | Strict lookup; missing key fails |
+| `@Value("${key:default}")` | Expression expansion with optional default |
 
-Both support automatic type coercion (String → int, boolean, enum, Duration, etc.).
+Both paths use the container type coercion mechanism.
 
 ### Extension Points
 
-A plugin-style contribution model for collecting items from multiple modules:
+`@Extension` marks extension consumers. On a type it sets the default extension point for collection/map members in that class. Member-level annotations override the default.
 
 ```java
-// Contributor side
-binder.contribute(AppFeature.class).add(new AppFeature("core"));
-binder.contribute(AppFeature.class).add(new AppFeature("web"));
+@Extension(AppFeature.class)
+public final class AppConfig {
+    private final List<AppFeature> features;
 
-// Consumer side — receives a Collection of all contributions
-public class AppConfig {
-    public AppConfig(@ExtensionPoint(AppFeature.class) Collection<AppFeature> features) {
-        ...
+    public AppConfig(Collection<AppFeature> features) {
+        this.features = List.copyOf(features);
     }
 }
-
-// Mapped variant — keyed contributions
-binder.contributeMapped(AppFlag.class).put("debug", new AppFlag("debug", true));
-// Consumer receives Map<String, AppFlag>
 ```
+
+```java
+@Extension(AppFeature.class)
+public final class AppFlags {
+    private List<AppFeature> features;
+
+    @Extension(AppFlag.class)
+    private Map<String, AppFlag> flags;
+}
+```
+
+Rules:
+
+- Unnamed `add(value)` preserves insertion order.
+- Named `add(id, value)` enables `before/after` constraints.
+- Duplicate ids fail immediately.
+- Missing order targets are ignored.
+- Cycles fail when the extension point is resolved.
+- `@Extension` on a type supplies the default extension point for collection/map members in that class.
+- `@Extension` on a field or parameter overrides the class default.
+- `@Extension` only applies to collection and map injection sites.
+
+Mapped contributions stay separate because keyed maps and ordered lists have different semantics:
+
+```java
+MappedContributions<String, AppFlag> flags = binder.contributeMapped(String.class, AppFlag.class);
+flags.put("debug", new AppFlag("debug", true));
+```
+
+`K` can be an enum, a class, or any non-null key type. String is just the common case. `@Extension` on a Map injection site resolves the full `Map<K, V>` extension point, not just the value type.
+
+Mapped contribution keys are generic. Keys are stored as provided, null keys fail immediately, duplicate entries fail immediately, and `override(key, value)` is the explicit replacement path for an existing key.
+
+Use `put(key, value)` for new entries and `override(key, value)` only when the key is already present.
+
+Because modules bind in load order, an override must run after the contribution it replaces.
 
 ### Type Coercion
 
-Built-in coercions: `String → int, long, double, boolean, char, enum, Duration, ...`
-
-Add custom coercions:
+The IoC layer keeps the original Freeway strength: external strings can be expanded and coerced into target types.
 
 ```java
 binder.contribute(CoercionRule.class).add(new CoercionRule<>(
-    String.class, Endpoint.class,
+    String.class,
+    Endpoint.class,
     value -> {
         String[] parts = value.split(":", 2);
         return new Endpoint(parts[0], Integer.parseInt(parts[1]));
@@ -127,439 +232,245 @@ binder.contribute(CoercionRule.class).add(new CoercionRule<>(
 ));
 ```
 
-### SPI Discovery
+Commons owns the reusable scalar mechanics. IoC owns container-aware coercion rules and symbol/value integration.
 
-Modules can be auto-discovered via the standard Java `ServiceLoader` mechanism:
+### Logging Service
 
+`LoggerSource` is a built-in service:
+
+```java
+public final class UserService {
+    @Inject
+    private Logger log;
+
+    @Inject("audit")
+    private Logger audit;
+}
+
+Logger log = container.get(LoggerSource.class).get(UserService.class);
 ```
-META-INF/services/com.jujin.freeway.ioc.Module
--- content: fully qualified class name implementing Module
-```
 
-This is used by engine adapters and the DB module to auto-register themselves.
-
----
+Logger injection is owner-aware. Without an explicit id, the logger name is the declaring service type. With `@Inject("name")` or `@Named("name")`, the explicit name is used.
 
 ## Boot (`freeway-boot`)
 
-### Launcher API
+### Public Shape
 
 ```java
-// From a class
-App app = Launcher.run(MyAppModule.class, args);
-
-// From a Module instance
-App app = Launcher.run(module);
+AppRuntime runtime = Launcher.run(AppModule.class, args);
 ```
 
-### Shutdown Hook
+| Type | Purpose |
+|------|---------|
+| `Launcher` | Thin public entry point |
+| `AppBootstrap` | Internal boot orchestration |
+| `AppRuntime` | Runtime API: container, config, state, start, close |
+| `AppState` | `CREATED`, `STARTING`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED` |
 
-`Launcher.run()` automatically registers a JVM shutdown hook (`freeway-shutdown-hook` thread) that calls `app.close()` on JVM termination, ensuring graceful cleanup of containers, connection pools, and engine resources.
+`Launcher.run()` creates the container, builds the runtime, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
-### Logging Autoconfigure
+### Runtime Hooks
 
-Freeway ships with a built-in JUL (java.util.logging) adapter that implements the SLF4J 2.x `SLF4JServiceProvider` SPI. The adapter lives in `freeway-commons` but is **not** auto-registered via `ServiceLoader` — instead, `freeway-boot` makes a smart classpath detection at JVM startup.
-
-#### Strategy
-
-```
-Launcher static init
-       │
-       ▼
-FreewayLogging.autoConfigure()
-       │
-       ├── slf4j.provider 已设置? ──→ 尊重用户显式指定，跳过
-       │
-       └── 探测外部 Logger 实现
-               │
-          ┌────┴────┐
-          │有外部     │无外部
-          ▼           ▼
-        让路        设置 slf4j.provider
-        (SLF4J 通过  → 激活 JUL adapter
-         SPI 发现
-         外部 provider)
-```
-
-The detection is non-invasive — it uses `Class.forName()` to probe for well-known external provider classes without triggering SLF4J initialization:
-
-| 探测类 | 对应实现 |
-|--------|----------|
-| `ch.qos.logback.classic.spi.LogbackServiceProvider` | Logback 1.3+ (支持 SLF4J 2.x SPI) |
-| `org.apache.logging.slf4j.Log4jLoggerFactory` | Log4j2 SLF4J binding 2.x |
-| `org.slf4j.reload4j.Reload4jLoggerFactory` | Reload4j / Log4j 桥接 |
-| `org.slf4j.simple.SimpleServiceProvider` | slf4j-simple |
-
-#### Behavior Matrix
-
-| 场景 | classpath 上有 | 实际生效 |
-|------|----------------|----------|
-| 纯 Freeway 应用 | 只有 `freeway-commons` | ✅ JUL Logger |
-| Freeway + Logback | `logback-classic:1.3+` | ✅ Logback |
-| Freeway + Log4j2 | `log4j-slf4j2-impl` | ✅ Log4j2 |
-| 用户显式指定 | `-Dslf4j.provider=xxx` | ✅ 尊重用户选择 |
-
-#### Implementation
-
-The `FreewayLogging.autoConfigure()` call sits in `Launcher`'s static initializer — before any `LoggerFactory.getLogger()` call — ensuring the decision is made before SLF4J binds to a provider:
+Modules that own runtime resources should contribute `RuntimeHook` instead of starting work from constructors or service resolution:
 
 ```java
-public final class Launcher {
-    static {
-        FreewayLogging.autoConfigure();
+binder.contribute(RuntimeHook.class).add("app.cache", new RuntimeHook() {
+    @Override
+    public void start(Container container) {
+        container.get(Cache.class).warmup();
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(Launcher.class);
-    // ...
-}
+    @Override
+    public void stop(Container container) {
+        container.get(Cache.class).close();
+    }
+}).before(HttpModule.SERVER_HOOK);
 ```
 
-### Startup Timing
+Startup invokes hooks in resolved contribution order. Shutdown invokes only started hooks in reverse order, then closes the container.
 
-On every launch, the elapsed startup time is logged to the console:
+### Logging Bootstrap
 
-```
-INFO  - Started freeway application in 284 ms
-```
+`freeway-commons` provides `LoggingBootstrap` and a JUL-backed SLF4J 2 provider. It is deliberately not registered through `META-INF/services`, so it does not override an application logger.
+
+Decision path:
+
+- If `slf4j.provider` is already set, leave it alone.
+- If a known external provider is present, leave it alone.
+- Otherwise set the provider to Freeway's JUL fallback.
+
+Lower-level modules that need static loggers should call `LoggingBootstrap.logger(...)` rather than touching `LoggerFactory` directly.
 
 ### Config Cascade
 
-Priority (high → low):
+Config priority from high to low:
 
-1. CLI arguments (`--key=value`)
-2. System properties (`-Dkey=value`)
-3. Environment variables (`KEY=value`)
-4. `application-{profile}.json` (profile-specific)
+1. CLI arguments: `--key=value`
+2. System properties: `-Dkey=value`
+3. Environment variables
+4. `application-{profile}.json`
 5. `application-{profile}.properties`
 6. `application.json`
 7. `application.properties`
 
-### Profiles
-
-Activate with `--freeway.profile=dev` (or `-Dfreeway.profile=dev`). Multiple profiles can be comma-separated.
-
----
+Profiles are activated with `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
 
 ## HTTP Layer (`freeway-http`)
 
-The `com.jujin.freeway.http` package uses a flat structure — all classes in one package, no sub-packages. This keeps imports simple and discoverable:
+The HTTP package stays flat under `com.jujin.freeway.http`. Public contracts and small built-ins share the same package; transport internals stay package-private where possible.
 
-| Category | Classes |
-|----------|---------|
-| Core API | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `HttpServerConfig`, `HttpServerHandle`, `HttpRequestHandler`, `JsonCodec`, `WebServer`, `ExceptionMapper`, `RouteHandler`, `RequestContext`, `BodyHandler` |
-| WebSocket API | `WebSocketSession`, `WebSocketListener`, `WebSocketEndpoint`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketMatch`, `WebSocketIndex` |
-| SSE API | `SseEmitter`, `SseEvent` |
-| Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathGroupSupport`, `PathPattern` |
-| Built-ins | `DefaultJsonCodec`, `DefaultRequestContext`, `CorsFilter`, `RequestTimingFilter`, `StaticResourceMount`, `StaticResources`, `MultipartForm`, `RequestBodyTooLargeException`, `ValidationException` |
-| JDK engine | `JdkHttpEngine`, `JdkHttpContext` (package-private, always available fallback) |
+| Category | Main Types |
+|----------|------------|
+| Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `WebServer`, `JsonCodec` |
+| Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathPattern` |
+| Body | `BodyHandler`, `RequestContext`, `RequestContextDefault`, `MultipartForm` |
+| WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
+| SSE | `SseEmitter`, `SseEvent` |
+| Built-ins | `JsonCodecDefault`, `CorsFilter`, `RequestTimingFilter`, `StaticResources`, `ExceptionMapper` |
 
-The public API surface a typical application uses is 5–10 classes. Implementation details like `JdkHttpEngine` are package-private, isolating them from the public contract without needing directory-level separation.
+`WebServer` has explicit `start()` and `stop()` methods. In normal boot, `HttpModule` contributes a runtime hook using stable id `freeway.http.server`, so the server is started and stopped by `AppRuntime`.
 
-### Routing
-
-Routes are registered via the extension point mechanism — contribute `Route` or `RouteGroup` instances in your module:
+When using `Container` directly in tests or tools, start the server explicitly:
 
 ```java
-binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hello")));
-binder.contribute(Route.class).add(Route.post("/api/users", ctx -> {
-    ctx.sendJson(201, ctx.bodyAsJson(Map.class));
-}));
-binder.contribute(RouteGroup.class).add(RouteGroup.of("/api",
-    Route.get("/group", ctx -> ctx.send(200, "group")),
-    Route.get("/items/{id}", ctx -> ctx.send(200, ctx.pathVar("id")))
-));
+WebServer server = container.get(WebServer.class);
+server.start();
+try {
+    // test HTTP calls
+} finally {
+    server.stop();
+}
 ```
-
-Route paths support path parameters with optional regex constraints:
-
-| Pattern | Matches | Example |
-|---------|---------|--------|
-| `{id}` | any single segment | `/users/42` |
-| `{id:\\d+}` | digits only | `/users/42` (not `/users/abc`) |
-| `{path:.*}` | remaining path (wildcard) | `/files/a/b/c` |
-
-The route index uses a **trie** (prefix tree) internally, delivering O(L) lookup where L is the number of path segments — independent of total route count.
-
-### Request Body Binding with Validation
-
-`Route.post`, `Route.put`, and `Route.patch` accept a body type class for automatic JSON deserialization and bean validation:
-
-```java
-binder.contribute(Route.class).add(Route.post("/api/users", CreateUserRequest.class, (ctx, body) -> {
-    // body is already validated — type-safe, no manual deserialization needed
-    ctx.sendJson(201, Map.of("id", 1, "name", body.name()));
-}));
-
-binder.contribute(Route.class).add(Route.put("/api/users/{id}", UpdateUserRequest.class, (ctx, body) -> {
-    ctx.sendJson(200, Map.of("updated", true));
-}));
-```
-
-If validation fails, a `ValidationException` is thrown and automatically mapped to a `400 Bad Request` response with field-level error details.
-
-### Server-Sent Events (SSE)
-
-Call `HttpContext.sse()` to switch a response to SSE mode. Returns a `SseEmitter` for writing events:
-
-```java
-binder.contribute(Route.class).add(Route.get("/events", ctx -> {
-    try (var emitter = ctx.sse()) {
-        emitter.send("hello");                            // plain data event
-        emitter.send(new SseEvent("data", "evt1"));      // typed event
-        emitter.send(new SseEvent("payload", "msg-001", "update", 3000L)); // full event
-    }
-}));
-```
-
-`SseEvent` supports:
-| Field | Description |
-|-------|-------------|
-| `data` | Event data (required) |
-| `id` | Event ID for `Last-Event-ID` tracking |
-| `event` | Event type name (`event:` field) |
-| `retry` | Reconnection time in milliseconds |
-
-The emitter implements `AutoCloseable` — use try-with-resources for safe cleanup. SSE is supported on all HTTP engines (JDK, Robaho, Undertow, Jetty).
-
-### WebSocket
-
-WebSocket endpoints are registered via `WebSocketRoute` and `WebSocketGroup` contributions:
-
-```java
-binder.contribute(WebSocketRoute.class).add(WebSocketRoute.of("/chat", session -> new WebSocketListener() {
-    @Override
-    public void onText(String text) throws Exception {
-        session.sendText("Echo: " + text);
-    }
-}));
-```
-
-### Filters & Exception Mappers
-
-```java
-// Global filter
-binder.contribute(HttpFilter.class).add((ctx, next) -> {
-    long start = System.nanoTime();
-    next.handle(ctx);
-    long elapsed = System.nanoTime() - start;
-    ctx.headerSet("X-Response-Time", String.valueOf(elapsed / 1_000_000));
-});
-
-// Exception mapper
-binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
-    if (ex instanceof RequestBodyTooLargeException) {
-        ctx.sendJson(413, Map.of("error", "Payload Too Large"));
-        return true;
-    }
-    return false;
-});
-```
-
-`ValidationException` is automatically mapped by `HttpModule` to a `400 Bad Request` with `{error, details}` payload — no manual exception mapper needed.
 
 ### Engine Selection
 
-Set `web.engine` in config:
+`web.engine` selects the transport:
 
-| Value | Engine | Dependencies |
-|-------|--------|-------------|
-| `robaho` (default) | Robaho HTTP Server + WebSocket | Zero external deps |
-| `jdk` | JDK built-in HttpServer | Always available (HTTP only) |
-| `undertow` | Undertow 2.3 | `undertow-core` |
-| `jetty` | Jetty 12.1 | `jetty-server` + `jetty-websocket-server` |
+| Value | Engine |
+|-------|--------|
+| `robaho` | Default zero-dependency engine with WebSocket support |
+| `jdk` | Built into `freeway-http`, HTTP only |
+| `undertow` | Undertow adapter module |
+| `jetty` | Jetty adapter module |
 
-The engine adapter implements the `HttpEngine` interface. Each adapter module registers itself via `ServiceLoader`. The JDK engine is built into `freeway-http` and serves as automatic fallback when `robaho` is not on the classpath.
+Engine adapters bind their engine by string id:
 
----
+```java
+binder.bind(MyEngine.class).to(MyEngine.class).id("my-engine");
+```
 
 ## DB Layer (`freeway-db`)
 
-### Database Interface
+`Database` is the main entry point:
 
 ```java
-Database db = container.get(Database.class);
-
-// Query — returns a list
-List<User> users = db.sql("SELECT * FROM users WHERE active = ?", true)
+List<User> users = db.sql("select * from users where active = ?", true)
     .list(User.class);
 
-// Single result — returns Optional
-User user = db.sql("SELECT * FROM users WHERE id = ?", 42)
+User user = db.sql("select * from users where id = :id")
+    .param("id", 42)
     .one(User.class)
     .orElseThrow();
-
-// Named parameters — :name or $name syntax
-List<User> filtered = db.sql("SELECT * FROM users WHERE name = :name AND active = $active")
-    .param("name", "Alice")
-    .param("active", true)
-    .list(User.class);
-
-// IN clause with Collection expansion
-List<User> byIds = db.sql("SELECT * FROM users WHERE id IN (:ids)")
-    .param("ids", List.of(1, 2, 3))
-    .list(User.class);
-
-// Write operations
-int rows = db.sql("UPDATE users SET name = ? WHERE id = ?", "Alice", 42)
-    .execute();
 ```
 
-> **Note**: Named (`.param(name, value)`) and positional (`.sql(sql, val1, val2)`) parameters cannot be mixed.
+### Usage Patterns
 
-### Streaming Queries
-
-For large result sets, use `Query.stream()` — returns a lazy `Stream<T>` that fetches rows on demand. The underlying database connection is held open until the stream is closed:
+Use `sql(...)` for one-off reads and writes:
 
 ```java
-// Always use try-with-resources to ensure the connection is returned to the pool
-try (var stream = db.sql("SELECT * FROM users WHERE active = ?", true)
-                       .stream(User.class)) {
-    stream.forEach(user -> process(user));
-}
+List<User> users = db.sql("select * from users where active = ?", true)
+    .list(User.class);
+
+db.sql("update users set last_login_at = now() where id = ?", 42L)
+    .execute();
 ```
 
-The stream uses a fetch size of 100 rows per network round-trip. Connection is returned to the pool automatically when the stream is closed (either via `close()` or a terminal operation like `collect()` inside try-with-resources).
-
-### Batch Queries
+Use named parameters when the call site reads better:
 
 ```java
-// Positional batch
-int[] results = db.batch("INSERT INTO log (msg) VALUES (?)")
-    .rows(new Object[]{"msg1"}, new Object[]{"msg2"})
-    .execute();
+User user = db.sql("select * from users where id = :id")
+    .param("id", 42)
+    .one(User.class)
+    .orElseThrow();
+```
 
-// Named batch
-db.batch("INSERT INTO users(name, active) VALUES (:name, :active)")
-    .named(List.of(
-        Map.of("name", "Alice", "active", true),
-        Map.of("name", "Bob", "active", false)
-    ))
+Use `batch(...)` for repeated statements:
+
+```java
+db.batch("insert into ledger (id, name) values (?, ?)")
+    .rows(
+        new Object[] { 1L, "alpha" },
+        new Object[] { 2L, "beta" }
+    )
     .execute();
 ```
 
-### Transactions
+Use `transaction(...)` for atomic multi-step work:
 
 ```java
 db.transaction(tx -> {
-    tx.sql("UPDATE accounts SET balance = balance - 100 WHERE id = ?", 1).execute();
-    tx.sql("UPDATE accounts SET balance = balance + 100 WHERE id = ?", 2).execute();
-    return true; // commit
+    tx.sql("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L)
+        .execute();
+    tx.batch("insert into audit_log (id, message) values (?, ?)")
+        .rows(new Object[] { 1L, "ledger updated" })
+        .execute();
 });
 ```
 
-### Connection Pooling
-
-Built-in pool, configured via config properties:
-
-```properties
-db.url=jdbc:h2:mem:test
-db.username=sa
-db.password=
-db.maxSize=10
-db.minIdle=2
-db.connectionTimeout=5s
-db.maxLifetime=30m
-```
-
-### Leak Detection
-
-The pool tracks active (borrowed) connections. `DatabaseStats.longLeased()` reports connections held longer than 30 seconds, helping detect connection leaks in application code. Query via:
+Use the isolation overload only when the database behavior needs it:
 
 ```java
-DatabaseStats stats = db.stats();
-int leaked = stats.longLeased(); // connections borrowed > 30s
+db.transaction(tx -> {
+    tx.sql("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L)
+        .execute();
+}, IsolationLevel.READ_COMMITTED);
 ```
 
-### RowMapper Caching
-
-Row mappers for record and bean types cache column index lookups after the first row, avoiding repeated `ResultSetMetaData` calls across large result sets. The cache auto-invalidates when the result set's column count changes (e.g., across different queries on the same `PreparedStatement`).
-
-### Migrations
-
-SQL files in `db/migration/` with `V{version}__{description}.sql` naming:
-
-```sql
--- db/migration/V001__create_users.sql
-CREATE TABLE users (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    active BOOLEAN DEFAULT TRUE
-);
-```
-
-Migrations run automatically when the `Database` is first accessed. Each migration runs exactly once.
-
-### DatabaseHub (Multi-Datasource)
+Use `DatabaseHub` when there are multiple datasources:
 
 ```java
-DatabaseHub hub = container.get(DatabaseHub.class);
-Database analytics = hub.get("analytics");
-analytics.sql("SELECT COUNT(*) FROM events").one(Long.class);
+Database primary = hub.primary();
+Database audit = hub.get("audit");
 ```
 
----
+Key capabilities:
+
+- Positional and named parameters.
+- Collection expansion for `IN` clauses.
+- `one`, `list`, `stream`, and `execute` query paths.
+- Programmatic transactions.
+- Built-in connection pool and leak statistics.
+- SQL migrations from `db/migration/`.
+- Record/bean row mapping with cached column lookup.
+- Manually registered row mappers and user-contributed row mappers merge in one resolver.
+- `DatabaseHub` for multiple datasources.
+
+## Naming Rules
+
+- Public interfaces use the domain name directly: `Container`, `JsonCodec`, `RequestContext`.
+- Framework-provided implementation classes use `XDefault`: `AppRuntimeDefault`, `JsonCodecDefault`, `RequestContextDefault`, `CoercerDefault`.
+- `DefaultX` is avoided because it hides the dominant concept at the end of the name.
+- `Impl` is reserved for uninteresting concrete implementations where no default strategy is being expressed.
+- Internal normalization helpers stay internal, for example `ServiceIds`.
 
 ## Testing Guidelines
 
-### Running Tests
-
 ```bash
-# All tests
 mvn test
-
-# Single module
-mvn -pl freeway-ioc test
-
-# Module with dependencies
+mvn -pl freeway-ioc -am test
 mvn -pl freeway-http -am test
+mvn -pl freeway-db -am test
 ```
 
-### Writing Tests
-
-The IoC container makes unit testing straightforward:
-
-```java
-@Test
-void resolvesPrimaryBinding() {
-    Container container = Freeway.create(
-        binder -> binder.bind(Greeter.class).to(GreeterImpl.class)
-    );
-    Greeter greeter = container.get(Greeter.class);
-    assertEquals("hello", greeter.greet());
-}
-```
-
-For module integration tests, use `Launcher`:
-
-```java
-@Test
-void bootsWithFullStack() {
-    App app = Launcher.run(TestApp.class);
-    try {
-        MyService svc = app.container().get(MyService.class);
-        assertNotNull(svc);
-    } finally {
-        app.close();
-    }
-}
-```
-
----
-
-## Adding a New HTTP Engine Adapter
-
-1. Create module `freeway-http-{name}`
-2. Depend on `freeway-http`
-3. Implement `HttpEngine` interface
-4. Register a `Module` in `META-INF/services/com.jujin.freeway.ioc.Module`
-5. Bind the engine class with an id: `binder.bind(MyEngine.class).to(MyEngine.class).id(ServiceId.of("my-engine"))`
-6. Users select it with `web.engine=my-engine`
-
----
+For IoC tests, use `Freeway.create(...)`. For application integration tests, use `Launcher.run(...)` so runtime hooks and shutdown behavior are exercised.
 
 ## Code Style
 
-- Java 25 with preview features (`--enable-preview`)
-- No external dependencies for core modules (commons, ioc, boot, http, db)
-- Explicit over implicit — no annotation scanning, no bytecode manipulation
-- `compose-first` — wire everything in `Module.bind(Binder)`
+- JDK 25+.
+- Core modules avoid external dependencies unless the module's purpose is an adapter.
+- No classpath scanning.
+- No bytecode weaving.
+- Prefer constructor injection for framework internals.
+- Field injection is acceptable for concise app code and config values.
+- Prefer small explicit APIs over future-proof abstractions.
+- Keep concepts few: Module, Service, Extension, Scope, Runtime.

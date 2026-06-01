@@ -35,68 +35,31 @@ public final class JsonObject {
     }
 
     public String getString(String key) {
-        Object value = get(key);
-        return value == null ? null : String.valueOf(value);
+        return JsonAccessors.string(get(key));
     }
 
     public Integer getInt(String key) {
-        Object value = get(key);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        return Integer.parseInt(String.valueOf(value));
+        return JsonAccessors.integer(get(key));
     }
 
     public Long getLong(String key) {
-        Object value = get(key);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        return Long.parseLong(String.valueOf(value));
+        return JsonAccessors.longValue(get(key));
     }
 
     public Double getDouble(String key) {
-        Object value = get(key);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        return Double.parseDouble(String.valueOf(value));
+        return JsonAccessors.doubleValue(get(key));
     }
 
     public Boolean getBoolean(String key) {
-        Object value = get(key);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Boolean b) {
-            return b;
-        }
-        return Boolean.parseBoolean(String.valueOf(value));
+        return JsonAccessors.booleanValue(get(key));
     }
 
     public JsonObject getObject(String key) {
-        Object value = get(key);
-        if (value instanceof JsonObject object) {
-            return object;
-        }
-        return null;
+        return JsonAccessors.object(get(key));
     }
 
     public JsonArray getArray(String key) {
-        Object value = get(key);
-        if (value instanceof JsonArray array) {
-            return array;
-        }
-        return null;
+        return JsonAccessors.array(get(key));
     }
 
     public boolean containsKey(String key) {

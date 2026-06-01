@@ -14,7 +14,7 @@ import robaho.net.httpserver.websockets.WebSocketException;
 import robaho.net.httpserver.websockets.WebSocketFrame;
 
 final class RobahoWebSocketSession extends WebSocket implements WebSocketSession {
-    private static final Logger LOG = LoggerFactory.getLogger(RobahoWebSocketSession.class);
+    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(RobahoWebSocketSession.class);
 
     private final HttpExchange exchange;
     private final RequestContext requestContext;

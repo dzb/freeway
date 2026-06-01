@@ -1,5 +1,6 @@
 package com.jujin.freeway.commons.bean;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,9 +13,8 @@ public final class BeanIntrospector {
             return BeanPlan.of(type);
         }
     };
-    // 注：若应用动态生成大量 class（如代理类），此处可能成为内存泄漏源。
-    // 届时可替换为弱键缓存（如 WeakHashMap），但需权衡并发性能。
-    private static final ConcurrentMap<Constructor<?>, BeanConstructor> CONSTRUCTORS = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Constructor<?>, BeanConstructor> CONSTRUCTORS =
+        new ConcurrentHashMap<>();
 
     private BeanIntrospector() {
     }
@@ -24,6 +24,38 @@ public final class BeanIntrospector {
     }
 
     public static BeanConstructor constructor(Constructor<?> constructor) {
-        return CONSTRUCTORS.computeIfAbsent(Objects.requireNonNull(constructor, "constructor"), BeanConstructor::of);
+        return CONSTRUCTORS.computeIfAbsent(
+            Objects.requireNonNull(constructor, "constructor"),
+            BeanConstructor::of
+        );
+    }
+
+    public static BeanConstructor selectConstructor(
+        Class<?> type,
+        Class<? extends Annotation> preferredAnnotation
+    ) throws NoSuchMethodException {
+        Constructor<?>[] constructors = Objects.requireNonNull(type, "type").getDeclaredConstructors();
+        if (constructors.length == 0) {
+            return constructor(type.getDeclaredConstructor());
+        }
+        BeanConstructor preferred = null;
+        BeanConstructor maxParams = null;
+        for (Constructor<?> constructor : constructors) {
+            BeanConstructor candidate = constructor(constructor);
+            if (preferredAnnotation != null && candidate.hasAnnotation(preferredAnnotation)) {
+                if (preferred != null) {
+                    throw new IllegalArgumentException(
+                        "Multiple @" + preferredAnnotation.getSimpleName() + " constructors found on "
+                        + type.getName()
+                    );
+                }
+                preferred = candidate;
+            }
+            if (maxParams == null
+                || candidate.parameters().size() > maxParams.parameters().size()) {
+                maxParams = candidate;
+            }
+        }
+        return preferred != null ? preferred : maxParams;
     }
 }

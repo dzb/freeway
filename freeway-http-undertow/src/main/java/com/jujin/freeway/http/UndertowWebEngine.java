@@ -23,7 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 final class UndertowWebEngine implements HttpEngine {
-    private static final Logger LOG = LoggerFactory.getLogger(UndertowWebEngine.class);
+    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(UndertowWebEngine.class);
     private final JsonCodec jsonCodec;
 
     public UndertowWebEngine(JsonCodec jsonCodec) {
@@ -35,7 +35,13 @@ final class UndertowWebEngine implements HttpEngine {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(handler, "handler");
 
-        HttpHandler root = exchange -> dispatch(exchange, handler);
+        HttpHandler root = exchange -> {
+            if (exchange.isInIoThread()) {
+                exchange.dispatch(() -> handle(exchange, handler));
+                return;
+            }
+            handle(exchange, handler);
+        };
         GracefulShutdownHandler gracefulShutdown = Handlers.gracefulShutdown(root);
         Undertow server = Undertow.builder()
             .addHttpListener(config.port(), config.host())
@@ -44,6 +50,14 @@ final class UndertowWebEngine implements HttpEngine {
         server.start();
         LOG.info("Freeway undertow web engine started on {}:{}", config.host(), listenerPort(server));
         return new UndertowHandle(server, gracefulShutdown, config.shutdownGraceSeconds(), config.host());
+    }
+
+    private void handle(HttpServerExchange exchange, HttpRequestHandler handler) {
+        try {
+            dispatch(exchange, handler);
+        } catch (Exception ex) {
+            throw new RuntimeException("Undertow request dispatch failed", ex);
+        }
     }
 
     private void dispatch(HttpServerExchange exchange, HttpRequestHandler handler) throws Exception {

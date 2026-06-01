@@ -14,7 +14,7 @@ import robaho.net.httpserver.websockets.WebSocket;
 import robaho.net.httpserver.websockets.WebSocketHandler;
 
 final class RobahoWebEngine implements HttpEngine {
-    private static final Logger LOG = LoggerFactory.getLogger(RobahoWebEngine.class);
+    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(RobahoWebEngine.class);
     private final JsonCodec jsonCodec;
 
     public RobahoWebEngine(JsonCodec jsonCodec) {

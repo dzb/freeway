@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 final class JdkHttpEngine implements HttpEngine {
-    private static final Logger LOG = LoggerFactory.getLogger(JdkHttpEngine.class);
+    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(JdkHttpEngine.class);
     private final JsonCodec jsonCodec;
 
     public JdkHttpEngine(JsonCodec jsonCodec) {

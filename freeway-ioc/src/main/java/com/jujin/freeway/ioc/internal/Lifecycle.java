@@ -1,0 +1,87 @@
+package com.jujin.freeway.ioc.internal;
+
+import com.jujin.freeway.commons.bean.MethodHandleUtils;
+import com.jujin.freeway.ioc.annotation.PostConstruct;
+import com.jujin.freeway.ioc.annotation.PreDestroy;
+import java.lang.invoke.MethodHandle;
+import java.lang.reflect.Method;
+
+final class Lifecycle {
+    private static final ClassValue<LifecyclePlan> PLANS = new ClassValue<>() {
+        @Override
+        protected LifecyclePlan computeValue(Class<?> type) {
+            return LifecyclePlan.of(type);
+        }
+    };
+
+    private Lifecycle() {
+    }
+
+    static void invokePostConstruct(Object instance) {
+        invokeLifecycle(PLANS.get(instance.getClass()).postConstruct(), instance, "@PostConstruct");
+    }
+
+    static void invokePreDestroy(Object instance) {
+        invokeLifecycle(PLANS.get(instance.getClass()).preDestroy(), instance, "@PreDestroy");
+    }
+
+    private static void invokeLifecycle(MethodHandle handle, Object instance, String annotationName) {
+        if (handle == null) {
+            return;
+        }
+        try {
+            MethodHandleUtils.invoke(handle, instance);
+        } catch (Throwable ex) {
+            throw new RuntimeException(
+                annotationName + " invocation failed on " + instance.getClass().getName(), ex
+            );
+        }
+    }
+
+    private static Method findLifecycleMethod(Class<?> clazz, Class<? extends java.lang.annotation.Annotation> annotationType) {
+        Method result = null;
+        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
+            Method found = null;
+            for (Method m : c.getDeclaredMethods()) {
+                if (!m.isAnnotationPresent(annotationType)) {
+                    continue;
+                }
+                if (m.getParameterCount() != 0 || m.getReturnType() != void.class
+                    || java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
+                    throw new IllegalArgumentException(
+                        "@" + annotationType.getSimpleName() + " method must be non-static, take no parameters, and return void: "
+                        + c.getName() + "." + m.getName()
+                    );
+                }
+                if (found != null) {
+                    throw new IllegalArgumentException(
+                        "Multiple @" + annotationType.getSimpleName() + " methods found in class "
+                        + c.getName()
+                    );
+                }
+                found = m;
+            }
+            if (found != null) {
+                if (result != null) {
+                    continue;
+                }
+                result = found;
+            }
+        }
+        return result;
+    }
+
+    private record LifecyclePlan(MethodHandle postConstruct, MethodHandle preDestroy) {
+        private LifecyclePlan {
+        }
+
+        static LifecyclePlan of(Class<?> type) {
+            Method postConstruct = findLifecycleMethod(type, PostConstruct.class);
+            Method preDestroy = findLifecycleMethod(type, PreDestroy.class);
+            return new LifecyclePlan(
+                postConstruct == null ? null : MethodHandleUtils.methodHandle(postConstruct),
+                preDestroy == null ? null : MethodHandleUtils.methodHandle(preDestroy)
+            );
+        }
+    }
+}

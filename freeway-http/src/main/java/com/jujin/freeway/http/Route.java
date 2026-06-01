@@ -13,17 +13,7 @@ public record Route(
         method = normalizeMethod(method);
         Objects.requireNonNull(path, "path");
         Objects.requireNonNull(handler, "handler");
-        validatePath(path);
-    }
-
-    private static void validatePath(String path) {
-        // reject path traversal in route registration
-        for (String seg : path.split("/")) {
-            if ("..".equals(seg)) {
-                throw new IllegalArgumentException(
-                    "Path must not contain '..' (path traversal): " + path);
-            }
-        }
+        PathPattern.validateRegistrationPath(path);
     }
 
     public static Route of(String method, String path, RouteHandler handler) {

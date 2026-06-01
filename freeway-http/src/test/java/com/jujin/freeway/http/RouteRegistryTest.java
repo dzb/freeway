@@ -27,4 +27,16 @@ class RouteIndexTest {
             Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))
         ), List.of()));
     }
+
+    @Test
+    void rejectsEncodedTraversalInHttpRouteRegistration() {
+        assertThrows(IllegalArgumentException.class, () ->
+            Route.get("/files/%2e%2e", ctx -> ctx.send(200, "ok")));
+    }
+
+    @Test
+    void rejectsEncodedTraversalInWebSocketRouteRegistration() {
+        assertThrows(IllegalArgumentException.class, () ->
+            WebSocketRoute.of("/ws/%2e%2e", session -> WebSocketListener.NOOP));
+    }
 }

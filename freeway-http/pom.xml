@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.jujin8.freeway</groupId>
         <artifactId>freeway-parent</artifactId>
-        <version>1.0.1</version>
+        <version>1.0.3</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -34,5 +34,27 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-boot</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

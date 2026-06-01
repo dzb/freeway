@@ -8,5 +8,5 @@ public interface Binder {
 
     <T> Contributions<T> contribute(Class<T> valueType);
 
-    <V> MappedContributions<V> contributeMapped(Class<V> valueType);
+    <K, V> MappedContributions<K, V> contributeMapped(Class<K> keyType, Class<V> valueType);
 }

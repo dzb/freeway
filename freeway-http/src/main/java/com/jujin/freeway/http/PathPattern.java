@@ -57,6 +57,16 @@ final class PathPattern {
         this.wildcard = parsedWildcard;
     }
 
+    static void validateRegistrationPath(String path) {
+        String normalized = normalizePath(path);
+        for (String seg : splitPath(normalized)) {
+            if (isPathTraversalSegment(seg)) {
+                throw new IllegalArgumentException(
+                    "Path must not contain traversal segments (path: " + path + ")");
+            }
+        }
+    }
+
     String template() {
         return template;
     }
@@ -96,7 +106,7 @@ final class PathPattern {
         return vars;
     }
 
-    private static String[] splitPath(String path) {
+    static String[] splitPath(String path) {
         if (path == null || path.isEmpty() || "/".equals(path)) {
             return new String[0];
         }
@@ -110,7 +120,7 @@ final class PathPattern {
         return normalized.split("/");
     }
 
-    private static String normalizePath(String path) {
+    static String normalizePath(String path) {
         String value = HttpContext.blankToNull(path);
         if (value == null || "/".equals(value)) {
             return "/";
@@ -119,7 +129,7 @@ final class PathPattern {
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
-    private static boolean containsPathTraversal(String path) {
+    static boolean containsPathTraversal(String path) {
         for (String seg : path.split("/")) {
             if (isPathTraversalSegment(seg)) {
                 return true;
@@ -128,7 +138,7 @@ final class PathPattern {
         return false;
     }
 
-    private static boolean isPathTraversalSegment(String seg) {
+    static boolean isPathTraversalSegment(String seg) {
         // literal ".." or Windows-style "..\\xxx"
         if ("..".equals(seg) || seg.startsWith("..\\")) {
             return true;

@@ -24,7 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 final class JettyWebEngine implements HttpEngine {
-    private static final Logger LOG = LoggerFactory.getLogger(JettyWebEngine.class);
+    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(JettyWebEngine.class);
     private final JsonCodec jsonCodec;
 
     public JettyWebEngine(JsonCodec jsonCodec) {
@@ -269,6 +269,7 @@ final class JettyWebEngine implements HttpEngine {
                 appListener.onText(message);
             } catch (Exception ex) {
                 onWebSocketError(ex);
+                closeWithError(ex);
             }
         }
 
@@ -286,6 +287,7 @@ final class JettyWebEngine implements HttpEngine {
                 appListener.onBinary(data);
                 callback.succeed();
             } catch (Exception ex) {
+                onWebSocketError(ex);
                 callback.fail(ex);
             }
         }
@@ -306,6 +308,17 @@ final class JettyWebEngine implements HttpEngine {
                 appListener.onError(cause);
             } catch (Exception ex) {
                 LOG.warn("Jetty websocket listener failed while handling error", ex);
+            }
+        }
+
+        private void closeWithError(Throwable cause) {
+            if (session == null || !session.isOpen()) {
+                return;
+            }
+            try {
+                session.close(1011, cause != null && cause.getMessage() != null ? cause.getMessage() : "websocket error");
+            } catch (Exception ex) {
+                LOG.warn("Jetty websocket session failed to close after error", ex);
             }
         }
     }

@@ -9,7 +9,17 @@ public interface Database extends AutoCloseable {
 
     void transaction(Consumer<Transaction> work);
 
+    /**
+     * 在指定隔离级别下执行事务。
+     */
+    void transaction(Consumer<Transaction> work, IsolationLevel isolation);
+
     Transaction beginTransaction();
+
+    /**
+     * 以指定隔离级别开启事务。
+     */
+    Transaction beginTransaction(IsolationLevel isolation);
 
     boolean ping();
 

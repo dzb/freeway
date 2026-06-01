@@ -6,7 +6,7 @@
 
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-parent</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <packaging>pom</packaging>
 
     <name>Freeway Framework</name>
@@ -92,6 +92,21 @@
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
                 <artifactId>freeway-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-starter-boot</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-starter-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-starter-db</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -197,6 +212,9 @@
         <module>freeway-http-undertow</module>
         <module>freeway-http-jetty</module>
         <module>freeway-db</module>
+        <module>freeway-starter-boot</module>
+        <module>freeway-starter-web</module>
+        <module>freeway-starter-db</module>
         <module>freeway-starter</module>
     </modules>
 </project>

@@ -1,11 +1,11 @@
 package com.jujin.freeway.db;
 
+import com.jujin.freeway.commons.scalar.CoercerDefault;
 import com.jujin.freeway.db.internal.DatabaseImpl;
-import com.jujin.freeway.db.internal.RowMapperRegistry;
+import com.jujin.freeway.db.internal.RowMapperResolver;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 public final class DatabaseBuilder {
@@ -21,7 +21,7 @@ public final class DatabaseBuilder {
     private String healthCheckQuery = DatabaseConfig.DEFAULT_HEALTH_CHECK_QUERY;
     private Duration healthCheckTimeout = DatabaseConfig.DEFAULT_HEALTH_CHECK_TIMEOUT;
     private Duration queryTimeout = DatabaseConfig.DEFAULT_QUERY_TIMEOUT;
-    private final List<RowMapping<?>> mappings = new ArrayList<>();
+    private final Map<Class<?>, RowMapper<?>> rowMappers = new LinkedHashMap<>();
 
     public static DatabaseBuilder from(DatabaseConfig config) {
         return new DatabaseBuilder().copyFrom(Objects.requireNonNull(config, "config"));
@@ -87,13 +87,15 @@ public final class DatabaseBuilder {
         return this;
     }
 
-    public DatabaseBuilder mapping(RowMapping<?> mapping) {
-        mappings.add(Objects.requireNonNull(mapping, "mapping"));
-        return this;
-    }
-
-    public DatabaseBuilder mappings(Collection<RowMapping<?>> values) {
-        mappings.addAll(Objects.requireNonNull(values, "values"));
+    public <T> DatabaseBuilder rowMapper(Class<T> type, RowMapper<? extends T> mapper) {
+        Class<T> t = Objects.requireNonNull(type, "type");
+        RowMapper<?> m = Objects.requireNonNull(mapper, "mapper");
+        if (rowMappers.containsKey(t)) {
+            throw new IllegalStateException(
+                "Duplicate row mapper registration for " + t.getName()
+            );
+        }
+        rowMappers.put(t, m);
         return this;
     }
 
@@ -130,7 +132,11 @@ public final class DatabaseBuilder {
         );
         return new DatabaseImpl(
             config,
-            new RowMapperRegistry(null, List.copyOf(mappings))
+            new RowMapperResolver(
+                new CoercerDefault(),
+                Map.copyOf(rowMappers),
+                Map.<Class<?>, RowMapper<?>>of()
+            )
         );
     }
 }

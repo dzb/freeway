@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.jujin.freeway.commons.scalar.Coercer;
-import com.jujin.freeway.commons.scalar.DefaultCoercer;
+import com.jujin.freeway.commons.scalar.CoercerDefault;
 
 public abstract class HttpContext {
     private static final Pattern CHARSET_PATTERN = Pattern.compile("(?i)\\bcharset=([^\\s;]+)");
@@ -151,7 +151,7 @@ public abstract class HttpContext {
         return outputJson(value);
     }
 
-    protected Coercer coercer = new DefaultCoercer();
+    protected Coercer coercer = new CoercerDefault();
 
     protected static String blankToNull(String s) {
         return s != null && !s.isBlank() ? s : null;

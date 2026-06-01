@@ -28,7 +28,7 @@ class JdkHttpEngineTest {
             new HttpModule(),
             binder -> binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")))
         );
-        c.get(WebServer.class);
+        c.get(WebServer.class).start();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> r = client.send(
@@ -60,7 +60,7 @@ class JdkHttpEngineTest {
                 serverDone.countDown();
             }))
         );
-        c.get(WebServer.class);
+        c.get(WebServer.class).start();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> r = client.send(

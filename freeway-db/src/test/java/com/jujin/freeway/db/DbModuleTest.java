@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class DbModuleTest {
     private static final String URL_KEY = DatabaseConfig.PREFIX + ".url";
@@ -47,8 +48,9 @@ class DbModuleTest {
 
         try (Container container = Freeway.create(
             new DbModule(),
-            binder -> binder.contribute(RowMapping.class).add(
-                RowMapping.of(Money.class, (rs, rowNum) -> new Money(rs.getLong("amount_cents")))
+            binder -> binder.contributeMapped(Class.class, RowMapper.class).put(
+                Money.class,
+                (rs, rowNum) -> new Money(rs.getLong("amount_cents"))
             )
         )) {
             Database db = container.get(Database.class);
@@ -96,34 +98,6 @@ class DbModuleTest {
     }
 
     @Test
-    void standaloneBuilderSupportsCustomMappings() {
-        String dbName = "freeway_builder_" + UUID.randomUUID().toString().replace('-', '_');
-        Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
-            .mapping(RowMapping.of(Money.class, (rs, rowNum) -> new Money(rs.getLong("amount_cents"))))
-            .build();
-
-        try (db) {
-            db.sql(
-                """
-                create table ledger (
-                    id bigint primary key,
-                    amount_cents bigint not null
-                )
-                """
-            ).execute();
-            db.sql("insert into ledger (id, amount_cents) values (?, ?)", 1L, 300L).execute();
-
-            Money money = db.sql("select amount_cents from ledger where id = ?", 1L)
-                .one(Money.class)
-                .orElseThrow();
-            assertEquals(new Money(300L), money);
-        }
-    }
-
-    @Test
     void dbHubWrapsNamedDatabaseContributions() {
         Database primary = new DatabaseBuilder()
             .url("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
@@ -139,13 +113,14 @@ class DbModuleTest {
         try {
             Container container = Freeway.create(
                 new DbModule(),
-                binder -> binder.contributeMapped(Database.class).put("primary", primary),
-                binder -> binder.contributeMapped(Database.class).put("audit", audit)
+                binder -> binder.contributeMapped(String.class, Database.class).put("primary", primary),
+                binder -> binder.contributeMapped(String.class, Database.class).put("audit", audit)
             );
 
             DatabaseHub hub = container.get(DatabaseHub.class);
             assertEquals(primary, hub.get("primary"));
             assertEquals(audit, hub.get("audit"));
+            assertSame(primary, hub.primary());
             assertEquals(Map.of("primary", primary, "audit", audit), hub.all());
         } finally {
             primary.close();

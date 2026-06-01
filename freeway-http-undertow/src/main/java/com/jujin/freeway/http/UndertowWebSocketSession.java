@@ -53,7 +53,7 @@ final class UndertowWebSocketSession implements WebSocketSession {
                 try {
                     UndertowWebSocketSession.this.listener.onText(text);
                 } catch (Exception ex) {
-                    IoUtils.safeClose(channel);
+                    fail(channel, ex);
                 }
             }
 
@@ -65,7 +65,7 @@ final class UndertowWebSocketSession implements WebSocketSession {
                 try {
                     UndertowWebSocketSession.this.listener.onBinary(data);
                 } catch (Exception ex) {
-                    IoUtils.safeClose(channel);
+                    fail(channel, ex);
                 }
             }
 
@@ -82,7 +82,7 @@ final class UndertowWebSocketSession implements WebSocketSession {
                         WebSockets.sendClose(closeMessage, channel, null);
                     }
                 } catch (Exception ex) {
-                    IoUtils.safeClose(channel);
+                    fail(channel, ex);
                 }
             }
 
@@ -176,6 +176,19 @@ final class UndertowWebSocketSession implements WebSocketSession {
     public void close(int code, String reason) throws IOException {
         localCloseRequested = true;
         WebSockets.sendCloseBlocking(code, reason != null ? reason : "", channel);
+    }
+
+    private void fail(WebSocketChannel channel, Throwable cause) throws IOException {
+        try {
+            listener.onError(cause);
+        } catch (Exception ignored) {
+        }
+        try {
+            close(1011, cause != null && cause.getMessage() != null ? cause.getMessage() : "websocket error");
+        } catch (IOException ex) {
+            IoUtils.safeClose(channel);
+            throw ex;
+        }
     }
 
 }

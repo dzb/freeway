@@ -2,6 +2,9 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.DatabaseStats;
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -99,6 +102,48 @@ class ConnectionPoolLeakTest {
         pool.release(c2);
         assertEquals(0, pool.stats().active());
         assertNull(c2.borrowedAt());
+
+        pool.close();
+    }
+
+    @Test
+    void statsTrackBorrowWaitTime() throws Exception {
+        var config = new PoolConfig(
+            "jdbc:h2:mem:leak_test_4;DB_CLOSE_DELAY=-1", "sa", "",
+            1, 0,
+            Duration.ofSeconds(5),
+            Duration.ofMinutes(30),
+            Duration.ofMinutes(5),
+            Duration.ofSeconds(30),
+            null,
+            Duration.ofSeconds(3)
+        );
+        var pool = new ConnectionPool(config);
+
+        PooledConnection first = pool.borrow();
+        AtomicReference<PooledConnection> second = new AtomicReference<>();
+        CountDownLatch acquired = new CountDownLatch(1);
+
+        Thread.ofVirtual().start(() -> {
+            second.set(pool.borrow());
+            acquired.countDown();
+        });
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (pool.stats().waiting() == 0 && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+
+        assertEquals(1, pool.stats().waiting());
+
+        pool.release(first);
+        assertTrue(acquired.await(5, TimeUnit.SECONDS));
+        pool.release(second.get());
+
+        DatabaseStats stats = pool.stats();
+        assertEquals(2L, stats.borrowCount());
+        assertTrue(stats.borrowWaitNanos() > 0L);
+        assertTrue(stats.averageBorrowWaitNanos() > 0L);
 
         pool.close();
     }

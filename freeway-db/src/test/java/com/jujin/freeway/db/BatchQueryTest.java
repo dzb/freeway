@@ -71,6 +71,27 @@ class BatchQueryTest {
     }
 
     @Test
+    void batchRollsBackWhenOwnTransactionFails() {
+        String dbName = uniqueDb("batch_rollback");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.sql("create table t (id bigint primary key, label varchar(16))").execute();
+
+            assertThrows(SqlException.class, () ->
+                db.batch("insert into t (id, label) values (?, ?)")
+                    .rows(
+                        new Object[]{1L, "a"},
+                        new Object[]{1L, "dup"}
+                    )
+                    .execute()
+            );
+
+            long count = db.sql("select count(*) from t").one(Long.class).orElseThrow();
+            assertEquals(0L, count);
+        }
+    }
+
+    @Test
     void batchWithCollectionExpansion() {
         String dbName = uniqueDb("batch_coll");
         Database db = builder(dbName).build();

@@ -1,13 +1,14 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.ServiceId;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.Named;
 import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 import com.jujin.freeway.commons.scalar.Coercer;
 import com.jujin.freeway.commons.scalar.CoercionRule;
-import com.jujin.freeway.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.LoggerSource;
+import com.jujin.freeway.ioc.ScopeGate;
+import com.jujin.freeway.ioc.annotation.Extension;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.annotation.Symbol;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.lang.reflect.Proxy;
+import org.slf4j.Logger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -71,10 +74,10 @@ class FreewayTest {
 
     @Test
     void bindsServicesAndResolvesById() {
-        Container container = Freeway.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class).id(ServiceId.of("primary")));
+        Container container = Freeway.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class).id("primary"));
 
         Greeter service = container.get(Greeter.class);
-        Greeter namedService = container.get(Greeter.class, ServiceId.of("primary"));
+        Greeter namedService = container.get(Greeter.class, "primary");
 
         assertTrue(Proxy.isProxyClass(service.getClass()));
         assertSame(service, namedService);
@@ -83,10 +86,20 @@ class FreewayTest {
     }
 
     @Test
-    void resolvesPrimaryBindingWhenNoServiceIdIsProvided() {
+    void rejectsBlankServiceId() {
+        assertThrows(IllegalArgumentException.class, () ->
+            Freeway.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class).id("   "))
+        );
+
+        Container container = Freeway.create(binder -> binder.bind(Greeter.class).to(GreeterImpl.class));
+        assertThrows(IllegalArgumentException.class, () -> container.get(Greeter.class, "   "));
+    }
+
+    @Test
+    void resolvesPrimaryBindingWhenNoIdIsProvided() {
         Container container = Freeway.create(
-            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
-            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal"))
+            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id("stripe").primary(),
+            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
         CheckoutService service = container.get(CheckoutService.class);
@@ -98,8 +111,8 @@ class FreewayTest {
     @Test
     void resolvesExplicitNamedServiceInjection() {
         Container container = Freeway.create(
-            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
-            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal"))
+            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id("stripe").primary(),
+            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
         NamedCheckoutService service = container.get(NamedCheckoutService.class);
@@ -108,10 +121,10 @@ class FreewayTest {
     }
 
     @Test
-    void resolvesExplicitInjectServiceIdSyntaxSugar() {
+    void resolvesExplicitInjectIdSyntaxSugar() {
         Container container = Freeway.create(
-            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
-            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal"))
+            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id("stripe").primary(),
+            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
         InjectNamedCheckoutService service = container.get(InjectNamedCheckoutService.class);
@@ -120,10 +133,34 @@ class FreewayTest {
     }
 
     @Test
+    void loggerServiceAndInjectionUseOwningTypeByDefault() {
+        Container container = Freeway.create();
+        LoggerSource loggerSource = container.get(LoggerSource.class);
+
+        assertEquals(LoggerFieldHolder.class.getName(), loggerSource.get(LoggerFieldHolder.class).getName());
+        assertTrue(loggerSource.get(LoggerFieldHolder.class).isInfoEnabled());
+
+        LoggerFieldHolder fieldHolder = container.get(LoggerFieldHolder.class);
+        assertEquals(LoggerFieldHolder.class.getName(), fieldHolder.loggerName());
+
+        LoggerCtorHolder ctorHolder = container.get(LoggerCtorHolder.class);
+        assertEquals(LoggerCtorHolder.class.getName(), ctorHolder.loggerName());
+    }
+
+    @Test
+    void loggerInjectionCanUseExplicitName() {
+        Container container = Freeway.create();
+
+        NamedLoggerHolder holder = container.get(NamedLoggerHolder.class);
+
+        assertEquals("audit", holder.loggerName());
+    }
+
+    @Test
     void rejectsMultiplePrimaryBindingsForTheSameType() {
         Container container = Freeway.create(
-            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id(ServiceId.of("stripe")).primary(),
-            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id(ServiceId.of("paypal")).primary()
+            binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id("stripe").primary(),
+            binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal").primary()
         );
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> container.get(PaymentGateway.class));
@@ -250,7 +287,7 @@ class FreewayTest {
                     invocation -> {
                         log.add("short-circuit");
                         return "short-circuited";
-                        // does NOT call proceed() — short circuits
+                        // does NOT call proceed() - short circuits
                     }
                 ))
         );
@@ -293,7 +330,7 @@ class FreewayTest {
     }
 
     @Test
-    void extensionPointsAggregateContributions() {
+    void extensionsAggregateContributions() {
         Container container = Freeway.create(
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
@@ -305,15 +342,139 @@ class FreewayTest {
     }
 
     @Test
-    void mappedExtensionPointsAggregateKeyedContributions() {
+    void parameterExtensionsAggregateContributions() {
         Container container = Freeway.create(
-            binder -> binder.contributeMapped(AppFlag.class).put("debug", new AppFlag("debug", true)),
-            binder -> binder.contributeMapped(AppFlag.class).put("timing", new AppFlag("timing", false))
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
-        AppFlagCatalog catalog = container.get(AppFlagCatalog.class);
+        ParameterAppConfig config = container.get(ParameterAppConfig.class);
 
+        assertEquals(List.of("core", "web"), config.featureNames());
+    }
+
+    @Test
+    void extensionsCanOrderContributionsById() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class)
+                .add("web", new AppFeature("web"))
+                .after("db", "metrics"),
+            binder -> binder.contribute(AppFeature.class)
+                .add("core", new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class)
+                .add("db", new AppFeature("db"))
+                .after("core"),
+            binder -> binder.contribute(AppFeature.class)
+                .add("metrics", new AppFeature("metrics"))
+                .before("web")
+        );
+
+        AppConfig config = container.get(AppConfig.class);
+
+        assertEquals(List.of("core", "db", "metrics", "web"), config.featureNames());
+    }
+
+    @Test
+    void extensionOrderingRejectsDuplicateIds() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add("same", new AppFeature("first")),
+            binder -> binder.contribute(AppFeature.class).add("same", new AppFeature("second"))
+        ));
+
+        assertTrue(ex.getMessage().contains("Duplicate contribution id same"));
+    }
+
+    @Test
+    void extensionOrderingRejectsCycles() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class)
+                .add("first", new AppFeature("first"))
+                .after("second"),
+            binder -> binder.contribute(AppFeature.class)
+                .add("second", new AppFeature("second"))
+                .after("first")
+        );
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> container.get(AppConfig.class));
+
+        assertInstanceOf(IllegalStateException.class, ex.getCause());
+        assertTrue(ex.getCause().getMessage().contains("Contribution order cycle detected"));
+    }
+
+    @Test
+    void fieldExtensionsOverrideTypeDefault() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web")),
+            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", true)),
+            binder -> binder.contributeMapped(String.class, AppFlag.class).put("timing", new AppFlag("timing", false))
+        );
+
+        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
+
+        assertEquals(List.of("core", "web"), catalog.featureNames());
         assertEquals(Map.of("debug", new AppFlag("debug", true), "timing", new AppFlag("timing", false)), catalog.flags());
+    }
+
+    @Test
+    void mappedExtensionsRejectDuplicateKeys() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Freeway.create(
+            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", true)),
+            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", false))
+        ));
+
+        assertTrue(ex.getMessage().contains("Duplicate mapped contribution key debug"));
+    }
+
+    @Test
+    void mappedExtensionsRequireExplicitOverride() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Freeway.create(
+            binder -> binder.contributeMapped(String.class, AppFlag.class)
+                .override("debug", new AppFlag("debug", false))
+        ));
+
+        assertTrue(ex.getMessage().contains("Missing mapped contribution key debug"));
+    }
+
+    @Test
+    void mappedExtensionsAllowExplicitOverride() {
+        Container container = Freeway.create(
+            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", true)),
+            binder -> binder.contributeMapped(String.class, AppFlag.class).override("debug", new AppFlag("debug", false))
+        );
+
+        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
+
+        assertEquals(Map.of("debug", new AppFlag("debug", false)), catalog.flags());
+    }
+
+    @Test
+    void mappedExtensionsPreserveBlankStringKeys() {
+        Container container = Freeway.create(
+            binder -> binder.contributeMapped(String.class, AppFlag.class).put("   ", new AppFlag("debug", true))
+        );
+
+        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
+
+        assertEquals(Map.of("   ", new AppFlag("debug", true)), catalog.flags());
+    }
+
+    @Test
+    void mappedExtensionsSupportNonStringKeys() {
+        Container container = Freeway.create(
+            binder -> binder.contributeMapped(FlagKey.class, AppFlag.class).put(FlagKey.DEBUG, new AppFlag("debug", true)),
+            binder -> binder.contributeMapped(FlagKey.class, AppFlag.class).put(FlagKey.TIMING, new AppFlag("timing", false))
+        );
+
+        EnumKeyExtensionCatalog catalog = container.get(EnumKeyExtensionCatalog.class);
+
+        assertEquals(
+            Map.of(
+                FlagKey.DEBUG, new AppFlag("debug", true),
+                FlagKey.TIMING, new AppFlag("timing", false)
+            ),
+            catalog.flags()
+        );
     }
 
     interface Greeter {
@@ -382,6 +543,37 @@ class FreewayTest {
         }
     }
 
+    public static final class LoggerFieldHolder {
+        @Inject
+        private Logger logger;
+
+        String loggerName() {
+            return logger.getName();
+        }
+    }
+
+    public static final class LoggerCtorHolder {
+        private final Logger logger;
+
+        public LoggerCtorHolder(Logger logger) {
+            this.logger = logger;
+        }
+
+        String loggerName() {
+            return logger.getName();
+        }
+    }
+
+    public static final class NamedLoggerHolder {
+        @Named("audit")
+        @Inject
+        private Logger logger;
+
+        String loggerName() {
+            return logger.getName();
+        }
+    }
+
     public static final class ConfiguredService {
         private final int port;
         private final String name;
@@ -420,10 +612,11 @@ class FreewayTest {
         }
     }
 
+    @Extension(AppFeature.class)
     public static final class AppConfig {
         private final List<AppFeature> features;
 
-        public AppConfig(@ExtensionPoint(value = AppFeature.class) Collection<AppFeature> features) {
+        public AppConfig(Collection<AppFeature> features) {
             this.features = List.copyOf(features);
         }
 
@@ -435,11 +628,27 @@ class FreewayTest {
     public record AppFeature(String name) {
     }
 
-    public static final class AppFlagCatalog {
-        private final Map<String, AppFlag> flags;
+    public static final class ParameterAppConfig {
+        private final List<AppFeature> features;
 
-        public AppFlagCatalog(@ExtensionPoint(AppFlag.class) Map<String, AppFlag> flags) {
-            this.flags = Map.copyOf(flags);
+        public ParameterAppConfig(@Extension(AppFeature.class) Collection<AppFeature> features) {
+            this.features = List.copyOf(features);
+        }
+
+        List<String> featureNames() {
+            return features.stream().map(AppFeature::name).toList();
+        }
+    }
+
+    @Extension(AppFeature.class)
+    public static final class MixedExtensionCatalog {
+        private List<AppFeature> features;
+
+        @Extension(AppFlag.class)
+        private Map<String, AppFlag> flags;
+
+        List<String> featureNames() {
+            return features.stream().map(AppFeature::name).toList();
         }
 
         Map<String, AppFlag> flags() {
@@ -447,7 +656,21 @@ class FreewayTest {
         }
     }
 
+    public static final class EnumKeyExtensionCatalog {
+        @Extension(AppFlag.class)
+        private Map<FlagKey, AppFlag> flags;
+
+        Map<FlagKey, AppFlag> flags() {
+            return flags;
+        }
+    }
+
     public record AppFlag(String name, boolean enabled) {
+    }
+
+    public enum FlagKey {
+        DEBUG,
+        TIMING
     }
 
     public record Endpoint(String host, int port) {
@@ -502,6 +725,132 @@ class FreewayTest {
         // Prototype: each get() returns a new instance
         assertNotEquals(System.identityHashCode(one), System.identityHashCode(two));
         assertEquals(2, GreeterImpl.created.get());
+    }
+
+    @Test
+    void instanceBindingReturnsTheBoundInstance() {
+        GreeterImpl bound = new GreeterImpl();
+        Container container = Freeway.create(binder ->
+            binder.bind(GreeterImpl.class).to(bound)
+        );
+
+        assertSame(bound, container.get(GreeterImpl.class));
+    }
+
+    @Test
+    void instanceBindingRejectsNonSingletonScopeBeforeTo() {
+        GreeterImpl bound = new GreeterImpl();
+        assertThrows(IllegalStateException.class, () ->
+            Freeway.create(binder ->
+                binder.bind(GreeterImpl.class).scope(Scope.PROTOTYPE).to(bound)
+            )
+        );
+    }
+
+    @Test
+    void instanceBindingRejectsNonSingletonScopeAfterTo() {
+        GreeterImpl bound = new GreeterImpl();
+        assertThrows(IllegalStateException.class, () ->
+            Freeway.create(binder ->
+                binder.bind(GreeterImpl.class).to(bound).scope(Scope.PROTOTYPE)
+            )
+        );
+    }
+
+    @Test
+    void scopedBindingReusesWithinScopeAndIsDestroyedOnClose() {
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        ScopeGate scopeGate = container.get(ScopeGate.class);
+
+        assertThrows(IllegalStateException.class, () -> container.get(ScopedCounter.class));
+
+        ScopedCounter first = null;
+        try (ScopeHandle scope = scopeGate.open()) {
+            first = container.get(ScopedCounter.class);
+            ScopedCounter second = container.get(ScopedCounter.class);
+
+            assertSame(first, second);
+            assertEquals(1, ScopedCounter.created.get());
+            assertEquals(0, ScopedCounter.destroyed.get());
+        }
+
+        assertEquals(1, ScopedCounter.destroyed.get());
+
+        try (ScopeHandle scope = scopeGate.open()) {
+            ScopedCounter third = container.get(ScopedCounter.class);
+            assertNotSame(first, third);
+            assertEquals(2, ScopedCounter.created.get());
+        }
+
+        assertEquals(2, ScopedCounter.destroyed.get());
+    }
+
+    @Test
+    void containerCloseReleasesOpenScopes() {
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        ScopeGate scopeGate = container.get(ScopeGate.class);
+
+        ScopeHandle scope = scopeGate.open();
+        container.get(ScopedCounter.class);
+
+        container.close();
+        scope.close();
+
+        assertEquals(1, ScopedCounter.destroyed.get());
+    }
+
+    @Test
+    void singletonCanInjectScopedInterfaceThroughProxy() {
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+
+        Container container = Freeway.create(
+            binder -> {
+                binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.THREAD);
+                binder.bind(ScopedSingletonService.class).to(ScopedSingletonService.class);
+            }
+        );
+        ScopeGate scopeGate = container.get(ScopeGate.class);
+
+        ScopedSingletonService service = container.get(ScopedSingletonService.class);
+        assertTrue(service.proxied());
+
+        int firstId = -1;
+        try (ScopeHandle scope = scopeGate.open()) {
+            firstId = service.currentId();
+            assertEquals(firstId, service.currentId());
+        }
+
+        try (ScopeHandle scope = scopeGate.open()) {
+            int secondId = service.currentId();
+            assertNotEquals(firstId, secondId);
+        }
+
+        assertEquals(2, ScopedCounter.created.get());
+        assertEquals(2, ScopedCounter.destroyed.get());
+    }
+
+    @Test
+    void singletonRejectsDirectInjectionOfThreadScopedConcrete() {
+        Container container = Freeway.create(
+            binder -> {
+                binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD);
+                binder.bind(ScopedSingleton.class).to(ScopedSingleton.class);
+            }
+        );
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> container.get(ScopedSingleton.class));
+        assertInstanceOf(IllegalStateException.class, ex.getCause());
     }
 
     @Test
@@ -602,6 +951,30 @@ class FreewayTest {
     }
 
     @Test
+    void callsPrivatePostConstructAfterInjection() {
+        Container container = Freeway.create(binder ->
+            binder.bind(PrivateLifecycleBean.class).to(PrivateLifecycleBean.class)
+        );
+
+        PrivateLifecycleBean bean = container.get(PrivateLifecycleBean.class);
+
+        assertTrue(bean.initialized, "private @PostConstruct should be called");
+    }
+
+    @Test
+    void callsPrivatePreDestroyOnClose() {
+        Container container = Freeway.create(binder ->
+            binder.bind(PrivateLifecycleBean.class).to(PrivateLifecycleBean.class)
+        );
+
+        PrivateLifecycleBean bean = container.get(PrivateLifecycleBean.class);
+
+        assertFalse(bean.destroyed);
+        container.close();
+        assertTrue(bean.destroyed, "private @PreDestroy should be called on container close");
+    }
+
+    @Test
     void preDestroyCalledBeforeAutoCloseable() {
         Container container = Freeway.create(binder ->
             binder.bind(LifecycleOrderBean.class).to(LifecycleOrderBean.class)
@@ -619,9 +992,9 @@ class FreewayTest {
             binder.bind(InvalidPostConstructBean.class).to(InvalidPostConstructBean.class)
         );
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+        RuntimeException ex = assertThrows(RuntimeException.class,
             () -> container.get(InvalidPostConstructBean.class));
-        assertTrue(ex.getMessage().contains("@PostConstruct"));
+        assertInstanceOf(IllegalArgumentException.class, ex.getCause());
     }
 
     @Test
@@ -630,9 +1003,9 @@ class FreewayTest {
             binder.bind(DoublePostConstructBean.class).to(DoublePostConstructBean.class)
         );
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+        RuntimeException ex = assertThrows(RuntimeException.class,
             () -> container.get(DoublePostConstructBean.class));
-        assertTrue(ex.getMessage().contains("Multiple @PostConstruct"));
+        assertInstanceOf(IllegalArgumentException.class, ex.getCause());
     }
 
     @Test
@@ -681,6 +1054,59 @@ class FreewayTest {
         String order() {
             return String.join(",", events);
         }
+    }
+
+    public static final class PrivateLifecycleBean {
+        boolean initialized;
+        volatile boolean destroyed;
+
+        @PostConstruct
+        private void init() {
+            initialized = true;
+        }
+
+        @PreDestroy
+        private void cleanup() {
+            destroyed = true;
+        }
+    }
+
+    public interface ScopedApi {
+        int id();
+    }
+
+    public static final class ScopedCounter implements ScopedApi {
+        static final AtomicInteger created = new AtomicInteger();
+        static final AtomicInteger destroyed = new AtomicInteger();
+        private final int id = created.incrementAndGet();
+
+        @Override
+        public int id() {
+            return id;
+        }
+
+        @PreDestroy
+        void destroy() {
+            destroyed.incrementAndGet();
+        }
+    }
+
+    public static final class ScopedSingletonService {
+        @Inject
+        private ScopedApi api;
+
+        boolean proxied() {
+            return Proxy.isProxyClass(api.getClass());
+        }
+
+        int currentId() {
+            return api.id();
+        }
+    }
+
+    public static final class ScopedSingleton {
+        @Inject
+        private ScopedCounter counter;
     }
 
     public static class ParentPostConstructBean {

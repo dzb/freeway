@@ -82,7 +82,7 @@ class WebServerIntegrationTest {
                 throw new IllegalArgumentException("boom");
             }))
         );
-        container.get(WebServer.class);
+        container.get(WebServer.class).start();
         client = HttpClient.newHttpClient();
 
         HttpResponse<String> hello = client.send(request("/hello"), HttpResponse.BodyHandlers.ofString());

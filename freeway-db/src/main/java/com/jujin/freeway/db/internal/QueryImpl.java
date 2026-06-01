@@ -21,7 +21,7 @@ import java.util.stream.StreamSupport;
 
 final class QueryImpl implements Query {
     private final DatabaseImpl db;
-    private final PooledConnection transactionConnection;
+    private final PooledConnection boundConnection;
     private final String originalSql;
     private final Object[] positionalParams;
     private final Map<String, Object> namedParams;
@@ -32,12 +32,12 @@ final class QueryImpl implements Query {
 
     QueryImpl(
         DatabaseImpl db,
-        PooledConnection transactionConnection,
+        PooledConnection boundConnection,
         String sql,
         Object[] positionalParams
     ) {
         this.db = db;
-        this.transactionConnection = transactionConnection;
+        this.boundConnection = boundConnection;
         this.originalSql = sql;
         this.positionalParams = positionalParams;
         this.namedParams = new HashMap<>();
@@ -59,7 +59,7 @@ final class QueryImpl implements Query {
         try (var ctx = borrow()) {
             bindAll(ctx.stmt);
             try (var rs = ctx.stmt.executeQuery()) {
-                var mapper = db.rowMappers().forType(targetType);
+                var mapper = db.rowMapperResolver().resolve(targetType);
                 var list = new ArrayList<T>();
                 int rowNum = 0;
                 while (rs.next()) {
@@ -78,7 +78,7 @@ final class QueryImpl implements Query {
             bindAll(ctx.stmt);
             try (var rs = ctx.stmt.executeQuery()) {
                 if (rs.next()) {
-                    var mapper = db.rowMappers().forType(targetType);
+                    var mapper = db.rowMapperResolver().resolve(targetType);
                     return Optional.ofNullable(mapper.map(rs, 0));
                 }
                 return Optional.empty();
@@ -95,7 +95,7 @@ final class QueryImpl implements Query {
             bindAll(ctx.stmt);
             ctx.stmt.setFetchSize(100);
             var rs = ctx.stmt.executeQuery();
-            var mapper = db.rowMappers().forType(targetType);
+            var mapper = db.rowMapperResolver().resolve(targetType);
 
             Spliterator<T> spliterator = new Spliterators.AbstractSpliterator<>(
                 Long.MAX_VALUE, Spliterator.ORDERED | Spliterator.NONNULL
@@ -352,8 +352,8 @@ final class QueryImpl implements Query {
 
     private ExecuteContext borrow() throws SQLException {
         String sql = jdbcSql();
-        if (transactionConnection != null) {
-            var stmt = transactionConnection
+        if (boundConnection != null) {
+            var stmt = boundConnection
                 .jdbcConnection()
                 .prepareStatement(sql, Statement.NO_GENERATED_KEYS);
             stmt.setQueryTimeout(db.queryTimeoutSeconds());

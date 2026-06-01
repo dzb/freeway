@@ -7,39 +7,23 @@
     <parent>
         <groupId>com.jujin8.freeway</groupId>
         <artifactId>freeway-parent</artifactId>
-        <version>1.0.1</version>
+        <version>1.0.3</version>
     </parent>
 
     <artifactId>freeway-starter</artifactId>
-    <packaging>pom</packaging>
+    <packaging>jar</packaging>
 
     <name>Freeway :: Starter</name>
-    <description>All-in-one starter that bundles all Freeway core modules.</description>
+    <description>Full-stack starter that bundles the web and database starters.</description>
 
     <dependencies>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-commons</artifactId>
+            <artifactId>freeway-starter-web</artifactId>
         </dependency>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-ioc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-boot</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-http</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-http-robaho</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-db</artifactId>
+            <artifactId>freeway-starter-db</artifactId>
         </dependency>
     </dependencies>
 </project>

@@ -22,11 +22,11 @@ final class BinderImpl implements Binder {
 
     @Override
     public <T> Contributions<T> contribute(Class<T> valueType) {
-        return container.extensionRegistry().contributions(valueType);
+        return container.extensions().contributeList(valueType);
     }
 
     @Override
-    public <V> MappedContributions<V> contributeMapped(Class<V> valueType) {
-        return container.extensionRegistry().mapped(valueType);
+    public <K, V> MappedContributions<K, V> contributeMapped(Class<K> keyType, Class<V> valueType) {
+        return container.extensions().contributeMap(keyType, valueType);
     }
 }

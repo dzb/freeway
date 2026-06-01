@@ -2,7 +2,6 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.Binding;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.ServiceId;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.advisor.Advisor;
 import java.util.ArrayList;
@@ -14,7 +13,7 @@ import java.lang.reflect.Modifier;
 final class BindingImpl<T> implements Binding<T> {
     private final ContainerImpl container;
     private final Class<T> type;
-    private ServiceId id;
+    private String id;
     private Scope scope = Scope.SINGLETON;
     private Function<Container, ? extends T> provider;
     private T instance;
@@ -24,14 +23,14 @@ final class BindingImpl<T> implements Binding<T> {
     BindingImpl(ContainerImpl container, Class<T> type) {
         this.container = Objects.requireNonNull(container, "container");
         this.type = Objects.requireNonNull(type, "type");
-        this.id = ServiceId.of(type.getSimpleName());
+        this.id = ServiceIds.normalize(type.getSimpleName());
     }
 
     Class<T> type() {
         return type;
     }
 
-    ServiceId id() {
+    String id() {
         return id;
     }
 
@@ -44,7 +43,7 @@ final class BindingImpl<T> implements Binding<T> {
     }
 
     boolean isProxiable() {
-        return type.isInterface() && scope != Scope.PROTOTYPE && (provider != null || !advices.isEmpty());
+        return type.isInterface() && scope != Scope.PROTOTYPE;
     }
 
     List<AdviceEntry> advices() {
@@ -64,43 +63,44 @@ final class BindingImpl<T> implements Binding<T> {
     @Override
     public Binding<T> to(Class<? extends T> implementation) {
         Class<? extends T> actual = Objects.requireNonNull(implementation, "implementation");
-        this.provider = ignored -> {
+        setProvider(ignored -> {
             try {
-                return container.constructType(actual);
+                return container.construct(actual);
             } catch (Throwable ex) {
                 throw new RuntimeException("Unable to construct " + actual.getName(), ex);
             }
-        };
-        this.instance = null;
+        });
         return this;
     }
 
     @Override
     public Binding<T> to(T instance) {
-        this.instance = Objects.requireNonNull(instance, "instance");
-        this.provider = null;
-        this.scope = Scope.SINGLETON;
+        requireSingletonScope("instance binding");
+        setInstance(instance);
         return this;
     }
 
     @Override
     public Binding<T> to(Function<Container, ? extends T> provider) {
-        this.provider = Objects.requireNonNull(provider, "provider");
-        this.instance = null;
+        setProvider(provider);
         return this;
     }
 
     @Override
     public Binding<T> scope(Scope scope) {
-        this.scope = Objects.requireNonNull(scope, "scope");
+        Scope next = Objects.requireNonNull(scope, "scope");
+        if (instance != null && next != Scope.SINGLETON) {
+            throw new IllegalStateException("Instance bindings must use Scope.SINGLETON");
+        }
+        this.scope = next;
         return this;
     }
 
     @Override
-    public Binding<T> id(ServiceId id) {
-        ServiceId previous = this.id;
-        this.id = Objects.requireNonNull(id, "id");
-        container.updateBindingId(this, previous, this.id);
+    public Binding<T> id(String id) {
+        String previous = this.id;
+        this.id = ServiceIds.normalize(id);
+        container.updateId(this, previous, this.id);
         return this;
     }
 
@@ -120,13 +120,35 @@ final class BindingImpl<T> implements Binding<T> {
 
     private Object instantiateDefault() {
         if (!type.isInterface() && !Modifier.isAbstract(type.getModifiers())) {
-            return container.instantiateType(type);
+            return container.instantiate(type);
         }
         throw new IllegalStateException("No implementation configured for " + type.getName());
     }
 
     private T materialize(T value) {
-        container.initialize(value);
-        return value;
+        try {
+            container.initialize(value);
+            return value;
+        } catch (Error ex) {
+            throw ex;
+        } catch (Throwable ex) {
+            throw new RuntimeException("Unable to initialize " + type.getName(), ex);
+        }
+    }
+
+    private void requireSingletonScope(String operation) {
+        if (scope != Scope.SINGLETON) {
+            throw new IllegalStateException(operation + " requires Scope.SINGLETON");
+        }
+    }
+
+    private void setProvider(Function<Container, ? extends T> provider) {
+        this.provider = Objects.requireNonNull(provider, "provider");
+        this.instance = null;
+    }
+
+    private void setInstance(T instance) {
+        this.instance = Objects.requireNonNull(instance, "instance");
+        this.provider = null;
     }
 }

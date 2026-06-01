@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class RequestTimingFilter implements HttpFilter {
-    private static final Logger LOG = LoggerFactory.getLogger(RequestTimingFilter.class);
+    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(RequestTimingFilter.class);
 
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {

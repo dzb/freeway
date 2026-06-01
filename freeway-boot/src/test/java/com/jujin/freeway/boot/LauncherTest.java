@@ -3,13 +3,17 @@ package com.jujin.freeway.boot;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LauncherTest {
     private static final String APP_NAME_KEY = "app.name";
@@ -36,8 +40,10 @@ class LauncherTest {
 
     @Test
     void bootsApplicationWithPrimaryAndDiscoveredModules() {
-        App app = Launcher.run(TestBootApp.class, "--freeway.profile=dev", "--app.name=Overridden");
+        AppRuntime app = Launcher.run(TestBootApp.class, "--freeway.profile=dev", "--app.name=Overridden");
         try {
+            assertEquals(AppState.RUNNING, app.state());
+            assertTrue(app.running());
             Container container = app.container();
             SymbolSource symbolSource = container.get(SymbolSource.class);
 
@@ -60,21 +66,87 @@ class LauncherTest {
         } finally {
             app.close();
         }
+        assertEquals(AppState.STOPPED, app.state());
     }
 
     @Test
     void primaryModuleMayBePassedAsInstance() {
-        App app = Launcher.run(new Module() {
+        AppRuntime app = Launcher.run(new Module() {
             @Override
             public void bind(Binder binder) {
                 binder.bind(PrimaryMarker.class).to(new PrimaryMarker("instance"));
             }
         });
         try {
+            assertEquals(AppState.RUNNING, app.state());
             assertEquals("instance", app.container().get(PrimaryMarker.class).value());
         } finally {
             app.close();
         }
+        assertEquals(AppState.STOPPED, app.state());
+    }
+
+    @Test
+    void runtimeHooksStartAndStopInOrder() {
+        List<String> events = new ArrayList<>();
+
+        AppRuntime app = Launcher.run(binder -> {
+            binder.contribute(RuntimeHook.class).add("second", new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    events.add("second:start");
+                }
+
+                @Override
+                public void stop(Container container) {
+                    events.add("second:stop");
+                }
+            }).after("first");
+            binder.contribute(RuntimeHook.class).add("first", new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    events.add("first:start");
+                }
+
+                @Override
+                public void stop(Container container) {
+                    events.add("first:stop");
+                }
+            });
+        });
+
+        assertEquals(List.of("first:start", "second:start"), events);
+        app.close();
+        assertEquals(List.of("first:start", "second:start", "second:stop", "first:stop"), events);
+        assertEquals(AppState.STOPPED, app.state());
+    }
+
+    @Test
+    void runtimeHookStartFailureRollsBackStartedHooks() {
+        List<String> events = new ArrayList<>();
+
+        assertThrows(IllegalStateException.class, () -> Launcher.run(binder -> {
+            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    events.add("first:start");
+                }
+
+                @Override
+                public void stop(Container container) {
+                    events.add("first:stop");
+                }
+            });
+            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    events.add("second:start");
+                    throw new IllegalStateException("boom");
+                }
+            });
+        }));
+
+        assertEquals(List.of("first:start", "second:start", "first:stop"), events);
     }
 
     public record PrimaryMarker(String value) {

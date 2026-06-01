@@ -6,16 +6,7 @@ public record WebSocketRoute(String path, WebSocketEndpoint endpoint) {
     public WebSocketRoute {
         path = normalizePath(path);
         endpoint = Objects.requireNonNull(endpoint, "endpoint");
-        validatePath(path);
-    }
-
-    private static void validatePath(String path) {
-        for (String seg : path.split("/")) {
-            if ("..".equals(seg)) {
-                throw new IllegalArgumentException(
-                    "Path must not contain '..' (path traversal): " + path);
-            }
-        }
+        PathPattern.validateRegistrationPath(path);
     }
 
     public static WebSocketRoute of(String path, WebSocketEndpoint endpoint) {

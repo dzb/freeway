@@ -4,6 +4,7 @@ import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseConfig;
 import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.Transaction;
@@ -13,18 +14,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class DatabaseImpl implements Database {
-    private static final Logger logger = LoggerFactory.getLogger(DatabaseImpl.class);
+    private static final Logger logger = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(DatabaseImpl.class);
 
     private final ConnectionPool pool;
-    private final RowMapperRegistry rowMappers;
+    private final RowMapperResolver rowMapperResolver;
     private final int queryTimeoutSeconds;
 
     public DatabaseImpl(
         DatabaseConfig config,
-        RowMapperRegistry rowMappers
+        RowMapperResolver rowMapperResolver
     ) {
         this.pool = new ConnectionPool(PoolConfig.from(config));
-        this.rowMappers = rowMappers;
+        this.rowMapperResolver = rowMapperResolver;
         long millis = config.queryTimeout().toMillis();
         this.queryTimeoutSeconds = (int) Math.max(1, (millis + 999) / 1000);
     }
@@ -41,7 +42,12 @@ public final class DatabaseImpl implements Database {
 
     @Override
     public void transaction(Consumer<Transaction> work) {
-        TransactionImpl tx = (TransactionImpl) beginTransaction();
+        transaction(work, null);
+    }
+
+    @Override
+    public void transaction(Consumer<Transaction> work, IsolationLevel isolation) {
+        TransactionImpl tx = (TransactionImpl) beginTransaction(isolation);
         try {
             work.accept(tx);
             tx.commit();
@@ -55,11 +61,25 @@ public final class DatabaseImpl implements Database {
 
     @Override
     public Transaction beginTransaction() {
+        return beginTransaction(null);
+    }
+
+    @Override
+    public Transaction beginTransaction(IsolationLevel isolation) {
         PooledConnection conn = pool.borrow();
         try {
             conn.jdbcConnection().setAutoCommit(false);
-            return new TransactionImpl(this, conn);
+            TransactionImpl tx = new TransactionImpl(this, conn);
+            if (isolation != null && isolation != IsolationLevel.DEFAULT) {
+                conn.jdbcConnection().setTransactionIsolation(isolation.jdbcLevel());
+            }
+            return tx;
         } catch (SQLException e) {
+            try {
+                conn.jdbcConnection().setAutoCommit(true);
+            } catch (SQLException ex) {
+                logger.trace("Error restoring autoCommit after transaction begin failure", ex);
+            }
             pool.release(conn);
             throw new SqlException("Failed to begin transaction", e);
         }
@@ -93,8 +113,8 @@ public final class DatabaseImpl implements Database {
         return queryTimeoutSeconds;
     }
 
-    RowMapperRegistry rowMappers() {
-        return rowMappers;
+    RowMapperResolver rowMapperResolver() {
+        return rowMapperResolver;
     }
 
     ConnectionPool pool() {
@@ -109,6 +129,19 @@ public final class DatabaseImpl implements Database {
         private TransactionImpl(DatabaseImpl db, PooledConnection conn) {
             this.db = db;
             this.conn = conn;
+        }
+
+        @Override
+        public Transaction isolation(IsolationLevel level) {
+            if (finished) {
+                throw new SqlException("Transaction is already finished");
+            }
+            try {
+                conn.jdbcConnection().setTransactionIsolation(level.jdbcLevel());
+                return this;
+            } catch (SQLException e) {
+                throw new SqlException("Failed to set isolation level", e);
+            }
         }
 
         @Override

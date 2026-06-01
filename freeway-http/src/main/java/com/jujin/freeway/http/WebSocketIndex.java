@@ -1,6 +1,6 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.ioc.annotation.ExtensionPoint;
+import com.jujin.freeway.ioc.annotation.Extension;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -10,8 +10,8 @@ final class WebSocketIndex {
     private final CopyOnWriteArrayList<WebSocketRoute> routes = new CopyOnWriteArrayList<>();
 
     public WebSocketIndex(
-        @ExtensionPoint(WebSocketRoute.class) Collection<WebSocketRoute> routes,
-        @ExtensionPoint(WebSocketGroup.class) Collection<WebSocketGroup> groups
+        @Extension(WebSocketRoute.class) Collection<WebSocketRoute> routes,
+        @Extension(WebSocketGroup.class) Collection<WebSocketGroup> groups
     ) {
         // groups first, then individuals: groups define base routing, individuals override
         for (WebSocketGroup group : groups == null ? List.<WebSocketGroup>of() : groups) {

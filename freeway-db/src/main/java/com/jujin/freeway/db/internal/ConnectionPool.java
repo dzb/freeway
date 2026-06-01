@@ -13,11 +13,11 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class ConnectionPool implements AutoCloseable {
-    private static final Logger logger = LoggerFactory.getLogger(ConnectionPool.class);
+    private static final Logger logger = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(ConnectionPool.class);
     private static final Duration FRESH_IDLE_THRESHOLD = Duration.ofSeconds(5);
     private static final Duration LEAK_THRESHOLD = Duration.ofSeconds(30);
 
@@ -26,6 +26,8 @@ public final class ConnectionPool implements AutoCloseable {
     private final ConcurrentLinkedDeque<PooledConnection> idle;
     private final ConcurrentLinkedDeque<PooledConnection> active;
     private final AtomicInteger total;
+    private final AtomicLong borrowCount;
+    private final AtomicLong borrowWaitNanos;
     private volatile boolean closed;
     private Thread cleanThread;
 
@@ -35,12 +37,15 @@ public final class ConnectionPool implements AutoCloseable {
         this.idle = new ConcurrentLinkedDeque<>();
         this.active = new ConcurrentLinkedDeque<>();
         this.total = new AtomicInteger();
+        this.borrowCount = new AtomicLong();
+        this.borrowWaitNanos = new AtomicLong();
         warmUp();
         startCleaner();
     }
 
     PooledConnection borrow() {
         ensureOpen();
+        long waitStart = System.nanoTime();
         try {
             if (!semaphore.tryAcquire(config.connectionTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
                 throw new SqlException(
@@ -60,6 +65,7 @@ public final class ConnectionPool implements AutoCloseable {
                     success = true;
                     conn.markBorrowed();
                     active.add(conn);
+                    recordBorrow(waitStart);
                     return conn;
                 }
                 destroy(conn);
@@ -70,6 +76,7 @@ public final class ConnectionPool implements AutoCloseable {
             success = true;
             conn.markBorrowed();
             active.add(conn);
+            recordBorrow(waitStart);
             return conn;
         } finally {
             if (!success) {
@@ -101,12 +108,14 @@ public final class ConnectionPool implements AutoCloseable {
             }
         }
         return new DatabaseStats(
-            total.get() - idle.size(),
+            active.size(),
             idle.size(),
             total.get(),
             semaphore.getQueueLength(),
             config.maxSize(),
-            longLeased
+            longLeased,
+            borrowCount.get(),
+            borrowWaitNanos.get()
         );
     }
 
@@ -129,6 +138,7 @@ public final class ConnectionPool implements AutoCloseable {
             total.decrementAndGet();
         }
 
+        // Wait for active connections to be returned
         long deadline = System.nanoTime() + config.connectionTimeout().toNanos();
         while (total.get() > 0 && System.nanoTime() < deadline) {
             try {
@@ -139,14 +149,21 @@ public final class ConnectionPool implements AutoCloseable {
             }
         }
 
+        // Close any remaining idle connections (may have been returned during wait)
         while ((conn = idle.pollFirst()) != null) {
+            closePhysical(conn);
+            total.decrementAndGet();
+        }
+
+        // Force-close any still-active connections
+        while ((conn = active.pollFirst()) != null) {
             closePhysical(conn);
             total.decrementAndGet();
         }
 
         int remaining = total.get();
         if (remaining > 0) {
-            logger.warn("Database closed with {} active connection(s) still in use", remaining);
+            logger.warn("Database closed with {} connection(s) still tracked", remaining);
         }
     }
 
@@ -285,6 +302,11 @@ public final class ConnectionPool implements AutoCloseable {
     private void destroy(PooledConnection conn) {
         closePhysical(conn);
         total.decrementAndGet();
+    }
+
+    private void recordBorrow(long waitStart) {
+        borrowCount.incrementAndGet();
+        borrowWaitNanos.addAndGet(System.nanoTime() - waitStart);
     }
 
     private void ensureOpen() {
