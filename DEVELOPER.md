@@ -1,4 +1,4 @@
-﻿# Freeway 2 Developer Guide
+# Freeway 2 Developer Guide
 
 This document describes Freeway 2's design shape. It is intentionally biased toward the concepts a framework developer needs while keeping compatibility baggage out.
 
