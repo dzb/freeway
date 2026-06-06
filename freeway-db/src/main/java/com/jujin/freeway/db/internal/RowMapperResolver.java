@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.ioc.annotation.Inject;
@@ -256,18 +256,7 @@ public final class RowMapperResolver {
         if (target == LocalTime.class && value instanceof java.sql.Time time) {
             return (T) time.toLocalTime();
         }
-        if (target == Long.class && value instanceof BigDecimal bd) {
-            return (T) Long.valueOf(bd.longValue());
-        }
-        if (target == Integer.class && value instanceof BigDecimal bd) {
-            return (T) Integer.valueOf(bd.intValue());
-        }
-        if (target == Double.class && value instanceof BigDecimal bd) {
-            return (T) Double.valueOf(bd.doubleValue());
-        }
-        if (target == BigInteger.class && value instanceof BigDecimal bd) {
-            return (T) bd.toBigInteger();
-        }
+
         throw new SqlException("Cannot coerce " + value.getClass().getName() + " to " + target.getName());
     }
 

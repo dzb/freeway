@@ -1,6 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway.commons.scalar.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -55,7 +55,7 @@ final class Shutdown {
         serviceCache.clear();
         targetCache.clear();
         bindingIndex.clear();
-        coercer.clearCache();
+        coercer.clearRules();
         return failure;
     }
 

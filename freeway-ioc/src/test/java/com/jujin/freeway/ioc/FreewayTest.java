@@ -4,8 +4,8 @@ import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.Named;
 import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
-import com.jujin.freeway.commons.scalar.Coercer;
-import com.jujin.freeway.commons.scalar.CoercionRule;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.ScopeGate;
 import com.jujin.freeway.ioc.annotation.Extension;
@@ -208,7 +208,7 @@ class FreewayTest {
         System.setProperty(ENDPOINT_KEY, "localhost:8088");
 
         Container container = Freeway.create(binder ->
-            binder.contribute((Class) CoercionRule.class).add(new CoercionRule<>(
+            binder.contribute((Class) CoerceRule.class).add(new CoerceRule<>(
                 String.class,
                 Endpoint.class,
                 value -> {
@@ -228,7 +228,7 @@ class FreewayTest {
         System.setProperty(TIMEOUT_KEY, "2500");
 
         Container container = Freeway.create(binder ->
-            binder.contribute((Class) CoercionRule.class).add(new CoercionRule<>(
+            binder.contribute((Class) CoerceRule.class).add(new CoerceRule<>(
                 Integer.class,
                 Timeout.class,
                 Timeout::new

@@ -1,6 +1,6 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.coercion.Coercer;
 
 import java.io.IOException;
 import java.util.HashMap;

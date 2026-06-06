@@ -2,7 +2,7 @@ package com.jujin.freeway.commons.json;
 
 import java.io.InputStream;
 import java.lang.reflect.Type;
-import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.coercion.Coercer;
 
 public final class JsonUtils {
     private JsonUtils() {

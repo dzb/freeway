@@ -16,8 +16,8 @@ import java.util.Objects;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.scalar.Coercer;
-import com.jujin.freeway.commons.scalar.CoercerDefault;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 
 final class JsonCoercions {
     private static final CoercerDefault DEFAULT_COERCER = new CoercerDefault();

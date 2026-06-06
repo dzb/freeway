@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.commons.scalar.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 
 import static org.junit.jupiter.api.Assertions.*;

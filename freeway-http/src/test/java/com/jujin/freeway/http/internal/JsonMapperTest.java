@@ -1,7 +1,7 @@
 package com.jujin.freeway.http.internal;
 
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.coercion.Coercer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

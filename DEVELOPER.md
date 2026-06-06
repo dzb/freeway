@@ -222,7 +222,7 @@ Because modules bind in load order, an override must run after the contribution 
 The IoC layer keeps the original Freeway strength: external strings can be expanded and coerced into target types.
 
 ```java
-binder.contribute(CoercionRule.class).add(new CoercionRule<>(
+binder.contribute(CoerceRule.class).add(new CoerceRule<>(
     String.class,
     Endpoint.class,
     value -> {

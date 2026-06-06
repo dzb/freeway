@@ -1,6 +1,7 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.commons.scalar.CoercerDefault;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 import java.time.Duration;
@@ -21,6 +22,7 @@ public final class DatabaseBuilder {
     private String healthCheckQuery = DatabaseConfig.DEFAULT_HEALTH_CHECK_QUERY;
     private Duration healthCheckTimeout = DatabaseConfig.DEFAULT_HEALTH_CHECK_TIMEOUT;
     private Duration queryTimeout = DatabaseConfig.DEFAULT_QUERY_TIMEOUT;
+    private Coercer coercer;
     private final Map<Class<?>, RowMapper<?>> rowMappers = new LinkedHashMap<>();
 
     public static DatabaseBuilder from(DatabaseConfig config) {
@@ -87,6 +89,11 @@ public final class DatabaseBuilder {
         return this;
     }
 
+    public DatabaseBuilder coercer(Coercer coercer) {
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
+        return this;
+    }
+
     public <T> DatabaseBuilder rowMapper(Class<T> type, RowMapper<? extends T> mapper) {
         Class<T> t = Objects.requireNonNull(type, "type");
         RowMapper<?> m = Objects.requireNonNull(mapper, "mapper");
@@ -133,7 +140,7 @@ public final class DatabaseBuilder {
         return new DatabaseImpl(
             config,
             new RowMapperResolver(
-                new CoercerDefault(),
+                coercer != null ? coercer : new CoercerDefault(),
                 Map.copyOf(rowMappers),
                 Map.<Class<?>, RowMapper<?>>of()
             )

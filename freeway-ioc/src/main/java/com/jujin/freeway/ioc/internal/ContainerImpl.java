@@ -1,9 +1,9 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanParameter;
-import com.jujin.freeway.commons.scalar.Coercer;
-import com.jujin.freeway.commons.scalar.CoercerDefault;
-import com.jujin.freeway.commons.scalar.CoercionRule;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.logging.LoggingBootstrap;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -111,7 +111,7 @@ public final class ContainerImpl implements Container {
         for (SymbolProvider provider : extensions.resolveList(SymbolProvider.class)) {
             symbolSource.register(provider);
         }
-        for (CoercionRule<?, ?> rule : extensions.resolveList(CoercionRule.class)) {
+        for (CoerceRule<?, ?> rule : extensions.resolveList(CoerceRule.class)) {
             coercer.register(rule);
         }
     }

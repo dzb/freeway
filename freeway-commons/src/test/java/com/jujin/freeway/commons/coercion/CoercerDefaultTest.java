@@ -1,4 +1,4 @@
-package com.jujin.freeway.commons.scalar;
+package com.jujin.freeway.commons.coercion;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

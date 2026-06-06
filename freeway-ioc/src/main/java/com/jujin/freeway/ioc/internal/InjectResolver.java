@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Extension;

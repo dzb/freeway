@@ -1,4 +1,4 @@
-package com.jujin.freeway.commons.scalar;
+package com.jujin.freeway.commons.coercion;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -8,9 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class CoercerDefault implements Coercer {
 
-    private final ConcurrentHashMap<CoercionKey, Coercer> cache =
-        new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<CoercionKey, Coercer> custom =
+    private final ConcurrentHashMap<CoercionKey, CoerceRule<?, ?>> rules =
         new ConcurrentHashMap<>();
 
     /**
@@ -41,10 +39,11 @@ public final class CoercerDefault implements Coercer {
         CoercionKey key = new CoercionKey(sourceType, targetType);
 
         // 优先使用自定义规则
-        Coercer customCoercer = custom.get(key);
-        if (customCoercer != null) {
+        CoerceRule rule = rules.get(key);
+        if (rule != null) {
             try {
-                return (T) customCoercer.coerce(input, targetType);
+                //noinspection unchecked
+                return (T) rule.converter().apply(rule.sourceType().cast(input));
             } catch (Exception e) {
                 throw new IllegalStateException(
                     String.format(
@@ -57,13 +56,9 @@ public final class CoercerDefault implements Coercer {
             }
         }
 
-        // 使用缓存的转换逻辑
+        // 使用内置转换逻辑
         try {
-            return (T) cache
-                .computeIfAbsent(key, ignored ->
-                    createCoercion(sourceType, targetType)
-                )
-                .coerce(input, targetType);
+            return coerceInternal(input, targetType);
         } catch (Exception e) {
             throw new IllegalStateException(
                 String.format(
@@ -90,18 +85,17 @@ public final class CoercerDefault implements Coercer {
      * @return 当前 CoercerDefault 实例，支持链式调用
      * @throws NullPointerException 当 rule 为 null 时抛出
      */
-    public CoercerDefault register(CoercionRule<?, ?> rule) {
+    public CoercerDefault register(CoerceRule<?, ?> rule) {
         if (rule == null) {
-            throw new IllegalArgumentException("CoercionRule must not be null");
+            throw new IllegalArgumentException("CoerceRule must not be null");
         }
         CoercionKey key = new CoercionKey(rule.sourceType(), rule.targetType());
-        custom.put(key, wrap(rule));
-        cache.remove(key);
+        rules.put(key, rule);
         return this;
     }
 
-    public void clearCache() {
-        cache.clear();
+    public void clearRules() {
+        rules.clear();
     }
 
     // --- static utilities (ex-ScalarCoercions) ---
@@ -118,29 +112,6 @@ public final class CoercerDefault implements Coercer {
             return type;
         }
         return BOXED_TYPES.get(type);
-    }
-
-    // --- internal: cached coercion factory ---
-
-    private Coercer createCoercion(Class<?> sourceType, Class<?> targetType) {
-        // Primitive targets must go through coerceInternal because
-        // Class.cast() doesn't handle auto-unboxing
-        if (targetType.isPrimitive()) {
-            return CoercerDefault::coerceInternal;
-        }
-
-        Class<?> boxedTarget = box(targetType);
-        Class<?> boxedSource = sourceType == null ? null : box(sourceType);
-
-        if (boxedSource != null && boxedTarget.isAssignableFrom(boxedSource)) {
-            return CoercerDefault::assignableCast;
-        }
-
-        return CoercerDefault::coerceInternal;
-    }
-
-    private static <T> T assignableCast(Object input, Class<T> targetType) {
-        return targetType.cast(input);
     }
 
     // --- internal: core scalar coercion logic (ex-ScalarCoercions.coerce) ---
@@ -318,20 +289,6 @@ public final class CoercerDefault implements Coercer {
             }
         }
         return null;
-    }
-
-    // --- internal helpers ---
-
-    @SuppressWarnings("unchecked")
-    private static <S, T> Coercer wrap(CoercionRule<S, T> rule) {
-        return new Coercer() {
-            @Override
-            public <T> T coerce(Object value, Class<T> targetType) {
-                return (T) rule
-                    .converter()
-                    .apply(rule.sourceType().cast(value));
-            }
-        };
     }
 
     private record CoercionKey(Class<?> sourceType, Class<?> targetType) {

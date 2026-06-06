@@ -1,7 +1,7 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.commons.scalar.Coercer;
+import com.jujin.freeway.commons.coercion.Coercer;
 import java.lang.reflect.Type;
 import java.util.Objects;
 
