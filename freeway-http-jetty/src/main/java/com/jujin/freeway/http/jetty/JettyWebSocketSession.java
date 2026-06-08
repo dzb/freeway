@@ -1,5 +1,7 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.jetty;
 
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.WebSocketSession;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;

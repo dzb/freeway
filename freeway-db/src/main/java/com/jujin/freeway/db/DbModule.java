@@ -5,14 +5,7 @@ import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module;
 import com.jujin.freeway.commons.coercion.CoerceRule;
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 
 public final class DbModule implements Module {
     @Override
@@ -21,10 +14,7 @@ public final class DbModule implements Module {
         binder.bind(DatabaseHub.class).to(DatabaseHubImpl.class);
         var rules = binder.contribute((Class) CoerceRule.class);
         rules.add(new CoerceRule<>(String.class, Duration.class, DbModule::parseDuration));
-        rules.add(new CoerceRule<>(Date.class, LocalDate.class, d -> ((Date) d).toLocalDate()));
-        rules.add(new CoerceRule<>(Timestamp.class, LocalDateTime.class, t -> ((Timestamp) t).toLocalDateTime()));
-        rules.add(new CoerceRule<>(Timestamp.class, Instant.class, t -> ((Timestamp) t).toInstant()));
-        rules.add(new CoerceRule<>(Time.class, LocalTime.class, t -> ((Time) t).toLocalTime()));
+        Coercions.jdbcDefaults().forEach(r -> rules.add((CoerceRule) r));
     }
 
     private static Duration parseDuration(String text) {

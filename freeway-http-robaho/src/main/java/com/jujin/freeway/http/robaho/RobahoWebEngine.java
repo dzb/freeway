@@ -1,5 +1,15 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.robaho;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpEngine;
+import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.HttpServerHandle;
+import com.jujin.freeway.http.JdkHttpContext;
+import com.jujin.freeway.http.JsonCodec;
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.WebSocketMatch;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
@@ -16,9 +26,11 @@ import robaho.net.httpserver.websockets.WebSocketHandler;
 final class RobahoWebEngine implements HttpEngine {
     private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(RobahoWebEngine.class);
     private final JsonCodec jsonCodec;
+    private final Coercer coercer;
 
-    public RobahoWebEngine(JsonCodec jsonCodec) {
+    public RobahoWebEngine(JsonCodec jsonCodec, Coercer coercer) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
     @Override
@@ -30,7 +42,7 @@ final class RobahoWebEngine implements HttpEngine {
         server.setExecutor(executor);
         server.createContext("/", exchange -> {
             RequestContext requestContext = createRequestContext(exchange);
-            JdkHttpContext ctx = new JdkHttpContext(exchange, jsonCodec, requestContext);
+            JdkHttpContext ctx = new JdkHttpContext(exchange, jsonCodec, coercer, requestContext);
             ctx.headerSet("X-Request-Id", requestContext.correlationId());
             if (WebSocketHandler.isWebsocketRequested(exchange.getRequestHeaders())) {
                 String origin = exchange.getRequestHeaders().getFirst("Origin");

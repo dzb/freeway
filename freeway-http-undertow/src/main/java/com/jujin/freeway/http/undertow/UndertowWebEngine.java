@@ -1,5 +1,15 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.undertow;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpEngine;
+import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.HttpServerHandle;
+import com.jujin.freeway.http.JsonCodec;
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.WebSocketListener;
+import com.jujin.freeway.http.WebSocketMatch;
 import io.undertow.Handlers;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
@@ -25,9 +35,11 @@ import org.slf4j.LoggerFactory;
 final class UndertowWebEngine implements HttpEngine {
     private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(UndertowWebEngine.class);
     private final JsonCodec jsonCodec;
+    private final Coercer coercer;
 
-    public UndertowWebEngine(JsonCodec jsonCodec) {
+    public UndertowWebEngine(JsonCodec jsonCodec, Coercer coercer) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
     @Override
@@ -75,7 +87,7 @@ final class UndertowWebEngine implements HttpEngine {
         }
 
         exchange.startBlocking();
-        UndertowHttpContext ctx = new UndertowHttpContext(exchange, jsonCodec, requestContext);
+        UndertowHttpContext ctx = new UndertowHttpContext(exchange, jsonCodec, coercer, requestContext);
         try {
             handler.handle(ctx);
         } catch (Exception ex) {

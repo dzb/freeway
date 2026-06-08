@@ -18,6 +18,10 @@
     <dependencies>
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
+            <artifactId>freeway-commons</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-ioc</artifactId>
         </dependency>
         <dependency>

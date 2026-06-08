@@ -14,15 +14,13 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.HashMap;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,19 +29,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class RowMapperResolver {
-    private static final Map<Class<?>, Class<?>> PRIMITIVE_TO_WRAPPER = new HashMap<>(8);
-
-    static {
-        PRIMITIVE_TO_WRAPPER.put(boolean.class, Boolean.class);
-        PRIMITIVE_TO_WRAPPER.put(byte.class, Byte.class);
-        PRIMITIVE_TO_WRAPPER.put(short.class, Short.class);
-        PRIMITIVE_TO_WRAPPER.put(int.class, Integer.class);
-        PRIMITIVE_TO_WRAPPER.put(long.class, Long.class);
-        PRIMITIVE_TO_WRAPPER.put(float.class, Float.class);
-        PRIMITIVE_TO_WRAPPER.put(double.class, Double.class);
-        PRIMITIVE_TO_WRAPPER.put(char.class, Character.class);
-    }
-
     private final Coercer coercer;
     private final Map<Class<?>, RowMapper<?>> custom;
     private final ConcurrentHashMap<Class<?>, RowMapper<?>> cache = new ConcurrentHashMap<>();
@@ -143,7 +128,7 @@ public final class RowMapperResolver {
     }
 
     private <T> RowMapper<T> createSimple(Class<T> type) {
-        return (rs, rowNum) -> coerce(rs.getObject(1), type);
+        return (rs, rowNum) -> coercer.coerce(rs.getObject(1), type);
     }
 
     private <T> RowMapper<T> createRecord(Class<T> type, BeanPlan plan) {
@@ -158,8 +143,8 @@ public final class RowMapperResolver {
                 BeanProperty property = properties.get(i);
                 int column = indexes[i];
                 args[i] = column >= 1
-                    ? coerce(rs.getObject(column), propertyType(property))
-                    : defaultValue(propertyType(property));
+                    ? coercer.coerce(rs.getObject(column), propertyType(property))
+                    : coercer.coerce(null, propertyType(property));
             }
             try {
                 return type.cast(constructor.newInstance(args));
@@ -193,7 +178,7 @@ public final class RowMapperResolver {
                     continue;
                 }
                 BeanProperty property = properties.get(i);
-                Object value = coerce(rs.getObject(column), propertyType(property));
+                Object value = coercer.coerce(rs.getObject(column), propertyType(property));
                 try {
                     property.write(instance, value);
                 } catch (RuntimeException e) {
@@ -219,61 +204,6 @@ public final class RowMapperResolver {
             return raw;
         }
         throw new SqlException("Unsupported bean property type: " + type.getTypeName());
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T coerce(Object value, Class<T> target) {
-        if (value == null) {
-            return defaultValue(target);
-        }
-        if (target.isInstance(value)) {
-            return target.cast(value);
-        }
-        if (target.isPrimitive()) {
-            Class<?> wrapper = PRIMITIVE_TO_WRAPPER.get(target);
-            if (wrapper != null && wrapper.isInstance(value)) {
-                return (T) value;
-            }
-        }
-        try {
-            return coercer.coerce(value, target);
-        } catch (RuntimeException e) {
-            return sqlFallback(value, target);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T sqlFallback(Object value, Class<T> target) {
-        if (target == LocalDate.class && value instanceof java.sql.Date date) {
-            return (T) date.toLocalDate();
-        }
-        if (target == LocalDateTime.class && value instanceof Timestamp timestamp) {
-            return (T) timestamp.toLocalDateTime();
-        }
-        if (target == Instant.class && value instanceof Timestamp timestamp) {
-            return (T) timestamp.toInstant();
-        }
-        if (target == LocalTime.class && value instanceof java.sql.Time time) {
-            return (T) time.toLocalTime();
-        }
-
-        throw new SqlException("Cannot coerce " + value.getClass().getName() + " to " + target.getName());
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T defaultValue(Class<T> target) {
-        if (!target.isPrimitive()) {
-            return null;
-        }
-        if (target == boolean.class) return (T) Boolean.FALSE;
-        if (target == byte.class) return (T) Byte.valueOf((byte) 0);
-        if (target == short.class) return (T) Short.valueOf((short) 0);
-        if (target == int.class) return (T) Integer.valueOf(0);
-        if (target == long.class) return (T) Long.valueOf(0L);
-        if (target == float.class) return (T) Float.valueOf(0f);
-        if (target == double.class) return (T) Double.valueOf(0d);
-        if (target == char.class) return (T) Character.valueOf('\0');
-        return null;
     }
 
     static int findColumn(ResultSetMetaData meta, String propertyName) throws SQLException {

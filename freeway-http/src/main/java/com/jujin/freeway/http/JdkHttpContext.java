@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -8,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
-final class JdkHttpContext extends HttpContext {
+public final class JdkHttpContext extends HttpContext {
     private final HttpExchange exchange;
     private final RequestContext requestContext;
     private final Map<String, List<String>> queryParams;
@@ -16,8 +17,8 @@ final class JdkHttpContext extends HttpContext {
     private int responseStatus = 200;
     private volatile boolean responded;
 
-    JdkHttpContext(HttpExchange exchange, JsonCodec jsonCodec, RequestContext requestContext) {
-        super(jsonCodec);
+    public JdkHttpContext(HttpExchange exchange, JsonCodec jsonCodec, Coercer coercer, RequestContext requestContext) {
+        super(jsonCodec, coercer);
         this.exchange = exchange;
         this.requestContext = requestContext;
         this.queryParams = parseQueryParams(exchange.getRequestURI().getRawQuery());
@@ -133,7 +134,7 @@ final class JdkHttpContext extends HttpContext {
         return requestContext;
     }
 
-    static Map<String, List<String>> parseQueryParams(String rawQuery) {
+    public static Map<String, List<String>> parseQueryParams(String rawQuery) {
         java.util.LinkedHashMap<String, List<String>> params = new java.util.LinkedHashMap<>();
         if (rawQuery == null || rawQuery.isBlank()) {
             return params;

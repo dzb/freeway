@@ -1,5 +1,15 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.jetty;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpEngine;
+import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.HttpServerHandle;
+import com.jujin.freeway.http.JsonCodec;
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.WebSocketListener;
+import com.jujin.freeway.http.WebSocketMatch;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -26,9 +36,11 @@ import org.slf4j.LoggerFactory;
 final class JettyWebEngine implements HttpEngine {
     private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(JettyWebEngine.class);
     private final JsonCodec jsonCodec;
+    private final Coercer coercer;
 
-    public JettyWebEngine(JsonCodec jsonCodec) {
+    public JettyWebEngine(JsonCodec jsonCodec, Coercer coercer) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
     @Override
@@ -54,7 +66,7 @@ final class JettyWebEngine implements HttpEngine {
                 if (isWebSocketRequest(request)) {
                     return handleWebSocket(request, response, callback, handler, requestContext, webSocketContainer);
                 }
-                JettyHttpContext ctx = new JettyHttpContext(request, response, jsonCodec, requestContext, callback);
+                JettyHttpContext ctx = new JettyHttpContext(request, response, jsonCodec, coercer, requestContext, callback);
                 try {
                     handler.handle(ctx);
                 } catch (Exception ex) {

@@ -11,24 +11,21 @@ class DatabaseBuilderTest {
     @Test
     void overlaysAnExistingConfig() {
         String dbName = "freeway_builder_overlay_" + UUID.randomUUID().toString().replace('-', '_');
-        DatabaseConfig base = new DatabaseConfig(
+        DatabaseConfig base = DatabaseConfig.defaults(
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "sa",
-            "",
-            4,
-            1,
-            Duration.ofSeconds(2),
-            Duration.ofMinutes(5),
-            Duration.ofMinutes(1),
-            Duration.ofSeconds(1),
-            null,
-            Duration.ofSeconds(1),
-            Duration.ofSeconds(2)
+            ""
+        );
+        DatabaseConfig modified = new DatabaseConfig(
+            base.url(), base.username(), base.password(),
+            6,
+            base.minIdle(),
+            base.connectionTimeout(), base.maxLifetime(), base.maxIdleTime(),
+            base.cleanInterval(), base.healthCheckQuery(), base.healthCheckTimeout(),
+            base.queryTimeout()
         );
 
-        Database db = DatabaseBuilder.from(base)
-            .maxSize(6)
-            .build();
+        Database db = new DatabaseBuilder().config(modified).build();
 
         try (db) {
             assertEquals(6, db.stats().maxSize());
@@ -39,9 +36,7 @@ class DatabaseBuilderTest {
     void standaloneBuilderUsesDefaultCoercion() {
         String dbName = "freeway_builder_coercion_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -57,9 +52,7 @@ class DatabaseBuilderTest {
     void standaloneBuilderAcceptsManualRowMapper() {
         String dbName = "freeway_builder_mapper_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .rowMapper(Marker.class, (rs, rowNum) -> new Marker(rs.getString(1)))
             .build();
 

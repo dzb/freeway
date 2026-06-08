@@ -40,7 +40,7 @@ final class StubHttpContext extends HttpContext {
     }
 
     StubHttpContext(String method, String path) {
-        super(new JsonCodecDefault(COERCER));
+        super(new JsonCodecDefault(COERCER), COERCER);
         this.method = method;
         this.path = path;
         this.requestContext = RequestContext.create();

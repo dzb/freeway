@@ -21,7 +21,7 @@ public class SseEmitter implements AutoCloseable {
     private final OutputStream outputStream;
     private volatile boolean closed;
 
-    SseEmitter(OutputStream outputStream) {
+    public SseEmitter(OutputStream outputStream) {
         this.outputStream = Objects.requireNonNull(outputStream, "outputStream");
     }
 

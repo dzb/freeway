@@ -2,6 +2,7 @@ package com.jujin.freeway.http;
 
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -16,9 +17,11 @@ import org.slf4j.LoggerFactory;
 final class JdkHttpEngine implements HttpEngine {
     private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(JdkHttpEngine.class);
     private final JsonCodec jsonCodec;
+    private final Coercer coercer;
 
-    public JdkHttpEngine(JsonCodec jsonCodec) {
+    public JdkHttpEngine(JsonCodec jsonCodec, Coercer coercer) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
     @Override
@@ -30,7 +33,7 @@ final class JdkHttpEngine implements HttpEngine {
         server.setExecutor(executor);
         server.createContext("/", exchange -> {
             RequestContext requestContext = createRequestContext(exchange);
-            JdkHttpContext ctx = new JdkHttpContext(exchange, jsonCodec, requestContext);
+            JdkHttpContext ctx = new JdkHttpContext(exchange, jsonCodec, coercer, requestContext);
             ctx.headerSet("X-Request-Id", requestContext.correlationId());
             if (isWebSocketUpgrade(exchange.getRequestHeaders())) {
                 ctx.send(426, "WebSocket not supported by JDK engine; add freeway-http-robaho, freeway-http-undertow, or freeway-http-jetty to the classpath");

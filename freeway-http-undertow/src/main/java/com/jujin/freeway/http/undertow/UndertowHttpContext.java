@@ -1,5 +1,11 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.undertow;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.JsonCodec;
+import com.jujin.freeway.http.RequestBodyTooLargeException;
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.SseEmitter;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
@@ -24,8 +30,8 @@ final class UndertowHttpContext extends HttpContext {
     private int responseStatus = 200;
     private volatile boolean responded;
 
-    UndertowHttpContext(HttpServerExchange exchange, JsonCodec jsonCodec, RequestContext requestContext) {
-        super(jsonCodec);
+    UndertowHttpContext(HttpServerExchange exchange, JsonCodec jsonCodec, Coercer coercer, RequestContext requestContext) {
+        super(jsonCodec, coercer);
         this.exchange = Objects.requireNonNull(exchange, "exchange");
         this.requestContext = Objects.requireNonNull(requestContext, "requestContext");
         this.queryParams = parseQueryParams(exchange.getQueryParameters());

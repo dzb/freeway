@@ -1,5 +1,6 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.undertow;
 
+import com.jujin.freeway.http.HttpEngine;
 import com.jujin.freeway.http.engine.AbstractWebEngineContractTest;
 
 class UndertowWebEngineContractTest extends AbstractWebEngineContractTest {

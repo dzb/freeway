@@ -1,5 +1,6 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.robaho;
 
+import com.jujin.freeway.http.HttpEngine;
 import com.jujin.freeway.http.engine.AbstractWebEngineContractTest;
 
 class RobahoWebEngineContractTest extends AbstractWebEngineContractTest {

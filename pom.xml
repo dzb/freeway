@@ -6,7 +6,7 @@
 
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-parent</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.5</version>
     <packaging>pom</packaging>
 
     <name>Freeway Framework</name>
@@ -212,9 +212,5 @@
         <module>freeway-http-undertow</module>
         <module>freeway-http-jetty</module>
         <module>freeway-db</module>
-        <module>freeway-starter-boot</module>
-        <module>freeway-starter-web</module>
-        <module>freeway-starter-db</module>
-        <module>freeway-starter</module>
     </modules>
 </project>

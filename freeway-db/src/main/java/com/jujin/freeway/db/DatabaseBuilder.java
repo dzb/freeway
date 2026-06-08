@@ -4,88 +4,21 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.RowMapperResolver;
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 public final class DatabaseBuilder {
-    private String url;
-    private String username;
-    private String password = "";
-    private int maxSize = DatabaseConfig.DEFAULT_MAX_SIZE;
-    private int minIdle = DatabaseConfig.DEFAULT_MIN_IDLE;
-    private Duration connectionTimeout = DatabaseConfig.DEFAULT_CONNECTION_TIMEOUT;
-    private Duration maxLifetime = DatabaseConfig.DEFAULT_MAX_LIFETIME;
-    private Duration maxIdleTime = DatabaseConfig.DEFAULT_MAX_IDLE_TIME;
-    private Duration cleanInterval = DatabaseConfig.DEFAULT_CLEAN_INTERVAL;
-    private String healthCheckQuery = DatabaseConfig.DEFAULT_HEALTH_CHECK_QUERY;
-    private Duration healthCheckTimeout = DatabaseConfig.DEFAULT_HEALTH_CHECK_TIMEOUT;
-    private Duration queryTimeout = DatabaseConfig.DEFAULT_QUERY_TIMEOUT;
+    private DatabaseConfig config;
     private Coercer coercer;
     private final Map<Class<?>, RowMapper<?>> rowMappers = new LinkedHashMap<>();
 
     public static DatabaseBuilder from(DatabaseConfig config) {
-        return new DatabaseBuilder().copyFrom(Objects.requireNonNull(config, "config"));
+        return new DatabaseBuilder().config(Objects.requireNonNull(config, "config"));
     }
 
-    public DatabaseBuilder url(String url) {
-        this.url = url;
-        return this;
-    }
-
-    public DatabaseBuilder username(String username) {
-        this.username = username;
-        return this;
-    }
-
-    public DatabaseBuilder password(String password) {
-        this.password = password;
-        return this;
-    }
-
-    public DatabaseBuilder maxSize(int maxSize) {
-        this.maxSize = maxSize;
-        return this;
-    }
-
-    public DatabaseBuilder minIdle(int minIdle) {
-        this.minIdle = minIdle;
-        return this;
-    }
-
-    public DatabaseBuilder connectionTimeout(Duration timeout) {
-        this.connectionTimeout = timeout;
-        return this;
-    }
-
-    public DatabaseBuilder maxLifetime(Duration lifetime) {
-        this.maxLifetime = lifetime;
-        return this;
-    }
-
-    public DatabaseBuilder maxIdleTime(Duration idleTime) {
-        this.maxIdleTime = idleTime;
-        return this;
-    }
-
-    public DatabaseBuilder cleanInterval(Duration interval) {
-        this.cleanInterval = interval;
-        return this;
-    }
-
-    public DatabaseBuilder healthCheckQuery(String query) {
-        this.healthCheckQuery = query;
-        return this;
-    }
-
-    public DatabaseBuilder healthCheckTimeout(Duration timeout) {
-        this.healthCheckTimeout = timeout;
-        return this;
-    }
-
-    public DatabaseBuilder queryTimeout(Duration timeout) {
-        this.queryTimeout = timeout;
+    public DatabaseBuilder config(DatabaseConfig config) {
+        this.config = Objects.requireNonNull(config, "config");
         return this;
     }
 
@@ -106,41 +39,20 @@ public final class DatabaseBuilder {
         return this;
     }
 
-    private DatabaseBuilder copyFrom(DatabaseConfig config) {
-        this.url = config.url();
-        this.username = config.username();
-        this.password = config.password();
-        this.maxSize = config.maxSize();
-        this.minIdle = config.minIdle();
-        this.connectionTimeout = config.connectionTimeout();
-        this.maxLifetime = config.maxLifetime();
-        this.maxIdleTime = config.maxIdleTime();
-        this.cleanInterval = config.cleanInterval();
-        this.healthCheckQuery = config.healthCheckQuery();
-        this.healthCheckTimeout = config.healthCheckTimeout();
-        this.queryTimeout = config.queryTimeout();
-        return this;
-    }
-
     public Database build() {
-        DatabaseConfig config = new DatabaseConfig(
-            url,
-            username,
-            password,
-            maxSize,
-            minIdle,
-            connectionTimeout,
-            maxLifetime,
-            maxIdleTime,
-            cleanInterval,
-            healthCheckQuery,
-            healthCheckTimeout,
-            queryTimeout
-        );
+        if (config == null) {
+            throw new IllegalStateException("config is required");
+        }
+        Coercer effective = coercer;
+        if (effective == null) {
+            CoercerDefault cd = new CoercerDefault();
+            Coercions.registerJdbcDefaults(cd);
+            effective = cd;
+        }
         return new DatabaseImpl(
             config,
             new RowMapperResolver(
-                coercer != null ? coercer : new CoercerDefault(),
+                effective,
                 Map.copyOf(rowMappers),
                 Map.<Class<?>, RowMapper<?>>of()
             )

@@ -1,4 +1,4 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.robaho;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module;

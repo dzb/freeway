@@ -1,5 +1,6 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.jetty;
 
+import com.jujin.freeway.http.HttpEngine;
 import com.jujin.freeway.http.engine.AbstractWebEngineContractTest;
 
 class JettyWebEngineContractTest extends AbstractWebEngineContractTest {

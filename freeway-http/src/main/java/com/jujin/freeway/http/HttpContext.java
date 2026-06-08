@@ -16,10 +16,12 @@ public abstract class HttpContext {
     private Map<String, String> pathVariables = Map.of();
     private MultipartForm cachedMultipart;
     protected final JsonCodec jsonCodec;
+    protected final Coercer coercer;
     protected volatile long maxBodySize = 10_485_760L;
 
-    protected HttpContext(JsonCodec jsonCodec) {
+    protected HttpContext(JsonCodec jsonCodec, Coercer coercer) {
         this.jsonCodec = jsonCodec;
+        this.coercer = coercer;
     }
 
     public void pathVariables(Map<String, String> vars) {
@@ -157,9 +159,7 @@ public abstract class HttpContext {
         return outputJson(value);
     }
 
-    protected Coercer coercer = new CoercerDefault();
-
-    protected static String blankToNull(String s) {
+    public static String blankToNull(String s) {
         return s != null && !s.isBlank() ? s : null;
     }
 

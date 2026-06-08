@@ -21,9 +21,7 @@ class RowMapperConcurrencyTest {
     void concurrentRecordMapping() throws Exception {
         String dbName = "freeway_conc_record_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -57,9 +55,7 @@ class RowMapperConcurrencyTest {
     void concurrentBeanMapping() throws Exception {
         String dbName = "freeway_conc_bean_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -96,9 +92,7 @@ class RowMapperConcurrencyTest {
     void concurrentSimpleMapping() throws Exception {
         String dbName = "freeway_conc_simple_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -128,9 +122,7 @@ class RowMapperConcurrencyTest {
     void concurrentCustomMapper() throws Exception {
         String dbName = "freeway_conc_custom_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .rowMapper(Score.class, (rs, rowNum) -> new Score(rs.getLong("id"), rs.getInt("score") * 2))
             .build();
 
@@ -164,9 +156,7 @@ class RowMapperConcurrencyTest {
     void mixedConcurrentWorkload() throws Exception {
         String dbName = "freeway_conc_mixed_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {

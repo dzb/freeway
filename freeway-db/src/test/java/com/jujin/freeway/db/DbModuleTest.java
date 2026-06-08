@@ -100,14 +100,10 @@ class DbModuleTest {
     @Test
     void dbHubWrapsNamedDatabaseContributions() {
         Database primary = new DatabaseBuilder()
-            .url("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
         Database audit = new DatabaseBuilder()
-            .url("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("")
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try {

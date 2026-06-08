@@ -15,10 +15,6 @@ Zero classpath scanning. Compose-first API. No magic.
 | `├ freeway-http-undertow` | Undertow transport adapter                                |
 | `└ freeway-http-jetty` | Jetty transport adapter                                   |
 | `freeway-db` | JDBC data access: pooling, transactions, migrations       |
-| `freeway-starter-boot` | commons + ioc + boot                                      |
-| `freeway-starter-web` | Starter-boot + http + robaho                              |
-| `freeway-starter-db` | Starter-boot + db                                         |
-| `freeway-starter` | All                                                       |
 
 ## Philosophy
 

@@ -1,5 +1,11 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.jetty;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.JsonCodec;
+import com.jujin.freeway.http.RequestBodyTooLargeException;
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.SseEmitter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -29,8 +35,8 @@ final class JettyHttpContext extends HttpContext {
     private int responseStatus = 200;
     private volatile boolean responded;
 
-    JettyHttpContext(Request request, Response response, JsonCodec jsonCodec, RequestContext requestContext, Callback callback) {
-        super(jsonCodec);
+    JettyHttpContext(Request request, Response response, JsonCodec jsonCodec, Coercer coercer, RequestContext requestContext, Callback callback) {
+        super(jsonCodec, coercer);
         this.request = Objects.requireNonNull(request, "request");
         this.response = Objects.requireNonNull(response, "response");
         this.callback = Objects.requireNonNull(callback, "callback");

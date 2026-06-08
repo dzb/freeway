@@ -5,12 +5,6 @@ This document describes Freeway 2's design shape. It is intentionally biased tow
 ## Module Dependency Graph
 
 ```
-freeway-starter
-      |
-freeway-starter-web                 freeway-starter-db
-      |                                     |
-freeway-starter-boot                   freeway-starter-boot
-      |                                     |
 freeway-boot        freeway-http        freeway-db
       \                 |                 /
        \                |                /

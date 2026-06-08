@@ -557,9 +557,7 @@ class SQLTest {
 
     private static DatabaseBuilder builder(String name) {
         return new DatabaseBuilder()
-            .url("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
-            .username("sa")
-            .password("");
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 
     public record IdName(long id, String name) {
