@@ -48,10 +48,10 @@ class DbModuleTest {
 
         try (Container container = Freeway.create(
             new DbModule(),
-            binder -> binder.contributeMapped(Class.class, RowMapper.class).put(
+            binder -> binder.contribute(RowMapperRegistrations.class).add(new RowMapperEntry(
                 Money.class,
                 (rs, rowNum) -> new Money(rs.getLong("amount_cents"))
-            )
+            ))
         )) {
             Database db = container.get(Database.class);
             db.sql(
@@ -109,8 +109,8 @@ class DbModuleTest {
         try {
             Container container = Freeway.create(
                 new DbModule(),
-                binder -> binder.contributeMapped(String.class, Database.class).put("primary", primary),
-                binder -> binder.contributeMapped(String.class, Database.class).put("audit", audit)
+                binder -> binder.contribute(DatabaseRegistrations.class).add(new DatabaseEntry("primary", primary)),
+                binder -> binder.contribute(DatabaseRegistrations.class).add(new DatabaseEntry("audit", audit))
             );
 
             DatabaseHub hub = container.get(DatabaseHub.class);

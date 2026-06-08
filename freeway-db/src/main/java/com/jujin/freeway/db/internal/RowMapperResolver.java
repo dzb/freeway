@@ -6,9 +6,10 @@ import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.RowMapper;
+import com.jujin.freeway.db.RowMapperEntry;
+import com.jujin.freeway.db.RowMapperRegistrations;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.Extension;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
@@ -36,15 +37,22 @@ public final class RowMapperResolver {
     @Inject
     public RowMapperResolver(
         Coercer coercer,
-        @Extension(RowMapper.class) Map<Class<?>, RowMapper<?>> registrations
+        RowMapperRegistrations registrations
     ) {
-        this(coercer, Map.<Class<?>, RowMapper<?>>of(), registrations);
+        this(coercer, Map.of(), toMap(registrations));
+    }
+
+    public RowMapperResolver(
+        Coercer coercer,
+        Map<Class<?>, RowMapper<?>> registrations
+    ) {
+        this(coercer, Map.of(), registrations);
     }
 
     public RowMapperResolver(
         Coercer coercer,
         Map<Class<?>, RowMapper<?>> manualMappings,
-        @Extension(RowMapper.class) Map<Class<?>, RowMapper<?>> registrations
+        Map<Class<?>, RowMapper<?>> registrations
     ) {
         this.coercer = Objects.requireNonNull(coercer, "coercer");
         this.custom = customMap(manualMappings, registrations);
@@ -57,6 +65,14 @@ public final class RowMapperResolver {
             return (RowMapper<T>) mapper;
         }
         return (RowMapper<T>) cache.computeIfAbsent(type, this::create);
+    }
+
+    private static Map<Class<?>, RowMapper<?>> toMap(RowMapperRegistrations reg) {
+        Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
+        for (RowMapperEntry entry : reg.all()) {
+            map.put(entry.type(), entry.mapper());
+        }
+        return Map.copyOf(map);
     }
 
     private static Map<Class<?>, RowMapper<?>> customMap(

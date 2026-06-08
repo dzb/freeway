@@ -1,5 +1,6 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SqlException;
 import java.sql.PreparedStatement;
@@ -25,6 +26,7 @@ final class QueryImpl implements Query {
     private final String originalSql;
     private final Object[] positionalParams;
     private final Map<String, Object> namedParams;
+    private final boolean mayHaveGeneratedKeys;
     private NamedParamParser.Result parsed;
     private boolean expandedChecked;
     private String expandedSql;
@@ -34,12 +36,14 @@ final class QueryImpl implements Query {
         DatabaseImpl db,
         PooledConnection boundConnection,
         String sql,
-        Object[] positionalParams
+        Object[] positionalParams,
+        boolean mayHaveGeneratedKeys
     ) {
         this.db = db;
         this.boundConnection = boundConnection;
         this.originalSql = sql;
         this.positionalParams = positionalParams;
+        this.mayHaveGeneratedKeys = mayHaveGeneratedKeys;
         this.namedParams = new HashMap<>();
     }
 
@@ -56,7 +60,7 @@ final class QueryImpl implements Query {
 
     @Override
     public <T> List<T> list(Class<T> targetType) {
-        try (var ctx = borrow()) {
+        try (var ctx = borrow(false)) {
             bindAll(ctx.stmt);
             try (var rs = ctx.stmt.executeQuery()) {
                 var mapper = db.rowMapperResolver().resolve(targetType);
@@ -74,7 +78,7 @@ final class QueryImpl implements Query {
 
     @Override
     public <T> Optional<T> one(Class<T> targetType) {
-        try (var ctx = borrow()) {
+        try (var ctx = borrow(false)) {
             bindAll(ctx.stmt);
             try (var rs = ctx.stmt.executeQuery()) {
                 if (rs.next()) {
@@ -91,7 +95,7 @@ final class QueryImpl implements Query {
     @Override
     public <T> Stream<T> stream(Class<T> targetType) {
         try {
-            var ctx = borrow();
+            var ctx = borrow(false);
             bindAll(ctx.stmt);
             ctx.stmt.setFetchSize(100);
             var rs = ctx.stmt.executeQuery();
@@ -129,10 +133,22 @@ final class QueryImpl implements Query {
     }
 
     @Override
-    public int execute() {
-        try (var ctx = borrow()) {
+    public ExecuteResult execute() {
+        try (var ctx = borrow(mayHaveGeneratedKeys)) {
             bindAll(ctx.stmt);
-            return ctx.stmt.executeUpdate();
+            int rows = ctx.stmt.executeUpdate();
+            long id = 0L;
+            if (mayHaveGeneratedKeys) {
+                try (var rs = ctx.stmt.getGeneratedKeys()) {
+                    if (rs.next()) {
+                        Object key = rs.getObject(1);
+                        if (key instanceof Number n) {
+                            id = n.longValue();
+                        }
+                    }
+                }
+            }
+            return new ExecuteResult(rows, id);
         } catch (SQLException e) {
             throw new SqlException("Update failed: " + e.getMessage(), e);
         }
@@ -350,22 +366,28 @@ final class QueryImpl implements Query {
     }
 
 
-    private ExecuteContext borrow() throws SQLException {
+    private ExecuteContext borrow(boolean mayHaveKeys) throws SQLException {
         String sql = jdbcSql();
         if (boundConnection != null) {
-            var stmt = boundConnection
-                .jdbcConnection()
-                .prepareStatement(sql, Statement.NO_GENERATED_KEYS);
+            var stmt = prepareStatement(
+                boundConnection.jdbcConnection(), sql, mayHaveKeys);
             stmt.setQueryTimeout(db.queryTimeoutSeconds());
             return new ExecuteContext(stmt, null, null);
         }
 
         PooledConnection conn = db.pool().borrow();
-        var stmt = conn
-            .jdbcConnection()
-            .prepareStatement(sql, Statement.NO_GENERATED_KEYS);
+        var stmt = prepareStatement(conn.jdbcConnection(), sql, mayHaveKeys);
         stmt.setQueryTimeout(db.queryTimeoutSeconds());
         return new ExecuteContext(stmt, conn, db.pool());
+    }
+
+    private PreparedStatement prepareStatement(
+        java.sql.Connection conn, String sql, boolean mayHaveKeys
+    ) throws SQLException {
+        if (mayHaveKeys) {
+            return conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+        }
+        return conn.prepareStatement(sql, Statement.NO_GENERATED_KEYS);
     }
 
     private record ExecuteContext(

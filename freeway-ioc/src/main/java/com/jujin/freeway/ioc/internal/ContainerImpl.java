@@ -6,9 +6,12 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.logging.LoggingBootstrap;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.CoercionRules;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.LoggerSource;
-import com.jujin.freeway.ioc.ScopeGate;
+import com.jujin.freeway.ioc.Scoping;
+import com.jujin.freeway.ioc.SymbolProviders;
+import com.jujin.freeway.ioc.extension.ExtensionPoint;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.lang.reflect.Modifier;
@@ -26,14 +29,14 @@ public final class ContainerImpl implements Container {
     private final SymbolSourceDefault symbolSource;
     private final CoercerDefault coercer;
     private final LoggerSource loggerSource;
-    private final ScopeGate scopeGate;
+    private final Scoping scoping;
     private final ProxyFactory proxyFactory;
-    private final ExtensionHub extensions;
     private final InjectResolver injectResolver;
     private final InstanceFactory instanceFactory;
     private final ScopeControl scopeControl;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
+    private final Map<Class<?>, ExtensionProxy> extensionProxies = new ConcurrentHashMap<>();
 
     public ContainerImpl(Collection<? extends com.jujin.freeway.ioc.Module> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
@@ -50,11 +53,10 @@ public final class ContainerImpl implements Container {
             }
         };
         this.proxyFactory = new ProxyFactoryDefault();
-        this.extensions = new ExtensionHub();
         this.injectResolver = new InjectResolver(this);
         this.instanceFactory = new InstanceFactory(this);
         this.scopeControl = new ScopeControl(() -> closed);
-        this.scopeGate = scopeControl::open;
+        this.scoping = scopeControl::within;
         this.shutdown = new Shutdown(
             scopeControl,
             serviceCache,
@@ -67,13 +69,9 @@ public final class ContainerImpl implements Container {
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
-        registerBuiltin(ScopeGate.class, scopeGate, "ScopeGate");
+        registerBuiltin(Scoping.class, scoping, "Scoping");
         loadModules(modules);
-        wireExtensions();
-    }
-
-    ExtensionHub extensions() {
-        return extensions;
+        wireBuiltinExtensions();
     }
 
     BindingIndex bindingIndex() {
@@ -92,6 +90,18 @@ public final class ContainerImpl implements Container {
         return loggerSource;
     }
 
+    @SuppressWarnings("unchecked")
+    ExtensionProxy extension(Class<?> pointType) {
+        return extensionProxies.computeIfAbsent(pointType, pt -> {
+            ExtensionProxy ext = ExtensionProxy.forPoint(pt);
+            Object proxy = ext.proxy(pt);
+            BindingImpl binding = new BindingImpl(this, pt);
+            binding.id(pt.getSimpleName()).to(proxy);
+            register(binding);
+            return ext;
+        });
+    }
+
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
         BindingImpl<T> binding = new BindingImpl<>(this, type);
         binding.id(id).to(instance);
@@ -107,12 +117,25 @@ public final class ContainerImpl implements Container {
         }
     }
 
-    private void wireExtensions() {
-        for (SymbolProvider provider : extensions.resolveList(SymbolProvider.class)) {
-            symbolSource.register(provider);
+    /**
+     * Wire built-in consumers that depend on contributed extension points.
+     * Called once after all modules have bound their contributions.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void wireBuiltinExtensions() {
+        // SymbolProviders → SymbolSource
+        ExtensionProxy spExt = extensionProxies.get(SymbolProviders.class);
+        if (spExt != null) {
+            for (Object p : spExt.resolveAll()) {
+                symbolSource.register((SymbolProvider) p);
+            }
         }
-        for (CoerceRule<?, ?> rule : extensions.resolveList(CoerceRule.class)) {
-            coercer.register(rule);
+        // CoercionRules → Coercer
+        ExtensionProxy crExt = extensionProxies.get(CoercionRules.class);
+        if (crExt != null) {
+            for (Object rule : crExt.resolveAll()) {
+                coercer.register((CoerceRule) rule);
+            }
         }
     }
 
@@ -165,6 +188,15 @@ public final class ContainerImpl implements Container {
         }
         if (isConcrete(type)) {
             return instantiate(type);
+        }
+        // Auto-create empty extension point if it hasn't been registered yet
+        if (ExtensionPoint.class.isAssignableFrom(type) && type.isInterface()) {
+            extension(type); // ensures ExtensionProxy + binding exist
+            // Re-resolve from binding index now that the binding exists
+            BindingImpl<T> extBinding = bindingIndex.findUnique(type);
+            if (extBinding != null) {
+                return serviceRuntime.get(extBinding);
+            }
         }
         throw noServiceRegistered(type);
     }

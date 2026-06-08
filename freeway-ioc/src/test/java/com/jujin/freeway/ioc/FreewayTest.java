@@ -6,14 +6,12 @@ import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoerceRule;
-import com.jujin.freeway.ioc.LoggerSource;
-import com.jujin.freeway.ioc.ScopeGate;
 import com.jujin.freeway.ioc.annotation.Extension;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
-import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.extension.ExtensionPoint;
 import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.annotation.Value;
-import java.util.Collection;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -27,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -208,7 +207,7 @@ class FreewayTest {
         System.setProperty(ENDPOINT_KEY, "localhost:8088");
 
         Container container = Freeway.create(binder ->
-            binder.contribute((Class) CoerceRule.class).add(new CoerceRule<>(
+            binder.contribute(CoercionRules.class).add(new CoerceRule<>(
                 String.class,
                 Endpoint.class,
                 value -> {
@@ -228,7 +227,7 @@ class FreewayTest {
         System.setProperty(TIMEOUT_KEY, "2500");
 
         Container container = Freeway.create(binder ->
-            binder.contribute((Class) CoerceRule.class).add(new CoerceRule<>(
+            binder.contribute(CoercionRules.class).add(new CoerceRule<>(
                 Integer.class,
                 Timeout.class,
                 Timeout::new
@@ -243,7 +242,7 @@ class FreewayTest {
     @Test
     void modulesCanContributeSymbolProviders() {
         Container container = Freeway.create(binder ->
-            binder.contribute(SymbolProvider.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway" : null)
+            binder.contribute(SymbolProviders.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway" : null)
         );
 
         AppNameHolder holder = container.get(AppNameHolder.class);
@@ -332,8 +331,8 @@ class FreewayTest {
     @Test
     void extensionsAggregateContributions() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
+            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("web"))
         );
 
         AppConfig config = container.get(AppConfig.class);
@@ -344,8 +343,8 @@ class FreewayTest {
     @Test
     void parameterExtensionsAggregateContributions() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
+            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("web"))
         );
 
         ParameterAppConfig config = container.get(ParameterAppConfig.class);
@@ -356,15 +355,15 @@ class FreewayTest {
     @Test
     void extensionsCanOrderContributionsById() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeature.class)
+            binder -> binder.contribute(AppFeatures.class)
                 .add("web", new AppFeature("web"))
                 .after("db", "metrics"),
-            binder -> binder.contribute(AppFeature.class)
+            binder -> binder.contribute(AppFeatures.class)
                 .add("core", new AppFeature("core")),
-            binder -> binder.contribute(AppFeature.class)
+            binder -> binder.contribute(AppFeatures.class)
                 .add("db", new AppFeature("db"))
                 .after("core"),
-            binder -> binder.contribute(AppFeature.class)
+            binder -> binder.contribute(AppFeatures.class)
                 .add("metrics", new AppFeature("metrics"))
                 .before("web")
         );
@@ -377,8 +376,8 @@ class FreewayTest {
     @Test
     void extensionOrderingRejectsDuplicateIds() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Freeway.create(
-            binder -> binder.contribute(AppFeature.class).add("same", new AppFeature("first")),
-            binder -> binder.contribute(AppFeature.class).add("same", new AppFeature("second"))
+            binder -> binder.contribute(AppFeatures.class).add("same", new AppFeature("first")),
+            binder -> binder.contribute(AppFeatures.class).add("same", new AppFeature("second"))
         ));
 
         assertTrue(ex.getMessage().contains("Duplicate contribution id same"));
@@ -387,27 +386,31 @@ class FreewayTest {
     @Test
     void extensionOrderingRejectsCycles() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeature.class)
+            binder -> binder.contribute(AppFeatures.class)
                 .add("first", new AppFeature("first"))
                 .after("second"),
-            binder -> binder.contribute(AppFeature.class)
+            binder -> binder.contribute(AppFeatures.class)
                 .add("second", new AppFeature("second"))
                 .after("first")
         );
 
-        RuntimeException ex = assertThrows(RuntimeException.class, () -> container.get(AppConfig.class));
+        Throwable ex = assertThrows(Throwable.class, () -> container.get(AppConfig.class));
 
-        assertInstanceOf(IllegalStateException.class, ex.getCause());
-        assertTrue(ex.getCause().getMessage().contains("Contribution order cycle detected"));
+        Throwable root = ex;
+        while (root.getCause() != null) root = root.getCause();
+        assertTrue(
+            root.getMessage().contains("Contribution order cycle detected"),
+            "Expected cycle detection message, got: " + root.getMessage()
+        );
     }
 
     @Test
     void fieldExtensionsOverrideTypeDefault() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web")),
-            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", true)),
-            binder -> binder.contributeMapped(String.class, AppFlag.class).put("timing", new AppFlag("timing", false))
+            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("web")),
+            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("debug", new AppFlag("debug", true))),
+            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("timing", new AppFlag("timing", false)))
         );
 
         MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
@@ -417,53 +420,23 @@ class FreewayTest {
     }
 
     @Test
-    void mappedExtensionsRejectDuplicateKeys() {
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Freeway.create(
-            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", true)),
-            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", false))
-        ));
-
-        assertTrue(ex.getMessage().contains("Duplicate mapped contribution key debug"));
-    }
-
-    @Test
-    void mappedExtensionsRequireExplicitOverride() {
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Freeway.create(
-            binder -> binder.contributeMapped(String.class, AppFlag.class)
-                .override("debug", new AppFlag("debug", false))
-        ));
-
-        assertTrue(ex.getMessage().contains("Missing mapped contribution key debug"));
-    }
-
-    @Test
-    void mappedExtensionsAllowExplicitOverride() {
+    void extensionEntriesPreserveKeys() {
         Container container = Freeway.create(
-            binder -> binder.contributeMapped(String.class, AppFlag.class).put("debug", new AppFlag("debug", true)),
-            binder -> binder.contributeMapped(String.class, AppFlag.class).override("debug", new AppFlag("debug", false))
+            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("debug", new AppFlag("debug", true))),
+            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("   ", new AppFlag("blank-key", true)))
         );
 
         MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
 
-        assertEquals(Map.of("debug", new AppFlag("debug", false)), catalog.flags());
+        assertEquals(Map.of("debug", new AppFlag("debug", true), "   ", new AppFlag("blank-key", true)), catalog.flags());
     }
 
     @Test
-    void mappedExtensionsPreserveBlankStringKeys() {
+    void extensionEntriesSupportNonStringKeys() {
         Container container = Freeway.create(
-            binder -> binder.contributeMapped(String.class, AppFlag.class).put("   ", new AppFlag("debug", true))
-        );
-
-        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
-
-        assertEquals(Map.of("   ", new AppFlag("debug", true)), catalog.flags());
-    }
-
-    @Test
-    void mappedExtensionsSupportNonStringKeys() {
-        Container container = Freeway.create(
-            binder -> binder.contributeMapped(FlagKey.class, AppFlag.class).put(FlagKey.DEBUG, new AppFlag("debug", true)),
-            binder -> binder.contributeMapped(FlagKey.class, AppFlag.class).put(FlagKey.TIMING, new AppFlag("timing", false))
+            binder -> binder.contribute(EnumAppFlags.class).add(new EnumAppFlags.Entry(FlagKey.DEBUG, new AppFlag("debug", true))),
+            binder -> binder.contribute(EnumAppFlags.class).add(new EnumAppFlags.Entry(FlagKey.TIMING, new AppFlag("timing", false)))
         );
 
         EnumKeyExtensionCatalog catalog = container.get(EnumKeyExtensionCatalog.class);
@@ -613,26 +586,43 @@ class FreewayTest {
     }
 
     @Extension(AppFeature.class)
+    // ---- Test extension points ----
+
+    public interface AppFeatures extends ExtensionPoint<AppFeature> {}
+
+    public interface AppFlags extends ExtensionPoint<AppFlags.Entry> {
+        record Entry(String key, AppFlag flag) {}
+    }
+
+    public interface EnumAppFlags extends ExtensionPoint<EnumAppFlags.Entry> {
+        record Entry(FlagKey key, AppFlag flag) {}
+    }
+
+    public record AppFeature(String name) {}
+
+    public record AppFlag(String name, boolean enabled) {}
+
+    public enum FlagKey { DEBUG, TIMING }
+
+    // ---- Test consumers ----
+
     public static final class AppConfig {
         private final List<AppFeature> features;
 
-        public AppConfig(Collection<AppFeature> features) {
-            this.features = List.copyOf(features);
+        public AppConfig(AppFeatures features) {
+            this.features = List.copyOf(features.all());
         }
 
         List<String> featureNames() {
             return features.stream().map(AppFeature::name).toList();
         }
-    }
-
-    public record AppFeature(String name) {
     }
 
     public static final class ParameterAppConfig {
         private final List<AppFeature> features;
 
-        public ParameterAppConfig(@Extension(AppFeature.class) Collection<AppFeature> features) {
-            this.features = List.copyOf(features);
+        public ParameterAppConfig(AppFeatures features) {
+            this.features = List.copyOf(features.all());
         }
 
         List<String> featureNames() {
@@ -640,12 +630,16 @@ class FreewayTest {
         }
     }
 
-    @Extension(AppFeature.class)
     public static final class MixedExtensionCatalog {
-        private List<AppFeature> features;
+        private final List<AppFeature> features;
+        private final Map<String, AppFlag> flags;
 
-        @Extension(AppFlag.class)
-        private Map<String, AppFlag> flags;
+        public MixedExtensionCatalog(AppFeatures features, AppFlags flags) {
+            this.features = List.copyOf(features.all());
+            Map<String, AppFlag> map = new java.util.LinkedHashMap<>();
+            for (AppFlags.Entry entry : flags.all()) map.put(entry.key(), entry.flag());
+            this.flags = Map.copyOf(map);
+        }
 
         List<String> featureNames() {
             return features.stream().map(AppFeature::name).toList();
@@ -657,20 +651,17 @@ class FreewayTest {
     }
 
     public static final class EnumKeyExtensionCatalog {
-        @Extension(AppFlag.class)
-        private Map<FlagKey, AppFlag> flags;
+        private final Map<FlagKey, AppFlag> flags;
+
+        public EnumKeyExtensionCatalog(EnumAppFlags flags) {
+            Map<FlagKey, AppFlag> map = new java.util.LinkedHashMap<>();
+            for (EnumAppFlags.Entry entry : flags.all()) map.put(entry.key(), entry.flag());
+            this.flags = Map.copyOf(map);
+        }
 
         Map<FlagKey, AppFlag> flags() {
             return flags;
         }
-    }
-
-    public record AppFlag(String name, boolean enabled) {
-    }
-
-    public enum FlagKey {
-        DEBUG,
-        TIMING
     }
 
     public record Endpoint(String host, int port) {
@@ -765,48 +756,168 @@ class FreewayTest {
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        ScopeGate scopeGate = container.get(ScopeGate.class);
+        Scoping scoping = container.get(Scoping.class);
 
         assertThrows(IllegalStateException.class, () -> container.get(ScopedCounter.class));
 
-        ScopedCounter first = null;
-        try (ScopeHandle scope = scopeGate.open()) {
-            first = container.get(ScopedCounter.class);
+        AtomicReference<ScopedCounter> firstHolder = new AtomicReference<>();
+        scoping.within(() -> {
+            ScopedCounter first = container.get(ScopedCounter.class);
+            firstHolder.set(first);
             ScopedCounter second = container.get(ScopedCounter.class);
 
             assertSame(first, second);
             assertEquals(1, ScopedCounter.created.get());
             assertEquals(0, ScopedCounter.destroyed.get());
-        }
+            return null;
+        });
+        ScopedCounter first = firstHolder.get();
 
         assertEquals(1, ScopedCounter.destroyed.get());
 
-        try (ScopeHandle scope = scopeGate.open()) {
+        scoping.within(() -> {
             ScopedCounter third = container.get(ScopedCounter.class);
             assertNotSame(first, third);
             assertEquals(2, ScopedCounter.created.get());
-        }
+            return null;
+        });
 
         assertEquals(2, ScopedCounter.destroyed.get());
     }
 
     @Test
-    void containerCloseReleasesOpenScopes() {
+    void scopedBindingWithinUsesScopedValue() {
         ScopedCounter.created.set(0);
         ScopedCounter.destroyed.set(0);
 
         Container container = Freeway.create(binder ->
             binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
         );
-        ScopeGate scopeGate = container.get(ScopeGate.class);
+        Scoping scoping = container.get(Scoping.class);
 
-        ScopeHandle scope = scopeGate.open();
-        container.get(ScopedCounter.class);
+        assertThrows(IllegalStateException.class, () -> container.get(ScopedCounter.class));
 
-        container.close();
-        scope.close();
+        int result = scoping.within(() -> {
+            ScopedCounter first = container.get(ScopedCounter.class);
+            ScopedCounter second = container.get(ScopedCounter.class);
+            assertSame(first, second);
+            assertEquals(1, ScopedCounter.created.get());
+            assertEquals(0, ScopedCounter.destroyed.get());
+            return first.id();
+        });
 
         assertEquals(1, ScopedCounter.destroyed.get());
+
+        scoping.within(() -> {
+            ScopedCounter third = container.get(ScopedCounter.class);
+            assertEquals(2, ScopedCounter.created.get());
+            return null;
+        });
+
+        assertEquals(2, ScopedCounter.destroyed.get());
+    }
+
+    @Test
+    void scopedValueNestingShadowsOuter() {
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        Scoping scoping = container.get(Scoping.class);
+
+        scoping.within(() -> {
+            ScopedCounter outer = container.get(ScopedCounter.class);
+            assertEquals(1, ScopedCounter.created.get());
+            assertEquals(0, ScopedCounter.destroyed.get());
+
+            // Nested within() creates a new scope, shadowing the outer
+            scoping.within(() -> {
+                ScopedCounter inner = container.get(ScopedCounter.class);
+                assertNotSame(outer, inner);
+                assertEquals(2, ScopedCounter.created.get());
+                assertEquals(0, ScopedCounter.destroyed.get()); // outer not yet destroyed
+                return null;
+            });
+
+            assertEquals(1, ScopedCounter.destroyed.get()); // inner destroyed
+
+            // Outer session still alive
+            ScopedCounter stillOuter = container.get(ScopedCounter.class);
+            assertSame(outer, stillOuter);
+            return null;
+        });
+
+        assertEquals(2, ScopedCounter.destroyed.get()); // outer destroyed
+    }
+
+    @Test
+    void withinPropagatesReturnValue() {
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        Scoping scoping = container.get(Scoping.class);
+
+        ScopedApi api = scoping.within(() -> container.get(ScopedCounter.class));
+        assertNotNull(api);
+    }
+
+    @Test
+    void withinClosesScopeOnException() {
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        Scoping scoping = container.get(Scoping.class);
+
+        assertThrows(RuntimeException.class, () ->
+            scoping.within(() -> {
+                container.get(ScopedCounter.class);
+                assertEquals(1, ScopedCounter.created.get());
+                throw new RuntimeException("boom");
+            })
+        );
+
+        // Scope must be closed even though the work threw
+        assertEquals(1, ScopedCounter.destroyed.get());
+    }
+
+    @Test
+    void containerCloseAfterWithinReleasesScopes() {
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        Scoping scoping = container.get(Scoping.class);
+
+        scoping.within(() -> {
+            container.get(ScopedCounter.class);
+            return null;
+        });
+
+        assertEquals(1, ScopedCounter.destroyed.get());
+
+        // Container close should be safe after scopes have been cleaned up
+        container.close();
+    }
+
+    @Test
+    void withinRefusesAfterContainerClose() {
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedCounter.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        Scoping scoping = container.get(Scoping.class);
+
+        container.close();
+
+        assertThrows(IllegalStateException.class, () ->
+            scoping.within(() -> null)
+        );
     }
 
     @Test
@@ -820,21 +931,19 @@ class FreewayTest {
                 binder.bind(ScopedSingletonService.class).to(ScopedSingletonService.class);
             }
         );
-        ScopeGate scopeGate = container.get(ScopeGate.class);
+        Scoping scoping = container.get(Scoping.class);
 
         ScopedSingletonService service = container.get(ScopedSingletonService.class);
         assertTrue(service.proxied());
 
-        int firstId = -1;
-        try (ScopeHandle scope = scopeGate.open()) {
-            firstId = service.currentId();
-            assertEquals(firstId, service.currentId());
-        }
+        int firstId = scoping.within(() -> {
+            int id = service.currentId();
+            assertEquals(id, service.currentId()); // same scope, same id
+            return id;
+        });
 
-        try (ScopeHandle scope = scopeGate.open()) {
-            int secondId = service.currentId();
-            assertNotEquals(firstId, secondId);
-        }
+        int secondId = scoping.within(service::currentId);
+        assertNotEquals(firstId, secondId);
 
         assertEquals(2, ScopedCounter.created.get());
         assertEquals(2, ScopedCounter.destroyed.get());

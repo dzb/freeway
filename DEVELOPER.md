@@ -27,7 +27,7 @@ Freeway 2 uses these architectural boundaries:
 - `AppRuntime` is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks.
 - Service ids are plain strings and are normalized internally. There is no public `ServiceId` type.
 - Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
-- Thread-scoped services use `ScopeGate.open()` to enter an execution boundary; this keeps lookup and scope entry separate.
+- Thread-scoped services use `Scoping.within()` to enter an execution boundary; the scope auto-closes when the work lambda completes.
 - `RuntimeHook` provides start/stop extension points for modules. Hooks are contributed through `Contributions<RuntimeHook>`.
 - Ordered list contributions are supported through `add(id, value).before(...)` and `.after(...)`.
 - HTTP startup no longer happens as a side effect of resolving `WebServer`. `HttpModule` contributes hook id `freeway.http.server`.
@@ -46,8 +46,7 @@ Freeway 2 uses these architectural boundaries:
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
 | `Freeway` | Container bootstrap: `Freeway.create(Module...)` |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
-| `ScopeGate` | Opens a `Scope.THREAD` execution boundary |
-| `ScopeHandle` | Auto-closeable handle returned by `ScopeGate.open()` |
+| `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
 
 `ServiceId` is intentionally not a public type. String ids keep the API direct:
@@ -110,16 +109,17 @@ Advisors require interface-to-class bindings because the container uses JDK prox
 | `Scope.PROTOTYPE` | New instance per resolution, not retained by the container |
 | `Scope.THREAD` | One instance per active thread execution boundary |
 
-Thread scope is entered through the built-in `ScopeGate` service:
+Thread scope is entered through the built-in `Scoping` service:
 
 ```java
-ScopeGate scopeGate = container.get(ScopeGate.class);
-try (ScopeHandle ignored = scopeGate.open()) {
+Scoping scoping = container.get(Scoping.class);
+scoping.within(() -> {
     RequestState state = container.get(RequestState.class);
-}
+    return null;
+});
 ```
 
-This keeps the API aligned with the binding DSL: `bind().scope(Scope.THREAD)` declares lifecycle, while `ScopeGate.open()` enters the boundary. Direct injection of a thread-scoped concrete service into a singleton is rejected because it would capture one boundary-local instance permanently. Thread-scoped interface services can be injected through lazy proxies.
+The scope lives for the duration of the `within()` lambda and is backed by JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. The `bind().scope(Scope.THREAD)` DSL declares lifecycle, while `Scoping.within()` enters the boundary. Direct injection of a thread-scoped concrete service into a singleton is rejected because it would capture one boundary-local instance permanently. Thread-scoped interface services can be injected through lazy proxies.
 
 ### Injection
 

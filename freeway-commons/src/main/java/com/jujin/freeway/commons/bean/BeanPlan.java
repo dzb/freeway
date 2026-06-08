@@ -10,10 +10,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 public final class BeanPlan {
     private final Class<?> type;
@@ -34,7 +37,7 @@ public final class BeanPlan {
         this.index = Map.copyOf(map);
     }
 
-    static BeanPlan of(Class<?> type) {
+    public static BeanPlan of(Class<?> type) {
         Objects.requireNonNull(type, "type");
         return type.isRecord() ? forRecord(type) : forBean(type);
     }
@@ -74,7 +77,7 @@ public final class BeanPlan {
                 properties.add(new RecordBeanProperty(
                     component.getName(),
                     component.getGenericType(),
-                    component.getAnnotations(),
+                    recordAnnotations(type, component),
                     MethodHandleUtils.methodHandle(component.getAccessor())
                 ));
             }
@@ -82,6 +85,44 @@ public final class BeanPlan {
             return new BeanPlan(type, true, BeanConstructor.of(constructor), properties);
         } catch (NoSuchMethodException ex) {
             throw new IllegalArgumentException("Cannot resolve record constructor for " + type.getName(), ex);
+        }
+    }
+
+    /**
+     * Collect annotations from both the record component and the backing field.
+     * <p>
+     * Annotations with only {@code @Target(FIELD)} are not visible via
+     * {@link RecordComponent#getAnnotations()} — they only appear on the field.
+     * This merges both sources so consumers can read field-targeted annotations
+     * (e.g. validation constraints) on records regardless of their {@code @Target}.
+     */
+    private static Annotation[] recordAnnotations(Class<?> type, RecordComponent component) {
+        Annotation[] componentAnns = component.getAnnotations();
+        try {
+            Field field = type.getDeclaredField(component.getName());
+            Annotation[] fieldAnns = field.getDeclaredAnnotations();
+            if (fieldAnns.length == 0) {
+                return componentAnns;
+            }
+            if (componentAnns.length == 0) {
+                return fieldAnns;
+            }
+            // Merge: component wins on duplicates, field fills gaps
+            Set<Class<? extends Annotation>> seen = Collections.newSetFromMap(
+                new IdentityHashMap<>());
+            List<Annotation> merged = new ArrayList<>();
+            for (Annotation a : componentAnns) {
+                seen.add(a.annotationType());
+                merged.add(a);
+            }
+            for (Annotation a : fieldAnns) {
+                if (seen.add(a.annotationType())) {
+                    merged.add(a);
+                }
+            }
+            return merged.toArray(new Annotation[0]);
+        } catch (NoSuchFieldException | RuntimeException e) {
+            return componentAnns;
         }
     }
 
@@ -123,9 +164,6 @@ public final class BeanPlan {
         }
         return new BeanPlan(type, false, constructor != null ? BeanConstructor.of(constructor) : null, new ArrayList<>(unique.values()));
     }
-
-
-
 
 
     private record RecordBeanProperty(String name, java.lang.reflect.Type type, Annotation[] annotations, MethodHandle accessor) implements BeanProperty {

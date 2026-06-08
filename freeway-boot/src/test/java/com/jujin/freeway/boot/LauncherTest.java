@@ -4,6 +4,7 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Module;
 import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.RuntimeHooks;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.util.ArrayList;
 import java.util.List;
@@ -91,7 +92,7 @@ class LauncherTest {
         List<String> events = new ArrayList<>();
 
         AppRuntime app = Launcher.run(binder -> {
-            binder.contribute(RuntimeHook.class).add("second", new RuntimeHook() {
+            binder.contribute(RuntimeHooks.class).add("second", new RuntimeHook() {
                 @Override
                 public void start(Container container) {
                     events.add("second:start");
@@ -102,7 +103,7 @@ class LauncherTest {
                     events.add("second:stop");
                 }
             }).after("first");
-            binder.contribute(RuntimeHook.class).add("first", new RuntimeHook() {
+            binder.contribute(RuntimeHooks.class).add("first", new RuntimeHook() {
                 @Override
                 public void start(Container container) {
                     events.add("first:start");
@@ -126,7 +127,7 @@ class LauncherTest {
         List<String> events = new ArrayList<>();
 
         assertThrows(IllegalStateException.class, () -> Launcher.run(binder -> {
-            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+            binder.contribute(RuntimeHooks.class).add(new RuntimeHook() {
                 @Override
                 public void start(Container container) {
                     events.add("first:start");
@@ -137,7 +138,7 @@ class LauncherTest {
                     events.add("first:stop");
                 }
             });
-            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+            binder.contribute(RuntimeHooks.class).add(new RuntimeHook() {
                 @Override
                 public void start(Container container) {
                     events.add("second:start");

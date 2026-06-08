@@ -4,8 +4,10 @@ import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.Launcher;
 import com.jujin.freeway.http.HttpEngine;
 import com.jujin.freeway.http.Route;
+import com.jujin.freeway.http.Routes;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebSocketGroup;
+import com.jujin.freeway.http.WebSocketGroups;
 import com.jujin.freeway.http.WebSocketListener;
 import com.jujin.freeway.http.WebSocketRoute;
 import com.jujin.freeway.ioc.Binder;
@@ -156,8 +158,8 @@ public abstract class AbstractWebEngineContractTest {
     public static final class TestAppModule implements Module {
         @Override
         public void bind(Binder binder) {
-            binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));
-            binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/api",
+            binder.contribute(Routes.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));
+            binder.contribute(WebSocketGroups.class).add(WebSocketGroup.of("/api",
                 WebSocketRoute.of("/ws/{room}", session -> new WebSocketListener() {
                     @Override
                     public void onText(String text) throws Exception {
@@ -179,7 +181,7 @@ public abstract class AbstractWebEngineContractTest {
 
         @Override
         public void bind(Binder binder) {
-            binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/ws",
+            binder.contribute(WebSocketGroups.class).add(WebSocketGroup.of("/ws",
                 WebSocketRoute.of("/lifecycle", session -> new WebSocketListener() {
                     @Override
                     public void onOpen(com.jujin.freeway.http.WebSocketSession session) throws Exception {

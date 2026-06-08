@@ -26,7 +26,7 @@ class JdkHttpEngineTest {
 
         Container c = Freeway.create(
             new HttpModule(),
-            binder -> binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+            binder -> binder.contribute(Routes.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")))
         );
         c.get(WebServer.class).start();
 
@@ -52,7 +52,7 @@ class JdkHttpEngineTest {
 
         Container c = Freeway.create(
             new HttpModule(),
-            binder -> binder.contribute(Route.class).add(Route.get("/sse", ctx -> {
+            binder -> binder.contribute(Routes.class).add(Route.get("/sse", ctx -> {
                 try (var emitter = ctx.sse()) {
                     emitter.send("hello");
                     emitter.send("world");

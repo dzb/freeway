@@ -109,10 +109,6 @@ final class InjectResolver {
         if (injected != null) {
             return injected;
         }
-        Object extension = resolveExtensionValue(ownerType, lookup, memberType);
-        if (extension != null) {
-            return extension;
-        }
         Object configured = resolveConfiguredValue(lookup, targetType);
         if (configured != null) {
             return configured;
@@ -169,45 +165,6 @@ final class InjectResolver {
             );
         }
         return namedId != null ? namedId : injectId;
-    }
-
-    private Object resolveExtensionValue(Class<?> ownerType, AnnotationLookup lookup, Type memberType) {
-        Extension explicit = lookup.annotation(Extension.class);
-        if (explicit != null) {
-            return resolveExtensionValue(explicit, memberType, true);
-        }
-        Extension typeDefault = ownerType.getAnnotation(Extension.class);
-        if (typeDefault != null) {
-            return resolveExtensionValue(typeDefault, memberType, false);
-        }
-        return null;
-    }
-
-    private Object resolveExtensionValue(Extension extension, Type memberType, boolean explicit) {
-        Class<?> rawType = rawClass(memberType);
-        if (Collection.class.isAssignableFrom(rawType)) {
-            return container.extensions().resolveList(extension.value());
-        }
-        if (Map.class.isAssignableFrom(rawType)) {
-            Class<?> keyType = mapKeyType(memberType);
-            return container.extensions().resolveMap(keyType, extension.value());
-        }
-        if (explicit) {
-            throw new IllegalArgumentException(
-                "@Extension can only be used on Collection or Map members: " + memberType.getTypeName()
-            );
-        }
-        return null;
-    }
-
-    private static Class<?> mapKeyType(Type memberType) {
-        if (memberType instanceof ParameterizedType parameterizedType) {
-            Type[] args = parameterizedType.getActualTypeArguments();
-            if (args.length >= 2) {
-                return rawClass(args[0]);
-            }
-        }
-        throw new IllegalArgumentException("Map extension members must declare key type: " + memberType.getTypeName());
     }
 
     private Object resolveConfiguredValue(AnnotationLookup lookup, Class<?> targetType) {

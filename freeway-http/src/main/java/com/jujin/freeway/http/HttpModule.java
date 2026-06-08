@@ -4,6 +4,7 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Module;
 import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.RuntimeHooks;
 import java.util.Map;
 
 public final class HttpModule implements Module {
@@ -18,7 +19,7 @@ public final class HttpModule implements Module {
         binder.bind(WebServer.class).to(WebServer.class);
         binder.bind(JdkHttpEngine.class).to(JdkHttpEngine.class).id("jdk");
 
-        binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
+        binder.contribute(RuntimeHooks.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
                 container.get(WebServer.class).start();
@@ -30,9 +31,9 @@ public final class HttpModule implements Module {
             }
         });
 
-        binder.contribute(HttpFilter.class).add(new RequestTimingFilter());
+        binder.contribute(HttpFilters.class).add(new RequestTimingFilter());
 
-        binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
+        binder.contribute(ExceptionMappers.class).add((ctx, ex) -> {
             if (ex instanceof RequestBodyTooLargeException) {
                 ctx.sendJson(413, Map.of(
                     "error", "Payload Too Large",

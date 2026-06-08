@@ -145,4 +145,58 @@ class BeanValidatorTest {
         assertEquals(1, result.getErrors().size());
         assertEquals("(root)", result.getErrors().get(0).getField());
     }
+
+    // --- Record tests (BeanPlan introspection path) ---
+
+    record LoginRecord(@NotBlank String username, @NotNull @Size(min = 6, max = 64) String password) {}
+
+    record UserRecord(@NotBlank String name, @NotNull @Min(1) @Max(150) int age) {}
+
+    record AddressRecord(@NotBlank String city) {}
+
+    record NestedRecord(@Valid AddressRecord address) {}
+
+    @Test
+    void recordValid() {
+        var req = new LoginRecord("alice", "secure123");
+        assertFalse(BeanValidator.validate(req).hasErrors());
+    }
+
+    @Test
+    void recordNotBlankViolation() {
+        var req = new LoginRecord("   ", "secure123");
+        var result = BeanValidator.validate(req);
+        assertTrue(result.hasErrors());
+        assertEquals(1, result.getErrors().size());
+        assertEquals("username", result.getErrors().get(0).getField());
+    }
+
+    @Test
+    void recordNotNullAndSizeViolation() {
+        var req = new LoginRecord(null, null);
+        var result = BeanValidator.validate(req);
+        assertTrue(result.hasErrors());
+        assertEquals(3, result.getErrors().size()); // null username → NotBlank + null password → NotNull + Size
+    }
+
+    @Test
+    void recordMinViolation() {
+        var result = BeanValidator.validate(new UserRecord("Alice", 0));
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.getField().equals("age")));
+    }
+
+    @Test
+    void recordNestedValid() {
+        var req = new NestedRecord(new AddressRecord(""));
+        var result = BeanValidator.validate(req);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.getField().equals("address.city")));
+    }
+
+    @Test
+    void recordIsAnnotated() {
+        assertTrue(BeanValidator.isAnnotated(LoginRecord.class));
+        assertTrue(BeanValidator.isAnnotated(UserRecord.class));
+    }
 }

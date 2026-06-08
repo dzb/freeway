@@ -214,8 +214,7 @@ public final class SQL {
             compoundQuery,
             ctes,
             insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs
-        );
+            updateTable, setClauses, setArgs);
     }
 
     private SQL addGroupedCondition(String connector, Consumer<Group> builder) {
@@ -615,7 +614,7 @@ public final class SQL {
         return isSelect() || compoundQuery;
     }
 
-    private boolean isInsert() {
+    public boolean isInsert() {
         return insertTable != null;
     }
 

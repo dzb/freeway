@@ -1,15 +1,21 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.Database;
+import com.jujin.freeway.db.DatabaseEntry;
 import com.jujin.freeway.db.DatabaseHub;
-import com.jujin.freeway.ioc.annotation.Extension;
+import com.jujin.freeway.db.DatabaseRegistrations;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class DatabaseHubImpl implements DatabaseHub {
     private final Map<String, Database> databases;
 
-    public DatabaseHubImpl(@Extension(Database.class) Map<String, Database> databases) {
-        this.databases = Map.copyOf(databases);
+    public DatabaseHubImpl(DatabaseRegistrations registrations) {
+        Map<String, Database> map = new LinkedHashMap<>();
+        for (DatabaseEntry entry : registrations.all()) {
+            map.put(entry.name(), entry.db());
+        }
+        this.databases = Map.copyOf(map);
     }
 
     @Override

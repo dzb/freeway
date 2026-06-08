@@ -1,22 +1,27 @@
 package com.jujin.freeway.commons.validation;
 
+import com.jujin.freeway.commons.bean.BeanIntrospector;
+import com.jujin.freeway.commons.bean.BeanPlan;
+import com.jujin.freeway.commons.bean.BeanProperty;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 
 public final class BeanValidator {
 
     private BeanValidator() {}
 
     public static boolean isAnnotated(Class<?> beanType) {
-        for (Field field : getAllFields(beanType)) {
-            if (hasValidationAnnotation(field)) {
-                return true;
+        try {
+            BeanPlan plan = BeanIntrospector.plan(beanType);
+            for (BeanProperty property : plan.properties()) {
+                if (hasValidationAnnotation(property)) {
+                    return true;
+                }
             }
+        } catch (RuntimeException e) {
+            // JDK class or otherwise inaccessible type — cannot have validation annotations
+            return false;
         }
         return false;
     }
@@ -32,18 +37,21 @@ public final class BeanValidator {
     }
 
     private static void validateBean(Object bean, String prefix, ValidationResult result) {
-        for (Field field : getAllFields(bean.getClass())) {
-            field.setAccessible(true);
-            Object value;
-            try {
-                value = field.get(bean);
-            } catch (IllegalAccessException e) {
-                continue;
-            }
+        BeanPlan plan;
+        try {
+            plan = BeanIntrospector.plan(bean.getClass());
+        } catch (RuntimeException e) {
+            // JDK class or otherwise inaccessible type — nothing to validate
+            return;
+        }
+        for (BeanProperty property : plan.properties()) {
+            Object value = property.read(bean);
 
-            String fieldPath = prefix.isEmpty() ? field.getName() : prefix + "." + field.getName();
+            String fieldPath = prefix.isEmpty()
+                ? property.name()
+                : prefix + "." + property.name();
 
-            for (Annotation ann : field.getDeclaredAnnotations()) {
+            for (Annotation ann : property.annotations()) {
                 if (ann instanceof NotNull) {
                     if (value == null) {
                         result.addError(fieldPath, ((NotNull) ann).message(), null);
@@ -55,20 +63,24 @@ public final class BeanValidator {
                 } else if (ann instanceof Size size) {
                     int len = lengthOf(value);
                     if (len < size.min() || len > size.max()) {
-                        result.addError(fieldPath, size.message().replace("{min}", String.valueOf(size.min())).replace("{max}", String.valueOf(size.max())), value);
+                        result.addError(fieldPath, size.message()
+                            .replace("{min}", String.valueOf(size.min()))
+                            .replace("{max}", String.valueOf(size.max())), value);
                     }
                 } else if (ann instanceof Min min) {
                     if (value instanceof Number n && n.longValue() < min.value()) {
-                        result.addError(fieldPath, min.message().replace("{value}", String.valueOf(min.value())), value);
+                        result.addError(fieldPath,
+                            min.message().replace("{value}", String.valueOf(min.value())), value);
                     }
                 } else if (ann instanceof Max max) {
                     if (value instanceof Number n && n.longValue() > max.value()) {
-                        result.addError(fieldPath, max.message().replace("{value}", String.valueOf(max.value())), value);
+                        result.addError(fieldPath,
+                            max.message().replace("{value}", String.valueOf(max.value())), value);
                     }
                 }
             }
 
-            if (field.isAnnotationPresent(Valid.class) && value != null) {
+            if (property.hasAnnotation(Valid.class) && value != null) {
                 validateBean(value, fieldPath, result);
             }
         }
@@ -82,20 +94,8 @@ public final class BeanValidator {
         return 0;
     }
 
-    private static Field[] getAllFields(Class<?> clazz) {
-        List<Field> fields = new ArrayList<>();
-        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
-            for (Field f : c.getDeclaredFields()) {
-                if (!Modifier.isStatic(f.getModifiers())) {
-                    fields.add(f);
-                }
-            }
-        }
-        return fields.toArray(new Field[0]);
-    }
-
-    private static boolean hasValidationAnnotation(Field field) {
-        for (Annotation ann : field.getDeclaredAnnotations()) {
+    private static boolean hasValidationAnnotation(BeanProperty property) {
+        for (Annotation ann : property.annotations()) {
             if (ann instanceof NotNull || ann instanceof NotBlank
                 || ann instanceof Size || ann instanceof Min
                 || ann instanceof Max || ann instanceof Valid) {

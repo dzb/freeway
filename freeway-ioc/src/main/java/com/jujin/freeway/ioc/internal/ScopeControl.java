@@ -1,36 +1,40 @@
 package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway.ioc.ScopeHandle;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 final class ScopeControl {
+    private static final ScopedValue<ScopeSession> SCOPED_SESSION = ScopedValue.newInstance();
+
     private final BooleanSupplier closedCheck;
-    private final ThreadLocal<Deque<ScopeSession>> scopeStack = ThreadLocal.withInitial(ArrayDeque::new);
     private final Set<ScopeSession> openScopes = ConcurrentHashMap.newKeySet();
 
     ScopeControl(BooleanSupplier closedCheck) {
         this.closedCheck = closedCheck;
     }
 
-    ScopeHandle open() {
+    <T> T within(Supplier<T> work) {
         if (closedCheck.getAsBoolean()) {
             throw new IllegalStateException("Container is closed");
         }
         ScopeSession session = new ScopeSession();
-        scopeStack.get().push(session);
         openScopes.add(session);
-        return () -> close(session);
+        try {
+            return ScopedValue.where(SCOPED_SESSION, session).call(work::get);
+        } finally {
+            closeSession(session);
+        }
     }
+
+    // ---- Shutdown ----
 
     RuntimeException closeOpenScopes(RuntimeException failure) {
         for (ScopeSession session : List.copyOf(openScopes)) {
             try {
-                close(session);
+                closeSession(session);
             } catch (RuntimeException ex) {
                 if (failure == null) {
                     failure = new RuntimeException("Unable to close open scope", ex);
@@ -42,28 +46,19 @@ final class ScopeControl {
         return failure;
     }
 
+    // ---- Current scope lookup ----
+
     ScopeSession current() {
-        Deque<ScopeSession> stack = scopeStack.get();
-        while (!stack.isEmpty()) {
-            ScopeSession session = stack.peek();
-            if (!session.isClosed()) {
-                return session;
-            }
-            stack.pop();
+        if (!SCOPED_SESSION.isBound()) {
+            return null;
         }
-        return null;
+        ScopeSession session = SCOPED_SESSION.get();
+        return session.isClosed() ? null : session;
     }
 
-    private void close(ScopeSession session) {
-        if (session == null) {
-            return;
-        }
-        Deque<ScopeSession> stack = scopeStack.get();
-        if (stack.peek() == session) {
-            stack.pop();
-        } else {
-            stack.remove(session);
-        }
+    // ---- Internal ----
+
+    private void closeSession(ScopeSession session) {
         if (openScopes.remove(session)) {
             session.close();
         }

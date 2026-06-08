@@ -1,6 +1,6 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.RuntimeHooks;
+import com.jujin.freeway.boot.internal.HookLifecycle;
 import com.jujin.freeway.ioc.Container;
 import java.util.Objects;
 
@@ -39,7 +39,7 @@ final class AppRuntimeDefault implements AppRuntime {
         }
         state = AppState.STARTING;
         try {
-            container.get(RuntimeHooks.class).start(container);
+            container.get(HookLifecycle.class).start(container);
             state = AppState.RUNNING;
         } catch (RuntimeException ex) {
             state = AppState.FAILED;
@@ -57,7 +57,7 @@ final class AppRuntimeDefault implements AppRuntime {
         RuntimeException failure = null;
         if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
             try {
-                container.get(RuntimeHooks.class).stop(container);
+                container.get(HookLifecycle.class).stop(container);
             } catch (RuntimeException ex) {
                 failure = ex;
             }

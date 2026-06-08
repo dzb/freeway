@@ -2,10 +2,35 @@ package com.jujin.freeway.commons.coercion;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 默认的类型转换器实现，提供丰富的内置类型转换功能。
+ * <p>
+ * 该类实现了 {@link Coercer} 接口，支持以下类型的转换：
+ * <ul>
+ *   <li>基本数据类型及其包装类之间的转换</li>
+ *   <li>字符串到各种数值类型的转换</li>
+ *   <li>数值类型之间的转换</li>
+ *   <li>布尔值、字符类型的转换</li>
+ *   <li>BigDecimal 和 BigInteger 的转换</li>
+ *   <li>枚举类型的转换</li>
+ *   <li>支持注册自定义转换规则</li>
+ * </ul>
+ * </p>
+ * <p>
+ * 转换逻辑遵循优先级顺序：首先尝试使用自定义注册的规则，然后使用内置的转换逻辑。
+ * 该类是线程安全的，可以在多线程环境中安全使用。
+ * </p>
+ *
+ * @author Freeway Team
+ */
 public final class CoercerDefault implements Coercer {
 
     private final ConcurrentHashMap<CoercionKey, CoerceRule<?, ?>> rules =
@@ -112,6 +137,69 @@ public final class CoercerDefault implements Coercer {
             return type;
         }
         return BOXED_TYPES.get(type);
+    }
+
+    // --- canCoerce / conversions ---
+
+    private static final Set<Class<?>> BUILTIN_SCALAR_TARGETS = Set.of(
+        String.class, Boolean.class, boolean.class,
+        Character.class, char.class,
+        Integer.class, int.class, Long.class, long.class,
+        Short.class, short.class, Byte.class, byte.class,
+        Double.class, double.class, Float.class, float.class,
+        BigDecimal.class, BigInteger.class
+    );
+
+    @Override
+    public boolean canCoerce(Class<?> sourceType, Class<?> targetType) {
+        Objects.requireNonNull(sourceType, "sourceType");
+        Objects.requireNonNull(targetType, "targetType");
+
+        // Step 1: 精确匹配自定义规则
+        if (rules.containsKey(new CoercionKey(sourceType, targetType))) {
+            return true;
+        }
+
+        // Step 2: 兼容匹配自定义规则（子类/实现类）
+        for (CoercionKey k : rules.keySet()) {
+            if (k.targetType() == targetType && k.sourceType().isAssignableFrom(sourceType)) {
+                return true;
+            }
+        }
+
+        // Step 3: 内置转换能力
+        return canCoerceBuiltin(sourceType, targetType);
+    }
+
+    @Override
+    public Map<Class<?>, Set<Class<?>>> conversions() {
+        Map<Class<?>, Set<Class<?>>> map = new LinkedHashMap<>();
+
+        // 自定义规则
+        for (CoerceRule<?, ?> rule : rules.values()) {
+            map.computeIfAbsent(rule.targetType(), k -> new LinkedHashSet<>())
+               .add(rule.sourceType());
+        }
+
+        // 内置标量 — Object.class 表示任意源类型
+        for (Class<?> target : BUILTIN_SCALAR_TARGETS) {
+            map.computeIfAbsent(target, k -> new LinkedHashSet<>())
+               .add(Object.class);
+        }
+
+        return Collections.unmodifiableMap(map);
+    }
+
+    private static boolean canCoerceBuiltin(Class<?> sourceType, Class<?> targetType) {
+        // null → any (默认值)
+        if (sourceType == Void.class) return true;
+        // identity / 继承
+        if (targetType.isAssignableFrom(sourceType)) return true;
+        // 标量转换
+        Class<?> boxedTarget = box(targetType);
+        if (boxedTarget == null) return false;
+        if (BUILTIN_SCALAR_TARGETS.contains(boxedTarget)) return true;
+        return boxedTarget.isEnum();
     }
 
     // --- internal: core scalar coercion logic (ex-ScalarCoercions.coerce) ---

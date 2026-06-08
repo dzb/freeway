@@ -11,9 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RouteIndexTest {
     @Test
     void matchesPathParameters() {
-        RouteIndex registry = new RouteIndex(List.of(
-            Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))
-        ), List.of());
+        RouteIndex registry = new RouteIndex(
+            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))); } },
+            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+        );
 
         RouteIndex.RouteMatch match = registry.match("GET", "/users/42");
         assertTrue(match != null);
@@ -22,10 +23,10 @@ class RouteIndexTest {
 
     @Test
     void rejectsDuplicateRoutes() {
-        assertThrows(IllegalStateException.class, () -> new RouteIndex(List.of(
-            Route.get("/users/{id}", ctx -> ctx.send(200, "ok")),
-            Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))
-        ), List.of()));
+        assertThrows(IllegalStateException.class, () -> new RouteIndex(
+            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/users/{id}", ctx -> ctx.send(200, "ok")), Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))); } },
+            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+        ));
     }
 
     @Test

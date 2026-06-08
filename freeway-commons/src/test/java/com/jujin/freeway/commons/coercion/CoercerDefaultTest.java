@@ -8,6 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class CoercerDefaultTest {
@@ -21,6 +25,124 @@ class CoercerDefaultTest {
         SUCCESS,
         FAILURE
     }
+
+    // --- canCoerce tests ---
+
+    @Test
+    void canCoerceBuiltinScalars() {
+        assertTrue(coercer.canCoerce(String.class, Integer.class));
+        assertTrue(coercer.canCoerce(String.class, int.class));
+        assertTrue(coercer.canCoerce(String.class, Long.class));
+        assertTrue(coercer.canCoerce(String.class, Double.class));
+        assertTrue(coercer.canCoerce(String.class, Boolean.class));
+        assertTrue(coercer.canCoerce(String.class, boolean.class));
+        assertTrue(coercer.canCoerce(String.class, Character.class));
+        assertTrue(coercer.canCoerce(String.class, char.class));
+        assertTrue(coercer.canCoerce(String.class, BigDecimal.class));
+        assertTrue(coercer.canCoerce(String.class, BigInteger.class));
+        assertTrue(coercer.canCoerce(Integer.class, String.class));
+        assertTrue(coercer.canCoerce(Integer.class, Long.class));
+        assertTrue(coercer.canCoerce(Integer.class, double.class));
+        assertTrue(coercer.canCoerce(Double.class, Integer.class));
+        assertTrue(coercer.canCoerce(BigDecimal.class, BigInteger.class));
+    }
+
+    @Test
+    void canCoerceNullToAny() {
+        assertTrue(coercer.canCoerce(Void.class, String.class));
+        assertTrue(coercer.canCoerce(Void.class, int.class));
+        assertTrue(coercer.canCoerce(Void.class, Boolean.class));
+    }
+
+    @Test
+    void canCoerceIdentityOrSubtype() {
+        assertTrue(coercer.canCoerce(String.class, String.class));
+        assertTrue(coercer.canCoerce(Integer.class, Object.class));
+        assertTrue(coercer.canCoerce(Integer.class, Number.class));
+        assertTrue(coercer.canCoerce(Integer.class, Comparable.class));
+    }
+
+    @Test
+    void canCoerceEnum() {
+        assertTrue(coercer.canCoerce(String.class, Color.class));
+        assertTrue(coercer.canCoerce(String.class, Status.class));
+    }
+
+    @Test
+    void cannotCoerceUnsupported() {
+        assertFalse(coercer.canCoerce(Integer.class, LocalDate.class));
+        assertFalse(coercer.canCoerce(Color.class, LocalDate.class));
+    }
+
+    @Test
+    void canCoerceWithCustomRule() {
+        CoercerDefault c = new CoercerDefault()
+            .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
+
+        assertTrue(c.canCoerce(String.class, Duration.class));
+        assertFalse(c.canCoerce(Integer.class, Duration.class));
+    }
+
+    @Test
+    void canCoerceWithCompatibleSourceType() {
+        // CharSequence -> Duration 规则，String（子类）也应通过
+        CoercerDefault c = new CoercerDefault()
+            .register(new CoerceRule<>(CharSequence.class, Duration.class,
+                s -> Duration.parse(s.toString())));
+
+        assertTrue(c.canCoerce(String.class, Duration.class));
+        assertTrue(c.canCoerce(StringBuilder.class, Duration.class));
+        assertTrue(c.canCoerce(CharSequence.class, Duration.class));
+    }
+
+    @Test
+    void canCoerceRejectsNullParams() {
+        assertThrows(NullPointerException.class, () -> coercer.canCoerce(null, String.class));
+        assertThrows(NullPointerException.class, () -> coercer.canCoerce(String.class, null));
+    }
+
+    // --- conversions tests ---
+
+    @Test
+    void conversionsIncludesCustomRules() {
+        CoercerDefault c = new CoercerDefault()
+            .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
+
+        Map<Class<?>, Set<Class<?>>> result = c.conversions();
+        assertTrue(result.containsKey(Duration.class));
+        assertTrue(result.get(Duration.class).contains(String.class));
+    }
+
+    @Test
+    void conversionsIncludesBuiltins() {
+        Map<Class<?>, Set<Class<?>>> result = coercer.conversions();
+
+        // 所有内置标量目标类型都应出现
+        assertTrue(result.containsKey(String.class));
+        assertTrue(result.containsKey(Integer.class));
+        assertTrue(result.containsKey(int.class));
+        assertTrue(result.containsKey(Boolean.class));
+        assertTrue(result.containsKey(BigDecimal.class));
+
+        // 内置转换的源类型标记为 Object.class
+        assertTrue(result.get(String.class).contains(Object.class));
+        assertTrue(result.get(Integer.class).contains(Object.class));
+    }
+
+    @Test
+    void conversionsEmptyWhenNoCustomRules() {
+        // 没有自定义规则时，conversions 不包含非内置类型
+        Map<Class<?>, Set<Class<?>>> result = coercer.conversions();
+        assertFalse(result.containsKey(Duration.class));
+    }
+
+    @Test
+    void conversionsIsUnmodifiable() {
+        assertThrows(UnsupportedOperationException.class, () ->
+            coercer.conversions().put(Integer.class, Set.of()));
+    }
+
+    // --- existing coercion tests ---
 
     @Test
     void coercesPrimitivesAndCommonScalarTypes() {

@@ -3,6 +3,7 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.CoercionRules;
 import com.jujin.freeway.ioc.Module;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import java.time.Duration;
@@ -12,9 +13,10 @@ public final class DbModule implements Module {
     public void bind(Binder binder) {
         binder.bind(Database.class).to(DatabaseImpl.class);
         binder.bind(DatabaseHub.class).to(DatabaseHubImpl.class);
-        var rules = binder.contribute((Class) CoerceRule.class);
-        rules.add(new CoerceRule<>(String.class, Duration.class, DbModule::parseDuration));
-        Coercions.jdbcDefaults().forEach(r -> rules.add((CoerceRule) r));
+        binder.contribute(CoercionRules.class).add(new CoerceRule<>(String.class, Duration.class, DbModule::parseDuration));
+        for (CoerceRule<?, ?> rule : Coercions.jdbcDefaults()) {
+            binder.contribute(CoercionRules.class).add(rule);
+        }
     }
 
     private static Duration parseDuration(String text) {

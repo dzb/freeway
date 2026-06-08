@@ -5,6 +5,17 @@ import java.util.function.Consumer;
 public interface Database extends AutoCloseable {
     Query sql(String sql, Object... params);
 
+    /**
+     * 使用 {@link SQL} 构建器执行 SQL。
+     * <pre>{@code
+     * var q = SQL.insert("users").set("name", name);
+     * long id = db.sql(q).execute().id();
+     * }</pre>
+     */
+    default Query sql(SQL sql) {
+        return sql(sql.sql(), sql.args());
+    }
+
     BatchQuery batch(String sql);
 
     void transaction(Consumer<Transaction> work);

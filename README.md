@@ -42,7 +42,7 @@ Freeway 2 keeps its core concepts and public API intentionally small:
 - `AppRuntime` sits above `Container` and owns runtime state, startup, shutdown, profiles, config, and runtime hooks.
 - Service ids are plain strings: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is no public `ServiceId` type.
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
-- `ScopeGate` opens a thread execution boundary for `Scope.THREAD` services, without adding lifecycle methods to `Container`.
+- `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the web server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
 - `LoggerSource` is the built-in logger service. Commons provides a JUL fallback for SLF4J only when no external SLF4J provider is present.

@@ -2,25 +2,40 @@ package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
-import com.jujin.freeway.ioc.annotation.Extension;
+import com.jujin.freeway.ioc.RuntimeHooks;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public final class RuntimeHooks {
-    private final List<RuntimeHook> hooks;
+public final class HookLifecycle {
+    private final Container container;
     private final List<RuntimeHook> started = new ArrayList<>();
+    private volatile List<RuntimeHook> hooks;
 
-    public RuntimeHooks(@Extension(RuntimeHook.class) List<RuntimeHook> hooks) {
-        this.hooks = List.copyOf(hooks == null ? List.of() : hooks);
+    public HookLifecycle(Container container) {
+        this.container = container;
+    }
+
+    private List<RuntimeHook> resolveHooks() {
+        if (hooks != null) return hooks;
+        try {
+            hooks = container.get(RuntimeHooks.class).all();
+        } catch (RuntimeException e) {
+            hooks = List.of();
+        }
+        return hooks;
     }
 
     public synchronized void start(Container container) {
+        start(resolveHooks(), container);
+    }
+
+    synchronized void start(List<RuntimeHook> list, Container container) {
         if (!started.isEmpty()) {
             return;
         }
         try {
-            for (RuntimeHook hook : hooks) {
+            for (RuntimeHook hook : list) {
                 hook.start(container);
                 started.add(hook);
             }
