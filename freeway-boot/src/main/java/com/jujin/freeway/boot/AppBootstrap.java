@@ -4,7 +4,7 @@ import com.jujin.freeway.boot.internal.BootConfig;
 import com.jujin.freeway.boot.internal.BootConfigLoader;
 import com.jujin.freeway.boot.internal.BootConfigLoader.BootConfigLayers;
 import com.jujin.freeway.boot.internal.BootConfigModule;
-import com.jujin.freeway.commons.logging.LoggingBootstrap;
+
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.Module;
@@ -18,10 +18,6 @@ import java.util.ServiceLoader;
 
 final class AppBootstrap {
     private static final Logger LOG = LoggerFactory.getLogger(AppBootstrap.class);
-
-    static {
-        LoggingBootstrap.autoConfigure();
-    }
 
     private AppBootstrap() {
     }
