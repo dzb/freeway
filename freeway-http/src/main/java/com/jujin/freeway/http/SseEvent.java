@@ -18,8 +18,4 @@ public record SseEvent(String data, String id, String event, Long retry) {
     public SseEvent(String data) {
         this(data, null, null, null);
     }
-
-    public SseEvent(String data, String id) {
-        this(data, id, null, null);
-    }
 }

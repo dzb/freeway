@@ -34,7 +34,7 @@ final class RobahoWebEngine implements HttpEngine {
         HttpServer server = HttpServer.create(new InetSocketAddress(config.host(), config.port()), config.backlog());
         server.setExecutor(executor);
         server.createContext("/", exchange -> {
-            RequestContext requestContext = createRequestContext(exchange);
+            RequestContext requestContext = HttpContext.createRequestContext(exchange.getRequestHeaders().getFirst("X-Request-Id"));
             JdkHttpContext ctx = new JdkHttpContext(exchange, jsonCodec, coercer, requestContext);
             ctx.headerSet("X-Request-Id", requestContext.correlationId());
             if (WebSocketHandler.isWebsocketRequested(exchange.getRequestHeaders())) {
@@ -61,11 +61,6 @@ final class RobahoWebEngine implements HttpEngine {
         server.start();
         LOG.info("Freeway web engine started on {}:{}", config.host(), server.getAddress().getPort());
         return new RobahoHandle(server, executor, config.shutdownGraceSeconds(), config.host());
-    }
-
-    private static RequestContext createRequestContext(com.sun.net.httpserver.HttpExchange exchange) {
-        String correlationId = HttpContext.blankToNull(exchange.getRequestHeaders().getFirst("X-Request-Id"));
-        return correlationId != null ? RequestContext.create(correlationId) : RequestContext.create();
     }
 
     private void handleWebSocket(HttpExchange exchange, RequestContext requestContext, WebSocketMatch match) throws IOException {

@@ -224,12 +224,7 @@ public final class StaticResourceMount {
     }
 
     private static String normalizeMount(String mountPath) {
-        String mount = HttpContext.blankToNull(mountPath);
-        if (mount == null || "/".equals(mount)) {
-            return "/";
-        }
-        mount = mount.startsWith("/") ? mount : "/" + mount;
-        return mount.endsWith("/") ? mount.substring(0, mount.length() - 1) : mount;
+        return PathPattern.normalizePath(mountPath);
     }
 
     private interface ResourceSource {

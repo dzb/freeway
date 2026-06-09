@@ -23,8 +23,6 @@ import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.Fields;
 
 final class JettyHttpContext extends HttpContext {
-    private static final Pattern CHARSET_PATTERN = Pattern.compile("(?i)\\bcharset=([^\\s;]+)");
-
     private final Request request;
     private final Response response;
     private final Callback callback;

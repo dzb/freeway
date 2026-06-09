@@ -17,7 +17,7 @@ public final class HttpModule implements Module {
         binder.bind(WebServer.class).to(WebServer.class);
         binder.bind(JdkHttpEngine.class).to(JdkHttpEngine.class).id("jdk");
 
-        binder.contribute(RuntimeHooks.class).add(SERVER_HOOK, new RuntimeHook() {
+        binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
                 container.get(WebServer.class).start();
@@ -29,9 +29,9 @@ public final class HttpModule implements Module {
             }
         });
 
-        binder.contribute(HttpFilters.class).add(new RequestTimingFilter());
+        binder.contribute(HttpFilter.class).add(new RequestTimingFilter());
 
-        binder.contribute(ExceptionMappers.class).add((ctx, ex) -> {
+        binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
             if (ex instanceof RequestBodyTooLargeException) {
                 ctx.sendJson(413, Map.of(
                     "error", "Payload Too Large",

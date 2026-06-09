@@ -1,10 +1,6 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.extension.Contribution;
-import com.jujin.freeway.ioc.extension.ExtensionPoint;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -15,75 +11,58 @@ import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
 
-/**
- * JDK-proxy based extension point implementation.
- * <p>
- * Stores contributed entries, applies {@code before/after} topological ordering,
- * and exposes results via {@link ExtensionPoint#all()}.
- */
-final class ExtensionProxy implements InvocationHandler {
-
+public final class Extension<V> {
     private final List<Entry> entries = new ArrayList<>();
     private final Set<String> ids = new LinkedHashSet<>();
-    private final Class<?> pointType;
+    private final Class<V> entryType;
+    private final String name;
+    private volatile List<V> sorted;
 
-    private ExtensionProxy(Class<?> pointType) {
-        this.pointType = pointType;
+    public Extension(Class<V> entryType, String name) {
+        this.entryType = Objects.requireNonNull(entryType, "entryType");
+        this.name = Objects.requireNonNull(name, "name");
     }
 
-    static ExtensionProxy forPoint(Class<?> pointType) {
-        return new ExtensionProxy(pointType);
-    }
-
-    @SuppressWarnings("unchecked")
-    <E> E proxy(Class<E> pointType) {
-        return (E) Proxy.newProxyInstance(
-            pointType.getClassLoader(), new Class<?>[]{pointType}, this);
-    }
-
-    Contribution add(String id, Object value) {
+    public Contribution add(String id, V value) {
         Objects.requireNonNull(value, "value");
         String normalizedId = normalizeOptionalId(id);
         if (normalizedId != null && !ids.add(normalizedId)) {
             throw new IllegalStateException(
-                "Duplicate contribution id " + normalizedId + " for extension " + pointType.getName());
+                "Duplicate contribution id " + normalizedId + " for extension " + key());
         }
         Entry entry = new Entry(normalizedId, value);
         entries.add(entry);
+        sorted = null;
         return entry;
     }
 
-    @SuppressWarnings("unchecked")
-    <V> List<V> resolveAll() {
+    @SafeVarargs
+    public static <V> Extension<V> of(Class<V> entryType, V... values) {
+        Extension<V> ext = new Extension<>(entryType, "");
+        for (V value : values) ext.add(null, value);
+        return ext;
+    }
+
+    public List<V> all() {
+        if (sorted == null) {
+            sorted = order();
+        }
+        return sorted;
+    }
+
+    @Override
+    public String toString() {
+        return "Extension[" + entryType.getSimpleName() + (name.isEmpty() ? "" : ", " + name) + "]";
+    }
+
+    private List<V> order() {
         if (entries.isEmpty()) {
             return List.of();
         }
-        List<Entry> ordered = order();
-        return (List<V>) ordered.stream().map(Entry::value).toList();
-    }
-
-    // ---- InvocationHandler ----
-
-    @Override
-    public Object invoke(Object proxy, Method method, Object[] args) {
-        if (method.getName().equals("all") && method.getParameterCount() == 0) {
-            return resolveAll();
-        }
-        return switch (method.getName()) {
-            case "toString" -> "ExtensionPoint[" + pointType.getSimpleName() + "]";
-            case "hashCode" -> System.identityHashCode(proxy);
-            case "equals" -> proxy == args[0];
-            default -> throw new UnsupportedOperationException(
-                "ExtensionPoint point " + pointType.getName() + " only supports all()");
-        };
-    }
-
-    // ---- Resolution ----
-
-    @SuppressWarnings("unchecked")
-    private List<Entry> order() {
         if (entries.stream().allMatch(e -> e.afterIds.isEmpty() && e.beforeIds.isEmpty())) {
-            return List.copyOf(entries);
+            List<V> values = new ArrayList<>(entries.size());
+            for (Entry e : entries) values.add(e.value);
+            return List.copyOf(values);
         }
 
         Map<String, Entry> byId = new LinkedHashMap<>();
@@ -132,12 +111,14 @@ final class ExtensionProxy implements InvocationHandler {
 
         if (ordered.size() != entries.size()) {
             throw new IllegalStateException(
-                "Contribution order cycle detected for extension " + pointType.getName());
+                "Contribution order cycle detected for extension " + key());
         }
-        return ordered;
+        List<V> values = new ArrayList<>(ordered.size());
+        for (Entry e : ordered) values.add(e.value);
+        return List.copyOf(values);
     }
 
-    private static void addEdge(Entry from, Entry to,
+    private void addEdge(Entry from, Entry to,
             Map<Entry, Set<Entry>> outgoing, Map<Entry, Integer> indegree) {
         if (from == to) return;
         if (outgoing.get(from).add(to)) indegree.put(to, indegree.get(to) + 1);
@@ -150,20 +131,22 @@ final class ExtensionProxy implements InvocationHandler {
         return v;
     }
 
-    // ---- Entry + Contribution ----
+    public Key key() {
+        return new Key(entryType, name);
+    }
 
-    private static final class Entry implements Contribution {
+    public record Key(Class<?> entryType, String name) {}
+
+    private final class Entry implements Contribution {
         final String id;
-        final Object value;
+        final V value;
         final List<String> beforeIds = new ArrayList<>();
         final List<String> afterIds = new ArrayList<>();
 
-        Entry(String id, Object value) {
+        Entry(String id, V value) {
             this.id = id;
             this.value = value;
         }
-
-        Object value() { return value; }
 
         @Override
         public Contribution before(String... ids) {

@@ -3,7 +3,7 @@ package com.jujin.freeway.commons.json;
 import java.util.IdentityHashMap;
 
 final class JsonWriter {
-    private static final int MAX_DEPTH = 1000;
+    private static final int MAX_DEPTH = JsonParser.MAX_DEPTH;
 
     private JsonWriter() {
     }

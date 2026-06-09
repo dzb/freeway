@@ -16,21 +16,21 @@ class NamedParamParserTest {
     void noNamedParams() {
         var r = NamedParamParser.parse("select id, name from t where id = ?");
         assertEquals(List.of(), r.names());
-        assertEquals("select id, name from t where id = ?", r.jdbcSql());
+        assertEquals("select id, name from t where id = ?", r.sql());
     }
 
     @Test
     void colonNamedParam() {
         var r = NamedParamParser.parse("select id from t where name = :name");
         assertEquals(List.of("name"), r.names());
-        assertEquals("select id from t where name = ?", r.jdbcSql());
+        assertEquals("select id from t where name = ?", r.sql());
     }
 
     @Test
     void dollarNamedParam() {
         var r = NamedParamParser.parse("select id from t where name = $name");
         assertEquals(List.of("name"), r.names());
-        assertEquals("select id from t where name = ?", r.jdbcSql());
+        assertEquals("select id from t where name = ?", r.sql());
     }
 
     @Test
@@ -41,7 +41,7 @@ class NamedParamParserTest {
         assertEquals(List.of("x", "y", "z"), r.names());
         assertEquals(
             "select id from t where x = ? and y = ? and z = ?",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -54,7 +54,7 @@ class NamedParamParserTest {
         assertEquals(List.of("min", "min"), r.names());
         assertEquals(
             "select id from t where x >= ? and y >= ?",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -83,7 +83,7 @@ class NamedParamParserTest {
         // 冒号后跟非字母/下划线，不应被解析为参数
         var r = NamedParamParser.parse("select id from t where x = :1");
         assertEquals(List.of(), r.names());
-        assertEquals("select id from t where x = :1", r.jdbcSql());
+        assertEquals("select id from t where x = :1", r.sql());
     }
 
     @Test
@@ -91,7 +91,7 @@ class NamedParamParserTest {
         // $ 后跟非字母/下划线，不应被解析为参数
         var r = NamedParamParser.parse("select id from t where x = $1");
         assertEquals(List.of(), r.names());
-        assertEquals("select id from t where x = $1", r.jdbcSql());
+        assertEquals("select id from t where x = $1", r.sql());
     }
 
     // ===================== 字符串字面量隔离 =====================
@@ -104,7 +104,7 @@ class NamedParamParserTest {
         assertEquals(List.of(), r.names());
         assertEquals(
             "select id from t where label = '$literal'",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -116,7 +116,7 @@ class NamedParamParserTest {
         assertEquals(List.of(), r.names());
         assertEquals(
             "select id from t where label = \"$literal\"",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -128,7 +128,7 @@ class NamedParamParserTest {
         assertEquals(List.of("id"), r.names());
         assertEquals(
             "select \"label \"\":param\"\"\" from t where id = ?",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -141,7 +141,7 @@ class NamedParamParserTest {
         assertEquals(List.of(), r.names());
         assertEquals(
             "select id from t where label = 'it''s :param'",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -153,7 +153,7 @@ class NamedParamParserTest {
         assertEquals(List.of("name"), r.names());
         assertEquals(
             "select id from t where label = ? and desc = 'some text'",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -167,7 +167,7 @@ class NamedParamParserTest {
         assertEquals(List.of(), r.names());
         assertEquals(
             "select id from t\n-- where x = :param\nwhere y = 1",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -179,7 +179,7 @@ class NamedParamParserTest {
         assertEquals(List.of(), r.names());
         assertEquals(
             "select id from t /* where x = :param */ where y = 1",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -191,7 +191,7 @@ class NamedParamParserTest {
         assertEquals(List.of("param"), r.names());
         assertEquals(
             "select id from t /* comment */ where x = ?",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -201,14 +201,14 @@ class NamedParamParserTest {
     void emptySql() {
         var r = NamedParamParser.parse("");
         assertEquals(List.of(), r.names());
-        assertEquals("", r.jdbcSql());
+        assertEquals("", r.sql());
     }
 
     @Test
     void sqlWithoutAnySpecialChars() {
         var r = NamedParamParser.parse("select 1");
         assertEquals(List.of(), r.names());
-        assertEquals("select 1", r.jdbcSql());
+        assertEquals("select 1", r.sql());
     }
 
     @Test
@@ -219,7 +219,7 @@ class NamedParamParserTest {
         assertEquals(List.of("default"), r.names());
         assertEquals(
             "select coalesce(x, ?) from t",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -231,7 +231,7 @@ class NamedParamParserTest {
         assertEquals(List.of("ids"), r.names());
         assertEquals(
             "select id from t where id in (?)",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -240,7 +240,7 @@ class NamedParamParserTest {
         // $ 在标识符中间或末尾不是参数
         var r = NamedParamParser.parse("select id from t$1");
         assertEquals(List.of(), r.names());
-        assertEquals("select id from t$1", r.jdbcSql());
+        assertEquals("select id from t$1", r.sql());
     }
 
     @Test
@@ -251,7 +251,7 @@ class NamedParamParserTest {
         assertEquals(List.of(), r.names());
         assertEquals(
             "select id from t where label = ':not_a_param'",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -263,7 +263,7 @@ class NamedParamParserTest {
         assertEquals(List.of("id"), r.names());
         assertEquals(
             "select created_at::timestamp from events where id = ?",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -282,9 +282,9 @@ class NamedParamParserTest {
         );
         assertEquals(List.of("ids", "name"), r.names());
         assertEquals(2, r.parameterIndexes().size());
-        assertTrue(r.parameterIndexes().get(0) > r.jdbcSql().indexOf("'?'"));
-        assertEquals('?', r.jdbcSql().charAt(r.parameterIndexes().get(0)));
-        assertEquals('?', r.jdbcSql().charAt(r.parameterIndexes().get(1)));
+        assertTrue(r.parameterIndexes().get(0) > r.sql().indexOf("'?'"));
+        assertEquals('?', r.sql().charAt(r.parameterIndexes().get(0)));
+        assertEquals('?', r.sql().charAt(r.parameterIndexes().get(1)));
     }
 
     @Test
@@ -303,7 +303,7 @@ class NamedParamParserTest {
         assertEquals(List.of("x", "y"), r.names());
         assertEquals(
             "select id from t where x = ? and y = ?",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -315,7 +315,7 @@ class NamedParamParserTest {
         assertEquals(List.of("name", "id"), r.names());
         assertEquals(
             "update t set name = ? where id = ?",
-            r.jdbcSql()
+            r.sql()
         );
     }
 
@@ -327,7 +327,7 @@ class NamedParamParserTest {
         assertEquals(List.of("id", "name"), r.names());
         assertEquals(
             "insert into t (id, name) values (?, ?)",
-            r.jdbcSql()
+            r.sql()
         );
     }
 }

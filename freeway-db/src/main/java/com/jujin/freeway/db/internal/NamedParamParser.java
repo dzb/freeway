@@ -7,7 +7,7 @@ final class NamedParamParser {
     private NamedParamParser() {
     }
 
-    record Result(List<String> names, String jdbcSql, List<Integer> parameterIndexes) {
+    record Result(List<String> names, String sql, List<Integer> parameterIndexes) {
     }
 
     static Result parse(String sql) {

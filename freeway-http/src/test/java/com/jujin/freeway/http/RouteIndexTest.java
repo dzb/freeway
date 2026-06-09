@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.ioc.Extension;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -10,8 +11,8 @@ class RouteIndexTest {
     @Test
     void matchesPathParameters() {
         RouteIndex registry = new RouteIndex(
-            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))); } },
-            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+            Extension.of(Route.class, Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))),
+            Extension.of(RouteGroup.class)
         );
 
         RouteIndex.RouteMatch match = registry.match("GET", "/users/42");
@@ -22,8 +23,8 @@ class RouteIndexTest {
     @Test
     void nonTerminalDotStarConstraintMatchesOnlyOneSegment() {
         RouteIndex registry = new RouteIndex(
-            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/files/{name:.*}/meta", ctx -> ctx.send(200, "ok"))); } },
-            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+            Extension.of(Route.class, Route.get("/files/{name:.*}/meta", ctx -> ctx.send(200, "ok"))),
+            Extension.of(RouteGroup.class)
         );
 
         RouteIndex.RouteMatch match = registry.match("GET", "/files/readme/meta");
@@ -35,8 +36,8 @@ class RouteIndexTest {
     @Test
     void terminalDotStarConstraintConsumesRemainingSegments() {
         RouteIndex registry = new RouteIndex(
-            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/files/{path:.*}", ctx -> ctx.send(200, "ok"))); } },
-            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+            Extension.of(Route.class, Route.get("/files/{path:.*}", ctx -> ctx.send(200, "ok"))),
+            Extension.of(RouteGroup.class)
         );
 
         RouteIndex.RouteMatch match = registry.match("GET", "/files/a/b/c.txt");
@@ -47,8 +48,8 @@ class RouteIndexTest {
     @Test
     void rejectsEmptyPathParameterSegments() {
         RouteIndex registry = new RouteIndex(
-            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/users/{id}/profile", ctx -> ctx.send(200, "ok"))); } },
-            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+            Extension.of(Route.class, Route.get("/users/{id}/profile", ctx -> ctx.send(200, "ok"))),
+            Extension.of(RouteGroup.class)
         );
 
         assertNull(registry.match("GET", "/users//profile"));
@@ -57,8 +58,8 @@ class RouteIndexTest {
     @Test
     void rejectsDuplicateRoutes() {
         assertThrows(IllegalStateException.class, () -> new RouteIndex(
-            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/users/{id}", ctx -> ctx.send(200, "ok")), Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))); } },
-            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+            Extension.of(Route.class, Route.get("/users/{id}", ctx -> ctx.send(200, "ok")), Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))),
+            Extension.of(RouteGroup.class)
         ));
     }
 

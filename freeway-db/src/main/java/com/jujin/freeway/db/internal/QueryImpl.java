@@ -3,18 +3,29 @@ package com.jujin.freeway.db.internal;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SqlException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.ref.Cleaner;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Spliterator;
+import java.util.Spliterators;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 final class QueryImpl implements Query {
+    private static final Logger LOG = LoggerFactory.getLogger(QueryImpl.class);
     private final DatabaseImpl db;
     private final PooledConnection boundConnection;
     private final String originalSql;
@@ -22,6 +33,7 @@ final class QueryImpl implements Query {
     private final Map<String, Object> namedParams;
     private final boolean mayHaveGeneratedKeys;
     private NamedParamParser.Result parsed;
+    private List<Integer> positionalIndexes;
     private boolean expandedChecked;
     private String expandedSql;
     private Object[] expandedFlatParams;
@@ -66,6 +78,7 @@ final class QueryImpl implements Query {
                 return list;
             }
         } catch (SQLException e) {
+            LOG.warn("Query list failed: {}", originalSql, e);
             throw new SqlException("Query failed: " + e.getMessage(), e);
         }
     }
@@ -82,6 +95,7 @@ final class QueryImpl implements Query {
                 return Optional.empty();
             }
         } catch (SQLException e) {
+            LOG.warn("Query one failed: {}", originalSql, e);
             throw new SqlException("Query failed: " + e.getMessage(), e);
         }
     }
@@ -100,7 +114,7 @@ final class QueryImpl implements Query {
 
             StreamResources resources = new StreamResources(rs, ctx);
             Spliterator<T> spliterator = new Spliterators.AbstractSpliterator<>(
-                Long.MAX_VALUE, Spliterator.ORDERED | Spliterator.NONNULL
+                Long.MAX_VALUE, Spliterator.ORDERED
             ) {
                 private int rowNum;
 
@@ -129,6 +143,7 @@ final class QueryImpl implements Query {
             return StreamSupport.stream(spliterator, false)
                 .onClose(resources::close);
         } catch (SQLException e) {
+            LOG.warn("Stream query failed: {}", originalSql, e);
             throw new SqlException("Stream query failed: " + e.getMessage(), e);
         } finally {
             if (!returned) {
@@ -162,6 +177,7 @@ final class QueryImpl implements Query {
             }
             return new ExecuteResult(rows, id);
         } catch (SQLException e) {
+            LOG.warn("Execute failed: {}", originalSql, e);
             throw new SqlException("Update failed: " + e.getMessage(), e);
         }
     }
@@ -182,12 +198,10 @@ final class QueryImpl implements Query {
     }
 
     private void bindPositional(PreparedStatement stmt) throws SQLException {
-        String sqlToCheck = expandedSql != null ? expandedSql : originalSql;
-        int placeholderCount = NamedParamParser.positionalPlaceholderIndexes(sqlToCheck).size();
-
-        if (positionalParams.length != placeholderCount) {
+        var indexes = positionalPlaceholders();
+        if (positionalParams.length != indexes.size()) {
             throw new SqlException(
-                "Parameter count mismatch: SQL has " + placeholderCount
+                "Parameter count mismatch: SQL has " + indexes.size()
                     + " placeholder(s) but " + positionalParams.length + " value(s) provided. SQL: "
                     + originalSql + ". Params: " + Arrays.toString(positionalParams)
             );
@@ -198,37 +212,36 @@ final class QueryImpl implements Query {
         }
     }
 
+    private List<Integer> positionalPlaceholders() {
+        if (positionalIndexes == null) {
+            positionalIndexes = NamedParamParser.positionalPlaceholderIndexes(originalSql);
+        }
+        return positionalIndexes;
+    }
+
     private void bindNamed(PreparedStatement stmt) throws SQLException {
-        if (parsed == null) {
-            parsed = NamedParamParser.parse(originalSql);
-        }
-        for (String name : parsed.names()) {
-            if (!namedParams.containsKey(name)) {
-                throw new SqlException("Missing value for named parameter '" + name + "'");
-            }
-        }
-        for (String name : namedParams.keySet()) {
-            if (!parsed.names().contains(name)) {
-                throw new SqlException("Unknown named parameter '" + name + "'");
-            }
-        }
-        for (int i = 0; i < parsed.names().size(); i++) {
-            stmt.setObject(i + 1, namedParams.get(parsed.names().get(i)));
+        var p = parsed();
+        for (int i = 0; i < p.names().size(); i++) {
+            stmt.setObject(i + 1, namedParams.get(p.names().get(i)));
         }
     }
 
-    private String jdbcSql() {
+    private String sql() {
         ensureExpanded();
         if (expandedSql != null) {
             return expandedSql;
         }
         if (!namedParams.isEmpty()) {
-            if (parsed == null) {
-                parsed = NamedParamParser.parse(originalSql);
-            }
-            return parsed.jdbcSql();
+            return parsed().sql();
         }
         return originalSql;
+    }
+
+    private NamedParamParser.Result parsed() {
+        if (parsed == null) {
+            parsed = NamedParamParser.parse(originalSql);
+        }
+        return parsed;
     }
 
     private void ensureExpanded() {
@@ -247,34 +260,21 @@ final class QueryImpl implements Query {
         var sb = new StringBuilder();
         var flat = new ArrayList<>();
         boolean anyExpanded = false;
-        List<Integer> placeholders = NamedParamParser.positionalPlaceholderIndexes(originalSql);
+        var placeholders = positionalPlaceholders();
 
-        for (int paramIdx = 0; paramIdx < positionalParams.length; paramIdx++) {
-            Object param = positionalParams[paramIdx];
-            if (paramIdx >= placeholders.size()) {
+        for (int i = 0; i < positionalParams.length; i++) {
+            Object param = positionalParams[i];
+            if (i >= placeholders.size()) {
                 throw new SqlException(
                     "Too many positional parameters for SQL: " +
                         originalSql +
                         ". Params: " + Arrays.toString(positionalParams)
                     );
             }
-            int q = placeholders.get(paramIdx);
-            int sqlIdx = paramIdx == 0 ? 0 : placeholders.get(paramIdx - 1) + 1;
+            int q = placeholders.get(i);
+            int sqlIdx = i == 0 ? 0 : placeholders.get(i - 1) + 1;
             sb.append(originalSql, sqlIdx, q);
-
-            if (param instanceof Collection<?> col) {
-                if (col.isEmpty()) {
-                    throw new SqlException("Cannot expand empty Collection for '?' placeholder");
-                }
-                appendExpanded(sb, flat, col);
-                anyExpanded = true;
-            } else if (param instanceof Object[] arr) {
-                appendExpanded(sb, flat, Arrays.asList(arr));
-                anyExpanded = true;
-            } else {
-                sb.append('?');
-                flat.add(param);
-            }
+            if (appendParam(sb, flat, param)) anyExpanded = true;
         }
         if (placeholders.size() > positionalParams.length) {
             throw new SqlException(
@@ -293,42 +293,25 @@ final class QueryImpl implements Query {
     }
 
     private void expandNamed() {
-        if (parsed == null) {
-            parsed = NamedParamParser.parse(originalSql);
-        }
+        var p = parsed();
         validateNamedParameters();
 
-        String jdbcSql = parsed.jdbcSql();
+        String effectiveSql = p.sql();
         boolean anyExpanded = false;
         int qIdx = 0;
         var sqlOut = new StringBuilder();
         var flat = new ArrayList<>();
 
-        for (int i = 0; i < parsed.names().size(); i++) {
-            String name = parsed.names().get(i);
-            int q = parsed.parameterIndexes().get(i);
-            sqlOut.append(jdbcSql, qIdx, q);
+        for (int i = 0; i < p.names().size(); i++) {
+            String name = p.names().get(i);
+            int q = p.parameterIndexes().get(i);
+            sqlOut.append(effectiveSql, qIdx, q);
             qIdx = q + 1;
 
             Object value = namedParams.get(name);
-            if (value instanceof Collection<?> col) {
-                if (col.isEmpty()) {
-                    throw new SqlException("Cannot expand empty Collection for named param '" + name + "'");
-                }
-                appendExpanded(sqlOut, flat, col);
-                anyExpanded = true;
-            } else if (value instanceof Object[] arr) {
-                if (arr.length == 0) {
-                    throw new SqlException("Cannot expand empty array for named param '" + name + "'");
-                }
-                appendExpanded(sqlOut, flat, Arrays.asList(arr));
-                anyExpanded = true;
-            } else {
-                sqlOut.append('?');
-                flat.add(value);
-            }
+            if (appendParam(sqlOut, flat, value)) anyExpanded = true;
         }
-        sqlOut.append(jdbcSql, qIdx, jdbcSql.length());
+        sqlOut.append(effectiveSql, qIdx, effectiveSql.length());
 
         if (anyExpanded) {
             expandedSql = sqlOut.toString();
@@ -337,21 +320,42 @@ final class QueryImpl implements Query {
     }
 
     private void validateNamedParameters() {
-        for (String name : parsed.names()) {
+        var p = parsed();
+        for (String name : p.names()) {
             if (!namedParams.containsKey(name)) {
-                throw new SqlException("Missing value for named parameter '" + name + "'");
+                throw new SqlException("Missing value for named parameter '" + name + "' in SQL: " + originalSql);
             }
         }
         for (String name : namedParams.keySet()) {
-            if (!parsed.names().contains(name)) {
-                throw new SqlException("Unknown named parameter '" + name + "'");
+            if (!p.names().contains(name)) {
+                throw new SqlException("Unknown named parameter '" + name + "' in SQL: " + originalSql);
             }
         }
     }
 
+    private boolean appendParam(StringBuilder sb, List<Object> flat, Object value) {
+        if (value instanceof Collection<?> col) {
+            if (col.isEmpty()) {
+                throw new SqlException("Cannot expand empty collection for SQL: " + originalSql);
+            }
+            appendExpanded(sb, flat, col);
+            return true;
+        }
+        if (value instanceof Object[] arr) {
+            if (arr.length == 0) {
+                throw new SqlException("Cannot expand empty array for SQL: " + originalSql);
+            }
+            appendExpanded(sb, flat, Arrays.asList(arr));
+            return true;
+        }
+        sb.append('?');
+        flat.add(value);
+        return false;
+    }
+
     private static void appendExpanded(
         StringBuilder sb,
-        ArrayList<Object> flat,
+        List<Object> flat,
         Collection<?> col
     ) {
         boolean first = true;
@@ -371,12 +375,11 @@ final class QueryImpl implements Query {
         }
     }
 
-
     private ExecuteContext borrow(boolean mayHaveKeys) throws SQLException {
-        String sql = jdbcSql();
+        String effectiveSql = sql();
+        int autoKeys = mayHaveKeys ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS;
         if (boundConnection != null) {
-            var stmt = prepareStatement(
-                boundConnection.jdbcConnection(), sql, mayHaveKeys);
+            var stmt = boundConnection.connection().prepareStatement(effectiveSql, autoKeys);
             stmt.setQueryTimeout(db.queryTimeoutSeconds());
             return new ExecuteContext(stmt, null, null);
         }
@@ -385,7 +388,7 @@ final class QueryImpl implements Query {
         PreparedStatement stmt = null;
         boolean success = false;
         try {
-            stmt = prepareStatement(conn.jdbcConnection(), sql, mayHaveKeys);
+            stmt = conn.connection().prepareStatement(effectiveSql, autoKeys);
             stmt.setQueryTimeout(db.queryTimeoutSeconds());
             success = true;
             return new ExecuteContext(stmt, conn, db.pool());
@@ -400,15 +403,6 @@ final class QueryImpl implements Query {
                 db.pool().release(conn);
             }
         }
-    }
-
-    private PreparedStatement prepareStatement(
-        java.sql.Connection conn, String sql, boolean mayHaveKeys
-    ) throws SQLException {
-        if (mayHaveKeys) {
-            return conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
-        }
-        return conn.prepareStatement(sql, Statement.NO_GENERATED_KEYS);
     }
 
     private static final Cleaner STREAM_CLEANER = Cleaner.create();
@@ -456,17 +450,17 @@ final class QueryImpl implements Query {
 
     private static final class ExecuteContext implements AutoCloseable {
         private final PreparedStatement stmt;
-        private final PooledConnection connectionSource;
+        private final PooledConnection connection;
         private final ConnectionPool pool;
         private boolean closed;
 
         private ExecuteContext(
             PreparedStatement stmt,
-            PooledConnection connectionSource,
+            PooledConnection connection,
             ConnectionPool pool
         ) {
             this.stmt = stmt;
-            this.connectionSource = connectionSource;
+            this.connection = connection;
             this.pool = pool;
         }
 
@@ -480,8 +474,8 @@ final class QueryImpl implements Query {
                 stmt.close();
             } catch (SQLException ignored) {
             }
-            if (connectionSource != null && pool != null) {
-                pool.release(connectionSource);
+            if (connection != null && pool != null) {
+                pool.release(connection);
             }
         }
     }

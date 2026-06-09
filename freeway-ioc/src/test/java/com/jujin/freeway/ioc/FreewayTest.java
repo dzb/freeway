@@ -6,11 +6,12 @@ import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoerceRule;
-import com.jujin.freeway.ioc.annotation.Extension;
+
 import com.jujin.freeway.ioc.annotation.IntermediateType;
-import com.jujin.freeway.ioc.extension.ExtensionPoint;
+
 import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.annotation.Value;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.List;
 import java.util.Map;
@@ -232,7 +233,7 @@ class FreewayTest {
         System.setProperty(ENDPOINT_KEY, "localhost:8088");
 
         Container container = Freeway.create(binder ->
-            binder.contribute(CoercionRules.class).add(new CoerceRule<>(
+            binder.contribute(CoerceRule.class).add(new CoerceRule<>(
                 String.class,
                 Endpoint.class,
                 value -> {
@@ -252,7 +253,7 @@ class FreewayTest {
         System.setProperty(TIMEOUT_KEY, "2500");
 
         Container container = Freeway.create(binder ->
-            binder.contribute(CoercionRules.class).add(new CoerceRule<>(
+            binder.contribute(CoerceRule.class).add(new CoerceRule<>(
                 Integer.class,
                 Timeout.class,
                 Timeout::new
@@ -267,7 +268,7 @@ class FreewayTest {
     @Test
     void modulesCanContributeSymbolProviders() {
         Container container = Freeway.create(binder ->
-            binder.contribute(SymbolProviders.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway" : null)
+            binder.contribute(SymbolProvider.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway" : null)
         );
 
         AppNameHolder holder = container.get(AppNameHolder.class);
@@ -356,8 +357,8 @@ class FreewayTest {
     @Test
     void extensionsAggregateContributions() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("web"))
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
         AppConfig config = container.get(AppConfig.class);
@@ -368,8 +369,8 @@ class FreewayTest {
     @Test
     void parameterExtensionsAggregateContributions() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("web"))
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
         ParameterAppConfig config = container.get(ParameterAppConfig.class);
@@ -380,15 +381,15 @@ class FreewayTest {
     @Test
     void extensionsCanOrderContributionsById() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeatures.class)
+            binder -> binder.contribute(AppFeature.class)
                 .add("web", new AppFeature("web"))
                 .after("db", "metrics"),
-            binder -> binder.contribute(AppFeatures.class)
+            binder -> binder.contribute(AppFeature.class)
                 .add("core", new AppFeature("core")),
-            binder -> binder.contribute(AppFeatures.class)
+            binder -> binder.contribute(AppFeature.class)
                 .add("db", new AppFeature("db"))
                 .after("core"),
-            binder -> binder.contribute(AppFeatures.class)
+            binder -> binder.contribute(AppFeature.class)
                 .add("metrics", new AppFeature("metrics"))
                 .before("web")
         );
@@ -401,8 +402,8 @@ class FreewayTest {
     @Test
     void extensionOrderingRejectsDuplicateIds() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Freeway.create(
-            binder -> binder.contribute(AppFeatures.class).add("same", new AppFeature("first")),
-            binder -> binder.contribute(AppFeatures.class).add("same", new AppFeature("second"))
+            binder -> binder.contribute(AppFeature.class).add("same", new AppFeature("first")),
+            binder -> binder.contribute(AppFeature.class).add("same", new AppFeature("second"))
         ));
 
         assertTrue(ex.getMessage().contains("Duplicate contribution id same"));
@@ -411,10 +412,10 @@ class FreewayTest {
     @Test
     void extensionOrderingRejectsCycles() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeatures.class)
+            binder -> binder.contribute(AppFeature.class)
                 .add("first", new AppFeature("first"))
                 .after("second"),
-            binder -> binder.contribute(AppFeatures.class)
+            binder -> binder.contribute(AppFeature.class)
                 .add("second", new AppFeature("second"))
                 .after("first")
         );
@@ -432,10 +433,10 @@ class FreewayTest {
     @Test
     void fieldExtensionsOverrideTypeDefault() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("web")),
-            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("debug", new AppFlag("debug", true))),
-            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("timing", new AppFlag("timing", false)))
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web")),
+            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("debug", new AppFlag("debug", true))),
+            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("timing", new AppFlag("timing", false)))
         );
 
         MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
@@ -447,9 +448,9 @@ class FreewayTest {
     @Test
     void extensionEntriesPreserveKeys() {
         Container container = Freeway.create(
-            binder -> binder.contribute(AppFeatures.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("debug", new AppFlag("debug", true))),
-            binder -> binder.contribute(AppFlags.class).add(new AppFlags.Entry("   ", new AppFlag("blank-key", true)))
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("debug", new AppFlag("debug", true))),
+            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("   ", new AppFlag("blank-key", true)))
         );
 
         MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
@@ -460,8 +461,8 @@ class FreewayTest {
     @Test
     void extensionEntriesSupportNonStringKeys() {
         Container container = Freeway.create(
-            binder -> binder.contribute(EnumAppFlags.class).add(new EnumAppFlags.Entry(FlagKey.DEBUG, new AppFlag("debug", true))),
-            binder -> binder.contribute(EnumAppFlags.class).add(new EnumAppFlags.Entry(FlagKey.TIMING, new AppFlag("timing", false)))
+            binder -> binder.contribute(EnumAppFlagEntry.class).add(new EnumAppFlagEntry(FlagKey.DEBUG, new AppFlag("debug", true))),
+            binder -> binder.contribute(EnumAppFlagEntry.class).add(new EnumAppFlagEntry(FlagKey.TIMING, new AppFlag("timing", false)))
         );
 
         EnumKeyExtensionCatalog catalog = container.get(EnumKeyExtensionCatalog.class);
@@ -617,19 +618,6 @@ class FreewayTest {
         }
     }
 
-    @Extension(AppFeature.class)
-    // ---- Test extension points ----
-
-    public interface AppFeatures extends ExtensionPoint<AppFeature> {}
-
-    public interface AppFlags extends ExtensionPoint<AppFlags.Entry> {
-        record Entry(String key, AppFlag flag) {}
-    }
-
-    public interface EnumAppFlags extends ExtensionPoint<EnumAppFlags.Entry> {
-        record Entry(FlagKey key, AppFlag flag) {}
-    }
-
     public record AppFeature(String name) {}
 
     public record AppFlag(String name, boolean enabled) {}
@@ -641,7 +629,7 @@ class FreewayTest {
     public static final class AppConfig {
         private final List<AppFeature> features;
 
-        public AppConfig(AppFeatures features) {
+        public AppConfig(Extension<AppFeature> features) {
             this.features = List.copyOf(features.all());
         }
 
@@ -653,7 +641,7 @@ class FreewayTest {
     public static final class ParameterAppConfig {
         private final List<AppFeature> features;
 
-        public ParameterAppConfig(AppFeatures features) {
+        public ParameterAppConfig(Extension<AppFeature> features) {
             this.features = List.copyOf(features.all());
         }
 
@@ -666,10 +654,10 @@ class FreewayTest {
         private final List<AppFeature> features;
         private final Map<String, AppFlag> flags;
 
-        public MixedExtensionCatalog(AppFeatures features, AppFlags flags) {
+        public MixedExtensionCatalog(Extension<AppFeature> features, Extension<AppFlagEntry> flags) {
             this.features = List.copyOf(features.all());
             Map<String, AppFlag> map = new java.util.LinkedHashMap<>();
-            for (AppFlags.Entry entry : flags.all()) map.put(entry.key(), entry.flag());
+            for (AppFlagEntry entry : flags.all()) map.put(entry.key(), entry.flag());
             this.flags = Map.copyOf(map);
         }
 
@@ -685,9 +673,9 @@ class FreewayTest {
     public static final class EnumKeyExtensionCatalog {
         private final Map<FlagKey, AppFlag> flags;
 
-        public EnumKeyExtensionCatalog(EnumAppFlags flags) {
+        public EnumKeyExtensionCatalog(Extension<EnumAppFlagEntry> flags) {
             Map<FlagKey, AppFlag> map = new java.util.LinkedHashMap<>();
-            for (EnumAppFlags.Entry entry : flags.all()) map.put(entry.key(), entry.flag());
+            for (EnumAppFlagEntry entry : flags.all()) map.put(entry.key(), entry.flag());
             this.flags = Map.copyOf(map);
         }
 
@@ -695,6 +683,9 @@ class FreewayTest {
             return flags;
         }
     }
+
+    record AppFlagEntry(String key, AppFlag flag) {}
+    record EnumAppFlagEntry(FlagKey key, AppFlag flag) {}
 
     public record Endpoint(String host, int port) {
     }

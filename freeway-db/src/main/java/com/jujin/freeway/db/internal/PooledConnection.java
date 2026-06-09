@@ -5,19 +5,19 @@ import java.time.Duration;
 import java.time.Instant;
 
 public final class PooledConnection {
-    private final Connection jdbcConnection;
+    private final Connection conn;
     private final Instant createdAt;
     private volatile Instant lastReturned;
     private volatile Instant borrowedAt;  // null when idle, non-null when borrowed
 
-    PooledConnection(Connection jdbcConnection, Instant createdAt) {
-        this.jdbcConnection = jdbcConnection;
+    PooledConnection(Connection conn, Instant createdAt) {
+        this.conn = conn;
         this.createdAt = createdAt;
         this.lastReturned = createdAt;
     }
 
-    public Connection jdbcConnection() {
-        return jdbcConnection;
+    public Connection connection() {
+        return conn;
     }
 
     void markBorrowed() {

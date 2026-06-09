@@ -11,7 +11,7 @@ final class JsonParser {
      * Maximum nesting depth for JSON objects and arrays.
      * Prevents stack overflow attacks from deeply nested structures.
      */
-    private static final int MAX_DEPTH = 1000;
+    static final int MAX_DEPTH = 1000;
 
     /**
      * Maximum length for JSON string values.

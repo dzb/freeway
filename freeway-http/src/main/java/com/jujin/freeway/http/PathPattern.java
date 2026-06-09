@@ -15,7 +15,7 @@ final class PathPattern {
     private final Pattern[] paramPatterns;
     private final boolean wildcard;
 
-    private static final int MAX_REGEX_LENGTH = 64;
+    static final int MAX_REGEX_LENGTH = 64;
 
     PathPattern(String template) {
         this.template = normalizePath(template);

@@ -3,6 +3,9 @@ package com.jujin.freeway.db.migration;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.ioc.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,6 +25,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 public final class MigrationRunner {
+    private static final Logger LOG = LoggerFactory.getLogger(MigrationRunner.class);
     static final int MAX_MIGRATION_BYTES = 16 * 1024 * 1024;
 
     private final Database database;
@@ -64,7 +68,9 @@ public final class MigrationRunner {
             applyMigration(migration);
             completed.add(version);
             ran++;
+            LOG.info("Applied migration: {}", migration);
         }
+        if (ran > 0) LOG.info("Ran {} migration(s)", ran);
         return ran;
     }
 
@@ -98,9 +104,9 @@ public final class MigrationRunner {
         }
         String version = versionFromPath(resourcePath);
         String description = descriptionFromPath(resourcePath);
-        database.transaction(tx -> {
-            tx.execute(sql);
-            tx.execute(
+        database.transaction(() -> {
+            database.execute(sql);
+            database.execute(
                 "insert into " + table + " (version, description) values (?, ?)",
                 version,
                 description

@@ -19,8 +19,6 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 final class UndertowHttpContext extends HttpContext {
-    private static final Pattern CHARSET_PATTERN = Pattern.compile("(?i)\\bcharset=([^\\s;]+)");
-
     private final HttpServerExchange exchange;
     private final RequestContext requestContext;
     private final Map<String, List<String>> queryParams;

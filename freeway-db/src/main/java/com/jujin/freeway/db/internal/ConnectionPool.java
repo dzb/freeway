@@ -2,9 +2,6 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.SqlException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -17,9 +14,14 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ConnectionPool implements AutoCloseable {
-    private static final Logger LOG = LoggerFactory.getLogger(ConnectionPool.class);
+
+    private static final Logger LOG = LoggerFactory.getLogger(
+        ConnectionPool.class
+    );
     private static final Duration FRESH_IDLE_THRESHOLD = Duration.ofSeconds(5);
     private static final Duration LEAK_THRESHOLD = Duration.ofSeconds(30);
 
@@ -49,14 +51,23 @@ public final class ConnectionPool implements AutoCloseable {
         ensureOpen();
         long waitStart = System.nanoTime();
         try {
-            if (!semaphore.tryAcquire(config.connectionTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
+            if (
+                !semaphore.tryAcquire(
+                    config.connectionTimeout().toMillis(),
+                    TimeUnit.MILLISECONDS
+                )
+            ) {
                 throw new SqlException(
-                    "Connection pool exhausted after " + config.connectionTimeout()
+                    "Connection pool exhausted after " +
+                        config.connectionTimeout()
                 );
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new SqlException("Interrupted while waiting for a connection", e);
+            throw new SqlException(
+                "Interrupted while waiting for a connection",
+                e
+            );
         }
 
         boolean success = false;
@@ -141,7 +152,8 @@ public final class ConnectionPool implements AutoCloseable {
         }
 
         // Wait for active connections to be returned
-        long deadline = System.nanoTime() + config.connectionTimeout().toNanos();
+        long deadline =
+            System.nanoTime() + config.connectionTimeout().toNanos();
         while (total.get() > 0 && System.nanoTime() < deadline) {
             try {
                 Thread.sleep(10);
@@ -165,7 +177,10 @@ public final class ConnectionPool implements AutoCloseable {
 
         int remaining = total.get();
         if (remaining > 0) {
-            LOG.warn("Database closed with {} connection(s) still tracked", remaining);
+            LOG.warn(
+                "Database closed with {} connection(s) still tracked",
+                remaining
+            );
         }
     }
 
@@ -210,7 +225,9 @@ public final class ConnectionPool implements AutoCloseable {
         var it = idle.iterator();
         while (it.hasNext()) {
             PooledConnection conn = it.next();
-            if (conn.isExpired(now, config.maxLifetime(), config.maxIdleTime())) {
+            if (
+                conn.isExpired(now, config.maxLifetime(), config.maxIdleTime())
+            ) {
                 it.remove();
                 closePhysical(conn);
                 total.decrementAndGet();
@@ -242,23 +259,31 @@ public final class ConnectionPool implements AutoCloseable {
             Properties properties = new Properties();
             properties.setProperty("user", config.username());
             properties.setProperty("password", config.password());
-            Connection jdbcConn = DriverManager.getConnection(config.url(), properties);
-            jdbcConn.setAutoCommit(true);
+            Connection conn = DriverManager.getConnection(
+                config.url(),
+                properties
+            );
+            conn.setAutoCommit(true);
 
             int healthTimeoutSec = (int) Math.max(
                 1,
                 (config.healthCheckTimeout().toMillis() + 999) / 1000
             );
-            if (!jdbcConn.isValid(healthTimeoutSec)) {
+            if (!conn.isValid(healthTimeoutSec)) {
                 try {
-                    jdbcConn.close();
-                } catch (SQLException ignored) {
-                }
-                throw new SqlException("Newly created connection failed health check: " + config.url());
+                    conn.close();
+                } catch (SQLException ignored) {}
+                throw new SqlException(
+                    "Newly created connection failed health check: " +
+                        config.url()
+                );
             }
-            return new PooledConnection(jdbcConn, Instant.now());
+            return new PooledConnection(conn, Instant.now());
         } catch (SQLException e) {
-            throw new SqlException("Failed to create connection: " + e.getMessage(), e);
+            throw new SqlException(
+                "Failed to create connection: " + e.getMessage(),
+                e
+            );
         }
     }
 
@@ -267,22 +292,26 @@ public final class ConnectionPool implements AutoCloseable {
     }
 
     private boolean isAlive(PooledConnection conn) {
-        return !conn.isExpired(Instant.now(), config.maxLifetime(), config.maxIdleTime());
+        return !conn.isExpired(
+            Instant.now(),
+            config.maxLifetime(),
+            config.maxIdleTime()
+        );
     }
 
-    private boolean healthCheck(PooledConnection conn) {
+    private boolean healthCheck(PooledConnection pooled) {
         try {
-            Connection jdbcConn = conn.jdbcConnection();
+            Connection conn = pooled.connection();
             int timeoutSec = (int) Math.max(
                 1,
                 (config.healthCheckTimeout().toMillis() + 999) / 1000
             );
-            if (!jdbcConn.isValid(timeoutSec)) {
+            if (!conn.isValid(timeoutSec)) {
                 return false;
             }
             String query = config.healthCheckQuery();
             if (query != null && !query.isBlank()) {
-                try (Statement stmt = jdbcConn.createStatement()) {
+                try (Statement stmt = conn.createStatement()) {
                     stmt.setQueryTimeout(timeoutSec);
                     stmt.execute(query);
                 }
@@ -295,7 +324,7 @@ public final class ConnectionPool implements AutoCloseable {
 
     private void closePhysical(PooledConnection conn) {
         try {
-            conn.jdbcConnection().close();
+            conn.connection().close();
         } catch (SQLException e) {
             LOG.trace("Error closing physical connection", e);
         }

@@ -5,10 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.function.Consumer;
 
 public final class DatabaseImpl implements Database {
     private static final Logger LOG = LoggerFactory.getLogger(DatabaseImpl.class);
+    private static final ScopedValue<TransactionContext> CURRENT_TX = ScopedValue.newInstance();
 
     private final ConnectionPool pool;
     private final RowMapperResolver rowMapperResolver;
@@ -24,54 +24,82 @@ public final class DatabaseImpl implements Database {
         this.queryTimeoutSeconds = (int) Math.max(1, (millis + 999) / 1000);
     }
 
-
     @Override
     public Query query(String sql, Object... params) {
-        return new QueryImpl(this, null, sql, params, false);
-    }
-
-    @Override
-    public Query query(SQL sql) {
-        return new QueryImpl(this, null, sql.sql(), sql.args(), false);
+        return new QueryImpl(this, txConnection(), sql, params, false);
     }
 
     @Override
     public ExecuteResult execute(String sql, Object... params) {
-        return new QueryImpl(this, null, sql, params, startsWithInsert(sql)).execute();
-    }
-
-    @Override
-    public ExecuteResult execute(SQL sql) {
-        return new QueryImpl(this, null, sql.sql(), sql.args(), sql.isInsert()).execute();
+        return new QueryImpl(this, txConnection(), sql, params, startsWithInsert(sql)).execute();
     }
 
     @Override
     public BatchQuery batch(String sql) {
-        return new BatchQueryImpl(this, null, sql);
+        return new BatchQueryImpl(this, txConnection(), sql);
+    }
+
+    private PooledConnection txConnection() {
+        return CURRENT_TX.isBound() ? CURRENT_TX.get().conn : null;
     }
 
     @Override
-    public void transaction(Consumer<Transaction> work) {
-        transaction(work, null);
+    public void transaction(Transactional work) {
+        transaction(null, work);
     }
 
     @Override
-    public void transaction(Consumer<Transaction> work, IsolationLevel isolation) {
-        TransactionImpl tx = (TransactionImpl) beginTransaction(isolation);
+    public void transaction(IsolationLevel isolation, Transactional work) {
+        if (CURRENT_TX.isBound()) {
+            throw new IllegalStateException("Nested transaction not supported");
+        }
+        PooledConnection conn = pool.borrow();
+        int originalIsolation = -1;
         try {
-            work.accept(tx);
-            tx.commit();
-        } catch (Throwable e) {
-            tx.rollbackSilent();
-            throw e;
+            var raw = conn.connection();
+            originalIsolation = raw.getTransactionIsolation();
+            raw.setAutoCommit(false);
+            if (isolation != null && isolation != IsolationLevel.DEFAULT) {
+                raw.setTransactionIsolation(isolation.jdbcLevel());
+            }
+            TransactionContext ctx = new TransactionContext(conn, originalIsolation);
+            ScopedValue.where(CURRENT_TX, ctx).run(() -> {
+                try {
+                    work.run();
+                } catch (Exception e) {
+                    throw e instanceof RuntimeException re ? re : new RuntimeException(e);
+                }
+            });
+            raw.commit();
+            LOG.trace("Transaction committed");
+        } catch (Exception e) {
+            LOG.debug("Transaction rolled back", e);
+            try {
+                conn.connection().rollback();
+            } catch (SQLException re) {
+                LOG.warn("Transaction rollback failed", re);
+            }
+            if (e instanceof RuntimeException re) throw re;
+            throw new RuntimeException(e);
         } finally {
-            tx.closeConnection();
+            restoreConnectionState(conn, originalIsolation);
+            pool.release(conn);
         }
     }
 
-    @Override
-    public Transaction beginTransaction() {
-        return beginTransaction(null);
+    private void restoreConnectionState(PooledConnection conn, int originalIsolation) {
+        try {
+            var raw = conn.connection();
+            if (originalIsolation >= 0
+                && raw.getTransactionIsolation() != originalIsolation) {
+                raw.setTransactionIsolation(originalIsolation);
+            }
+            if (!raw.getAutoCommit()) {
+                raw.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            LOG.trace("Error restoring connection state", e);
+        }
     }
 
     static boolean startsWithInsert(String sql) {
@@ -90,7 +118,7 @@ public final class DatabaseImpl implements Database {
         try {
             PooledConnection conn = pool.borrow();
             try {
-                return conn.jdbcConnection().isValid(5);
+                return conn.connection().isValid(5);
             } finally {
                 pool.release(conn);
             }
@@ -121,164 +149,7 @@ public final class DatabaseImpl implements Database {
         return pool;
     }
 
-    @Override
-    public Transaction beginTransaction(IsolationLevel isolation) {
-        PooledConnection conn = pool.borrow();
-        int originalIsolation = -1;
-        try {
-            originalIsolation = conn.jdbcConnection().getTransactionIsolation();
-            conn.jdbcConnection().setAutoCommit(false);
-            TransactionImpl tx = new TransactionImpl(this, conn, originalIsolation);
-            if (isolation != null && isolation != IsolationLevel.DEFAULT) {
-                conn.jdbcConnection().setTransactionIsolation(isolation.jdbcLevel());
-            }
-            return tx;
-        } catch (SQLException e) {
-            try {
-                if (originalIsolation >= 0) {
-                    conn.jdbcConnection().setTransactionIsolation(originalIsolation);
-                }
-                conn.jdbcConnection().setAutoCommit(true);
-            } catch (SQLException ex) {
-                LOG.trace("Error restoring autoCommit after transaction begin failure", ex);
-            }
-            pool.release(conn);
-            throw new SqlException("Failed to begin transaction", e);
-        }
-    }
-
-    private static final class TransactionImpl implements Transaction {
-        private final DatabaseImpl db;
-        private final PooledConnection conn;
-        private final int originalIsolation;
-        private boolean completed;
-        private boolean released;
-
-        private TransactionImpl(DatabaseImpl db, PooledConnection conn, int originalIsolation) {
-            this.db = db;
-            this.conn = conn;
-            this.originalIsolation = originalIsolation;
-        }
-
-        @Override
-        public Transaction isolation(IsolationLevel level) {
-            if (completed) {
-                throw new SqlException("Transaction is already finished");
-            }
-            IsolationLevel next = level == null ? IsolationLevel.DEFAULT : level;
-            try {
-                conn.jdbcConnection().setTransactionIsolation(
-                    next == IsolationLevel.DEFAULT ? originalIsolation : next.jdbcLevel()
-                );
-                return this;
-            } catch (SQLException e) {
-                throw new SqlException("Failed to set isolation level", e);
-            }
-        }
-
-        @Override
-        public Query query(String sql, Object... params) {
-            if (completed) {
-                throw new SqlException("Transaction is already finished");
-            }
-            return new QueryImpl(db, conn, sql, params, false);
-        }
-
-        @Override
-        public Query query(SQL sql) {
-            if (completed) {
-                throw new SqlException("Transaction is already finished");
-            }
-            return new QueryImpl(db, conn, sql.sql(), sql.args(), false);
-        }
-
-        @Override
-        public ExecuteResult execute(String sql, Object... params) {
-            if (completed) {
-                throw new SqlException("Transaction is already finished");
-            }
-            return new QueryImpl(db, conn, sql, params, startsWithInsert(sql)).execute();
-        }
-
-        @Override
-        public ExecuteResult execute(SQL sql) {
-            if (completed) {
-                throw new SqlException("Transaction is already finished");
-            }
-            return new QueryImpl(db, conn, sql.sql(), sql.args(), sql.isInsert()).execute();
-        }
-
-        @Override
-        public BatchQuery batch(String sql) {
-            if (completed) {
-                throw new SqlException("Transaction is already finished");
-            }
-            return new BatchQueryImpl(db, conn, sql);
-        }
-
-        @Override
-        public void commit() {
-            if (completed) {
-                return;
-            }
-            try {
-                conn.jdbcConnection().commit();
-                completed = true;
-                restoreConnectionState();
-            } catch (SQLException e) {
-                throw new SqlException("Commit failed", e);
-            }
-        }
-
-        @Override
-        public void rollback() {
-            rollbackSilent();
-        }
-
-        void rollbackSilent() {
-            if (completed) {
-                return;
-            }
-            completed = true;
-            try {
-                conn.jdbcConnection().rollback();
-                restoreConnectionState();
-            } catch (SQLException e) {
-                LOG.warn("Transaction rollback failed", e);
-            }
-        }
-
-        @Override
-        public void close() {
-            if (!completed) {
-                rollbackSilent();
-            }
-            closeConnection();
-        }
-
-        void closeConnection() {
-            if (released) {
-                return;
-            }
-            released = true;
-            try {
-                restoreConnectionState();
-            } catch (SQLException e) {
-                LOG.trace("Error restoring connection state on close", e);
-            }
-            db.pool.release(conn);
-        }
-
-        private void restoreConnectionState() throws SQLException {
-            if (originalIsolation >= 0
-                && conn.jdbcConnection().getTransactionIsolation() != originalIsolation) {
-                conn.jdbcConnection().setTransactionIsolation(originalIsolation);
-            }
-            if (!conn.jdbcConnection().getAutoCommit()) {
-                conn.jdbcConnection().setAutoCommit(true);
-            }
-        }
-    }
+    private record TransactionContext(PooledConnection conn, int originalIsolation) {}
 
     private static int skipIgnorableSqlPrefix(String sql) {
         int index = 0;

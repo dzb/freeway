@@ -1,6 +1,7 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +36,9 @@ public final class WebServer implements AutoCloseable {
         RouteIndex routes,
         WebSocketIndex websocketIndex,
         CorsFilter corsFilter,
-        StaticResourceMounts staticMounts,
-        HttpFilters filters,
-        ExceptionMappers mappers,
+        Extension<StaticResourceMount> staticMounts,
+        Extension<HttpFilter> filters,
+        Extension<ExceptionMapper> mappers,
         Container container,
         @Value("${web.engine:robaho}") String webEngineId,
         @Value("${web.server.host:127.0.0.1}") String host,

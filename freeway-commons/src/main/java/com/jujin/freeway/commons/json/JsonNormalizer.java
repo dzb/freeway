@@ -11,7 +11,7 @@ import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 
 final class JsonNormalizer {
-    private static final int MAX_DEPTH = 1000;
+    private static final int MAX_DEPTH = JsonParser.MAX_DEPTH;
 
     private JsonNormalizer() {
     }

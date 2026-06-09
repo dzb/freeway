@@ -45,7 +45,7 @@ class DbModuleTest {
 
         try (Container container = Freeway.create(
             new DbModule(),
-                binder -> binder.contribute(RowMappings.class).add(new RowMapping(
+                binder -> binder.contribute(RowMapping.class).add(new RowMapping(
                 Money.class,
                 (rs, rowNum) -> new Money(rs.getLong("amount_cents"))
             ))
@@ -85,7 +85,7 @@ class DbModuleTest {
                 .orElseThrow();
             assertEquals(new Money(1250L), first);
 
-            db.transaction(tx -> tx.execute("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L));
+            db.transaction(() -> db.execute("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L));
             long updated = db.query("select amount_cents from ledger where id = ?", 1L)
                 .one(Long.class)
                 .orElseThrow();
@@ -106,8 +106,8 @@ class DbModuleTest {
         try {
             Container container = Freeway.create(
                 new DbModule(),
-                    binder -> binder.contribute(Databases.class).add(new DatabaseNamed("primary", primary)),
-                    binder -> binder.contribute(Databases.class).add(new DatabaseNamed("audit", audit))
+                    binder -> binder.contribute(DatabaseNamed.class).add(new DatabaseNamed("primary", primary)),
+                    binder -> binder.contribute(DatabaseNamed.class).add(new DatabaseNamed("audit", audit))
             );
 
             DatabaseHub hub = container.get(DatabaseHub.class);

@@ -32,7 +32,7 @@ class PooledConnectionTest {
     @Test
     void jdbcConnectionReturnsOriginal() {
         var pooled = new PooledConnection(jdbcConn, Instant.now());
-        assertSame(jdbcConn, pooled.jdbcConnection());
+        assertSame(jdbcConn, pooled.connection());
     }
 
     @Test

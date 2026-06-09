@@ -7,8 +7,8 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.RowMapping;
-import com.jujin.freeway.db.RowMappings;
 import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.annotation.Inject;
 
 import java.lang.reflect.Modifier;
@@ -33,7 +33,7 @@ public final class RowMapperResolver {
     @Inject
     public RowMapperResolver(
         Coercer coercer,
-        RowMappings registrations
+        Extension<RowMapping> registrations
     ) {
         this(coercer, Map.of(), toMap(registrations));
     }
@@ -63,7 +63,7 @@ public final class RowMapperResolver {
         return (RowMapper<T>) cache.computeIfAbsent(type, this::create);
     }
 
-    private static Map<Class<?>, RowMapper<?>> toMap(RowMappings reg) {
+    private static Map<Class<?>, RowMapper<?>> toMap(Extension<RowMapping> reg) {
         Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
         for (RowMapping entry : reg.all()) {
             map.put(entry.type(), entry.mapper());

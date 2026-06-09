@@ -73,7 +73,7 @@ class UndertowFrameProbeTest {
     public static final class TestAppModule implements Module {
         @Override
         public void bind(Binder binder) {
-            binder.contribute(WebSocketGroups.class).add(WebSocketGroup.of("/api",
+            binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/api",
                 WebSocketRoute.of("/ws/{room}", session -> new WebSocketListener() {
                     @Override
                     public void onText(String text) throws Exception {
@@ -81,7 +81,7 @@ class UndertowFrameProbeTest {
                     }
                 })
             ));
-            binder.contribute(Routes.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));
+            binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));
         }
     }
 

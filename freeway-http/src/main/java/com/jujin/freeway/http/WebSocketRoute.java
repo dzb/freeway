@@ -18,11 +18,6 @@ public record WebSocketRoute(String path, WebSocketEndpoint endpoint) {
     }
 
     private static String normalizePath(String path) {
-        String value = HttpContext.blankToNull(path);
-        if (value == null || "/".equals(value)) {
-            return "/";
-        }
-        value = value.startsWith("/") ? value : "/" + value;
-        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+        return PathPattern.normalizePath(path);
     }
 }

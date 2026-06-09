@@ -1,7 +1,5 @@
 package com.jujin.freeway.db;
 
-import java.util.function.Consumer;
-
 public interface Database extends AutoCloseable {
 
     Query query(String sql, Object... params);
@@ -18,13 +16,9 @@ public interface Database extends AutoCloseable {
 
     BatchQuery batch(String sql);
 
-    void transaction(Consumer<Transaction> work);
+    void transaction(Transactional work);
 
-    void transaction(Consumer<Transaction> work, IsolationLevel isolation);
-
-    Transaction beginTransaction();
-
-    Transaction beginTransaction(IsolationLevel isolation);
+    void transaction(IsolationLevel isolation, Transactional work);
 
     boolean ping();
 

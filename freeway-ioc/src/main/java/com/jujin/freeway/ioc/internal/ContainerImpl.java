@@ -5,7 +5,6 @@ import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.ioc.*;
-import com.jujin.freeway.ioc.extension.ExtensionPoint;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.slf4j.Logger;
@@ -32,7 +31,7 @@ public final class ContainerImpl implements Container {
     private final ScopeControl scopeControl;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
-    private final Map<Class<?>, ExtensionProxy> extensionProxies = new ConcurrentHashMap<>();
+    private final Map<Extension.Key, Extension<?>> extensions = new ConcurrentHashMap<>();
 
     public ContainerImpl(Collection<? extends com.jujin.freeway.ioc.Module> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
@@ -87,15 +86,24 @@ public final class ContainerImpl implements Container {
     }
 
     @SuppressWarnings("unchecked")
-    ExtensionProxy extension(Class<?> pointType) {
-        return extensionProxies.computeIfAbsent(pointType, pt -> {
-            ExtensionProxy ext = ExtensionProxy.forPoint(pt);
-            Object proxy = ext.proxy(pt);
-            BindingImpl binding = new BindingImpl(this, pt);
-            binding.id(pt.getSimpleName()).to(proxy);
+    <V> Extension<V> extension(Class<V> entryType) {
+        return (Extension<V>) ensureExtension(new Extension.Key(entryType, ""));
+    }
+
+    @SuppressWarnings("unchecked")
+    <V> Extension<V> extension(Class<V> entryType, String name) {
+        return (Extension<V>) ensureExtension(new Extension.Key(entryType, name));
+    }
+
+    private Extension<?> ensureExtension(Extension.Key key) {
+        Extension<?> ext = extensions.computeIfAbsent(key, k -> new Extension<>(key.entryType(), key.name()));
+        String bindingId = key.entryType().getName();
+        if (bindingIndex.find(Extension.class, bindingId) == null) {
+            BindingImpl<Extension> binding = new BindingImpl<>(ContainerImpl.this, Extension.class);
+            binding.id(bindingId).to(ext);
             register(binding);
-            return ext;
-        });
+        }
+        return ext;
     }
 
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
@@ -114,22 +122,24 @@ public final class ContainerImpl implements Container {
     }
 
     /**
-     * Wire built-in consumers that depend on contributed extension points.
+     * Wire built-in consumers that depend on contributed extension values.
      * Called once after all modules have bound their contributions.
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void wireBuiltinExtensions() {
-        // SymbolProviders → SymbolSource
-        ExtensionProxy spExt = extensionProxies.get(SymbolProviders.class);
+        // SymbolProvider → SymbolSource
+        Extension.Key spKey = new Extension.Key(SymbolProvider.class, "");
+        Extension<?> spExt = extensions.get(spKey);
         if (spExt != null) {
-            for (Object p : spExt.resolveAll()) {
+            for (Object p : spExt.all()) {
                 symbolSource.register((SymbolProvider) p);
             }
         }
-        // CoercionRules → Coercer
-        ExtensionProxy crExt = extensionProxies.get(CoercionRules.class);
+        // CoerceRule → Coercer
+        Extension.Key crKey = new Extension.Key(CoerceRule.class, "");
+        Extension<?> crExt = extensions.get(crKey);
         if (crExt != null) {
-            for (Object rule : crExt.resolveAll()) {
+            for (Object rule : crExt.all()) {
                 coercer.register((CoerceRule) rule);
             }
         }
@@ -184,15 +194,6 @@ public final class ContainerImpl implements Container {
         }
         if (isConcrete(type)) {
             return instantiate(type);
-        }
-        // Auto-create empty extension point if it hasn't been registered yet
-        if (ExtensionPoint.class.isAssignableFrom(type) && type.isInterface()) {
-            extension(type); // ensures ExtensionProxy + binding exist
-            // Re-resolve from binding index now that the binding exists
-            BindingImpl<T> extBinding = bindingIndex.findUnique(type);
-            if (extBinding != null) {
-                return serviceRuntime.get(extBinding);
-            }
         }
         throw noServiceRegistered(type);
     }

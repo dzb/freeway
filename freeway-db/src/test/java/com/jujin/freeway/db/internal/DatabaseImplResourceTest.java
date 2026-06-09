@@ -3,7 +3,6 @@ package com.jujin.freeway.db.internal;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.DatabaseConfig;
 import com.jujin.freeway.db.IsolationLevel;
-import com.jujin.freeway.db.Transaction;
 import java.sql.Connection;
 import java.util.Map;
 import java.util.UUID;
@@ -19,7 +18,7 @@ class DatabaseImplResourceTest {
             PooledConnection before = db.pool().borrow();
             int originalIsolation;
             try {
-                originalIsolation = before.jdbcConnection().getTransactionIsolation();
+                originalIsolation = before.connection().getTransactionIsolation();
             } finally {
                 db.pool().release(before);
             }
@@ -28,13 +27,11 @@ class DatabaseImplResourceTest {
                 ? IsolationLevel.READ_COMMITTED
                 : IsolationLevel.SERIALIZABLE;
 
-            Transaction tx = db.beginTransaction();
-            tx.isolation(changed);
-            tx.close();
+            db.transaction(changed, () -> { /* no-op, just test isolation restore */ });
 
             PooledConnection after = db.pool().borrow();
             try {
-                assertEquals(originalIsolation, after.jdbcConnection().getTransactionIsolation());
+                assertEquals(originalIsolation, after.connection().getTransactionIsolation());
             } finally {
                 db.pool().release(after);
             }

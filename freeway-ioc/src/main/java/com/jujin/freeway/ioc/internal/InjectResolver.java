@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.*;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -112,6 +113,14 @@ final class InjectResolver {
         }
         if (targetType == String.class) {
             return container.get(String.class);
+        }
+        if (targetType == Extension.class && memberType instanceof ParameterizedType pt) {
+            Type arg = pt.getActualTypeArguments()[0];
+            if (arg instanceof Class<?> entryType) {
+                @SuppressWarnings("unchecked")
+                Extension<?> ext = container.extension((Class<Object>) entryType);
+                return ext;
+            }
         }
         Object service = container.get(targetType);
         validateScopeCompatibility(ownerType, targetType, service);

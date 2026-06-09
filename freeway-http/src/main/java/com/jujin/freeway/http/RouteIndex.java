@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.ioc.Extension;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -19,11 +20,11 @@ import java.util.regex.PatternSyntaxException;
  * Match complexity is O(L) where L is the number of segments in the request path,
  * independent of the total route count. */
 final class RouteIndex {
-    private static final int MAX_REGEX_LENGTH = 64;
+    private static final int MAX_REGEX_LENGTH = PathPattern.MAX_REGEX_LENGTH;
 
     private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
 
-    public RouteIndex(Routes routes, RouteGroups groups) {
+    public RouteIndex(Extension<Route> routes, Extension<RouteGroup> groups) {
         // Phase 1: collect all routes
         List<Route> all = new ArrayList<>();
         for (Route route : routes == null ? List.<Route>of() : routes.all()) {

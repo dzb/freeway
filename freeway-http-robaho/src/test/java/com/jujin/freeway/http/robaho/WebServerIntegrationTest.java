@@ -47,17 +47,17 @@ class WebServerIntegrationTest {
         container = Freeway.create(
             new HttpModule(),
             new RobahoWebEngineModule(),
-            binder -> binder.contribute(Routes.class).add(Route.get("/hello", ctx -> ctx.send(200, "hello"))),
-            binder -> binder.contribute(RouteGroups.class).add(RouteGroup.of("/api",
+            binder -> binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hello"))),
+            binder -> binder.contribute(RouteGroup.class).add(RouteGroup.of("/api",
                 Route.get("/group", ctx -> ctx.send(200, "group")),
                 Route.get("/items/{id}", ctx -> ctx.send(200, ctx.pathVar("id")))
             )),
-            binder -> binder.contribute(Routes.class).add(Route.get("/users/{id}", ctx -> ctx.send(200, ctx.pathVar("id")))),
-            binder -> binder.contribute(Routes.class).add(Route.get("/bind/{id}", ctx -> ctx.send(200,
+            binder -> binder.contribute(Route.class).add(Route.get("/users/{id}", ctx -> ctx.send(200, ctx.pathVar("id")))),
+            binder -> binder.contribute(Route.class).add(Route.get("/bind/{id}", ctx -> ctx.send(200,
                 ctx.pathVar("id", Integer.class) + ":" + ctx.queryParam("page", Integer.class) + ":" + ctx.param("token")))),
-            binder -> binder.contribute(Routes.class).add(Route.get("/request-id", ctx -> ctx.send(200, ctx.requestContext().correlationId()))),
-            binder -> binder.contribute(Routes.class).add(Route.post("/echo", ctx -> ctx.sendJson(200, Map.of("body", ctx.bodyAsJson(Map.class))))),
-            binder -> binder.contribute(Routes.class).add(Route.post("/upload", ctx -> {
+            binder -> binder.contribute(Route.class).add(Route.get("/request-id", ctx -> ctx.send(200, ctx.requestContext().correlationId()))),
+            binder -> binder.contribute(Route.class).add(Route.post("/echo", ctx -> ctx.sendJson(200, Map.of("body", ctx.bodyAsJson(Map.class))))),
+            binder -> binder.contribute(Route.class).add(Route.post("/upload", ctx -> {
                 MultipartForm form = ctx.multipart();
                 MultipartForm.Part file = form.file("file").orElseThrow();
                 ctx.sendJson(200, Map.of(
@@ -67,19 +67,19 @@ class WebServerIntegrationTest {
                     "text", file.text()
                 ));
             })),
-            binder -> binder.contribute(StaticResourceMounts.class).add(StaticResources.directory("/static", staticRoot).cacheMaxAgeSeconds(60)),
-            binder -> binder.contribute(HttpFilters.class).add((ctx, next) -> {
+            binder -> binder.contribute(StaticResourceMount.class).add(StaticResources.directory("/static", staticRoot).cacheMaxAgeSeconds(60)),
+            binder -> binder.contribute(HttpFilter.class).add((ctx, next) -> {
                 ctx.headerSet("X-Test-Filter", "on");
                 next.handle(ctx);
             }),
-            binder -> binder.contribute(ExceptionMappers.class).add((ctx, ex) -> {
+            binder -> binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
                 if (ex instanceof IllegalArgumentException) {
                     ctx.send(400, "bad request");
                     return true;
                 }
                 return false;
             }),
-            binder -> binder.contribute(Routes.class).add(Route.get("/boom", ctx -> {
+            binder -> binder.contribute(Route.class).add(Route.get("/boom", ctx -> {
                 throw new IllegalArgumentException("boom");
             }))
         );

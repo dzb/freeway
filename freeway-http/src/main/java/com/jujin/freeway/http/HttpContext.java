@@ -186,6 +186,11 @@ public abstract class HttpContext {
         return s != null && !s.isBlank() ? s : null;
     }
 
+    public static RequestContext createRequestContext(String correlationIdHeader) {
+        String id = blankToNull(correlationIdHeader);
+        return id != null ? RequestContext.create(id) : RequestContext.create();
+    }
+
     @SuppressWarnings("unchecked")
     protected <T> T coerceText(String value, Class<T> type) {
         return coercer.coerce(value, type);

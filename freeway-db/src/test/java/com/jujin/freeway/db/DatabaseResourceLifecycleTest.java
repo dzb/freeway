@@ -9,15 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DatabaseResourceLifecycleTest {
     @Test
-    void transactionCloseIsIdempotent() {
-        Database db = singleConnectionDb("tx_close");
+    void transactionReleasesConnectionAfterCommit() {
+        Database db = singleConnectionDb("tx_commit");
         try (db) {
             db.execute("create table t (id int)");
 
-            Transaction tx = db.beginTransaction();
-            tx.execute("insert into t values (1)");
-            tx.close();
-            tx.close();
+            db.transaction(() -> db.execute("insert into t values (1)"));
 
             DatabaseStats stats = db.stats();
             assertEquals(0, stats.active());

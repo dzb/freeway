@@ -44,7 +44,7 @@ final class JettyWebEngine implements HttpEngine {
         graceful.setHandler(new Handler.Abstract() {
             @Override
             public boolean handle(Request request, Response response, org.eclipse.jetty.util.Callback callback) throws Exception {
-                RequestContext requestContext = createRequestContext(request);
+                RequestContext requestContext = HttpContext.createRequestContext(request.getHeaders().get("X-Request-Id"));
                 response.getHeaders().put("X-Request-Id", requestContext.correlationId());
                 if (isWebSocketRequest(request)) {
                     return handleWebSocket(request, response, callback, handler, requestContext, webSocketContainer);
@@ -126,11 +126,6 @@ final class JettyWebEngine implements HttpEngine {
         String connection = request.getHeaders().get("Connection");
         return upgrade != null && "websocket".equalsIgnoreCase(upgrade)
             && connection != null && connection.toLowerCase().contains("upgrade");
-    }
-
-    private static RequestContext createRequestContext(Request request) {
-        String correlationId = HttpContext.blankToNull(request.getHeaders().get("X-Request-Id"));
-        return correlationId != null ? RequestContext.create(correlationId) : RequestContext.create();
     }
 
     private static String method(Request request) {

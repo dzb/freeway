@@ -1,8 +1,8 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.RuntimeHook;
-import com.jujin.freeway.ioc.RuntimeHooks;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -18,7 +18,11 @@ public final class HookLifecycle {
 
     private List<RuntimeHook> resolveHooks() {
         if (hooks != null) return hooks;
-        hooks = container.get(RuntimeHooks.class).all();
+        try {
+            hooks = container.get(Extension.class, RuntimeHook.class.getName()).all();
+        } catch (IllegalArgumentException e) {
+            hooks = List.of();
+        }
         return hooks;
     }
 

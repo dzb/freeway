@@ -33,7 +33,7 @@ final class JdkHttpEngine implements HttpEngine {
         HttpServer server = HttpServer.create(new InetSocketAddress(config.host(), config.port()), config.backlog());
         server.setExecutor(executor);
         server.createContext("/", exchange -> {
-            RequestContext requestContext = createRequestContext(exchange);
+            RequestContext requestContext = HttpContext.createRequestContext(exchange.getRequestHeaders().getFirst("X-Request-Id"));
             JdkHttpContext ctx = new JdkHttpContext(exchange, jsonCodec, coercer, requestContext);
             ctx.headerSet("X-Request-Id", requestContext.correlationId());
             if (isWebSocketUpgrade(exchange.getRequestHeaders())) {
@@ -65,11 +65,6 @@ final class JdkHttpEngine implements HttpEngine {
         );
         boolean websocketUpgrade = upgrade.stream().anyMatch("websocket"::equalsIgnoreCase);
         return connectionUpgrade && websocketUpgrade;
-    }
-
-    private static RequestContext createRequestContext(HttpExchange exchange) {
-        String correlationId = HttpContext.blankToNull(exchange.getRequestHeaders().getFirst("X-Request-Id"));
-        return correlationId != null ? RequestContext.create(correlationId) : RequestContext.create();
     }
 
     private record JdkHandle(

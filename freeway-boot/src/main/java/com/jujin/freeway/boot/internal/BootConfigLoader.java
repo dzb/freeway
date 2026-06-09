@@ -21,10 +21,6 @@ public final class BootConfigLoader {
     private BootConfigLoader() {
     }
 
-    public static Map<String, String> load(ClassLoader loader, String... args) {
-        return loadLayers(loader, args).merged();
-    }
-
     public static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
         Map<String, String> environment = loadEnvironment();
         Map<String, String> properties = loadProperties(loader, "application.properties");

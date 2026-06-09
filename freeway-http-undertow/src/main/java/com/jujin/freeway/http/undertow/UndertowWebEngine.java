@@ -61,7 +61,7 @@ final class UndertowWebEngine implements HttpEngine {
     }
 
     private void dispatch(HttpServerExchange exchange, HttpRequestHandler handler) throws Exception {
-        RequestContext requestContext = createRequestContext(exchange);
+        RequestContext requestContext = HttpContext.createRequestContext(exchange.getRequestHeaders().getFirst("X-Request-Id"));
         exchange.getResponseHeaders().put(new HttpString("X-Request-Id"), requestContext.correlationId());
         if (isWebSocketRequest(exchange)) {
             String origin = exchange.getRequestHeaders().getFirst(Headers.ORIGIN);
@@ -124,11 +124,6 @@ final class UndertowWebEngine implements HttpEngine {
     private static String path(HttpServerExchange exchange) {
         String relative = exchange.getRelativePath();
         return relative != null ? relative : "/";
-    }
-
-    private static RequestContext createRequestContext(HttpServerExchange exchange) {
-        String correlationId = HttpContext.blankToNull(exchange.getRequestHeaders().getFirst("X-Request-Id"));
-        return correlationId != null ? RequestContext.create(correlationId) : RequestContext.create();
     }
 
     private static Map<String, String> snapshotPathVariables(Map<String, String> vars) {
