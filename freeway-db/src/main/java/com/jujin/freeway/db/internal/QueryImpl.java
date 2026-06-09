@@ -132,8 +132,7 @@ final class QueryImpl implements Query {
         }
     }
 
-    @Override
-    public ExecuteResult execute() {
+    ExecuteResult execute() {
         try (var ctx = borrow(mayHaveGeneratedKeys)) {
             bindAll(ctx.stmt);
             int rows = ctx.stmt.executeUpdate();

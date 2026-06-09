@@ -22,13 +22,13 @@ class StreamQueryTest {
     void streamsMultipleRows() {
         Database db = createDb();
         try (db) {
-            db.sql("create table t (id int, name varchar(20))").execute();
+            db.execute("create table t (id int, name varchar(20))");
             for (int i = 0; i < 10; i++) {
-                db.sql("insert into t values (?, ?)", i, "n" + i).execute();
+                db.execute("insert into t values (?, ?)", i, "n" + i);
             }
 
             var collected = new ArrayList<String>();
-            try (var stream = db.sql("select name from t order by id").stream(String.class)) {
+            try (var stream = db.query("select name from t order by id").stream(String.class)) {
                 stream.forEach(name -> collected.add(name));
             }
             assertEquals(10, collected.size());
@@ -42,9 +42,9 @@ class StreamQueryTest {
     void streamWithEmptyResult() {
         Database db = createDb();
         try (db) {
-            db.sql("create table t (id int)").execute();
+            db.execute("create table t (id int)");
             var collected = new ArrayList<Integer>();
-            try (var stream = db.sql("select id from t").stream(Integer.class)) {
+            try (var stream = db.query("select id from t").stream(Integer.class)) {
                 stream.forEach(collected::add);
             }
             assertTrue(collected.isEmpty());
@@ -55,11 +55,11 @@ class StreamQueryTest {
     void streamClosesResourcesOnTerminalOperation() {
         Database db = createDb();
         try (db) {
-            db.sql("create table t (id int)").execute();
-            db.sql("insert into t values (1), (2), (3)").execute();
+            db.execute("create table t (id int)");
+            db.execute("insert into t values (1), (2), (3)");
 
             long count;
-            try (var stream = db.sql("select id from t").stream(Integer.class)) {
+            try (var stream = db.query("select id from t").stream(Integer.class)) {
                 count = stream.count();
             }
             assertEquals(3, count);
@@ -70,11 +70,11 @@ class StreamQueryTest {
     void streamWithPositionalParams() {
         Database db = createDb();
         try (db) {
-            db.sql("create table t (id int, val varchar(20))").execute();
-            db.sql("insert into t values (1, 'a'), (2, 'b'), (3, 'c')").execute();
+            db.execute("create table t (id int, val varchar(20))");
+            db.execute("insert into t values (1, 'a'), (2, 'b'), (3, 'c')");
 
             var collected = new ArrayList<String>();
-            try (var stream = db.sql("select val from t where id > ?", 1).stream(String.class)) {
+            try (var stream = db.query("select val from t where id > ?", 1).stream(String.class)) {
                 stream.forEach(collected::add);
             }
             assertEquals(2, collected.size());
@@ -87,11 +87,11 @@ class StreamQueryTest {
     void streamWithNamedParams() {
         Database db = createDb();
         try (db) {
-            db.sql("create table t (id int, val varchar(20))").execute();
-            db.sql("insert into t values (1, 'x'), (2, 'y')").execute();
+            db.execute("create table t (id int, val varchar(20))");
+            db.execute("insert into t values (1, 'x'), (2, 'y')");
 
             var collected = new ArrayList<String>();
-            try (var stream = db.sql("select val from t where id = $id")
+            try (var stream = db.query("select val from t where id = $id")
                 .param("id", 1)
                 .stream(String.class)) {
                 stream.forEach(collected::add);
@@ -105,13 +105,13 @@ class StreamQueryTest {
     void streamShortCircuitLimit() {
         Database db = createDb();
         try (db) {
-            db.sql("create table t (id int)").execute();
+            db.execute("create table t (id int)");
             for (int i = 0; i < 100; i++) {
-                db.sql("insert into t values (?)", i).execute();
+                db.execute("insert into t values (?)", i);
             }
 
             var collected = new ArrayList<Integer>();
-            try (var stream = db.sql("select id from t order by id").stream(Integer.class)) {
+            try (var stream = db.query("select id from t order by id").stream(Integer.class)) {
                 stream.limit(5).forEach(collected::add);
             }
             assertEquals(5, collected.size());
@@ -123,11 +123,11 @@ class StreamQueryTest {
     void streamWithRowMapper() {
         Database db = createDb();
         try (db) {
-            db.sql("create table t (id int, name varchar(20))").execute();
-            db.sql("insert into t values (1, 'foo'), (2, 'bar')").execute();
+            db.execute("create table t (id int, name varchar(20))");
+            db.execute("insert into t values (1, 'foo'), (2, 'bar')");
 
             var collected = new ArrayList<Record>();
-            try (var stream = db.sql("select id, name from t order by id")
+            try (var stream = db.query("select id, name from t order by id")
                 .stream(Record.class)) {
                 stream.forEach(collected::add);
             }

@@ -5,6 +5,7 @@ import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseConfig;
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.IsolationLevel;
+import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SQL;
 import com.jujin.freeway.db.SqlException;
@@ -32,18 +33,28 @@ public final class DatabaseImpl implements Database {
     }
 
 
+    @Override
+    public Query query(String sql, Object... params) {
+        return new QueryImpl(this, null, sql, params, false);
+    }
+
+    @Override
+    public Query query(SQL sql) {
+        return new QueryImpl(this, null, sql.sql(), sql.args(), false);
+    }
+
     /**
      * FIXME: 字符串路径暂不启用自增键返回——裸字符串 SQL 无法可靠判断是否为 INSERT。
      * 建议后续通过参数或 heuristics 重新支持。
      */
     @Override
-    public Query sql(String sql, Object... params) {
-        return new QueryImpl(this, null, sql, params, false);
+    public ExecuteResult execute(String sql, Object... params) {
+        return new QueryImpl(this, null, sql, params, false).execute();
     }
 
-    /* @Override — inherit default; direct passthrough to ensure isInsert flows */
-    public Query sql(SQL sql) {
-        return new QueryImpl(this, null, sql.sql(), sql.args(), sql.isInsert());
+    @Override
+    public ExecuteResult execute(SQL sql) {
+        return new QueryImpl(this, null, sql.sql(), sql.args(), sql.isInsert()).execute();
     }
 
     @Override
@@ -155,11 +166,8 @@ public final class DatabaseImpl implements Database {
             }
         }
 
-        /**
-         * FIXME: 字符串路径暂不启用自增键返回。
-         */
         @Override
-        public Query sql(String sql, Object... params) {
+        public Query query(String sql, Object... params) {
             if (finished) {
                 throw new SqlException("Transaction is already finished");
             }
@@ -167,11 +175,30 @@ public final class DatabaseImpl implements Database {
         }
 
         @Override
-        public Query sql(SQL sql) {
+        public Query query(SQL sql) {
             if (finished) {
                 throw new SqlException("Transaction is already finished");
             }
-            return new QueryImpl(db, conn, sql.sql(), sql.args(), sql.isInsert());
+            return new QueryImpl(db, conn, sql.sql(), sql.args(), false);
+        }
+
+        /**
+         * FIXME: 字符串路径暂不启用自增键返回。
+         */
+        @Override
+        public ExecuteResult execute(String sql, Object... params) {
+            if (finished) {
+                throw new SqlException("Transaction is already finished");
+            }
+            return new QueryImpl(db, conn, sql, params, false).execute();
+        }
+
+        @Override
+        public ExecuteResult execute(SQL sql) {
+            if (finished) {
+                throw new SqlException("Transaction is already finished");
+            }
+            return new QueryImpl(db, conn, sql.sql(), sql.args(), sql.isInsert()).execute();
         }
 
         @Override

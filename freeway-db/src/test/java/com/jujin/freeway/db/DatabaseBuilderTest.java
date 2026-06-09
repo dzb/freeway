@@ -40,10 +40,10 @@ class DatabaseBuilderTest {
             .build();
 
         try (db) {
-            db.sql("create table t (v decimal(10,0))").execute();
-            db.sql("insert into t values (123)").execute();
+            db.execute("create table t (v decimal(10,0))");
+            db.execute("insert into t values (123)");
 
-            Short result = db.sql("select v from t").one(Short.class).orElseThrow();
+            Short result = db.query("select v from t").one(Short.class).orElseThrow();
             assertEquals(Short.valueOf((short) 123), result);
         }
     }
@@ -57,7 +57,7 @@ class DatabaseBuilderTest {
             .build();
 
         try (db) {
-            List<Marker> markers = db.sql("select 'manual'").list(Marker.class);
+            List<Marker> markers = db.query("select 'manual'").list(Marker.class);
             assertEquals(List.of(new Marker("manual")), markers);
         }
     }

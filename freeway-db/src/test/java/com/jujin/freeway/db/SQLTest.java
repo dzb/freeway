@@ -446,11 +446,11 @@ class SQLTest {
     void integrationSelect() {
         var db = builder("sql_integ_select").build();
         try (db) {
-            db.sql("create table t_user (id bigint primary key, name varchar(16), status int)").execute();
-            db.sql("insert into t_user values (1, 'alpha', 1), (2, 'beta', 0)").execute();
+            db.execute("create table t_user (id bigint primary key, name varchar(16), status int)");
+            db.execute("insert into t_user values (1, 'alpha', 1), (2, 'beta', 0)");
 
             SQL q = SQL.select("*").from("t_user").where("status = ?", 1);
-            var users = db.sql(q.sql(), q.args()).list(IdName.class);
+            var users = db.query(q.sql(), q.args()).list(IdName.class);
             assertEquals(1, users.size());
             assertEquals("alpha", users.get(0).name());
         }
@@ -460,11 +460,11 @@ class SQLTest {
     void integrationSelectNamed() {
         var db = builder("sql_integ_named").build();
         try (db) {
-            db.sql("create table t_user (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t_user values (1, 'alpha')").execute();
+            db.execute("create table t_user (id bigint primary key, name varchar(16))");
+            db.execute("insert into t_user values (1, 'alpha')");
 
             SQL q = SQL.select("*").from("t_user").where("id = :id", 1L);
-            var user = db.sql(q.sql(), q.args()).one(IdName.class);
+            var user = db.query(q.sql(), q.args()).one(IdName.class);
             assertTrue(user.isPresent());
             assertEquals("alpha", user.get().name());
         }
@@ -474,8 +474,8 @@ class SQLTest {
     void integrationDynamicWhere() {
         var db = builder("sql_integ_dynamic").build();
         try (db) {
-            db.sql("create table t_user (id bigint primary key, name varchar(16), age int)").execute();
-            db.sql("insert into t_user values (1, 'alpha', 25), (2, 'beta', 30)").execute();
+            db.execute("create table t_user (id bigint primary key, name varchar(16), age int)");
+            db.execute("insert into t_user values (1, 'alpha', 25), (2, 'beta', 30)");
 
             // 动态条件模拟
             String nameFilter = "alpha";
@@ -485,7 +485,7 @@ class SQLTest {
             if (!nameFilter.isEmpty()) q = q.where("name = ?", nameFilter);
             if (ageFilter > 0) q = q.where("age >= ?", ageFilter);
 
-            var users = db.sql(q.sql(), q.args()).list(IdName.class);
+            var users = db.query(q.sql(), q.args()).list(IdName.class);
             assertEquals(1, users.size());
             assertEquals("alpha", users.get(0).name());
         }
@@ -495,12 +495,12 @@ class SQLTest {
     void integrationInsert() {
         var db = builder("sql_integ_insert").build();
         try (db) {
-            db.sql("create table t_user (id bigint primary key, name varchar(16))").execute();
+            db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
             SQL q = SQL.insert("t_user").set("id", 1L).set("name", "newguy");
-            db.sql(q.sql(), q.args()).execute();
+            db.execute(q.sql(), q.args());
 
-            var user = db.sql("select id, name from t_user where id = ?", 1L).one(IdName.class);
+            var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
             assertTrue(user.isPresent());
             assertEquals("newguy", user.get().name());
         }
@@ -510,13 +510,13 @@ class SQLTest {
     void integrationUpdate() {
         var db = builder("sql_integ_update").build();
         try (db) {
-            db.sql("create table t_user (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t_user values (1, 'oldname')").execute();
+            db.execute("create table t_user (id bigint primary key, name varchar(16))");
+            db.execute("insert into t_user values (1, 'oldname')");
 
             SQL q = SQL.update("t_user").set("name = ?", "newname").where("id = ?", 1L);
-            db.sql(q.sql(), q.args()).execute();
+            db.execute(q.sql(), q.args());
 
-            var user = db.sql("select id, name from t_user where id = ?", 1L).one(IdName.class);
+            var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
             assertTrue(user.isPresent());
             assertEquals("newname", user.get().name());
         }
@@ -526,13 +526,13 @@ class SQLTest {
     void integrationDelete() {
         var db = builder("sql_integ_delete").build();
         try (db) {
-            db.sql("create table t_user (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t_user values (1, 'goner'), (2, 'keeper')").execute();
+            db.execute("create table t_user (id bigint primary key, name varchar(16))");
+            db.execute("insert into t_user values (1, 'goner'), (2, 'keeper')");
 
             SQL q = SQL.delete("t_user").where("id = ?", 1L);
-            db.sql(q.sql(), q.args()).execute();
+            db.execute(q.sql(), q.args());
 
-            var users = db.sql("select id, name from t_user order by id").list(IdName.class);
+            var users = db.query("select id, name from t_user order by id").list(IdName.class);
             assertEquals(1, users.size());
             assertEquals("keeper", users.get(0).name());
         }
@@ -543,12 +543,12 @@ class SQLTest {
         // Java 25 文本块支持 —— 纯字符串构造即可，无特殊 API 变更
         var db = builder("sql_integ_textblock").build();
         try (db) {
-            db.sql("create table t_user (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t_user values (1, 'hello')").execute();
+            db.execute("create table t_user (id bigint primary key, name varchar(16))");
+            db.execute("insert into t_user values (1, 'hello')");
 
             // 用文本块写 SQL，SQL 类只负责构建
             SQL q = SQL.select("id, name").from("t_user").where("id = ?", 1L);
-            var user = db.sql(q.sql(), q.args()).one(IdName.class);
+            var user = db.query(q.sql(), q.args()).one(IdName.class);
             assertTrue(user.isPresent());
         }
     }

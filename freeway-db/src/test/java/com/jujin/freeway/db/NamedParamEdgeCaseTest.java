@@ -17,10 +17,10 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t values (1, 'alpha'), (2, 'beta')").execute();
+            db.execute("create table t (id bigint primary key, name varchar(16))");
+            db.execute("insert into t values (1, 'alpha'), (2, 'beta')");
 
-            List<NameEntry> results = db.sql("select id, name from t where id = $id")
+            List<NameEntry> results = db.query("select id, name from t where id = $id")
                 .param("id", 1L)
                 .list(NameEntry.class);
             assertEquals(1, results.size());
@@ -34,10 +34,10 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named_coll");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t values (1, 'a'), (2, 'b'), (3, 'c')").execute();
+            db.execute("create table t (id bigint primary key, name varchar(16))");
+            db.execute("insert into t values (1, 'a'), (2, 'b'), (3, 'c')");
 
-            List<NameEntry> results = db.sql("select id, name from t where id in ($ids) order by id")
+            List<NameEntry> results = db.query("select id, name from t where id in ($ids) order by id")
                 .param("ids", List.of(1L, 3L))
                 .list(NameEntry.class);
             assertEquals(2, results.size());
@@ -51,11 +51,11 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named_multi");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (x bigint, y bigint)").execute();
-            db.sql("insert into t values (10, 20), (10, 30)").execute();
+            db.execute("create table t (x bigint, y bigint)");
+            db.execute("insert into t values (10, 20), (10, 30)");
 
             // $min 被多次使用
-            List<Pair> results = db.sql("select x, y from t where x >= $min and y >= $min order by y")
+            List<Pair> results = db.query("select x, y from t where x >= $min and y >= $min order by y")
                 .param("min", 10L)
                 .list(Pair.class);
             assertEquals(2, results.size());
@@ -69,10 +69,10 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named_missing");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint)").execute();
+            db.execute("create table t (id bigint)");
 
             assertThrows(SqlException.class,
-                () -> db.sql("select id from t where id = $missing").list(Long.class));
+                () -> db.query("select id from t where id = $missing").list(Long.class));
         }
     }
 
@@ -81,11 +81,11 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named_extra");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint)").execute();
-            db.sql("insert into t values (1)").execute();
+            db.execute("create table t (id bigint)");
+            db.execute("insert into t values (1)");
 
             assertThrows(SqlException.class,
-                () -> db.sql("select id from t where id = $id")
+                () -> db.query("select id from t where id = $id")
                     .param("id", 1L)
                     .param("extra", "x")
                     .one(Long.class));
@@ -97,16 +97,16 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named_literal");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint, label varchar(32))").execute();
-            db.sql("insert into t values (1, 'a$b')").execute();
+            db.execute("create table t (id bigint, label varchar(32))");
+            db.execute("insert into t values (1, 'a$b')");
 
             // $ 号在字符串字面量中，不应被解析为命名参数
-            List<NameEntry> results = db.sql("select id, label as name from t where label = '$literal'")
+            List<NameEntry> results = db.query("select id, label as name from t where label = '$literal'")
                 .list(NameEntry.class);
             assertEquals(0, results.size());
 
             // 用实际值查
-            List<NameEntry> actual = db.sql("select id, label as name from t where label = ?", "a$b")
+            List<NameEntry> actual = db.query("select id, label as name from t where label = ?", "a$b")
                 .list(NameEntry.class);
             assertEquals(1, actual.size());
             assertEquals("a$b", actual.get(0).name());
@@ -118,7 +118,7 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named_batch");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, label varchar(16))").execute();
+            db.execute("create table t (id bigint primary key, label varchar(16))");
 
             int[] counts = db.batch("insert into t (id, label) values ($id, $label)")
                 .named(List.of(
@@ -128,7 +128,7 @@ class NamedParamEdgeCaseTest {
                 .execute();
             assertArrayEquals(new int[]{1, 1}, counts);
 
-            List<NameEntry> rows = db.sql("select id, label as name from t order by id")
+            List<NameEntry> rows = db.query("select id, label as name from t order by id")
                 .list(NameEntry.class);
             assertEquals(2, rows.size());
             assertEquals(new NameEntry(1L, "a"), rows.get(0));
@@ -141,7 +141,7 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("named_batch_missing");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint, label varchar(16))").execute();
+            db.execute("create table t (id bigint, label varchar(16))");
 
             assertThrows(SqlException.class,
                 () -> db.batch("insert into t values ($id, $label)")
@@ -155,10 +155,10 @@ class NamedParamEdgeCaseTest {
         String dbName = uniqueDb("mixed_reject");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint)").execute();
+            db.execute("create table t (id bigint)");
 
             assertThrows(SqlException.class,
-                () -> db.sql("select id from t where id = $id", 1L)
+                () -> db.query("select id from t where id = $id", 1L)
                     .param("id", 1L));
         }
     }

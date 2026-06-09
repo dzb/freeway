@@ -51,14 +51,14 @@ class MigrationRunnerTest {
         try {
             assertEquals(3, runner.run());
 
-            List<Item> items = db.sql("select id, label from migration_items order by id")
+            List<Item> items = db.query("select id, label from migration_items order by id")
                 .list(Item.class);
             assertEquals(List.of(
                 new Item(1L, "alpha"),
                 new Item(2L, "beta")
             ), items);
 
-            List<String> versions = db.sql("select version from _migrations order by version")
+            List<String> versions = db.query("select version from _migrations order by version")
                 .list(String.class);
             assertEquals(List.of("V001", "V002", "V003"), versions);
 

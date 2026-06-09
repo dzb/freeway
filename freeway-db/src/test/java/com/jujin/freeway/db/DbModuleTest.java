@@ -54,7 +54,7 @@ class DbModuleTest {
             ))
         )) {
             Database db = container.get(Database.class);
-            db.sql(
+            db.execute(
                 """
                 create table ledger (
                     id bigint primary key,
@@ -63,7 +63,7 @@ class DbModuleTest {
                     created_at timestamp not null
                 )
                 """
-            ).execute();
+            );
 
             db.batch("insert into ledger (id, name, amount_cents, created_at) values (?, ?, ?, ?)")
                 .rows(
@@ -72,24 +72,24 @@ class DbModuleTest {
                 )
                 .execute();
 
-            List<LedgerRow> rows = db.sql("select id, name, amount_cents, created_at from ledger order by id")
+            List<LedgerRow> rows = db.query("select id, name, amount_cents, created_at from ledger order by id")
                 .list(LedgerRow.class);
             assertEquals(2, rows.size());
             assertEquals(new LedgerRow(1L, "alpha", 1250L, Instant.parse("2025-01-01T00:00:00Z")), rows.get(0));
             assertEquals(new LedgerRow(2L, "beta", 2250L, Instant.parse("2025-01-02T00:00:00Z")), rows.get(1));
 
-            List<Money> moneyByCollection = db.sql("select amount_cents from ledger where id in (?) order by id", List.of(1L, 2L))
+            List<Money> moneyByCollection = db.query("select amount_cents from ledger where id in (?) order by id", List.of(1L, 2L))
                 .list(Money.class);
             assertEquals(List.of(new Money(1250L), new Money(2250L)), moneyByCollection);
 
-            Money first = db.sql("select amount_cents from ledger where id = $id")
+            Money first = db.query("select amount_cents from ledger where id = $id")
                 .param("id", 1L)
                 .one(Money.class)
                 .orElseThrow();
             assertEquals(new Money(1250L), first);
 
-            db.transaction(tx -> tx.sql("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L).execute());
-            long updated = db.sql("select amount_cents from ledger where id = ?", 1L)
+            db.transaction(tx -> tx.execute("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L));
+            long updated = db.query("select amount_cents from ledger where id = ?", 1L)
                 .one(Long.class)
                 .orElseThrow();
             assertEquals(1350L, updated);

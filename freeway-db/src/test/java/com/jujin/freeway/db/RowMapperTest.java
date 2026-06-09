@@ -26,10 +26,10 @@ class RowMapperTest {
         String dbName = uniqueDb("record_exact");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, name varchar(16) not null)").execute();
-            db.sql("insert into t values (1, 'hello')").execute();
+            db.execute("create table t (id bigint primary key, name varchar(16) not null)");
+            db.execute("insert into t values (1, 'hello')");
 
-            ExactRecord result = db.sql("select id, name from t").one(ExactRecord.class).orElseThrow();
+            ExactRecord result = db.query("select id, name from t").one(ExactRecord.class).orElseThrow();
             assertEquals(1L, result.id);
             assertEquals("hello", result.name);
         }
@@ -40,10 +40,10 @@ class RowMapperTest {
         String dbName = uniqueDb("record_snake");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (user_id bigint primary key, full_name varchar(16) not null)").execute();
-            db.sql("insert into t values (1, 'Alice')").execute();
+            db.execute("create table t (user_id bigint primary key, full_name varchar(16) not null)");
+            db.execute("insert into t values (1, 'Alice')");
 
-            SnakeRecord result = db.sql("select user_id, full_name from t")
+            SnakeRecord result = db.query("select user_id, full_name from t")
                 .one(SnakeRecord.class).orElseThrow();
             assertEquals(1L, result.userId);
             assertEquals("Alice", result.fullName);
@@ -55,10 +55,10 @@ class RowMapperTest {
         String dbName = uniqueDb("record_case");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (\"MY_ID\" bigint primary key, \"LABEL\" varchar(16) not null)").execute();
-            db.sql("insert into t values (42, 'test')").execute();
+            db.execute("create table t (\"MY_ID\" bigint primary key, \"LABEL\" varchar(16) not null)");
+            db.execute("insert into t values (42, 'test')");
 
-            CaseRecord result = db.sql("select \"MY_ID\", \"LABEL\" from t")
+            CaseRecord result = db.query("select \"MY_ID\", \"LABEL\" from t")
                 .one(CaseRecord.class).orElseThrow();
             assertEquals(42L, result.myId);
             assertEquals("test", result.label);
@@ -70,10 +70,10 @@ class RowMapperTest {
         String dbName = uniqueDb("record_partial");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, label varchar(16), amount bigint)").execute();
-            db.sql("insert into t (id, label) values (1, 'partial')").execute();
+            db.execute("create table t (id bigint primary key, label varchar(16), amount bigint)");
+            db.execute("insert into t (id, label) values (1, 'partial')");
 
-            AllTypesRecord result = db.sql("select id, label from t")
+            AllTypesRecord result = db.query("select id, label from t")
                 .one(AllTypesRecord.class).orElseThrow();
             assertEquals(1L, result.id());
             assertEquals("partial", result.label());
@@ -88,10 +88,10 @@ class RowMapperTest {
         String dbName = uniqueDb("bean_exact");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, name varchar(16) not null)").execute();
-            db.sql("insert into t values (1, 'hello')").execute();
+            db.execute("create table t (id bigint primary key, name varchar(16) not null)");
+            db.execute("insert into t values (1, 'hello')");
 
-            BeanTarget result = db.sql("select id, name from t").one(BeanTarget.class).orElseThrow();
+            BeanTarget result = db.query("select id, name from t").one(BeanTarget.class).orElseThrow();
             assertEquals(1L, result.id);
             assertEquals("hello", result.name);
         }
@@ -102,10 +102,10 @@ class RowMapperTest {
         String dbName = uniqueDb("bean_snake");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (user_id bigint primary key, full_name varchar(16) not null)").execute();
-            db.sql("insert into t values (1, 'Bob')").execute();
+            db.execute("create table t (user_id bigint primary key, full_name varchar(16) not null)");
+            db.execute("insert into t values (1, 'Bob')");
 
-            BeanSnake result = db.sql("select user_id, full_name from t")
+            BeanSnake result = db.query("select user_id, full_name from t")
                 .one(BeanSnake.class).orElseThrow();
             assertEquals(1L, result.getUserId());
             assertEquals("Bob", result.getFullName());
@@ -117,10 +117,10 @@ class RowMapperTest {
         String dbName = uniqueDb("bean_fields");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, name varchar(16) not null)").execute();
-            db.sql("insert into t values (7, 'field')").execute();
+            db.execute("create table t (id bigint primary key, name varchar(16) not null)");
+            db.execute("insert into t values (7, 'field')");
 
-            FieldBeanTarget result = db.sql("select id, name from t")
+            FieldBeanTarget result = db.query("select id, name from t")
                 .one(FieldBeanTarget.class).orElseThrow();
             assertEquals(7L, result.getId());
             assertEquals("field", result.getName());
@@ -132,10 +132,10 @@ class RowMapperTest {
         String dbName = uniqueDb("bean_missing");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t (id) values (1)").execute();
+            db.execute("create table t (id bigint primary key, name varchar(16))");
+            db.execute("insert into t (id) values (1)");
 
-            BeanWithBoth result = db.sql("select id from t").one(BeanWithBoth.class).orElseThrow();
+            BeanWithBoth result = db.query("select id from t").one(BeanWithBoth.class).orElseThrow();
             assertEquals(1L, result.getId());
             assertNull(result.getName());
         }
@@ -148,12 +148,12 @@ class RowMapperTest {
         String dbName = uniqueDb("simple_str_int");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (s varchar(16), i int)").execute();
-            db.sql("insert into t values ('abc', 42)").execute();
+            db.execute("create table t (s varchar(16), i int)");
+            db.execute("insert into t values ('abc', 42)");
 
-            assertEquals("abc", db.sql("select s from t").one(String.class).orElseThrow());
-            assertEquals(42, db.sql("select i from t").one(Integer.class).orElseThrow());
-            assertEquals(42, db.sql("select i from t").one(int.class).orElseThrow());
+            assertEquals("abc", db.query("select s from t").one(String.class).orElseThrow());
+            assertEquals(42, db.query("select i from t").one(Integer.class).orElseThrow());
+            assertEquals(42, db.query("select i from t").one(int.class).orElseThrow());
         }
     }
 
@@ -162,11 +162,11 @@ class RowMapperTest {
         String dbName = uniqueDb("simple_long_dbl");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (l bigint, d double)").execute();
-            db.sql("insert into t values (9999999999, 3.14)").execute();
+            db.execute("create table t (l bigint, d double)");
+            db.execute("insert into t values (9999999999, 3.14)");
 
-            assertEquals(9999999999L, db.sql("select l from t").one(Long.class).orElseThrow());
-            assertEquals(3.14, db.sql("select d from t").one(Double.class).orElseThrow(), 1e-9);
+            assertEquals(9999999999L, db.query("select l from t").one(Long.class).orElseThrow());
+            assertEquals(3.14, db.query("select d from t").one(Double.class).orElseThrow(), 1e-9);
         }
     }
 
@@ -175,13 +175,13 @@ class RowMapperTest {
         String dbName = uniqueDb("simple_big");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (bd decimal(30,10), bi decimal(30))").execute();
-            db.sql("insert into t values (1234567890.123456789, 9876543210987654321)").execute();
+            db.execute("create table t (bd decimal(30,10), bi decimal(30))");
+            db.execute("insert into t values (1234567890.123456789, 9876543210987654321)");
 
             assertEquals(0, new BigDecimal("1234567890.123456789").compareTo(
-                db.sql("select bd from t").one(BigDecimal.class).orElseThrow()));
+                db.query("select bd from t").one(BigDecimal.class).orElseThrow()));
             assertEquals(new BigInteger("9876543210987654321"),
-                db.sql("select bi from t").one(BigInteger.class).orElseThrow());
+                db.query("select bi from t").one(BigInteger.class).orElseThrow());
         }
     }
 
@@ -190,15 +190,15 @@ class RowMapperTest {
         String dbName = uniqueDb("simple_temporal");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (d date, ts timestamp, t2 time)").execute();
-            db.sql("insert into t values (DATE '2024-06-15', TIMESTAMP '2024-06-15 10:30:00', TIME '14:45:00')").execute();
+            db.execute("create table t (d date, ts timestamp, t2 time)");
+            db.execute("insert into t values (DATE '2024-06-15', TIMESTAMP '2024-06-15 10:30:00', TIME '14:45:00')");
 
             assertEquals(LocalDate.of(2024, 6, 15),
-                db.sql("select d from t").one(LocalDate.class).orElseThrow());
+                db.query("select d from t").one(LocalDate.class).orElseThrow());
             assertEquals(LocalDateTime.of(2024, 6, 15, 10, 30, 0),
-                db.sql("select ts from t").one(LocalDateTime.class).orElseThrow());
+                db.query("select ts from t").one(LocalDateTime.class).orElseThrow());
             assertEquals(LocalTime.of(14, 45, 0),
-                db.sql("select t2 from t").one(LocalTime.class).orElseThrow());
+                db.query("select t2 from t").one(LocalTime.class).orElseThrow());
         }
     }
 
@@ -207,13 +207,13 @@ class RowMapperTest {
         String dbName = uniqueDb("simple_ldt_uuid");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (ts timestamp, uid uuid)").execute();
-            db.sql("insert into t values (TIMESTAMP '2025-01-01 00:00:00', '550e8400-e29b-41d4-a716-446655440000')").execute();
+            db.execute("create table t (ts timestamp, uid uuid)");
+            db.execute("insert into t values (TIMESTAMP '2025-01-01 00:00:00', '550e8400-e29b-41d4-a716-446655440000')");
 
             assertEquals(LocalDateTime.of(2025, 1, 1, 0, 0, 0),
-                db.sql("select ts from t").one(LocalDateTime.class).orElseThrow());
+                db.query("select ts from t").one(LocalDateTime.class).orElseThrow());
             assertEquals(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
-                db.sql("select uid from t").one(UUID.class).orElseThrow());
+                db.query("select uid from t").one(UUID.class).orElseThrow());
         }
     }
 
@@ -222,10 +222,10 @@ class RowMapperTest {
         String dbName = uniqueDb("simple_bool");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (v boolean)").execute();
-            db.sql("insert into t values (true), (false)").execute();
+            db.execute("create table t (v boolean)");
+            db.execute("insert into t values (true), (false)");
 
-            List<Boolean> results = db.sql("select v from t order by v desc").list(Boolean.class);
+            List<Boolean> results = db.query("select v from t order by v desc").list(Boolean.class);
             assertEquals(List.of(true, false), results);
         }
     }
@@ -237,10 +237,10 @@ class RowMapperTest {
         String dbName = uniqueDb("nullable");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (v varchar(16))").execute();
-            db.sql("insert into t values (null)").execute();
+            db.execute("create table t (v varchar(16))");
+            db.execute("insert into t values (null)");
 
-            Optional<String> result = db.sql("select v from t").one(String.class);
+            Optional<String> result = db.query("select v from t").one(String.class);
             assertTrue(result.isEmpty());
         }
     }
@@ -250,11 +250,11 @@ class RowMapperTest {
         String dbName = uniqueDb("prim_null_int");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (v int)").execute();
-            db.sql("insert into t values (null)").execute();
+            db.execute("create table t (v int)");
+            db.execute("insert into t values (null)");
 
             // 注意：one() 返回 Optional，Null 值在映射层被转为 0，所以 Optional 非空
-            int result = db.sql("select v from t").one(int.class).orElseThrow();
+            int result = db.query("select v from t").one(int.class).orElseThrow();
             assertEquals(0, result);
         }
     }
@@ -264,9 +264,9 @@ class RowMapperTest {
         String dbName = uniqueDb("empty_list");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint)").execute();
+            db.execute("create table t (id bigint)");
 
-            List<Long> result = db.sql("select id from t where id < 0").list(Long.class);
+            List<Long> result = db.query("select id from t where id < 0").list(Long.class);
             assertTrue(result.isEmpty());
         }
     }
@@ -281,10 +281,10 @@ class RowMapperTest {
                 new ExactRecord(rs.getLong("id") * 100, "custom-" + rs.getString("name")))
             .build();
         try (db) {
-            db.sql("create table t (id bigint primary key, name varchar(16) not null)").execute();
-            db.sql("insert into t values (1, 'hello')").execute();
+            db.execute("create table t (id bigint primary key, name varchar(16) not null)");
+            db.execute("insert into t values (1, 'hello')");
 
-            ExactRecord result = db.sql("select id, name from t").one(ExactRecord.class).orElseThrow();
+            ExactRecord result = db.query("select id, name from t").one(ExactRecord.class).orElseThrow();
             assertEquals(100L, result.id);
             assertEquals("custom-hello", result.name);
         }
@@ -298,10 +298,10 @@ class RowMapperTest {
                 new TransformResult(rs.getLong("id"), rs.getString("val").toUpperCase()))
             .build();
         try (db) {
-            db.sql("create table t (id bigint primary key, val varchar(16) not null)").execute();
-            db.sql("insert into t values (1, 'abc'), (2, 'def')").execute();
+            db.execute("create table t (id bigint primary key, val varchar(16) not null)");
+            db.execute("insert into t values (1, 'abc'), (2, 'def')");
 
-            List<TransformResult> results = db.sql("select id, val from t order by id")
+            List<TransformResult> results = db.query("select id, val from t order by id")
                 .list(TransformResult.class);
             assertEquals(2, results.size());
             assertEquals(new TransformResult(1L, "ABC"), results.get(0));
@@ -360,11 +360,11 @@ class RowMapperTest {
         String dbName = uniqueDb("err_unknown");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (v int)").execute();
-            db.sql("insert into t values (1)").execute();
+            db.execute("create table t (v int)");
+            db.execute("insert into t values (1)");
 
             assertThrows(SqlException.class,
-                () -> db.sql("select v from t").one(Object.class));
+                () -> db.query("select v from t").one(Object.class));
         }
     }
 

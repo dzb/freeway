@@ -25,8 +25,8 @@ class RowMapperConcurrencyTest {
             .build();
 
         try (db) {
-            db.sql("create table items (id bigint primary key, label varchar(32) not null)").execute();
-            db.sql("insert into items values (1, 'alpha'), (2, 'beta'), (3, 'gamma')").execute();
+            db.execute("create table items (id bigint primary key, label varchar(32) not null)");
+            db.execute("insert into items values (1, 'alpha'), (2, 'beta'), (3, 'gamma')");
 
             int threadCount = 8;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -34,7 +34,7 @@ class RowMapperConcurrencyTest {
 
             for (int t = 0; t < threadCount; t++) {
                 futures.add(executor.submit(() ->
-                    db.sql("select id, label from items order by id").list(Item.class)
+                    db.query("select id, label from items order by id").list(Item.class)
                 ));
             }
 
@@ -59,8 +59,8 @@ class RowMapperConcurrencyTest {
             .build();
 
         try (db) {
-            db.sql("create table users (user_id bigint primary key, full_name varchar(64) not null)").execute();
-            db.sql("insert into users values (10, 'Alice'), (20, 'Bob'), (30, 'Charlie')").execute();
+            db.execute("create table users (user_id bigint primary key, full_name varchar(64) not null)");
+            db.execute("insert into users values (10, 'Alice'), (20, 'Bob'), (30, 'Charlie')");
 
             int threadCount = 8;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -68,7 +68,7 @@ class RowMapperConcurrencyTest {
 
             for (int t = 0; t < threadCount; t++) {
                 futures.add(executor.submit(() ->
-                    db.sql("select user_id, full_name from users order by user_id").list(UserBean.class)
+                    db.query("select user_id, full_name from users order by user_id").list(UserBean.class)
                 ));
             }
 
@@ -96,8 +96,8 @@ class RowMapperConcurrencyTest {
             .build();
 
         try (db) {
-            db.sql("create table vals (v varchar(16) not null)").execute();
-            db.sql("insert into vals values ('a'), ('b'), ('c')").execute();
+            db.execute("create table vals (v varchar(16) not null)");
+            db.execute("insert into vals values ('a'), ('b'), ('c')");
 
             int threadCount = 8;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -105,7 +105,7 @@ class RowMapperConcurrencyTest {
 
             for (int t = 0; t < threadCount; t++) {
                 futures.add(executor.submit(() ->
-                    db.sql("select v from vals order by v").list(String.class)
+                    db.query("select v from vals order by v").list(String.class)
                 ));
             }
 
@@ -127,8 +127,8 @@ class RowMapperConcurrencyTest {
             .build();
 
         try (db) {
-            db.sql("create table scores (id bigint primary key, score int not null)").execute();
-            db.sql("insert into scores values (1, 50), (2, 75)").execute();
+            db.execute("create table scores (id bigint primary key, score int not null)");
+            db.execute("insert into scores values (1, 50), (2, 75)");
 
             int threadCount = 8;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -136,7 +136,7 @@ class RowMapperConcurrencyTest {
 
             for (int t = 0; t < threadCount; t++) {
                 futures.add(executor.submit(() ->
-                    db.sql("select id, score from scores order by id").list(Score.class)
+                    db.query("select id, score from scores order by id").list(Score.class)
                 ));
             }
 
@@ -160,10 +160,10 @@ class RowMapperConcurrencyTest {
             .build();
 
         try (db) {
-            db.sql("create table t1 (id bigint primary key, name varchar(16))").execute();
-            db.sql("insert into t1 values (1, 'one'), (2, 'two'), (3, 'three')").execute();
-            db.sql("create table t2 (total bigint not null)").execute();
-            db.sql("insert into t2 values (100), (200), (300)").execute();
+            db.execute("create table t1 (id bigint primary key, name varchar(16))");
+            db.execute("insert into t1 values (1, 'one'), (2, 'two'), (3, 'three')");
+            db.execute("create table t2 (total bigint not null)");
+            db.execute("insert into t2 values (100), (200), (300)");
 
             int threadCount = 8;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -174,12 +174,12 @@ class RowMapperConcurrencyTest {
                 futures.add(executor.submit(() -> {
                     // 每次迭代：交替查询 Record + 简单类型
                     for (int i = 0; i < 20; i++) {
-                        List<T1Row> rows = db.sql("select id, name from t1 order by id")
+                        List<T1Row> rows = db.query("select id, name from t1 order by id")
                             .list(T1Row.class);
                         if (rows.size() != 3) return false;
                         if (rows.get(0).id != 1L || !"one".equals(rows.get(0).name)) return false;
 
-                        Long sum = db.sql("select sum(total) from t2").one(Long.class).orElseThrow();
+                        Long sum = db.query("select sum(total) from t2").one(Long.class).orElseThrow();
                         if (sum != 600L) return false;
                     }
                     return true;

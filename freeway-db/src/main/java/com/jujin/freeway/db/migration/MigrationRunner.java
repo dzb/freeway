@@ -49,7 +49,7 @@ public final class MigrationRunner {
         }
 
         Set<String> completed = new HashSet<>(
-            database.sql("select version from " + table).list(String.class)
+            database.query("select version from " + table).list(String.class)
         );
         int ran = 0;
         for (String migration : migrations) {
@@ -75,7 +75,7 @@ public final class MigrationRunner {
     }
 
     private void ensureTable() {
-        database.sql(
+        database.execute(
             """
             create table if not exists %s (
                 version varchar(255) primary key,
@@ -84,7 +84,7 @@ public final class MigrationRunner {
             )
             """
             .formatted(table)
-        ).execute();
+        );
     }
 
     private void applyMigration(String resourcePath) {
@@ -95,12 +95,12 @@ public final class MigrationRunner {
         String version = versionFromPath(resourcePath);
         String description = descriptionFromPath(resourcePath);
         database.transaction(tx -> {
-            tx.sql(sql).execute();
-            tx.sql(
+            tx.execute(sql);
+            tx.execute(
                 "insert into " + table + " (version, description) values (?, ?)",
                 version,
                 description
-            ).execute();
+            );
         });
     }
 

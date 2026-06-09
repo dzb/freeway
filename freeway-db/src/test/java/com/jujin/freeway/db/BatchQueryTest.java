@@ -13,7 +13,7 @@ class BatchQueryTest {
         String dbName = uniqueDb("batch_pos");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, label varchar(16))").execute();
+            db.execute("create table t (id bigint primary key, label varchar(16))");
 
             int[] counts = db.batch("insert into t (id, label) values (?, ?)")
                 .rows(
@@ -24,7 +24,7 @@ class BatchQueryTest {
                 .execute();
             assertArrayEquals(new int[]{1, 1, 1}, counts);
 
-            long total = db.sql("select count(*) from t").one(Long.class).orElseThrow();
+            long total = db.query("select count(*) from t").one(Long.class).orElseThrow();
             assertEquals(3L, total);
         }
     }
@@ -34,7 +34,7 @@ class BatchQueryTest {
         String dbName = uniqueDb("batch_named");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, label varchar(16))").execute();
+            db.execute("create table t (id bigint primary key, label varchar(16))");
 
             int[] counts = db.batch("insert into t (id, label) values ($id, $label)")
                 .named(List.of(
@@ -44,7 +44,7 @@ class BatchQueryTest {
                 .execute();
             assertArrayEquals(new int[]{1, 1}, counts);
 
-            List<Long> ids = db.sql("select id from t order by id").list(Long.class);
+            List<Long> ids = db.query("select id from t order by id").list(Long.class);
             assertEquals(List.of(10L, 20L), ids);
         }
     }
@@ -54,8 +54,8 @@ class BatchQueryTest {
         String dbName = uniqueDb("batch_update");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, val int)").execute();
-            db.sql("insert into t values (1, 10), (2, 20)").execute();
+            db.execute("create table t (id bigint primary key, val int)");
+            db.execute("insert into t values (1, 10), (2, 20)");
 
             int[] counts = db.batch("update t set val = ? where id = ?")
                 .rows(
@@ -65,8 +65,8 @@ class BatchQueryTest {
                 .execute();
             assertArrayEquals(new int[]{1, 1}, counts);
 
-            assertEquals(100, (int) db.sql("select val from t where id = 1").one(Integer.class).orElseThrow());
-            assertEquals(200, (int) db.sql("select val from t where id = 2").one(Integer.class).orElseThrow());
+            assertEquals(100, (int) db.query("select val from t where id = 1").one(Integer.class).orElseThrow());
+            assertEquals(200, (int) db.query("select val from t where id = 2").one(Integer.class).orElseThrow());
         }
     }
 
@@ -75,7 +75,7 @@ class BatchQueryTest {
         String dbName = uniqueDb("batch_rollback");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key, label varchar(16))").execute();
+            db.execute("create table t (id bigint primary key, label varchar(16))");
 
             assertThrows(SqlException.class, () ->
                 db.batch("insert into t (id, label) values (?, ?)")
@@ -86,7 +86,7 @@ class BatchQueryTest {
                     .execute()
             );
 
-            long count = db.sql("select count(*) from t").one(Long.class).orElseThrow();
+            long count = db.query("select count(*) from t").one(Long.class).orElseThrow();
             assertEquals(0L, count);
         }
     }
@@ -96,7 +96,7 @@ class BatchQueryTest {
         String dbName = uniqueDb("batch_coll");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key)").execute();
+            db.execute("create table t (id bigint primary key)");
 
             int[] counts = db.batch("insert into t (id) values (?)")
                 .rows(
@@ -107,7 +107,7 @@ class BatchQueryTest {
                 .execute();
             assertArrayEquals(new int[]{1, 1, 1}, counts);
 
-            List<Long> ids = db.sql("select id from t order by id").list(Long.class);
+            List<Long> ids = db.query("select id from t order by id").list(Long.class);
             assertEquals(List.of(1L, 2L, 3L), ids);
         }
     }
@@ -117,7 +117,7 @@ class BatchQueryTest {
         String dbName = uniqueDb("batch_zero");
         Database db = builder(dbName).build();
         try (db) {
-            db.sql("create table t (id bigint primary key)").execute();
+            db.execute("create table t (id bigint primary key)");
 
             int[] counts = db.batch("insert into t (id) values (?)")
                 .rows()
