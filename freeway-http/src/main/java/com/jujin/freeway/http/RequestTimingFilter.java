@@ -1,12 +1,13 @@
 package com.jujin.freeway.http;
 
-import java.time.Duration;
-import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
+import java.time.Instant;
+
 public final class RequestTimingFilter implements HttpFilter {
-    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(RequestTimingFilter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(RequestTimingFilter.class);
 
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {

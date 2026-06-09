@@ -7,23 +7,17 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Scope;
-import com.jujin.freeway.ioc.annotation.Extension;
-import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.IntermediateType;
-import com.jujin.freeway.ioc.annotation.Named;
-import com.jujin.freeway.ioc.annotation.Symbol;
-import com.jujin.freeway.ioc.annotation.Value;
+import com.jujin.freeway.ioc.annotation.*;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import java.lang.reflect.AnnotatedElement;
+import org.slf4j.Logger;
+
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import org.slf4j.Logger;
 
 final class InjectResolver {
     private final ContainerImpl container;
@@ -44,7 +38,7 @@ final class InjectResolver {
         Class<?> ownerType = instance.getClass();
         BeanPlan plan = BeanIntrospector.plan(ownerType);
         for (BeanProperty property : plan.properties()) {
-            if (!property.writable()) {
+            if (!property.isWritable()) {
                 continue;
             }
             Object value = resolveValue(

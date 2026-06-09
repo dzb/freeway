@@ -2,16 +2,12 @@ package com.jujin.freeway.http.engine;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.Launcher;
-import com.jujin.freeway.http.HttpEngine;
-import com.jujin.freeway.http.Route;
-import com.jujin.freeway.http.Routes;
-import com.jujin.freeway.http.WebServer;
-import com.jujin.freeway.http.WebSocketGroup;
-import com.jujin.freeway.http.WebSocketGroups;
-import com.jujin.freeway.http.WebSocketListener;
-import com.jujin.freeway.http.WebSocketRoute;
+import com.jujin.freeway.http.*;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -22,12 +18,8 @@ import java.net.http.WebSocket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class AbstractWebEngineContractTest {
     private AppRuntime app;
@@ -55,7 +47,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.engine", engineId());
 
         app = Launcher.run(new TestAppModule());
-        assertTrue(app.get(WebServer.class).running());
+        assertTrue(app.get(WebServer.class).isRunning());
         assertInstanceOf(engineType(), app.get(HttpEngine.class, engineId()));
 
         HttpClient client = HttpClient.newHttpClient();
@@ -79,7 +71,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.engine", engineId());
 
         app = Launcher.run(new TestAppModule());
-        assertTrue(app.get(WebServer.class).running());
+        assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         CompletableFuture<String> received = new CompletableFuture<>();
@@ -126,7 +118,7 @@ public abstract class AbstractWebEngineContractTest {
         CompletableFuture<Void> errored = new CompletableFuture<>();
 
         app = Launcher.run(new ErrorAppModule(opened, errored));
-        assertTrue(app.get(WebServer.class).running());
+        assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         CompletableFuture<Integer> closed = new CompletableFuture<>();
@@ -159,7 +151,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.engine", engineId());
 
         app = Launcher.run(new BodyLimitModule());
-        assertTrue(app.get(WebServer.class).running());
+        assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> response = client.send(

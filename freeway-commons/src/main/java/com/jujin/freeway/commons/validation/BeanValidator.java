@@ -52,14 +52,10 @@ public final class BeanValidator {
                 : prefix + "." + property.name();
 
             for (Annotation ann : property.annotations()) {
-                if (ann instanceof NotNull) {
-                    if (value == null) {
-                        result.addError(fieldPath, ((NotNull) ann).message(), null);
-                    }
-                } else if (ann instanceof NotBlank) {
-                    if (value == null || value.toString().trim().isEmpty()) {
-                        result.addError(fieldPath, ((NotBlank) ann).message(), value);
-                    }
+                if (ann instanceof NotNull notNull && value == null) {
+                    result.addError(fieldPath, notNull.message(), null);
+                } else if (ann instanceof NotBlank notBlank && (value == null || value.toString().trim().isEmpty())) {
+                    result.addError(fieldPath, notBlank.message(), value);
                 } else if (ann instanceof Size size) {
                     int len = lengthOf(value);
                     if (len < size.min() || len > size.max()) {

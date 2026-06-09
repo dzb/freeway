@@ -1,25 +1,18 @@
 package com.jujin.freeway.http.robaho;
 
-import com.jujin.freeway.http.JdkHttpContext;
-import com.jujin.freeway.http.RequestContext;
-import com.jujin.freeway.http.WebSocketEndpoint;
-import com.jujin.freeway.http.WebSocketListener;
-import com.jujin.freeway.http.WebSocketSession;
+import com.jujin.freeway.http.*;
 import com.sun.net.httpserver.HttpExchange;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import robaho.net.httpserver.websockets.*;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import robaho.net.httpserver.websockets.CloseCode;
-import robaho.net.httpserver.websockets.OpCode;
-import robaho.net.httpserver.websockets.WebSocket;
-import robaho.net.httpserver.websockets.WebSocketException;
-import robaho.net.httpserver.websockets.WebSocketFrame;
 
 final class RobahoWebSocketSession extends WebSocket implements WebSocketSession {
-    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(RobahoWebSocketSession.class);
+    private static final Logger LOG = LoggerFactory.getLogger(RobahoWebSocketSession.class);
 
     private final HttpExchange exchange;
     private final RequestContext requestContext;

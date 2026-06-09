@@ -10,5 +10,5 @@ public interface BatchQuery {
 
     BatchQuery named(List<Map<String, Object>> rows);
 
-    int[] execute();
+    List<ExecuteResult> execute();
 }

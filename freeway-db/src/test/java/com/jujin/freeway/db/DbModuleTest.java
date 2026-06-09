@@ -2,19 +2,16 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
-import java.sql.SQLException;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class DbModuleTest {
     private static final String URL_KEY = DatabaseConfig.PREFIX + ".url";
@@ -48,7 +45,7 @@ class DbModuleTest {
 
         try (Container container = Freeway.create(
             new DbModule(),
-            binder -> binder.contribute(RowMapperRegistrations.class).add(new RowMapperEntry(
+                binder -> binder.contribute(RowMappings.class).add(new RowMapping(
                 Money.class,
                 (rs, rowNum) -> new Money(rs.getLong("amount_cents"))
             ))
@@ -109,8 +106,8 @@ class DbModuleTest {
         try {
             Container container = Freeway.create(
                 new DbModule(),
-                binder -> binder.contribute(DatabaseRegistrations.class).add(new DatabaseEntry("primary", primary)),
-                binder -> binder.contribute(DatabaseRegistrations.class).add(new DatabaseEntry("audit", audit))
+                    binder -> binder.contribute(Databases.class).add(new DatabaseNamed("primary", primary)),
+                    binder -> binder.contribute(Databases.class).add(new DatabaseNamed("audit", audit))
             );
 
             DatabaseHub hub = container.get(DatabaseHub.class);

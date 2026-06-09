@@ -1,10 +1,8 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.*;
 import com.jujin.freeway.ioc.Module;
-import com.jujin.freeway.ioc.RuntimeHook;
-import com.jujin.freeway.ioc.RuntimeHooks;
+
 import java.util.Map;
 
 public final class HttpModule implements Module {
@@ -43,7 +41,7 @@ public final class HttpModule implements Module {
             }
             if (ex instanceof ValidationException ve) {
                 var errors = ve.getResult().getErrors().stream()
-                    .map(e -> Map.of("field", e.getField(), "message", e.getMessage()))
+                        .map(e -> Map.of("field", e.field(), "message", e.message()))
                     .toList();
                 ctx.sendJson(400, Map.of(
                     "error", "Validation Failed",

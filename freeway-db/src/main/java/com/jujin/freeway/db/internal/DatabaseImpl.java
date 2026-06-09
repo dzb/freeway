@@ -1,22 +1,14 @@
 package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway.db.BatchQuery;
-import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseConfig;
-import com.jujin.freeway.db.DatabaseStats;
-import com.jujin.freeway.db.IsolationLevel;
-import com.jujin.freeway.db.ExecuteResult;
-import com.jujin.freeway.db.Query;
-import com.jujin.freeway.db.SQL;
-import com.jujin.freeway.db.SqlException;
-import com.jujin.freeway.db.Transaction;
-import java.sql.SQLException;
-import java.util.function.Consumer;
+import com.jujin.freeway.db.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.SQLException;
+import java.util.function.Consumer;
+
 public final class DatabaseImpl implements Database {
-    private static final Logger logger = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(DatabaseImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DatabaseImpl.class);
 
     private final ConnectionPool pool;
     private final RowMapperResolver rowMapperResolver;
@@ -82,30 +74,15 @@ public final class DatabaseImpl implements Database {
         return beginTransaction(null);
     }
 
-    @Override
-    public Transaction beginTransaction(IsolationLevel isolation) {
-        PooledConnection conn = pool.borrow();
-        int originalIsolation = -1;
-        try {
-            originalIsolation = conn.jdbcConnection().getTransactionIsolation();
-            conn.jdbcConnection().setAutoCommit(false);
-            TransactionImpl tx = new TransactionImpl(this, conn, originalIsolation);
-            if (isolation != null && isolation != IsolationLevel.DEFAULT) {
-                conn.jdbcConnection().setTransactionIsolation(isolation.jdbcLevel());
-            }
-            return tx;
-        } catch (SQLException e) {
-            try {
-                if (originalIsolation >= 0) {
-                    conn.jdbcConnection().setTransactionIsolation(originalIsolation);
-                }
-                conn.jdbcConnection().setAutoCommit(true);
-            } catch (SQLException ex) {
-                logger.trace("Error restoring autoCommit after transaction begin failure", ex);
-            }
-            pool.release(conn);
-            throw new SqlException("Failed to begin transaction", e);
+    static boolean startsWithInsert(String sql) {
+        if (sql == null) {
+            return false;
         }
+        int index = skipIgnorableSqlPrefix(sql);
+        int end = index + "insert".length();
+        return end <= sql.length()
+            && sql.regionMatches(true, index, "insert", 0, "insert".length())
+            && (end == sql.length() || !isIdentifierChar(sql.charAt(end)));
     }
 
     @Override
@@ -142,6 +119,32 @@ public final class DatabaseImpl implements Database {
 
     ConnectionPool pool() {
         return pool;
+    }
+
+    @Override
+    public Transaction beginTransaction(IsolationLevel isolation) {
+        PooledConnection conn = pool.borrow();
+        int originalIsolation = -1;
+        try {
+            originalIsolation = conn.jdbcConnection().getTransactionIsolation();
+            conn.jdbcConnection().setAutoCommit(false);
+            TransactionImpl tx = new TransactionImpl(this, conn, originalIsolation);
+            if (isolation != null && isolation != IsolationLevel.DEFAULT) {
+                conn.jdbcConnection().setTransactionIsolation(isolation.jdbcLevel());
+            }
+            return tx;
+        } catch (SQLException e) {
+            try {
+                if (originalIsolation >= 0) {
+                    conn.jdbcConnection().setTransactionIsolation(originalIsolation);
+                }
+                conn.jdbcConnection().setAutoCommit(true);
+            } catch (SQLException ex) {
+                LOG.trace("Error restoring autoCommit after transaction begin failure", ex);
+            }
+            pool.release(conn);
+            throw new SqlException("Failed to begin transaction", e);
+        }
     }
 
     private static final class TransactionImpl implements Transaction {
@@ -241,7 +244,7 @@ public final class DatabaseImpl implements Database {
                 conn.jdbcConnection().rollback();
                 restoreConnectionState();
             } catch (SQLException e) {
-                logger.warn("Transaction rollback failed", e);
+                LOG.warn("Transaction rollback failed", e);
             }
         }
 
@@ -261,7 +264,7 @@ public final class DatabaseImpl implements Database {
             try {
                 restoreConnectionState();
             } catch (SQLException e) {
-                logger.trace("Error restoring connection state on close", e);
+                LOG.trace("Error restoring connection state on close", e);
             }
             db.pool.release(conn);
         }
@@ -275,17 +278,6 @@ public final class DatabaseImpl implements Database {
                 conn.jdbcConnection().setAutoCommit(true);
             }
         }
-    }
-
-    private static boolean startsWithInsert(String sql) {
-        if (sql == null) {
-            return false;
-        }
-        int index = skipIgnorableSqlPrefix(sql);
-        int end = index + "insert".length();
-        return end <= sql.length()
-            && sql.regionMatches(true, index, "insert", 0, "insert".length())
-            && (end == sql.length() || !isIdentifierChar(sql.charAt(end)));
     }
 
     private static int skipIgnorableSqlPrefix(String sql) {

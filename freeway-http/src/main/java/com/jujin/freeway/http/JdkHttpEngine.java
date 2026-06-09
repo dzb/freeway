@@ -1,9 +1,12 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
-import com.jujin.freeway.commons.coercion.Coercer;
 import com.sun.net.httpserver.HttpServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.List;
@@ -11,11 +14,9 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 final class JdkHttpEngine implements HttpEngine {
-    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(JdkHttpEngine.class);
+    private static final Logger LOG = LoggerFactory.getLogger(JdkHttpEngine.class);
     private final JsonCodec jsonCodec;
     private final Coercer coercer;
 

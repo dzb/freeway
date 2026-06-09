@@ -2,6 +2,9 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.SqlException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -14,10 +17,9 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import org.slf4j.Logger;
 
 public final class ConnectionPool implements AutoCloseable {
-    private static final Logger logger = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(ConnectionPool.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ConnectionPool.class);
     private static final Duration FRESH_IDLE_THRESHOLD = Duration.ofSeconds(5);
     private static final Duration LEAK_THRESHOLD = Duration.ofSeconds(30);
 
@@ -163,7 +165,7 @@ public final class ConnectionPool implements AutoCloseable {
 
         int remaining = total.get();
         if (remaining > 0) {
-            logger.warn("Database closed with {} connection(s) still tracked", remaining);
+            LOG.warn("Database closed with {} connection(s) still tracked", remaining);
         }
     }
 
@@ -295,7 +297,7 @@ public final class ConnectionPool implements AutoCloseable {
         try {
             conn.jdbcConnection().close();
         } catch (SQLException e) {
-            logger.trace("Error closing physical connection", e);
+            LOG.trace("Error closing physical connection", e);
         }
     }
 

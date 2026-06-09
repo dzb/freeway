@@ -1,25 +1,21 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanParameter;
+import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.commons.coercion.CoerceRule;
-import com.jujin.freeway.commons.logging.LoggingBootstrap;
-import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.CoercionRules;
-import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.LoggerSource;
-import com.jujin.freeway.ioc.Scoping;
-import com.jujin.freeway.ioc.SymbolProviders;
+import com.jujin.freeway.ioc.*;
 import com.jujin.freeway.ioc.extension.ExtensionPoint;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.lang.reflect.Modifier;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
 
 public final class ContainerImpl implements Container {
     private volatile boolean closed;
@@ -44,12 +40,12 @@ public final class ContainerImpl implements Container {
         this.loggerSource = new LoggerSource() {
             @Override
             public Logger get(Class<?> ownerType) {
-                return LoggingBootstrap.logger(ownerType);
+                return LoggerFactory.getLogger(ownerType);
             }
 
             @Override
             public Logger get(String name) {
-                return LoggingBootstrap.logger(name);
+                return LoggerFactory.getLogger(name);
             }
         };
         this.proxyFactory = new ProxyFactoryDefault();

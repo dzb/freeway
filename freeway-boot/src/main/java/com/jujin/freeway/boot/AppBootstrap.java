@@ -8,14 +8,20 @@ import com.jujin.freeway.commons.logging.LoggingBootstrap;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.Module;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.ServiceLoader;
-import org.slf4j.Logger;
 
 final class AppBootstrap {
-    private static final Logger LOG = LoggingBootstrap.logger(AppBootstrap.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AppBootstrap.class);
+
+    static {
+        LoggingBootstrap.autoConfigure();
+    }
 
     private AppBootstrap() {
     }

@@ -2,16 +2,18 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.slf4j.Logger;
 
 public final class WebServer implements AutoCloseable {
-    private static final Logger LOG = com.jujin.freeway.commons.logging.LoggingBootstrap.logger(WebServer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(WebServer.class);
 
     private final RouteIndex routes;
     private final WebSocketIndex websocketIndex;
@@ -108,7 +110,7 @@ public final class WebServer implements AutoCloseable {
         LOG.info("Freeway web server stopped");
     }
 
-    public boolean running() {
+    public boolean isRunning() {
         return handle != null;
     }
 

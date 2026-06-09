@@ -1,10 +1,15 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.commons.logging.LoggingBootstrap;
 import com.jujin.freeway.ioc.internal.ContainerImpl;
 import java.util.Arrays;
 import java.util.List;
 
 public final class Freeway {
+    static {
+        LoggingBootstrap.autoConfigure();
+    }
+
     private Freeway() {
     }
 

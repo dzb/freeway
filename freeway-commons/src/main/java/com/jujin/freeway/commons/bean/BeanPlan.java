@@ -1,22 +1,11 @@
 package com.jujin.freeway.commons.bean;
 
 import java.beans.Introspector;
-import java.lang.invoke.MethodHandle;
 import java.lang.annotation.Annotation;
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.VarHandle;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.RecordComponent;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.lang.reflect.*;
+import java.util.*;
 
 public final class BeanPlan {
     private final Class<?> type;
@@ -54,7 +43,7 @@ public final class BeanPlan {
         return constructor;
     }
 
-    public boolean constructable() {
+    public boolean isConstructable() {
         return constructor != null;
     }
 
@@ -173,7 +162,7 @@ public final class BeanPlan {
         }
 
         @Override
-        public boolean writable() {
+        public boolean isWritable() {
             return false;
         }
 
@@ -193,6 +182,10 @@ public final class BeanPlan {
     }
 
     private record FieldBeanProperty(String name, java.lang.reflect.Type type, Annotation[] annotations, VarHandle field, MethodHandle setter, boolean writable) implements BeanProperty {
+        @Override
+        public boolean isWritable() {
+            return writable;
+        }
         @Override
         public Annotation[] annotations() {
             return annotations.clone();

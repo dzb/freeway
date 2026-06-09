@@ -1,23 +1,13 @@
 package com.jujin.freeway.commons.json;
 
-import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.GenericArrayType;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
-import java.lang.reflect.WildcardType;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+
+import java.lang.reflect.*;
+import java.util.*;
 
 final class JsonCoercions {
     private static final CoercerDefault DEFAULT_COERCER = new CoercerDefault();
@@ -132,7 +122,7 @@ final class JsonCoercions {
     }
 
     private static Object constructRecord(JsonObject data, BeanPlan plan, Coercer coercer, TypeContext context) {
-        if (!plan.constructable()) {
+        if (!plan.isConstructable()) {
             throw new IllegalArgumentException("Cannot construct record type: " + plan.type().getName());
         }
         Object[] args = new Object[plan.properties().size()];
@@ -147,12 +137,12 @@ final class JsonCoercions {
     }
 
     private static Object constructBean(JsonObject data, BeanPlan plan, Coercer coercer, TypeContext context) {
-        if (!plan.constructable()) {
+        if (!plan.isConstructable()) {
             throw new IllegalArgumentException("Type " + plan.type().getName() + " has no no-arg constructor");
         }
         Object bean = plan.constructor().newInstance();
         for (BeanProperty property : plan.properties()) {
-            if (!property.writable() || !data.containsKey(property.name())) {
+            if (!property.isWritable() || !data.containsKey(property.name())) {
                 continue;
             }
             Type propertyType = context.resolve(property.type());
@@ -224,12 +214,12 @@ final class JsonCoercions {
 
     private static Object instantiate(Class<?> targetType) {
         try {
-            Constructor<?> constructor = targetType.getDeclaredConstructor();
-            if (!constructor.canAccess(null)) {
-                constructor.setAccessible(true);
-            }
-            return constructor.newInstance();
+            var lookup = java.lang.invoke.MethodHandles.privateLookupIn(targetType, java.lang.invoke.MethodHandles.lookup());
+            var constructorHandle = lookup.unreflectConstructor(targetType.getDeclaredConstructor());
+            return constructorHandle.invoke();
         } catch (ReflectiveOperationException ex) {
+            return null;
+        } catch (Throwable ex) {
             return null;
         }
     }

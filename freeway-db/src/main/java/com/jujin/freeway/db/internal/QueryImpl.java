@@ -3,19 +3,13 @@ package com.jujin.freeway.db.internal;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SqlException;
+
+import java.lang.ref.Cleaner;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Spliterator;
-import java.util.Spliterators;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -417,14 +411,24 @@ final class QueryImpl implements Query {
         return conn.prepareStatement(sql, Statement.NO_GENERATED_KEYS);
     }
 
+    private static final Cleaner STREAM_CLEANER = Cleaner.create();
+
     private static final class StreamResources implements AutoCloseable {
         private final ResultSet rs;
         private final ExecuteContext ctx;
         private boolean closed;
+        private final Cleaner.Cleanable cleanable;
 
         private StreamResources(ResultSet rs, ExecuteContext ctx) {
             this.rs = rs;
             this.ctx = ctx;
+            this.cleanable = STREAM_CLEANER.register(this, () -> {
+                try {
+                    rs.close();
+                } catch (SQLException ignored) {
+                }
+                ctx.close();
+            });
         }
 
         private ResultSet rs() {
@@ -441,6 +445,7 @@ final class QueryImpl implements Query {
                 return;
             }
             closed = true;
+            cleanable.clean();
             try {
                 rs.close();
             } catch (SQLException ignored) {

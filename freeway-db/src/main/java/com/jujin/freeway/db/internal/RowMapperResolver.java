@@ -6,27 +6,23 @@ import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.RowMapper;
-import com.jujin.freeway.db.RowMapperEntry;
-import com.jujin.freeway.db.RowMapperRegistrations;
+import com.jujin.freeway.db.RowMapping;
+import com.jujin.freeway.db.RowMappings;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.ioc.annotation.Inject;
-import java.lang.reflect.ParameterizedType;
+
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class RowMapperResolver {
@@ -37,7 +33,7 @@ public final class RowMapperResolver {
     @Inject
     public RowMapperResolver(
         Coercer coercer,
-        RowMapperRegistrations registrations
+        RowMappings registrations
     ) {
         this(coercer, Map.of(), toMap(registrations));
     }
@@ -67,9 +63,9 @@ public final class RowMapperResolver {
         return (RowMapper<T>) cache.computeIfAbsent(type, this::create);
     }
 
-    private static Map<Class<?>, RowMapper<?>> toMap(RowMapperRegistrations reg) {
+    private static Map<Class<?>, RowMapper<?>> toMap(RowMappings reg) {
         Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
-        for (RowMapperEntry entry : reg.all()) {
+        for (RowMapping entry : reg.all()) {
             map.put(entry.type(), entry.mapper());
         }
         return Map.copyOf(map);
@@ -171,12 +167,12 @@ public final class RowMapperResolver {
     }
 
     private <T> RowMapper<T> createBean(Class<T> type, BeanPlan plan) {
-        if (!plan.constructable()) {
+        if (!plan.isConstructable()) {
             throw new SqlException("Cannot map " + type.getName() + ": no default constructor");
         }
         BeanConstructor constructor = plan.constructor();
         List<BeanProperty> properties = plan.properties().stream()
-            .filter(BeanProperty::writable)
+                .filter(BeanProperty::isWritable)
             .toList();
         ColumnCache columns = new ColumnCache(properties);
         return (rs, rowNum) -> {

@@ -15,7 +15,11 @@ final class JsonAccessors {
         if (value instanceof Number number) {
             return number.intValue();
         }
-        return Integer.parseInt(String.valueOf(value));
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Cannot parse '" + value + "' as Integer");
+        }
     }
 
     static Long longValue(Object value) {
@@ -25,7 +29,11 @@ final class JsonAccessors {
         if (value instanceof Number number) {
             return number.longValue();
         }
-        return Long.parseLong(String.valueOf(value));
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Cannot parse '" + value + "' as Long");
+        }
     }
 
     static Double doubleValue(Object value) {
@@ -35,7 +43,11 @@ final class JsonAccessors {
         if (value instanceof Number number) {
             return number.doubleValue();
         }
-        return Double.parseDouble(String.valueOf(value));
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Cannot parse '" + value + "' as Double");
+        }
     }
 
     static Boolean booleanValue(Object value) {

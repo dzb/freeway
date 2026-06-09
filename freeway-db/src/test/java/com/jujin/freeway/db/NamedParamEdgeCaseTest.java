@@ -1,11 +1,13 @@
 package com.jujin.freeway.db;
 
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * 命名参数解析和混合参数使用的边缘情况测试。
@@ -146,13 +148,16 @@ class NamedParamEdgeCaseTest {
         try (db) {
             db.execute("create table t (id bigint primary key, label varchar(16))");
 
-            int[] counts = db.batch("insert into t (id, label) values ($id, $label)")
+            var results = db.batch("insert into t (id, label) values ($id, $label)")
                 .named(List.of(
                     Map.of("id", 1L, "label", "a"),
                     Map.of("id", 2L, "label", "b")
                 ))
                 .execute();
-            assertArrayEquals(new int[]{1, 1}, counts);
+            assertEquals(2, results.size());
+            for (var r : results) {
+                assertEquals(1, r.rows());
+            }
 
             List<NameEntry> rows = db.query("select id, label as name from t order by id")
                 .list(NameEntry.class);

@@ -125,7 +125,7 @@ public final class StaticResourceMount {
             return "index.html";
         }
         for (String segment : normalized.split("/")) {
-            if (segment.isBlank() || "..".equals(segment) || segment.indexOf('\\') >= 0) {
+            if (segment.isBlank() || "..".equals(segment) || segment.indexOf('\\') >= 0 || segment.indexOf('\0') >= 0) {
                 return null;
             }
         }

@@ -11,7 +11,7 @@ public interface AppRuntime extends AutoCloseable {
 
     void start();
 
-    default boolean running() {
+    default boolean isRunning() {
         return state() == AppState.RUNNING;
     }
 

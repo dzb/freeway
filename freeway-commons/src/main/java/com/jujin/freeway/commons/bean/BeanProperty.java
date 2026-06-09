@@ -10,7 +10,7 @@ public interface BeanProperty {
 
     Annotation[] annotations();
 
-    boolean writable();
+    boolean isWritable();
 
     Object read(Object target);
 

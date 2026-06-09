@@ -1,15 +1,11 @@
 package com.jujin.freeway.commons.bean;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class BeanPlanTest {
     @Test
@@ -41,7 +37,7 @@ class BeanPlanTest {
 
         BeanProperty title = plan.property("title");
         assertNotNull(title);
-        assertTrue(title.writable());
+        assertTrue(title.isWritable());
         assertNotNull(title.annotation(Marker.class));
 
         SampleBean bean = (SampleBean) plan.constructor().newInstance();
@@ -55,7 +51,7 @@ class BeanPlanTest {
 
         BeanProperty name = plan.property("name");
         assertNotNull(name);
-        assertFalse(name.writable());
+        assertFalse(name.isWritable());
         assertThrows(UnsupportedOperationException.class, () -> name.write(new ImmutableBean("x"), "y"));
     }
 
@@ -64,7 +60,7 @@ class BeanPlanTest {
         BeanPlan plan = BeanIntrospector.plan(FieldFiltered.class);
 
         assertNotNull(plan.property("data"));
-        assertFalse(plan.property("data").writable());
+        assertFalse(plan.property("data").isWritable());
         assertNull(plan.property("transientThing"));
         assertNull(plan.property("CONSTANT"));
     }
@@ -82,7 +78,7 @@ class BeanPlanTest {
         BeanPlan plan = BeanIntrospector.plan(HasSetter.class);
 
         BeanProperty prop = plan.property("value");
-        assertTrue(prop.writable());
+        assertTrue(prop.isWritable());
 
         HasSetter bean = new HasSetter();
         prop.write(bean, "viaSetter");
@@ -90,10 +86,10 @@ class BeanPlanTest {
     }
 
     @Test
-    void nonConstructableBeanIsUnconstructable() {
+    void nonConstructableBeanIsUnisConstructable() {
         BeanPlan plan = BeanIntrospector.plan(NoDefaultConstructor.class);
 
-        assertFalse(plan.constructable());
+        assertFalse(plan.isConstructable());
     }
 
     private record Point(@Marker int x, @Marker String name) {

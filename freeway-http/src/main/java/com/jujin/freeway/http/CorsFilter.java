@@ -34,7 +34,7 @@ public final class CorsFilter implements HttpFilter {
             : allowedOrigins.split("\\s*,\\s*");
         this.allowedMethods = allowedMethods;
         this.allowedHeaders = allowedHeaders;
-        this.exposedHeaders = blankToNull(exposedHeaders);
+        this.exposedHeaders = HttpContext.blankToNull(exposedHeaders);
         this.maxAge = maxAge;
         this.allowCredentials = allowCredentials && !all;
     }
@@ -111,10 +111,6 @@ public final class CorsFilter implements HttpFilter {
             if (c == 0x7f) return true;
         }
         return false;
-    }
-
-    private static String blankToNull(String value) {
-        return value != null && !value.isBlank() ? value : null;
     }
 
     public static final class Builder {

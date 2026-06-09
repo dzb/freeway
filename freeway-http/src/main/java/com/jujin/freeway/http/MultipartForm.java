@@ -7,13 +7,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 public final class MultipartForm {
     private static final Charset RAW = StandardCharsets.ISO_8859_1;
@@ -144,7 +138,7 @@ public final class MultipartForm {
         }
         String contentType = headers.get("content-type");
         byte[] bytes = content.getBytes(RAW);
-        return new Part(name, MultipartForm.blankToNull(filename), MultipartForm.blankToNull(contentType), bytes);
+        return new Part(name, HttpContext.blankToNull(filename), HttpContext.blankToNull(contentType), bytes);
     }
 
     private static String boundaryFromContentType(String contentType) {
@@ -217,10 +211,6 @@ public final class MultipartForm {
         return value.replace("\\\"", "\"").replace("\\\\", "\\");
     }
 
-    private static String blankToNull(String value) {
-        return value != null && !value.isBlank() ? value : null;
-    }
-
     private record BoundaryHit(int index, int nextIndex) {
     }
 
@@ -231,8 +221,8 @@ public final class MultipartForm {
         public Part {
             name = Objects.requireNonNull(name, "name");
             bytes = bytes != null ? bytes.clone() : new byte[0];
-            filename = MultipartForm.blankToNull(filename);
-            contentType = MultipartForm.blankToNull(contentType);
+            filename = HttpContext.blankToNull(filename);
+            contentType = HttpContext.blankToNull(contentType);
         }
 
         public boolean isFile() {

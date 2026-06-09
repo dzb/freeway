@@ -1,9 +1,8 @@
 package com.jujin.freeway.commons.validation;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import java.util.List;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class BeanValidatorTest {
 
@@ -58,8 +57,8 @@ class BeanValidatorTest {
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
         assertEquals(1, result.getErrors().size());
-        assertEquals("username", result.getErrors().get(0).getField());
-        assertTrue(result.getErrors().get(0).getMessage().contains("blank"));
+        assertEquals("username", result.getErrors().get(0).field());
+        assertTrue(result.getErrors().get(0).message().contains("blank"));
     }
 
     @Test
@@ -77,7 +76,7 @@ class BeanValidatorTest {
         req.password = "123";
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertEquals("password", result.getErrors().get(0).getField());
+        assertEquals("password", result.getErrors().get(0).field());
     }
 
     @Test
@@ -96,7 +95,7 @@ class BeanValidatorTest {
         req.age = 0;
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.getField().equals("age")));
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("age")));
     }
 
     @Test
@@ -117,7 +116,7 @@ class BeanValidatorTest {
         req.address.city = "";
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.getField().equals("address.city")));
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("address.city")));
     }
 
     @Test
@@ -128,7 +127,7 @@ class BeanValidatorTest {
         req.tag = "too-long-tag-value";
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.getField().equals("tag")));
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("tag")));
     }
 
     @Test
@@ -143,7 +142,7 @@ class BeanValidatorTest {
         var result = BeanValidator.validate(null);
         assertTrue(result.hasErrors());
         assertEquals(1, result.getErrors().size());
-        assertEquals("(root)", result.getErrors().get(0).getField());
+        assertEquals("(root)", result.getErrors().get(0).field());
     }
 
     // --- Record tests (BeanPlan introspection path) ---
@@ -168,7 +167,7 @@ class BeanValidatorTest {
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
         assertEquals(1, result.getErrors().size());
-        assertEquals("username", result.getErrors().get(0).getField());
+        assertEquals("username", result.getErrors().get(0).field());
     }
 
     @Test
@@ -183,7 +182,7 @@ class BeanValidatorTest {
     void recordMinViolation() {
         var result = BeanValidator.validate(new UserRecord("Alice", 0));
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.getField().equals("age")));
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("age")));
     }
 
     @Test
@@ -191,7 +190,7 @@ class BeanValidatorTest {
         var req = new NestedRecord(new AddressRecord(""));
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.getField().equals("address.city")));
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("address.city")));
     }
 
     @Test

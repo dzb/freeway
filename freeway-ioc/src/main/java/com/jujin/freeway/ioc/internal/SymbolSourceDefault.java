@@ -29,8 +29,8 @@ final class SymbolSourceDefault implements SymbolSource {
      */
     static SymbolSourceDefault standard() {
         List<SymbolProvider> providers = new ArrayList<>();
-        providers.add(name -> System.getProperty(name));
-        providers.add(name -> System.getenv(name));
+        providers.add(System::getProperty);
+        providers.add(System::getenv);
         return new SymbolSourceDefault(providers);
     }
 

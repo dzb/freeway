@@ -17,7 +17,6 @@ import java.util.Objects;
  * }</pre>
  */
 public class SseEmitter implements AutoCloseable {
-    private static final byte[] UTF8 = StandardCharsets.UTF_8.name().getBytes(StandardCharsets.UTF_8); // unused, keep for clarity
     private final OutputStream outputStream;
     private volatile boolean closed;
 

@@ -1,20 +1,16 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.*;
 import com.jujin.freeway.ioc.Module;
-import com.jujin.freeway.ioc.RuntimeHook;
-import com.jujin.freeway.ioc.RuntimeHooks;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class LauncherTest {
     private static final String APP_NAME_KEY = "app.name";
@@ -44,7 +40,7 @@ class LauncherTest {
         AppRuntime app = Launcher.run(TestBootApp.class, "--freeway.profile=dev", "--app.name=Overridden");
         try {
             assertEquals(AppState.RUNNING, app.state());
-            assertTrue(app.running());
+            assertTrue(app.isRunning());
             Container container = app.container();
             SymbolSource symbolSource = container.get(SymbolSource.class);
 

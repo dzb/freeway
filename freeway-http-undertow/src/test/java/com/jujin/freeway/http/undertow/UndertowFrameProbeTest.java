@@ -1,10 +1,13 @@
 package com.jujin.freeway.http.undertow;
 
-import com.jujin.freeway.http.*;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.Launcher;
+import com.jujin.freeway.http.*;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -15,8 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,7 +43,7 @@ class UndertowFrameProbeTest {
         System.setProperty("web.engine", "undertow");
 
         app = Launcher.run(new TestAppModule());
-        assertTrue(app.get(WebServer.class).running());
+        assertTrue(app.get(WebServer.class).isRunning());
 
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(5000);
