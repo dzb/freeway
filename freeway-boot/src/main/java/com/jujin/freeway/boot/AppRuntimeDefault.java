@@ -2,9 +2,13 @@ package com.jujin.freeway.boot;
 
 import com.jujin.freeway.boot.internal.HookLifecycle;
 import com.jujin.freeway.ioc.Container;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Objects;
 
 final class AppRuntimeDefault implements AppRuntime {
+    private static final Logger LOG = LoggerFactory.getLogger(AppRuntimeDefault.class);
     private final Container container;
     private final AppConfig config;
     private volatile AppState state = AppState.CREATED;
@@ -38,11 +42,14 @@ final class AppRuntimeDefault implements AppRuntime {
             throw new IllegalStateException("Application cannot start from state " + state);
         }
         state = AppState.STARTING;
+        LOG.info("Application starting");
         try {
             container.get(HookLifecycle.class).start(container);
             state = AppState.RUNNING;
+            LOG.info("Application started");
         } catch (RuntimeException ex) {
             state = AppState.FAILED;
+            LOG.error("Application startup failed", ex);
             throw new IllegalStateException("Application startup failed", ex);
         }
     }
@@ -54,12 +61,14 @@ final class AppRuntimeDefault implements AppRuntime {
         }
         AppState previous = state;
         state = AppState.STOPPING;
+        LOG.info("Application stopping");
         RuntimeException failure = null;
         if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
             try {
                 container.get(HookLifecycle.class).stop(container);
             } catch (RuntimeException ex) {
                 failure = ex;
+                LOG.error("Error during hook shutdown", ex);
             }
         }
         try {
@@ -70,11 +79,13 @@ final class AppRuntimeDefault implements AppRuntime {
             } else {
                 failure.addSuppressed(ex);
             }
+            LOG.error("Error closing container", ex);
         }
         if (failure != null) {
             state = AppState.FAILED;
             throw failure;
         }
         state = AppState.STOPPED;
+        LOG.info("Application stopped");
     }
 }

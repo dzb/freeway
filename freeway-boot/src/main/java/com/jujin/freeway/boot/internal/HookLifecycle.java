@@ -3,11 +3,15 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.RuntimeHook;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 public final class HookLifecycle {
+    private static final Logger LOG = LoggerFactory.getLogger(HookLifecycle.class);
     private final Container container;
     private final List<RuntimeHook> started = new ArrayList<>();
     private volatile List<RuntimeHook> hooks;
@@ -36,10 +40,12 @@ public final class HookLifecycle {
         }
         try {
             for (RuntimeHook hook : list) {
+                LOG.debug("Starting hook: {}", hook.getClass().getSimpleName());
                 hook.start(container);
                 started.add(hook);
             }
         } catch (Exception ex) {
+            LOG.error("Hook start failed: {}", ex.getMessage(), ex);
             RuntimeException failure = new RuntimeException("Runtime hook start failed", ex);
             RuntimeException rollback = stopStarted(container);
             if (rollback != null) {
@@ -66,9 +72,11 @@ public final class HookLifecycle {
 
         RuntimeException failure = null;
         for (RuntimeHook hook : hooksToStop) {
+            LOG.debug("Stopping hook: {}", hook.getClass().getSimpleName());
             try {
                 hook.stop(container);
             } catch (Exception ex) {
+                LOG.warn("Hook stop failed: {}", ex.getMessage(), ex);
                 RuntimeException next = new RuntimeException("Runtime hook stop failed", ex);
                 if (failure == null) {
                     failure = next;

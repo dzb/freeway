@@ -1,9 +1,13 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.ioc.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Objects;
 
 public final class CorsFilter implements HttpFilter {
+    private static final Logger LOG = LoggerFactory.getLogger(CorsFilter.class);
     private final boolean enabled;
     private final boolean allowAll;
     private final String[] allowedOriginList;
@@ -64,6 +68,7 @@ public final class CorsFilter implements HttpFilter {
         if ("OPTIONS".equalsIgnoreCase(ctx.method())) {
             // preflight must still validate origin
             if (acao == null) {
+                LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
                 ctx.status(403).output(new byte[0]);
                 return;
             }
@@ -92,6 +97,7 @@ public final class CorsFilter implements HttpFilter {
         }
         // CRLF injection prevention: reject origins containing control characters
         if (containsControlChars(requestOrigin)) {
+            LOG.debug("CORS rejected: origin contains control characters");
             return null;
         }
         for (String origin : allowedOriginList) {

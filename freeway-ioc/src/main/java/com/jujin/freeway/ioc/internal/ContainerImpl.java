@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ContainerImpl implements Container {
+    private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
     private volatile boolean closed;
     private final BindingIndex bindingIndex = new BindingIndex();
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
@@ -147,11 +148,15 @@ public final class ContainerImpl implements Container {
 
     @Override
     public void close() {
+        LOG.debug("Container closing");
         closed = true;
         RuntimeException failure = shutdown.close();
+        extensions.clear();
         if (failure != null) {
+            LOG.error("Container close failed", failure);
             throw failure;
         }
+        LOG.debug("Container closed");
     }
 
     @Override
