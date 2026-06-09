@@ -150,6 +150,24 @@ class LauncherTest {
         assertEquals(List.of("first:start", "second:start", "first:stop"), events);
     }
 
+    @Test
+    void runtimeHookResolutionFailureFailsStartup() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Launcher.run(binder -> {
+            binder.contribute(RuntimeHooks.class).add("first", new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                }
+            }).after("second");
+            binder.contribute(RuntimeHooks.class).add("second", new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                }
+            }).after("first");
+        }));
+
+        assertTrue(ex.getMessage().contains("Application startup failed"));
+    }
+
     public record PrimaryMarker(String value) {
     }
 

@@ -1,6 +1,8 @@
 package com.jujin.freeway.http;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.Charset;
 import java.util.List;
@@ -96,7 +98,28 @@ public abstract class HttpContext {
     }
 
     public void maxBodySize(long maxBodySize) {
+        if (maxBodySize <= 0) {
+            throw new IllegalArgumentException("maxBodySize must be positive");
+        }
         this.maxBodySize = maxBodySize;
+    }
+
+    protected final byte[] readBodyLimited(InputStream input) throws IOException {
+        var out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = input.read(buffer)) >= 0) {
+            if (read == 0) {
+                continue;
+            }
+            if (total > maxBodySize - read) {
+                throw new RequestBodyTooLargeException(maxBodySize);
+            }
+            out.write(buffer, 0, read);
+            total += read;
+        }
+        return out.toByteArray();
     }
 
     public String bodyText() throws IOException {

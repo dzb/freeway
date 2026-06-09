@@ -3,13 +3,11 @@ package com.jujin.freeway.http.undertow;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.JsonCodec;
-import com.jujin.freeway.http.RequestBodyTooLargeException;
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.SseEmitter;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -82,11 +80,7 @@ final class UndertowHttpContext extends HttpContext {
     public byte[] body() throws IOException {
         if (cachedBody == null) {
             try (InputStream in = exchange.getInputStream()) {
-                if (maxBodySize > 0) {
-                    cachedBody = readLimited(in, maxBodySize);
-                } else {
-                    cachedBody = in.readAllBytes();
-                }
+                cachedBody = readBodyLimited(in);
             }
         }
         return cachedBody;
@@ -150,18 +144,4 @@ final class UndertowHttpContext extends HttpContext {
         return Map.copyOf(params);
     }
 
-    private static byte[] readLimited(InputStream in, long maxBodySize) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        long total = 0;
-        int read;
-        while ((read = in.read(buffer)) != -1) {
-            total += read;
-            if (total > maxBodySize) {
-                throw new RequestBodyTooLargeException(maxBodySize);
-            }
-            out.write(buffer, 0, read);
-        }
-        return out.toByteArray();
-    }
 }

@@ -79,9 +79,7 @@ public final class JsonObject {
     }
 
     public Map<String, Object> toMap() {
-        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
-        values.forEach((key, value) -> copy.put(key, JsonUtils.deepCopy(value)));
-        return copy;
+        return JsonNormalizer.deepCopyObject(this);
     }
 
     @Override

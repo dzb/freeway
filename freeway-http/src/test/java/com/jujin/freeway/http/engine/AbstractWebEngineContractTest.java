@@ -16,6 +16,8 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -149,6 +151,29 @@ public abstract class AbstractWebEngineContractTest {
         errored.get(5, TimeUnit.SECONDS);
     }
 
+    @Test
+    public void oversizedRequestBodyReturnsPayloadTooLarge() throws Exception {
+        int port = freePort();
+        System.setProperty("web.server.host", "127.0.0.1");
+        System.setProperty("web.server.port", String.valueOf(port));
+        System.setProperty("web.engine", engineId());
+
+        app = Launcher.run(new BodyLimitModule());
+        assertTrue(app.get(WebServer.class).running());
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> response = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + port + "/echo"))
+                .POST(HttpRequest.BodyPublishers.ofString("abcd"))
+                .build(),
+            HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertEquals(413, response.statusCode());
+        assertTrue(response.body().contains("Payload Too Large"));
+    }
+
     private static int freePort() throws IOException {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
@@ -199,6 +224,16 @@ public abstract class AbstractWebEngineContractTest {
                     }
                 })
             ));
+        }
+    }
+
+    public static final class BodyLimitModule implements Module {
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(Routes.class).add(Route.post("/echo", ctx -> {
+                ctx.maxBodySize(3);
+                ctx.send(200, ctx.bodyText());
+            }));
         }
     }
 }

@@ -47,6 +47,32 @@ class NamedParamEdgeCaseTest {
     }
 
     @Test
+    void namedCollectionExpansionIgnoresQuestionMarksInStringsAndComments() {
+        String dbName = uniqueDb("named_coll_question");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint primary key, name varchar(16))");
+            db.execute("insert into t values (1, 'a'), (2, 'b'), (3, 'c')");
+
+            List<NameEntry> results = db.query("""
+                select id, name from t
+                where '?' = '?'
+                  and id in ($ids) -- ? ignored
+                  and name <> :excluded
+                order by id
+                """)
+                .param("ids", List.of(1L, 2L, 3L))
+                .param("excluded", "b")
+                .list(NameEntry.class);
+
+            assertEquals(List.of(
+                new NameEntry(1L, "a"),
+                new NameEntry(3L, "c")
+            ), results);
+        }
+    }
+
+    @Test
     void namedParametersUsedMultipleTimes() {
         String dbName = uniqueDb("named_multi");
         Database db = builder(dbName).build();

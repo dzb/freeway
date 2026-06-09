@@ -87,10 +87,6 @@ public final class JsonArray {
     }
 
     public List<Object> toList() {
-        ArrayList<Object> copy = new ArrayList<>(values.size());
-        for (Object value : values) {
-            copy.add(JsonUtils.deepCopy(value));
-        }
-        return copy;
+        return JsonNormalizer.deepCopyArray(this);
     }
 }

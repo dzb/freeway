@@ -5,6 +5,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -73,6 +74,19 @@ class JsonUtilsTest {
     }
 
     @Test
+    void rejectsOversizedStreamInput() {
+        var input = new CountingInputStream(JsonParser.MAX_INPUT_BYTES + 1);
+
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> JsonUtils.parse(input)
+        );
+
+        assertTrue(ex.getMessage().contains("JSON input too large"));
+        assertTrue(input.closed);
+    }
+
+    @Test
     void parsesArray() {
         JsonArray array = JsonUtils.parseArray("[1, \"two\", true]");
 
@@ -90,6 +104,48 @@ class JsonUtilsTest {
             .add("b");
 
         assertEquals("{\"name\":\"Freeway\",\"tags\":[\"a\",\"b\"]}", JsonUtils.stringify(value));
+    }
+
+    @Test
+    void rejectsCyclicMapDuringNormalization() {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("self", value);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> JsonUtils.normalize(value));
+
+        assertTrue(ex.getMessage().contains("Cyclic JSON value"));
+    }
+
+    @Test
+    void rejectsCyclicJsonObjectDuringStringify() {
+        JsonObject first = JsonUtils.object();
+        JsonObject second = JsonUtils.object();
+        first.put("second", second);
+        second.put("first", first);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(first));
+
+        assertTrue(ex.getMessage().contains("Cyclic JSON value"));
+    }
+
+    @Test
+    void rejectsCyclicJsonObjectDuringDeepCopy() {
+        JsonObject first = JsonUtils.object();
+        JsonObject second = JsonUtils.object();
+        first.put("second", second);
+        second.put("first", first);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, first::toMap);
+
+        assertTrue(ex.getMessage().contains("Cyclic JSON value"));
+    }
+
+    @Test
+    void allowsSharedJsonObjectsWhenTheyAreNotCyclic() {
+        JsonObject shared = JsonUtils.object().put("value", 1);
+        JsonArray array = JsonUtils.array().add(shared).add(shared);
+
+        assertEquals("[{\"value\":1},{\"value\":1}]", JsonUtils.stringify(array));
     }
 
     @Test
@@ -199,6 +255,22 @@ class JsonUtilsTest {
         assertEquals("42", JsonUtils.stringify(42));
         assertEquals("true", JsonUtils.stringify(true));
         assertEquals("\"text\"", JsonUtils.stringify("text"));
+    }
+
+    @Test
+    void rejectsNonFiniteNumbersDuringStringify() {
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(Double.NaN));
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(Double.POSITIVE_INFINITY));
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(Float.NEGATIVE_INFINITY));
+    }
+
+    @Test
+    void rejectsNonFiniteNumbersInsideObjectsDuringStringify() {
+        JsonObject object = JsonUtils.object().put("value", Double.NaN);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringifyPretty(object));
+
+        assertTrue(ex.getMessage().contains("JSON number must be finite"));
     }
 
     @Test
@@ -344,6 +416,42 @@ class JsonUtilsTest {
     }
 
     private record Box<T>(T value) {
+    }
+
+    private static final class CountingInputStream extends java.io.InputStream {
+        private long remaining;
+        private boolean closed;
+
+        private CountingInputStream(long length) {
+            this.remaining = length;
+        }
+
+        @Override
+        public int read() {
+            if (remaining <= 0) {
+                return -1;
+            }
+            remaining--;
+            return ' ';
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) {
+            if (remaining <= 0) {
+                return -1;
+            }
+            int read = (int) Math.min(length, remaining);
+            for (int i = 0; i < read; i++) {
+                buffer[offset + i] = ' ';
+            }
+            remaining -= read;
+            return read;
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+        }
     }
 
     private abstract static class TypeRef<T> {

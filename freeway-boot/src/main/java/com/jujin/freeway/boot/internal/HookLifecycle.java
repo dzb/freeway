@@ -18,11 +18,7 @@ public final class HookLifecycle {
 
     private List<RuntimeHook> resolveHooks() {
         if (hooks != null) return hooks;
-        try {
-            hooks = container.get(RuntimeHooks.class).all();
-        } catch (RuntimeException e) {
-            hooks = List.of();
-        }
+        hooks = container.get(RuntimeHooks.class).all();
         return hooks;
     }
 
@@ -80,4 +76,3 @@ public final class HookLifecycle {
         return failure;
     }
 }
-

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +20,41 @@ class RouteIndexTest {
         RouteIndex.RouteMatch match = registry.match("GET", "/users/42");
         assertTrue(match != null);
         assertEquals("42", match.pathVariables().get("id"));
+    }
+
+    @Test
+    void nonTerminalDotStarConstraintMatchesOnlyOneSegment() {
+        RouteIndex registry = new RouteIndex(
+            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/files/{name:.*}/meta", ctx -> ctx.send(200, "ok"))); } },
+            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+        );
+
+        RouteIndex.RouteMatch match = registry.match("GET", "/files/readme/meta");
+        assertTrue(match != null);
+        assertEquals("readme", match.pathVariables().get("name"));
+        assertNull(registry.match("GET", "/files/a/b/meta"));
+    }
+
+    @Test
+    void terminalDotStarConstraintConsumesRemainingSegments() {
+        RouteIndex registry = new RouteIndex(
+            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/files/{path:.*}", ctx -> ctx.send(200, "ok"))); } },
+            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+        );
+
+        RouteIndex.RouteMatch match = registry.match("GET", "/files/a/b/c.txt");
+        assertTrue(match != null);
+        assertEquals("a/b/c.txt", match.pathVariables().get("path"));
+    }
+
+    @Test
+    void rejectsEmptyPathParameterSegments() {
+        RouteIndex registry = new RouteIndex(
+            new Routes() { @Override public List<Route> all() { return List.of(Route.get("/users/{id}/profile", ctx -> ctx.send(200, "ok"))); } },
+            new RouteGroups() { @Override public List<RouteGroup> all() { return List.of(); } }
+        );
+
+        assertNull(registry.match("GET", "/users//profile"));
     }
 
     @Test

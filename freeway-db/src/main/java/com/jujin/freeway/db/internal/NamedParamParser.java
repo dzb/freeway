@@ -7,11 +7,12 @@ final class NamedParamParser {
     private NamedParamParser() {
     }
 
-    record Result(List<String> names, String jdbcSql) {
+    record Result(List<String> names, String jdbcSql, List<Integer> parameterIndexes) {
     }
 
     static Result parse(String sql) {
         var names = new ArrayList<String>();
+        var parameterIndexes = new ArrayList<Integer>();
         var sb = new StringBuilder(sql.length());
         int len = sql.length();
         int i = 0;
@@ -39,13 +40,18 @@ final class NamedParamParser {
             if (c == '"') {
                 sb.append(c);
                 i++;
-                while (i < len && sql.charAt(i) != '"') {
-                    sb.append(sql.charAt(i));
+                while (i < len) {
+                    char dc = sql.charAt(i);
+                    sb.append(dc);
                     i++;
-                }
-                if (i < len) {
-                    sb.append('"');
-                    i++;
+                    if (dc == '"') {
+                        if (i < len && sql.charAt(i) == '"') {
+                            sb.append('"');
+                            i++;
+                        } else {
+                            break;
+                        }
+                    }
                 }
                 continue;
             }
@@ -77,6 +83,11 @@ final class NamedParamParser {
                 }
                 continue;
             }
+            if (c == ':' && i + 1 < len && sql.charAt(i + 1) == ':') {
+                sb.append("::");
+                i += 2;
+                continue;
+            }
             if ((c == ':' || c == '$') && i + 1 < len) {
                 char next = sql.charAt(i + 1);
                 if (isValidParamStart(next)) {
@@ -86,6 +97,7 @@ final class NamedParamParser {
                         i++;
                     }
                     names.add(sql.substring(start, i));
+                    parameterIndexes.add(sb.length());
                     sb.append('?');
                     continue;
                 }
@@ -94,7 +106,76 @@ final class NamedParamParser {
             i++;
         }
 
-        return new Result(names, sb.toString());
+        return new Result(
+            List.copyOf(names),
+            sb.toString(),
+            List.copyOf(parameterIndexes)
+        );
+    }
+
+    static List<Integer> positionalPlaceholderIndexes(String sql) {
+        var indexes = new ArrayList<Integer>();
+        int len = sql.length();
+        int i = 0;
+
+        while (i < len) {
+            char c = sql.charAt(i);
+            if (c == '\'') {
+                i++;
+                while (i < len) {
+                    char sc = sql.charAt(i);
+                    i++;
+                    if (sc == '\'') {
+                        if (i < len && sql.charAt(i) == '\'') {
+                            i++;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+            if (c == '"') {
+                i++;
+                while (i < len) {
+                    char dc = sql.charAt(i);
+                    i++;
+                    if (dc == '"') {
+                        if (i < len && sql.charAt(i) == '"') {
+                            i++;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+            if (c == '-' && i + 1 < len && sql.charAt(i + 1) == '-') {
+                i += 2;
+                while (i < len && sql.charAt(i) != '\n') {
+                    i++;
+                }
+                continue;
+            }
+            if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
+                i += 2;
+                while (i < len) {
+                    char bc = sql.charAt(i);
+                    i++;
+                    if (bc == '*' && i < len && sql.charAt(i) == '/') {
+                        i++;
+                        break;
+                    }
+                }
+                continue;
+            }
+            if (c == '?') {
+                indexes.add(i);
+            }
+            i++;
+        }
+
+        return List.copyOf(indexes);
     }
 
     private static boolean isValidParamStart(char c) {

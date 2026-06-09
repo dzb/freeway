@@ -94,13 +94,17 @@ final class QueryImpl implements Query {
 
     @Override
     public <T> Stream<T> stream(Class<T> targetType) {
+        ExecuteContext ctx = null;
+        ResultSet rs = null;
+        boolean returned = false;
         try {
-            var ctx = borrow(false);
+            ctx = borrow(false);
             bindAll(ctx.stmt);
             ctx.stmt.setFetchSize(100);
-            var rs = ctx.stmt.executeQuery();
+            rs = ctx.stmt.executeQuery();
             var mapper = db.rowMapperResolver().resolve(targetType);
 
+            StreamResources resources = new StreamResources(rs, ctx);
             Spliterator<T> spliterator = new Spliterators.AbstractSpliterator<>(
                 Long.MAX_VALUE, Spliterator.ORDERED | Spliterator.NONNULL
             ) {
@@ -109,12 +113,17 @@ final class QueryImpl implements Query {
                 @Override
                 public boolean tryAdvance(Consumer<? super T> action) {
                     try {
-                        if (rs.next()) {
-                            action.accept(mapper.map(rs, rowNum++));
+                        if (resources.closed()) {
+                            return false;
+                        }
+                        if (resources.rs().next()) {
+                            action.accept(mapper.map(resources.rs(), rowNum++));
                             return true;
                         }
+                        resources.close();
                         return false;
                     } catch (SQLException e) {
+                        resources.close();
                         throw new SqlException(
                             "Stream query failed: " + e.getMessage(), e
                         );
@@ -122,13 +131,23 @@ final class QueryImpl implements Query {
                 }
             };
 
+            returned = true;
             return StreamSupport.stream(spliterator, false)
-                .onClose(() -> {
-                    try { rs.close(); } catch (SQLException ignored) { }
-                    ctx.close();
-                });
+                .onClose(resources::close);
         } catch (SQLException e) {
             throw new SqlException("Stream query failed: " + e.getMessage(), e);
+        } finally {
+            if (!returned) {
+                if (rs != null) {
+                    try {
+                        rs.close();
+                    } catch (SQLException ignored) {
+                    }
+                }
+                if (ctx != null) {
+                    ctx.close();
+                }
+            }
         }
     }
 
@@ -170,12 +189,7 @@ final class QueryImpl implements Query {
 
     private void bindPositional(PreparedStatement stmt) throws SQLException {
         String sqlToCheck = expandedSql != null ? expandedSql : originalSql;
-        int placeholderCount = 0;
-        for (int i = 0; i < sqlToCheck.length(); i++) {
-            if (sqlToCheck.charAt(i) == '?') {
-                placeholderCount++;
-            }
-        }
+        int placeholderCount = NamedParamParser.positionalPlaceholderIndexes(sqlToCheck).size();
 
         if (positionalParams.length != placeholderCount) {
             throw new SqlException(
@@ -238,21 +252,21 @@ final class QueryImpl implements Query {
     private void expandPositional() {
         var sb = new StringBuilder();
         var flat = new ArrayList<>();
-        int sqlIdx = 0;
         boolean anyExpanded = false;
+        List<Integer> placeholders = NamedParamParser.positionalPlaceholderIndexes(originalSql);
 
         for (int paramIdx = 0; paramIdx < positionalParams.length; paramIdx++) {
             Object param = positionalParams[paramIdx];
-            int q = originalSql.indexOf('?', sqlIdx);
-            if (q < 0) {
+            if (paramIdx >= placeholders.size()) {
                 throw new SqlException(
                     "Too many positional parameters for SQL: " +
                         originalSql +
                         ". Params: " + Arrays.toString(positionalParams)
-                );
+                    );
             }
+            int q = placeholders.get(paramIdx);
+            int sqlIdx = paramIdx == 0 ? 0 : placeholders.get(paramIdx - 1) + 1;
             sb.append(originalSql, sqlIdx, q);
-            sqlIdx = q + 1;
 
             if (param instanceof Collection<?> col) {
                 if (col.isEmpty()) {
@@ -268,13 +282,14 @@ final class QueryImpl implements Query {
                 flat.add(param);
             }
         }
-        if (originalSql.indexOf('?', sqlIdx) >= 0) {
+        if (placeholders.size() > positionalParams.length) {
             throw new SqlException(
                 "Too few positional parameters for SQL: " +
                     originalSql +
                     ". Params: " + Arrays.toString(positionalParams)
             );
         }
+        int sqlIdx = placeholders.isEmpty() ? 0 : placeholders.getLast() + 1;
         sb.append(originalSql, sqlIdx, originalSql.length());
 
         if (anyExpanded) {
@@ -295,11 +310,9 @@ final class QueryImpl implements Query {
         var sqlOut = new StringBuilder();
         var flat = new ArrayList<>();
 
-        for (String name : parsed.names()) {
-            int q = jdbcSql.indexOf('?', qIdx);
-            if (q < 0) {
-                break;
-            }
+        for (int i = 0; i < parsed.names().size(); i++) {
+            String name = parsed.names().get(i);
+            int q = parsed.parameterIndexes().get(i);
             sqlOut.append(jdbcSql, qIdx, q);
             qIdx = q + 1;
 
@@ -375,9 +388,24 @@ final class QueryImpl implements Query {
         }
 
         PooledConnection conn = db.pool().borrow();
-        var stmt = prepareStatement(conn.jdbcConnection(), sql, mayHaveKeys);
-        stmt.setQueryTimeout(db.queryTimeoutSeconds());
-        return new ExecuteContext(stmt, conn, db.pool());
+        PreparedStatement stmt = null;
+        boolean success = false;
+        try {
+            stmt = prepareStatement(conn.jdbcConnection(), sql, mayHaveKeys);
+            stmt.setQueryTimeout(db.queryTimeoutSeconds());
+            success = true;
+            return new ExecuteContext(stmt, conn, db.pool());
+        } finally {
+            if (!success) {
+                if (stmt != null) {
+                    try {
+                        stmt.close();
+                    } catch (SQLException ignored) {
+                    }
+                }
+                db.pool().release(conn);
+            }
+        }
     }
 
     private PreparedStatement prepareStatement(
@@ -389,13 +417,60 @@ final class QueryImpl implements Query {
         return conn.prepareStatement(sql, Statement.NO_GENERATED_KEYS);
     }
 
-    private record ExecuteContext(
-        PreparedStatement stmt,
-        PooledConnection connectionSource,
-        ConnectionPool pool
-    ) implements AutoCloseable {
+    private static final class StreamResources implements AutoCloseable {
+        private final ResultSet rs;
+        private final ExecuteContext ctx;
+        private boolean closed;
+
+        private StreamResources(ResultSet rs, ExecuteContext ctx) {
+            this.rs = rs;
+            this.ctx = ctx;
+        }
+
+        private ResultSet rs() {
+            return rs;
+        }
+
+        private boolean closed() {
+            return closed;
+        }
+
         @Override
         public void close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            try {
+                rs.close();
+            } catch (SQLException ignored) {
+            }
+            ctx.close();
+        }
+    }
+
+    private static final class ExecuteContext implements AutoCloseable {
+        private final PreparedStatement stmt;
+        private final PooledConnection connectionSource;
+        private final ConnectionPool pool;
+        private boolean closed;
+
+        private ExecuteContext(
+            PreparedStatement stmt,
+            PooledConnection connectionSource,
+            ConnectionPool pool
+        ) {
+            this.stmt = stmt;
+            this.connectionSource = connectionSource;
+            this.pool = pool;
+        }
+
+        @Override
+        public void close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
             try {
                 stmt.close();
             } catch (SQLException ignored) {

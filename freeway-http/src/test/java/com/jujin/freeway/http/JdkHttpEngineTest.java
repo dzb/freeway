@@ -74,4 +74,38 @@ class JdkHttpEngineTest {
         assertTrue(serverDone.await(5, TimeUnit.SECONDS));
         c.close();
     }
+
+    @Test
+    void oversizedRequestBodyReturnsPayloadTooLarge() throws Exception {
+        int port;
+        try (ServerSocket s = new ServerSocket(0)) { port = s.getLocalPort(); }
+        System.setProperty("web.server.host", "127.0.0.1");
+        System.setProperty("web.server.port", String.valueOf(port));
+        System.setProperty("web.engine", "jdk");
+
+        Container c = Freeway.create(
+            new HttpModule(),
+            binder -> binder.contribute(Routes.class).add(Route.post("/echo", ctx -> {
+                ctx.maxBodySize(3);
+                ctx.send(200, ctx.bodyText());
+            }))
+        );
+        try {
+            c.get(WebServer.class).start();
+
+            HttpClient client = HttpClient.newHttpClient();
+            HttpResponse<String> r = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/echo"))
+                    .POST(HttpRequest.BodyPublishers.ofString("abcd"))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+
+            assertEquals(413, r.statusCode());
+            assertTrue(r.body().contains("Payload Too Large"));
+        } finally {
+            c.close();
+        }
+    }
 }

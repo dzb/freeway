@@ -108,6 +108,31 @@ class FreewayTest {
     }
 
     @Test
+    void resolvesUniqueAssignableBindingWhenNoExactBindingExists() {
+        Container container = Freeway.create(
+            binder -> binder.bind(GreeterImpl.class).to(GreeterImpl.class)
+        );
+
+        Greeter service = container.get(Greeter.class);
+
+        assertInstanceOf(GreeterImpl.class, service);
+        assertEquals("hello", service.greet());
+    }
+
+    @Test
+    void exactBindingTakesPriorityOverAssignableBinding() {
+        Container container = Freeway.create(
+            binder -> binder.bind(Greeter.class).to(GreeterImpl.class),
+            binder -> binder.bind(LoudGreeter.class).to(LoudGreeter.class).primary()
+        );
+
+        Greeter service = container.get(Greeter.class);
+
+        assertTrue(Proxy.isProxyClass(service.getClass()));
+        assertEquals("hello", service.greet());
+    }
+
+    @Test
     void resolvesExplicitNamedServiceInjection() {
         Container container = Freeway.create(
             binder -> binder.bind(PaymentGateway.class).to(StripeGateway.class).id("stripe").primary(),
@@ -464,6 +489,13 @@ class FreewayTest {
         @Override
         public String greet() {
             return "hello";
+        }
+    }
+
+    public static final class LoudGreeter implements Greeter {
+        @Override
+        public String greet() {
+            return "HELLO";
         }
     }
 

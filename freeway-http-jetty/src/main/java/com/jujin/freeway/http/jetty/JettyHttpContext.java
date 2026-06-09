@@ -3,7 +3,6 @@ package com.jujin.freeway.http.jetty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.JsonCodec;
-import com.jujin.freeway.http.RequestBodyTooLargeException;
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.SseEmitter;
 import java.io.IOException;
@@ -86,14 +85,7 @@ final class JettyHttpContext extends HttpContext {
     public byte[] body() throws IOException {
         if (cachedBody == null) {
             try (InputStream input = Request.asInputStream(request)) {
-                if (maxBodySize > 0) {
-                    cachedBody = input.readNBytes((int) maxBodySize);
-                    if (input.read() != -1) {
-                        throw new RequestBodyTooLargeException(maxBodySize);
-                    }
-                } else {
-                    cachedBody = input.readAllBytes();
-                }
+                cachedBody = readBodyLimited(input);
             }
         }
         return cachedBody;

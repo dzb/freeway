@@ -20,6 +20,12 @@ final class JsonParser {
     private static final int MAX_STRING_LENGTH = 10 * 1024 * 1024;
 
     /**
+     * Maximum size for JSON input streams.
+     * Prevents unbounded memory use while decoding streamed JSON.
+     */
+    static final int MAX_INPUT_BYTES = 32 * 1024 * 1024;
+
+    /**
      * Maximum size for JSON arrays.
      * Prevents OOM attacks from extremely large arrays.
      */
@@ -69,10 +75,29 @@ final class JsonParser {
     private static String readText(InputStream input) {
         Objects.requireNonNull(input, "input");
         try (input) {
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            byte[] data = readBytes(input);
+            return new String(data, StandardCharsets.UTF_8);
         } catch (IOException ex) {
             throw new IllegalArgumentException("Unable to read JSON input", ex);
         }
+    }
+
+    private static byte[] readBytes(InputStream input) throws IOException {
+        var out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int read;
+        while ((read = input.read(buffer)) >= 0) {
+            if (read == 0) {
+                continue;
+            }
+            if (total > MAX_INPUT_BYTES - read) {
+                throw new IllegalArgumentException("JSON input too large (max " + MAX_INPUT_BYTES + " bytes)");
+            }
+            out.write(buffer, 0, read);
+            total += read;
+        }
+        return out.toByteArray();
     }
 
     private static final class Parser {

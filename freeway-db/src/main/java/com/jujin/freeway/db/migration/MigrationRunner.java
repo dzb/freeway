@@ -3,11 +3,13 @@ package com.jujin.freeway.db.migration;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.ioc.annotation.Value;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -20,6 +22,8 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 public final class MigrationRunner {
+    static final int MAX_MIGRATION_BYTES = 16 * 1024 * 1024;
+
     private final Database database;
     private final boolean enabled;
     private final String path;
@@ -171,10 +175,30 @@ public final class MigrationRunner {
             if (in == null) {
                 throw new SqlException("Migration file not found on classpath: " + resourcePath);
             }
-            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            return new String(readBytes(in, resourcePath), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new SqlException("Failed to read migration file: " + resourcePath, e);
         }
+    }
+
+    private static byte[] readBytes(InputStream in, String resourcePath) throws IOException {
+        var out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int read;
+        while ((read = in.read(buffer)) >= 0) {
+            if (read == 0) {
+                continue;
+            }
+            if (total > MAX_MIGRATION_BYTES - read) {
+                throw new SqlException(
+                    "Migration file too large: " + resourcePath + " (max " + MAX_MIGRATION_BYTES + " bytes)"
+                );
+            }
+            out.write(buffer, 0, read);
+            total += read;
+        }
+        return out.toByteArray();
     }
 
     private static String normalizePath(String path) {

@@ -113,7 +113,11 @@ public final class StaticResourceMount {
         if (normalized.isBlank()) {
             normalized = "index.html";
         }
-        normalized = URLDecoder.decode(normalized, StandardCharsets.UTF_8);
+        try {
+            normalized = URLDecoder.decode(normalized, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
         if (normalized.startsWith("/")) {
             normalized = normalized.substring(1);
         }
@@ -121,7 +125,7 @@ public final class StaticResourceMount {
             return "index.html";
         }
         for (String segment : normalized.split("/")) {
-            if (segment.isBlank() || "..".equals(segment)) {
+            if (segment.isBlank() || "..".equals(segment) || segment.indexOf('\\') >= 0) {
                 return null;
             }
         }
@@ -253,18 +257,25 @@ public final class StaticResourceMount {
         @Override
         public StaticAsset load(String relative) throws IOException {
             Path candidate = root.resolve(relative).normalize();
-            if (!candidate.startsWith(root) || !Files.isRegularFile(candidate)) {
+            if (!candidate.startsWith(root)) {
                 return null;
             }
-            // reject symbolic links to prevent path traversal via symlink
-            if (Files.isSymbolicLink(candidate)) {
+            Path realRoot;
+            Path realCandidate;
+            try {
+                realRoot = root.toRealPath();
+                realCandidate = candidate.toRealPath();
+            } catch (IOException e) {
                 return null;
             }
-            long size = Files.size(candidate);
+            if (!realCandidate.startsWith(realRoot) || !Files.isRegularFile(realCandidate)) {
+                return null;
+            }
+            long size = Files.size(realCandidate);
             if (size > MAX_FILE_SIZE_BYTES) {
                 throw new IOException("File too large: " + candidate.getFileName() + " (" + size + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
             }
-            return new StaticAsset(candidate.getFileName().toString(), Files.readAllBytes(candidate), Files.getLastModifiedTime(candidate).toMillis());
+            return new StaticAsset(candidate.getFileName().toString(), Files.readAllBytes(realCandidate), Files.getLastModifiedTime(realCandidate).toMillis());
         }
     }
 
@@ -291,10 +302,32 @@ public final class StaticResourceMount {
                 return null;
             }
             URLConnection connection = url.openConnection();
+            long contentLength = connection.getContentLengthLong();
+            if (contentLength > MAX_FILE_SIZE_BYTES) {
+                throw new IOException("Classpath resource too large: " + resourceName + " (" + contentLength + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
+            }
             try (InputStream in = connection.getInputStream()) {
-                return new StaticAsset(relative, in.readAllBytes(), connection.getLastModified());
+                return new StaticAsset(relative, readBytes(in, resourceName), connection.getLastModified());
             }
         }
+    }
+
+    private static byte[] readBytes(InputStream in, String name) throws IOException {
+        var out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = in.read(buffer)) >= 0) {
+            if (read == 0) {
+                continue;
+            }
+            if (total > MAX_FILE_SIZE_BYTES - read) {
+                throw new IOException("File too large: " + name + " (max " + MAX_FILE_SIZE_BYTES + " bytes)");
+            }
+            out.write(buffer, 0, read);
+            total += read;
+        }
+        return out.toByteArray();
     }
 
     private static String computeEtag(byte[] bytes) {

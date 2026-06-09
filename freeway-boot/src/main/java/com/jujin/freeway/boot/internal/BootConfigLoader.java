@@ -9,11 +9,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.regex.Pattern;
 
 public final class BootConfigLoader {
     private static final String ENV_PREFIX_PROPERTY = "freeway.env.prefix";
     private static final String DEFAULT_ENV_PREFIX = "FREEWAY_";
     private static final String PROFILE_KEY = "freeway.profile";
+    private static final long MAX_PROPERTIES_RESOURCE_BYTES = 16L * 1024 * 1024;
+    private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     private BootConfigLoader() {
     }
@@ -75,9 +78,9 @@ public final class BootConfigLoader {
             return Map.of();
         }
 
-        try (stream) {
+        try (stream; InputStream bounded = bounded(stream, MAX_PROPERTIES_RESOURCE_BYTES, resourceName)) {
             Properties properties = new Properties();
-            properties.load(stream);
+            properties.load(bounded);
             Map<String, String> values = new LinkedHashMap<>();
             for (String name : properties.stringPropertyNames()) {
                 values.put(name, properties.getProperty(name));
@@ -107,6 +110,53 @@ public final class BootConfigLoader {
 
     private static String resourceName(String baseName, String profile, String suffix) {
         return baseName + "-" + profile + "." + suffix;
+    }
+
+    private static InputStream bounded(InputStream stream, long maxBytes, String resourceName) {
+        return new InputStream() {
+            private long count;
+
+            @Override
+            public int read() throws IOException {
+                if (count >= maxBytes) {
+                    int extra = stream.read();
+                    if (extra == -1) {
+                        return -1;
+                    }
+                    throw tooLarge();
+                }
+                int read = stream.read();
+                if (read >= 0) {
+                    count++;
+                }
+                return read;
+            }
+
+            @Override
+            public int read(byte[] bytes, int off, int len) throws IOException {
+                Objects.checkFromIndexSize(off, len, bytes.length);
+                if (len == 0) {
+                    return 0;
+                }
+                if (count >= maxBytes) {
+                    int extra = stream.read();
+                    if (extra == -1) {
+                        return -1;
+                    }
+                    throw tooLarge();
+                }
+                int allowed = (int) Math.min(len, maxBytes - count);
+                int read = stream.read(bytes, off, allowed);
+                if (read > 0) {
+                    count += read;
+                }
+                return read;
+            }
+
+            private IOException tooLarge() {
+                return new IOException(resourceName + " exceeds " + maxBytes + " bytes");
+            }
+        };
     }
 
     private static String childKey(String prefix, String key) {
@@ -174,10 +224,18 @@ public final class BootConfigLoader {
         for (String part : value.split(",")) {
             String profile = part.trim();
             if (!profile.isEmpty()) {
+                if (!validProfileName(profile)) {
+                    throw new IllegalArgumentException("Invalid freeway.profile value: " + profile);
+                }
                 profiles.add(profile);
             }
         }
         return List.copyOf(profiles);
+    }
+
+    private static boolean validProfileName(String profile) {
+        return PROFILE_NAME_PATTERN.matcher(profile).matches()
+            && !profile.contains("..");
     }
 
     public static record BootConfigLayers(

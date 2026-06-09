@@ -65,15 +65,7 @@ public final class JdkHttpContext extends HttpContext {
     public byte[] body() throws IOException {
         if (cachedBody == null) {
             try (var is = exchange.getRequestBody()) {
-                if (maxBodySize > 0) {
-                    long size = Math.min(maxBodySize, Integer.MAX_VALUE);
-                    cachedBody = is.readNBytes((int) size);
-                    if (is.read() != -1) {
-                        throw new RequestBodyTooLargeException(maxBodySize);
-                    }
-                } else {
-                    cachedBody = is.readAllBytes();
-                }
+                cachedBody = readBodyLimited(is);
             } catch (IOException e) {
                 cachedBody = new byte[0];
                 throw e;
@@ -149,6 +141,10 @@ public final class JdkHttpContext extends HttpContext {
     }
 
     private static String decode(String text) {
-        return URLDecoder.decode(text, StandardCharsets.UTF_8);
+        try {
+            return URLDecoder.decode(text, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return text;
+        }
     }
 }

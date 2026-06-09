@@ -121,6 +121,18 @@ class NamedParamParserTest {
     }
 
     @Test
+    void escapedDoubleQuoteInsideIdentifierIsIgnored() {
+        var r = NamedParamParser.parse(
+            "select \"label \"\":param\"\"\" from t where id = :id"
+        );
+        assertEquals(List.of("id"), r.names());
+        assertEquals(
+            "select \"label \"\":param\"\"\" from t where id = ?",
+            r.jdbcSql()
+        );
+    }
+
+    @Test
     void escapedSingleQuoteInsideString() {
         // SQL 中 '' 是转义的单引号
         var r = NamedParamParser.parse(
@@ -241,6 +253,46 @@ class NamedParamParserTest {
             "select id from t where label = ':not_a_param'",
             r.jdbcSql()
         );
+    }
+
+    @Test
+    void postgresCastIsNotConfusedWithNamedParam() {
+        var r = NamedParamParser.parse(
+            "select created_at::timestamp from events where id = :id"
+        );
+        assertEquals(List.of("id"), r.names());
+        assertEquals(
+            "select created_at::timestamp from events where id = ?",
+            r.jdbcSql()
+        );
+    }
+
+    @Test
+    void positionalPlaceholdersIgnoreStringsCommentsAndCasts() {
+        var indexes = NamedParamParser.positionalPlaceholderIndexes(
+            "select '?'::varchar -- ? ignored\nwhere id = ? /* ? ignored */ and name = ?"
+        );
+        assertEquals(2, indexes.size());
+    }
+
+    @Test
+    void namedParameterIndexesIgnoreLiteralAndCommentQuestionMarks() {
+        var r = NamedParamParser.parse(
+            "select '?' -- ? ignored\nwhere id in ($ids) and name = :name"
+        );
+        assertEquals(List.of("ids", "name"), r.names());
+        assertEquals(2, r.parameterIndexes().size());
+        assertTrue(r.parameterIndexes().get(0) > r.jdbcSql().indexOf("'?'"));
+        assertEquals('?', r.jdbcSql().charAt(r.parameterIndexes().get(0)));
+        assertEquals('?', r.jdbcSql().charAt(r.parameterIndexes().get(1)));
+    }
+
+    @Test
+    void positionalPlaceholdersIgnoreEscapedDoubleQuotedIdentifiers() {
+        var indexes = NamedParamParser.positionalPlaceholderIndexes(
+            "select \"label \"\"?\"\"\" from t where id = ?"
+        );
+        assertEquals(1, indexes.size());
     }
 
     @Test

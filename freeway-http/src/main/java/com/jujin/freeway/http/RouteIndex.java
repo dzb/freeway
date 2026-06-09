@@ -70,11 +70,13 @@ final class RouteIndex {
         TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
         String[] segments = PathPattern.splitPath(path);
         TrieNode current = root;
-        for (String seg : segments) {
+        for (int i = 0; i < segments.length; i++) {
+            String seg = segments[i];
             if (seg.startsWith("{") && seg.endsWith("}")) {
                 String inner = seg.substring(1, seg.length() - 1);
                 String name;
                 Pattern regex = null;
+                boolean isWildcard = false;
                 int colon = inner.indexOf(':');
                 if (colon >= 0) {
                     name = inner.substring(0, colon);
@@ -83,7 +85,9 @@ final class RouteIndex {
                         throw new IllegalArgumentException(
                             "Regex constraint too long (max " + MAX_REGEX_LENGTH + " chars): '" + regexStr + "' in path: " + path);
                     }
-                    if (!".*".equals(regexStr)) {
+                    if (".*".equals(regexStr) && i == segments.length - 1) {
+                        isWildcard = true;
+                    } else {
                         try {
                             regex = Pattern.compile(regexStr);
                         } catch (PatternSyntaxException e) {
@@ -94,7 +98,6 @@ final class RouteIndex {
                 } else {
                     name = inner;
                 }
-                boolean isWildcard = regex == null && colon >= 0; // {path:.*}
                 current = current.getOrCreateParam(name, regex, isWildcard);
             } else {
                 current = current.getOrCreateLiteral(seg);
@@ -126,7 +129,7 @@ final class RouteIndex {
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
             String seg = segments[i];
-            if (PathPattern.isPathTraversalSegment(seg)) {
+            if (seg.isEmpty() || PathPattern.isPathTraversalSegment(seg)) {
                 return null;
             }
             // Try literal match first

@@ -96,13 +96,25 @@ final class BindingIndex {
     @SuppressWarnings("unchecked")
     <T> BindingImpl<T> findUnique(Class<T> type) {
         List<BindingImpl<?>> typeBindings = typeIndex.get(type);
-        if (typeBindings == null || typeBindings.isEmpty()) {
+        if (typeBindings != null && !typeBindings.isEmpty()) {
+            if (typeBindings.size() == 1) {
+                return (BindingImpl<T>) typeBindings.getFirst();
+            }
+            return selectUnique(
+                type,
+                scanBindings(type, binding -> binding.type().equals(type), true)
+            );
+        }
+        return selectUnique(
+            type,
+            scanBindings(type, binding -> type.isAssignableFrom(binding.type()), true)
+        );
+    }
+
+    private static <T> BindingImpl<T> selectUnique(Class<T> type, ScanResult<T> scan) {
+        if (scan.first() == null) {
             return null;
         }
-        if (typeBindings.size() == 1) {
-            return (BindingImpl<T>) typeBindings.getFirst();
-        }
-        ScanResult<T> scan = scanBindings(type, binding -> type.isAssignableFrom(binding.type()), true);
         if (!scan.multiple()) {
             return scan.first();
         }

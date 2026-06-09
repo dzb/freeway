@@ -43,13 +43,9 @@ public final class DatabaseImpl implements Database {
         return new QueryImpl(this, null, sql.sql(), sql.args(), false);
     }
 
-    /**
-     * FIXME: 字符串路径暂不启用自增键返回——裸字符串 SQL 无法可靠判断是否为 INSERT。
-     * 建议后续通过参数或 heuristics 重新支持。
-     */
     @Override
     public ExecuteResult execute(String sql, Object... params) {
-        return new QueryImpl(this, null, sql, params, false).execute();
+        return new QueryImpl(this, null, sql, params, startsWithInsert(sql)).execute();
     }
 
     @Override
@@ -89,15 +85,20 @@ public final class DatabaseImpl implements Database {
     @Override
     public Transaction beginTransaction(IsolationLevel isolation) {
         PooledConnection conn = pool.borrow();
+        int originalIsolation = -1;
         try {
+            originalIsolation = conn.jdbcConnection().getTransactionIsolation();
             conn.jdbcConnection().setAutoCommit(false);
-            TransactionImpl tx = new TransactionImpl(this, conn);
+            TransactionImpl tx = new TransactionImpl(this, conn, originalIsolation);
             if (isolation != null && isolation != IsolationLevel.DEFAULT) {
                 conn.jdbcConnection().setTransactionIsolation(isolation.jdbcLevel());
             }
             return tx;
         } catch (SQLException e) {
             try {
+                if (originalIsolation >= 0) {
+                    conn.jdbcConnection().setTransactionIsolation(originalIsolation);
+                }
                 conn.jdbcConnection().setAutoCommit(true);
             } catch (SQLException ex) {
                 logger.trace("Error restoring autoCommit after transaction begin failure", ex);
@@ -146,20 +147,26 @@ public final class DatabaseImpl implements Database {
     private static final class TransactionImpl implements Transaction {
         private final DatabaseImpl db;
         private final PooledConnection conn;
-        private boolean finished;
+        private final int originalIsolation;
+        private boolean completed;
+        private boolean released;
 
-        private TransactionImpl(DatabaseImpl db, PooledConnection conn) {
+        private TransactionImpl(DatabaseImpl db, PooledConnection conn, int originalIsolation) {
             this.db = db;
             this.conn = conn;
+            this.originalIsolation = originalIsolation;
         }
 
         @Override
         public Transaction isolation(IsolationLevel level) {
-            if (finished) {
+            if (completed) {
                 throw new SqlException("Transaction is already finished");
             }
+            IsolationLevel next = level == null ? IsolationLevel.DEFAULT : level;
             try {
-                conn.jdbcConnection().setTransactionIsolation(level.jdbcLevel());
+                conn.jdbcConnection().setTransactionIsolation(
+                    next == IsolationLevel.DEFAULT ? originalIsolation : next.jdbcLevel()
+                );
                 return this;
             } catch (SQLException e) {
                 throw new SqlException("Failed to set isolation level", e);
@@ -168,7 +175,7 @@ public final class DatabaseImpl implements Database {
 
         @Override
         public Query query(String sql, Object... params) {
-            if (finished) {
+            if (completed) {
                 throw new SqlException("Transaction is already finished");
             }
             return new QueryImpl(db, conn, sql, params, false);
@@ -176,26 +183,23 @@ public final class DatabaseImpl implements Database {
 
         @Override
         public Query query(SQL sql) {
-            if (finished) {
+            if (completed) {
                 throw new SqlException("Transaction is already finished");
             }
             return new QueryImpl(db, conn, sql.sql(), sql.args(), false);
         }
 
-        /**
-         * FIXME: 字符串路径暂不启用自增键返回。
-         */
         @Override
         public ExecuteResult execute(String sql, Object... params) {
-            if (finished) {
+            if (completed) {
                 throw new SqlException("Transaction is already finished");
             }
-            return new QueryImpl(db, conn, sql, params, false).execute();
+            return new QueryImpl(db, conn, sql, params, startsWithInsert(sql)).execute();
         }
 
         @Override
         public ExecuteResult execute(SQL sql) {
-            if (finished) {
+            if (completed) {
                 throw new SqlException("Transaction is already finished");
             }
             return new QueryImpl(db, conn, sql.sql(), sql.args(), sql.isInsert()).execute();
@@ -203,7 +207,7 @@ public final class DatabaseImpl implements Database {
 
         @Override
         public BatchQuery batch(String sql) {
-            if (finished) {
+            if (completed) {
                 throw new SqlException("Transaction is already finished");
             }
             return new BatchQueryImpl(db, conn, sql);
@@ -211,13 +215,13 @@ public final class DatabaseImpl implements Database {
 
         @Override
         public void commit() {
-            if (finished) {
+            if (completed) {
                 return;
             }
-            finished = true;
             try {
                 conn.jdbcConnection().commit();
-                conn.jdbcConnection().setAutoCommit(true);
+                completed = true;
+                restoreConnectionState();
             } catch (SQLException e) {
                 throw new SqlException("Commit failed", e);
             }
@@ -225,17 +229,17 @@ public final class DatabaseImpl implements Database {
 
         @Override
         public void rollback() {
-            if (finished) {
-                return;
-            }
-            finished = true;
             rollbackSilent();
         }
 
         void rollbackSilent() {
+            if (completed) {
+                return;
+            }
+            completed = true;
             try {
                 conn.jdbcConnection().rollback();
-                conn.jdbcConnection().setAutoCommit(true);
+                restoreConnectionState();
             } catch (SQLException e) {
                 logger.warn("Transaction rollback failed", e);
             }
@@ -243,21 +247,80 @@ public final class DatabaseImpl implements Database {
 
         @Override
         public void close() {
-            if (!finished) {
+            if (!completed) {
                 rollbackSilent();
             }
             closeConnection();
         }
 
         void closeConnection() {
+            if (released) {
+                return;
+            }
+            released = true;
             try {
-                if (!conn.jdbcConnection().getAutoCommit()) {
-                    conn.jdbcConnection().setAutoCommit(true);
-                }
+                restoreConnectionState();
             } catch (SQLException e) {
-                logger.trace("Error restoring autoCommit on close", e);
+                logger.trace("Error restoring connection state on close", e);
             }
             db.pool.release(conn);
         }
+
+        private void restoreConnectionState() throws SQLException {
+            if (originalIsolation >= 0
+                && conn.jdbcConnection().getTransactionIsolation() != originalIsolation) {
+                conn.jdbcConnection().setTransactionIsolation(originalIsolation);
+            }
+            if (!conn.jdbcConnection().getAutoCommit()) {
+                conn.jdbcConnection().setAutoCommit(true);
+            }
+        }
+    }
+
+    private static boolean startsWithInsert(String sql) {
+        if (sql == null) {
+            return false;
+        }
+        int index = skipIgnorableSqlPrefix(sql);
+        int end = index + "insert".length();
+        return end <= sql.length()
+            && sql.regionMatches(true, index, "insert", 0, "insert".length())
+            && (end == sql.length() || !isIdentifierChar(sql.charAt(end)));
+    }
+
+    private static int skipIgnorableSqlPrefix(String sql) {
+        int index = 0;
+        while (index < sql.length()) {
+            char c = sql.charAt(index);
+            if (Character.isWhitespace(c)) {
+                index++;
+                continue;
+            }
+            if (c == '-' && index + 1 < sql.length() && sql.charAt(index + 1) == '-') {
+                index += 2;
+                while (index < sql.length() && sql.charAt(index) != '\n') {
+                    index++;
+                }
+                continue;
+            }
+            if (c == '/' && index + 1 < sql.length() && sql.charAt(index + 1) == '*') {
+                index += 2;
+                while (index < sql.length()) {
+                    char bc = sql.charAt(index);
+                    index++;
+                    if (bc == '*' && index < sql.length() && sql.charAt(index) == '/') {
+                        index++;
+                        break;
+                    }
+                }
+                continue;
+            }
+            return index;
+        }
+        return index;
+    }
+
+    private static boolean isIdentifierChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$';
     }
 }

@@ -56,4 +56,22 @@ class QuerySemanticsTest {
             );
         }
     }
+
+    @Test
+    void positionalQuestionMarksInsideStringsAndCommentsAreIgnored() {
+        String dbName = "freeway_query_literal_q_" + UUID.randomUUID().toString().replace('-', '_');
+        Database db = new DatabaseBuilder()
+            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .build();
+
+        try (db) {
+            String value = db.query(
+                    "select '?' where 1 = ? -- ? ignored\n/* ? ignored */",
+                    1
+                )
+                .one(String.class)
+                .orElseThrow();
+            assertEquals("?", value);
+        }
+    }
 }

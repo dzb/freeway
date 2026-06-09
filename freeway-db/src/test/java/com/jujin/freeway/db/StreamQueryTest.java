@@ -1,10 +1,8 @@
 package com.jujin.freeway.db;
 
 import java.util.ArrayList;
-import java.util.NoSuchElementException;
+import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -63,6 +61,35 @@ class StreamQueryTest {
                 count = stream.count();
             }
             assertEquals(3, count);
+        }
+    }
+
+    @Test
+    void streamReleasesConnectionWhenFullyConsumedWithoutExplicitClose() {
+        Database db = createDb();
+        try (db) {
+            db.execute("create table t (id int)");
+            db.execute("insert into t values (1), (2), (3)");
+
+            var ids = db.query("select id from t order by id").stream(Integer.class).toList();
+
+            assertEquals(List.of(1, 2, 3), ids);
+            assertEquals(0, db.stats().active());
+        }
+    }
+
+    @Test
+    void streamCloseIsIdempotent() {
+        Database db = createDb();
+        try (db) {
+            db.execute("create table t (id int)");
+            db.execute("insert into t values (1)");
+
+            var stream = db.query("select id from t").stream(Integer.class);
+            stream.close();
+            stream.close();
+
+            assertEquals(0, db.stats().active());
         }
     }
 

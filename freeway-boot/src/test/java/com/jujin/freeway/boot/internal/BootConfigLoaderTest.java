@@ -1,10 +1,14 @@
 package com.jujin.freeway.boot.internal;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BootConfigLoaderTest {
     @Test
@@ -32,5 +36,60 @@ class BootConfigLoaderTest {
         assertEquals("7070", layers.merged().get("server.port"));
         assertEquals("Profiled IoC container", layers.merged().get("app.description"));
         assertEquals("dev.localhost", layers.merged().get("server.host"));
+    }
+
+    @Test
+    void rejectsOversizedPropertiesResource() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            BootConfigLoader.loadLayers(new OversizedPropertiesLoader()));
+
+        assertTrue(ex.getMessage().contains("Unable to load application.properties"));
+        assertTrue(ex.getCause().getMessage().contains("exceeds"));
+    }
+
+    @Test
+    void rejectsProfileNamesThatCanAddressOtherResources() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            BootConfigLoader.loadLayers(BootConfigLoaderTest.class.getClassLoader(), "--freeway.profile=../secret"));
+
+        assertTrue(ex.getMessage().contains("Invalid freeway.profile value"));
+    }
+
+    private static final class OversizedPropertiesLoader extends ClassLoader {
+        @Override
+        public InputStream getResourceAsStream(String name) {
+            if ("application.properties".equals(name)) {
+                return new RepeatingInputStream(16L * 1024 * 1024 + 1);
+            }
+            return null;
+        }
+    }
+
+    private static final class RepeatingInputStream extends InputStream {
+        private long remaining;
+
+        private RepeatingInputStream(long size) {
+            this.remaining = size;
+        }
+
+        @Override
+        public int read() {
+            if (remaining == 0) {
+                return -1;
+            }
+            remaining--;
+            return 'a';
+        }
+
+        @Override
+        public int read(byte[] bytes, int off, int len) throws IOException {
+            if (remaining == 0) {
+                return -1;
+            }
+            int read = (int) Math.min(len, remaining);
+            java.util.Arrays.fill(bytes, off, off + read, (byte) 'a');
+            remaining -= read;
+            return read;
+        }
     }
 }
