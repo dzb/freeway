@@ -185,4 +185,62 @@ final class NamedParamParser {
     private static boolean isValidParamChar(char c) {
         return Character.isLetterOrDigit(c) || c == '_';
     }
+
+    /**
+     * Lightweight scan: returns true if {@code sql} contains at least one
+     * {@code :name} or {@code $name} placeholder (outside of string literals,
+     * quoted identifiers, and comments).
+     */
+    static boolean hasNamedPlaceholders(String sql) {
+        int len = sql.length();
+        int i = 0;
+        while (i < len) {
+            char c = sql.charAt(i);
+            if (c == '\'') {
+                i = skipString(sql, i, '\'');
+                continue;
+            }
+            if (c == '"') {
+                i = skipString(sql, i, '"');
+                continue;
+            }
+            if (c == '-' && i + 1 < len && sql.charAt(i + 1) == '-') {
+                while (i < len && sql.charAt(i) != '\n') i++;
+                continue;
+            }
+            if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
+                i += 2;
+                while (i < len && !(sql.charAt(i - 1) == '*' && sql.charAt(i) == '/')) i++;
+                i++;
+                continue;
+            }
+            if (c == ':' && i + 1 < len && sql.charAt(i + 1) == ':') {
+                i += 2;
+                continue;
+            }
+            if ((c == ':' || c == '$') && i + 1 < len
+                && isValidParamStart(sql.charAt(i + 1))) {
+                return true;
+            }
+            i++;
+        }
+        return false;
+    }
+
+    private static int skipString(String sql, int start, char quote) {
+        int i = start + 1;
+        int len = sql.length();
+        while (i < len) {
+            if (sql.charAt(i) == quote) {
+                if (i + 1 < len && sql.charAt(i + 1) == quote) {
+                    i += 2;
+                } else {
+                    return i + 1;
+                }
+            } else {
+                i++;
+            }
+        }
+        return len;
+    }
 }

@@ -251,6 +251,12 @@ final class QueryImpl implements Query {
         expandedChecked = true;
         if (!namedParams.isEmpty()) {
             expandNamed();
+        } else if (NamedParamParser.hasNamedPlaceholders(originalSql)) {
+            var names = NamedParamParser.parse(originalSql).names();
+            throw new SqlException(
+                "Named parameter(s) found in SQL but no .param() calls provided: "
+                + names + ". Use .param(\"name\", value) for each placeholder. SQL: "
+                + originalSql);
         } else {
             expandPositional();
         }

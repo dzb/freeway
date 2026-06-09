@@ -15,10 +15,15 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
@@ -45,7 +50,7 @@ public final class MigrationRunner {
         this.table = normalizeTable(table);
     }
 
-    public int run() {
+    public synchronized int run() {
         if (!enabled) {
             return 0;
         }
@@ -56,17 +61,28 @@ public final class MigrationRunner {
             return 0;
         }
 
-        Set<String> completed = new HashSet<>(
-            database.query("select version from " + table).list(String.class)
-        );
+        // Reject duplicate versions before any execution
+        Set<String> seen = new HashSet<>();
+        for (String m : migrations) {
+            String v = versionFromPath(m);
+            if (!seen.add(v)) {
+                throw new SqlException("Duplicate migration version: " + v
+                    + " — detected in file " + m);
+            }
+        }
+
+        Map<String, String> existingChecksums = loadChecksums();
+
+        int installedRank = existingChecksums.size();
         int ran = 0;
         for (String migration : migrations) {
             String version = versionFromPath(migration);
-            if (completed.contains(version)) {
+            if (existingChecksums.containsKey(version)) {
                 continue;
             }
-            applyMigration(migration);
-            completed.add(version);
+            byte[] raw = readResourceBytes(migration);
+            String checksum = sha256(raw);
+            applyMigration(migration, checksum, installedRank + ran + 1);
             ran++;
             LOG.info("Applied migration: {}", migration);
         }
@@ -90,6 +106,8 @@ public final class MigrationRunner {
             create table if not exists %s (
                 version varchar(255) primary key,
                 description varchar(512),
+                checksum char(64) not null,
+                installed_rank int not null,
                 executed_at timestamp default current_timestamp
             )
             """
@@ -97,7 +115,7 @@ public final class MigrationRunner {
         );
     }
 
-    private void applyMigration(String resourcePath) {
+    private void applyMigration(String resourcePath, String checksum, int installedRank) {
         String sql = readResource(resourcePath);
         if (sql.isBlank()) {
             throw new SqlException("Migration file is empty: " + resourcePath);
@@ -107,9 +125,8 @@ public final class MigrationRunner {
         database.transaction(() -> {
             database.execute(sql);
             database.execute(
-                "insert into " + table + " (version, description) values (?, ?)",
-                version,
-                description
+                "insert into " + table + " (version, description, checksum, installed_rank) values (?, ?, ?, ?)",
+                version, description, checksum, installedRank
             );
         });
     }
@@ -175,15 +192,41 @@ public final class MigrationRunner {
         }
     }
 
-    private String readResource(String resourcePath) {
+    private Map<String, String> loadChecksums() {
+        Map<String, String> map = new LinkedHashMap<>();
+        List<ChecksumRow> rows = database.query(
+            "select version, checksum from " + table + " order by installed_rank"
+        ).list(ChecksumRow.class);
+        for (ChecksumRow row : rows) {
+            map.put(row.version(), row.checksum());
+        }
+        return map;
+    }
+
+    private record ChecksumRow(String version, String checksum) {}
+
+    private byte[] readResourceBytes(String resourcePath) {
         ClassLoader classLoader = classLoader();
         try (InputStream in = classLoader.getResourceAsStream(resourcePath)) {
             if (in == null) {
                 throw new SqlException("Migration file not found on classpath: " + resourcePath);
             }
-            return new String(readBytes(in, resourcePath), StandardCharsets.UTF_8);
+            return readBytes(in, resourcePath);
         } catch (IOException e) {
             throw new SqlException("Failed to read migration file: " + resourcePath, e);
+        }
+    }
+
+    private String readResource(String resourcePath) {
+        return new String(readResourceBytes(resourcePath), StandardCharsets.UTF_8);
+    }
+
+    private static String sha256(byte[] content) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(md.digest(content));
+        } catch (NoSuchAlgorithmException e) {
+            throw new SqlException("SHA-256 not available", e);
         }
     }
 

@@ -813,6 +813,12 @@ public final class SQL {
             i++;
         }
 
+        if (vi < values.length) {
+            throw new SqlException(
+                "Too many parameter values for SQL fragment: " + fragment
+                + " — " + vi + " placeholder(s) but " + values.length + " value(s) provided");
+        }
+
         return new Object[]{sb.toString(), matched.toArray()};
     }
 

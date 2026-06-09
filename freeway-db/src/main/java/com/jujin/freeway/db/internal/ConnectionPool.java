@@ -102,7 +102,10 @@ public final class ConnectionPool implements AutoCloseable {
         if (conn == null) {
             return;
         }
-        active.remove(conn);
+        if (!active.remove(conn)) {
+            // Already removed (e.g. force-closed during shutdown)
+            return;
+        }
         if (closed || !isAlive(conn)) {
             destroy(conn);
             semaphore.release();
