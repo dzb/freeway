@@ -1,6 +1,8 @@
 package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.Database;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,7 +14,8 @@ import java.util.stream.Collectors;
 /**
  * 默认 SQL 方言（PostgreSQL / H2 PostgreSQL mode）。
  */
-final class DefaultDialect implements Dialect {
+final class DialectDefault implements Dialect {
+    private static final Logger LOG = LoggerFactory.getLogger(DialectDefault.class);
 
     /** 常见 SQL 保留字，始终需要引用。 */
     private static final Set<String> RESERVED = Set.of(
@@ -102,6 +105,7 @@ final class DefaultDialect implements Dialect {
                 .map(String::toLowerCase)
                 .collect(Collectors.toCollection(HashSet::new));
         } catch (Exception e) {
+            LOG.warn("Failed to list existing tables", e);
             return Collections.emptySet();
         }
     }
@@ -118,23 +122,7 @@ final class DefaultDialect implements Dialect {
                 .map(String::toLowerCase)
                 .collect(Collectors.toCollection(HashSet::new));
         } catch (Exception e) {
-            return Collections.emptySet();
-        }
-    }
-
-    @Override
-    public Set<String> existingIndexes(Database db, String tableName) {
-        try {
-            // H2: INFORMATION_SCHEMA.INDEXES 包含所有索引
-            List<String> indexes = db.query(
-                "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES WHERE UPPER(TABLE_NAME) = ? AND TABLE_SCHEMA = ?",
-                tableName.toUpperCase(), effectiveSchema()
-            ).list(String.class);
-            return indexes.stream()
-                .filter(i -> i != null)
-                .map(String::toLowerCase)
-                .collect(Collectors.toCollection(HashSet::new));
-        } catch (Exception e) {
+            LOG.warn("Failed to list existing columns for table '{}'", tableName, e);
             return Collections.emptySet();
         }
     }

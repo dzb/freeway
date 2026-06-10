@@ -3,8 +3,10 @@ package com.jujin.freeway.ioc.internal;
 import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
+import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 
 final class Lifecycle {
     private static final ClassValue<LifecyclePlan> PLANS = new ClassValue<>() {
@@ -38,7 +40,7 @@ final class Lifecycle {
         }
     }
 
-    private static Method findLifecycleMethod(Class<?> clazz, Class<? extends java.lang.annotation.Annotation> annotationType) {
+    private static Method findLifecycleMethod(Class<?> clazz, Class<? extends Annotation> annotationType) {
         Method result = null;
         for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
             Method found = null;
@@ -47,7 +49,7 @@ final class Lifecycle {
                     continue;
                 }
                 if (m.getParameterCount() != 0 || m.getReturnType() != void.class
-                    || java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
+                    || Modifier.isStatic(m.getModifiers())) {
                     throw new IllegalArgumentException(
                         "@" + annotationType.getSimpleName() + " method must be non-static, take no parameters, and return void: "
                         + c.getName() + "." + m.getName()

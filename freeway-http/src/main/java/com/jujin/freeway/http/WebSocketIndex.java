@@ -3,6 +3,7 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.ioc.Extension;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 final class WebSocketIndex {
@@ -37,7 +38,7 @@ final class WebSocketIndex {
     }
 
     private void add(WebSocketRoute route) {
-        WebSocketRoute value = java.util.Objects.requireNonNull(route, "route");
+        WebSocketRoute value = Objects.requireNonNull(route, "route");
         synchronized (routes) {
             for (WebSocketRoute existing : routes) {
                 if (existing.path().equals(value.path())) {

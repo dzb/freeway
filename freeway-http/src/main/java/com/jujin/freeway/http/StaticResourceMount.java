@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -308,7 +309,7 @@ public final class StaticResourceMount {
     }
 
     private static byte[] readBytes(InputStream in, String name) throws IOException {
-        var out = new java.io.ByteArrayOutputStream();
+        var out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         long total = 0;
         int read;

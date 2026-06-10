@@ -18,7 +18,7 @@ public final class SchemaGenerator {
     private final Dialect dialect;
 
     public SchemaGenerator() {
-        this(new DefaultDialect());
+        this(new DialectDefault());
     }
 
     public SchemaGenerator(Dialect dialect) {

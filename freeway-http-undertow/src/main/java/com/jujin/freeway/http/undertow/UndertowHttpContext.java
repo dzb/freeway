@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -134,9 +135,9 @@ final class UndertowHttpContext extends HttpContext {
         return this;
     }
 
-    private static Map<String, List<String>> parseQueryParams(Map<String, java.util.Deque<String>> source) {
+    private static Map<String, List<String>> parseQueryParams(Map<String, Deque<String>> source) {
         LinkedHashMap<String, List<String>> params = new LinkedHashMap<>();
-        for (Map.Entry<String, java.util.Deque<String>> entry : source.entrySet()) {
+        for (Map.Entry<String, Deque<String>> entry : source.entrySet()) {
             params.put(entry.getKey(), List.copyOf(entry.getValue()));
         }
         return Map.copyOf(params);

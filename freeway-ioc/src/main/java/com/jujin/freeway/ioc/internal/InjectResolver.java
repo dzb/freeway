@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -213,7 +214,7 @@ final class InjectResolver {
             return rawType;
         }
         if (type instanceof GenericArrayType arrayType) {
-            return java.lang.reflect.Array.newInstance(rawClass(arrayType.getGenericComponentType()), 0).getClass();
+            return Array.newInstance(rawClass(arrayType.getGenericComponentType()), 0).getClass();
         }
         throw new IllegalArgumentException("Unsupported parameter type: " + type.getTypeName());
     }

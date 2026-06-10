@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class Shutdown {
     private final ScopeControl scopeControl;
@@ -61,7 +62,7 @@ final class Shutdown {
 
     private List<Object> snapshotTargets() {
         List<Object> targets = new ArrayList<>();
-        java.util.Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Object value : targetCache.values()) {
             if (seen.add(value)) {
                 targets.add(value);

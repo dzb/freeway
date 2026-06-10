@@ -335,7 +335,7 @@ class RowMapperTest {
 
     @Test
     void resolverRejectsInterfaceTypesWithClearMessage() {
-        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of());
+        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
 
         SqlException ex = assertThrows(SqlException.class, () -> resolver.resolve(Marker.class));
 
@@ -345,7 +345,7 @@ class RowMapperTest {
 
     @Test
     void resolverRejectsAbstractTypesWithClearMessage() {
-        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of());
+        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
 
         SqlException ex = assertThrows(SqlException.class, () -> resolver.resolve(AbstractTarget.class));
 

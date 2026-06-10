@@ -6,6 +6,7 @@ import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.advisor.Advisor;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.Objects;
 import java.lang.reflect.Modifier;
@@ -111,7 +112,7 @@ final class BindingImpl<T> implements Binding<T> {
     }
 
     @Override
-    public Binding<T> advise(java.util.function.Consumer<Advisor> advisor) {
+    public Binding<T> advise(Consumer<Advisor> advisor) {
         AdvisorImpl builder = new AdvisorImpl();
         Objects.requireNonNull(advisor, "advisor").accept(builder);
         this.advices.addAll(builder.entries());

@@ -6,7 +6,7 @@ import java.util.Set;
 
 /**
  * SQL 方言 — 负责 DDL 语法差异和数据库元数据查询。
- * 默认实现 {@link DefaultDialect} 适用于 PostgreSQL / H2 (PostgreSQL mode)。
+ * 默认实现 {@link DialectDefault} 适用于 PostgreSQL / H2 (PostgreSQL mode)。
  */
 public interface Dialect {
 
@@ -36,7 +36,4 @@ public interface Dialect {
 
     /** 查询某个表的已有列名集合。 */
     Set<String> existingColumns(Database db, String tableName);
-
-    /** 查询某个表的已有索引名集合。 */
-    Set<String> existingIndexes(Database db, String tableName);
 }

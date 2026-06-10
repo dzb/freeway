@@ -1,6 +1,7 @@
 package com.jujin.freeway.ioc.internal;
 
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +38,7 @@ final class ScopeSession {
         }
         closed = true;
         RuntimeException failure = null;
-        Set<Object> seen = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Object value : List.copyOf(values.values())) {
             if (!seen.add(value)) {
                 continue;

@@ -198,6 +198,7 @@ public final class ConnectionPool implements AutoCloseable {
                 idle.offerFirst(conn);
                 semaphore.release();
             } catch (Exception e) {
+                LOG.warn("Failed to warm up connection", e);
                 semaphore.release();
                 break;
             }

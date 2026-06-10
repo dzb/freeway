@@ -3,15 +3,16 @@ package com.jujin.freeway.ioc.internal;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Predicate;
 
 final class BindingIndex {
-    private final java.util.Map<ServiceKey, BindingImpl<?>> bindings = new ConcurrentHashMap<>();
+    private final Map<ServiceKey, BindingImpl<?>> bindings = new ConcurrentHashMap<>();
     private final Deque<ServiceKey> bindingOrder = new ConcurrentLinkedDeque<>();
-    private final java.util.Map<Class<?>, List<BindingImpl<?>>> typeIndex = new ConcurrentHashMap<>();
+    private final Map<Class<?>, List<BindingImpl<?>>> typeIndex = new ConcurrentHashMap<>();
 
     void clear() {
         bindings.clear();

@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
+import java.lang.reflect.Type;
 
 public abstract class HttpContext {
     private static final Pattern CHARSET_PATTERN = Pattern.compile("(?i)\\bcharset=([^\\s;]+)");
@@ -127,10 +127,10 @@ public abstract class HttpContext {
     }
 
     public <T> T bodyAsJson(Class<T> type) throws IOException {
-        return bodyAsJson((java.lang.reflect.Type) type);
+        return bodyAsJson((Type) type);
     }
 
-    public <T> T bodyAsJson(java.lang.reflect.Type type) throws IOException {
+    public <T> T bodyAsJson(Type type) throws IOException {
         checkJsonContentType();
         @SuppressWarnings("unchecked")
         T value = (T) jsonCodec.fromJson(bodyText(), type);

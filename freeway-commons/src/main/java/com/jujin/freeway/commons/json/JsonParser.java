@@ -1,5 +1,6 @@
 package com.jujin.freeway.commons.json;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -83,7 +84,7 @@ final class JsonParser {
     }
 
     private static byte[] readBytes(InputStream input) throws IOException {
-        var out = new java.io.ByteArrayOutputStream();
+        var out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int total = 0;
         int read;

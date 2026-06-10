@@ -12,6 +12,7 @@ import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.websockets.WebSocketConnectionCallback;
 import io.undertow.websockets.WebSocketProtocolHandshakeHandler;
+import java.util.Deque;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -132,7 +133,7 @@ final class UndertowWebEngine implements HttpEngine {
 
     private static Map<String, List<String>> snapshotQueryParameters(HttpServerExchange exchange) {
         LinkedHashMap<String, List<String>> params = new LinkedHashMap<>();
-        for (Map.Entry<String, java.util.Deque<String>> entry : exchange.getQueryParameters().entrySet()) {
+        for (Map.Entry<String, Deque<String>> entry : exchange.getQueryParameters().entrySet()) {
             params.put(entry.getKey(), List.copyOf(entry.getValue()));
         }
         return Map.copyOf(params);

@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -127,7 +129,7 @@ public final class JdkHttpContext extends HttpContext {
     }
 
     public static Map<String, List<String>> parseQueryParams(String rawQuery) {
-        java.util.LinkedHashMap<String, List<String>> params = new java.util.LinkedHashMap<>();
+        LinkedHashMap<String, List<String>> params = new LinkedHashMap<>();
         if (rawQuery == null || rawQuery.isBlank()) {
             return params;
         }
@@ -135,7 +137,7 @@ public final class JdkHttpContext extends HttpContext {
             int eq = pair.indexOf('=');
             String name = eq >= 0 ? decode(pair.substring(0, eq)) : decode(pair);
             String value = eq >= 0 ? decode(pair.substring(eq + 1)) : "";
-            params.computeIfAbsent(name, ignored -> new java.util.ArrayList<>()).add(value);
+            params.computeIfAbsent(name, ignored -> new ArrayList<>()).add(value);
         }
         return params;
     }

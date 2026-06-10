@@ -5,8 +5,10 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.RowMapping;
+import com.jujin.freeway.db.Names;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.annotation.Inject;
@@ -40,13 +42,6 @@ public final class RowMapperResolver {
 
     public RowMapperResolver(
         Coercer coercer,
-        Map<Class<?>, RowMapper<?>> registrations
-    ) {
-        this(coercer, Map.of(), registrations);
-    }
-
-    public RowMapperResolver(
-        Coercer coercer,
         Map<Class<?>, RowMapper<?>> manualMappings,
         Map<Class<?>, RowMapper<?>> registrations
     ) {
@@ -72,34 +67,37 @@ public final class RowMapperResolver {
     }
 
     private static Map<Class<?>, RowMapper<?>> customMap(
-        Map<Class<?>, RowMapper<?>> manualMappings,
+        Map<Class<?>, RowMapper<?>> manual,
         Map<Class<?>, RowMapper<?>> registrations
     ) {
-        if ((manualMappings == null || manualMappings.isEmpty())
+        if ((manual == null || manual.isEmpty())
             && (registrations == null || registrations.isEmpty())) {
             return Map.of();
         }
         Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
-        if (registrations != null) {
-            for (Map.Entry<Class<?>, RowMapper<?>> entry : registrations.entrySet()) {
-                Class<?> type = Objects.requireNonNull(entry.getKey(), "registration.key");
-                RowMapper<?> mapper = Objects.requireNonNull(entry.getValue(), "registration.value");
-                map.put(type, mapper);
-            }
-        }
-        if (manualMappings != null) {
-            for (Map.Entry<Class<?>, RowMapper<?>> entry : manualMappings.entrySet()) {
-                Class<?> type = Objects.requireNonNull(entry.getKey(), "manual.key");
-                RowMapper<?> mapper = Objects.requireNonNull(entry.getValue(), "manual.value");
-                map.put(type, mapper);
-            }
-        }
+        addAll(map, registrations);
+        addAll(map, manual);
         return Map.copyOf(map);
     }
 
+    private static void addAll(
+        Map<Class<?>, RowMapper<?>> map,
+        Map<Class<?>, RowMapper<?>> source
+    ) {
+        if (source == null) return;
+        for (Map.Entry<Class<?>, RowMapper<?>> entry : source.entrySet()) {
+            map.put(
+                Objects.requireNonNull(entry.getKey()),
+                Objects.requireNonNull(entry.getValue()));
+        }
+    }
+
     private <T> RowMapper<T> create(Class<T> type) {
-        if (isSimpleType(type)) {
-            return createSimple(type);
+        if (type == Row.class) {
+            return (RowMapper<T>) createRowMapper();
+        }
+        if (isBasicType(type)) {
+            return createBasic(type);
         }
         if (type.isInterface()) {
             throw new SqlException("Cannot map interface " + type.getName() + ": register a custom RowMapper");
@@ -119,7 +117,7 @@ public final class RowMapperResolver {
         return createBean(type, plan);
     }
 
-    private boolean isSimpleType(Class<?> type) {
+    private boolean isBasicType(Class<?> type) {
         return type == String.class
             || type == Integer.class || type == int.class
             || type == Long.class || type == long.class
@@ -139,8 +137,21 @@ public final class RowMapperResolver {
             || type == byte[].class;
     }
 
-    private <T> RowMapper<T> createSimple(Class<T> type) {
+    private <T> RowMapper<T> createBasic(Class<T> type) {
         return (rs, rowNum) -> coercer.coerce(rs.getObject(1), type);
+    }
+
+    private RowMapper<Row> createRowMapper() {
+        return (rs, rowNum) -> {
+            var meta = rs.getMetaData();
+            int count = meta.getColumnCount();
+            Map<String, Object> values = new LinkedHashMap<>();
+            for (int i = 1; i <= count; i++) {
+                String label = meta.getColumnLabel(i);
+                values.put(label != null ? label.toLowerCase() : "", rs.getObject(i));
+            }
+            return new Row(values, coercer);
+        };
     }
 
     private <T> RowMapper<T> createRecord(Class<T> type, BeanPlan plan) {
@@ -155,8 +166,8 @@ public final class RowMapperResolver {
                 BeanProperty property = properties.get(i);
                 int column = indexes[i];
                 args[i] = column >= 1
-                    ? coercer.coerce(rs.getObject(column), propertyType(property))
-                    : coercer.coerce(null, propertyType(property));
+                    ? coercer.coerce(rs.getObject(column), rawClass(property.type()))
+                    : coercer.coerce(null, rawClass(property.type()));
             }
             try {
                 return type.cast(constructor.newInstance(args));
@@ -190,7 +201,7 @@ public final class RowMapperResolver {
                     continue;
                 }
                 BeanProperty property = properties.get(i);
-                Object value = coercer.coerce(rs.getObject(column), propertyType(property));
+                Object value = coercer.coerce(rs.getObject(column), rawClass(property.type()));
                 try {
                     property.write(instance, value);
                 } catch (RuntimeException e) {
@@ -204,10 +215,6 @@ public final class RowMapperResolver {
         };
     }
 
-    private static Class<?> propertyType(BeanProperty property) {
-        return rawClass(property.type());
-    }
-
     private static Class<?> rawClass(Type type) {
         if (type instanceof Class<?> cls) {
             return cls;
@@ -219,43 +226,21 @@ public final class RowMapperResolver {
     }
 
     static int findColumn(ResultSetMetaData meta, String propertyName) throws SQLException {
-        for (int i = 1; i <= meta.getColumnCount(); i++) {
+        String snake = Names.camelToSnake(propertyName);
+        int columnCount = meta.getColumnCount();
+        for (int i = 1; i <= columnCount; i++) {
             String label = meta.getColumnLabel(i);
-            if (label == null) {
-                label = meta.getColumnName(i);
-            }
-            if (propertyName.equalsIgnoreCase(label)) {
-                return i;
-            }
-        }
-        String snake = camelToSnake(propertyName);
-        for (int i = 1; i <= meta.getColumnCount(); i++) {
-            String label = meta.getColumnLabel(i);
-            if (label == null) {
-                label = meta.getColumnName(i);
-            }
-            if (snake.equalsIgnoreCase(label)) {
+            if (label == null) label = meta.getColumnName(i);
+            if (label == null) continue;
+            if (propertyName.equalsIgnoreCase(label) || snake.equalsIgnoreCase(label)) {
                 return i;
             }
         }
         return -1;
     }
 
-    private static String camelToSnake(String camel) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < camel.length(); i++) {
-            char c = camel.charAt(i);
-            if (Character.isUpperCase(c)) {
-                if (i > 0) {
-                    sb.append('_');
-                }
-                sb.append(Character.toLowerCase(c));
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
-    }
+
+
 
     private static final class ColumnCache {
         private final String[] names;
@@ -288,7 +273,7 @@ public final class RowMapperResolver {
     private record Signature(List<String> labels) {
         static Signature of(ResultSetMetaData meta) throws SQLException {
             int columnCount = meta.getColumnCount();
-            List<String> labels = new java.util.ArrayList<>(columnCount);
+            List<String> labels = new ArrayList<>(columnCount);
             for (int i = 1; i <= columnCount; i++) {
                 String label = meta.getColumnLabel(i);
                 if (label == null || label.isBlank()) {

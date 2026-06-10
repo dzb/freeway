@@ -779,10 +779,10 @@ public final class SQL {
             }
 
             // :name 或 $name 命名参数
-            if ((c == ':' || c == '$') && i + 1 < len && isValidParamStart(fragment.charAt(i + 1))) {
+            if ((c == ':' || c == '$') && i + 1 < len && Names.isValidParamStart(fragment.charAt(i + 1))) {
                 int start = i + 1;
                 i += 2;
-                while (i < len && isValidParamChar(fragment.charAt(i))) {
+                while (i < len && Names.isValidParamChar(fragment.charAt(i))) {
                     i++;
                 }
                 if (vi < values.length) {
@@ -832,13 +832,8 @@ public final class SQL {
         matched.add(value);
     }
 
-    private static boolean isValidParamStart(char c) {
-        return Character.isLetter(c) || c == '_';
-    }
 
-    private static boolean isValidParamChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_';
-    }
+
 
     private static Object[] concat(Object[] a, Object[] b) {
         if (a.length == 0) return b;

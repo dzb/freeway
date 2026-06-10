@@ -1,5 +1,6 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.Names;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -90,10 +91,10 @@ final class NamedParamParser {
             }
             if ((c == ':' || c == '$') && i + 1 < len) {
                 char next = sql.charAt(i + 1);
-                if (isValidParamStart(next)) {
+                if (Names.isValidParamStart(next)) {
                     int start = i + 1;
                     i += 2;
-                    while (i < len && isValidParamChar(sql.charAt(i))) {
+                    while (i < len && Names.isValidParamChar(sql.charAt(i))) {
                         i++;
                     }
                     names.add(sql.substring(start, i));
@@ -178,13 +179,8 @@ final class NamedParamParser {
         return List.copyOf(indexes);
     }
 
-    private static boolean isValidParamStart(char c) {
-        return Character.isLetter(c) || c == '_';
-    }
 
-    private static boolean isValidParamChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_';
-    }
+
 
     /**
      * Lightweight scan: returns true if {@code sql} contains at least one
@@ -219,7 +215,7 @@ final class NamedParamParser {
                 continue;
             }
             if ((c == ':' || c == '$') && i + 1 < len
-                && isValidParamStart(sql.charAt(i + 1))) {
+                && Names.isValidParamStart(sql.charAt(i + 1))) {
                 return true;
             }
             i++;

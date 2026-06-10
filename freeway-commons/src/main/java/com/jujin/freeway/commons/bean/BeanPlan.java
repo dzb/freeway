@@ -155,7 +155,7 @@ public final class BeanPlan {
     }
 
 
-    private record RecordBeanProperty(String name, java.lang.reflect.Type type, Annotation[] annotations, MethodHandle accessor) implements BeanProperty {
+    private record RecordBeanProperty(String name, Type type, Annotation[] annotations, MethodHandle accessor) implements BeanProperty {
         @Override
         public Annotation[] annotations() {
             return annotations.clone();
@@ -181,7 +181,7 @@ public final class BeanPlan {
         }
     }
 
-    private record FieldBeanProperty(String name, java.lang.reflect.Type type, Annotation[] annotations, VarHandle field, MethodHandle setter, boolean writable) implements BeanProperty {
+    private record FieldBeanProperty(String name, Type type, Annotation[] annotations, VarHandle field, MethodHandle setter, boolean writable) implements BeanProperty {
         @Override
         public boolean isWritable() {
             return writable;

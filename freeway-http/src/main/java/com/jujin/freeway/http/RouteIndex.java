@@ -2,6 +2,7 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.ioc.Extension;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -144,7 +145,7 @@ final class RouteIndex {
             if (param != null) {
                 // Wildcard consumes remaining segments
                 if (param.wildcard) {
-                    String remainder = String.join("/", java.util.Arrays.copyOfRange(segments, i, segments.length));
+                    String remainder = String.join("/", Arrays.copyOfRange(segments, i, segments.length));
                     if (remainder.isEmpty() || PathPattern.containsPathTraversal(remainder)) {
                         return null;
                     }

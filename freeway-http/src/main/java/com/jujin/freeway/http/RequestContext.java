@@ -2,6 +2,7 @@ package com.jujin.freeway.http;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 public interface RequestContext {
     String correlationId();
@@ -19,7 +20,7 @@ public interface RequestContext {
     Map<String, Object> attributes();
 
     static RequestContext create() {
-        return new RequestContextDefault(java.util.UUID.randomUUID().toString().replace("-", ""), Instant.now());
+        return new RequestContextDefault(UUID.randomUUID().toString().replace("-", ""), Instant.now());
     }
 
     static RequestContext create(String correlationId) {

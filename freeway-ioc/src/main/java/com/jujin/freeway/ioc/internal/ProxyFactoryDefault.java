@@ -11,32 +11,9 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 final class ProxyFactoryDefault implements ProxyFactory {
-    @SuppressWarnings("unchecked")
     @Override
     public <T> T create(Class<T> interfaceType, Supplier<T> provider, String description) {
-        requireInterface(interfaceType);
-        Objects.requireNonNull(provider, "provider");
-        return newProxy(interfaceType, new LazyHandler<>(provider, description));
-    }
-
-    private static final class LazyHandler<T> implements InvocationHandler {
-        private final Supplier<T> provider;
-        private final String description;
-
-        private LazyHandler(Supplier<T> provider, String description) {
-            this.provider = provider;
-            this.description = description;
-        }
-
-        @Override
-        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            if (method.getDeclaringClass() == Object.class) {
-                return handleObjectMethod(proxy, method, args, description);
-            }
-
-            Object real = provider.get();
-            return invokeTarget(real, method, args);
-        }
+        return createAdvised(interfaceType, provider, description, List.of());
     }
 
     static Object handleObjectMethod(Object proxy, Method method, Object[] args, String toStringValue) {

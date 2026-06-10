@@ -11,6 +11,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public final class WebServer implements AutoCloseable {
@@ -224,7 +225,7 @@ public final class WebServer implements AutoCloseable {
     private void processRequest(HttpContext ctx) throws Exception {
         RouteHandler inner = request -> {
             if (healthEnabled && "GET".equalsIgnoreCase(request.method()) && healthPath.equals(request.path())) {
-                request.sendJson(200, java.util.Map.of("status", "ok"));
+                request.sendJson(200, Map.of("status", "ok"));
                 return;
             }
             for (StaticResourceMount mount : staticMounts) {

@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.json.JsonObject;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -216,7 +217,7 @@ public final class BootConfigLoader {
         if (value == null || value.isBlank()) {
             return List.of();
         }
-        List<String> profiles = new java.util.ArrayList<>();
+        List<String> profiles = new ArrayList<>();
         for (String part : value.split(",")) {
             String profile = part.trim();
             if (!profile.isEmpty()) {

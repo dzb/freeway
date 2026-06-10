@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -180,7 +181,7 @@ public final class MigrationRunner {
                 root = root + "/";
             }
             try (JarFile jar = connection.getJarFile()) {
-                for (JarEntry entry : java.util.Collections.list(jar.entries())) {
+                for (JarEntry entry : Collections.list(jar.entries())) {
                     String name = entry.getName();
                     if (!entry.isDirectory() && name.startsWith(root) && isSqlFile(name)) {
                         result.add(name);

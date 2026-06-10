@@ -1,6 +1,7 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.Scope;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -10,7 +11,7 @@ final class ServiceRuntime {
     private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
     private final ThreadLocal<Set<ServiceKey>> realizeStack =
-        ThreadLocal.withInitial(java.util.HashSet::new);
+        ThreadLocal.withInitial(HashSet::new);
 
     ServiceRuntime(
         ScopeControl scopeControl,
