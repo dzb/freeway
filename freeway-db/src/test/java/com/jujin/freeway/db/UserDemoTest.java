@@ -1,0 +1,279 @@
+package com.jujin.freeway.db;
+
+import com.jujin.freeway.db.schema.*;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * ===========================================================
+ *  User CRUD 完整演示 — freeway-db 开发体验
+ *
+ *  目标：展示 LLM 能否读懂并使用 freeway 进行开发
+ *
+ *  实体: User(id, name, age)
+ *  能力: DDL 自动建表 + ORM 存取
+ * ===========================================================
+ */
+class UserDemoTest {
+
+    // =========================================================
+    // 1. 实体定义 — 注解驱动
+    // =========================================================
+    // 注意：表名不能是数据库保留关键字（如 user），这里用 t_user
+    @Table("t_user")
+    record User(
+        @Id @Generated Long id,   // 自增主键
+        @Column String name,      // 列名 name, VARCHAR(255)
+        @Column Integer age       // 列名 age, INTEGER
+    ) {
+        // 构造时不用管 id，数据库自动生成
+        User(String name, Integer age) { this(null, name, age); }
+    }
+
+    // Bean 风格（可变对象，适合 update 场景）
+    @Table("t_user")
+    static class UserBean {
+        @Id @Generated Long id;
+        @Column String name;
+        @Column Integer age;
+
+        UserBean() {}
+        UserBean(String name, Integer age) { this.name = name; this.age = age; }
+    }
+
+    // =========================================================
+    // 2. 辅助方法 — 内存 H2 数据库（PostgreSQL 模式）
+    // =========================================================
+    private static DatabaseBuilder builder(String name) {
+        return new DatabaseBuilder()
+            .config(DatabaseConfig.defaults(
+                "jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
+    }
+
+    private static String uniqueDb() {
+        return "user_demo_" + UUID.randomUUID().toString().replace('-', '_');
+    }
+
+    // =========================================================
+    // 3. 核心演示：DDL + ORM 全流程
+    // =========================================================
+
+    @Test
+    void step01_showDDL() {
+        // ★ 展示 Schema.define() 生成的 DDL 语句
+        String ddl = Schema.define(User.class);
+        System.out.println("=== Schema.define(User.class) ===");
+        System.out.println(ddl);
+        System.out.println();
+
+        System.out.println(ddl);
+        assertTrue(ddl.contains("CREATE TABLE"));
+        assertTrue(ddl.contains("t_user"));
+        assertTrue(ddl.contains("id"));
+        assertTrue(ddl.contains("name"));
+        assertTrue(ddl.contains("age"));
+        // id 是自增的（Schema 默认用 GENERATED ALWAYS AS IDENTITY）
+        assertTrue(ddl.contains("GENERATED ALWAYS AS IDENTITY"));
+        // name 和 age 不是主键
+        assertTrue(ddl.contains("VARCHAR(255)"));
+        assertTrue(ddl.contains("INTEGER"));
+    }
+
+    @Test
+    void step02_ensureCreatesTable() {
+        // ★ 展示 Schema.ensure() 自动建表
+        var db = builder(uniqueDb()).build();
+        try (db) {
+            Schema.ensure(db, User.class);
+
+            // 验证表已存在 — 可以正常插入
+            Orm orm = Orm.of(db);
+            orm.insert(new User("闪电", 3));
+
+            List<User> all = orm.findAll(User.class);
+            assertEquals(1, all.size());
+        }
+    }
+
+    @Test
+    void step03_fullCrudWithRecord() {
+        // ★ ★ ★ 核心演示：Record 风格完整 CRUD ★ ★ ★
+        var db = builder(uniqueDb()).build();
+        try (db) {
+            // ----- 建表（DDL） -----
+            Schema.ensure(db, User.class);
+            Orm orm = Orm.of(db);
+
+            // ----- C: Create -----
+            ExecuteResult r1 = orm.insert(new User("闪电", 3));
+            assertTrue(r1.hasKey(), "INSERT 应返回自增 ID");
+            long id1 = r1.longKey();
+            System.out.println("INSERT 闪电 → id=" + id1);
+
+            ExecuteResult r2 = orm.insert(new User("煤球", 5));
+            long id2 = r2.longKey();
+            System.out.println("INSERT 煤球 → id=" + id2);
+
+            // ----- R: Read (findById) -----
+            User found = orm.findById(User.class, id1).orElseThrow();
+            assertEquals("闪电", found.name());
+            assertEquals(3, found.age());
+            System.out.println("findById(" + id1 + ") → " + found);
+
+            // ----- R: Read (findAll) -----
+            List<User> all = orm.findAll(User.class);
+            assertEquals(2, all.size());
+            System.out.println("findAll → " + all);
+
+            // ----- R: Read (findAll with order & limit) -----
+            List<User> ordered = orm.findAll(User.class, "age ASC", 1, 0);
+            assertEquals(1, ordered.size());
+            assertEquals("闪电", ordered.get(0).name());
+            System.out.println("findAll(orderBy=age ASC, limit=1) → " + ordered);
+
+            // ----- U: Update (使用 Bean 风格) -----
+            // Record 是不可变的，update 用 Bean
+            Schema.ensure(db, UserBean.class);
+            Orm ormBean = Orm.of(db);
+
+            UserBean bean = new UserBean("闪电", 3);
+            ormBean.insert(bean);
+            assertNotNull(bean.id);
+            System.out.println("Bean INSERT → id=" + bean.id + ", name=" + bean.name);
+
+            bean.age = 4;  // 涨一岁
+            ExecuteResult ur = ormBean.update(bean);
+            assertEquals(1, ur.rows());
+            System.out.println("UPDATE age=4 → rows=" + ur.rows());
+
+            UserBean reloaded = ormBean.findById(UserBean.class, bean.id).orElseThrow();
+            assertEquals(4, reloaded.age.intValue());
+            System.out.println("findById 验证 → age=" + reloaded.age);
+
+            // ----- D: Delete -----
+            ExecuteResult dr = ormBean.deleteById(UserBean.class, bean.id);
+            assertEquals(1, dr.rows());
+            assertTrue(ormBean.findById(UserBean.class, bean.id).isEmpty());
+            System.out.println("DELETE → 已删除，查找为空");
+        }
+    }
+
+    @Test
+    void step04_rawSql() {
+        // ★ 原始 SQL 操作（不使用 ORM）
+        var db = builder(uniqueDb()).build();
+        try (db) {
+            db.execute("CREATE TABLE t_user (" +
+                       "id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, " +
+                       "name VARCHAR(255), " +
+                       "age INTEGER)");
+
+            // INSERT
+            ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "闪电", 3);
+            assertTrue(r.hasKey());
+            long id = r.longKey();
+            System.out.println("Raw INSERT → id=" + id);
+
+            // SELECT → Row
+            List<Row> rows = db.query("SELECT * FROM t_user WHERE id = ?", id).list(Row.class);
+            assertEquals(1, rows.size());
+            Row row = rows.get(0);
+            assertEquals("闪电", row.string("name"));
+            assertEquals(3, row.integer("age").intValue());
+            System.out.println("Raw SELECT → Row columns=" + row.columns() + ", values: " + row);
+
+            // SELECT → Record 映射
+            User user = db.query("SELECT * FROM t_user WHERE id = ?", id)
+                .one(User.class).orElseThrow();
+            assertEquals("闪电", user.name());
+            System.out.println("Raw SELECT → Record: " + user);
+        }
+    }
+
+    @Test
+    void step05_sqlBuilder() {
+        // ★ SQL 构建器风格
+        var db = builder(uniqueDb()).build();
+        try (db) {
+            Schema.ensure(db, User.class);
+            Orm orm = Orm.of(db);
+
+            orm.insert(new User("闪电", 3));
+            orm.insert(new User("煤球", 5));
+            orm.insert(new User("小白", 2));
+
+            // SQL 构建器：条件查询
+            List<User> adults = db.query(
+                SQL.select("*").from("t_user").where("age >= ?", 3)
+                    .orderBy("age DESC")
+            ).list(User.class);
+
+            assertEquals(2, adults.size());
+            assertEquals("煤球", adults.get(0).name());  // age=5
+            assertEquals("闪电", adults.get(1).name());  // age=3
+            System.out.println("SQL Builder 条件查询 → " + adults);
+        }
+    }
+
+    @Test
+    void step06_transaction() {
+        // ★ 事务操作
+        var db = builder(uniqueDb()).build();
+        try (db) {
+            Schema.ensure(db, User.class);
+            Orm orm = Orm.of(db);
+
+            db.transaction(() -> {
+                orm.insert(new User("闪电", 3));
+                orm.insert(new User("煤球", 5));
+                // 事务内：两个插入一起成功
+            });
+
+            assertEquals(2, orm.findAll(User.class).size());
+            System.out.println("事务内 INSERT 2 条 → findAll size=" + orm.findAll(User.class).size());
+
+            // 事务回滚演示
+            try {
+                db.transaction(() -> {
+                    orm.insert(new User("会回滚", 99));
+                    throw new RuntimeException("模拟异常，触发回滚");
+                });
+            } catch (RuntimeException ignored) {
+                // 预期
+            }
+
+            // 回滚后依然是 2 条
+            assertEquals(2, orm.findAll(User.class).size());
+            System.out.println("事务回滚后 → findAll size=" + orm.findAll(User.class).size());
+        }
+    }
+
+    @Test
+    void step07_saveUpsert() {
+        // ★ save（更新插入 — id=null 走 INSERT，id=已有走 ON CONFLICT DO UPDATE）
+        // 注意：ON CONFLICT 是 PostgreSQL 语法，H2 不支持，所以这里只测 INSERT 路径
+        var db = builder(uniqueDb()).build();
+        try (db) {
+            Schema.ensure(db, UserBean.class);
+            Orm orm = Orm.of(db);
+
+            // id=null → INSERT
+            UserBean u = new UserBean("闪电", 3);
+            orm.save(u);
+            assertNotNull(u.id);
+            assertEquals("闪电", u.name);
+            System.out.println("save(id=null) → INSERT, id=" + u.id);
+
+            // UPDATE 验证
+            u.age = 4;
+            orm.update(u);
+            UserBean reloaded = orm.findById(UserBean.class, u.id).orElseThrow();
+            assertEquals(4, reloaded.age.intValue());
+            System.out.println("update age=4 → 验证通过, age=" + reloaded.age);
+        }
+    }
+}
