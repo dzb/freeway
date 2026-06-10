@@ -1,0 +1,181 @@
+package com.jujin.freeway.ioc;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class EventBusTest {
+
+    // ==================== event types ====================
+
+    static class PostCreatedEvent implements EventBus.Stoppable {
+        private final Post post;
+        private final AtomicBoolean stopped = new AtomicBoolean();
+        PostCreatedEvent(Post post) { this.post = post; }
+        Post post() { return post; }
+        @Override public void stop() { stopped.set(true); }
+        @Override public boolean isStopped() { return stopped.get(); }
+    }
+
+    record Post(String title) {}
+
+    record CommentAddedEvent(Long postId, String text) {}
+
+    // ==================== contribute-based subscribers ====================
+
+    @Test
+    void moduleSubscribersReceiveEvents() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("got:" + e.post().title)))
+        );
+
+        EventBus bus = new EventBus(container);
+        bus.publish(new PostCreatedEvent(new Post("hello")));
+
+        assertEquals(1, log.size());
+        assertEquals("got:hello", log.get(0));
+    }
+
+    @Test
+    void multipleModuleSubscribersAllReceive() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("first")));
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("second")));
+            }
+        );
+
+        new EventBus(container).publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(2, log.size());
+    }
+
+    @Test
+    void stoppableEventShortCircuits() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
+                        log.add("stop");
+                        e.stop();
+                    }));
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("never")));
+            }
+        );
+
+        new EventBus(container).publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(1, log.size());
+        assertEquals("stop", log.get(0));
+    }
+
+    @Test
+    void runtimeSubscribersReceiveEvents() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create();
+
+        EventBus bus = new EventBus(container);
+        bus.subscribe(PostCreatedEvent.class, e -> log.add("runtime"));
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(1, log.size());
+        assertEquals("runtime", log.get(0));
+    }
+
+    @Test
+    void runtimeAndModuleSubscribersBothReceive() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("module")))
+        );
+
+        EventBus bus = new EventBus(container);
+        bus.subscribe(PostCreatedEvent.class, e -> log.add("runtime"));
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(2, log.size());
+    }
+
+    @Test
+    void unsubscribeRemovesRuntimeSubscriber() {
+        List<String> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        Subscription<PostCreatedEvent> sub = bus.subscribe(PostCreatedEvent.class, e -> log.add("x"));
+        bus.unsubscribe(sub);
+
+        bus.publish(new PostCreatedEvent(new Post("x")));
+        assertTrue(log.isEmpty());
+    }
+
+    @Test
+    void deadEventFiresWhenNoSubscribers() {
+        List<EventDead> deads = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(EventDead.class, (Consumer<EventDead>) deads::add))
+        );
+
+        new EventBus(container).publish(new PostCreatedEvent(new Post("orphan")));
+
+        assertEquals(1, deads.size());
+        assertInstanceOf(PostCreatedEvent.class, deads.get(0).event());
+    }
+
+    @Test
+    void deadEventDoesNotSelfLoop() {
+        List<EventDead> deads = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(EventDead.class, (Consumer<EventDead>) deads::add))
+        );
+
+        new EventBus(container).publish(new PostCreatedEvent(new Post("x")));
+        assertEquals(1, deads.size());
+    }
+
+    @Test
+    void subscriberExceptionDoesNotBlockOthers() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
+                        throw new RuntimeException("boom");
+                    }));
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")));
+            }
+        );
+
+        new EventBus(container).publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(1, log.size());
+        assertEquals("survive", log.get(0));
+    }
+
+    @Test
+    void closeClearsRuntimeSubscribers() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create();
+
+        EventBus bus = new EventBus(container);
+        bus.subscribe(PostCreatedEvent.class, e -> log.add("x"));
+        bus.close();
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertTrue(log.isEmpty());
+    }
+}

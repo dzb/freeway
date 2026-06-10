@@ -99,6 +99,7 @@ The IoC module provides the framework core:
 - Extension points - `binder.contribute(X.class).add(...)` and ordered `add(id, value).before/after(...)`, with `@Extension` consuming contributed lists and maps.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
+- EventBus - in-process pub/sub: `bus.publish(event)`, `binder.contribute(EventSubscriber.class).add(...)`, with DeadEvent logging and EventBridge for MQ.
 
 ### Boot (`freeway-boot`)
 

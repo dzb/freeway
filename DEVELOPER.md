@@ -185,6 +185,61 @@ Rules:
 - `add(id, value)` enables `before/after` constraints for topological ordering.
 - Duplicate ids fail immediately. Missing order targets are ignored. Cycles fail at resolution time.
 
+### EventBus
+
+In-process publish-subscribe built on the Extension mechanism. Events are plain objects; subscribers are contributed via `EventSubscriber` or registered at runtime.
+
+```java
+// Module contribution — startup-time, supports before/after ordering
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of(PostCreatedEvent.class, e -> indexService.index(e.post())));
+
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of("notify", PostCreatedEvent.class, e -> notificationService.send(e)))
+    .after("index");
+
+// Runtime subscription — dynamic, no ordering
+@Inject EventBus bus;
+Subscription<PostCreatedEvent> sub = bus.subscribe(PostCreatedEvent.class, e -> { ... });
+bus.unsubscribe(sub);
+
+// Publish
+bus.publish(new PostCreatedEvent(post));
+```
+
+**Key types:**
+
+| Type | Purpose |
+|------|---------|
+| `EventBus` | Publish, subscribe, unsubscribe. Injected via `@Inject EventBus` |
+| `EventSubscriber<E>` | Module-level subscriber: carries event type, handler, and ordering |
+| `Subscription<E>` | Handle returned by `subscribe()`, used to `unsubscribe()` |
+| `EventDead` | Published when an event has zero subscribers — subscribe for logging |
+| `EventBridge` | Bridge to external MQ: `EventBridge.send(topic, event)` |
+| `@Topic("kafka.topic")` | Maps an event class to a cross-JVM topic name |
+| `EventBus.Stoppable` | Events implementing this can `stop()` the subscriber chain |
+
+**Short-circuit (Stoppable):**
+
+```java
+public class PostCreatedEvent implements EventBus.Stoppable {
+    private final AtomicBoolean stopped = new AtomicBoolean();
+    @Override public void stop() { stopped.set(true); }
+    @Override public boolean isStopped() { return stopped.get(); }
+}
+
+// First subscriber validates and stops if unauthorized — later subscribers are skipped
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of(PostCreatedEvent.class, e -> { if (!loggedIn) e.stop(); }));
+```
+
+**DeadEvent logging:**
+
+```java
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of(EventDead.class, e -> LOG.warn("No subscriber for {}", e.event().getClass())));
+```
+
 ### Type Coercion
 
 The IoC layer keeps the original Freeway strength: external strings can be expanded and coerced into target types.
