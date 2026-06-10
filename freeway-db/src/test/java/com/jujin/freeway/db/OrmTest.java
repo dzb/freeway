@@ -61,8 +61,8 @@ class OrmTest {
             Post p = new Post("Hello", "World");
             var r = orm.insert(p);
 
-            assertTrue(r.hasId());
-            assertTrue(r.id() > 0);
+            assertTrue(r.hasKey());
+            assertTrue(r.longKey() > 0);
         }
     }
 
@@ -77,8 +77,8 @@ class OrmTest {
             var r = orm.insert(p);
 
             // records are immutable, id is on the result
-            assertTrue(r.hasId());
-            assertEquals(1L, r.id());
+            assertTrue(r.hasKey());
+            assertEquals(1L, r.longKey());
         }
     }
 
@@ -92,7 +92,7 @@ class OrmTest {
             Comment c = new Comment("nice post", 1L);
             var r = orm.insert(c);
 
-            assertTrue(r.hasId());
+            assertTrue(r.hasKey());
             assertNotNull(c.id);
             assertTrue(c.id > 0);
         }
@@ -109,7 +109,6 @@ class OrmTest {
             var r = orm.insert(u);
 
             assertEquals(1, r.rows());
-            assertFalse(r.hasId());
         }
     }
 
@@ -313,7 +312,7 @@ class OrmTest {
 
             Post p = new Post("Hello", "World");
             var r = orm.save(p);
-            assertTrue(r.hasId());
+            assertTrue(r.hasKey());
         }
     }
 

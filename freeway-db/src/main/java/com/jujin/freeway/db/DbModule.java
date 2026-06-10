@@ -14,6 +14,7 @@ public final class DbModule implements Module {
     public void bind(Binder binder) {
         binder.bind(Database.class).to(DatabaseImpl.class);
         binder.bind(DatabaseHub.class).to(DatabaseHubImpl.class);
+        binder.bind(Orm.class).to(Orm.class);
         binder.contribute(CoerceRule.class).add(new CoerceRule<>(String.class, Duration.class, DbModule::parseDuration));
         for (CoerceRule<?, ?> rule : Coercions.jdbcDefaults()) {
             binder.contribute(CoerceRule.class).add(rule);

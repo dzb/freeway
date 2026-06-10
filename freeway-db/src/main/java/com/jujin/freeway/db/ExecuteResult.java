@@ -1,31 +1,31 @@
 package com.jujin.freeway.db;
 
 /**
- * {@link Database#execute(String, Object...)} 的返回值。
- * <p>
- * 同时携带影响行数和自增键信息，避免为获取 ID 而额外查询。
- * <p>
- * 典型用法：
- * <pre>{@code
- * // 插入并获取自增 ID
- * long id = db.execute("INSERT INTO users (name) VALUES (?)", "john").id();
+ * Return value for {@link Database#execute(String, Object...)}.
+ * Carries both the affected row count and the generated key (if any).
  *
- * // 只关心影响行数
+ * <pre>{@code
+ * long id = db.execute("INSERT INTO users (name) VALUES (?)", "john").longKey();
  * int rows = db.execute("UPDATE users SET status = ? WHERE id = ?", 1, id).rows();
  * }</pre>
  */
-public record ExecuteResult(int rows, long id) {
+public record ExecuteResult(int rows, Object key) {
 
-    /** 是否有自增键返回。 */
-    public boolean hasId() {
-        return id != 0L;
+    /** Whether a generated key was returned. */
+    public boolean hasKey() {
+        return key != null;
+    }
+
+    /** Convenience: the generated key as {@code long}, or 0 if no key was generated. */
+    public long longKey() {
+        if (key == null) return 0L;
+        if (key instanceof Number n) return n.longValue();
+        throw new IllegalStateException("Generated key is not numeric: " + key);
     }
 
     @Override
     public String toString() {
-        if (id == 0L) {
-            return "ExecuteResult[rows=" + rows + "]";
-        }
-        return "ExecuteResult[rows=" + rows + ", id=" + id + "]";
+        if (key == null) return "ExecuteResult[rows=" + rows + "]";
+        return "ExecuteResult[rows=" + rows + ", key=" + key + "]";
     }
 }

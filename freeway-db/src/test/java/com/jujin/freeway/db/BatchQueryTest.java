@@ -73,7 +73,7 @@ class BatchQueryTest {
             assertEquals(2, results.size());
             for (var r : results) {
                 assertEquals(1, r.rows());
-                assertFalse(r.hasId());
+                assertFalse(r.hasKey());
             }
 
             assertEquals(100, (int) db.query("select val from t where id = 1").one(Integer.class).orElseThrow());
@@ -158,15 +158,15 @@ class BatchQueryTest {
             assertEquals(3, results.size());
             for (var r : results) {
                 assertEquals(1, r.rows());
-                assertTrue(r.hasId());
-                assertTrue(r.id() > 0);
+                assertTrue(r.hasKey());
+                assertTrue(r.longKey() > 0);
             }
             // IDs should be sequential
-            assertEquals(results.get(0).id() + 1, results.get(1).id());
-            assertEquals(results.get(1).id() + 1, results.get(2).id());
+            assertEquals(results.get(0).longKey() + 1, results.get(1).longKey());
+            assertEquals(results.get(1).longKey() + 1, results.get(2).longKey());
 
             List<Long> ids = db.query("select id from t order by id").list(Long.class);
-            assertEquals(List.of(results.get(0).id(), results.get(1).id(), results.get(2).id()), ids);
+            assertEquals(List.of(results.get(0).longKey(), results.get(1).longKey(), results.get(2).longKey()), ids);
         }
     }
 

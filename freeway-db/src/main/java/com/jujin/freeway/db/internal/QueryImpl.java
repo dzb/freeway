@@ -164,18 +164,15 @@ final class QueryImpl implements Query {
         try (var ctx = borrow(mayHaveGeneratedKeys)) {
             bindAll(ctx.stmt);
             int rows = ctx.stmt.executeUpdate();
-            long id = 0L;
+            Object key = null;
             if (mayHaveGeneratedKeys) {
                 try (var rs = ctx.stmt.getGeneratedKeys()) {
                     if (rs.next()) {
-                        Object key = rs.getObject(1);
-                        if (key instanceof Number n) {
-                            id = n.longValue();
-                        }
+                        key = rs.getObject(1);
                     }
                 }
             }
-            return new ExecuteResult(rows, id);
+            return new ExecuteResult(rows, key);
         } catch (SQLException e) {
             LOG.warn("Execute failed: {}", originalSql, e);
             throw new SqlException("Update failed: " + e.getMessage(), e);

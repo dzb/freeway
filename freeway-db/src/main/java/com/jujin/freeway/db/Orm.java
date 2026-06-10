@@ -3,6 +3,8 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.schema.*;
 
 import java.util.ArrayList;
@@ -15,13 +17,16 @@ import java.util.Optional;
 
 public final class Orm {
     private final Database db;
+    private final Coercer coercer;
 
-    private Orm(Database db) {
+    public Orm(Database db, Coercer coercer) {
         this.db = Objects.requireNonNull(db, "db");
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
+    /** Creates an Orm with a default Coercer for standalone use. */
     public static Orm of(Database db) {
-        return new Orm(db);
+        return new Orm(db, new CoercerDefault());
     }
 
     // ==================== find ====================
@@ -73,8 +78,8 @@ public final class Orm {
             "INSERT INTO " + table + " (" + String.join(", ", columns.names) + ") VALUES (" + placeholders(columns.names.size()) + ")",
             values);
 
-        if (result.hasId() && columns.generated != null && !plan.record()) {
-            columns.generated.write(entity, coercerValue(result.id(), columns.generated));
+        if (result.hasKey() && columns.generated != null && !plan.record()) {
+            columns.generated.write(entity, coercer.coerce(result.key(), rawType(columns.generated.type())));
         }
         return result;
     }
@@ -119,8 +124,9 @@ public final class Orm {
 
         ExecuteResult result = db.execute(sql, insertValues);
 
-        if (!plan.record() && columns.generated != null) {
-            columns.generated.write(entity, coercerValue(result.id(), columns.generated));
+        if (result.hasKey() && columns.generated != null && !plan.record()) {
+            Object coercedKey = coercer.coerce(result.key(), rawType(columns.generated.type()));
+            columns.generated.write(entity, coercedKey);
         }
         return result;
     }
@@ -230,12 +236,8 @@ public final class Orm {
         return result;
     }
 
-    private static Object coercerValue(long id, BeanProperty property) {
-        Class<?> type = property.type() instanceof Class<?> c ? c : Long.class;
-        if (type == Long.class || type == long.class) return id;
-        if (type == Integer.class || type == int.class) return (int) id;
-        if (type == Short.class || type == short.class) return (short) id;
-        return id;
+    private static Class<?> rawType(java.lang.reflect.Type type) {
+        return type instanceof Class<?> c ? c : Long.class;
     }
 
     private static boolean isId(BeanProperty prop) {

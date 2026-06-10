@@ -90,7 +90,7 @@ final class BatchQueryImpl implements BatchQuery {
 
                 List<ExecuteResult> results = new ArrayList<>(counts.length);
                 for (int i = 0; i < counts.length; i++) {
-                    long id = i < ids.size() ? ids.get(i) : 0L;
+                    Long id = i < ids.size() ? ids.get(i) : null;
                     results.add(new ExecuteResult(counts[i], id));
                 }
                 if (autoCommitChanged) {
