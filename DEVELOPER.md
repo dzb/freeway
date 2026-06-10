@@ -162,54 +162,28 @@ Both paths use the container type coercion mechanism.
 
 ### Extension Points
 
-`@Extension` marks extension consumers. On a type it sets the default extension point for collection/map members in that class. Member-level annotations override the default.
+Extensions are contributed by entry type and injected via `Extension<V>`:
 
 ```java
-@Extension(AppFeature.class)
-public final class AppConfig {
-    private final List<AppFeature> features;
+// contribution
+binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hello")));
 
-    public AppConfig(Collection<AppFeature> features) {
-        this.features = List.copyOf(features);
-    }
-}
+// ordering via named id
+binder.contribute(RuntimeHook.class)
+    .add("myHook", hook).after("freeway.http.server");
+
+// injection
+@Inject Extension<Route> routes;
+routes.all().forEach(...);
 ```
 
-```java
-@Extension(AppFeature.class)
-public final class AppFlags {
-    private List<AppFeature> features;
-
-    @Extension(AppFlag.class)
-    private Map<String, AppFlag> flags;
-}
-```
+`Extension<V>` is a concrete class — no sub-interfaces needed. The entry type itself (e.g., `Route.class`) is the extension point identifier. Named extensions are supported via `contribute(entryType, "name")` for same-type discrimination.
 
 Rules:
 
-- Unnamed `add(value)` preserves insertion order.
-- Named `add(id, value)` enables `before/after` constraints.
-- Duplicate ids fail immediately.
-- Missing order targets are ignored.
-- Cycles fail when the extension point is resolved.
-- `@Extension` on a type supplies the default extension point for collection/map members in that class.
-- `@Extension` on a field or parameter overrides the class default.
-- `@Extension` only applies to collection and map injection sites.
-
-Mapped contributions stay separate because keyed maps and ordered lists have different semantics:
-
-```java
-MappedContributions<String, AppFlag> flags = binder.contributeMapped(String.class, AppFlag.class);
-flags.put("debug", new AppFlag("debug", true));
-```
-
-`K` can be an enum, a class, or any non-null key type. String is just the common case. `@Extension` on a Map injection site resolves the full `Map<K, V>` extension point, not just the value type.
-
-Mapped contribution keys are generic. Keys are stored as provided, null keys fail immediately, duplicate entries fail immediately, and `override(key, value)` is the explicit replacement path for an existing key.
-
-Use `put(key, value)` for new entries and `override(key, value)` only when the key is already present.
-
-Because modules bind in load order, an override must run after the contribution it replaces.
+- `add(value)` preserves insertion order.
+- `add(id, value)` enables `before/after` constraints for topological ordering.
+- Duplicate ids fail immediately. Missing order targets are ignored. Cycles fail at resolution time.
 
 ### Type Coercion
 
@@ -268,7 +242,8 @@ AppRuntime runtime = Launcher.run(AppModule.class, args);
 Modules that own runtime resources should contribute `RuntimeHook` instead of starting work from constructors or service resolution:
 
 ```java
-binder.contribute(RuntimeHook.class).add("app.cache", new RuntimeHook() {
+binder.contribute(RuntimeHook.class)
+    .add("app.cache", new RuntimeHook() {
     @Override
     public void start(Container container) {
         container.get(Cache.class).warmup();
@@ -283,17 +258,11 @@ binder.contribute(RuntimeHook.class).add("app.cache", new RuntimeHook() {
 
 Startup invokes hooks in resolved contribution order. Shutdown invokes only started hooks in reverse order, then closes the container.
 
-### Logging Bootstrap
+### Logging
 
-`freeway-commons` provides `LoggingBootstrap` and a JUL-backed SLF4J 2 provider. It is deliberately not registered through `META-INF/services`, so it does not override an application logger.
+`freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically.
 
-Decision path:
-
-- If `slf4j.provider` is already set, leave it alone.
-- If a known external provider is present, leave it alone.
-- Otherwise set the provider to Freeway's JUL fallback.
-
-Lower-level modules that need static loggers should call `LoggingBootstrap.logger(...)` rather than touching `LoggerFactory` directly.
+Framework code uses standard `LoggerFactory.getLogger()` everywhere. Services can inject `LoggerSource` for owner-aware loggers:
 
 ### Config Cascade
 
@@ -354,89 +323,117 @@ binder.bind(MyEngine.class).to(MyEngine.class).id("my-engine");
 
 ## DB Layer (`freeway-db`)
 
-`Database` is the main entry point:
+`Database` is the main entry point for SQL execution:
 
 ```java
-List<User> users = db.sql("select * from users where active = ?", true)
+// positional params
+List<User> users = db.query("SELECT * FROM users WHERE active = ?", true)
     .list(User.class);
 
-User user = db.sql("select * from users where id = :id")
+// named params
+User user = db.query("SELECT * FROM users WHERE id = :id")
     .param("id", 42)
     .one(User.class)
     .orElseThrow();
+
+// SQL builder
+db.execute(SQL.insert("users").set("name", "alice").set("email", "a@b.com"));
 ```
 
-### Usage Patterns
+### Query Paths
 
-Use `sql(...)` for one-off reads and writes:
+- `list(Class)` — all rows as a list.
+- `one(Class)` — at most one row as Optional.
+- `stream(Class)` — lazy Stream (requires try-with-resources).
+- `execute()` — INSERT/UPDATE/DELETE returning `ExecuteResult(rows, id)`.
+
+### Row Mapping
+
+Row mappers resolve automatically: records, beans, basic types (`String`, `Long`, `UUID`, etc.), and the built-in `Row` type for schema-less access:
 
 ```java
-List<User> users = db.sql("select * from users where active = ?", true)
-    .list(User.class);
+List<Row> rows = db.query("SELECT * FROM t").list(Row.class);
+Row r = rows.get(0);
+r.string("name");
+r.decimal("amount");
+r.dateTime("created_at");
+```
 
-db.sql("update users set last_login_at = now() where id = ?", 42L)
+Custom mappers register via `RowMapping` contributions:
+
+```java
+binder.contribute(RowMapping.class).add(new RowMapping(MyType.class, myMapper));
+```
+
+### Batch Operations
+
+```java
+db.batch("INSERT INTO ledger (id, name) VALUES (?, ?)")
+    .rows(new Object[]{1L, "alpha"}, new Object[]{2L, "beta"})
     .execute();
+// returns List<ExecuteResult> with auto-increment IDs for INSERT statements
 ```
 
-Use named parameters when the call site reads better:
+### Transactions
+
+ScopedValue-based implicit transactions — no explicit transaction object:
 
 ```java
-User user = db.sql("select * from users where id = :id")
-    .param("id", 42)
-    .one(User.class)
-    .orElseThrow();
-```
+db.transaction(() -> {
+    db.execute("UPDATE ledger SET amount = amount + ? WHERE id = ?", 100L, 1L);
+    db.execute("INSERT INTO audit_log (msg) VALUES (?)", "ledger updated");
+});
 
-Use `batch(...)` for repeated statements:
-
-```java
-db.batch("insert into ledger (id, name) values (?, ?)")
-    .rows(
-        new Object[] { 1L, "alpha" },
-        new Object[] { 2L, "beta" }
-    )
-    .execute();
-```
-
-Use `transaction(...)` for atomic multi-step work:
-
-```java
-db.transaction(tx -> {
-    tx.sql("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L)
-        .execute();
-    tx.batch("insert into audit_log (id, message) values (?, ?)")
-        .rows(new Object[] { 1L, "ledger updated" })
-        .execute();
+// with isolation level
+db.transaction(IsolationLevel.SERIALIZABLE, () -> {
+    db.query("SELECT ...").list(User.class);
 });
 ```
 
-Use the isolation overload only when the database behavior needs it:
+Nested transactions are detected and rejected. Auto-commit is restored on exit.
+
+### ORM
+
+`Orm` provides lightweight CRUD on top of `Database`:
 
 ```java
-db.transaction(tx -> {
-    tx.sql("update ledger set amount_cents = amount_cents + ? where id = ?", 100L, 1L)
-        .execute();
-}, IsolationLevel.READ_COMMITTED);
+Orm orm = Orm.of(db);
+
+// insert — auto-increment id written back to beans
+Comment c = new Comment("hello", 1L);
+orm.insert(c);  // c.id is now set
+
+// find
+Post p = orm.findById(Post.class, 1L).orElseThrow();
+List<Post> recent = orm.findAll(Post.class, "created_at DESC", 20, 0);
+
+// update / delete
+c.text = "updated";
+orm.update(c);
+orm.delete(c);
+
+// upsert — insert if new, update if exists
+orm.save(c);
 ```
 
-Use `DatabaseHub` when there are multiple datasources:
+Entities use `@Table`/`@Column`/`@Id`/`@Generated`/`@Transient` annotations from `com.jujin.freeway.db.schema`.
+
+### Schema & Migrations
+
+```java
+// AutoMigrate — create missing tables / columns
+Schema.ensure(database, Post.class, Comment.class);
+
+// SQL-based migrations from db/migration/
+// V001__create_users.sql, V002__add_email.sql, ...
+```
+
+### DatabaseHub
 
 ```java
 Database primary = hub.primary();
 Database audit = hub.get("audit");
 ```
-
-Key capabilities:
-
-- Positional and named parameters.
-- Collection expansion for `IN` clauses.
-- `one`, `list`, `stream`, and `execute` query paths.
-- Programmatic transactions.
-- Built-in connection pool and leak statistics.
-- SQL migrations from `db/migration/`.
-- Record/bean row mapping with cached column lookup.
-- Manually registered row mappers and user-contributed row mappers merge in one resolver.
-- `DatabaseHub` for multiple datasources.
 
 ## Naming Rules
 

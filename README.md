@@ -14,7 +14,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | `├ freeway-http-robaho` | Zero-dep engine with WebSocket (default)                  |
 | `├ freeway-http-undertow` | Undertow transport adapter                                |
 | `└ freeway-http-jetty` | Jetty transport adapter                                   |
-| `freeway-db` | JDBC data access: pooling, transactions, migrations       |
+| `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
 
 ## Philosophy
 
@@ -110,6 +110,18 @@ Boot turns a composed container into an application runtime:
 - Startup timing - logs elapsed startup time.
 - Config providers - properties files, JSON, environment, system properties, CLI args.
 
+**Lifecycle:** state machine with six states:
+
+```
+CREATED ──start()──▶ STARTING ──ok──▶ RUNNING ──close()──▶ STOPPING ──▶ STOPPED
+  │                    │                 │                    │
+  └── close() ───────────────────────────────────────────────┘
+                       │                 │                    │
+                       └── error ──▶ FAILED ◀── error ───────┘
+```
+
+`start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions.
+
 ### HTTP (`freeway-http`)
 
 The HTTP layer is deliberately thin:
@@ -136,15 +148,17 @@ web.engine=jetty
 
 ### DB (`freeway-db`)
 
-The DB module is a compact JDBC data access layer:
+A compact JDBC data access layer with ORM:
 
-- `Database` - SQL execution entry point.
-- Queries - list, one, stream, execute.
-- Named parameters - `:name` and `$name` syntax with collection expansion.
-- Transactions - programmatic transaction control.
+- `Database` - SQL execution with positional/named parameters and collection expansion.
+- `Orm` - lightweight CRUD: `insert`, `update`, `delete`, `findById`, `findAll`, `save` (upsert).
+- `Row` - schema-less query result with type-safe column access.
+- `SQL` - programmatic SQL builder: `SQL.insert("t").set("col", v)`.
+- `RowMapper` - auto-mapping for records, beans, and basic types.
+- Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation.
 - Connection pooling - built-in pool with leak detection.
-- Row mappers - record/bean mapping with cached column lookup, plus manually registered and user-contributed mappers.
-- Migrations - SQL files in `db/migration/`.
+- Schema - `@Table`/`@Column`/`@Id`/`@Generated` annotations + AutoMigrate.
+- Migrations - SQL files in `db/migration/` with checksum tracking.
 - `DatabaseHub` - multi-datasource routing.
 
 ## Configuration
