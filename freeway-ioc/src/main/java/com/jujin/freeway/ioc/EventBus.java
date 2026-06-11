@@ -19,7 +19,7 @@ public final class EventBus implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(EventBus.class);
 
     private final Container container;
-    private final EventBridge bridge;
+    private volatile EventBridge bridge;
     private volatile Executor asyncExecutor;
     private volatile Map<Class<?>, List<Consumer>> moduleClassIndex;
     private volatile Map<String, List<Consumer>> moduleTopicIndex;

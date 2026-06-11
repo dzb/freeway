@@ -23,6 +23,7 @@
         <dependency>
             <groupId>com.jujin8.freeway</groupId>
             <artifactId>freeway-ioc</artifactId>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

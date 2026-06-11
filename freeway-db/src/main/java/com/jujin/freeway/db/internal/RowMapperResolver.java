@@ -7,11 +7,8 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
-import com.jujin.freeway.db.RowMapping;
 import com.jujin.freeway.db.Names;
 import com.jujin.freeway.db.SqlException;
-import com.jujin.freeway.ioc.Extension;
-import com.jujin.freeway.ioc.annotation.Inject;
 
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -32,14 +29,6 @@ public final class RowMapperResolver {
     private final Map<Class<?>, RowMapper<?>> custom;
     private final ConcurrentHashMap<Class<?>, RowMapper<?>> cache = new ConcurrentHashMap<>();
 
-    @Inject
-    public RowMapperResolver(
-        Coercer coercer,
-        Extension<RowMapping> registrations
-    ) {
-        this(coercer, Map.of(), toMap(registrations));
-    }
-
     public RowMapperResolver(
         Coercer coercer,
         Map<Class<?>, RowMapper<?>> manualMappings,
@@ -56,14 +45,6 @@ public final class RowMapperResolver {
             return (RowMapper<T>) mapper;
         }
         return (RowMapper<T>) cache.computeIfAbsent(type, this::create);
-    }
-
-    private static Map<Class<?>, RowMapper<?>> toMap(Extension<RowMapping> reg) {
-        Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
-        for (RowMapping entry : reg.all()) {
-            map.put(entry.type(), entry.mapper());
-        }
-        return Map.copyOf(map);
     }
 
     private static Map<Class<?>, RowMapper<?>> customMap(

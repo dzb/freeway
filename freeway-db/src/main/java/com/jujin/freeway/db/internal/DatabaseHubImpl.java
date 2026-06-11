@@ -2,8 +2,6 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseHub;
-import com.jujin.freeway.db.DatabaseNamed;
-import com.jujin.freeway.ioc.Extension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,13 +12,11 @@ public final class DatabaseHubImpl implements DatabaseHub {
     private static final Logger LOG = LoggerFactory.getLogger(DatabaseHubImpl.class);
     private final Map<String, Database> databases;
 
-    public DatabaseHubImpl(Extension<DatabaseNamed> registrations) {
-        Map<String, Database> map = new LinkedHashMap<>();
-        for (DatabaseNamed entry : registrations.all()) {
-            map.put(entry.name(), entry.db());
-            LOG.debug("Registered database '{}'", entry.name());
+    public DatabaseHubImpl(Map<String, Database> databases) {
+        this.databases = Map.copyOf(databases);
+        for (var entry : databases.entrySet()) {
+            LOG.debug("Registered database '{}'", entry.getKey());
         }
-        this.databases = Map.copyOf(map);
     }
 
     @Override

@@ -1,6 +1,5 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.ioc.annotation.Value;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -30,82 +29,51 @@ public record DatabaseConfig(
     public static final Duration DEFAULT_HEALTH_CHECK_TIMEOUT = Duration.ofSeconds(5);
     public static final Duration DEFAULT_QUERY_TIMEOUT = Duration.ofSeconds(15);
 
-    public DatabaseConfig(
-        @Value("${" + PREFIX + ".url}") String url,
-        @Value("${" + PREFIX + ".username}") String username,
-        @Value("${" + PREFIX + ".password:}") String password,
-        @Value("${" + PREFIX + ".pool.max-size:10}") int maxSize,
-        @Value("${" + PREFIX + ".pool.min-idle:2}") int minIdle,
-        @Value("${" + PREFIX + ".pool.connection-timeout:10s}") Duration connectionTimeout,
-        @Value("${" + PREFIX + ".pool.max-lifetime:30m}") Duration maxLifetime,
-        @Value("${" + PREFIX + ".pool.max-idle-time:10m}") Duration maxIdleTime,
-        @Value("${" + PREFIX + ".pool.clean-interval:2m}") Duration cleanInterval,
-        @Value("${" + PREFIX + ".pool.health-check-query:}") String healthCheckQuery,
-        @Value("${" + PREFIX + ".pool.health-check-timeout:5s}") Duration healthCheckTimeout,
-        @Value("${" + PREFIX + ".query-timeout:15s}") Duration queryTimeout
-    ) {
-        this.url = requireText(url, "url");
-        this.username = requireText(username, "username");
-        this.password = password == null ? "" : password;
-        this.maxSize = requirePositive(maxSize, "maxSize");
-        this.minIdle = requireRange(minIdle, 0, this.maxSize, "minIdle");
-        this.connectionTimeout = requireDuration(connectionTimeout, "connectionTimeout");
-        this.maxLifetime = requireDuration(maxLifetime, "maxLifetime");
-        this.maxIdleTime = requireDuration(maxIdleTime, "maxIdleTime");
-        this.cleanInterval = requireDuration(cleanInterval, "cleanInterval");
-        this.healthCheckQuery = healthCheckQuery == null || healthCheckQuery.isBlank()
-            ? null
-            : healthCheckQuery.trim();
-        this.healthCheckTimeout = requireDuration(healthCheckTimeout, "healthCheckTimeout");
-        this.queryTimeout = requireDuration(queryTimeout, "queryTimeout");
+    public DatabaseConfig {
+        requireText(url, "url");
+        requireText(username, "username");
+        if (password == null) password = "";
+        requirePositive(maxSize, "maxSize");
+        requireRange(minIdle, 0, maxSize, "minIdle");
+        requireDuration(connectionTimeout, "connectionTimeout");
+        requireDuration(maxLifetime, "maxLifetime");
+        requireDuration(maxIdleTime, "maxIdleTime");
+        requireDuration(cleanInterval, "cleanInterval");
+        if (healthCheckQuery != null && healthCheckQuery.isBlank()) healthCheckQuery = null;
+        requireDuration(healthCheckTimeout, "healthCheckTimeout");
+        requireDuration(queryTimeout, "queryTimeout");
     }
 
     public static DatabaseConfig defaults(String url, String username, String password) {
         return new DatabaseConfig(
-            url,
-            username,
-            password,
-            DEFAULT_MAX_SIZE,
-            DEFAULT_MIN_IDLE,
-            DEFAULT_CONNECTION_TIMEOUT,
-            DEFAULT_MAX_LIFETIME,
-            DEFAULT_MAX_IDLE_TIME,
-            DEFAULT_CLEAN_INTERVAL,
-            DEFAULT_HEALTH_CHECK_QUERY,
-            DEFAULT_HEALTH_CHECK_TIMEOUT,
-            DEFAULT_QUERY_TIMEOUT
+            url, username, password,
+            DEFAULT_MAX_SIZE, DEFAULT_MIN_IDLE, DEFAULT_CONNECTION_TIMEOUT,
+            DEFAULT_MAX_LIFETIME, DEFAULT_MAX_IDLE_TIME, DEFAULT_CLEAN_INTERVAL,
+            DEFAULT_HEALTH_CHECK_QUERY, DEFAULT_HEALTH_CHECK_TIMEOUT, DEFAULT_QUERY_TIMEOUT
         );
     }
 
     private static String requireText(String value, String name) {
         Objects.requireNonNull(value, name);
         String trimmed = value.trim();
-        if (trimmed.isEmpty()) {
-            throw new IllegalArgumentException(name + " must not be blank");
-        }
+        if (trimmed.isEmpty()) throw new IllegalArgumentException(name + " must not be blank");
         return trimmed;
     }
 
     private static int requirePositive(int value, String name) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
+        if (value <= 0) throw new IllegalArgumentException(name + " must be positive");
         return value;
     }
 
     private static int requireRange(int value, int min, int max, String name) {
-        if (value < min || value > max) {
-            throw new IllegalArgumentException(
-                name + " must be between " + min + " and " + max
-            );
-        }
+        if (value < min || value > max)
+            throw new IllegalArgumentException(name + " must be between " + min + " and " + max);
         return value;
     }
 
     private static Duration requireDuration(Duration value, String name) {
-        if (value == null || value.isZero() || value.isNegative()) {
+        if (value == null || value.isZero() || value.isNegative())
             throw new IllegalArgumentException(name + " must be positive");
-        }
         return value;
     }
 }

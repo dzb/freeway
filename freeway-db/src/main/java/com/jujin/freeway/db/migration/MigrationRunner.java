@@ -2,7 +2,6 @@ package com.jujin.freeway.db.migration;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
-import com.jujin.freeway.ioc.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,9 +40,9 @@ public final class MigrationRunner {
 
     public MigrationRunner(
         Database database,
-        @Value("${freeway.db.migration.enabled:true}") boolean enabled,
-        @Value("${freeway.db.migration.path:db/migration/}") String path,
-        @Value("${freeway.db.migration.table:_migrations}") String table
+        boolean enabled,
+        String path,
+        String table
     ) {
         this.database = database;
         this.enabled = enabled;
