@@ -17,8 +17,8 @@ public final class EventBus implements AutoCloseable {
 
     private final Container container;
     private final EventBridge bridge;
-    private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
-        new ConcurrentHashMap<>();
+    private final Map<Class<?>, List<Subscription<?>>> runtimeSubs = new ConcurrentHashMap<>();
+    private final Map<String, List<Subscription<?>>> runtimeTopicSubs = new ConcurrentHashMap<>();
 
     @Inject
     public EventBus(Container container) {
@@ -30,99 +30,116 @@ public final class EventBus implements AutoCloseable {
         this.bridge = bridge;
     }
 
+    // ==================== class-based publish ====================
+
     /**
-     * Publish an event to all subscribers (module-contributed via
-     * {@code contribute(EventSubscriber.class)} + runtime subscriptions),
-     * then bridge to external MQ if configured.
+     * Publish an event to all class-matched subscribers (module + runtime),
+     * then bridge to MQ if configured.
      */
     @SuppressWarnings({ "unchecked", "rawtypes" })
     public <E> void publish(E event) {
         Class<?> eventType = event.getClass();
-        String topic = resolveTopic(eventType);
         boolean consumed = false;
 
-        // Module-contributed subscribers
-        for (Consumer handler : moduleSubscribers(eventType)) {
+        for (Consumer handler : moduleSubscribers(eventType, null)) {
             if (event instanceof Stoppable s && s.isStopped()) break;
-            try {
-                handler.accept(event);
-                consumed = true;
-            } catch (Exception ex) {
-                LOG.warn(
-                    "Event subscriber failed for {}",
-                    eventType.getSimpleName(),
-                    ex
-                );
-            }
+            try { handler.accept(event); consumed = true; }
+            catch (Exception ex) { LOG.warn("Event subscriber failed for {}", eventType.getSimpleName(), ex); }
         }
 
-        // Runtime subscribers
-        List<Subscription<?>> subs = runtimeSubs.get(eventType);
-        if (subs != null) {
-            for (Subscription<?> sub : subs) {
-                if (event instanceof Stoppable s && s.isStopped()) break;
-                try {
-                    ((Subscription<E>) sub).accept(event);
-                    consumed = true;
-                } catch (Exception ex) {
-                    LOG.warn(
-                        "Runtime event subscriber failed for {}",
-                        eventType.getSimpleName(),
-                        ex
-                    );
-                }
-            }
+        for (Subscription<?> sub : runtimeSubs.getOrDefault(eventType, List.of())) {
+            if (event instanceof Stoppable s && s.isStopped()) break;
+            try { ((Subscription<E>) sub).accept(event); consumed = true; }
+            catch (Exception ex) { LOG.warn("Runtime event subscriber failed for {}", eventType.getSimpleName(), ex); }
         }
 
-        // EventDead for zero subscribers
-        if (!consumed && !(event instanceof EventDead)) {
-            publish(new EventDead(this, event));
+        if (!consumed && !(event instanceof DeadEvent)) {
+            publish(new DeadEvent(this, event));
         }
 
-        // Bridge to MQ
-        if (bridge != null && topic != null) {
-            bridge.send(topic, event);
+        if (bridge != null) {
+            bridge.send(resolveTopic(eventType), event);
         }
     }
 
+    // ==================== string-topic publish ====================
+
     /**
-     * Add a runtime subscriber. Returns a handle for later unsubscribe.
+     * Publish a payload on a string topic. Subscribers registered via
+     * {@code EventSubscriber.of("topic", handler)} or
+     * {@code bus.subscribe("topic", handler)} receive it.
      */
-    public <E> Subscription<E> subscribe(
-        Class<E> eventType,
-        Consumer<E> handler
-    ) {
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    public void publish(String topic, Object payload) {
+        Objects.requireNonNull(topic, "topic");
+        boolean consumed = false;
+
+        for (Consumer handler : moduleSubscribers(null, topic)) {
+            try { handler.accept(payload); consumed = true; }
+            catch (Exception ex) { LOG.warn("Event subscriber failed for topic '{}'", topic, ex); }
+        }
+
+        for (Subscription<?> sub : runtimeTopicSubs.getOrDefault(topic, List.of())) {
+            try { ((Subscription) sub).accept(payload); consumed = true; }
+            catch (Exception ex) { LOG.warn("Runtime event subscriber failed for topic '{}'", topic, ex); }
+        }
+
+        if (!consumed) {
+            publish(new DeadEvent(this, payload));
+        }
+
+        if (bridge != null) {
+            bridge.send(topic, payload);
+        }
+    }
+
+    // ==================== class-based runtime subscribe ====================
+
+    public <E> Subscription<E> subscribe(Class<E> eventType, Consumer<E> handler) {
         Subscription<E> sub = new Subscription<>(eventType, handler);
-        runtimeSubs
-            .computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
-            .add((Subscription) sub);
+        runtimeSubs.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>()).add((Subscription) sub);
         return sub;
     }
 
-    /**
-     * Remove a runtime subscriber.
-     */
+    // ==================== string-topic runtime subscribe ====================
+
+    @SuppressWarnings("unchecked")
+    public Subscription<Object> subscribe(String topic, Consumer<Object> handler) {
+        Subscription<Object> sub = new Subscription<>(Object.class, handler, topic);
+        runtimeTopicSubs.computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>()).add((Subscription) sub);
+        return sub;
+    }
+
+    // ==================== unsubscribe ====================
+
     public void unsubscribe(Subscription<?> sub) {
-        List<Subscription<?>> subs = runtimeSubs.get(sub.eventType());
-        if (subs != null) {
-            subs.remove(sub);
+        if (sub.topic() != null) {
+            List<Subscription<?>> subs = runtimeTopicSubs.get(sub.topic());
+            if (subs != null) subs.remove(sub);
+        } else {
+            List<Subscription<?>> subs = runtimeSubs.get(sub.eventType());
+            if (subs != null) subs.remove(sub);
         }
     }
 
     @Override
     public void close() {
         runtimeSubs.clear();
+        runtimeTopicSubs.clear();
     }
 
-    private List<Consumer> moduleSubscribers(Class<?> eventType) {
+    // ==================== internals ====================
+
+    @SuppressWarnings("unchecked")
+    private List<Consumer> moduleSubscribers(Class<?> eventType, String topic) {
         Extension<?> ext = moduleExtension();
         if (ext == null) return List.of();
         List<Consumer> result = new ArrayList<>();
         for (Object entry : ext.all()) {
-            if (
-                entry instanceof EventSubscriber<?> sub &&
-                sub.eventType() == eventType
-            ) {
+            if (!(entry instanceof EventSubscriber<?> sub)) continue;
+            if (eventType != null && sub.eventType() == eventType) {
+                result.add((Consumer) sub.handler());
+            } else if (topic != null && topic.equals(sub.topic())) {
                 result.add((Consumer) sub.handler());
             }
         }
@@ -131,10 +148,7 @@ public final class EventBus implements AutoCloseable {
 
     private Extension<?> moduleExtension() {
         try {
-            return container.get(
-                Extension.class,
-                EventSubscriber.class.getName()
-            );
+            return container.get(Extension.class, EventSubscriber.class.getName());
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -145,10 +159,6 @@ public final class EventBus implements AutoCloseable {
         return topic != null ? topic.value() : eventType.getSimpleName();
     }
 
-    /**
-     * Marker interface for events that support short-circuiting the subscriber chain.
-     * Call {@code stop()} from a subscriber to prevent downstream subscribers from executing.
-     */
     public interface Stoppable {
         void stop();
         boolean isStopped();

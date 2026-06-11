@@ -122,10 +122,10 @@ class EventBusTest {
 
     @Test
     void deadEventFiresWhenNoSubscribers() {
-        List<EventDead> deads = new ArrayList<>();
+        List<DeadEvent> deads = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(EventDead.class, (Consumer<EventDead>) deads::add))
+                EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
         );
 
         new EventBus(container).publish(new PostCreatedEvent(new Post("orphan")));
@@ -136,10 +136,10 @@ class EventBusTest {
 
     @Test
     void deadEventDoesNotSelfLoop() {
-        List<EventDead> deads = new ArrayList<>();
+        List<DeadEvent> deads = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
-                EventSubscriber.of(EventDead.class, (Consumer<EventDead>) deads::add))
+                EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
         );
 
         new EventBus(container).publish(new PostCreatedEvent(new Post("x")));
@@ -175,6 +175,74 @@ class EventBusTest {
         bus.subscribe(PostCreatedEvent.class, e -> log.add("x"));
         bus.close();
         bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertTrue(log.isEmpty());
+    }
+
+    // ==================== string-topic subscribers ====================
+
+    @Test
+    void stringTopicModuleSubscriberReceivesPayload() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of("post.created", p -> log.add((String) p)))
+        );
+
+        EventBus bus = new EventBus(container);
+        bus.publish("post.created", "hello");
+
+        assertEquals(1, log.size());
+        assertEquals("hello", log.get(0));
+    }
+
+    @Test
+    void stringTopicRuntimeSubscriberReceivesPayload() {
+        List<String> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        bus.subscribe("post.created", p -> log.add((String) p));
+        bus.publish("post.created", "runtime");
+
+        assertEquals(1, log.size());
+        assertEquals("runtime", log.get(0));
+    }
+
+    @Test
+    void differentTopicsDontCrossFire() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of("post.created", p -> log.add("post:" + p)))
+        );
+
+        EventBus bus = new EventBus(container);
+        bus.publish("comment.added", "test");
+
+        // "comment.added" has no subscriber → DeadEvent
+        assertTrue(log.isEmpty());
+    }
+
+    @Test
+    void stringTopicDeadEventForZeroSubscribers() {
+        List<DeadEvent> deads = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
+        );
+
+        new EventBus(container).publish("no.such.topic", "orphan");
+
+        assertEquals(1, deads.size());
+        assertEquals("orphan", deads.get(0).event());
+    }
+
+    @Test
+    void stringTopicUnsubscribe() {
+        List<String> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        Subscription<Object> sub = bus.subscribe("topic", p -> log.add((String) p));
+        bus.unsubscribe(sub);
+        bus.publish("topic", "x");
 
         assertTrue(log.isEmpty());
     }

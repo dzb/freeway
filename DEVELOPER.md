@@ -214,7 +214,7 @@ bus.publish(new PostCreatedEvent(post));
 | `EventBus` | Publish, subscribe, unsubscribe. Injected via `@Inject EventBus` |
 | `EventSubscriber<E>` | Module-level subscriber: carries event type, handler, and ordering |
 | `Subscription<E>` | Handle returned by `subscribe()`, used to `unsubscribe()` |
-| `EventDead` | Published when an event has zero subscribers — subscribe for logging |
+| `DeadEvent` | Published when an event has zero subscribers — subscribe for logging |
 | `EventBridge` | Bridge to external MQ: `EventBridge.send(topic, event)` |
 | `@Topic("kafka.topic")` | Maps an event class to a cross-JVM topic name |
 | `EventBus.Stoppable` | Events implementing this can `stop()` the subscriber chain |
@@ -237,7 +237,7 @@ binder.contribute(EventSubscriber.class)
 
 ```java
 binder.contribute(EventSubscriber.class)
-    .add(EventSubscriber.of(EventDead.class, e -> LOG.warn("No subscriber for {}", e.event().getClass())));
+    .add(EventSubscriber.of(DeadEvent.class, e -> LOG.warn("No subscriber for {}", e.event().getClass())));
 ```
 
 ### Type Coercion

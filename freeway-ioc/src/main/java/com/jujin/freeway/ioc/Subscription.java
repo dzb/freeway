@@ -7,15 +7,22 @@ import java.util.function.Consumer;
 public final class Subscription<E> implements Consumer<E> {
     private final Class<E> eventType;
     private final Consumer<E> handler;
+    private final String topic;
 
     Subscription(Class<E> eventType, Consumer<E> handler) {
         this.eventType = Objects.requireNonNull(eventType, "eventType");
         this.handler = Objects.requireNonNull(handler, "handler");
+        this.topic = null;
     }
 
-    Class<E> eventType() {
-        return eventType;
+    Subscription(Class<E> eventType, Consumer<E> handler, String topic) {
+        this.eventType = eventType;
+        this.handler = Objects.requireNonNull(handler, "handler");
+        this.topic = Objects.requireNonNull(topic, "topic");
     }
+
+    Class<E> eventType() { return eventType; }
+    String topic() { return topic; }
 
     @Override
     public void accept(E event) {
