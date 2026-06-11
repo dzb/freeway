@@ -211,5 +211,6 @@
         <module>freeway-http-undertow</module>
         <module>freeway-http-jetty</module>
         <module>freeway-db</module>
+        <module>freeway-mq-kafka</module>
     </modules>
 </project>
