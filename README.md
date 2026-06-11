@@ -6,7 +6,7 @@ Zero classpath scanning. Compose-first API. No magic.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
-| `freeway-commons` | Shared utilities: JSON, scalar coercion, logging fallback |
+| `freeway-commons` | Shared utilities: JSON, coercion, Defer, logging fallback |
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise               |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP/WebSocket layer: routing, filters, static, multipart |
@@ -92,6 +92,7 @@ Shared utilities usable independently of the framework:
 
 - JSON — `JsonCodec` for object↔JSON mapping, `JsonUtils` for parsing/serialization.
 - Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
+- Defer — scope-bound deferred execution. Actions buffered inside a scope drain on commit, discard on rollback. Backed by `ScopedValue`.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
 - Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
 
@@ -109,7 +110,7 @@ The IoC module provides the framework core:
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
-- EventBus - process-local pub/sub: class-based (`PostCreatedEvent`) or string-topic (`"post.created"`), module-contributed (ordered `before/after`) or runtime-subscribed, with `Stoppable` short-circuit and `DeadEvent` logging. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
+- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. Transaction-aware: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
 
 ### Boot (`freeway-boot`)
 
@@ -168,8 +169,8 @@ A compact JDBC data access layer with ORM:
 - `Row` - schema-less query result with type-safe column access.
 - `SQL` - programmatic SQL builder: `SQL.insert("t").set("col", v)`.
 - `RowMapper` - auto-mapping for records, beans, and basic types.
-- Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation.
-- Connection pooling - built-in pool with leak detection.
+- Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus.
+- Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via `freeway.db.pool`. HikariCP adapter available (`freeway-db-hikari`).
 - Schema - `@Table`/`@Column`/`@Id`/`@Generated` annotations + AutoMigrate.
 - Migrations - SQL files in `db/migration/` with checksum tracking.
 - `DatabaseHub` - multi-datasource routing.

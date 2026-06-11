@@ -32,10 +32,11 @@
       .rows(new Object[]{"A"}, new Object[]{"B"})
       .execute();
 
-  // 7. 事务
+  // 7. 事务 + 事件总线感知
   db.transaction(() -> {
       db.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", 100, 1);
       db.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", 100, 2);
+      bus.publish(new TransferEvent(1, 2, 100));  // 自动延迟到提交后发布
   });
 
   // 8. ORM
@@ -86,7 +87,7 @@
   原始 SQL      →  db.execute() / db.query()
   SQL 构建器    →  SQL.select().from().where().orderBy()
   Row 列访问    →  row.string("name") / row.integer("age")
-  事务处理      →  db.transaction(() -> ...)
+  事务处理      →  db.transaction(() -> ...) + EventBus 事务感知
   ```
 
 结论：**LLM 完全可以读懂并使用 freeway 进行开发**，从实体定义到 DDL 建表再到 CRUD 存取的完整链路已跑通。

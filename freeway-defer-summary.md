@@ -253,6 +253,3 @@ Defer 本身是通用的。任何有"成功 / 回滚"语义的边界都可以用
 
 `Defer` 内部只是一个 `ScopedValue<List<Runnable>>`。作用域内，`defer()` 追加到列表；作用域外，直接 `run()`。提交时遍历执行，回滚时清空。线程天然隔离——不同线程的工作互不干扰，虚拟线程也适用。
 
-## 与 afterCommit 的关系
-
-`DatabaseImpl` 原来有一个 package-private 的 `afterCommit(Runnable)` 静态方法，用于在事务提交后执行回调。Defer 提供了更通用的替代方案，但两者可以共存：现有 `afterCommit` 钩子仍在事务内执行，Defer 的动作在之后执行。用户代码应使用 `Defer.defer()` 或直接依赖框架的自动 Defer 集成（EventBus 场景）。

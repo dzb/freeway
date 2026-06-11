@@ -3,8 +3,6 @@ package com.jujin.freeway.db.internal;
 import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.db.*;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +11,7 @@ public final class DatabaseImpl implements Database {
     private static final Logger LOG = LoggerFactory.getLogger(
         DatabaseImpl.class
     );
-    private static final ScopedValue<TransactionContext> CURRENT_TX =
+    private static final ScopedValue<PooledConnection> TX_CONN =
         ScopedValue.newInstance();
 
     private final Pool pool;
@@ -61,7 +59,7 @@ public final class DatabaseImpl implements Database {
     }
 
     private PooledConnection txConnection() {
-        return CURRENT_TX.isBound() ? CURRENT_TX.get().conn : null;
+        return TX_CONN.isBound() ? TX_CONN.get() : null;
     }
 
     @Override
@@ -71,7 +69,7 @@ public final class DatabaseImpl implements Database {
 
     @Override
     public void transaction(IsolationLevel isolation, Transactional work) {
-        if (CURRENT_TX.isBound()) {
+        if (TX_CONN.isBound()) {
             throw new IllegalStateException("Nested transaction not supported");
         }
         PooledConnection conn = pool.borrow();
@@ -83,12 +81,8 @@ public final class DatabaseImpl implements Database {
             if (isolation != null && isolation != IsolationLevel.DEFAULT) {
                 raw.setTransactionIsolation(isolation.jdbcLevel());
             }
-            TransactionContext ctx = new TransactionContext(
-                conn,
-                originalIsolation
-            );
             Defer.within(() -> {
-                ScopedValue.where(CURRENT_TX, ctx).run(() -> {
+                ScopedValue.where(TX_CONN, conn).run(() -> {
                     try {
                         work.run();
                     } catch (Exception e) {
@@ -103,13 +97,6 @@ public final class DatabaseImpl implements Database {
                     throw new RuntimeException("Commit failed", e);
                 }
                 LOG.trace("Transaction committed");
-                for (Runnable hook : ctx.hooks()) {
-                    try {
-                        hook.run();
-                    } catch (Exception ex) {
-                        LOG.warn("afterCommit hook failed", ex);
-                    }
-                }
             });
         } catch (Exception e) {
             LOG.debug("Transaction rolled back", e);
@@ -193,26 +180,6 @@ public final class DatabaseImpl implements Database {
 
     Pool pool() {
         return pool;
-    }
-
-    private record TransactionContext(
-        PooledConnection conn,
-        int originalIsolation,
-        List<Runnable> hooks
-    ) {
-        TransactionContext(PooledConnection conn, int originalIsolation) {
-            this(conn, originalIsolation, new ArrayList<>());
-        }
-    }
-
-    /**
-     * Register an action to run after the current transaction commits successfully.
-     * If not inside a transaction, the action runs immediately.
-     */
-    public static void afterCommit(Runnable action) {
-        TransactionContext ctx = CURRENT_TX.orElse(null);
-        if (ctx != null) ctx.hooks().add(action);
-        else action.run();
     }
 
     private static int skipIgnorableSqlPrefix(String sql) {
