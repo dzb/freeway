@@ -233,11 +233,29 @@ binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(PostCreatedEvent.class, e -> { if (!loggedIn) e.stop(); }));
 ```
 
+**String-topic mode:**
+
+```java
+// Lighter weight — no event class needed
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of("post.created", payload -> { ... }));
+
+bus.publish("post.created", payload);
+```
+
 **DeadEvent logging:**
 
 ```java
 binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(DeadEvent.class, e -> LOG.warn("No subscriber for {}", e.event().getClass())));
+```
+
+**Lifecycle events:** Boot publishes `AppStartedEvent` after all hooks start, and `AppStoppingEvent` before shutdown. Subscribe via EventBus instead of implementing RuntimeHook for non-critical work:
+
+```java
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of(AppStartedEvent.class,  e -> cache.warmup()))
+    .add(EventSubscriber.of(AppStoppingEvent.class, e -> cache.flush()));
 ```
 
 ### Type Coercion
