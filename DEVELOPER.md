@@ -31,7 +31,7 @@ Freeway 2 uses these architectural boundaries:
 - `RuntimeHook` provides start/stop extension points for modules. Hooks are contributed through `Contributions<RuntimeHook>`.
 - Ordered list contributions are supported through `add(id, value).before(...)` and `.after(...)`.
 - HTTP startup no longer happens as a side effect of resolving `WebServer`. `HttpModule` contributes hook id `freeway.http.server`.
-- Logger access is represented by `LoggerSource`; commons provides non-invasive SLF4J-over-JUL fallback through `LoggingBootstrap`.
+- Logger access is represented by `LoggerSource`; commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery.
 - Default implementation class names use the `XDefault` suffix form to keep interface names dominant.
 
 ## IoC Container (`freeway-ioc`)
@@ -141,8 +141,7 @@ public final class UserService {
 }
 ```
 
-Supported annotations live under `com.jujin.freeway.ioc.annotation` and include `@Inject`, `@Named`, `@Primary`, `@Symbol`, `@Value`, and `@Extension`.
-`@Extension` can be placed on `TYPE`, `FIELD`, and `PARAMETER`. On a type it supplies the default extension point for collection/map members in that class; member-level usage overrides the class default.
+Supported annotations live under `com.jujin.freeway.ioc.annotation` and include `@Inject`, `@Named`, `@Symbol`, and `@Value`. Primary resolution uses `binding.primary()` on the binding DSL, not an annotation.
 
 ### Symbol and Value Injection
 

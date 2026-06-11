@@ -46,7 +46,7 @@ Freeway 2 keeps its core concepts and public API intentionally small:
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the web server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL fallback for SLF4J only when no external SLF4J provider is present.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery.
 - Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 ## Quick Start
@@ -86,6 +86,15 @@ mvn -pl freeway-db -am test
 
 ## Modules at a Glance
 
+### Commons (`freeway-commons`)
+
+Shared utilities usable independently of the framework:
+
+- JSON — `JsonCodec` for object↔JSON mapping, `JsonUtils` for parsing/serialization.
+- Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
+- Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
+- Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
+
 ### IoC (`freeway-ioc`)
 
 The IoC module provides the framework core:
@@ -94,10 +103,10 @@ The IoC module provides the framework core:
 - Named services - `.id("primary")`.
 - Primary resolution - `.primary()` for the default binding when no id is supplied.
 - Scopes - `SINGLETON`, `PROTOTYPE`, `THREAD`.
-- Injection - constructor and field injection with `@Inject`, `@Named`, `@Symbol`, `@Value`, and `@Extension`.
+- Injection - constructor and field injection with `@Inject`, `@Named`, `@Symbol`, `@Value`.
 - Value expansion - `${...}` placeholder expansion for external configuration.
 - Type coercion - scalar and domain-specific conversions through contributed coercion rules.
-- Extension points - `binder.contribute(X.class).add(...)` and ordered `add(id, value).before/after(...)`, with `@Extension` consuming contributed lists and maps.
+- Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
 - EventBus - process-local pub/sub: class-based (`PostCreatedEvent`) or string-topic (`"post.created"`), module-contributed (ordered `before/after`) or runtime-subscribed, with `Stoppable` short-circuit and `DeadEvent` logging. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
