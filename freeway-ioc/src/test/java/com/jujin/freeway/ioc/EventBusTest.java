@@ -2,6 +2,8 @@ package com.jujin.freeway.ioc;
 
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.commons.defer.Defer;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -290,5 +292,88 @@ class EventBusTest {
         bus.publish(new PostCreatedEvent(new Post("x"))); // sync, not async
 
         assertEquals(1, log.size());
+    }
+
+    // ==================== Defer integration ====================
+
+    @Test
+    void publishInsideDeferScopeIsDeferredUntilCommit() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+        );
+        EventBus bus = new EventBus(container);
+
+        Defer.within(() -> {
+            bus.publish(new PostCreatedEvent(new Post("x")));
+            assertTrue(log.isEmpty(), "event should be buffered, not published immediately");
+        });
+
+        assertEquals(List.of("event"), log);
+    }
+
+    @Test
+    void publishInsideDeferScopeDiscardsOnRollback() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+        );
+        EventBus bus = new EventBus(container);
+
+        assertThrows(RuntimeException.class, () -> {
+            Defer.within(() -> {
+                bus.publish(new PostCreatedEvent(new Post("x")));
+                throw new RuntimeException("rollback");
+            });
+        });
+
+        assertTrue(log.isEmpty(), "deferred event should be discarded on rollback");
+    }
+
+    @Test
+    void stringTopicPublishInsideDeferScopeIsDeferred() {
+        List<String> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        bus.subscribe("topic", p -> log.add((String) p));
+
+        Defer.within(() -> {
+            bus.publish("topic", "hello");
+            assertTrue(log.isEmpty());
+        });
+
+        assertEquals(List.of("hello"), log);
+    }
+
+    @Test
+    void publishOutsideDeferScopeStillImmediate() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+        );
+        EventBus bus = new EventBus(container);
+
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(List.of("event"), log);
+    }
+
+    @Test
+    void deadEventBypassesDefer() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(DeadEvent.class, e -> log.add("dead")))
+        );
+        EventBus bus = new EventBus(container);
+
+        Defer.within(() -> {
+            // Publish an event with zero subscribers — DeadEvent should fire immediately
+            bus.publish("no-subscribers-for-this");
+        });
+
+        assertFalse(log.isEmpty(), "DeadEvent must fire immediately, not be deferred");
     }
 }

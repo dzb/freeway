@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.Extension;
@@ -68,21 +69,23 @@ public final class WebServer implements AutoCloseable {
         this.requestHandler = new HttpRequestHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
-                try {
-                    timingFilter.doFilter(ctx, request -> {
-                        try {
-                            processRequest(request);
-                        } catch (Exception ex) {
-                            handleException(request, ex);
-                        }
-                    });
-                } catch (Exception ex) {
-                    handleException(ctx, ex);
-                    publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
-                }
-                long elapsed = Duration.between(
-                    ctx.requestContext().startTime(), Instant.now()).toMillis();
-                publish(new HttpRequestEvent(ctx.method(), ctx.path(), ctx.statusCode(), elapsed));
+                Defer.within(() -> {
+                    try {
+                        timingFilter.doFilter(ctx, request -> {
+                            try {
+                                processRequest(request);
+                            } catch (Exception ex) {
+                                handleException(request, ex);
+                            }
+                        });
+                    } catch (Exception ex) {
+                        handleException(ctx, ex);
+                        publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
+                    }
+                    long elapsed = Duration.between(
+                        ctx.requestContext().startTime(), Instant.now()).toMillis();
+                    publish(new HttpRequestEvent(ctx.method(), ctx.path(), ctx.statusCode(), elapsed));
+                });
             }
 
             @Override
