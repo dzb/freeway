@@ -36,6 +36,11 @@ public final class EventBus implements AutoCloseable {
         this.bridge = bridge;
     }
 
+    /** Wire an event bridge (Kafka, RabbitMQ, etc.) after construction. */
+    public void setEventBridge(EventBridge bridge) {
+        this.bridge = Objects.requireNonNull(bridge, "bridge");
+    }
+
     // ==================== class-based publish ====================
 
     /**

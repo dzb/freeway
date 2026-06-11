@@ -66,7 +66,6 @@ public class KafkaSubscriber implements AutoCloseable {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Object deserialize(ConsumerRecord<String, byte[]> record) throws Exception {
         String json = new String(record.value(), StandardCharsets.UTF_8);
         String typeName = header(record, "X-Event-Type");
