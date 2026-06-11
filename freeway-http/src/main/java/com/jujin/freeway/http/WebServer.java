@@ -1,6 +1,7 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.annotation.Value;
 import org.slf4j.Logger;
@@ -75,7 +76,11 @@ public final class WebServer implements AutoCloseable {
                     });
                 } catch (Exception ex) {
                     handleException(ctx, ex);
+                    publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
                 }
+                long elapsed = java.time.Duration.between(
+                    ctx.requestContext().startTime(), java.time.Instant.now()).toMillis();
+                publish(new HttpRequestEvent(ctx.method(), ctx.path(), ctx.statusCode(), elapsed));
             }
 
             @Override
@@ -148,6 +153,7 @@ public final class WebServer implements AutoCloseable {
             awaitReady(h.host(), h.port());
             this.handle = h;
             LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
+            publish(new HttpServerStartedEvent(h.host(), h.port()));
             return h;
         }
     }
@@ -270,6 +276,13 @@ public final class WebServer implements AutoCloseable {
             ctx.send(500, "Internal Server Error");
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
+        }
+    }
+
+    private void publish(Object event) {
+        try {
+            container.get(EventBus.class).publish(event);
+        } catch (Exception ignored) {
         }
     }
 

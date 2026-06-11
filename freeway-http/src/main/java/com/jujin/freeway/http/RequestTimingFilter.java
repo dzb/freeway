@@ -17,14 +17,8 @@ public final class RequestTimingFilter implements HttpFilter {
             next.handle(ctx);
         } finally {
             long elapsedMillis = Duration.between(startedAt, Instant.now()).toMillis();
-            LOG.info(
-                "{} {} -> {} ({} ms, id={})",
-                ctx.method(),
-                ctx.path(),
-                ctx.statusCode(),
-                elapsedMillis,
-                rc.correlationId()
-            );
+            LOG.info("{} {} -> {} ({} ms, id={})",
+                ctx.method(), ctx.path(), ctx.statusCode(), elapsedMillis, rc.correlationId());
         }
     }
 }

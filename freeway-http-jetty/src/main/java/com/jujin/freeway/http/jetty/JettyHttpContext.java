@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.JsonCodec;
+
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.SseEmitter;
 import java.io.IOException;
