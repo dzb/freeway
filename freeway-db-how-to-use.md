@@ -301,6 +301,17 @@ try {
 }
 ```
 
+### 事务感知的事件发布
+
+事务内调用 `bus.publish()` 自动延迟到提交后执行——提交成功才发，回滚不发。零配置，框架基于 `Defer` 机制自动处理。
+
+```java
+db.transaction(() -> {
+    orm.insert(new User("闪电", 3));
+    bus.publish(new UserCreatedEvent(user));  // 提交后才真正发布
+});
+```
+
 ---
 
 ## 九、ExecuteResult 返回值
