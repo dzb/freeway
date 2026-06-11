@@ -15,6 +15,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | `├ freeway-http-undertow` | Undertow transport adapter                                |
 | `└ freeway-http-jetty` | Jetty transport adapter                                   |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
+| `freeway-mq-kafka` | Kafka adapter for EventBus: distributed pub/sub           |
 
 ## Philosophy
 
@@ -163,6 +164,21 @@ A compact JDBC data access layer with ORM:
 - Schema - `@Table`/`@Column`/`@Id`/`@Generated` annotations + AutoMigrate.
 - Migrations - SQL files in `db/migration/` with checksum tracking.
 - `DatabaseHub` - multi-datasource routing.
+
+### MQ (`freeway-mq-kafka`)
+
+Kafka adapter for the EventBus — enables distributed pub/sub across JVM instances:
+
+- `KafkaEventBridge` - implements `EventBridge`, sends events to Kafka broker.
+- `KafkaSubscriber` - polls Kafka, publishes back to local EventBus.
+- `KafkaModule` - registers services, wires bridge to EventBus at startup.
+
+Activate with `new KafkaModule()` and configure:
+
+```properties
+freeway.kafka.bootstrap-servers=localhost:9092
+freeway.kafka.topics=post.created,comment.added
+```
 
 ## Configuration
 

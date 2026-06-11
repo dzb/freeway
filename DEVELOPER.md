@@ -258,6 +258,40 @@ binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(AppStoppingEvent.class, e -> cache.flush()));
 ```
 
+### Kafka (`freeway-mq-kafka`)
+
+Distributed pub/sub via EventBus. Add `KafkaModule` to enable:
+
+```java
+Launcher.run(AppModule.class, new KafkaModule());
+```
+
+**Sending:** EventBus automatically bridges to Kafka:
+
+```java
+bus.publish(new PostCreatedEvent(post));
+// → local subscribers + KafkaEventBridge → broker
+```
+
+**Receiving:** KafkaSubscriber polls Kafka, publishes to local EventBus. Messages carry an `X-Event-Type` header for automatic type deserialization.
+
+**Configuration:**
+
+```properties
+freeway.kafka.bootstrap-servers=localhost:9092
+freeway.kafka.group-id=my-app
+freeway.kafka.topics=post.created,comment.added
+```
+
+**Key types:**
+
+| Type | Purpose |
+|------|---------|
+| `KafkaEventBridge` | Implements `EventBridge`, sends to Kafka |
+| `KafkaSubscriber` | Polls Kafka, publishes to local `EventBus` |
+| `KafkaConfig` | Bootstrap servers, group-id, topic list |
+| `KafkaModule` | Registers all services + RuntimeHook wiring |
+
 ### Type Coercion
 
 The IoC layer keeps the original Freeway strength: external strings can be expanded and coerced into target types.
