@@ -2,6 +2,7 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.Pool;
+import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.SqlException;
 import java.sql.Connection;
 import java.sql.DriverManager;

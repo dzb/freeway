@@ -212,5 +212,6 @@
         <module>freeway-http-jetty</module>
         <module>freeway-db</module>
         <module>freeway-mq-kafka</module>
+        <module>freeway-db-hikari</module>
     </modules>
 </project>

@@ -11,7 +11,7 @@ public final class PooledConnection {
     private volatile Instant lastReturned;
     private volatile Instant borrowedAt; // null when idle, non-null when borrowed
 
-    PooledConnection(Connection conn, Instant createdAt) {
+    public PooledConnection(Connection conn, Instant createdAt) {
         this.conn = conn;
         this.createdAt = createdAt;
         this.lastReturned = createdAt;

@@ -1,6 +1,7 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.PoolConfig;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
