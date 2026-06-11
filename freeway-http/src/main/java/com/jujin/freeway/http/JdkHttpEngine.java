@@ -1,5 +1,7 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.json.JsonCodec;
+
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;

@@ -1,6 +1,8 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
 
 import java.io.IOException;
 import java.util.HashMap;

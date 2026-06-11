@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.undertow;
 
+import com.jujin.freeway.commons.json.JsonCodec;
+
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.JsonCodec;

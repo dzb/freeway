@@ -1,7 +1,7 @@
 package com.jujin.freeway.mq.kafka;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.EventBridge;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -18,24 +18,27 @@ public class KafkaEventBridge implements EventBridge, AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(KafkaEventBridge.class);
 
     private final Producer<String, byte[]> producer;
-    private final ObjectMapper mapper;
+    private final JsonCodec codec;
 
     public KafkaEventBridge(KafkaConfig config) {
+        this(config, new JsonCodecDefault());
+    }
+
+    public KafkaEventBridge(KafkaConfig config, JsonCodec codec) {
         var props = new Properties();
         props.put("bootstrap.servers", config.bootstrapServers());
         props.put("key.serializer", StringSerializer.class.getName());
         props.put("value.serializer", ByteArraySerializer.class.getName());
         this.producer = new KafkaProducer<>(props);
-        this.mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        this.codec = codec;
     }
 
     @Override
     public void send(String topic, Object event) {
         try {
-            byte[] bytes = mapper.writeValueAsBytes(event);
+            byte[] bytes = codec.toJson(event).getBytes(StandardCharsets.UTF_8);
             var record = new ProducerRecord<String, byte[]>(topic, null, bytes);
-            String typeName = event.getClass().getName();
-            record.headers().add("X-Event-Type", typeName.getBytes(StandardCharsets.UTF_8));
+            record.headers().add("X-Event-Type", event.getClass().getName().getBytes(StandardCharsets.UTF_8));
             producer.send(record, (meta, ex) -> {
                 if (ex != null) LOG.warn("Kafka send failed for topic '{}'", topic, ex);
             });

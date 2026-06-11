@@ -1,4 +1,4 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.commons.json;
 
 import java.lang.reflect.Type;
 

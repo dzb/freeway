@@ -1,5 +1,7 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.*;
 import com.jujin.freeway.ioc.Module;
 

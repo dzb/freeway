@@ -1,5 +1,7 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.json.JsonCodec;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
