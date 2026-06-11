@@ -1,6 +1,6 @@
 package com.jujin.freeway.db;
 
-import java.time.Duration;
+import com.jujin.freeway.db.internal.PooledConnection;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -11,15 +11,14 @@ class DatabaseBuilderTest {
     @Test
     void overlaysAnExistingConfig() {
         String dbName = "freeway_builder_overlay_" + UUID.randomUUID().toString().replace('-', '_');
-        DatabaseConfig base = DatabaseConfig.defaults(
+        PoolConfig base = PoolConfig.defaults(
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "sa",
             ""
         );
-        DatabaseConfig modified = new DatabaseConfig(
+        PoolConfig modified = new PoolConfig(
             base.url(), base.username(), base.password(),
-            6,
-            base.minIdle(),
+            6, base.minIdle(),
             base.connectionTimeout(), base.maxLifetime(), base.maxIdleTime(),
             base.cleanInterval(), base.healthCheckQuery(), base.healthCheckTimeout(),
             base.queryTimeout()
@@ -36,7 +35,7 @@ class DatabaseBuilderTest {
     void standaloneBuilderUsesDefaultCoercion() {
         String dbName = "freeway_builder_coercion_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -52,7 +51,7 @@ class DatabaseBuilderTest {
     void standaloneBuilderAcceptsManualRowMapper() {
         String dbName = "freeway_builder_mapper_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .rowMapper(Marker.class, (rs, rowNum) -> new Marker(rs.getString(1)))
             .build();
 
@@ -62,6 +61,43 @@ class DatabaseBuilderTest {
         }
     }
 
+    @Test
+    void customPoolIsUsed() {
+        String dbName = "freeway_builder_pool_" + UUID.randomUUID().toString().replace('-', '_');
+        PoolConfig config = PoolConfig.defaults(
+            "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""
+        );
+
+        Database db = new DatabaseBuilder()
+            .config(config)
+            .pool(new StubPool())
+            .build();
+
+        try (db) {
+            assertEquals(Integer.MAX_VALUE, db.stats().maxSize());
+        }
+    }
+
     public record Marker(String value) {
+    }
+
+    private static final class StubPool implements Pool {
+        @Override
+        public PooledConnection borrow() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void release(PooledConnection conn) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public DatabaseStats stats() {
+            return new DatabaseStats(0, 0, 0, 0, Integer.MAX_VALUE, 0, 0, 0);
+        }
+
+        @Override
+        public void close() {}
     }
 }

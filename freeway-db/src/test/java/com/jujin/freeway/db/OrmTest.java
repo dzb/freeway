@@ -41,7 +41,7 @@ class OrmTest {
 
     private static DatabaseBuilder builder(String name) {
         return new DatabaseBuilder()
-            .config(DatabaseConfig.defaults(
+            .config(PoolConfig.defaults(
                 "jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 

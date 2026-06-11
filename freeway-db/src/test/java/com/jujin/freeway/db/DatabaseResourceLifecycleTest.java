@@ -40,12 +40,12 @@ class DatabaseResourceLifecycleTest {
 
     private static Database singleConnectionDb(String prefix) {
         String dbName = "freeway_resource_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
-        DatabaseConfig defaults = DatabaseConfig.defaults(
+        PoolConfig defaults = PoolConfig.defaults(
             "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "sa",
             ""
         );
-        DatabaseConfig config = new DatabaseConfig(
+        PoolConfig config = new PoolConfig(
             defaults.url(),
             defaults.username(),
             defaults.password(),

@@ -3,7 +3,7 @@ package com.jujin.freeway.db.schema;
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseBuilder;
-import com.jujin.freeway.db.DatabaseConfig;
+import com.jujin.freeway.db.PoolConfig;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -21,7 +21,7 @@ class SchemaTest {
 
     private static DatabaseBuilder builder(String name) {
         return new DatabaseBuilder()
-            .config(DatabaseConfig.defaults(
+            .config(PoolConfig.defaults(
                 "jdbc:h2:mem:" + uniqueName(name) + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                 "sa", ""));
     }

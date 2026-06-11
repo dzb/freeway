@@ -37,7 +37,7 @@ public final class PoolDefault implements Pool {
     private volatile boolean closed;
     private Thread cleanThread;
 
-    PoolDefault(PoolConfig config) {
+    public PoolDefault(PoolConfig config) {
         this.config = config;
         this.semaphore = new Semaphore(config.maxSize());
         this.idle = new ConcurrentLinkedDeque<>();

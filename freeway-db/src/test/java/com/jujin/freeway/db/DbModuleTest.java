@@ -14,9 +14,9 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DbModuleTest {
-    private static final String URL_KEY = DatabaseConfig.PREFIX + ".url";
-    private static final String USER_KEY = DatabaseConfig.PREFIX + ".username";
-    private static final String PASS_KEY = DatabaseConfig.PREFIX + ".password";
+    private static final String URL_KEY = PoolConfig.PREFIX + ".url";
+    private static final String USER_KEY = PoolConfig.PREFIX + ".username";
+    private static final String PASS_KEY = PoolConfig.PREFIX + ".password";
 
     private String previousUrl;
     private String previousUser;
@@ -97,10 +97,10 @@ class DbModuleTest {
     @Test
     void dbHubWrapsNamedDatabaseContributions() {
         Database primary = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
         Database audit = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:audit_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try {

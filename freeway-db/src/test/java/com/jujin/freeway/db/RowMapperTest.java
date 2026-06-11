@@ -372,7 +372,7 @@ class RowMapperTest {
 
     private static DatabaseBuilder builder(String dbName) {
         return new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 
     private static String uniqueDb(String prefix) {

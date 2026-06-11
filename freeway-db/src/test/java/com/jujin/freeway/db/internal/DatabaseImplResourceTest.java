@@ -1,7 +1,7 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.db.DatabaseConfig;
+import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.IsolationLevel;
 import java.sql.Connection;
 import java.util.Map;
@@ -41,7 +41,7 @@ class DatabaseImplResourceTest {
     private static DatabaseImpl createDb() {
         String dbName = "freeway_isolation_" + UUID.randomUUID().toString().replace('-', '_');
         return new DatabaseImpl(
-            DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""),
+            PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""),
             new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of())
         );
     }

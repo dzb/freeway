@@ -5,7 +5,7 @@
   ```java
   // 1. 构建数据库
   Database db = new DatabaseBuilder()
-      .config(DatabaseConfig.defaults("jdbc:...", "user", "pass"))
+      .config(PoolConfig.defaults("jdbc:...", "user", "pass"))
       .build();
 
   // 2. 原始查询

@@ -12,7 +12,7 @@ class StreamQueryTest {
     private Database createDb() {
         String dbName = "freeway_stream_" + UUID.randomUUID().toString().replace('-', '_');
         return new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
     }
 

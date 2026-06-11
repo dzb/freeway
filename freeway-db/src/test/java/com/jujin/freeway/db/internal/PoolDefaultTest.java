@@ -25,7 +25,7 @@ class PoolDefaultTest {
             Duration.ofMinutes(5),
             Duration.ofSeconds(30),
             null,
-            Duration.ofSeconds(3)
+            Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
         );
         var pool = new PoolDefault(config);
 
@@ -59,7 +59,7 @@ class PoolDefaultTest {
             Duration.ofMinutes(5),
             Duration.ofSeconds(30),
             null,
-            Duration.ofSeconds(3)
+            Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
         );
         var pool = new PoolDefault(config);
 
@@ -84,7 +84,7 @@ class PoolDefaultTest {
             Duration.ofMinutes(5),
             Duration.ofSeconds(30),
             null,
-            Duration.ofSeconds(3)
+            Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
         );
         var pool = new PoolDefault(config);
 
@@ -117,7 +117,7 @@ class PoolDefaultTest {
             Duration.ofMinutes(5),
             Duration.ofSeconds(30),
             null,
-            Duration.ofSeconds(3)
+            Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
         );
         var pool = new PoolDefault(config);
 

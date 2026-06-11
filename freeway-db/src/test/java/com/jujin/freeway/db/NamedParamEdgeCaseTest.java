@@ -198,7 +198,7 @@ class NamedParamEdgeCaseTest {
 
     private static DatabaseBuilder builder(String name) {
         return new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
     }
 
     private static String uniqueDb(String prefix) {
