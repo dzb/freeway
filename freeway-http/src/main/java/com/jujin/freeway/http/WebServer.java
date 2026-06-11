@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.time.Duration;
+import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -78,8 +80,8 @@ public final class WebServer implements AutoCloseable {
                     handleException(ctx, ex);
                     publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
                 }
-                long elapsed = java.time.Duration.between(
-                    ctx.requestContext().startTime(), java.time.Instant.now()).toMillis();
+                long elapsed = Duration.between(
+                    ctx.requestContext().startTime(), Instant.now()).toMillis();
                 publish(new HttpRequestEvent(ctx.method(), ctx.path(), ctx.statusCode(), elapsed));
             }
 

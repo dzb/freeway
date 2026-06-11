@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.schema.*;
+import java.lang.reflect.Type;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -236,7 +237,7 @@ public final class Orm {
         return result;
     }
 
-    private static Class<?> rawType(java.lang.reflect.Type type) {
+    private static Class<?> rawType(Type type) {
         return type instanceof Class<?> c ? c : Long.class;
     }
 
