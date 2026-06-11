@@ -2,6 +2,7 @@ package com.jujin.freeway.boot;
 
 import com.jujin.freeway.boot.internal.HookLifecycle;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.EventBus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +48,7 @@ final class AppRuntimeDefault implements AppRuntime {
             container.get(HookLifecycle.class).start(container);
             state = AppState.RUNNING;
             LOG.info("Application started");
+            publish(new AppStartedEvent(container));
         } catch (RuntimeException ex) {
             state = AppState.FAILED;
             LOG.error("Application startup failed", ex);
@@ -62,6 +64,8 @@ final class AppRuntimeDefault implements AppRuntime {
         AppState previous = state;
         state = AppState.STOPPING;
         LOG.info("Application stopping");
+        publish(new AppStoppingEvent(container));
+
         RuntimeException failure = null;
         if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
             try {
@@ -87,5 +91,12 @@ final class AppRuntimeDefault implements AppRuntime {
         }
         state = AppState.STOPPED;
         LOG.info("Application stopped");
+    }
+
+    private void publish(Object event) {
+        try {
+            container.get(EventBus.class).publish(event);
+        } catch (Exception ignored) {
+        }
     }
 }

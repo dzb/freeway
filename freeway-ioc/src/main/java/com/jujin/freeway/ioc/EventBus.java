@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.ioc.annotation.Inject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,7 @@ public final class EventBus implements AutoCloseable {
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
         new ConcurrentHashMap<>();
 
+    @Inject
     public EventBus(Container container) {
         this(container, null);
     }

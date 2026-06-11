@@ -123,6 +123,8 @@ CREATED ──start()──▶ STARTING ──ok──▶ RUNNING ──close()�
 
 `start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions.
 
+Lifecycle events are published on the EventBus: `AppStartedEvent` after start, `AppStoppingEvent` before shutdown — modules like cache can subscribe to warmup/flush without implementing RuntimeHook.
+
 ### HTTP (`freeway-http`)
 
 The HTTP layer is deliberately thin:
