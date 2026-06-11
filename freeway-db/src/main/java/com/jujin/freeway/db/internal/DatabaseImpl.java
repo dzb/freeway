@@ -1,5 +1,6 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.db.*;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -86,24 +87,30 @@ public final class DatabaseImpl implements Database {
                 conn,
                 originalIsolation
             );
-            ScopedValue.where(CURRENT_TX, ctx).run(() -> {
+            Defer.within(() -> {
+                ScopedValue.where(CURRENT_TX, ctx).run(() -> {
+                    try {
+                        work.run();
+                    } catch (Exception e) {
+                        throw e instanceof RuntimeException re
+                            ? re
+                            : new RuntimeException(e);
+                    }
+                });
                 try {
-                    work.run();
-                } catch (Exception e) {
-                    throw e instanceof RuntimeException re
-                        ? re
-                        : new RuntimeException(e);
+                    raw.commit();
+                } catch (SQLException e) {
+                    throw new RuntimeException("Commit failed", e);
+                }
+                LOG.trace("Transaction committed");
+                for (Runnable hook : ctx.hooks()) {
+                    try {
+                        hook.run();
+                    } catch (Exception ex) {
+                        LOG.warn("afterCommit hook failed", ex);
+                    }
                 }
             });
-            raw.commit();
-            LOG.trace("Transaction committed");
-            for (Runnable hook : ctx.hooks()) {
-                try {
-                    hook.run();
-                } catch (Exception ex) {
-                    LOG.warn("afterCommit hook failed", ex);
-                }
-            }
         } catch (Exception e) {
             LOG.debug("Transaction rolled back", e);
             try {

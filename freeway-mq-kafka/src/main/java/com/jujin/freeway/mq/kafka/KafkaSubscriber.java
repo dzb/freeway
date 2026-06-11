@@ -1,5 +1,6 @@
 package com.jujin.freeway.mq.kafka;
 
+import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.EventBus;
@@ -54,8 +55,15 @@ public class KafkaSubscriber implements AutoCloseable {
             try {
                 for (var record : consumer.poll(Duration.ofSeconds(1))) {
                     try {
-                        Object event = deserialize(record);
-                        bus.publish(record.topic(), event);
+                        Defer.within(() -> {
+                            Object event;
+                            try {
+                                event = deserialize(record);
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                            bus.publish(record.topic(), event);
+                        });
                     } catch (Exception e) {
                         LOG.warn("Failed to process Kafka message from '{}'", record.topic(), e);
                     }

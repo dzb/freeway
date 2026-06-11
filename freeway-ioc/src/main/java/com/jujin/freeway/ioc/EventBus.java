@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,9 +49,24 @@ public final class EventBus implements AutoCloseable {
     /**
      * Publish an event to all class-matched subscribers (module + runtime),
      * then bridge to MQ if configured.
+     *
+     * <p>If called inside a {@code Defer} scope (e.g. within a DB transaction),
+     * the event is buffered and only published after the scope commits.
+     * If no scope is active, the event is published immediately.</p>
      */
-    @SuppressWarnings({ "unchecked", "rawtypes" })
     public <E> void publish(E event) {
+        // DeadEvent always dispatches immediately — it is a diagnostic
+        // event that fires when zero subscribers exist, and must not be
+        // re-deferred during drain of committed events.
+        if (Defer.isActive() && !(event instanceof DeadEvent)) {
+            Defer.defer(() -> dispatchEvent(event));
+            return;
+        }
+        dispatchEvent(event);
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private <E> void dispatchEvent(E event) {
         Class<?> eventType = event.getClass();
         boolean consumed = false;
 
@@ -100,9 +116,18 @@ public final class EventBus implements AutoCloseable {
      * Publish a payload on a string topic. Subscribers registered via
      * {@code EventSubscriber.of("topic", handler)} or
      * {@code bus.subscribe("topic", handler)} receive it.
+     *
+     * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
-    @SuppressWarnings({ "unchecked", "rawtypes" })
     public void publish(String topic, Object payload) {
+        if (Defer.isActive()) {
+            Defer.defer(() -> dispatchTopic(topic, payload));
+            return;
+        }
+        dispatchTopic(topic, payload);
+    }
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private void dispatchTopic(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         boolean consumed = false;
 

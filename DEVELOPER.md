@@ -242,6 +242,22 @@ binder.contribute(EventSubscriber.class)
 bus.publish("post.created", payload);
 ```
 
+**Async publishing:**
+
+```java
+// Fire-and-forget — published on virtual threads by default
+bus.publishAsync(new PostCreatedEvent(post));
+bus.publishAsync("post.created", payload);
+
+// Custom executor (e.g. platform-thread pool)
+Executor pool = Executors.newFixedThreadPool(4);
+bus.setAsyncExecutor(pool);
+```
+
+Async dispatch defaults to `Executors.newVirtualThreadPerTaskExecutor()`. Call `setAsyncExecutor()` to replace it with a custom executor.
+
+Note: `publishAsync` dispatches to a separate thread and therefore does not participate in `Defer` scopes (which are thread-bound via `ScopedValue`). For transaction-safe events, use sync `publish()` — it automatically defers inside a transaction and fires on commit.
+
 **DeadEvent logging:**
 
 ```java
@@ -439,6 +455,40 @@ Orm orm = Orm.of(db);
 orm.insert(new Post("Hello", "World"));
 ```
 
+### Connection Pool
+
+`Pool` is the connection pool abstraction — `PoolDefault` (built-in) and `HikariPool` (freeway-db-hikari) both implement it. `DatabaseBuilder` accepts an optional `pool(Pool)` override:
+
+```java
+// Default — DatabaseBuilder creates a PoolDefault from PoolConfig
+Database db = new DatabaseBuilder().config(config).build();
+
+// Explicit pool — pass a pre-built instance
+Pool pool = new PoolDefault(config);
+Database db = new DatabaseBuilder().config(config).pool(pool).build();
+```
+
+**IoC pool selection:** when using `DbModule`, the pool is selected via `freeway.db.pool` config property (default `"builtin"`). The built-in `id("builtin")` binding creates a `PoolDefault`; binding another `Pool` implementation with a different id and setting it as primary selects that implementation — aligning with the HTTP engine selection paradigm.
+
+```java
+// Select HikariCP via config
+// freeway.db.pool=hikari
+```
+
+**PoolConfig** records all connection parameters with sensible defaults:
+
+| Property | Default |
+|----------|---------|
+| `maxSize` | 10 |
+| `minIdle` | 2 |
+| `connectionTimeout` | 10s |
+| `maxLifetime` | 30min |
+| `maxIdleTime` | 10min |
+| `cleanInterval` | 2min |
+| `healthCheckQuery` | null (JDBC `isValid` only) |
+| `healthCheckTimeout` | 5s |
+| `queryTimeout` | 15s |
+
 `Database` is the main entry point for SQL execution:
 
 ```java
@@ -508,6 +558,18 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> {
 
 Nested transactions are detected and rejected. Auto-commit is restored on exit.
 
+**Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit. No manual wiring needed — `bus.publish()` detects the active transaction and behaves correctly:
+
+```java
+db.transaction(() -> {
+    db.execute("INSERT INTO posts (title) VALUES (?)", "hello");
+    bus.publish(new PostCreatedEvent(post));  // deferred, fires after commit
+});
+// EventBus subscribers receive PostCreatedEvent here
+```
+
+This is powered by the `Defer` mechanism (see [Defer / Scope-bound deferred execution](#defer--scope-bound-deferred-execution)). Any code can use `Defer.defer()` to register commit-side effects; the framework handles commit/rollback automatically.
+
 ### ORM
 
 `Orm` provides lightweight CRUD on top of `Database`:
@@ -550,6 +612,160 @@ Schema.ensure(database, Post.class, Comment.class);
 Database primary = hub.primary();
 Database audit = hub.get("audit");
 ```
+
+### HikariCP (`freeway-db-hikari`)
+
+Third-party connection pool adapter for [HikariCP](https://github.com/brettwooldridge/HikariCP). Add the `freeway-db-hikari` dependency to your classpath.
+
+**Standalone usage:**
+
+```java
+PoolConfig config = PoolConfig.defaults("jdbc:postgresql://localhost/db", "user", "pass");
+HikariPool pool = new HikariPool(config);
+Database db = new DatabaseBuilder().config(config).pool(pool).build();
+```
+
+**IoC usage:** add `HikariPoolModule` to the launcher or install it through another module — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. Then set `freeway.db.pool=hikari` to activate it.
+
+```java
+Launcher.run(AppModule.class, new DbModule(), new HikariPoolModule());
+```
+
+`HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `DatabaseStats`.
+
+## Defer / Scope-bound deferred execution
+
+`Defer` is a generic mechanism in `freeway-commons` for the pattern: *"run this side effect, but only after the current boundary commits — if it rolls back, forget it."*
+
+Under the hood it's a `ScopedValue<List<Runnable>>`: inside a scope, `Defer.defer()` appends to the list; outside, it runs immediately. On success, the scope drains the list; on failure, it discards it. The calling code doesn't need to know whether a scope is active.
+
+### Mental model
+
+Think of it as a "commit tray". You drop slips of paper into the tray during a unit of work. When the work succeeds, someone picks up the tray and processes every slip in order. If the work fails, the tray is emptied — nothing happened.
+
+### Scenarios
+
+#### DB transaction + EventBus (framework-built-in, zero user code)
+
+The most common case — you don't write any Defer code. The framework handles it:
+
+```java
+db.transaction(() -> {
+    db.execute("INSERT INTO posts ...");         // ① SQL
+    bus.publish(new PostCreatedEvent(post));     // ② looks immediate, actually deferred
+    db.execute("UPDATE counts ...");             // ③ more SQL
+});
+// ④ commit succeeds → bus fires PostCreatedEvent
+//    or rollback → event never fires
+```
+
+`DatabaseImpl.transaction()` opens a `Defer` scope. `EventBus.publish()` checks `Defer.isActive()` — yes → defers. The user just calls `bus.publish()` inside a transaction and gets correct commit/rollback semantics without any wiring.
+
+#### DB transaction + cache invalidation (manual defer)
+
+Same transaction boundary, custom side effect:
+
+```java
+db.transaction(() -> {
+    db.execute("UPDATE posts SET title = ? WHERE id = ?", title, id);
+    Defer.defer(() -> cache.invalidate("posts:" + id));
+    // cache only invalidated if the UPDATE actually commits
+});
+```
+
+A `publishAsync` inside a transaction dispatches to another thread, where the `ScopedValue` is not bound — it will fire immediately. Use sync `publish()` for commit-safe events.
+
+#### HTTP request lifecycle
+
+Request-scoped side effects that should fire only after the response is written successfully:
+
+```java
+Defer.within(scope -> {
+    // ... handle request, run filters, render response ...
+    Defer.defer(() -> metrics.record(method, path, duration));
+    Defer.defer(() -> accessLog.write(entry));
+
+    if (response.status() >= 400) {
+        scope.rollback();  // error response — don't record as success
+        return;
+    }
+});
+// metrics / accessLog only fire for successful responses
+```
+
+#### Kafka consumer — offset commit boundary
+
+Side effects that must wait until the offset is confirmed:
+
+```java
+Defer.within(() -> {
+    for (var record : records) {
+        process(record);
+        Defer.defer(() -> bus.publish(new RecordProcessed(record)));
+    }
+    consumer.commitSync();  // offset confirmed
+});
+// events fire only after offset commit succeeds
+```
+
+#### Batch processing — index rebuild
+
+All-or-nothing batch with deferred heavy work:
+
+```java
+Defer.within(() -> {
+    for (var row : rows) db.execute("INSERT INTO ledger ...", row);
+    Defer.defer("index", () -> searchIndex.rebuild()).after("stats");
+    Defer.defer("stats", () -> stats.refresh());
+    Defer.defer("notify", () -> bus.publish(new BatchDone()));
+});
+// index/stats/notify run only if all inserts commit, and in order: stats → index → notify
+```
+
+#### Deferred value — audit snapshot
+
+A value computed from committed state:
+
+```java
+var snap = Defer.supply(() -> snapshotDao.build());
+
+db.transaction(() -> {
+    orderService.place(order);
+    // snapshotDao.build() hasn't run yet — defers until commit
+});
+
+// After transaction commits, snapshot reflects consistent state
+AuditSnapshot s = snap.get();
+```
+
+### Framework scopes (built-in)
+
+The framework opens `Defer` scopes at three natural boundaries — user code inside them can call `Defer.defer()` without any setup:
+
+| Boundary | Opened by | Commit = | Rollback = |
+|----------|----------|----------|------------|
+| DB transaction | `DatabaseImpl.transaction()` | `raw.commit()` succeeds | Work throws → `raw.rollback()` |
+| HTTP request | `WebServer` request handler | Request completes (even on error — errors are handled internally) | Only if filter chain throws unrecoverably |
+| Kafka record | `KafkaSubscriber` poll loop | Record deserializes and publishes successfully | Deserialization or publish fails |
+
+**In practice:** inside a DB transaction, events published via `bus.publish()` are automatically deferred. Inside any HTTP request handler, `Defer.defer()` is available. Inside a Kafka message processor, side effects are scoped to the record boundary. Users don't need to think about opening scopes — the framework already does it at every meaningful boundary.
+
+### When NOT to use
+
+- **Must fire regardless of success/failure** — `Defer.defer()` inside a scope only fires on success. Use regular code + try/finally for cleanup that always runs.
+- **Fire-and-forget across threads** — the `ScopedValue` binding stays on the current thread. Dispatching to another thread loses the scope.
+- **Long-running async work** — deferred actions run inline during scope drain. If you need async-after-commit, combine `defer()` with an executor inside the deferred action: `Defer.defer(() -> executor.submit(heavyTask))`.
+
+### Key API
+
+| Method | Purpose |
+|--------|---------|
+| `Defer.within(Runnable)` | Scope — drain on success, discard on failure |
+| `Defer.within(Consumer<DeferScope>)` | Scope with `DeferScope.rollback()` for manual discard |
+| `Defer.defer(Runnable)` | Unnamed action — run immediately or defer |
+| `Defer.defer(String id, Runnable)` | Named action — returns `DeferAction` for `.before()` / `.after()` |
+| `Defer.supply(Callable<T>)` | Deferred value — returns `Supplier<T>`, computes at commit |
+| `Defer.isActive()` | True inside a `within(...)` block |
 
 ## Naming Rules
 
