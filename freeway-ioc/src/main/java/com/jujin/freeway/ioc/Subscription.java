@@ -5,6 +5,7 @@ import java.util.function.Consumer;
 
 /** Handle for a runtime subscriber, returned by {@link EventBus#subscribe}. */
 public final class Subscription<E> implements Consumer<E> {
+
     private final Class<E> eventType;
     private final Consumer<E> handler;
     private final String topic;
@@ -21,8 +22,13 @@ public final class Subscription<E> implements Consumer<E> {
         this.topic = Objects.requireNonNull(topic, "topic");
     }
 
-    Class<E> eventType() { return eventType; }
-    String topic() { return topic; }
+    Class<E> eventType() {
+        return eventType;
+    }
+
+    String topic() {
+        return topic;
+    }
 
     @Override
     public void accept(E event) {

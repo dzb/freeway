@@ -5,11 +5,10 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.db.Names;
 import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
-import com.jujin.freeway.db.Names;
 import com.jujin.freeway.db.SqlException;
-
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -25,9 +24,11 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class RowMapperResolver {
+
     private final Coercer coercer;
     private final Map<Class<?>, RowMapper<?>> custom;
-    private final ConcurrentHashMap<Class<?>, RowMapper<?>> cache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Class<?>, RowMapper<?>> cache =
+        new ConcurrentHashMap<>();
 
     public RowMapperResolver(
         Coercer coercer,
@@ -51,8 +52,10 @@ public final class RowMapperResolver {
         Map<Class<?>, RowMapper<?>> manual,
         Map<Class<?>, RowMapper<?>> registrations
     ) {
-        if ((manual == null || manual.isEmpty())
-            && (registrations == null || registrations.isEmpty())) {
+        if (
+            (manual == null || manual.isEmpty()) &&
+            (registrations == null || registrations.isEmpty())
+        ) {
             return Map.of();
         }
         Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
@@ -69,7 +72,8 @@ public final class RowMapperResolver {
         for (Map.Entry<Class<?>, RowMapper<?>> entry : source.entrySet()) {
             map.put(
                 Objects.requireNonNull(entry.getKey()),
-                Objects.requireNonNull(entry.getValue()));
+                Objects.requireNonNull(entry.getValue())
+            );
         }
     }
 
@@ -81,10 +85,18 @@ public final class RowMapperResolver {
             return createBasic(type);
         }
         if (type.isInterface()) {
-            throw new SqlException("Cannot map interface " + type.getName() + ": register a custom RowMapper");
+            throw new SqlException(
+                "Cannot map interface " +
+                    type.getName() +
+                    ": register a custom RowMapper"
+            );
         }
         if (Modifier.isAbstract(type.getModifiers())) {
-            throw new SqlException("Cannot map abstract class " + type.getName() + ": register a custom RowMapper");
+            throw new SqlException(
+                "Cannot map abstract class " +
+                    type.getName() +
+                    ": register a custom RowMapper"
+            );
         }
         BeanPlan plan;
         try {
@@ -99,23 +111,33 @@ public final class RowMapperResolver {
     }
 
     private boolean isBasicType(Class<?> type) {
-        return type == String.class
-            || type == Integer.class || type == int.class
-            || type == Long.class || type == long.class
-            || type == Double.class || type == double.class
-            || type == Float.class || type == float.class
-            || type == Short.class || type == short.class
-            || type == Byte.class || type == byte.class
-            || type == Boolean.class || type == boolean.class
-            || type == Character.class || type == char.class
-            || type == BigDecimal.class
-            || type == BigInteger.class
-            || type == LocalDate.class
-            || type == LocalDateTime.class
-            || type == LocalTime.class
-            || type == Instant.class
-            || type == UUID.class
-            || type == byte[].class;
+        return (
+            type == String.class ||
+            type == Integer.class ||
+            type == int.class ||
+            type == Long.class ||
+            type == long.class ||
+            type == Double.class ||
+            type == double.class ||
+            type == Float.class ||
+            type == float.class ||
+            type == Short.class ||
+            type == short.class ||
+            type == Byte.class ||
+            type == byte.class ||
+            type == Boolean.class ||
+            type == boolean.class ||
+            type == Character.class ||
+            type == char.class ||
+            type == BigDecimal.class ||
+            type == BigInteger.class ||
+            type == LocalDate.class ||
+            type == LocalDateTime.class ||
+            type == LocalTime.class ||
+            type == Instant.class ||
+            type == UUID.class ||
+            type == byte[].class
+        );
     }
 
     private <T> RowMapper<T> createBasic(Class<T> type) {
@@ -129,7 +151,10 @@ public final class RowMapperResolver {
             Map<String, Object> values = new LinkedHashMap<>();
             for (int i = 1; i <= count; i++) {
                 String label = meta.getColumnLabel(i);
-                values.put(label != null ? label.toLowerCase() : "", rs.getObject(i));
+                values.put(
+                    label != null ? label.toLowerCase() : "",
+                    rs.getObject(i)
+                );
             }
             return new Row(values, coercer);
         };
@@ -146,25 +171,36 @@ public final class RowMapperResolver {
             for (int i = 0; i < properties.size(); i++) {
                 BeanProperty property = properties.get(i);
                 int column = indexes[i];
-                args[i] = column >= 1
-                    ? coercer.coerce(rs.getObject(column), rawClass(property.type()))
-                    : coercer.coerce(null, rawClass(property.type()));
+                args[i] =
+                    column >= 1
+                        ? coercer.coerce(
+                              rs.getObject(column),
+                              rawClass(property.type())
+                          )
+                        : coercer.coerce(null, rawClass(property.type()));
             }
             try {
                 return type.cast(constructor.newInstance(args));
             } catch (RuntimeException e) {
-                throw new SqlException("Failed to construct " + type.getName(), e);
+                throw new SqlException(
+                    "Failed to construct " + type.getName(),
+                    e
+                );
             }
         };
     }
 
     private <T> RowMapper<T> createBean(Class<T> type, BeanPlan plan) {
         if (!plan.isConstructable()) {
-            throw new SqlException("Cannot map " + type.getName() + ": no default constructor");
+            throw new SqlException(
+                "Cannot map " + type.getName() + ": no default constructor"
+            );
         }
         BeanConstructor constructor = plan.constructor();
-        List<BeanProperty> properties = plan.properties().stream()
-                .filter(BeanProperty::isWritable)
+        List<BeanProperty> properties = plan
+            .properties()
+            .stream()
+            .filter(BeanProperty::isWritable)
             .toList();
         ColumnCache columns = new ColumnCache(properties);
         return (rs, rowNum) -> {
@@ -174,7 +210,10 @@ public final class RowMapperResolver {
             try {
                 instance = type.cast(constructor.newInstance());
             } catch (RuntimeException e) {
-                throw new SqlException("Failed to construct " + type.getName(), e);
+                throw new SqlException(
+                    "Failed to construct " + type.getName(),
+                    e
+                );
             }
             for (int i = 0; i < properties.size(); i++) {
                 int column = indexes[i];
@@ -182,12 +221,18 @@ public final class RowMapperResolver {
                     continue;
                 }
                 BeanProperty property = properties.get(i);
-                Object value = coercer.coerce(rs.getObject(column), rawClass(property.type()));
+                Object value = coercer.coerce(
+                    rs.getObject(column),
+                    rawClass(property.type())
+                );
                 try {
                     property.write(instance, value);
                 } catch (RuntimeException e) {
                     throw new SqlException(
-                        "Failed to set " + property.name() + " on " + type.getName(),
+                        "Failed to set " +
+                            property.name() +
+                            " on " +
+                            type.getName(),
                         e
                     );
                 }
@@ -200,36 +245,46 @@ public final class RowMapperResolver {
         if (type instanceof Class<?> cls) {
             return cls;
         }
-        if (type instanceof ParameterizedType parameterized && parameterized.getRawType() instanceof Class<?> raw) {
+        if (
+            type instanceof ParameterizedType parameterized &&
+            parameterized.getRawType() instanceof Class<?> raw
+        ) {
             return raw;
         }
-        throw new SqlException("Unsupported bean property type: " + type.getTypeName());
+        throw new SqlException(
+            "Unsupported bean property type: " + type.getTypeName()
+        );
     }
 
-    static int findColumn(ResultSetMetaData meta, String propertyName) throws SQLException {
+    static int findColumn(ResultSetMetaData meta, String propertyName)
+        throws SQLException {
         String snake = Names.camelToSnake(propertyName);
         int columnCount = meta.getColumnCount();
         for (int i = 1; i <= columnCount; i++) {
             String label = meta.getColumnLabel(i);
             if (label == null) label = meta.getColumnName(i);
             if (label == null) continue;
-            if (propertyName.equalsIgnoreCase(label) || snake.equalsIgnoreCase(label)) {
+            if (
+                propertyName.equalsIgnoreCase(label) ||
+                snake.equalsIgnoreCase(label)
+            ) {
                 return i;
             }
         }
         return -1;
     }
 
-
-
-
     private static final class ColumnCache {
+
         private final String[] names;
         private volatile Signature signature;
         private volatile int[] columns;
 
         private ColumnCache(List<BeanProperty> properties) {
-            this.names = properties.stream().map(BeanProperty::name).toArray(String[]::new);
+            this.names = properties
+                .stream()
+                .map(BeanProperty::name)
+                .toArray(String[]::new);
         }
 
         int[] resolve(ResultSetMetaData meta) throws SQLException {

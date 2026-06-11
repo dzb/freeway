@@ -6,6 +6,5 @@ package com.jujin.freeway.ioc;
 public interface RuntimeHook {
     void start(Container container) throws Exception;
 
-    default void stop(Container container) throws Exception {
-    }
+    default void stop(Container container) throws Exception {}
 }

@@ -12,6 +12,7 @@ import java.util.PriorityQueue;
 import java.util.Set;
 
 public final class Extension<V> {
+
     private final List<Entry> entries = new ArrayList<>();
     private final Set<String> ids = new LinkedHashSet<>();
     private final Class<V> entryType;
@@ -28,7 +29,11 @@ public final class Extension<V> {
         String normalizedId = normalizeOptionalId(id);
         if (normalizedId != null && !ids.add(normalizedId)) {
             throw new IllegalStateException(
-                "Duplicate contribution id " + normalizedId + " for extension " + key());
+                "Duplicate contribution id " +
+                    normalizedId +
+                    " for extension " +
+                    key()
+            );
         }
         Entry entry = new Entry(normalizedId, value);
         entries.add(entry);
@@ -52,14 +57,23 @@ public final class Extension<V> {
 
     @Override
     public String toString() {
-        return "Extension[" + entryType.getSimpleName() + (name.isEmpty() ? "" : ", " + name) + "]";
+        return (
+            "Extension[" +
+            entryType.getSimpleName() +
+            (name.isEmpty() ? "" : ", " + name) +
+            "]"
+        );
     }
 
     private List<V> order() {
         if (entries.isEmpty()) {
             return List.of();
         }
-        if (entries.stream().allMatch(e -> e.afterIds.isEmpty() && e.beforeIds.isEmpty())) {
+        if (
+            entries
+                .stream()
+                .allMatch(e -> e.afterIds.isEmpty() && e.beforeIds.isEmpty())
+        ) {
             List<V> values = new ArrayList<>(entries.size());
             for (Entry e : entries) values.add(e.value);
             return List.copyOf(values);
@@ -94,7 +108,9 @@ public final class Extension<V> {
         }
 
         List<Entry> ordered = new ArrayList<>(entries.size());
-        PriorityQueue<Entry> ready = new PriorityQueue<>(Comparator.comparingInt(positions::get));
+        PriorityQueue<Entry> ready = new PriorityQueue<>(
+            Comparator.comparingInt(positions::get)
+        );
         for (Entry entry : entries) {
             if (indegree.get(entry) == 0) ready.add(entry);
         }
@@ -111,15 +127,20 @@ public final class Extension<V> {
 
         if (ordered.size() != entries.size()) {
             throw new IllegalStateException(
-                "Contribution order cycle detected for extension " + key());
+                "Contribution order cycle detected for extension " + key()
+            );
         }
         List<V> values = new ArrayList<>(ordered.size());
         for (Entry e : ordered) values.add(e.value);
         return List.copyOf(values);
     }
 
-    private void addEdge(Entry from, Entry to,
-            Map<Entry, Set<Entry>> outgoing, Map<Entry, Integer> indegree) {
+    private void addEdge(
+        Entry from,
+        Entry to,
+        Map<Entry, Set<Entry>> outgoing,
+        Map<Entry, Integer> indegree
+    ) {
         if (from == to) return;
         if (outgoing.get(from).add(to)) indegree.put(to, indegree.get(to) + 1);
     }
@@ -127,7 +148,9 @@ public final class Extension<V> {
     private static String normalizeOptionalId(String id) {
         if (id == null) return null;
         String v = id.trim();
-        if (v.isEmpty()) throw new IllegalArgumentException("Contribution id must not be blank");
+        if (v.isEmpty()) throw new IllegalArgumentException(
+            "Contribution id must not be blank"
+        );
         return v;
     }
 
@@ -138,6 +161,7 @@ public final class Extension<V> {
     public record Key(Class<?> entryType, String name) {}
 
     private final class Entry implements Contribution {
+
         final String id;
         final V value;
         final List<String> beforeIds = new ArrayList<>();
@@ -150,13 +174,15 @@ public final class Extension<V> {
 
         @Override
         public Contribution before(String... ids) {
-            for (String s : ids) beforeIds.add(Objects.requireNonNull(s, "id").trim());
+            for (String s : ids)
+                beforeIds.add(Objects.requireNonNull(s, "id").trim());
             return this;
         }
 
         @Override
         public Contribution after(String... ids) {
-            for (String s : ids) afterIds.add(Objects.requireNonNull(s, "id").trim());
+            for (String s : ids)
+                afterIds.add(Objects.requireNonNull(s, "id").trim());
             return this;
         }
     }

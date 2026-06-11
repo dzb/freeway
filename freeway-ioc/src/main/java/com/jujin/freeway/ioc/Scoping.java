@@ -14,7 +14,6 @@ import java.util.function.Supplier;
  * the outer scope is restored when the inner work returns.
  */
 public interface Scoping {
-
     /**
      * Execute {@code work} inside a new thread scope.
      * <p>

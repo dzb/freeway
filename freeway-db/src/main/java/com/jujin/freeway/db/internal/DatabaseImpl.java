@@ -1,16 +1,19 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class DatabaseImpl implements Database {
-    private static final Logger LOG = LoggerFactory.getLogger(DatabaseImpl.class);
-    private static final ScopedValue<TransactionContext> CURRENT_TX = ScopedValue.newInstance();
+
+    private static final Logger LOG = LoggerFactory.getLogger(
+        DatabaseImpl.class
+    );
+    private static final ScopedValue<TransactionContext> CURRENT_TX =
+        ScopedValue.newInstance();
 
     private final ConnectionPool pool;
     private final RowMapperResolver rowMapperResolver;
@@ -33,7 +36,13 @@ public final class DatabaseImpl implements Database {
 
     @Override
     public ExecuteResult execute(String sql, Object... params) {
-        return new QueryImpl(this, txConnection(), sql, params, startsWithInsert(sql)).execute();
+        return new QueryImpl(
+            this,
+            txConnection(),
+            sql,
+            params,
+            startsWithInsert(sql)
+        ).execute();
     }
 
     @Override
@@ -64,18 +73,27 @@ public final class DatabaseImpl implements Database {
             if (isolation != null && isolation != IsolationLevel.DEFAULT) {
                 raw.setTransactionIsolation(isolation.jdbcLevel());
             }
-            TransactionContext ctx = new TransactionContext(conn, originalIsolation);
+            TransactionContext ctx = new TransactionContext(
+                conn,
+                originalIsolation
+            );
             ScopedValue.where(CURRENT_TX, ctx).run(() -> {
                 try {
                     work.run();
                 } catch (Exception e) {
-                    throw e instanceof RuntimeException re ? re : new RuntimeException(e);
+                    throw e instanceof RuntimeException re
+                        ? re
+                        : new RuntimeException(e);
                 }
             });
             raw.commit();
             LOG.trace("Transaction committed");
             for (Runnable hook : ctx.hooks()) {
-                try { hook.run(); } catch (Exception ex) { LOG.warn("afterCommit hook failed", ex); }
+                try {
+                    hook.run();
+                } catch (Exception ex) {
+                    LOG.warn("afterCommit hook failed", ex);
+                }
             }
         } catch (Exception e) {
             LOG.debug("Transaction rolled back", e);
@@ -92,11 +110,16 @@ public final class DatabaseImpl implements Database {
         }
     }
 
-    private void restoreConnectionState(PooledConnection conn, int originalIsolation) {
+    private void restoreConnectionState(
+        PooledConnection conn,
+        int originalIsolation
+    ) {
         try {
             var raw = conn.connection();
-            if (originalIsolation >= 0
-                && raw.getTransactionIsolation() != originalIsolation) {
+            if (
+                originalIsolation >= 0 &&
+                raw.getTransactionIsolation() != originalIsolation
+            ) {
                 raw.setTransactionIsolation(originalIsolation);
             }
             if (!raw.getAutoCommit()) {
@@ -113,9 +136,11 @@ public final class DatabaseImpl implements Database {
         }
         int index = skipIgnorableSqlPrefix(sql);
         int end = index + "insert".length();
-        return end <= sql.length()
-            && sql.regionMatches(true, index, "insert", 0, "insert".length())
-            && (end == sql.length() || !isIdentifierChar(sql.charAt(end)));
+        return (
+            end <= sql.length() &&
+            sql.regionMatches(true, index, "insert", 0, "insert".length()) &&
+            (end == sql.length() || !isIdentifierChar(sql.charAt(end)))
+        );
     }
 
     @Override
@@ -154,7 +179,11 @@ public final class DatabaseImpl implements Database {
         return pool;
     }
 
-    private record TransactionContext(PooledConnection conn, int originalIsolation, List<Runnable> hooks) {
+    private record TransactionContext(
+        PooledConnection conn,
+        int originalIsolation,
+        List<Runnable> hooks
+    ) {
         TransactionContext(PooledConnection conn, int originalIsolation) {
             this(conn, originalIsolation, new ArrayList<>());
         }
@@ -178,19 +207,31 @@ public final class DatabaseImpl implements Database {
                 index++;
                 continue;
             }
-            if (c == '-' && index + 1 < sql.length() && sql.charAt(index + 1) == '-') {
+            if (
+                c == '-' &&
+                index + 1 < sql.length() &&
+                sql.charAt(index + 1) == '-'
+            ) {
                 index += 2;
                 while (index < sql.length() && sql.charAt(index) != '\n') {
                     index++;
                 }
                 continue;
             }
-            if (c == '/' && index + 1 < sql.length() && sql.charAt(index + 1) == '*') {
+            if (
+                c == '/' &&
+                index + 1 < sql.length() &&
+                sql.charAt(index + 1) == '*'
+            ) {
                 index += 2;
                 while (index < sql.length()) {
                     char bc = sql.charAt(index);
                     index++;
-                    if (bc == '*' && index < sql.length() && sql.charAt(index) == '/') {
+                    if (
+                        bc == '*' &&
+                        index < sql.length() &&
+                        sql.charAt(index) == '/'
+                    ) {
                         index++;
                         break;
                     }

@@ -5,11 +5,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class NamedParamParser {
-    private NamedParamParser() {
-    }
 
-    record Result(List<String> names, String sql, List<Integer> parameterIndexes) {
-    }
+    private NamedParamParser() {}
+
+    record Result(
+        List<String> names,
+        String sql,
+        List<Integer> parameterIndexes
+    ) {}
 
     static Result parse(String sql) {
         var names = new ArrayList<String>();
@@ -179,9 +182,6 @@ final class NamedParamParser {
         return List.copyOf(indexes);
     }
 
-
-
-
     /**
      * Lightweight scan: returns true if {@code sql} contains at least one
      * {@code :name} or {@code $name} placeholder (outside of string literals,
@@ -206,7 +206,11 @@ final class NamedParamParser {
             }
             if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
                 i += 2;
-                while (i < len && !(sql.charAt(i - 1) == '*' && sql.charAt(i) == '/')) i++;
+                while (
+                        i < len &&
+                        !(sql.charAt(i - 1) == '*' && sql.charAt(i) == '/')
+                    )
+                    i++;
                 i++;
                 continue;
             }
@@ -214,8 +218,11 @@ final class NamedParamParser {
                 i += 2;
                 continue;
             }
-            if ((c == ':' || c == '$') && i + 1 < len
-                && Names.isValidParamStart(sql.charAt(i + 1))) {
+            if (
+                (c == ':' || c == '$') &&
+                i + 1 < len &&
+                Names.isValidParamStart(sql.charAt(i + 1))
+            ) {
                 return true;
             }
             i++;

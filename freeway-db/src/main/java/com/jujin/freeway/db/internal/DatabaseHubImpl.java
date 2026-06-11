@@ -2,14 +2,15 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseHub;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 public final class DatabaseHubImpl implements DatabaseHub {
-    private static final Logger LOG = LoggerFactory.getLogger(DatabaseHubImpl.class);
+
+    private static final Logger LOG = LoggerFactory.getLogger(
+        DatabaseHubImpl.class
+    );
     private final Map<String, Database> databases;
 
     public DatabaseHubImpl(Map<String, Database> databases) {

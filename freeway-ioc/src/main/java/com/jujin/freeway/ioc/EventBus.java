@@ -23,8 +23,10 @@ public final class EventBus implements AutoCloseable {
     private volatile Executor asyncExecutor;
     private volatile Map<Class<?>, List<Consumer>> moduleClassIndex;
     private volatile Map<String, List<Consumer>> moduleTopicIndex;
-    private final Map<Class<?>, List<Subscription<?>>> runtimeSubs = new ConcurrentHashMap<>();
-    private final Map<String, List<Subscription<?>>> runtimeTopicSubs = new ConcurrentHashMap<>();
+    private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
+        new ConcurrentHashMap<>();
+    private final Map<String, List<Subscription<?>>> runtimeTopicSubs =
+        new ConcurrentHashMap<>();
 
     @Inject
     public EventBus(Container container) {
@@ -52,23 +54,34 @@ public final class EventBus implements AutoCloseable {
         Class<?> eventType = event.getClass();
         boolean consumed = false;
 
-        for (Consumer handler : moduleSubscribers(eventType, null)) {
+        for (Consumer handler : classSubscribers(eventType)) {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
                 handler.accept(event);
                 consumed = true;
             } catch (Exception ex) {
-                LOG.warn("Event subscriber failed for {}", eventType.getSimpleName(), ex);
+                LOG.warn(
+                    "Event subscriber failed for {}",
+                    eventType.getSimpleName(),
+                    ex
+                );
             }
         }
 
-        for (Subscription<?> sub : runtimeSubs.getOrDefault(eventType, List.of())) {
+        for (Subscription<?> sub : runtimeSubs.getOrDefault(
+            eventType,
+            List.of()
+        )) {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
                 ((Subscription<E>) sub).accept(event);
                 consumed = true;
             } catch (Exception ex) {
-                LOG.warn("Runtime event subscriber failed for {}", eventType.getSimpleName(), ex);
+                LOG.warn(
+                    "Runtime event subscriber failed for {}",
+                    eventType.getSimpleName(),
+                    ex
+                );
             }
         }
 
@@ -93,7 +106,7 @@ public final class EventBus implements AutoCloseable {
         Objects.requireNonNull(topic, "topic");
         boolean consumed = false;
 
-        for (Consumer handler : moduleSubscribers(null, topic)) {
+        for (Consumer handler : topicSubscribers(topic)) {
             try {
                 handler.accept(payload);
                 consumed = true;
@@ -102,12 +115,19 @@ public final class EventBus implements AutoCloseable {
             }
         }
 
-        for (Subscription<?> sub : runtimeTopicSubs.getOrDefault(topic, List.of())) {
+        for (Subscription<?> sub : runtimeTopicSubs.getOrDefault(
+            topic,
+            List.of()
+        )) {
             try {
                 ((Subscription) sub).accept(payload);
                 consumed = true;
             } catch (Exception ex) {
-                LOG.warn("Runtime event subscriber failed for topic '{}'", topic, ex);
+                LOG.warn(
+                    "Runtime event subscriber failed for topic '{}'",
+                    topic,
+                    ex
+                );
             }
         }
 
@@ -144,18 +164,32 @@ public final class EventBus implements AutoCloseable {
 
     // ==================== class-based runtime subscribe ====================
 
-    public <E> Subscription<E> subscribe(Class<E> eventType, Consumer<E> handler) {
+    public <E> Subscription<E> subscribe(
+        Class<E> eventType,
+        Consumer<E> handler
+    ) {
         Subscription<E> sub = new Subscription<>(eventType, handler);
-        runtimeSubs.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>()).add((Subscription) sub);
+        runtimeSubs
+            .computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
+            .add((Subscription) sub);
         return sub;
     }
 
     // ==================== string-topic runtime subscribe ====================
 
     @SuppressWarnings("unchecked")
-    public Subscription<Object> subscribe(String topic, Consumer<Object> handler) {
-        Subscription<Object> sub = new Subscription<>(Object.class, handler, topic);
-        runtimeTopicSubs.computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>()).add((Subscription) sub);
+    public Subscription<Object> subscribe(
+        String topic,
+        Consumer<Object> handler
+    ) {
+        Subscription<Object> sub = new Subscription<>(
+            Object.class,
+            handler,
+            topic
+        );
+        runtimeTopicSubs
+            .computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>())
+            .add((Subscription) sub);
         return sub;
     }
 
@@ -179,23 +213,26 @@ public final class EventBus implements AutoCloseable {
 
     // ==================== internals ====================
 
-    @SuppressWarnings("unchecked")
-    private List<Consumer> moduleSubscribers(Class<?> eventType, String topic) {
+    private List<Consumer> classSubscribers(Class<?> eventType) {
         ensureIndexed();
-        if (eventType != null) {
-            List<Consumer> subs = moduleClassIndex.get(eventType);
-            return subs != null ? subs : List.of();
-        }
+        List<Consumer> subs = moduleClassIndex.get(eventType);
+        return subs != null ? subs : List.of();
+    }
+
+    private List<Consumer> topicSubscribers(String topic) {
+        ensureIndexed();
         List<Consumer> subs = moduleTopicIndex.get(topic);
         return subs != null ? subs : List.of();
     }
 
-    @SuppressWarnings("unchecked")
     private synchronized void ensureIndexed() {
         if (moduleClassIndex != null) return;
         Extension<?> ext;
         try {
-            ext = container.get(Extension.class, EventSubscriber.class.getName());
+            ext = container.get(
+                Extension.class,
+                EventSubscriber.class.getName()
+            );
         } catch (IllegalArgumentException e) {
             moduleClassIndex = Map.of();
             moduleTopicIndex = Map.of();
@@ -206,10 +243,14 @@ public final class EventBus implements AutoCloseable {
         for (Object entry : ext.all()) {
             if (!(entry instanceof EventSubscriber<?> sub)) continue;
             if (sub.eventType() != null) {
-                classIdx.computeIfAbsent(sub.eventType(), k -> new ArrayList<>()).add((Consumer) sub.handler());
+                classIdx
+                    .computeIfAbsent(sub.eventType(), k -> new ArrayList<>())
+                    .add((Consumer) sub.handler());
             }
             if (sub.topic() != null) {
-                topicIdx.computeIfAbsent(sub.topic(), k -> new ArrayList<>()).add((Consumer) sub.handler());
+                topicIdx
+                    .computeIfAbsent(sub.topic(), k -> new ArrayList<>())
+                    .add((Consumer) sub.handler());
             }
         }
         moduleClassIndex = classIdx;

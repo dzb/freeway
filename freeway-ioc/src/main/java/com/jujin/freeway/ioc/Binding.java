@@ -1,8 +1,8 @@
 package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.advisor.Advisor;
-import java.util.function.Function;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public interface Binding<T> {
     Binding<T> to(Class<? extends T> implementation);

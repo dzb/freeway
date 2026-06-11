@@ -5,10 +5,11 @@ import java.time.Duration;
 import java.time.Instant;
 
 public final class PooledConnection {
+
     private final Connection conn;
     private final Instant createdAt;
     private volatile Instant lastReturned;
-    private volatile Instant borrowedAt;  // null when idle, non-null when borrowed
+    private volatile Instant borrowedAt; // null when idle, non-null when borrowed
 
     PooledConnection(Connection conn, Instant createdAt) {
         this.conn = conn;
@@ -38,15 +39,23 @@ public final class PooledConnection {
 
     boolean isLeaked(Duration leakThreshold) {
         Instant ba = borrowedAt;
-        return ba != null && Duration.between(ba, Instant.now()).compareTo(leakThreshold) > 0;
+        return (
+            ba != null &&
+            Duration.between(ba, Instant.now()).compareTo(leakThreshold) > 0
+        );
     }
 
     boolean isFresh(Duration threshold) {
-        return Duration.between(lastReturned, Instant.now()).compareTo(threshold) < 0;
+        return (
+            Duration.between(lastReturned, Instant.now()).compareTo(threshold) <
+            0
+        );
     }
 
     boolean isExpired(Instant now, Duration maxLifetime, Duration maxIdleTime) {
-        return Duration.between(createdAt, now).compareTo(maxLifetime) > 0
-            || Duration.between(lastReturned, now).compareTo(maxIdleTime) > 0;
+        return (
+            Duration.between(createdAt, now).compareTo(maxLifetime) > 0 ||
+            Duration.between(lastReturned, now).compareTo(maxIdleTime) > 0
+        );
     }
 }

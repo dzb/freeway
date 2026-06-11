@@ -5,10 +5,12 @@ import java.util.Arrays;
 import java.util.List;
 
 public final class Freeway {
-    private Freeway() {
-    }
+
+    private Freeway() {}
 
     public static Container create(com.jujin.freeway.ioc.Module... modules) {
-        return new ContainerImpl(modules == null ? List.of() : Arrays.asList(modules));
+        return new ContainerImpl(
+            modules == null ? List.of() : Arrays.asList(modules)
+        );
     }
 }
