@@ -1,6 +1,8 @@
 package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.extension.Contribution;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -9,8 +11,8 @@ public final class EventSubscriber<E> implements Contribution {
     private final Consumer<E> handler;
     private final String id;
     private final String topic;
-    private final java.util.List<String> beforeIds = new java.util.ArrayList<>();
-    private final java.util.List<String> afterIds = new java.util.ArrayList<>();
+    private final List<String> beforeIds = new ArrayList<>();
+    private final List<String> afterIds = new ArrayList<>();
 
     private EventSubscriber(Class<E> eventType, Consumer<E> handler, String id, String topic) {
         this.eventType = eventType;

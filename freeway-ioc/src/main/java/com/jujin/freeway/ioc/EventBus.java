@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +19,7 @@ public final class EventBus implements AutoCloseable {
 
     private final Container container;
     private final EventBridge bridge;
+    private volatile Executor asyncExecutor;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs = new ConcurrentHashMap<>();
     private final Map<String, List<Subscription<?>>> runtimeTopicSubs = new ConcurrentHashMap<>();
 
@@ -43,14 +46,22 @@ public final class EventBus implements AutoCloseable {
 
         for (Consumer handler : moduleSubscribers(eventType, null)) {
             if (event instanceof Stoppable s && s.isStopped()) break;
-            try { handler.accept(event); consumed = true; }
-            catch (Exception ex) { LOG.warn("Event subscriber failed for {}", eventType.getSimpleName(), ex); }
+            try {
+                handler.accept(event);
+                consumed = true;
+            } catch (Exception ex) {
+                LOG.warn("Event subscriber failed for {}", eventType.getSimpleName(), ex);
+            }
         }
 
         for (Subscription<?> sub : runtimeSubs.getOrDefault(eventType, List.of())) {
             if (event instanceof Stoppable s && s.isStopped()) break;
-            try { ((Subscription<E>) sub).accept(event); consumed = true; }
-            catch (Exception ex) { LOG.warn("Runtime event subscriber failed for {}", eventType.getSimpleName(), ex); }
+            try {
+                ((Subscription<E>) sub).accept(event);
+                consumed = true;
+            } catch (Exception ex) {
+                LOG.warn("Runtime event subscriber failed for {}", eventType.getSimpleName(), ex);
+            }
         }
 
         if (!consumed && !(event instanceof DeadEvent)) {
@@ -75,13 +86,21 @@ public final class EventBus implements AutoCloseable {
         boolean consumed = false;
 
         for (Consumer handler : moduleSubscribers(null, topic)) {
-            try { handler.accept(payload); consumed = true; }
-            catch (Exception ex) { LOG.warn("Event subscriber failed for topic '{}'", topic, ex); }
+            try {
+                handler.accept(payload);
+                consumed = true;
+            } catch (Exception ex) {
+                LOG.warn("Event subscriber failed for topic '{}'", topic, ex);
+            }
         }
 
         for (Subscription<?> sub : runtimeTopicSubs.getOrDefault(topic, List.of())) {
-            try { ((Subscription) sub).accept(payload); consumed = true; }
-            catch (Exception ex) { LOG.warn("Runtime event subscriber failed for topic '{}'", topic, ex); }
+            try {
+                ((Subscription) sub).accept(payload);
+                consumed = true;
+            } catch (Exception ex) {
+                LOG.warn("Runtime event subscriber failed for topic '{}'", topic, ex);
+            }
         }
 
         if (!consumed) {
@@ -91,6 +110,28 @@ public final class EventBus implements AutoCloseable {
         if (bridge != null) {
             bridge.send(topic, payload);
         }
+    }
+
+    // ==================== async ====================
+
+    /** Set a custom executor for async dispatch. Defaults to virtual threads. */
+    public void setAsyncExecutor(Executor executor) {
+        this.asyncExecutor = Objects.requireNonNull(executor, "executor");
+    }
+
+    private Executor executor() {
+        Executor e = asyncExecutor;
+        return e != null ? e : Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    /** Async version of {@link #publish(Object)}. */
+    public <E> void publishAsync(E event) {
+        executor().execute(() -> publish(event));
+    }
+
+    /** Async version of {@link #publish(String, Object)}. */
+    public void publishAsync(String topic, Object payload) {
+        executor().execute(() -> publish(topic, payload));
     }
 
     // ==================== class-based runtime subscribe ====================

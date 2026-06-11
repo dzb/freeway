@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -245,5 +246,49 @@ class EventBusTest {
         bus.publish("topic", "x");
 
         assertTrue(log.isEmpty());
+    }
+
+    // ==================== async ====================
+
+    @Test
+    void asyncPublishDeliversToSubscriber() throws Exception {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("async")))
+        );
+
+        EventBus bus = new EventBus(container);
+        bus.publishAsync(new PostCreatedEvent(new Post("x")));
+        Thread.sleep(200); // wait for async thread
+
+        assertEquals(1, log.size());
+        assertEquals("async", log.get(0));
+    }
+
+    @Test
+    void asyncStringTopicPublishDelivers() throws Exception {
+        List<String> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        bus.subscribe("topic", p -> log.add((String) p));
+        bus.publishAsync("topic", "hello");
+        Thread.sleep(200);
+
+        assertEquals(1, log.size());
+    }
+
+    @Test
+    void syncPublishStillWorksAfterAsyncConfig() throws Exception {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("sync")))
+        );
+
+        EventBus bus = new EventBus(container);
+        bus.setAsyncExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        bus.publish(new PostCreatedEvent(new Post("x"))); // sync, not async
+
+        assertEquals(1, log.size());
     }
 }

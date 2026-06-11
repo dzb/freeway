@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class DatabaseImpl implements Database {
     private static final Logger LOG = LoggerFactory.getLogger(DatabaseImpl.class);
@@ -72,6 +74,9 @@ public final class DatabaseImpl implements Database {
             });
             raw.commit();
             LOG.trace("Transaction committed");
+            for (Runnable hook : ctx.hooks()) {
+                try { hook.run(); } catch (Exception ex) { LOG.warn("afterCommit hook failed", ex); }
+            }
         } catch (Exception e) {
             LOG.debug("Transaction rolled back", e);
             try {
@@ -149,7 +154,21 @@ public final class DatabaseImpl implements Database {
         return pool;
     }
 
-    private record TransactionContext(PooledConnection conn, int originalIsolation) {}
+    private record TransactionContext(PooledConnection conn, int originalIsolation, List<Runnable> hooks) {
+        TransactionContext(PooledConnection conn, int originalIsolation) {
+            this(conn, originalIsolation, new ArrayList<>());
+        }
+    }
+
+    /**
+     * Register an action to run after the current transaction commits successfully.
+     * If not inside a transaction, the action runs immediately.
+     */
+    public static void afterCommit(Runnable action) {
+        TransactionContext ctx = CURRENT_TX.orElse(null);
+        if (ctx != null) ctx.hooks().add(action);
+        else action.run();
+    }
 
     private static int skipIgnorableSqlPrefix(String sql) {
         int index = 0;
