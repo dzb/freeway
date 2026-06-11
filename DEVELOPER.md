@@ -429,6 +429,16 @@ binder.bind(MyEngine.class).to(MyEngine.class).id("my-engine");
 
 ## DB Layer (`freeway-db`)
 
+`freeway-db` can be used independently outside the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and loaded only when using `DbModule`.
+
+```java
+// Standalone usage (no IoC)
+DatabaseConfig config = DatabaseConfig.defaults("jdbc:h2:mem:test", "sa", "");
+Database db = new DatabaseBuilder().config(config).build();
+Orm orm = Orm.of(db);
+orm.insert(new Post("Hello", "World"));
+```
+
 `Database` is the main entry point for SQL execution:
 
 ```java

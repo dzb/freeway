@@ -174,6 +174,8 @@ A compact JDBC data access layer with ORM:
 - Migrations - SQL files in `db/migration/` with checksum tracking.
 - `DatabaseHub` - multi-datasource routing.
 
+Freeway-db is independently usable outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
+
 ### MQ (`freeway-mq-kafka`)
 
 Kafka adapter for the EventBus — enables distributed pub/sub across JVM instances:
