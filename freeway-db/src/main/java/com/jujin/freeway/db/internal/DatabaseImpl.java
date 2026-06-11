@@ -15,7 +15,7 @@ public final class DatabaseImpl implements Database {
     private static final ScopedValue<TransactionContext> CURRENT_TX =
         ScopedValue.newInstance();
 
-    private final ConnectionPool pool;
+    private final Pool pool;
     private final RowMapperResolver rowMapperResolver;
     private final int queryTimeoutSeconds;
 
@@ -23,7 +23,7 @@ public final class DatabaseImpl implements Database {
         DatabaseConfig config,
         RowMapperResolver rowMapperResolver
     ) {
-        this.pool = new ConnectionPool(PoolConfig.from(config));
+        this.pool = new PoolDefault(PoolConfig.from(config));
         this.rowMapperResolver = rowMapperResolver;
         long millis = config.queryTimeout().toMillis();
         this.queryTimeoutSeconds = (int) Math.max(1, (millis + 999) / 1000);
@@ -175,7 +175,7 @@ public final class DatabaseImpl implements Database {
         return rowMapperResolver;
     }
 
-    ConnectionPool pool() {
+    Pool pool() {
         return pool;
     }
 

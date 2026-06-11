@@ -1,6 +1,7 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.SqlException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -17,10 +18,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class ConnectionPool implements AutoCloseable {
+public final class PoolDefault implements Pool {
 
     private static final Logger LOG = LoggerFactory.getLogger(
-        ConnectionPool.class
+        PoolDefault.class
     );
     private static final Duration FRESH_IDLE_THRESHOLD = Duration.ofSeconds(5);
     private static final Duration LEAK_THRESHOLD = Duration.ofSeconds(30);
@@ -35,7 +36,7 @@ public final class ConnectionPool implements AutoCloseable {
     private volatile boolean closed;
     private Thread cleanThread;
 
-    ConnectionPool(PoolConfig config) {
+    PoolDefault(PoolConfig config) {
         this.config = config;
         this.semaphore = new Semaphore(config.maxSize());
         this.idle = new ConcurrentLinkedDeque<>();
@@ -47,7 +48,7 @@ public final class ConnectionPool implements AutoCloseable {
         startCleaner();
     }
 
-    PooledConnection borrow() {
+    public PooledConnection borrow() {
         ensureOpen();
         long waitStart = System.nanoTime();
         try {
@@ -98,7 +99,7 @@ public final class ConnectionPool implements AutoCloseable {
         }
     }
 
-    void release(PooledConnection conn) {
+    public void release(PooledConnection conn) {
         if (conn == null) {
             return;
         }
@@ -116,7 +117,7 @@ public final class ConnectionPool implements AutoCloseable {
         semaphore.release();
     }
 
-    DatabaseStats stats() {
+    public DatabaseStats stats() {
         int longLeased = 0;
         for (PooledConnection conn : active) {
             if (conn.isLeaked(LEAK_THRESHOLD)) {

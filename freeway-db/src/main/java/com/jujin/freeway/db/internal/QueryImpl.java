@@ -1,6 +1,7 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.ExecuteResult;
+import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SqlException;
 import java.lang.ref.Cleaner;
@@ -494,13 +495,13 @@ final class QueryImpl implements Query {
 
         private final PreparedStatement stmt;
         private final PooledConnection connection;
-        private final ConnectionPool pool;
+        private final Pool pool;
         private boolean closed;
 
         private ExecuteContext(
             PreparedStatement stmt,
             PooledConnection connection,
-            ConnectionPool pool
+            Pool pool
         ) {
             this.stmt = stmt;
             this.connection = connection;

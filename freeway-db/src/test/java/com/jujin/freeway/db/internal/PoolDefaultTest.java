@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 连接池泄露检测集成测试 — 验证 active 追踪和 stats 上报。
  */
-class ConnectionPoolLeakTest {
+class PoolDefaultTest {
 
     @Test
     void statsShowsBorrowedConnectionInActive() {
@@ -26,7 +26,7 @@ class ConnectionPoolLeakTest {
             null,
             Duration.ofSeconds(3)
         );
-        var pool = new ConnectionPool(config);
+        var pool = new PoolDefault(config);
 
         // 借出前：longLeased = 0
         DatabaseStats before = pool.stats();
@@ -60,7 +60,7 @@ class ConnectionPoolLeakTest {
             null,
             Duration.ofSeconds(3)
         );
-        var pool = new ConnectionPool(config);
+        var pool = new PoolDefault(config);
 
         PooledConnection conn = pool.borrow();
         // 刚借出，30s 阈值不可能触发
@@ -85,7 +85,7 @@ class ConnectionPoolLeakTest {
             null,
             Duration.ofSeconds(3)
         );
-        var pool = new ConnectionPool(config);
+        var pool = new PoolDefault(config);
 
         PooledConnection c1 = pool.borrow();
         PooledConnection c2 = pool.borrow();
@@ -118,7 +118,7 @@ class ConnectionPoolLeakTest {
             null,
             Duration.ofSeconds(3)
         );
-        var pool = new ConnectionPool(config);
+        var pool = new PoolDefault(config);
 
         PooledConnection first = pool.borrow();
         AtomicReference<PooledConnection> second = new AtomicReference<>();
