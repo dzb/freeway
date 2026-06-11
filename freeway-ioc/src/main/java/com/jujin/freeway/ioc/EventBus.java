@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.annotation.Inject;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -20,6 +21,8 @@ public final class EventBus implements AutoCloseable {
     private final Container container;
     private final EventBridge bridge;
     private volatile Executor asyncExecutor;
+    private volatile Map<Class<?>, List<Consumer>> moduleClassIndex;
+    private volatile Map<String, List<Consumer>> moduleTopicIndex;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs = new ConcurrentHashMap<>();
     private final Map<String, List<Subscription<?>>> runtimeTopicSubs = new ConcurrentHashMap<>();
 
@@ -173,26 +176,39 @@ public final class EventBus implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     private List<Consumer> moduleSubscribers(Class<?> eventType, String topic) {
-        Extension<?> ext = moduleExtension();
-        if (ext == null) return List.of();
-        List<Consumer> result = new ArrayList<>();
-        for (Object entry : ext.all()) {
-            if (!(entry instanceof EventSubscriber<?> sub)) continue;
-            if (eventType != null && sub.eventType() == eventType) {
-                result.add((Consumer) sub.handler());
-            } else if (topic != null && topic.equals(sub.topic())) {
-                result.add((Consumer) sub.handler());
-            }
+        ensureIndexed();
+        if (eventType != null) {
+            List<Consumer> subs = moduleClassIndex.get(eventType);
+            return subs != null ? subs : List.of();
         }
-        return result;
+        List<Consumer> subs = moduleTopicIndex.get(topic);
+        return subs != null ? subs : List.of();
     }
 
-    private Extension<?> moduleExtension() {
+    @SuppressWarnings("unchecked")
+    private synchronized void ensureIndexed() {
+        if (moduleClassIndex != null) return;
+        Extension<?> ext;
         try {
-            return container.get(Extension.class, EventSubscriber.class.getName());
+            ext = container.get(Extension.class, EventSubscriber.class.getName());
         } catch (IllegalArgumentException e) {
-            return null;
+            moduleClassIndex = Map.of();
+            moduleTopicIndex = Map.of();
+            return;
         }
+        var classIdx = new HashMap<Class<?>, List<Consumer>>();
+        var topicIdx = new HashMap<String, List<Consumer>>();
+        for (Object entry : ext.all()) {
+            if (!(entry instanceof EventSubscriber<?> sub)) continue;
+            if (sub.eventType() != null) {
+                classIdx.computeIfAbsent(sub.eventType(), k -> new ArrayList<>()).add((Consumer) sub.handler());
+            }
+            if (sub.topic() != null) {
+                topicIdx.computeIfAbsent(sub.topic(), k -> new ArrayList<>()).add((Consumer) sub.handler());
+            }
+        }
+        moduleClassIndex = classIdx;
+        moduleTopicIndex = topicIdx;
     }
 
     private static String resolveTopic(Class<?> eventType) {
