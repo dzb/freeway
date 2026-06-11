@@ -7,7 +7,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
 | `freeway-commons` | Shared utilities: JSON, coercion, Defer, logging fallback |
-| `freeway-ioc` | IoC container: bind, inject, coerce, advise               |
+| `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP/WebSocket layer: routing, filters, static, multipart |
 | `├ built-in` | JDK HttpServer engine, HTTP only                          |
