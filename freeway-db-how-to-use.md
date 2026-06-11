@@ -77,7 +77,7 @@ Schema.ensure(db, User.class);
 
 ```java
 Database db = new DatabaseBuilder()
-    .config(DatabaseConfig.defaults(
+    .config(PoolConfig.defaults(
         "jdbc:h2:mem:mydb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "sa", ""))
     .build();
@@ -347,7 +347,7 @@ record User(@Id @Generated Long id, @Column String name, @Column Integer age) {
 
 // 2. 建库 + 建表
 Database db = new DatabaseBuilder()
-    .config(DatabaseConfig.defaults("jdbc:h2:mem:demo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+    .config(PoolConfig.defaults("jdbc:h2:mem:demo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
     .build();
 Schema.ensure(db, User.class);
 Orm orm = Orm.of(db);

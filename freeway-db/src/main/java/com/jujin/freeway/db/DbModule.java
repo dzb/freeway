@@ -3,6 +3,7 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
+import com.jujin.freeway.db.internal.PoolDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.ioc.Binder;
@@ -21,16 +22,29 @@ public final class DbModule implements Module {
     public void bind(Binder binder) {
         // config
         binder
-            .bind(DatabaseConfig.class)
+            .bind(PoolConfig.class)
             .to(container -> buildConfig(container));
+        binder
+            .bind(Pool.class)
+            .to(container -> {
+                PoolConfig config = container.get(PoolConfig.class);
+                return new PoolDefault(config);
+            })
+            .id("builtin");
 
         // database
         binder
             .bind(RowMapperResolver.class)
             .to(container -> buildResolver(container));
-        binder.bind(Database.class).to(DatabaseImpl.class);
-        binder.bind(DatabaseHub.class).to(container -> buildHub(container));
-        binder.bind(Orm.class).to(Orm.class);
+        binder
+            .bind(Database.class)
+            .to(container -> buildDatabase(container));
+        binder
+            .bind(DatabaseHub.class)
+            .to(container -> buildHub(container));
+        binder
+            .bind(Orm.class)
+            .to(Orm.class);
         binder
             .bind(MigrationRunner.class)
             .to(container -> buildMigrationRunner(container));
@@ -50,7 +64,7 @@ public final class DbModule implements Module {
         }
     }
 
-    private static DatabaseConfig buildConfig(Container container) {
+    private static PoolConfig buildConfig(Container container) {
         SymbolSource symbols = container.get(SymbolSource.class);
         String url = Objects.requireNonNull(
             symbols.resolve("freeway.db.url"),
@@ -60,52 +74,79 @@ public final class DbModule implements Module {
             symbols.resolve("freeway.db.username"),
             "freeway.db.username is required"
         );
-        return new DatabaseConfig(
+        return new PoolConfig(
             url,
             user,
             resolveStr(symbols, "freeway.db.password", ""),
             parseInt(
                 symbols,
                 "freeway.db.pool.max-size",
-                DatabaseConfig.DEFAULT_MAX_SIZE
+                PoolConfig.DEFAULT_MAX_SIZE
             ),
             parseInt(
                 symbols,
                 "freeway.db.pool.min-idle",
-                DatabaseConfig.DEFAULT_MIN_IDLE
+                PoolConfig.DEFAULT_MIN_IDLE
             ),
             parseDuration(
                 symbols,
                 "freeway.db.pool.connection-timeout",
-                DatabaseConfig.DEFAULT_CONNECTION_TIMEOUT
+                PoolConfig.DEFAULT_CONNECTION_TIMEOUT
             ),
             parseDuration(
                 symbols,
                 "freeway.db.pool.max-lifetime",
-                DatabaseConfig.DEFAULT_MAX_LIFETIME
+                PoolConfig.DEFAULT_MAX_LIFETIME
             ),
             parseDuration(
                 symbols,
                 "freeway.db.pool.max-idle-time",
-                DatabaseConfig.DEFAULT_MAX_IDLE_TIME
+                PoolConfig.DEFAULT_MAX_IDLE_TIME
             ),
             parseDuration(
                 symbols,
                 "freeway.db.pool.clean-interval",
-                DatabaseConfig.DEFAULT_CLEAN_INTERVAL
+                PoolConfig.DEFAULT_CLEAN_INTERVAL
             ),
             resolveStr(symbols, "freeway.db.pool.health-check-query", null),
             parseDuration(
                 symbols,
                 "freeway.db.pool.health-check-timeout",
-                DatabaseConfig.DEFAULT_HEALTH_CHECK_TIMEOUT
+                PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT
             ),
             parseDuration(
                 symbols,
                 "freeway.db.query-timeout",
-                DatabaseConfig.DEFAULT_QUERY_TIMEOUT
+                PoolConfig.DEFAULT_QUERY_TIMEOUT
             )
         );
+    }
+
+    private static Database buildDatabase(Container container) {
+        PoolConfig config = container.get(PoolConfig.class);
+        RowMapperResolver resolver = container.get(RowMapperResolver.class);
+        SymbolSource symbols = container.get(SymbolSource.class);
+        String poolId = resolveStr(symbols, "freeway.db.pool", "builtin");
+        Pool pool = resolvePool(container, poolId, config);
+        return new DatabaseImpl(config, resolver, pool);
+    }
+
+    private static Pool resolvePool(
+        Container container,
+        String poolId,
+        PoolConfig config
+    ) {
+        String id = poolId != null && !poolId.isBlank() ? poolId : "builtin";
+        try {
+            return container.get(Pool.class, id);
+        } catch (RuntimeException ex) {
+            if (!"builtin".equals(id)) {
+                throw new IllegalStateException(
+                    "Unable to resolve pool engine '" + id + "'", ex
+                );
+            }
+            return new PoolDefault(config);
+        }
     }
 
     @SuppressWarnings("unchecked")

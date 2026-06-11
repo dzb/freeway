@@ -20,10 +20,19 @@ public final class DatabaseImpl implements Database {
     private final int queryTimeoutSeconds;
 
     public DatabaseImpl(
-        DatabaseConfig config,
+        PoolConfig config,
         RowMapperResolver rowMapperResolver
     ) {
-        this.pool = new PoolDefault(PoolConfig.from(config));
+        this(config, rowMapperResolver, null);
+    }
+
+    public DatabaseImpl(
+        PoolConfig config,
+        RowMapperResolver rowMapperResolver,
+        Pool pool
+    ) {
+        this.pool =
+            pool != null ? pool : new PoolDefault(config);
         this.rowMapperResolver = rowMapperResolver;
         long millis = config.queryTimeout().toMillis();
         this.queryTimeoutSeconds = (int) Math.max(1, (millis + 999) / 1000);
@@ -139,7 +148,7 @@ public final class DatabaseImpl implements Database {
         return (
             end <= sql.length() &&
             sql.regionMatches(true, index, "insert", 0, "insert".length()) &&
-            (end == sql.length() || !isIdentifierChar(sql.charAt(end)))
+            (end == sql.length() || !Names.isValidParamChar(sql.charAt(end)))
         );
     }
 
@@ -243,7 +252,4 @@ public final class DatabaseImpl implements Database {
         return index;
     }
 
-    private static boolean isIdentifierChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_' || c == '$';
-    }
 }

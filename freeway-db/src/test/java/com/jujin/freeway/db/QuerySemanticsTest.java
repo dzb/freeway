@@ -12,7 +12,7 @@ class QuerySemanticsTest {
     void collectionExpansionWorksForPositionalParameters() {
         String dbName = "freeway_query_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -27,7 +27,7 @@ class QuerySemanticsTest {
     void collectionExpansionRejectsTrailingPositionalParameters() {
         String dbName = "freeway_query_tail_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -43,7 +43,7 @@ class QuerySemanticsTest {
     void collectionExpansionRejectsUnknownNamedParameters() {
         String dbName = "freeway_query_named_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {
@@ -61,7 +61,7 @@ class QuerySemanticsTest {
     void positionalQuestionMarksInsideStringsAndCommentsAreIgnored() {
         String dbName = "freeway_query_literal_q_" + UUID.randomUUID().toString().replace('-', '_');
         Database db = new DatabaseBuilder()
-            .config(DatabaseConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
             .build();
 
         try (db) {

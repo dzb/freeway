@@ -433,7 +433,7 @@ binder.bind(MyEngine.class).to(MyEngine.class).id("my-engine");
 
 ```java
 // Standalone usage (no IoC)
-DatabaseConfig config = DatabaseConfig.defaults("jdbc:h2:mem:test", "sa", "");
+PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test", "sa", "");
 Database db = new DatabaseBuilder().config(config).build();
 Orm orm = Orm.of(db);
 orm.insert(new Post("Hello", "World"));

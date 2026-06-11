@@ -2,7 +2,7 @@ package com.jujin.freeway.db.migration;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseBuilder;
-import com.jujin.freeway.db.DatabaseConfig;
+import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.DbModule;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.ioc.Container;
@@ -23,9 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MigrationRunnerTest {
-    private static final String URL_KEY = DatabaseConfig.PREFIX + ".url";
-    private static final String USER_KEY = DatabaseConfig.PREFIX + ".username";
-    private static final String PASS_KEY = DatabaseConfig.PREFIX + ".password";
+    private static final String URL_KEY = PoolConfig.PREFIX + ".url";
+    private static final String USER_KEY = PoolConfig.PREFIX + ".username";
+    private static final String PASS_KEY = PoolConfig.PREFIX + ".password";
 
     private String previousUrl;
     private String previousUser;
@@ -93,7 +93,7 @@ class MigrationRunnerTest {
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
              Database db = new DatabaseBuilder()
-                 .config(DatabaseConfig.defaults(
+                 .config(PoolConfig.defaults(
                      "jdbc:h2:mem:freeway_migration_large_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                      "sa",
                      ""

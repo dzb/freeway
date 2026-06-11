@@ -9,15 +9,20 @@ import java.util.Map;
 import java.util.Objects;
 
 public final class DatabaseBuilder {
-    private DatabaseConfig config;
-    private Coercer coercer;
-    private final Map<Class<?>, RowMapper<?>> rowMappers = new LinkedHashMap<>();
 
-    public static DatabaseBuilder from(DatabaseConfig config) {
-        return new DatabaseBuilder().config(Objects.requireNonNull(config, "config"));
+    private PoolConfig config;
+    private Coercer coercer;
+    private Pool pool;
+    private final Map<Class<?>, RowMapper<?>> rowMappers =
+        new LinkedHashMap<>();
+
+    public static DatabaseBuilder from(PoolConfig config) {
+        return new DatabaseBuilder().config(
+            Objects.requireNonNull(config, "config")
+        );
     }
 
-    public DatabaseBuilder config(DatabaseConfig config) {
+    public DatabaseBuilder config(PoolConfig config) {
         this.config = Objects.requireNonNull(config, "config");
         return this;
     }
@@ -27,7 +32,15 @@ public final class DatabaseBuilder {
         return this;
     }
 
-    public <T> DatabaseBuilder rowMapper(Class<T> type, RowMapper<? extends T> mapper) {
+    public DatabaseBuilder pool(Pool pool) {
+        this.pool = Objects.requireNonNull(pool, "pool");
+        return this;
+    }
+
+    public <T> DatabaseBuilder rowMapper(
+        Class<T> type,
+        RowMapper<? extends T> mapper
+    ) {
         Class<T> t = Objects.requireNonNull(type, "type");
         RowMapper<?> m = Objects.requireNonNull(mapper, "mapper");
         if (rowMappers.containsKey(t)) {
@@ -55,7 +68,8 @@ public final class DatabaseBuilder {
                 effective,
                 Map.copyOf(rowMappers),
                 Map.<Class<?>, RowMapper<?>>of()
-            )
+            ),
+            pool
         );
     }
 }
