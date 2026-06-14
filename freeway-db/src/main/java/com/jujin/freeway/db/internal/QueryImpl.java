@@ -164,7 +164,8 @@ final class QueryImpl implements Query {
         }
     }
 
-    ExecuteResult execute() {
+    @Override
+    public ExecuteResult execute() {
         try (var ctx = borrow(mayHaveGeneratedKeys)) {
             bindAll(ctx.stmt);
             int rows = ctx.stmt.executeUpdate();
@@ -260,16 +261,26 @@ final class QueryImpl implements Query {
         if (!namedParams.isEmpty()) {
             expandNamed();
         } else if (NamedParamParser.hasNamedPlaceholders(originalSql)) {
-            var names = NamedParamParser.parse(originalSql).names();
-            throw new SqlException(
-                "Named parameter(s) found in SQL but no .param() calls provided: " +
-                    names +
-                    ". Use .param(\"name\", value) for each placeholder. SQL: " +
-                    originalSql
-            );
+            autoBindNamed();
         } else {
             expandPositional();
         }
+    }
+
+    private void autoBindNamed() {
+        var p = NamedParamParser.parse(originalSql);
+        if (positionalParams.length != p.names().size()) {
+            throw new SqlException(
+                "Parameter count mismatch in '" + originalSql + "': " +
+                    p.names().size() + " named parameter(s) " + p.names() +
+                    " but " + positionalParams.length + " value(s) provided. " +
+                    "Use .param(\"name\", value) for named parameters."
+            );
+        }
+        for (int i = 0; i < p.names().size(); i++) {
+            namedParams.put(p.names().get(i), positionalParams[i]);
+        }
+        expandNamed();
     }
 
     private void expandPositional() {

@@ -13,4 +13,7 @@ public interface Query {
     <T> Optional<T> one(Class<T> targetType);
 
     <T> Stream<T> stream(Class<T> targetType);
+
+    /** 执行 INSERT / UPDATE / DELETE 并返回影响行数。支持命名参数和集合展开。 */
+    ExecuteResult execute();
 }

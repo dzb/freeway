@@ -241,8 +241,10 @@ public final class WebServer implements AutoCloseable {
             }
             for (StaticResourceMount mount : staticMounts) {
                 if (mount.matches(request.method(), request.path())) {
-                    mount.serve(request);
-                    return;
+                    if (mount.serve(request)) {
+                        return;
+                    }
+                    // fallthrough：文件不存在，继续交给后续路由处理
                 }
             }
             RouteIndex.RouteMatch match = routes.match(request.method(), request.path());
