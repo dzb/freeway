@@ -194,6 +194,88 @@ class NamedParamEdgeCaseTest {
         }
     }
 
+    // ====================== execute() + 命名参数自动绑定 ======================
+
+    @Test
+    void executeWithColonNamedParams() {
+        String dbName = uniqueDb("execute_colon");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint primary key, label varchar(16))");
+            // :name 配合位置参数 → 自动按声明顺序绑定
+            db.execute("insert into t values (:id, :label)", 1L, "hello");
+
+            String result = db.query("select label from t where id = ?", 1L)
+                .one(String.class).orElseThrow();
+            assertEquals("hello", result);
+        }
+    }
+
+    @Test
+    void executeWithDollarNamedParams() {
+        String dbName = uniqueDb("execute_dollar");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint primary key, label varchar(16))");
+            // $name 配合位置参数 → 自动按声明顺序绑定
+            db.execute("insert into t values ($id, $label)", 1L, "world");
+
+            String result = db.query("select label from t where id = ?", 1L)
+                .one(String.class).orElseThrow();
+            assertEquals("world", result);
+        }
+    }
+
+    @Test
+    void executeWithNamedParamsCountMismatch() {
+        String dbName = uniqueDb("execute_mismatch");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint primary key, label varchar(16))");
+
+            // SQL 有 2 个命名参数，只提供了 1 个值
+            assertThrows(SqlException.class,
+                () -> db.execute("insert into t values (:id, :label)", 1L));
+        }
+    }
+
+    @Test
+    void queryWithNamedPositionalParams() {
+        String dbName = uniqueDb("query_namedPos");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint primary key, name varchar(16))");
+            db.execute("insert into t values (1, 'alpha'), (2, 'beta')");
+
+            // query + $name + 位置参数 → 自动绑定
+            List<NameEntry> results = db.query(
+                "select id, name from t where id = $id", 1L
+            ).list(NameEntry.class);
+            assertEquals(1, results.size());
+            assertEquals("alpha", results.get(0).name());
+        }
+    }
+
+    @Test
+    void queryExecuteWithNamedParams() {
+        String dbName = uniqueDb("query_exec_named");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint primary key, label varchar(16))");
+
+            // query().param().execute() 直接执行 INSERT
+            ExecuteResult r = db.query("insert into t values (:id, :label)")
+                .param("id", 1L)
+                .param("label", "named-exec")
+                .execute();
+            assertEquals(1, r.rows());
+
+            String result = db.query("select label from t where id = ?", 1L)
+                .one(String.class).orElseThrow();
+            assertEquals("named-exec", result);
+        }
+    }
+
     // ====================== 辅助 ======================
 
     private static DatabaseBuilder builder(String name) {

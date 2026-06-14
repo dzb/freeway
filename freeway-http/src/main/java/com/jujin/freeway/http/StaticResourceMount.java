@@ -29,28 +29,46 @@ public final class StaticResourceMount {
     private final ResourceSource source;
     private final long cacheMaxAgeSeconds;
     private final boolean immutable;
+    private final boolean fallthrough;
 
-    private StaticResourceMount(String mountPath, ResourceSource source, long cacheMaxAgeSeconds, boolean immutable) {
+    private StaticResourceMount(
+        String mountPath, ResourceSource source,
+        long cacheMaxAgeSeconds, boolean immutable,
+        boolean fallthrough
+    ) {
         this.mountPath = normalizeMount(mountPath);
         this.source = Objects.requireNonNull(source, "source");
         this.cacheMaxAgeSeconds = Math.max(0L, cacheMaxAgeSeconds);
         this.immutable = immutable;
+        this.fallthrough = fallthrough;
     }
 
     public static StaticResourceMount directory(String mountPath, Path root) {
-        return new StaticResourceMount(mountPath, new DirectoryResourceSource(root), DEFAULT_CACHE_MAX_AGE_SECONDS, false);
+        return new StaticResourceMount(mountPath, new DirectoryResourceSource(root), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false);
     }
 
     public static StaticResourceMount classpath(String mountPath, String resourceRoot) {
-        return new StaticResourceMount(mountPath, new ClasspathResourceSource(resourceRoot), DEFAULT_CACHE_MAX_AGE_SECONDS, false);
+        return new StaticResourceMount(mountPath, new ClasspathResourceSource(resourceRoot), DEFAULT_CACHE_MAX_AGE_SECONDS, false, false);
     }
 
     public StaticResourceMount cacheMaxAgeSeconds(long cacheMaxAgeSeconds) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
     }
 
     public StaticResourceMount immutable(boolean immutable) {
-        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable);
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
+    }
+
+    /**
+     * 文件不存在时是否把请求交还给路由链（而非返回 404）。
+     * 启用后行为类似 nginx 的 {@code try_files}，适合 SPA 前端路由场景。
+     */
+    public StaticResourceMount fallthrough(boolean fallthrough) {
+        return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
+    }
+
+    public boolean fallthrough() {
+        return fallthrough;
     }
 
     public String mountPath() {
@@ -75,26 +93,39 @@ public final class StaticResourceMount {
         return path != null && (path.equals(mountPath) || path.startsWith(mountPath + "/"));
     }
 
-    public void serve(HttpContext ctx) throws IOException {
+    /**
+     * 处理静态资源请求。
+     *
+     * @return true 表示请求已被处理（文件已发送或 404 已返回）；
+     *         false 表示文件不存在且 {@link #fallthrough} 启用，请求应交还给路由链
+     */
+    public boolean serve(HttpContext ctx) throws IOException {
         String relative = relativePath(ctx.path());
         if (relative == null) {
-            ctx.send(404, "Not Found");
-            return;
+            return notFound(ctx);
         }
         StaticAsset asset = source.load(relative);
         if (asset == null) {
-            ctx.send(404, "Not Found");
-            return;
+            return notFound(ctx);
         }
         applyCacheHeaders(ctx, asset);
         if (isNotModified(ctx, asset)) {
             ctx.status(304).output(new byte[0]);
-            return;
+            return true;
         }
         ctx.status(200);
         ctx.headerSet("Content-Type", contentType(asset.name()));
         ctx.headerSet("X-Content-Type-Options", "nosniff");
         ctx.output(asset.bytes());
+        return true;
+    }
+
+    private boolean notFound(HttpContext ctx) throws IOException {
+        if (fallthrough) {
+            return false;
+        }
+        ctx.send(404, "Not Found");
+        return true;
     }
 
     private String relativePath(String path) {
