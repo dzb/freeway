@@ -44,6 +44,181 @@ Dependencies: `commons` ← `ioc` ← `boot`, `http`, `db`, `mq-kafka`. Core mod
 
 ---
 
+## Module — The Fundamental Building Block
+
+`Module` is the central organizing concept in Freeway. Every application and library expresses its composition through modules. A module is a single unit that declares: *what services I provide, what I need from others, and what I contribute to the system.*
+
+```java
+@FunctionalInterface
+public interface Module {
+    void bind(Binder binder);
+}
+```
+
+A module does three things in its `bind()` method:
+
+1. **Bind services** — register implementations, set scopes, configure injection
+2. **Contribute extensions** — add routes, event subscribers, runtime hooks, coercion rules
+3. **Compose with other modules** — passed together to the launcher, sharing a unified binding space
+
+### The Module Contract
+
+Modules are **self-contained** and **declarative**. They don't start work during `bind()` — they only declare what should exist. Actual initialization happens when the container resolves services or when `RuntimeHook.start()` fires. This separation is what makes Freeway testable: you can create a container with a subset of modules and verify bindings without starting servers or opening connections.
+
+### Application Module
+
+Every application starts with a primary module:
+
+```java
+public class AppModule implements Module {
+    public void bind(Binder b) {
+        // Bind application services
+        b.bind(UserService.class).to(UserServiceImpl.class);
+        b.bind(OrderService.class).to(OrderServiceImpl.class);
+
+        // Install framework modules
+        b.install(new HttpModule());
+        b.install(new DbModule());
+
+        // Contribute routes
+        b.contribute(Route.class)
+            .add(Route.get("/users", ctx -> ctx.sendJson(200, users())))
+            .add(Route.post("/orders", (ctx, OrderRequest body) -> {
+                orderService.place(body);
+                ctx.sendJson(201, Map.of("status", "ok"));
+            }, OrderRequest.class));
+
+        // Contribute lifecycle hooks
+        b.contribute(RuntimeHook.class)
+            .add("cache.warmup", new RuntimeHook() {
+                public void start(Container c) { c.get(Cache.class).warmup(); }
+                public void stop(Container c) { c.get(Cache.class).close(); }
+            }).before("freeway.http.server");
+    }
+}
+
+// Bootstrap
+AppRuntime runtime = Launcher.run(AppModule.class, args);
+```
+
+### Module Composition
+
+Modules compose by passing all of them to the launcher. The container loads them all into a shared space — bindings and extensions merge across module boundaries:
+
+```java
+// Compose framework + application modules
+Launcher.run(AppModule.class, new HttpModule(), new DbModule());
+// or via Freeway.create()
+Freeway.create(new AppModule(), new HttpModule(), new DbModule());
+```
+
+Extensions from every module merge into shared contribution lists. `before()`/`after()` ordering works across module boundaries — a security filter contributed by one module can declare it runs before all routes regardless of which module contributed them. This is the key to modular, composable applications: each module contributes its piece, and the container resolves the whole.
+
+### Library Module — The DbModule Pattern
+
+Freeway modules follow a unique design: **the module integrates the library into the IoC container, but the library itself has zero dependency on IoC.** This is the pattern used by `freeway-db`, `freeway-mq-kafka`, and `freeway-db-hikari`:
+
+```
+freeway-db (the library)
+  ├─ Database, Orm, Pool, SQL, Row, Schema — all work standalone
+  └─ DbModule — the IoC integration point
+```
+
+**Standalone usage (no IoC, no Container):**
+
+```java
+PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test", "sa", "");
+Database db = new DatabaseBuilder().config(config).build();
+Orm orm = Orm.of(db);
+orm.insert(new Post("Hello", "World"));
+```
+
+**IoC usage (with Container):**
+
+```java
+Launcher.run(AppModule.class, new DbModule());
+// Database, Orm, Coercer are now injectable
+@Inject Database db;
+```
+
+`DbModule.bind()` does the integration work: it reads `PoolConfig` from the container's config cascade, creates a `Database`, binds it as a singleton, registers it in `DatabaseHub`, and wires the `RuntimeHook` for connection pool lifecycle. But the library types (`Database`, `Orm`, `Pool`) never import anything from `freeway-ioc`. This means:
+
+- The library can be used in non-Freeway projects.
+- The library can be tested without a container.
+- The library can be versioned independently.
+- The integration surface is a single, auditable class (`DbModule`).
+
+### Writing a Library Module
+
+Follow this pattern for your own libraries:
+
+```
+my-library/
+├── src/main/java/com/example/mylib/
+│   ├── MyService.java           # public API — no IoC imports
+│   ├── MyServiceConfig.java     # configuration record
+│   └── MyLibModule.java         # IoC integration — implements Module
+```
+
+```java
+// The library types — zero IoC dependency
+public class MyService {
+    public MyService(MyServiceConfig config) { ... }
+    public void doWork() { ... }
+}
+
+public record MyServiceConfig(String url, int timeout) {
+    public static MyServiceConfig from(Container c) {
+        return new MyServiceConfig(
+            c.get(Coercer.class).coerce(
+                c.get(AppConfig.class).get("myservice.url"), String.class),
+            c.get(Coercer.class).coerce(
+                c.get(AppConfig.class).get("myservice.timeout"), int.class)
+        );
+    }
+}
+
+// The Module — the only file that imports freeway-ioc
+public class MyLibModule implements Module {
+    public void bind(Binder b) {
+        b.bind(MyServiceConfig.class).to(c -> MyServiceConfig.from(c));
+        b.bind(MyService.class).to(c -> new MyService(c.get(MyServiceConfig.class)));
+    }
+}
+```
+
+### Config-Driven Module Selection
+
+Modules can read config to decide what to bind. The HTTP engine selection and DB pool selection both use this pattern:
+
+```java
+// freeway.db.pool=builtin  → binds PoolDefault
+// freeway.db.pool=hikari   → binds HikariPool (if HikariPoolModule is installed)
+b.bind(Pool.class).to(PoolDefault.class).id("builtin");
+// HikariPoolModule binds: b.bind(Pool.class).to(HikariPool.class).id("hikari").primary();
+```
+
+User sets `freeway.db.pool=hikari` in config; the primary binding resolves to `HikariPool`. No code change needed.
+
+### Built-in Framework Modules
+
+| Module | Purpose |
+|--------|---------|
+| `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"`. |
+| `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (selectable via `freeway.db.pool`), registers `DatabaseHub`. |
+| `HikariPoolModule` | Binds `HikariPool` as a `Pool` implementation with `id("hikari").primary()`. |
+| `KafkaModule` | Creates `KafkaConfig`, binds `KafkaEventBridge` and `KafkaSubscriber`, registers `RuntimeHook` for Kafka lifecycle. |
+
+### Module Best Practices
+
+- **One module per library.** Don't split a library's IoC integration across multiple modules.
+- **Don't start work in `bind()`.** The `bind()` method declares; `RuntimeHook.start()` activates.
+- **Read config at bind time, not at class load time.** Use `@Value` / `@Symbol` or read `AppConfig` through the container.
+- **Use stable ids for RuntimeHooks.** Other modules may need to order relative to yours (e.g., `"freeway.http.server"`).
+- **Library types should not import IoC types.** Keep the library usable without a container.
+
+---
+
 ## IoC Container
 
 ### Creating a Container
