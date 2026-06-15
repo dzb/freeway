@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.schema.*;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
 import java.util.ArrayList;
@@ -67,9 +68,8 @@ public final class Orm {
         return insert(entity, null);
     }
 
-    @SuppressWarnings("unchecked")
     public <T> ExecuteResult insert(T entity, Class<T> type) {
-        Class<T> t = type != null ? type : (Class<T>) entity.getClass();
+        Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
         String table = SqlTypeMapping.tableName(t);
         ColumnInfo columns = insertColumns(plan);
@@ -91,9 +91,8 @@ public final class Orm {
         return save(entity, null);
     }
 
-    @SuppressWarnings("unchecked")
     public <T> ExecuteResult save(T entity, Class<T> type) {
-        Class<T> t = type != null ? type : (Class<T>) entity.getClass();
+        Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
         String table = SqlTypeMapping.tableName(t);
         List<BeanProperty> idProps = idProperties(plan);
@@ -138,9 +137,8 @@ public final class Orm {
         return update(entity, null);
     }
 
-    @SuppressWarnings("unchecked")
     public <T> ExecuteResult update(T entity, Class<T> type) {
-        Class<T> t = type != null ? type : (Class<T>) entity.getClass();
+        Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
         String table = SqlTypeMapping.tableName(t);
         List<BeanProperty> idProps = idProperties(plan);
@@ -179,9 +177,8 @@ public final class Orm {
         return delete(entity, null);
     }
 
-    @SuppressWarnings("unchecked")
     public <T> ExecuteResult delete(T entity, Class<T> type) {
-        Class<T> t = type != null ? type : (Class<T>) entity.getClass();
+        Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
         String table = SqlTypeMapping.tableName(t);
         List<BeanProperty> idProps = idProperties(plan);
@@ -238,7 +235,21 @@ public final class Orm {
     }
 
     private static Class<?> rawType(Type type) {
-        return type instanceof Class<?> c ? c : Long.class;
+        if (type instanceof Class<?> c) {
+            return c;
+        }
+        if (type instanceof ParameterizedType pt
+            && pt.getRawType() instanceof Class<?> raw) {
+            return raw;
+        }
+        throw new SqlException(
+            "Unsupported @Generated property type: " + type.getTypeName()
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> Class<T> resolveClass(T entity, Class<T> type) {
+        return type != null ? type : (Class<T>) entity.getClass();
     }
 
     private static boolean isId(BeanProperty prop) {

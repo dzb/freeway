@@ -6,7 +6,7 @@ Zero classpath scanning. Compose-first API. No magic.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
-| `freeway-commons` | Shared utilities: JSON, coercion, Defer, logging fallback |
+| `freeway-commons` | Shared utilities: JSON, coercion, Defer, ScopedCache, logging |
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP/WebSocket layer: routing, filters, static, multipart |
@@ -15,6 +15,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | `├ freeway-http-undertow` | Undertow transport adapter                                |
 | `└ freeway-http-jetty` | Jetty transport adapter                                   |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
+| `└ freeway-db-hikari` | HikariCP connection pool adapter                          |
 | `freeway-mq-kafka` | Kafka adapter for EventBus: distributed pub/sub           |
 
 ## Philosophy
@@ -52,14 +53,14 @@ Freeway 2 keeps its core concepts and public API intentionally small:
 ## Quick Start
 
 ```java
-public final class AppModule implements Module {
+public final class AppModule implements Module2 {
     @Override
     public void bind(Binder binder) {
         binder.bind(Greeter.class).to(GreeterImpl.class);
     }
 }
 
-AppRuntime runtime = Launcher.run(AppModule.class, args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 Greeter greeter = runtime.get(Greeter.class);
 System.out.println(greeter.greet("World"));
 runtime.close();
@@ -93,6 +94,7 @@ Shared utilities usable independently of the framework:
 - JSON — `JsonCodec` for object↔JSON mapping, `JsonUtils` for parsing/serialization.
 - Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
 - Defer — scope-bound deferred execution. Actions buffered inside a scope drain on commit, discard on rollback. Backed by `ScopedValue`.
+- ScopedCache — scope-bound value cache. Keys are lazily created and reused within a scope, cleaned up on exit via registered close handlers.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
 - Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
 
@@ -116,7 +118,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `Launcher.run()` - thin entry that delegates to `AppBootstrap`.
+- `Launcher.run(args, Module2...)` - accepts command-line args and Module2 instances. Loads config, discovers SPI modules, starts the full application lifecycle.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.

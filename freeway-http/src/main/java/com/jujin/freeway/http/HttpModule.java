@@ -3,11 +3,10 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.*;
-import com.jujin.freeway.ioc.Module;
 
 import java.util.Map;
 
-public final class HttpModule implements Module {
+public final class HttpModule implements Module2{
     public static final String SERVER_HOOK = "freeway.http.server";
 
     @Override

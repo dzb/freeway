@@ -14,7 +14,7 @@ public final class HookLifecycle {
     private static final Logger LOG = LoggerFactory.getLogger(HookLifecycle.class);
     private final Container container;
     private final List<RuntimeHook> started = new ArrayList<>();
-    private volatile List<RuntimeHook> hooks;
+    private List<RuntimeHook> hooks;
 
     public HookLifecycle(Container container) {
         this.container = container;
@@ -30,14 +30,11 @@ public final class HookLifecycle {
         return hooks;
     }
 
-    public synchronized void start(Container container) {
-        start(resolveHooks(), container);
-    }
-
-    synchronized void start(List<RuntimeHook> list, Container container) {
+    public synchronized void start() {
         if (!started.isEmpty()) {
             return;
         }
+        List<RuntimeHook> list = resolveHooks();
         try {
             for (RuntimeHook hook : list) {
                 LOG.debug("Starting hook: {}", hook.getClass().getSimpleName());
@@ -47,7 +44,7 @@ public final class HookLifecycle {
         } catch (Exception ex) {
             LOG.error("Hook start failed: {}", ex.getMessage(), ex);
             RuntimeException failure = new RuntimeException("Runtime hook start failed", ex);
-            RuntimeException rollback = stopStarted(container);
+            RuntimeException rollback = stopStarted();
             if (rollback != null) {
                 failure.addSuppressed(rollback);
             }
@@ -55,14 +52,14 @@ public final class HookLifecycle {
         }
     }
 
-    public synchronized void stop(Container container) {
-        RuntimeException failure = stopStarted(container);
+    public synchronized void stop() {
+        RuntimeException failure = stopStarted();
         if (failure != null) {
             throw failure;
         }
     }
 
-    private RuntimeException stopStarted(Container container) {
+    private RuntimeException stopStarted() {
         if (started.isEmpty()) {
             return null;
         }

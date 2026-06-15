@@ -2,7 +2,6 @@ package com.jujin.freeway.mq.kafka;
 
 import com.jujin.freeway.ioc.annotation.Value;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 public record KafkaConfig(

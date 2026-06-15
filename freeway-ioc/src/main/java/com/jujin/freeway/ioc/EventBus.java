@@ -22,8 +22,8 @@ public final class EventBus implements AutoCloseable {
     private final Container container;
     private volatile EventBridge bridge;
     private volatile Executor asyncExecutor;
-    private volatile Map<Class<?>, List<Consumer>> moduleClassIndex;
-    private volatile Map<String, List<Consumer>> moduleTopicIndex;
+    private volatile Map<Class<?>, List<Consumer<Object>>> moduleClassIndex;
+    private volatile Map<String, List<Consumer<Object>>> moduleTopicIndex;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
         new ConcurrentHashMap<>();
     private final Map<String, List<Subscription<?>>> runtimeTopicSubs =
@@ -65,12 +65,11 @@ public final class EventBus implements AutoCloseable {
         dispatchEvent(event);
     }
 
-    @SuppressWarnings({ "unchecked", "rawtypes" })
     private <E> void dispatchEvent(E event) {
         Class<?> eventType = event.getClass();
         boolean consumed = false;
 
-        for (Consumer handler : classSubscribers(eventType)) {
+        for (Consumer<Object> handler : classSubscribers(eventType)) {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
                 handler.accept(event);
@@ -126,12 +125,12 @@ public final class EventBus implements AutoCloseable {
         }
         dispatchTopic(topic, payload);
     }
-    @SuppressWarnings({ "unchecked", "rawtypes" })
+
     private void dispatchTopic(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         boolean consumed = false;
 
-        for (Consumer handler : topicSubscribers(topic)) {
+        for (Consumer<Object> handler : topicSubscribers(topic)) {
             try {
                 handler.accept(payload);
                 consumed = true;
@@ -145,7 +144,9 @@ public final class EventBus implements AutoCloseable {
             List.of()
         )) {
             try {
-                ((Subscription) sub).accept(payload);
+                @SuppressWarnings("unchecked")
+                var s = (Subscription<Object>) sub;
+                s.accept(payload);
                 consumed = true;
             } catch (Exception ex) {
                 LOG.warn(
@@ -196,13 +197,12 @@ public final class EventBus implements AutoCloseable {
         Subscription<E> sub = new Subscription<>(eventType, handler);
         runtimeSubs
             .computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
-            .add((Subscription) sub);
+            .add(sub);
         return sub;
     }
 
     // ==================== string-topic runtime subscribe ====================
 
-    @SuppressWarnings("unchecked")
     public Subscription<Object> subscribe(
         String topic,
         Consumer<Object> handler
@@ -214,7 +214,7 @@ public final class EventBus implements AutoCloseable {
         );
         runtimeTopicSubs
             .computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>())
-            .add((Subscription) sub);
+            .add(sub);
         return sub;
     }
 
@@ -238,15 +238,15 @@ public final class EventBus implements AutoCloseable {
 
     // ==================== internals ====================
 
-    private List<Consumer> classSubscribers(Class<?> eventType) {
+    private List<Consumer<Object>> classSubscribers(Class<?> eventType) {
         ensureIndexed();
-        List<Consumer> subs = moduleClassIndex.get(eventType);
+        List<Consumer<Object>> subs = moduleClassIndex.get(eventType);
         return subs != null ? subs : List.of();
     }
 
-    private List<Consumer> topicSubscribers(String topic) {
+    private List<Consumer<Object>> topicSubscribers(String topic) {
         ensureIndexed();
-        List<Consumer> subs = moduleTopicIndex.get(topic);
+        List<Consumer<Object>> subs = moduleTopicIndex.get(topic);
         return subs != null ? subs : List.of();
     }
 
@@ -263,19 +263,23 @@ public final class EventBus implements AutoCloseable {
             moduleTopicIndex = Map.of();
             return;
         }
-        var classIdx = new HashMap<Class<?>, List<Consumer>>();
-        var topicIdx = new HashMap<String, List<Consumer>>();
+        var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
+        var topicIdx = new HashMap<String, List<Consumer<Object>>>();
         for (Object entry : ext.all()) {
             if (!(entry instanceof EventSubscriber<?> sub)) continue;
             if (sub.eventType() != null) {
+                @SuppressWarnings("unchecked")
+                Consumer<Object> handler = (Consumer<Object>) sub.handler();
                 classIdx
                     .computeIfAbsent(sub.eventType(), k -> new ArrayList<>())
-                    .add((Consumer) sub.handler());
+                    .add(handler);
             }
             if (sub.topic() != null) {
+                @SuppressWarnings("unchecked")
+                Consumer<Object> handler = (Consumer<Object>) sub.handler();
                 topicIdx
                     .computeIfAbsent(sub.topic(), k -> new ArrayList<>())
-                    .add((Consumer) sub.handler());
+                    .add(handler);
             }
         }
         moduleClassIndex = classIdx;

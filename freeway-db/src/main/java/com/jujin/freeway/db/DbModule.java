@@ -1,6 +1,7 @@
 package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
@@ -9,14 +10,14 @@ import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Extension;
-import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public final class DbModule implements Module {
+public final class DbModule implements Module2{
 
     @Override
     public void bind(Binder binder) {
@@ -161,7 +162,7 @@ public final class DbModule implements Module {
                 map.put(entry.type(), entry.mapper());
         } catch (IllegalArgumentException ignored) {}
         return new RowMapperResolver(
-            container.get(com.jujin.freeway.commons.coercion.Coercer.class),
+            container.get(Coercer.class),
             Map.of(),
             map
         );

@@ -1,14 +1,11 @@
 package com.jujin.freeway.http.undertow;
 
-import com.jujin.freeway.commons.json.JsonCodec;
-
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
-
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.SseEmitter;
 import io.undertow.server.HttpServerExchange;
-import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,9 +16,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 final class UndertowHttpContext extends HttpContext {
+
     private final HttpServerExchange exchange;
     private final RequestContext requestContext;
     private final Map<String, List<String>> queryParams;
@@ -29,16 +26,26 @@ final class UndertowHttpContext extends HttpContext {
     private int responseStatus = 200;
     private volatile boolean responded;
 
-    UndertowHttpContext(HttpServerExchange exchange, JsonCodec jsonCodec, Coercer coercer, RequestContext requestContext) {
+    UndertowHttpContext(
+        HttpServerExchange exchange,
+        JsonCodec jsonCodec,
+        Coercer coercer,
+        RequestContext requestContext
+    ) {
         super(jsonCodec, coercer);
         this.exchange = Objects.requireNonNull(exchange, "exchange");
-        this.requestContext = Objects.requireNonNull(requestContext, "requestContext");
+        this.requestContext = Objects.requireNonNull(
+            requestContext,
+            "requestContext"
+        );
         this.queryParams = parseQueryParams(exchange.getQueryParameters());
     }
 
     @Override
     public String method() {
-        return exchange.getRequestMethod() != null ? exchange.getRequestMethod().toString() : "";
+        return exchange.getRequestMethod() != null
+            ? exchange.getRequestMethod().toString()
+            : "";
     }
 
     @Override
@@ -130,19 +137,25 @@ final class UndertowHttpContext extends HttpContext {
         }
         responded = true;
         try (OutputStream os = exchange.getOutputStream()) {
-            if (!headRequest && responseStatus != 204 && responseStatus != 304 && data.length > 0) {
+            if (
+                !headRequest &&
+                responseStatus != 204 &&
+                responseStatus != 304 &&
+                data.length > 0
+            ) {
                 os.write(data);
             }
         }
         return this;
     }
 
-    private static Map<String, List<String>> parseQueryParams(Map<String, Deque<String>> source) {
+    private static Map<String, List<String>> parseQueryParams(
+        Map<String, Deque<String>> source
+    ) {
         LinkedHashMap<String, List<String>> params = new LinkedHashMap<>();
         for (Map.Entry<String, Deque<String>> entry : source.entrySet()) {
             params.put(entry.getKey(), List.copyOf(entry.getValue()));
         }
         return Map.copyOf(params);
     }
-
 }

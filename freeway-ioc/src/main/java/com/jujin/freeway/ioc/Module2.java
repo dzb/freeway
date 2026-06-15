@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc;
 
-public interface Module {
+@FunctionalInterface
+public interface Module2 {
     void bind(Binder binder);
 }
