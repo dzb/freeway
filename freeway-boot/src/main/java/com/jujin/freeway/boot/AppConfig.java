@@ -7,7 +7,6 @@ public interface AppConfig {
     String get(String key);
 
     List<String> profiles();
-
     /**
      * Returns the full configuration as an unmodifiable map.
      * Implementations must return a snapshot — mutations to the returned map

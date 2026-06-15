@@ -3,13 +3,15 @@ package com.jujin.freeway.boot;
 import com.jujin.freeway.boot.internal.HookLifecycle;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Objects;
-
 final class AppRuntimeDefault implements AppRuntime {
-    private static final Logger LOG = LoggerFactory.getLogger(AppRuntimeDefault.class);
+
+    private static final Logger LOG = LoggerFactory.getLogger(
+        AppRuntimeDefault.class
+    );
     private final Container container;
     private final AppConfig config;
     private volatile AppState state = AppState.CREATED;
@@ -40,7 +42,9 @@ final class AppRuntimeDefault implements AppRuntime {
             return;
         }
         if (state != AppState.CREATED) {
-            throw new IllegalStateException("Application cannot start from state " + state);
+            throw new IllegalStateException(
+                "Application cannot start from state " + state
+            );
         }
         state = AppState.STARTING;
         LOG.info("Application starting");
@@ -67,7 +71,11 @@ final class AppRuntimeDefault implements AppRuntime {
         publish(new AppStoppingEvent(container));
 
         RuntimeException failure = null;
-        if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
+        if (
+            previous == AppState.RUNNING ||
+            previous == AppState.STARTING ||
+            previous == AppState.FAILED
+        ) {
             try {
                 container.get(HookLifecycle.class).stop();
             } catch (RuntimeException ex) {
@@ -97,7 +105,11 @@ final class AppRuntimeDefault implements AppRuntime {
         try {
             container.get(EventBus.class).publish(event);
         } catch (Exception ex) {
-            LOG.warn("Failed to publish lifecycle event: {}", event.getClass().getSimpleName(), ex);
+            LOG.warn(
+                "Failed to publish lifecycle event: {}",
+                event.getClass().getSimpleName(),
+                ex
+            );
         }
     }
 }

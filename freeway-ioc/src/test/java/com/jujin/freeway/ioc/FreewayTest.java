@@ -476,6 +476,26 @@ class FreewayTest {
         );
     }
 
+    @Test
+    void listInjectionFromExtensionParam() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
+        );
+        ListFeatureCatalog catalog = container.get(ListFeatureCatalog.class);
+        assertEquals(List.of("core", "web"), catalog.featureNames());
+    }
+
+    @Test
+    void listInjectionFromExtensionField() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
+        );
+        FieldListFeatureCatalog catalog = container.get(FieldListFeatureCatalog.class);
+        assertEquals(List.of("core", "web"), catalog.featureNames());
+    }
+
     interface Greeter {
         String greet();
     }
@@ -1266,6 +1286,29 @@ class FreewayTest {
     public static final class InvalidPostConstructBean {
         @PostConstruct
         void init(String arg) {
+        }
+    }
+
+    // ---- List<Foo> contribution consumers ----
+
+    public static final class ListFeatureCatalog {
+        private final List<AppFeature> features;
+
+        public ListFeatureCatalog(List<AppFeature> features) {
+            this.features = List.copyOf(features);
+        }
+
+        List<String> featureNames() {
+            return features.stream().map(AppFeature::name).toList();
+        }
+    }
+
+    public static final class FieldListFeatureCatalog {
+        @Inject
+        private List<AppFeature> features;
+
+        List<String> featureNames() {
+            return features.stream().map(AppFeature::name).toList();
         }
     }
 }

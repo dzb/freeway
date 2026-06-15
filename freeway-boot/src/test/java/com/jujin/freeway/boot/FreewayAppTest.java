@@ -8,10 +8,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class LauncherTest {
+class FreewayAppTest {
     private static final String APP_NAME_KEY = "app.name";
     private static final String SERVER_PORT_KEY = "server.port";
     private static final String APP_DESCRIPTION_KEY = "app.description";
@@ -36,8 +37,8 @@ class LauncherTest {
     }
 
     @Test
-    void bootsApplicationWithPrimaryAndDiscoveredModules() {
-        AppRuntime app = Launcher.run(
+    void bootsApplicationWithExplicitModules() {
+        AppRuntime app = FreewayApp.run(
             new String[]{"--freeway.profile=dev", "--app.name=Overridden"},
             new TestBootApp()
         );
@@ -60,9 +61,6 @@ class LauncherTest {
 
             Greeter greeter = container.get(Greeter.class);
             assertEquals("Hello, World!", greeter.greet("World"));
-
-            AutoMarker marker = container.get(AutoMarker.class);
-            assertEquals("auto", marker.value());
         } finally {
             app.close();
         }
@@ -70,9 +68,39 @@ class LauncherTest {
     }
 
     @Test
+    void autoDiscoveryEnabledIncludesSPI() {
+        AppRuntime app = FreewayApp.of()
+            .add(new TestBootApp())
+            .args("--freeway.profile=dev", "--app.name=Overridden")
+            .start();
+        try {
+            AutoMarker marker = app.container().get(AutoMarker.class);
+            assertEquals("auto", marker.value());
+        } finally {
+            app.close();
+        }
+    }
+
+    @Test
+    void autoDiscoveryDisabledExcludesSPI() {
+        AppRuntime app = FreewayApp.of()
+            .add(new TestBootApp())
+            .args("--app.name=Default")
+            .autoDiscovery(false)
+            .start();
+        try {
+            // AutoModule should NOT be loaded when ServiceLoader is skipped
+            Container container = app.container();
+            assertDoesNotThrow(() -> container.get(Greeter.class));
+            assertThrows(Exception.class, () -> container.get(AutoMarker.class));
+        } finally {
+            app.close();
+        }
+    }
+
+    @Test
     void primaryModuleMayBePassedAsInstance() {
-        AppRuntime app = Launcher.run(
-            new String[0],
+        AppRuntime app = FreewayApp.run(
             new InstancePrimaryModule()
         );
         try {
@@ -85,11 +113,29 @@ class LauncherTest {
     }
 
     @Test
+    void builderWithShutdownHookDisabled() {
+        AppRuntime app = FreewayApp.of()
+            .add(new InstancePrimaryModule())
+            .shutdownHook(false)
+            .start();
+        try {
+            assertEquals(AppState.RUNNING, app.state());
+        } finally {
+            app.close();
+        }
+        assertEquals(AppState.STOPPED, app.state());
+    }
+
+    @Test
+    void ofRequiresAtLeastOneModule() {
+        assertThrows(IllegalStateException.class, () -> FreewayApp.of().start());
+    }
+
+    @Test
     void runtimeHooksStartAndStopInOrder() {
         hookEvents = new ArrayList<>();
 
-        AppRuntime app = Launcher.run(
-            new String[0],
+        AppRuntime app = FreewayApp.run(
             new HookOrderedModule()
         );
 
@@ -104,8 +150,7 @@ class LauncherTest {
     void runtimeHookStartFailureRollsBackStartedHooks() {
         hookEvents = new ArrayList<>();
 
-        assertThrows(IllegalStateException.class, () -> Launcher.run(
-            new String[0],
+        assertThrows(IllegalStateException.class, () -> FreewayApp.run(
             new HookFailureModule()
         ));
 
@@ -115,12 +160,25 @@ class LauncherTest {
 
     @Test
     void runtimeHookResolutionFailureFailsStartup() {
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Launcher.run(
-            new String[0],
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> FreewayApp.run(
             new HookCycleModule()
         ));
 
         assertTrue(ex.getMessage().contains("Application startup failed"));
+    }
+
+    @Test
+    void builderWithCustomConfig() {
+        AppRuntime app = FreewayApp.of()
+            .add(new InstancePrimaryModule())
+            .config((loader, args) -> new AppConfigDefault(
+                Map.of("custom.key", "custom-value"), List.of()))
+            .start();
+        try {
+            assertEquals("custom-value", app.config().get("custom.key"));
+        } finally {
+            app.close();
+        }
     }
 
     public record PrimaryMarker(String value) {}

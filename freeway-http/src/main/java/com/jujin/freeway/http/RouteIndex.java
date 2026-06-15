@@ -1,6 +1,5 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.ioc.Extension;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -25,15 +24,15 @@ final class RouteIndex {
 
     private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
 
-    public RouteIndex(Extension<Route> routes, Extension<RouteGroup> groups) {
+    public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
         // Phase 1: collect all routes
         List<Route> all = new ArrayList<>();
-        for (Route route : routes == null ? List.<Route>of() : routes.all()) {
+        for (Route route : routes == null ? List.<Route>of() : routes) {
             all.add(route);
         }
         for (RouteGroup group : groups == null
             ? List.<RouteGroup>of()
-            : groups.all()) {
+            : groups) {
             for (Route route : group.expand()) {
                 all.add(route);
             }

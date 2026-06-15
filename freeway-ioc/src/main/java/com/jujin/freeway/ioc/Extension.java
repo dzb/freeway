@@ -16,12 +16,10 @@ public final class Extension<V> {
     private final List<Entry> entries = new ArrayList<>();
     private final Set<String> ids = new LinkedHashSet<>();
     private final Class<V> entryType;
-    private final String name;
     private volatile List<V> sorted;
 
-    public Extension(Class<V> entryType, String name) {
+    public Extension(Class<V> entryType) {
         this.entryType = Objects.requireNonNull(entryType, "entryType");
-        this.name = Objects.requireNonNull(name, "name");
     }
 
     public Contribution add(String id, V value) {
@@ -32,7 +30,7 @@ public final class Extension<V> {
                 "Duplicate contribution id " +
                     normalizedId +
                     " for extension " +
-                    key()
+                    entryType.getSimpleName()
             );
         }
         Entry entry = new Entry(normalizedId, value);
@@ -43,7 +41,7 @@ public final class Extension<V> {
 
     @SafeVarargs
     public static <V> Extension<V> of(Class<V> entryType, V... values) {
-        Extension<V> ext = new Extension<>(entryType, "");
+        Extension<V> ext = new Extension<>(entryType);
         for (V value : values) ext.add(null, value);
         return ext;
     }
@@ -57,12 +55,7 @@ public final class Extension<V> {
 
     @Override
     public String toString() {
-        return (
-            "Extension[" +
-            entryType.getSimpleName() +
-            (name.isEmpty() ? "" : ", " + name) +
-            "]"
-        );
+        return "Extension[" + entryType.getSimpleName() + "]";
     }
 
     private List<V> order() {
@@ -127,7 +120,7 @@ public final class Extension<V> {
 
         if (ordered.size() != entries.size()) {
             throw new IllegalStateException(
-                "Contribution order cycle detected for extension " + key()
+                "Contribution order cycle detected for extension " + entryType.getSimpleName()
             );
         }
         List<V> values = new ArrayList<>(ordered.size());
@@ -153,12 +146,6 @@ public final class Extension<V> {
         );
         return v;
     }
-
-    public Key key() {
-        return new Key(entryType, name);
-    }
-
-    public record Key(Class<?> entryType, String name) {}
 
     private final class Entry implements Contribution {
 

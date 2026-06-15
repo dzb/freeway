@@ -8,7 +8,7 @@ Freeway is a lightweight, modern Java application framework for JDK 25+. Compose
 // A minimal HTTP application
 public class App {
     public static void main(String[] args) {
-        AppRuntime runtime = Launcher.run(args, new AppModule());
+        AppRuntime runtime = FreewayApp.run(args, new AppModule());
     }
 
     public static final class AppModule implements Module2 {
@@ -22,10 +22,15 @@ public class App {
 
 ```bash
 mvn test                          # all modules
-mvn -pl freeway-ioc -am test      # single module
+mvn -pl freeway-ioc -am test      # single module + deps
+mvn -pl freeway-http -am test
+mvn -pl freeway-db -am test
+mvn test -Dtest=CoercerDefaultTest    # single test class
 ```
 
-## Module Map
+---
+
+## Module Dependency Graph
 
 ```
 freeway-commons          shared utilities: JSON, coercion, Defer, ScopedCache, beans, validation
@@ -40,7 +45,16 @@ freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migratio
 freeway-mq-kafka         Kafka adapter for EventBus
 ```
 
-Dependencies: `commons` ← `ioc` ← `boot`, `http`, `db`, `mq-kafka`. Core modules have zero external dependencies.
+Dependencies flow downward. Core modules (`commons`, `ioc`) carry zero external dependencies beyond SLF4J API. Starter modules (`freeway-starter-*`) are empty JARs that only bundle dependency sets via POM — they contain no Java source.
+
+```
+freeway-boot        freeway-http        freeway-db
+      \                 |                 /
+       \                |                /
+              freeway-ioc
+                  |
+           freeway-commons
+```
 
 ---
 
@@ -98,7 +112,7 @@ public class AppModule implements Module2 {
 }
 
 // Bootstrap
-AppRuntime runtime = Launcher.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(args, new AppModule());
 ```
 
 ### Module Composition
@@ -107,7 +121,7 @@ Modules compose by passing all of them to the launcher. The container loads them
 
 ```java
 // Compose framework + application modules
-Launcher.run(args, new AppModule(), new HttpModule(), new DbModule());
+FreewayApp.run(args, new AppModule(), new HttpModule(), new DbModule());
 // or via Freeway.create()
 Freeway.create(new AppModule(), new HttpModule(), new DbModule());
 ```
@@ -136,7 +150,7 @@ orm.insert(new Post("Hello", "World"));
 **IoC usage (with Container):**
 
 ```java
-Launcher.run(args, new AppModule(), new DbModule());
+FreewayApp.run(args, new AppModule(), new DbModule());
 // Database, Orm, Coercer are now injectable
 @Inject Database db;
 ```
@@ -221,6 +235,21 @@ User sets `freeway.db.pool=hikari` in config; the primary binding resolves to `H
 
 ## IoC Container
 
+### Core API
+
+| Type | Purpose |
+|------|---------|
+| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `close()` |
+| `Module2` | A module entry point: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
+| `Binder` | Binding and contribution DSL |
+| `Binding` | Service binding configuration: target, id, primary, scope, advisor |
+| `Freeway` | Container bootstrap: `Freeway.create(Module2...)` |
+| `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
+| `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
+| `LoggerSource` | Owner-aware logger factory service |
+
+`ServiceId` is intentionally not a public type. String ids keep the API direct. Blank service ids are rejected. Internal normalization is handled by `ServiceIds`.
+
 ### Creating a Container
 
 ```java
@@ -232,7 +261,7 @@ MyService svc = c.get(MyService.class);
 c.close();
 
 // Full application (config, profiles, hooks, lifecycle)
-AppRuntime runtime = Launcher.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(args, new AppModule());
 Container c = runtime.container();
 ```
 
@@ -266,6 +295,8 @@ Freeway.create(binder -> {
 });
 ```
 
+Advisors require interface-to-class bindings because the container uses JDK proxies.
+
 ### Resolution
 
 ```java
@@ -281,10 +312,12 @@ Container c = container.get(Container.class);
 
 ### Scopes
 
+`scope()` is the only binding-time API for service lifecycle:
+
 | Scope | Behavior |
 |-------|----------|
-| `SINGLETON` | Default. One instance per container. Destroyed on close. |
-| `PROTOTYPE` | New instance every resolution. Not retained. |
+| `SINGLETON` | Default. One instance per container. Destroyed on `close()`. |
+| `PROTOTYPE` | New instance every resolution. Not retained by the container. |
 | `THREAD` | One instance per `Scoping.within()` boundary. Auto-destroyed on exit. |
 
 ```java
@@ -298,7 +331,7 @@ scoping.within(() -> {
 // state destroyed — @PreDestroy + AutoCloseable invoked
 ```
 
-`Scoping.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes.
+`Scoping.within()` uses JDK 25 `ScopedValue`, so there is no `ThreadLocal` overhead on virtual threads. Nesting is supported — inner scopes shadow outer scopes. Internally, thread-scoped services are cached via `ScopedCache` (see [ScopedCache](#scopedcache--scope-bound-value-cache)).
 
 **Scope compatibility rule:** A singleton cannot directly inject a thread-scoped concrete class. Use an interface with proxy support instead:
 
@@ -344,11 +377,27 @@ public class UserService {
 }
 ```
 
-`Logger` injection is owner-aware: without an explicit id, the logger name is the declaring class. `@Inject("name")` uses the explicit name.
+Primary resolution uses `binding.primary()` on the binding DSL, not an annotation.
+
+Annotation injection on records is also supported:
+
+```java
+public record ServerConfig(
+    @Symbol("server.port") int port,
+    @Value("${app.name:freeway}") String appName
+) {}
+```
+
+| Annotation | Behavior |
+|------------|----------|
+| `@Symbol("key")` | Strict lookup; missing key fails |
+| `@Value("${key:default}")` | Expression expansion with optional default |
+
+Both paths use the container type coercion mechanism.
 
 ### Extensions
 
-Extensions are ordered contribution lists keyed by entry type:
+Extensions are contributed by entry type and injected as `List<V>` or `Extension<V>`:
 
 ```java
 // Module: contribute
@@ -356,22 +405,36 @@ binder.contribute(Route.class).add(Route.get("/hello", ctx -> ctx.send(200, "hi"
 
 // named contributions with ordering
 binder.contribute(RuntimeHook.class)
-    .add("cache", hook).after("freeway.http.server");
+    .add("myHook", hook).after("freeway.http.server");
 
 binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(OrderCreated.class, e -> notify(e)))
     .after("audit");
 
-// Injection
-@Inject Extension<Route> routes;
-routes.all().forEach(r -> ...);
+// Injection — List<V> is the simplest; Extension<V> gives access to .all() on demand
+@Inject List<Route> routes;
+routes.forEach(r -> ...);
+
+// Or via constructor
+public class Router {
+    private final List<Route> routes;
+    public Router(List<Route> routes) {
+        this.routes = List.copyOf(routes);
+    }
+}
 ```
 
-Rules: `add(value)` preserves insertion order. `add(id, value)` enables `before/after` ordering. Duplicate ids fail. Missing order targets are ignored. Cycles fail at resolution time.
+The entry type itself (e.g., `Route.class`) is the extension point identifier. Contributions are ordered via `add(id, value)` with `before/after`.
+
+Rules:
+- `add(value)` preserves insertion order.
+- `add(id, value)` enables `before/after` constraints for topological ordering.
+- Duplicate ids fail immediately. Missing order targets are ignored. Cycles fail at resolution time.
+- Constructor parameters are auto-resolved; fields require `@Inject`.
 
 ### EventBus
 
-In-process pub-sub built on the Extension mechanism.
+In-process publish-subscribe built on the Extension mechanism. Events are plain objects; subscribers are contributed via `EventSubscriber` or registered at runtime.
 
 ```java
 // Module-level subscribers (startup-time, supports ordering)
@@ -384,7 +447,7 @@ binder.contribute(EventSubscriber.class)
 binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of("order.placed", payload -> process(payload)));
 
-// Runtime subscribers
+// Runtime subscribers (dynamic, no ordering)
 @Inject EventBus bus;
 Subscription<PostCreatedEvent> sub = bus.subscribe(PostCreatedEvent.class, e -> { ... });
 bus.unsubscribe(sub);
@@ -395,36 +458,124 @@ bus.publish("order.placed", payload);       // string-topic
 bus.publishAsync(new PostCreatedEvent(post)); // fire-and-forget (virtual threads)
 ```
 
-**Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed.
+**Key types:**
 
-**Dead events:** When zero subscribers exist for an event, a `DeadEvent` is published — subscribe to it for diagnostics.
+| Type | Purpose |
+|------|---------|
+| `EventBus` | Publish, subscribe, unsubscribe. Injected via `@Inject EventBus` |
+| `EventSubscriber<E>` | Module-level subscriber: carries event type, handler, and ordering |
+| `Subscription<E>` | Handle returned by `subscribe()`, used to `unsubscribe()` |
+| `DeadEvent` | Published when an event has zero subscribers — subscribe for diagnostics |
+| `EventBridge` | Bridge to external MQ: `EventBridge.send(topic, event)` |
+| `@Topic("kafka.topic")` | Maps an event class to a cross-JVM topic name |
+| `EventBus.Stoppable` | Events implementing this can `stop()` the subscriber chain |
 
-**Lifecycle events:** Boot publishes `AppStartedEvent` (after start) and `AppStoppingEvent` (before shutdown). Subscribe instead of implementing `RuntimeHook` for non-critical work.
+**Short-circuit (Stoppable):** Events implementing `EventBus.Stoppable` can stop the subscriber chain — later subscribers are skipped:
 
-**Short-circuit:** Events implementing `EventBus.Stoppable` can `stop()` the subscriber chain — later subscribers are skipped.
+```java
+public class PostCreatedEvent implements EventBus.Stoppable {
+    private final AtomicBoolean stopped = new AtomicBoolean();
+    @Override public void stop() { stopped.set(true); }
+    @Override public boolean isStopped() { return stopped.get(); }
+}
 
-**Cross-JVM:** Add `@Topic("kafka.topic")` on an event class + `KafkaModule` for distributed pub/sub via the `EventBridge` mechanism.
+// First subscriber validates and stops if unauthorized — later subscribers are skipped
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of(PostCreatedEvent.class, e -> { if (!loggedIn) e.stop(); }));
+```
+
+**Async publishing:** Fire-and-forget dispatched on virtual threads by default:
+
+```java
+bus.publishAsync(new PostCreatedEvent(post));
+bus.publishAsync("order.placed", payload);
+
+// Custom executor (e.g. platform-thread pool)
+Executor pool = Executors.newFixedThreadPool(4);
+bus.setAsyncExecutor(pool);
+```
+
+Async dispatch defaults to `Executors.newVirtualThreadPerTaskExecutor()`. Call `setAsyncExecutor()` to replace it with a custom executor. Note: `publishAsync` dispatches to a separate thread and therefore does **not** participate in `Defer` scopes (which are thread-bound via `ScopedValue`). For transaction-safe events, use sync `publish()` — it automatically defers inside a transaction and fires on commit.
+
+**DeadEvent diagnostics:** When zero subscribers exist for an event, a `DeadEvent` is published — subscribe to it for logging or monitoring:
+
+```java
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of(DeadEvent.class, e ->
+        LOG.warn("No subscriber for {}", e.event().getClass())));
+```
+
+**Lifecycle events:** Boot publishes `AppStartedEvent` after all hooks start, and `AppStoppingEvent` before shutdown. Subscribe via EventBus instead of implementing `RuntimeHook` for non-critical work:
+
+```java
+binder.contribute(EventSubscriber.class)
+    .add(EventSubscriber.of(AppStartedEvent.class,  e -> cache.warmup()))
+    .add(EventSubscriber.of(AppStoppingEvent.class, e -> cache.flush()));
+```
+
+**Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed — powered by the `Defer` mechanism (see [Defer](#defer--scope-bound-deferred-execution)).
+
+**Cross-JVM:** Add `@Topic("kafka.topic")` on an event class + `KafkaModule` for distributed pub/sub via the `EventBridge` mechanism (see [Kafka](#kafka-freeway-mq-kafka)).
+
+### Type Coercion
+
+Commons owns the reusable scalar coercion mechanics (`Coercer` interface, `CoerceRule<S,T>`, `CoercerDefault`). IoC owns container-aware coercion rules and `@Symbol`/`@Value` integration. The two layers are separate: commons does not import ioc types.
+
+```java
+// Built-in: String → primitives, enums, UUID, dates, collections, maps
+Coercer coercer = container.get(Coercer.class);
+int port = coercer.coerce("8080", int.class);
+
+// Custom rule — register via contribution
+binder.contribute(CoerceRule.class).add(new CoerceRule<>(
+    String.class,
+    Endpoint.class,
+    value -> {
+        String[] parts = value.split(":", 2);
+        return new Endpoint(parts[0], Integer.parseInt(parts[1]));
+    }
+));
+```
+
+### Logging Service
+
+`LoggerSource` is a built-in service. Logger injection is owner-aware: without an explicit id, the logger name is the declaring service type.
+
+```java
+public final class UserService {
+    @Inject
+    private Logger log;           // logger name = "com.example.UserService"
+
+    @Inject("audit")
+    private Logger audit;         // logger name = "audit"
+}
+
+Logger log = container.get(LoggerSource.class).get(UserService.class);
+```
+
+`freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 
 ---
 
 ## Boot
 
 ```java
-AppRuntime runtime = Launcher.run(args, new AppModule());
-// or with explicit module instance
-AppRuntime runtime = Launcher.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(args, new AppModule());
+// or with explicit module instances
+AppRuntime runtime = FreewayApp.run(args, new AppModule(), new HttpModule());
 ```
 
-`AppRuntime` provides:
-- `container()` — the IoC container
-- `config()` — merged configuration
-- `state()` — `CREATED → STARTING → RUNNING → STOPPING → STOPPED` (or `FAILED`)
-- `start()` / `close()` — lifecycle control
-- `get(Class)` / `get(Class, String)` — convenience shortcuts
+`FreewayApp.run()` accepts command-line args and `Module2` instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
+
+| Type | Purpose |
+|------|---------|
+| `FreewayApp` | Application entry point: `run(args, Module2...)` |
+| `AppRuntime` | Runtime API: container, config, state, start, close, `get(Class)`, `get(Class, String)` |
+| `AppState` | `CREATED` → `STARTING` → `RUNNING` → `STOPPING` → `STOPPED` (or `FAILED`) |
 
 ### Runtime Hooks
 
-Modules that own runtime resources contribute `RuntimeHook`:
+Modules that own resources contribute `RuntimeHook` instead of starting work from constructors or service resolution:
 
 ```java
 binder.contribute(RuntimeHook.class)
@@ -434,7 +585,7 @@ binder.contribute(RuntimeHook.class)
     }).before("freeway.http.server");
 ```
 
-Startup invokes hooks in contribution order. Shutdown invokes only started hooks in reverse order, then closes the container.
+Startup invokes hooks in resolved contribution order. Shutdown invokes only started hooks in reverse order, then closes the container.
 
 ### Config Cascade
 
@@ -452,6 +603,17 @@ Activate profiles: `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
 ---
 
 ## HTTP
+
+The HTTP package stays flat under `com.jujin.freeway.http`. Public contracts and small built-ins share the same package; transport internals stay package-private where possible.
+
+| Category | Main Types |
+|----------|------------|
+| Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `WebServer`, `JsonCodec` |
+| Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathPattern` |
+| Body | `BodyHandler`, `RequestContext`, `RequestContextDefault`, `MultipartForm` |
+| WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
+| SSE | `SseEmitter`, `SseEvent` |
+| Built-ins | `JsonCodecDefault`, `CorsFilter`, `RequestTimingFilter`, `StaticResources`, `ExceptionMapper` |
 
 ### Routes
 
@@ -592,7 +754,7 @@ binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
 
 ### Engine Selection
 
-Set `web.engine` config property:
+`web.engine` config property selects the transport:
 
 | Value | Engine |
 |-------|--------|
@@ -601,15 +763,27 @@ Set `web.engine` config property:
 | `undertow` | Undertow adapter |
 | `jetty` | Jetty adapter |
 
+Engine adapters bind their engine by string id:
+
+```java
+binder.bind(MyEngine.class).to(MyEngine.class).id("my-engine");
+```
+
 ### Testing with HTTP
 
-When using `Container` directly (not `Launcher`), start the server explicitly:
+When using `Container` directly (not `FreewayApp`), start the server explicitly:
 
 ```java
 WebServer server = container.get(WebServer.class);
 server.start();
 try {
-    // HTTP calls
+    HttpClient client = HttpClient.newHttpClient();
+    HttpResponse<String> resp = client.send(
+        HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:" + server.port() + "/api/test"))
+            .GET().build(),
+        BodyHandlers.ofString());
+    assertEquals(200, resp.statusCode());
 } finally {
     server.stop();
 }
@@ -619,9 +793,9 @@ try {
 
 ## Database
 
-### Standalone Usage
+`freeway-db` can be used independently outside the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and loaded only when using `DbModule`.
 
-`freeway-db` works without IoC:
+### Standalone Usage
 
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test", "sa", "");
@@ -632,7 +806,7 @@ Orm orm = Orm.of(db);
 ### IoC Usage
 
 ```java
-Launcher.run(args, new AppModule(), new DbModule());
+FreewayApp.run(args, new AppModule(), new DbModule());
 // Database and Orm are now injectable
 ```
 
@@ -659,6 +833,12 @@ ExecuteResult r = db.execute("INSERT INTO users (name) VALUES (?)", "Alice");
 r.rows();   // affected rows
 r.key();    // generated key (may be null)
 ```
+
+Query paths:
+- `list(Class)` — all rows as a list.
+- `one(Class)` — at most one row as `Optional`.
+- `stream(Class)` — lazy `Stream` (requires try-with-resources).
+- `execute()` — INSERT/UPDATE/DELETE returning `ExecuteResult(rows, key)`.
 
 ### Row Mapping
 
@@ -694,6 +874,8 @@ Supports: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, CTEs (`WITH`), `JOIN`/`LEFT JO
 
 ### Transactions
 
+ScopedValue-based implicit transactions — no explicit transaction object:
+
 ```java
 // Basic
 db.transaction(() -> {
@@ -707,9 +889,21 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> {
 });
 ```
 
-`ScopedValue`-based — queries inside the transaction automatically use the same connection. Nested transactions are rejected. Auto-commit is restored on exit. `bus.publish()` inside a transaction is automatically deferred until commit.
+Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection.
+
+**Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](#defer--scope-bound-deferred-execution)):
+
+```java
+db.transaction(() -> {
+    db.execute("INSERT INTO posts (title) VALUES (?)", "hello");
+    bus.publish(new PostCreatedEvent(post));  // deferred, fires after commit
+});
+// EventBus subscribers receive PostCreatedEvent here
+```
 
 ### ORM
+
+`Orm` provides lightweight CRUD on top of `Database`:
 
 ```java
 Orm orm = Orm.of(db);
@@ -725,13 +919,15 @@ public class Post {
 }
 
 // CRUD
-orm.insert(post);                     // auto-increment id written back
-orm.findById(Post.class, 1L);         // Optional<Post>
-orm.findAll(Post.class);              // List<Post>
+Comment c = new Comment("hello", 1L);
+orm.insert(c);                           // auto-increment id written back
+orm.findById(Post.class, 1L);            // Optional<Post>
+orm.findAll(Post.class);                 // List<Post>
 orm.findAll(Post.class, "created_at DESC", 20, 0);  // with pagination
-orm.save(post);                       // upsert
-orm.update(post);
-orm.delete(post);
+orm.save(post);                          // upsert — insert if new, update if exists
+c.text = "updated";
+orm.update(c);
+orm.delete(c);
 orm.deleteById(Post.class, 1L);
 ```
 
@@ -739,9 +935,12 @@ Annotations: `@Table`, `@Column`, `@Id`, `@Generated`, `@Transient`, `@Index`.
 
 ### Connection Pool
 
+`Pool` is the connection pool abstraction — `PoolDefault` (built-in) and `HikariPool` (`freeway-db-hikari`) both implement it.
+
+**Standalone — built-in pool:**
+
 ```java
-// Built-in pool (PoolDefault)
-PoolConfig config = PoolConfig.defaults(url, user, pass);
+PoolConfig config = PoolConfig.defaults("jdbc:postgresql://localhost/db", "user", "pass");
 
 // Or with custom sizing
 new PoolConfig(url, user, pass,
@@ -755,14 +954,53 @@ new PoolConfig(url, user, pass,
     Duration.ofSeconds(5),    // healthCheckTimeout
     Duration.ofSeconds(15)    // queryTimeout
 );
-
-// HikariCP
-Pool pool = new HikariPool(config);
-Database db = new DatabaseBuilder().config(config).pool(pool).build();
-
-// IoC: set freeway.db.pool=hikari + add HikariPoolModule
-Launcher.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
 ```
+
+| Property | Default |
+|----------|---------|
+| `maxSize` | 10 |
+| `minIdle` | 2 |
+| `connectionTimeout` | 10s |
+| `maxLifetime` | 30min |
+| `maxIdleTime` | 10min |
+| `cleanInterval` | 2min |
+| `healthCheckQuery` | null (JDBC `isValid` only) |
+| `healthCheckTimeout` | 5s |
+| `queryTimeout` | 15s |
+
+`DatabaseBuilder` accepts an optional `pool(Pool)` override:
+
+```java
+// Default — DatabaseBuilder creates a PoolDefault from PoolConfig
+Database db = new DatabaseBuilder().config(config).build();
+
+// Explicit pool — pass a pre-built instance
+Pool pool = new PoolDefault(config);
+Database db = new DatabaseBuilder().config(config).pool(pool).build();
+```
+
+**IoC pool selection:** when using `DbModule`, the pool is selected via `freeway.db.pool` config property (default `"builtin"`). The built-in `id("builtin")` binding creates a `PoolDefault`; binding another `Pool` implementation with id and primary selects that implementation — mirroring the HTTP engine selection pattern:
+
+```java
+// freeway.db.pool=hikari → HikariPool is primary
+FreewayApp.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
+```
+
+### HikariCP (`freeway-db-hikari`)
+
+Third-party connection pool adapter for [HikariCP](https://github.com/brettwooldridge/HikariCP). Add the `freeway-db-hikari` dependency to your classpath.
+
+**Standalone usage:**
+
+```java
+PoolConfig config = PoolConfig.defaults("jdbc:postgresql://localhost/db", "user", "pass");
+HikariPool pool = new HikariPool(config);
+Database db = new DatabaseBuilder().config(config).pool(pool).build();
+```
+
+**IoC usage:** add `HikariPoolModule` to the launcher — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. Then set `freeway.db.pool=hikari` to activate it.
+
+`HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `DatabaseStats`.
 
 ### Batch
 
@@ -800,8 +1038,10 @@ Database audit = hub.get("audit");
 
 ## Kafka (`freeway-mq-kafka`)
 
+Distributed pub/sub via EventBus. Add `KafkaModule` to enable:
+
 ```java
-Launcher.run(args, new AppModule(), new KafkaModule());
+FreewayApp.run(args, new AppModule(), new KafkaModule());
 ```
 
 Config in `application.properties`:
@@ -811,6 +1051,15 @@ freeway.kafka.bootstrap-servers=localhost:9092
 freeway.kafka.group-id=my-app
 freeway.kafka.topics=post.created,order.placed
 ```
+
+**Key types:**
+
+| Type | Purpose |
+|------|---------|
+| `KafkaEventBridge` | Implements `EventBridge`, sends events to Kafka |
+| `KafkaSubscriber` | Polls Kafka, publishes to local `EventBus` |
+| `KafkaConfig` | Bootstrap servers, group-id, topic list |
+| `KafkaModule` | Registers all services + `RuntimeHook` wiring |
 
 **Sending:** EventBus automatically bridges to Kafka when an `EventBridge` is configured:
 
@@ -888,14 +1137,20 @@ Annotations: `@NotNull`, `@NotBlank`, `@Size(min, max)`, `@Min`, `@Max`, `@Valid
 
 ### Defer — Scope-bound Deferred Execution
 
-"Run this side effect only after the current boundary commits. If it rolls back, forget it."
+*"Run this side effect, but only after the current boundary commits. If it rolls back, forget it."*
+
+Under the hood it's a `ScopedValue<List<Runnable>>`: inside a scope, `Defer.defer()` appends to the list; outside, it runs immediately. On success, the scope drains the list; on failure, it discards it. The calling code doesn't need to know whether a scope is active.
+
+**Mental model — the "commit tray":** You drop slips of paper into the tray during a unit of work. When the work succeeds, someone picks up the tray and processes every slip in order. If the work fails, the tray is emptied — nothing happened.
+
+**Basic usage:**
 
 ```java
 // Inside a Defer scope
 Defer.within(() -> {
     db.execute("UPDATE ...");
     Defer.defer(() -> cache.invalidate("key"));   // runs after commit
-    Defer.defer("index", () -> rebuildIndex())    // ordered
+    Defer.defer("index", () -> rebuildIndex());    // ordered
         .after("cache");
 });
 // cache invalidated → index rebuilt
@@ -907,30 +1162,168 @@ Defer.defer(() -> log.info("done"));
 Supplier<Snapshot> snap = Defer.supply(() -> buildSnapshot());
 ```
 
-Built-in framework scopes (no setup needed):
+**Scenario 1 — DB transaction + EventBus (framework-built-in, zero user code):**
 
-| Boundary | Commit = | Rollback = |
-|----------|----------|------------|
-| `db.transaction()` | SQL commit succeeds | Work throws |
-| HTTP request (`WebServer`) | Request completes | Filter chain throws |
-| Kafka record (`KafkaSubscriber`) | Record publishes successfully | Deserialization fails |
+The most common case — you don't write any Defer code. The framework handles it:
+
+```java
+db.transaction(() -> {
+    db.execute("INSERT INTO posts ...");         // ① SQL
+    bus.publish(new PostCreatedEvent(post));     // ② looks immediate, actually deferred
+    db.execute("UPDATE counts ...");             // ③ more SQL
+});
+// ④ commit succeeds → bus fires PostCreatedEvent
+//    or rollback → event never fires
+```
+
+`DatabaseImpl.transaction()` opens a `Defer` scope. `EventBus.publish()` checks `Defer.isActive()` — yes → defers. The user gets correct commit/rollback semantics without any wiring.
+
+**Scenario 2 — DB transaction + custom cache invalidation:**
+
+```java
+db.transaction(() -> {
+    db.execute("UPDATE posts SET title = ? WHERE id = ?", title, id);
+    Defer.defer(() -> cache.invalidate("posts:" + id));
+    // cache only invalidated if the UPDATE actually commits
+});
+```
+
+**Scenario 3 — HTTP request lifecycle:**
+
+Request-scoped side effects that should fire only after the response is written successfully:
+
+```java
+Defer.within(scope -> {
+    // ... handle request, run filters, render response ...
+    Defer.defer(() -> metrics.record(method, path, duration));
+    Defer.defer(() -> accessLog.write(entry));
+
+    if (response.status() >= 400) {
+        scope.rollback();  // error response — don't record as success
+        return;
+    }
+});
+// metrics / accessLog only fire for successful responses
+```
+
+**Scenario 4 — Kafka consumer offset commit boundary:**
+
+Side effects that must wait until the offset is confirmed:
+
+```java
+Defer.within(() -> {
+    for (var record : records) {
+        process(record);
+        Defer.defer(() -> bus.publish(new RecordProcessed(record)));
+    }
+    consumer.commitSync();  // offset confirmed
+});
+// events fire only after offset commit succeeds
+```
+
+**Scenario 5 — Batch processing with all-or-nothing semantics:**
+
+```java
+Defer.within(() -> {
+    for (var row : rows) db.execute("INSERT INTO ledger ...", row);
+    Defer.defer("index", () -> searchIndex.rebuild()).after("stats");
+    Defer.defer("stats", () -> stats.refresh());
+    Defer.defer("notify", () -> bus.publish(new BatchDone()));
+});
+// index/stats/notify run only if all inserts commit, and in order: stats → index → notify
+```
+
+**Scenario 6 — Deferred value (audit snapshot):**
+
+A value computed from committed state:
+
+```java
+var snap = Defer.supply(() -> snapshotDao.build());
+
+db.transaction(() -> {
+    orderService.place(order);
+    // snapshotDao.build() hasn't run yet — defers until commit
+});
+
+// After transaction commits, snapshot reflects consistent state
+AuditSnapshot s = snap.get();
+```
+
+**Framework scopes (built-in):**
+
+The framework opens `Defer` scopes at these natural boundaries — user code inside them can call `Defer.defer()` without any setup:
+
+| Boundary | Opened by | Commit = | Rollback = |
+|----------|----------|----------|------------|
+| DB transaction | `DatabaseImpl.transaction()` | `raw.commit()` succeeds | Work throws → `raw.rollback()` |
+| HTTP request | `WebServer` request handler | Request completes (even on error — errors are handled internally) | Only if filter chain throws unrecoverably |
+| Kafka record | `KafkaSubscriber` poll loop | Record deserializes and publishes successfully | Deserialization or publish fails |
+
+**When NOT to use:**
+
+- **Must fire regardless of success/failure** — `Defer.defer()` inside a scope only fires on success. Use regular code + try/finally for cleanup that always runs.
+- **Fire-and-forget across threads** — the `ScopedValue` binding stays on the current thread. Dispatching to another thread loses the scope.
+- **Long-running async work** — deferred actions run inline during scope drain. If you need async-after-commit, combine `defer()` with an executor inside the deferred action: `Defer.defer(() -> executor.submit(heavyTask))`.
+
+**Key API:**
+
+| Method | Purpose |
+|--------|---------|
+| `Defer.within(Runnable)` | Scope — drain on success, discard on failure |
+| `Defer.within(Consumer<DeferScope>)` | Scope with `DeferScope.rollback()` for manual discard |
+| `Defer.defer(Runnable)` | Unnamed action — run immediately or defer |
+| `Defer.defer(String id, Runnable)` | Named action — returns `DeferAction` for `.before()` / `.after()` |
+| `Defer.supply(Callable<T>)` | Deferred value — returns `Supplier<T>`, computes at commit |
+| `Defer.isActive()` | True inside a `within(...)` block |
 
 ### ScopedCache — Scope-bound Value Cache
 
-"Cached within a scope, cleaned up on exit."
+*"Cached within a scope, cleaned up on exit."*
+
+`ScopedCache` is the dual of `Defer`: instead of buffering actions for commit-time execution, it caches key-value pairs for the lifetime of a scope and cleans them up on exit. Both use `ScopedValue` for implicit context propagation.
+
+**Mental model:** A "scope-lifetime cache" — you look up a value by key inside a scope; the first lookup creates it, subsequent lookups return the same instance. When the scope exits (normally or exceptionally), all cached values are passed through registered cleanup handlers.
+
+**API:**
+
+| Method | Purpose |
+|--------|---------|
+| `ScopedCache.within(Supplier<T>)` | Scope — caches values, cleans up on exit |
+| `ScopedCache.within(Function<Session, T>)` | Scope with `Session` handle for manual close |
+| `ScopedCache.get(Object key, Supplier<V>)` | Get or create in current scope; no caching outside scope |
+| `ScopedCache.onClose(Consumer<Object>)` | Register a global cleanup callback (applied per-value on exit) |
+| `ScopedCache.isActive()` | True inside a `within(...)` block |
+| `ScopedCache.currentSession()` | Current `Session`, or null if outside scope |
+
+**IoC integration.** IoC registers its lifecycle callback once via `ScopedCache.onClose()` — this runs `@PreDestroy` and `AutoCloseable.close()` on every thread-scoped service instance when its scope exits:
 
 ```java
-ScopedCache.within(() -> {
-    Connection conn = ScopedCache.get("db", () -> dataSource.getConnection());
-    // same key → reused within scope
+// ContainerImpl static initializer
+ScopedCache.onClose(v -> {
+    Lifecycle.invokePreDestroy(v);
+    if (v instanceof AutoCloseable c) c.close();
 });
-// conn closed on exit
-
-// Register cleanup handlers
-ScopedCache.onClose(v -> { if (v instanceof AutoCloseable c) c.close(); });
 ```
 
-IoC uses `ScopedCache` internally for thread-scoped service caching. `@PreDestroy` and `AutoCloseable` lifecycle are registered as global cleanup handlers.
+`ServiceRuntime` resolves thread-scoped services through `ScopedCache.get()`:
+
+```java
+// ServiceRuntime.realizeThreadScoped()
+ServiceKey key = new ServiceKey(binding.type(), binding.id());
+return ScopedCache.get(key, binding::directInstance);
+```
+
+**Standalone usage.** `ScopedCache` can be used independently of IoC for any scoped resource management:
+
+```java
+ScopedCache.onClose(v -> { if (v instanceof AutoCloseable c) c.close(); });
+
+ScopedCache.within(() -> {
+    Connection conn = ScopedCache.get("db", () -> dataSource.getConnection());
+    // same key → same connection reused within scope
+});
+// connection auto-closed on exit
+```
 
 ---
 
@@ -966,14 +1359,36 @@ Database db = new DatabaseBuilder().config(config).build();
 Schema.ensure(db, TestEntity.class);
 ```
 
+For IoC tests, use `Freeway.create(...)`. For application integration tests, use `FreewayApp.run(...)` so runtime hooks and shutdown behavior are exercised.
+
 ---
 
-## Key Design Rules
+## Architecture & Design
 
+### Architecture Baseline
+
+- **`Container`** is the IoC boundary only. It exposes service lookup and `close()`, not application runtime operations.
+- **`AppRuntime`** is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks.
+- Service ids are **plain strings** and are normalized internally by `ServiceIds`. There is no public `ServiceId` type.
+- Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
+- **`Defer` and `ScopedCache`** are parallel `ScopedValue`-based primitives in commons. `Defer` buffers actions for commit-time drain; `ScopedCache` caches key-value pairs with lifecycle cleanup on scope exit. IoC's thread scope is built on `ScopedCache`.
+- Thread-scoped services use **`Scoping.within()`** to enter an execution boundary; the scope auto-closes when the work lambda completes. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads.
+- **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `WebServer`.
+- **`LoggerSource`** is the built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery; it only activates when no external SLF4J provider is detected.
+
+### Naming Rules
+
+- **Public interfaces** use the bare domain name: `Container`, `JsonCodec`, `RequestContext`.
+- **Framework-provided default implementations** use `XDefault` suffix: `AppRuntimeDefault`, `JsonCodecDefault`, `CoercerDefault`. This keeps interface names dominant.
+- **`DefaultX`** form is avoided — it hides the concept at the end of the name.
+- **`Impl` suffix** is reserved for uninteresting concrete implementations where no default strategy is being expressed.
+- **Internal helpers** stay package-private where possible, e.g., `ServiceIds`.
+
+### Code Style
+
+- **JDK 25+.**
 - **No classpath scanning, no bytecode weaving.**
-- **Constructor injection** for framework internals; **field injection** acceptable for app code and config values.
-- **`XDefault` naming** for framework default implementations (`JsonCodecDefault`, `CoercerDefault`).
-- **`Impl` suffix** only for uninteresting concrete implementations.
-- **Core modules have zero external dependencies.** Adapter modules are the exception.
-- **Keep concepts few:** Module, Service, Extension, Scope, Runtime.
-- **`Scoping.within()`** uses JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads.
+- Core modules (`commons`, `ioc`) have **zero external dependencies** beyond SLF4J API. Adapter modules are the exception.
+- **Constructor injection** is preferred for framework internals. **Field injection** is acceptable for concise app code and config values.
+- Prefer **small, explicit APIs** over future-proof abstractions.
+- Keep concepts few: **Module**, **Service**, **Extension**, **Scope**, **Runtime**.

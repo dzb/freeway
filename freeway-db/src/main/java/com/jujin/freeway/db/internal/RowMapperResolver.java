@@ -8,6 +8,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.Names;
 import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
+import com.jujin.freeway.db.RowMapping;
 import com.jujin.freeway.db.SqlException;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -30,6 +31,14 @@ public final class RowMapperResolver {
     private final ConcurrentHashMap<Class<?>, RowMapper<?>> cache =
         new ConcurrentHashMap<>();
 
+    /**
+     * IoC constructor — {@code List<RowMapping>} populated from module
+     * contributions via {@code binder.contribute(RowMapping.class).add(...)}.
+     */
+    public RowMapperResolver(Coercer coercer, List<RowMapping> registrations) {
+        this(coercer, Map.of(), toMap(registrations));
+    }
+
     public RowMapperResolver(
         Coercer coercer,
         Map<Class<?>, RowMapper<?>> manualMappings,
@@ -37,6 +46,18 @@ public final class RowMapperResolver {
     ) {
         this.coercer = Objects.requireNonNull(coercer, "coercer");
         this.custom = customMap(manualMappings, registrations);
+    }
+
+    private static Map<Class<?>, RowMapper<?>> toMap(List<RowMapping> registrations) {
+        if (registrations.isEmpty()) return Map.of();
+        Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
+        for (RowMapping entry : registrations) {
+            map.put(
+                Objects.requireNonNull(entry.type()),
+                Objects.requireNonNull(entry.mapper())
+            );
+        }
+        return map;
     }
 
     @SuppressWarnings("unchecked")

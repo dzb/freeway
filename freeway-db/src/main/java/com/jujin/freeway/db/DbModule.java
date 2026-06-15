@@ -9,12 +9,9 @@ import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 public final class DbModule implements Module2{
@@ -34,18 +31,21 @@ public final class DbModule implements Module2{
             .id("builtin");
 
         // database
-        binder
-            .bind(RowMapperResolver.class)
-            .to(container -> buildResolver(container));
+        binder.bind(RowMapperResolver.class).to(container ->
+            new RowMapperResolver(
+                container.get(Coercer.class),
+                container.extension(RowMapping.class).all()
+            )
+        );
         binder
             .bind(Database.class)
             .to(container -> buildDatabase(container));
         binder
             .bind(DatabaseHub.class)
-            .to(container -> buildHub(container));
-        binder
-            .bind(Orm.class)
-            .to(Orm.class);
+            .to(container ->
+                new DatabaseHubImpl(container.extension(DatabaseNamed.class).all())
+            );
+        binder.bind(Orm.class).to(Orm.class);
         binder
             .bind(MigrationRunner.class)
             .to(container -> buildMigrationRunner(container));
@@ -148,38 +148,6 @@ public final class DbModule implements Module2{
             }
             return new PoolDefault(config);
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static RowMapperResolver buildResolver(Container container) {
-        Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
-        try {
-            Extension<RowMapping> reg = container.get(
-                Extension.class,
-                RowMapping.class.getName()
-            );
-            for (RowMapping entry : reg.all())
-                map.put(entry.type(), entry.mapper());
-        } catch (IllegalArgumentException ignored) {}
-        return new RowMapperResolver(
-            container.get(Coercer.class),
-            Map.of(),
-            map
-        );
-    }
-
-    @SuppressWarnings("unchecked")
-    private static DatabaseHubImpl buildHub(Container container) {
-        Map<String, Database> map = new LinkedHashMap<>();
-        try {
-            Extension<DatabaseNamed> reg = container.get(
-                Extension.class,
-                DatabaseNamed.class.getName()
-            );
-            for (DatabaseNamed entry : reg.all())
-                map.put(entry.name(), entry.db());
-        } catch (IllegalArgumentException ignored) {}
-        return new DatabaseHubImpl(map);
     }
 
     private static MigrationRunner buildMigrationRunner(Container container) {

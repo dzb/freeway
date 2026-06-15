@@ -101,6 +101,13 @@ final class InjectResolver {
         if (targetType == Logger.class) {
             return resolveLogger(ownerType, lookup);
         }
+        // Extension<Foo> / List<Foo> — resolved from contribution mechanism.
+        // Must precede resolveInjected so @Inject on these types does not
+        // attempt a broken container.get(Extension.class) / container.get(List.class).
+        Object contributed = resolveContributed(memberType, targetType, lookup, parameterMode);
+        if (contributed != null) {
+            return contributed;
+        }
         Object injected = resolveInjected(ownerType, lookup, targetType);
         if (injected != null) {
             return injected;
@@ -115,15 +122,39 @@ final class InjectResolver {
         if (targetType == String.class) {
             return container.get(String.class);
         }
-        if (targetType == Extension.class && memberType instanceof ParameterizedType pt) {
-            Type arg = pt.getActualTypeArguments()[0];
-            if (arg instanceof Class<?> entryType) {
-                return container.extension(entryType);
-            }
-        }
         Object service = container.get(targetType);
         validateScopeCompatibility(ownerType, targetType, service);
         return service;
+    }
+
+    /**
+     * Resolves {@code Extension<Foo>} and {@code List<Foo>} from the contribution
+     * mechanism. For constructor parameters this fires unconditionally; for fields
+     * it requires an {@code @Inject} annotation.
+     */
+    private Object resolveContributed(
+        Type memberType,
+        Class<?> targetType,
+        AnnotationLookup lookup,
+        boolean parameterMode
+    ) {
+        if (!(memberType instanceof ParameterizedType pt)) {
+            return null;
+        }
+        Type arg = pt.getActualTypeArguments()[0];
+        if (!(arg instanceof Class<?> entryType)) {
+            return null;
+        }
+        if (!parameterMode && !hasInjectionAnnotation(lookup)) {
+            return null;
+        }
+        if (targetType == Extension.class) {
+            return container.extension(entryType);
+        }
+        if (targetType == List.class) {
+            return container.extension(entryType).all();
+        }
+        return null;
     }
 
     private Object resolveInjected(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {

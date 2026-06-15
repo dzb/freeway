@@ -7,8 +7,6 @@ public interface Binder {
 
     <V> Contributions<V> contribute(Class<V> entryType);
 
-    <V> Contributions<V> contribute(Class<V> entryType, String name);
-
     /**
      * Installs a module. The module's {@link Module2#bind(Binder)} is called
      * immediately, so its services and extensions are registered in the same
