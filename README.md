@@ -53,14 +53,14 @@ Freeway 2 keeps its core concepts and public API intentionally small:
 ## Quick Start
 
 ```java
-public final class AppModule implements Module {
+public final class AppModule implements Module2 {
     @Override
     public void bind(Binder binder) {
         binder.bind(Greeter.class).to(GreeterImpl.class);
     }
 }
 
-AppRuntime runtime = Launcher.run(AppModule.class, args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 Greeter greeter = runtime.get(Greeter.class);
 System.out.println(greeter.greet("World"));
 runtime.close();
@@ -118,7 +118,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `Launcher.run()` - thin entry that delegates to `AppBootstrap`.
+- `Launcher.run(args, Module2...)` - accepts command-line args and Module2 instances. Loads config, discovers SPI modules, starts the full application lifecycle.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.

@@ -3,6 +3,7 @@ package com.jujin.freeway.ioc.internal;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Binding;
 import com.jujin.freeway.ioc.Extension;
+import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
 
@@ -41,5 +42,12 @@ final class BinderImpl implements Binder {
                 return ext.add(id, value);
             }
         };
+    }
+
+    @Override
+    public Binder install(Module2 module) {
+        Objects.requireNonNull(module, "module");
+        container.installModule(module, this);
+        return this;
     }
 }

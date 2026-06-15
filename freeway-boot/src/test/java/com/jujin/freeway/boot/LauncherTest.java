@@ -1,7 +1,6 @@
 package com.jujin.freeway.boot;
 
 import com.jujin.freeway.ioc.*;
-import com.jujin.freeway.ioc.Module;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +19,7 @@ class LauncherTest {
     private static final String SERVER_HOST_KEY = "server.host";
 
     private String previousAppName;
+    private static List<String> hookEvents;
 
     @BeforeEach
     void capture() {
@@ -37,7 +37,10 @@ class LauncherTest {
 
     @Test
     void bootsApplicationWithPrimaryAndDiscoveredModules() {
-        AppRuntime app = Launcher.run(TestBootApp.class, "--freeway.profile=dev", "--app.name=Overridden");
+        AppRuntime app = Launcher.run(
+            new String[]{"--freeway.profile=dev", "--app.name=Overridden"},
+            new TestBootApp()
+        );
         try {
             assertEquals(AppState.RUNNING, app.state());
             assertTrue(app.isRunning());
@@ -68,12 +71,10 @@ class LauncherTest {
 
     @Test
     void primaryModuleMayBePassedAsInstance() {
-        AppRuntime app = Launcher.run(new Module() {
-            @Override
-            public void bind(Binder binder) {
-                binder.bind(PrimaryMarker.class).to(new PrimaryMarker("instance"));
-            }
-        });
+        AppRuntime app = Launcher.run(
+            new String[0],
+            new InstancePrimaryModule()
+        );
         try {
             assertEquals(AppState.RUNNING, app.state());
             assertEquals("instance", app.container().get(PrimaryMarker.class).value());
@@ -85,90 +86,45 @@ class LauncherTest {
 
     @Test
     void runtimeHooksStartAndStopInOrder() {
-        List<String> events = new ArrayList<>();
+        hookEvents = new ArrayList<>();
 
-        AppRuntime app = Launcher.run(binder -> {
-            binder.contribute(RuntimeHook.class).add("second", new RuntimeHook() {
-                @Override
-                public void start(Container container) {
-                    events.add("second:start");
-                }
+        AppRuntime app = Launcher.run(
+            new String[0],
+            new HookOrderedModule()
+        );
 
-                @Override
-                public void stop(Container container) {
-                    events.add("second:stop");
-                }
-            }).after("first");
-            binder.contribute(RuntimeHook.class).add("first", new RuntimeHook() {
-                @Override
-                public void start(Container container) {
-                    events.add("first:start");
-                }
-
-                @Override
-                public void stop(Container container) {
-                    events.add("first:stop");
-                }
-            });
-        });
-
-        assertEquals(List.of("first:start", "second:start"), events);
+        assertEquals(List.of("first:start", "second:start"), hookEvents);
         app.close();
-        assertEquals(List.of("first:start", "second:start", "second:stop", "first:stop"), events);
+        assertEquals(List.of("first:start", "second:start", "second:stop", "first:stop"), hookEvents);
         assertEquals(AppState.STOPPED, app.state());
+        hookEvents = null;
     }
 
     @Test
     void runtimeHookStartFailureRollsBackStartedHooks() {
-        List<String> events = new ArrayList<>();
+        hookEvents = new ArrayList<>();
 
-        assertThrows(IllegalStateException.class, () -> Launcher.run(binder -> {
-            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
-                @Override
-                public void start(Container container) {
-                    events.add("first:start");
-                }
+        assertThrows(IllegalStateException.class, () -> Launcher.run(
+            new String[0],
+            new HookFailureModule()
+        ));
 
-                @Override
-                public void stop(Container container) {
-                    events.add("first:stop");
-                }
-            });
-            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
-                @Override
-                public void start(Container container) {
-                    events.add("second:start");
-                    throw new IllegalStateException("boom");
-                }
-            });
-        }));
-
-        assertEquals(List.of("first:start", "second:start", "first:stop"), events);
+        assertEquals(List.of("first:start", "second:start", "first:stop"), hookEvents);
+        hookEvents = null;
     }
 
     @Test
     void runtimeHookResolutionFailureFailsStartup() {
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Launcher.run(binder -> {
-            binder.contribute(RuntimeHook.class).add("first", new RuntimeHook() {
-                @Override
-                public void start(Container container) {
-                }
-            }).after("second");
-            binder.contribute(RuntimeHook.class).add("second", new RuntimeHook() {
-                @Override
-                public void start(Container container) {
-                }
-            }).after("first");
-        }));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> Launcher.run(
+            new String[0],
+            new HookCycleModule()
+        ));
 
         assertTrue(ex.getMessage().contains("Application startup failed"));
     }
 
-    public record PrimaryMarker(String value) {
-    }
-
-    public record AutoMarker(String value) {
-    }
+    public record PrimaryMarker(String value) {}
+    public record AutoMarker(String value) {}
 
     interface Greeter {
         String greet(String name);
@@ -193,11 +149,69 @@ class LauncherTest {
         }
     }
 
-    public static final class TestBootApp implements Module {
+    public static final class TestBootApp implements Module2 {
         @Override
         public void bind(Binder binder) {
             binder.bind(Greeter.class).to(GreeterImpl.class);
             binder.bind(Store.class).to(Store.class);
+        }
+    }
+
+    public static final class InstancePrimaryModule implements Module2 {
+        @Override
+        public void bind(Binder binder) {
+            binder.bind(PrimaryMarker.class).to(new PrimaryMarker("instance"));
+        }
+    }
+
+    public static final class HookOrderedModule implements Module2 {
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(RuntimeHook.class).add("second", new RuntimeHook() {
+                @Override
+                public void start(Container container) { hookEvents.add("second:start"); }
+                @Override
+                public void stop(Container container) { hookEvents.add("second:stop"); }
+            }).after("first");
+            binder.contribute(RuntimeHook.class).add("first", new RuntimeHook() {
+                @Override
+                public void start(Container container) { hookEvents.add("first:start"); }
+                @Override
+                public void stop(Container container) { hookEvents.add("first:stop"); }
+            });
+        }
+    }
+
+    public static final class HookFailureModule implements Module2 {
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+                @Override
+                public void start(Container container) { hookEvents.add("first:start"); }
+                @Override
+                public void stop(Container container) { hookEvents.add("first:stop"); }
+            });
+            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    hookEvents.add("second:start");
+                    throw new IllegalStateException("boom");
+                }
+            });
+        }
+    }
+
+    public static final class HookCycleModule implements Module2 {
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(RuntimeHook.class).add("first", new RuntimeHook() {
+                @Override
+                public void start(Container container) {}
+            }).after("second");
+            binder.contribute(RuntimeHook.class).add("second", new RuntimeHook() {
+                @Override
+                public void start(Container container) {}
+            }).after("first");
         }
     }
 }

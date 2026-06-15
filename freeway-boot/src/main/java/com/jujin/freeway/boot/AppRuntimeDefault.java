@@ -45,7 +45,7 @@ final class AppRuntimeDefault implements AppRuntime {
         state = AppState.STARTING;
         LOG.info("Application starting");
         try {
-            container.get(HookLifecycle.class).start(container);
+            container.get(HookLifecycle.class).start();
             state = AppState.RUNNING;
             LOG.info("Application started");
             publish(new AppStartedEvent(container));
@@ -69,7 +69,7 @@ final class AppRuntimeDefault implements AppRuntime {
         RuntimeException failure = null;
         if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
             try {
-                container.get(HookLifecycle.class).stop(container);
+                container.get(HookLifecycle.class).stop();
             } catch (RuntimeException ex) {
                 failure = ex;
                 LOG.error("Error during hook shutdown", ex);
@@ -96,7 +96,8 @@ final class AppRuntimeDefault implements AppRuntime {
     private void publish(Object event) {
         try {
             container.get(EventBus.class).publish(event);
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            LOG.warn("Failed to publish lifecycle event: {}", event.getClass().getSimpleName(), ex);
         }
     }
 }

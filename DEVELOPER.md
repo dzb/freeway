@@ -42,10 +42,10 @@ Freeway 2 uses these architectural boundaries:
 | Type | Purpose |
 |------|---------|
 | `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `close()` |
-| `Module` | A module entry point: `bind(Binder)` |
+| `Module2` | A module entry point: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
-| `Freeway` | Container bootstrap: `Freeway.create(Module...)` |
+| `Freeway` | Container bootstrap: `Freeway.create(Module2...)` |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
 | `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
@@ -279,7 +279,7 @@ binder.contribute(EventSubscriber.class)
 Distributed pub/sub via EventBus. Add `KafkaModule` to enable:
 
 ```java
-Launcher.run(AppModule.class, new KafkaModule());
+Launcher.run(args, new AppModule(), new KafkaModule());
 ```
 
 **Sending:** EventBus automatically bridges to Kafka:
@@ -348,17 +348,16 @@ Logger injection is owner-aware. Without an explicit id, the logger name is the 
 ### Public Shape
 
 ```java
-AppRuntime runtime = Launcher.run(AppModule.class, args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 ```
 
 | Type | Purpose |
 |------|---------|
-| `Launcher` | Thin public entry point |
-| `AppBootstrap` | Internal boot orchestration |
+| `Launcher` | Application entry point: `run(args, Module2...)` |
 | `AppRuntime` | Runtime API: container, config, state, start, close |
 | `AppState` | `CREATED`, `STARTING`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED` |
 
-`Launcher.run()` creates the container, builds the runtime, starts hooks, logs startup time, and registers a JVM shutdown hook.
+`Launcher.run()` accepts command-line args and Module2 instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
 ### Runtime Hooks
 
@@ -629,7 +628,7 @@ Database db = new DatabaseBuilder().config(config).pool(pool).build();
 **IoC usage:** add `HikariPoolModule` to the launcher or install it through another module — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. Then set `freeway.db.pool=hikari` to activate it.
 
 ```java
-Launcher.run(AppModule.class, new DbModule(), new HikariPoolModule());
+Launcher.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
 ```
 
 `HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `DatabaseStats`.

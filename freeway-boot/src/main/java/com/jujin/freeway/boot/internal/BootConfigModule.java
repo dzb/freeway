@@ -2,11 +2,11 @@ package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import java.util.Objects;
 
-public final class BootConfigModule implements Module {
+public final class BootConfigModule implements Module2{
     private final AppConfig config;
 
     public BootConfigModule(AppConfig config) {

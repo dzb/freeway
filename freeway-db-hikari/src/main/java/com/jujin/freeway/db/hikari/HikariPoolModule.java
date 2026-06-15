@@ -2,9 +2,9 @@ package com.jujin.freeway.db.hikari;
 
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.Module2;
 
-public final class HikariPoolModule implements Module {
+public final class HikariPoolModule implements Module2{
 
     @Override
     public void bind(Binder binder) {
