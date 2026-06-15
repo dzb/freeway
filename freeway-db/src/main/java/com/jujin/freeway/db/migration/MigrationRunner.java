@@ -2,9 +2,6 @@ package com.jujin.freeway.db.migration;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
@@ -28,9 +24,14 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class MigrationRunner {
-    private static final Logger LOG = LoggerFactory.getLogger(MigrationRunner.class);
+
+    private static final Logger LOG = LoggerFactory.getLogger(
+        MigrationRunner.class
+    );
     static final int MAX_MIGRATION_BYTES = 16 * 1024 * 1024;
 
     private final Database database;
@@ -66,8 +67,12 @@ public final class MigrationRunner {
         for (String m : migrations) {
             String v = versionFromPath(m);
             if (!seen.add(v)) {
-                throw new SqlException("Duplicate migration version: " + v
-                    + " — detected in file " + m);
+                throw new SqlException(
+                    "Duplicate migration version: " +
+                        v +
+                        " — detected in file " +
+                        m
+                );
             }
         }
 
@@ -110,12 +115,15 @@ public final class MigrationRunner {
                 installed_rank int not null,
                 executed_at timestamp default current_timestamp
             )
-            """
-            .formatted(table)
+            """.formatted(table)
         );
     }
 
-    private void applyMigration(String resourcePath, String checksum, int installedRank) {
+    private void applyMigration(
+        String resourcePath,
+        String checksum,
+        int installedRank
+    ) {
         String sql = readResource(resourcePath);
         if (sql.isBlank()) {
             throw new SqlException("Migration file is empty: " + resourcePath);
@@ -125,8 +133,13 @@ public final class MigrationRunner {
         database.transaction(() -> {
             database.execute(sql);
             database.execute(
-                "insert into " + table + " (version, description, checksum, installed_rank) values (?, ?, ?, ?)",
-                version, description, checksum, installedRank
+                "insert into " +
+                    table +
+                    " (version, description, checksum, installed_rank) values (?, ?, ?, ?)",
+                version,
+                description,
+                checksum,
+                installedRank
             );
         });
     }
@@ -145,7 +158,10 @@ public final class MigrationRunner {
                 }
             }
         } catch (IOException e) {
-            throw new SqlException("Failed to scan migrations under " + path, e);
+            throw new SqlException(
+                "Failed to scan migrations under " + path,
+                e
+            );
         }
         return List.copyOf(result);
     }
@@ -165,13 +181,17 @@ public final class MigrationRunner {
                     .forEach(result::add);
             }
         } catch (IOException | URISyntaxException e) {
-            throw new SqlException("Failed to scan file migrations under " + path, e);
+            throw new SqlException(
+                "Failed to scan file migrations under " + path,
+                e
+            );
         }
     }
 
     private void scanJarRoot(Set<String> result, URL url) {
         try {
-            JarURLConnection connection = (JarURLConnection) url.openConnection();
+            JarURLConnection connection =
+                (JarURLConnection) url.openConnection();
             String root = connection.getEntryName();
             if (root == null) {
                 root = path;
@@ -182,21 +202,32 @@ public final class MigrationRunner {
             try (JarFile jar = connection.getJarFile()) {
                 for (JarEntry entry : Collections.list(jar.entries())) {
                     String name = entry.getName();
-                    if (!entry.isDirectory() && name.startsWith(root) && isSqlFile(name)) {
+                    if (
+                        !entry.isDirectory() &&
+                        name.startsWith(root) &&
+                        isSqlFile(name)
+                    ) {
                         result.add(name);
                     }
                 }
             }
         } catch (IOException e) {
-            throw new SqlException("Failed to scan jar migrations under " + path, e);
+            throw new SqlException(
+                "Failed to scan jar migrations under " + path,
+                e
+            );
         }
     }
 
     private Map<String, String> loadChecksums() {
         Map<String, String> map = new LinkedHashMap<>();
-        List<ChecksumRow> rows = database.query(
-            "select version, checksum from " + table + " order by installed_rank"
-        ).list(ChecksumRow.class);
+        List<ChecksumRow> rows = database
+            .query(
+                "select version, checksum from " +
+                    table +
+                    " order by installed_rank"
+            )
+            .list(ChecksumRow.class);
         for (ChecksumRow row : rows) {
             map.put(row.version(), row.checksum());
         }
@@ -209,16 +240,24 @@ public final class MigrationRunner {
         ClassLoader classLoader = classLoader();
         try (InputStream in = classLoader.getResourceAsStream(resourcePath)) {
             if (in == null) {
-                throw new SqlException("Migration file not found on classpath: " + resourcePath);
+                throw new SqlException(
+                    "Migration file not found on classpath: " + resourcePath
+                );
             }
             return readBytes(in, resourcePath);
         } catch (IOException e) {
-            throw new SqlException("Failed to read migration file: " + resourcePath, e);
+            throw new SqlException(
+                "Failed to read migration file: " + resourcePath,
+                e
+            );
         }
     }
 
     private String readResource(String resourcePath) {
-        return new String(readResourceBytes(resourcePath), StandardCharsets.UTF_8);
+        return new String(
+            readResourceBytes(resourcePath),
+            StandardCharsets.UTF_8
+        );
     }
 
     private static String sha256(byte[] content) {
@@ -230,7 +269,8 @@ public final class MigrationRunner {
         }
     }
 
-    private static byte[] readBytes(InputStream in, String resourcePath) throws IOException {
+    private static byte[] readBytes(InputStream in, String resourcePath)
+        throws IOException {
         var out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int total = 0;
@@ -241,7 +281,11 @@ public final class MigrationRunner {
             }
             if (total > MAX_MIGRATION_BYTES - read) {
                 throw new SqlException(
-                    "Migration file too large: " + resourcePath + " (max " + MAX_MIGRATION_BYTES + " bytes)"
+                    "Migration file too large: " +
+                        resourcePath +
+                        " (max " +
+                        MAX_MIGRATION_BYTES +
+                        " bytes)"
                 );
             }
             out.write(buffer, 0, read);
@@ -251,16 +295,19 @@ public final class MigrationRunner {
     }
 
     private static String normalizePath(String path) {
-        String value = path == null || path.isBlank() ? "db/migration/" : path.trim();
+        String value =
+            path == null || path.isBlank() ? "db/migration/" : path.trim();
         value = value.replace('\\', '/');
         return value.endsWith("/") ? value : value + "/";
     }
 
     private static String normalizeTable(String table) {
-        String value = table == null || table.isBlank() ? "_migrations" : table.trim();
+        String value =
+            table == null || table.isBlank() ? "_migrations" : table.trim();
         if (!value.matches("[a-zA-Z0-9_$#]+")) {
             throw new IllegalArgumentException(
-                "migration table must only contain [a-zA-Z0-9_$#], got: " + value
+                "migration table must only contain [a-zA-Z0-9_$#], got: " +
+                    value
             );
         }
         return value;

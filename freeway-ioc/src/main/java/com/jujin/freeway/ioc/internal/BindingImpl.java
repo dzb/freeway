@@ -51,7 +51,7 @@ final class BindingImpl<T> implements Binding<T> {
         return List.copyOf(advices);
     }
 
-    Object directInstance() {
+    T directInstance() {
         if (instance != null) {
             return instance;
         }
@@ -119,7 +119,7 @@ final class BindingImpl<T> implements Binding<T> {
         return this;
     }
 
-    private Object instantiateDefault() {
+    private T instantiateDefault() {
         if (!type.isInterface() && !Modifier.isAbstract(type.getModifiers())) {
             return container.instantiate(type);
         }

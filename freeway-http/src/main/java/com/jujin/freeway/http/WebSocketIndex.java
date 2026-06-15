@@ -1,13 +1,14 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.ioc.Extension;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 final class WebSocketIndex {
-    private final CopyOnWriteArrayList<WebSocketRoute> routes = new CopyOnWriteArrayList<>();
+
+    private final CopyOnWriteArrayList<WebSocketRoute> routes =
+        new CopyOnWriteArrayList<>();
 
     public WebSocketIndex(
         Extension<WebSocketRoute> routes,
@@ -42,7 +43,10 @@ final class WebSocketIndex {
         synchronized (routes) {
             for (WebSocketRoute existing : routes) {
                 if (existing.path().equals(value.path())) {
-                    throw new IllegalStateException("Duplicate websocket route detected: GET " + value.path());
+                    throw new IllegalStateException(
+                        "Duplicate websocket route detected: GET " +
+                            value.path()
+                    );
                 }
             }
             routes.add(value);

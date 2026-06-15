@@ -24,42 +24,43 @@ final class ServiceRuntime {
     }
 
     <T> T get(BindingImpl<T> binding) {
-        ServiceKey key = new ServiceKey(binding.type(), binding.id());
         if (binding.scope() == Scope.PROTOTYPE) {
-            return binding.type().cast(binding.directInstance());
+            return binding.directInstance();
         }
         if (binding.scope() == Scope.THREAD && !binding.isProxiable()) {
             requireAdviceSupported(binding);
-            return binding.type().cast(realize(binding));
+            return realize(binding);
         }
-        return binding.type().cast(resolve(key, binding));
+        ServiceKey key = new ServiceKey(binding.type(), binding.id());
+        return resolve(key, binding);
     }
 
-    private <T> Object resolve(ServiceKey key, BindingImpl<T> binding) {
+    @SuppressWarnings("unchecked")
+    private <T> T resolve(ServiceKey key, BindingImpl<T> binding) {
         Object cached = serviceCache.get(key);
         if (cached != null) {
-            return cached;
+            return (T) cached;
         }
         Object service = create(binding);
         Object previous = serviceCache.putIfAbsent(key, service);
-        return previous != null ? previous : service;
+        return (T) (previous != null ? previous : service);
     }
 
-    private <T> Object create(BindingImpl<T> binding) {
+    @SuppressWarnings("unchecked")
+    private <T> T create(BindingImpl<T> binding) {
         if (binding.isProxiable()) {
             return binding.advices().isEmpty()
-                ? proxyFactory.create(
+                ? (T) proxyFactory.create(
                     binding.type(),
                     () -> realize(binding),
                     binding.type().getSimpleName() + "[" + binding.id() + "]"
                 )
-                : createAdvised(binding);
+                : (T) createAdvised(binding);
         }
         requireAdviceSupported(binding);
         return realize(binding);
     }
 
-    @SuppressWarnings("unchecked")
     <T> T realize(BindingImpl<T> binding) {
         if (binding.scope() == Scope.THREAD) {
             return realizeThreadScoped(binding);
@@ -107,7 +108,6 @@ final class ServiceRuntime {
         );
     }
 
-    @SuppressWarnings("unchecked")
     private <T> T createAdvised(BindingImpl<T> binding) {
         return proxyFactory.createAdvised(
             binding.type(),
