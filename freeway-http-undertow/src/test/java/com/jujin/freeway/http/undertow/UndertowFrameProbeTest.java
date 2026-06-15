@@ -4,7 +4,7 @@ import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.Launcher;
 import com.jujin.freeway.http.*;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.Module2;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -42,7 +42,7 @@ class UndertowFrameProbeTest {
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", "undertow");
 
-        app = Launcher.run(new TestAppModule());
+        app = Launcher.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         try (Socket socket = new Socket("127.0.0.1", port)) {
@@ -70,7 +70,7 @@ class UndertowFrameProbeTest {
         }
     }
 
-    public static final class TestAppModule implements Module {
+    public static final class TestAppModule implements Module2{
         @Override
         public void bind(Binder binder) {
             binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/api",

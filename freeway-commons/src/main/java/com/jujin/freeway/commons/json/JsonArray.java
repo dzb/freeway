@@ -2,9 +2,9 @@ package com.jujin.freeway.commons.json;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 public final class JsonArray {
+
     private final ArrayList<Object> values;
 
     JsonArray() {

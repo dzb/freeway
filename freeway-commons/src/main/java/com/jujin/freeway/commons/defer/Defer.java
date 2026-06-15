@@ -148,7 +148,6 @@ public final class Defer {
      * supports {@link DeferAction#before} / {@link DeferAction#after}
      * for ordering relative to other named actions.
      */
-    @SuppressWarnings("unchecked")
     public static <T> DeferAction supply(
         String id,
         Callable<T> callable
@@ -157,6 +156,7 @@ public final class Defer {
         Objects.requireNonNull(callable, "callable");
         if (CURRENT.isBound()) {
             DeferredSupplier<T> ds = new DeferredSupplier<>(callable);
+            @SuppressWarnings("unchecked")
             DeferAction da = new DeferAction(id, (Runnable) ds::compute);
             CURRENT.get().add(da);
             return da;

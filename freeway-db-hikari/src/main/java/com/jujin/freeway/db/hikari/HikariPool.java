@@ -3,6 +3,7 @@ package com.jujin.freeway.db.hikari;
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.PoolConfig;
+import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.internal.PooledConnection;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -35,7 +36,7 @@ public final class HikariPool implements Pool {
         try {
             return new PooledConnection(ds.getConnection(), Instant.now());
         } catch (SQLException e) {
-            throw new com.jujin.freeway.db.SqlException("Failed to borrow connection", e);
+            throw new SqlException("Failed to borrow connection", e);
         }
     }
 

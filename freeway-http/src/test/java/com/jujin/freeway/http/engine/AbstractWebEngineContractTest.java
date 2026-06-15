@@ -4,7 +4,7 @@ import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.Launcher;
 import com.jujin.freeway.http.*;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.Module2;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -46,7 +46,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", engineId());
 
-        app = Launcher.run(new TestAppModule());
+        app = Launcher.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
         assertInstanceOf(engineType(), app.get(HttpEngine.class, engineId()));
 
@@ -70,7 +70,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", engineId());
 
-        app = Launcher.run(new TestAppModule());
+        app = Launcher.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -117,7 +117,9 @@ public abstract class AbstractWebEngineContractTest {
         CompletableFuture<Void> opened = new CompletableFuture<>();
         CompletableFuture<Void> errored = new CompletableFuture<>();
 
-        app = Launcher.run(new ErrorAppModule(opened, errored));
+        ErrorAppModule.opened = opened;
+        ErrorAppModule.errored = errored;
+        app = Launcher.run(new String[0], new ErrorAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -150,7 +152,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", engineId());
 
-        app = Launcher.run(new BodyLimitModule());
+        app = Launcher.run(new String[0], new BodyLimitModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -172,7 +174,7 @@ public abstract class AbstractWebEngineContractTest {
         }
     }
 
-    public static final class TestAppModule implements Module {
+    public static final class TestAppModule implements Module2{
         @Override
         public void bind(Binder binder) {
             binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));
@@ -187,14 +189,11 @@ public abstract class AbstractWebEngineContractTest {
         }
     }
 
-    public static final class ErrorAppModule implements Module {
-        private final CompletableFuture<Void> opened;
-        private final CompletableFuture<Void> errored;
+    public static final class ErrorAppModule implements Module2 {
+        static CompletableFuture<Void> opened;
+        static CompletableFuture<Void> errored;
 
-        public ErrorAppModule(CompletableFuture<Void> opened, CompletableFuture<Void> errored) {
-            this.opened = opened;
-            this.errored = errored;
-        }
+        public ErrorAppModule() {}
 
         @Override
         public void bind(Binder binder) {
@@ -219,7 +218,7 @@ public abstract class AbstractWebEngineContractTest {
         }
     }
 
-    public static final class BodyLimitModule implements Module {
+    public static final class BodyLimitModule implements Module2{
         @Override
         public void bind(Binder binder) {
             binder.contribute(Route.class).add(Route.post("/echo", ctx -> {

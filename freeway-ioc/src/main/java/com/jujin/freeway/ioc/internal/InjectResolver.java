@@ -118,9 +118,7 @@ final class InjectResolver {
         if (targetType == Extension.class && memberType instanceof ParameterizedType pt) {
             Type arg = pt.getActualTypeArguments()[0];
             if (arg instanceof Class<?> entryType) {
-                @SuppressWarnings("unchecked")
-                Extension<?> ext = container.extension((Class<Object>) entryType);
-                return ext;
+                return container.extension(entryType);
             }
         }
         Object service = container.get(targetType);

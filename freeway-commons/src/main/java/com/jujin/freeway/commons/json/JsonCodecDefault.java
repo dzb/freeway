@@ -1,12 +1,12 @@
 package com.jujin.freeway.commons.json;
 
-import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import java.lang.reflect.Type;
 import java.util.Objects;
 
 public final class JsonCodecDefault implements JsonCodec {
+
     private final Coercer coercer;
 
     public JsonCodecDefault() {
@@ -30,7 +30,11 @@ public final class JsonCodecDefault implements JsonCodec {
     @Override
     public <T> T fromJson(String json, Type type) {
         @SuppressWarnings("unchecked")
-        T value = (T) JsonUtils.coerce(JsonUtils.parse(json), type, coercer::coerce);
+        T value = (T) JsonUtils.coerce(
+            JsonUtils.parse(json),
+            type,
+            coercer::coerce
+        );
         return value;
     }
 }

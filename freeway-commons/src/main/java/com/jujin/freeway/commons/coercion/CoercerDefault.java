@@ -64,7 +64,8 @@ public final class CoercerDefault implements Coercer {
         CoercionKey key = new CoercionKey(sourceType, targetType);
 
         // 优先使用自定义规则
-        CoerceRule rule = rules.get(key);
+        @SuppressWarnings("unchecked")
+        CoerceRule<Object, Object> rule = (CoerceRule<Object, Object>) rules.get(key);
         if (rule != null) {
             try {
                 //noinspection unchecked

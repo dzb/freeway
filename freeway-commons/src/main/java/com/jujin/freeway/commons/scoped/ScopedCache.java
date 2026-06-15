@@ -1,0 +1,178 @@
+package com.jujin.freeway.commons.scoped;
+
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Scope-bound value cache. Values created via {@link #get(Object, Supplier)}
+ * inside a {@link #within} block are cached per scope session and cleaned up
+ * when the scope exits. Outside a scope, {@code get} creates values without
+ * caching.
+ *
+ * <h3>Basic usage</h3>
+ * <pre>{@code
+ * ScopedCache.within(() -> {
+ *     Connection conn = ScopedCache.get(ds, () -> createConnection());
+ *     conn.query(...);
+ * });
+ * // conn is cleaned up on scope exit
+ * }</pre>
+ */
+public final class ScopedCache {
+    private static final Logger LOG = LoggerFactory.getLogger(ScopedCache.class);
+
+    private static final ScopedValue<Session> CURRENT = ScopedValue.newInstance();
+    private static final List<Consumer<Object>> ON_CLOSE = new CopyOnWriteArrayList<>();
+
+    private ScopedCache() {}
+
+    // ==================== scope ====================
+
+    /** Returns true if called inside a {@link #within} block. */
+    public static boolean isActive() {
+        return CURRENT.isBound();
+    }
+
+    /** Returns the current scope, or null if outside a scope. */
+    public static Session currentSession() {
+        if (!CURRENT.isBound()) {
+            return null;
+        }
+        return CURRENT.get();
+    }
+
+    /**
+     * Opens a scoped cache. Cached values are cleaned up when the
+     * scope exits (normally or exceptionally).
+     */
+    public static void within(Runnable work) {
+        Objects.requireNonNull(work, "work");
+        within(session -> {
+            work.run();
+            return null;
+        });
+    }
+
+    /**
+     * Opens a scoped cache and returns the work's result.
+     * Cached values are cleaned up on exit.
+     */
+    public static <T> T within(Supplier<T> work) {
+        Objects.requireNonNull(work, "work");
+        return within(session -> work.get());
+    }
+
+    /**
+     * Opens a scoped cache with a {@link Session} handle for
+     * advanced use (tracking, manual close). Cached values are
+     * cleaned up when the scope exits.
+     */
+    public static <T> T within(Function<Session, T> work) {
+        Objects.requireNonNull(work, "work");
+        Session session = new Session();
+        try {
+            return ScopedValue.where(CURRENT, session).call(() -> work.apply(session));
+        } finally {
+            session.close();
+        }
+    }
+
+    // ==================== get ====================
+
+    /**
+     * Inside a scope, returns the cached value for {@code key},
+     * creating it via {@code factory} on first access.
+     * Outside a scope, creates and returns without caching.
+     */
+    @SuppressWarnings("unchecked")
+    public static <V> V get(Object key, Supplier<V> factory) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(factory, "factory");
+        if (CURRENT.isBound()) {
+            Session session = CURRENT.get();
+            return (V) session.getOrCreate(key, (Supplier<Object>) factory);
+        }
+        return factory.get();
+    }
+
+    // ==================== cleanup ====================
+
+    /**
+     * Registers a global cleanup callback. When any scope exits,
+     * each registered callback is applied to every distinct
+     * cached value (identity-deduplicated).
+     */
+    public static void onClose(Consumer<Object> handler) {
+        Objects.requireNonNull(handler, "handler");
+        ON_CLOSE.add(handler);
+    }
+
+    static void resetCleanups() {
+        ON_CLOSE.clear();
+    }
+
+    // ==================== scope handle ====================
+
+    /**
+     * A scoped cache session. Created automatically by
+     * {@link ScopedCache#within}; can be tracked by framework
+     * code for shutdown safety.
+     */
+    public static final class Session {
+        private final Map<Object, Object> cache = new LinkedHashMap<>();
+        private volatile boolean closed;
+
+        Session() {}
+
+        synchronized Object getOrCreate(Object key, Supplier<Object> factory) {
+            if (closed) {
+                throw new IllegalStateException("Session is closed");
+            }
+            Object existing = cache.get(key);
+            if (existing != null) {
+                return existing;
+            }
+            Object created = factory.get();
+            cache.put(key, created);
+            return created;
+        }
+
+        public synchronized void close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            if (ON_CLOSE.isEmpty()) {
+                cache.clear();
+                return;
+            }
+            List<Object> values = List.copyOf(cache.values());
+            cache.clear();
+            Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (Object value : values) {
+                if (!seen.add(value)) {
+                    continue;
+                }
+                for (Consumer<Object> handler : ON_CLOSE) {
+                    try {
+                        handler.accept(value);
+                    } catch (Exception ex) {
+                        LOG.warn("ScopedCache cleanup handler failed", ex);
+                    }
+                }
+            }
+        }
+    }
+}

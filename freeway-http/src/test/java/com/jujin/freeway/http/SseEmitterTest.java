@@ -1,10 +1,10 @@
 package com.jujin.freeway.http;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class SseEmitterTest {
 
@@ -79,7 +79,9 @@ class SseEmitterTest {
     void nullDataThrows() {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos);
-        assertThrows(NullPointerException.class, () -> emitter.send((SseEvent) null));
+        assertThrows(NullPointerException.class, () ->
+            emitter.send((SseEvent) null)
+        );
         assertThrows(NullPointerException.class, () -> new SseEvent(null));
     }
 }

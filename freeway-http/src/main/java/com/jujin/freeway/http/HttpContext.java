@@ -1,21 +1,23 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.lang.reflect.Type;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.jujin.freeway.commons.coercion.Coercer;
-import java.lang.reflect.Type;
 
 public abstract class HttpContext {
-    private static final Pattern CHARSET_PATTERN = Pattern.compile("(?i)\\bcharset=([^\\s;]+)");
+
+    private static final Pattern CHARSET_PATTERN = Pattern.compile(
+        "(?i)\\bcharset=([^\\s;]+)"
+    );
 
     private Map<String, String> pathVariables = Map.of();
     private MultipartForm cachedMultipart;
@@ -78,7 +80,10 @@ public abstract class HttpContext {
     public MultipartForm multipart() throws IOException {
         checkMultipartContentType();
         if (cachedMultipart == null) {
-            cachedMultipart = MultipartForm.parse(header("Content-Type"), body());
+            cachedMultipart = MultipartForm.parse(
+                header("Content-Type"),
+                body()
+            );
         }
         return cachedMultipart;
     }
@@ -106,7 +111,8 @@ public abstract class HttpContext {
         this.maxBodySize = maxBodySize;
     }
 
-    protected final byte[] readBodyLimited(InputStream input) throws IOException {
+    protected final byte[] readBodyLimited(InputStream input)
+        throws IOException {
         var out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         long total = 0;
@@ -188,12 +194,13 @@ public abstract class HttpContext {
         return s != null && !s.isBlank() ? s : null;
     }
 
-    public static RequestContext createRequestContext(String correlationIdHeader) {
+    public static RequestContext createRequestContext(
+        String correlationIdHeader
+    ) {
         String id = blankToNull(correlationIdHeader);
         return id != null ? RequestContext.create(id) : RequestContext.create();
     }
 
-    @SuppressWarnings("unchecked")
     protected <T> T coerceText(String value, Class<T> type) {
         return coercer.coerce(value, type);
     }
@@ -205,8 +212,7 @@ public abstract class HttpContext {
             if (m.find()) {
                 try {
                     return Charset.forName(m.group(1));
-                } catch (IllegalArgumentException ignored) {
-                }
+                } catch (IllegalArgumentException ignored) {}
             }
         }
         return StandardCharsets.UTF_8;
@@ -221,7 +227,11 @@ public abstract class HttpContext {
 
     private void checkMultipartContentType() throws IOException {
         String ct = header("Content-Type");
-        if (ct == null || ct.isBlank() || !ct.toLowerCase().startsWith("multipart/form-data")) {
+        if (
+            ct == null ||
+            ct.isBlank() ||
+            !ct.toLowerCase().startsWith("multipart/form-data")
+        ) {
             throw new IOException("Expected multipart/form-data but got " + ct);
         }
     }

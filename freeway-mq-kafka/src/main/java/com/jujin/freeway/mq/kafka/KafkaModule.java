@@ -3,10 +3,10 @@ package com.jujin.freeway.mq.kafka;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
-import com.jujin.freeway.ioc.Module;
+import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.RuntimeHook;
 
-public class KafkaModule implements Module {
+public class KafkaModule implements Module2{
 
     @Override
     public void bind(Binder binder) {

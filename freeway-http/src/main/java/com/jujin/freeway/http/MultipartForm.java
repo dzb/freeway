@@ -10,8 +10,8 @@ import java.nio.file.Path;
 import java.util.*;
 
 public final class MultipartForm {
+
     private static final Charset RAW = StandardCharsets.ISO_8859_1;
-    private static final long DEFAULT_MAX_AGE_SECONDS = 0L;
 
     private final List<Part> parts;
     private final Map<String, List<Part>> byName;
@@ -20,17 +20,24 @@ public final class MultipartForm {
         this.parts = List.copyOf(parts);
         Map<String, List<Part>> indexed = new LinkedHashMap<>();
         for (Part part : this.parts) {
-            indexed.computeIfAbsent(part.name(), ignored -> new ArrayList<>()).add(part);
+            indexed
+                .computeIfAbsent(part.name(), ignored -> new ArrayList<>())
+                .add(part);
         }
         Map<String, List<Part>> frozen = new LinkedHashMap<>();
-        indexed.forEach((name, entries) -> frozen.put(name, List.copyOf(entries)));
+        indexed.forEach((name, entries) ->
+            frozen.put(name, List.copyOf(entries))
+        );
         this.byName = Map.copyOf(frozen);
     }
 
-    public static MultipartForm parse(String contentType, byte[] body) throws IOException {
+    public static MultipartForm parse(String contentType, byte[] body)
+        throws IOException {
         String boundary = boundaryFromContentType(contentType);
         if (boundary == null) {
-            throw new IOException("Expected multipart/form-data but got " + contentType);
+            throw new IOException(
+                "Expected multipart/form-data but got " + contentType
+            );
         }
         return new MultipartForm(parseParts(boundary, body));
     }
@@ -56,7 +63,11 @@ public final class MultipartForm {
     }
 
     public List<String> values(String name) {
-        return parts(name).stream().filter(part -> !part.isFile()).map(Part::text).toList();
+        return parts(name)
+            .stream()
+            .filter(part -> !part.isFile())
+            .map(Part::text)
+            .toList();
     }
 
     public String value(String name) {
@@ -67,7 +78,8 @@ public final class MultipartForm {
         return parts.isEmpty();
     }
 
-    private static List<Part> parseParts(String boundary, byte[] body) throws IOException {
+    private static List<Part> parseParts(String boundary, byte[] body)
+        throws IOException {
         String raw = new String(body, RAW);
         String boundaryMarker = "--" + boundary;
         int cursor = raw.indexOf(boundaryMarker);
@@ -85,11 +97,20 @@ public final class MultipartForm {
             if (headersSeparator == null) {
                 throw new IOException("Invalid multipart section");
             }
-            String headerBlock = raw.substring(cursor, headersSeparator.index());
+            String headerBlock = raw.substring(
+                cursor,
+                headersSeparator.index()
+            );
             int contentStart = headersSeparator.nextIndex();
-            BoundaryHit nextBoundary = findNextBoundary(raw, contentStart, boundaryMarker);
+            BoundaryHit nextBoundary = findNextBoundary(
+                raw,
+                contentStart,
+                boundaryMarker
+            );
             if (nextBoundary == null) {
-                throw new IOException("Multipart section without closing boundary");
+                throw new IOException(
+                    "Multipart section without closing boundary"
+                );
             }
             String content = raw.substring(contentStart, nextBoundary.index());
             parts.add(parsePart(headerBlock, content));
@@ -102,14 +123,18 @@ public final class MultipartForm {
         return parts;
     }
 
-    private static Part parsePart(String headerBlock, String content) throws IOException {
+    private static Part parsePart(String headerBlock, String content)
+        throws IOException {
         Map<String, String> headers = new LinkedHashMap<>();
         for (String line : headerBlock.split("\\r?\\n")) {
             int colon = line.indexOf(':');
             if (colon <= 0) {
                 continue;
             }
-            String name = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
+            String name = line
+                .substring(0, colon)
+                .trim()
+                .toLowerCase(Locale.ROOT);
             String value = line.substring(colon + 1).trim();
             headers.put(name, value);
         }
@@ -138,7 +163,12 @@ public final class MultipartForm {
         }
         String contentType = headers.get("content-type");
         byte[] bytes = content.getBytes(RAW);
-        return new Part(name, HttpContext.blankToNull(filename), HttpContext.blankToNull(contentType), bytes);
+        return new Part(
+            name,
+            HttpContext.blankToNull(filename),
+            HttpContext.blankToNull(contentType),
+            bytes
+        );
     }
 
     private static String boundaryFromContentType(String contentType) {
@@ -159,7 +189,11 @@ public final class MultipartForm {
         return null;
     }
 
-    private static BoundaryHit findNextBoundary(String raw, int fromIndex, String boundaryMarker) {
+    private static BoundaryHit findNextBoundary(
+        String raw,
+        int fromIndex,
+        String boundaryMarker
+    ) {
         String crlfMarker = "\r\n" + boundaryMarker;
         int index = raw.indexOf(crlfMarker, fromIndex);
         if (index >= 0) {
@@ -205,19 +239,25 @@ public final class MultipartForm {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+            (value.startsWith("\"") && value.endsWith("\"")) ||
+            (value.startsWith("'") && value.endsWith("'"))
+        ) {
             value = value.substring(1, value.length() - 1);
         }
         return value.replace("\\\"", "\"").replace("\\\\", "\\");
     }
 
-    private record BoundaryHit(int index, int nextIndex) {
-    }
+    private record BoundaryHit(int index, int nextIndex) {}
 
-    private record Separator(int index, int nextIndex) {
-    }
+    private record Separator(int index, int nextIndex) {}
 
-    public record Part(String name, String filename, String contentType, byte[] bytes) {
+    public record Part(
+        String name,
+        String filename,
+        String contentType,
+        byte[] bytes
+    ) {
         public Part {
             name = Objects.requireNonNull(name, "name");
             bytes = bytes != null ? bytes.clone() : new byte[0];
@@ -246,7 +286,10 @@ public final class MultipartForm {
         }
 
         public String text(Charset charset) {
-            return new String(bytes, charset == null ? StandardCharsets.UTF_8 : charset);
+            return new String(
+                bytes,
+                charset == null ? StandardCharsets.UTF_8 : charset
+            );
         }
 
         public Path saveTo(Path path) throws IOException {
@@ -262,10 +305,15 @@ public final class MultipartForm {
                     if (eq <= 0) {
                         continue;
                     }
-                    String key = item.substring(0, eq).trim().toLowerCase(Locale.ROOT);
+                    String key = item
+                        .substring(0, eq)
+                        .trim()
+                        .toLowerCase(Locale.ROOT);
                     if ("charset".equals(key)) {
                         try {
-                            return Charset.forName(unquote(item.substring(eq + 1).trim()));
+                            return Charset.forName(
+                                unquote(item.substring(eq + 1).trim())
+                            );
                         } catch (IllegalArgumentException ignored) {
                             return StandardCharsets.UTF_8;
                         }

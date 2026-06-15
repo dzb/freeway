@@ -9,20 +9,17 @@ import java.util.Map;
 import java.util.Set;
 
 final class Shutdown {
-    private final ScopeControl scopeControl;
     private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
     private final BindingIndex bindingIndex;
     private final CoercerDefault coercer;
 
     Shutdown(
-        ScopeControl scopeControl,
         Map<ServiceKey, Object> serviceCache,
         Map<ServiceKey, Object> targetCache,
         BindingIndex bindingIndex,
         CoercerDefault coercer
     ) {
-        this.scopeControl = scopeControl;
         this.serviceCache = serviceCache;
         this.targetCache = targetCache;
         this.bindingIndex = bindingIndex;
@@ -30,7 +27,7 @@ final class Shutdown {
     }
 
     RuntimeException close() {
-        RuntimeException failure = scopeControl.closeOpenScopes(null);
+        RuntimeException failure = null;
         List<Object> targets = snapshotTargets();
         for (Object value : targets) {
             try {

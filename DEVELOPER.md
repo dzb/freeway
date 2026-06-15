@@ -27,6 +27,7 @@ Freeway 2 uses these architectural boundaries:
 - `AppRuntime` is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks.
 - Service ids are plain strings and are normalized internally. There is no public `ServiceId` type.
 - Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
+- `Defer` and `ScopedCache` are parallel `ScopedValue`-based primitives in commons. `Defer` buffers actions for commit-time drain; `ScopedCache` caches key-value pairs with lifecycle cleanup on scope exit. IoC's thread scope is built on `ScopedCache`.
 - Thread-scoped services use `Scoping.within()` to enter an execution boundary; the scope auto-closes when the work lambda completes.
 - `RuntimeHook` provides start/stop extension points for modules. Hooks are contributed through `Contributions<RuntimeHook>`.
 - Ordered list contributions are supported through `add(id, value).before(...)` and `.after(...)`.
@@ -41,10 +42,10 @@ Freeway 2 uses these architectural boundaries:
 | Type | Purpose |
 |------|---------|
 | `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `close()` |
-| `Module` | A module entry point: `bind(Binder)` |
+| `Module2` | A module entry point: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
-| `Freeway` | Container bootstrap: `Freeway.create(Module...)` |
+| `Freeway` | Container bootstrap: `Freeway.create(Module2...)` |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
 | `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
@@ -278,7 +279,7 @@ binder.contribute(EventSubscriber.class)
 Distributed pub/sub via EventBus. Add `KafkaModule` to enable:
 
 ```java
-Launcher.run(AppModule.class, new KafkaModule());
+Launcher.run(args, new AppModule(), new KafkaModule());
 ```
 
 **Sending:** EventBus automatically bridges to Kafka:
@@ -347,17 +348,16 @@ Logger injection is owner-aware. Without an explicit id, the logger name is the 
 ### Public Shape
 
 ```java
-AppRuntime runtime = Launcher.run(AppModule.class, args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 ```
 
 | Type | Purpose |
 |------|---------|
-| `Launcher` | Thin public entry point |
-| `AppBootstrap` | Internal boot orchestration |
+| `Launcher` | Application entry point: `run(args, Module2...)` |
 | `AppRuntime` | Runtime API: container, config, state, start, close |
 | `AppState` | `CREATED`, `STARTING`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED` |
 
-`Launcher.run()` creates the container, builds the runtime, starts hooks, logs startup time, and registers a JVM shutdown hook.
+`Launcher.run()` accepts command-line args and Module2 instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
 ### Runtime Hooks
 
@@ -628,7 +628,7 @@ Database db = new DatabaseBuilder().config(config).pool(pool).build();
 **IoC usage:** add `HikariPoolModule` to the launcher or install it through another module — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. Then set `freeway.db.pool=hikari` to activate it.
 
 ```java
-Launcher.run(AppModule.class, new DbModule(), new HikariPoolModule());
+Launcher.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
 ```
 
 `HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `DatabaseStats`.
@@ -766,6 +766,59 @@ The framework opens `Defer` scopes at three natural boundaries — user code ins
 | `Defer.defer(String id, Runnable)` | Named action — returns `DeferAction` for `.before()` / `.after()` |
 | `Defer.supply(Callable<T>)` | Deferred value — returns `Supplier<T>`, computes at commit |
 | `Defer.isActive()` | True inside a `within(...)` block |
+
+## ScopedCache / Scope-bound value cache
+
+`ScopedCache` is the dual of `Defer`: instead of buffering actions for commit-time execution, it caches key-value pairs for the lifetime of a scope and cleans them up on exit. Both use `ScopedValue` for implicit context propagation.
+
+### Mental model
+
+Think of it as a "scope-lifetime cache". You look up a value by key inside a scope; the first lookup creates it, subsequent lookups return the same instance. When the scope exits (normally or exceptionally), all cached values are passed through registered cleanup handlers — `@PreDestroy` and `AutoCloseable` close are applied automatically for IoC-managed services.
+
+### API
+
+| Method | Purpose |
+|--------|---------|
+| `ScopedCache.within(Supplier<T>)` | Scope — caches values, cleans up on exit |
+| `ScopedCache.within(Function<Session, T>)` | Scope with `Session` handle for manual close |
+| `ScopedCache.get(Object key, Supplier<V>)` | Get or create in current scope; no caching outside scope |
+| `ScopedCache.onClose(Consumer<Object>)` | Register a global cleanup callback (applied per-value on exit) |
+| `ScopedCache.isActive()` | True inside a `within(...)` block |
+| `ScopedCache.currentSession()` | Current `Session`, or null if outside scope |
+
+### IoC integration
+
+IoC registers its lifecycle callback once via `ScopedCache.onClose()` — this runs `@PreDestroy` and `AutoCloseable.close()` on every thread-scoped service instance when its scope exits:
+
+```java
+// ContainerImpl static initializer
+ScopedCache.onClose(v -> {
+    Lifecycle.invokePreDestroy(v);
+    if (v instanceof AutoCloseable c) c.close();
+});
+```
+
+`ServiceRuntime` resolves thread-scoped services through `ScopedCache.get()`:
+
+```java
+// ServiceRuntime.realizeThreadScoped()
+ServiceKey key = new ServiceKey(binding.type(), binding.id());
+return ScopedCache.get(key, binding::directInstance);
+```
+
+### Standalone usage
+
+`ScopedCache` can be used independently of IoC for any scoped resource management:
+
+```java
+ScopedCache.onClose(v -> { if (v instanceof AutoCloseable c) c.close(); });
+
+ScopedCache.within(() -> {
+    Connection conn = ScopedCache.get("db", () -> dataSource.getConnection());
+    // same key → same connection reused within scope
+});
+// connection auto-closed on exit
+```
 
 ## Naming Rules
 
