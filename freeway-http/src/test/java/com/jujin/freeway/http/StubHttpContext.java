@@ -1,20 +1,22 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 final class StubHttpContext extends HttpContext {
+
     @SuppressWarnings("unchecked")
     private static <T> T coerce(Object input, Class<T> targetType) {
         if (input == null) {
             if (targetType.isPrimitive()) {
-                throw new IllegalArgumentException("No fallback JSON coercion for primitive " + targetType.getName());
+                throw new IllegalArgumentException(
+                    "No fallback JSON coercion for primitive " +
+                        targetType.getName()
+                );
             }
             return null;
         }
@@ -24,7 +26,9 @@ final class StubHttpContext extends HttpContext {
         if (targetType == String.class) {
             return (T) String.valueOf(input);
         }
-        throw new IllegalArgumentException("No fallback JSON coercion for " + targetType.getName());
+        throw new IllegalArgumentException(
+            "No fallback JSON coercion for " + targetType.getName()
+        );
     }
 
     private static final Coercer COERCER = StubHttpContext::coerce;
@@ -99,7 +103,9 @@ final class StubHttpContext extends HttpContext {
 
     @Override
     public byte[] body() throws IOException {
-        return body != null ? body.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
+        return body != null
+            ? body.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            : new byte[0];
     }
 
     @Override
@@ -110,7 +116,9 @@ final class StubHttpContext extends HttpContext {
 
     @Override
     public SseEmitter sse() {
-        throw new UnsupportedOperationException("SSE not supported in StubHttpContext");
+        throw new UnsupportedOperationException(
+            "SSE not supported in StubHttpContext"
+        );
     }
 
     @Override
@@ -129,5 +137,4 @@ final class StubHttpContext extends HttpContext {
         this.body = new String(data, java.nio.charset.StandardCharsets.UTF_8);
         return this;
     }
-
 }

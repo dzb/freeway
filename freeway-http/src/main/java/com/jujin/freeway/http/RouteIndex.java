@@ -3,7 +3,6 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.ioc.Extension;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +20,7 @@ import java.util.regex.PatternSyntaxException;
  * Match complexity is O(L) where L is the number of segments in the request path,
  * independent of the total route count. */
 final class RouteIndex {
+
     private static final int MAX_REGEX_LENGTH = PathPattern.MAX_REGEX_LENGTH;
 
     private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
@@ -31,7 +31,9 @@ final class RouteIndex {
         for (Route route : routes == null ? List.<Route>of() : routes.all()) {
             all.add(route);
         }
-        for (RouteGroup group : groups == null ? List.<RouteGroup>of() : groups.all()) {
+        for (RouteGroup group : groups == null
+            ? List.<RouteGroup>of()
+            : groups.all()) {
             for (Route route : group.expand()) {
                 all.add(route);
             }
@@ -85,7 +87,13 @@ final class RouteIndex {
                     String regexStr = inner.substring(colon + 1);
                     if (regexStr.length() > MAX_REGEX_LENGTH) {
                         throw new IllegalArgumentException(
-                            "Regex constraint too long (max " + MAX_REGEX_LENGTH + " chars): '" + regexStr + "' in path: " + path);
+                            "Regex constraint too long (max " +
+                                MAX_REGEX_LENGTH +
+                                " chars): '" +
+                                regexStr +
+                                "' in path: " +
+                                path
+                        );
                     }
                     if (".*".equals(regexStr) && i == segments.length - 1) {
                         isWildcard = true;
@@ -94,7 +102,14 @@ final class RouteIndex {
                             regex = Pattern.compile(regexStr);
                         } catch (PatternSyntaxException e) {
                             throw new IllegalArgumentException(
-                                "Invalid regex constraint '" + regexStr + "' for param '" + name + "' in path: " + path, e);
+                                "Invalid regex constraint '" +
+                                    regexStr +
+                                    "' for param '" +
+                                    name +
+                                    "' in path: " +
+                                    path,
+                                e
+                            );
                         }
                     }
                 } else {
@@ -106,7 +121,9 @@ final class RouteIndex {
             }
         }
         if (current.handler != null) {
-            throw new IllegalStateException("Duplicate route detected: " + key + " " + path);
+            throw new IllegalStateException(
+                "Duplicate route detected: " + key + " " + path
+            );
         }
         current.handler = handler;
     }
@@ -135,7 +152,8 @@ final class RouteIndex {
                 return null;
             }
             // Try literal match first
-            TrieNode literal = current.literals != null ? current.literals.get(seg) : null;
+            TrieNode literal =
+                current.literals != null ? current.literals.get(seg) : null;
             if (literal != null) {
                 current = literal;
                 continue;
@@ -145,8 +163,14 @@ final class RouteIndex {
             if (param != null) {
                 // Wildcard consumes remaining segments
                 if (param.wildcard) {
-                    String remainder = String.join("/", Arrays.copyOfRange(segments, i, segments.length));
-                    if (remainder.isEmpty() || PathPattern.containsPathTraversal(remainder)) {
+                    String remainder = String.join(
+                        "/",
+                        Arrays.copyOfRange(segments, i, segments.length)
+                    );
+                    if (
+                        remainder.isEmpty() ||
+                        PathPattern.containsPathTraversal(remainder)
+                    ) {
                         return null;
                     }
                     vars.put(param.paramName, remainder);
@@ -154,7 +178,10 @@ final class RouteIndex {
                     break;
                 }
                 // Regex constraint check
-                if (param.paramPattern != null && !param.paramPattern.matcher(seg).matches()) {
+                if (
+                    param.paramPattern != null &&
+                    !param.paramPattern.matcher(seg).matches()
+                ) {
                     return null;
                 }
                 vars.put(param.paramName, seg);
@@ -172,17 +199,17 @@ final class RouteIndex {
     // ---- Trie node ----
 
     private static final class TrieNode {
-        String segment;                     // literal segment
-        String paramName;                   // non-null for param nodes
-        Pattern paramPattern;               // regex constraint for param (null = any)
-        boolean wildcard;                   // {path:.*} wildcard
-        Map<String, TrieNode> literals;     // literal children
-        TrieNode paramChild;                // param child (at most one per node)
-        RouteHandler handler;               // non-null if route terminates here
+
+        String segment; // literal segment
+        String paramName; // non-null for param nodes
+        Pattern paramPattern; // regex constraint for param (null = any)
+        boolean wildcard; // {path:.*} wildcard
+        Map<String, TrieNode> literals; // literal children
+        TrieNode paramChild; // param child (at most one per node)
+        RouteHandler handler; // non-null if route terminates here
         boolean frozen;
 
-        TrieNode() {
-        }
+        TrieNode() {}
 
         TrieNode getOrCreateLiteral(String seg) {
             if (frozen) {
@@ -198,7 +225,11 @@ final class RouteIndex {
             });
         }
 
-        TrieNode getOrCreateParam(String name, Pattern regex, boolean isWildcard) {
+        TrieNode getOrCreateParam(
+            String name,
+            Pattern regex,
+            boolean isWildcard
+        ) {
             if (frozen) {
                 throw new IllegalStateException("RouteIndex is frozen");
             }
@@ -211,7 +242,12 @@ final class RouteIndex {
                 // Multiple params at same level: validate compatibility
                 if (!paramChild.paramName.equals(name)) {
                     throw new IllegalArgumentException(
-                        "Conflicting parameter names at same path level: '" + paramChild.paramName + "' vs '" + name + "'");
+                        "Conflicting parameter names at same path level: '" +
+                            paramChild.paramName +
+                            "' vs '" +
+                            name +
+                            "'"
+                    );
                 }
             }
             return paramChild;
@@ -231,5 +267,8 @@ final class RouteIndex {
         }
     }
 
-    public record RouteMatch(RouteHandler handler, Map<String, String> pathVariables) {}
+    public record RouteMatch(
+        RouteHandler handler,
+        Map<String, String> pathVariables
+    ) {}
 }

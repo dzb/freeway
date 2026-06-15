@@ -1,10 +1,8 @@
 package com.jujin.freeway.http.jetty;
 
-import com.jujin.freeway.commons.json.JsonCodec;
-
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
-
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.SseEmitter;
 import java.io.IOException;
@@ -15,16 +13,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
-
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
-import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.Fields;
 
 final class JettyHttpContext extends HttpContext {
+
     private final Request request;
     private final Response response;
     private final Callback callback;
@@ -34,12 +30,22 @@ final class JettyHttpContext extends HttpContext {
     private int responseStatus = 200;
     private volatile boolean responded;
 
-    JettyHttpContext(Request request, Response response, JsonCodec jsonCodec, Coercer coercer, RequestContext requestContext, Callback callback) {
+    JettyHttpContext(
+        Request request,
+        Response response,
+        JsonCodec jsonCodec,
+        Coercer coercer,
+        RequestContext requestContext,
+        Callback callback
+    ) {
         super(jsonCodec, coercer);
         this.request = Objects.requireNonNull(request, "request");
         this.response = Objects.requireNonNull(response, "response");
         this.callback = Objects.requireNonNull(callback, "callback");
-        this.requestContext = Objects.requireNonNull(requestContext, "requestContext");
+        this.requestContext = Objects.requireNonNull(
+            requestContext,
+            "requestContext"
+        );
         this.queryParams = parseQueryParams(request);
     }
 
@@ -50,7 +56,10 @@ final class JettyHttpContext extends HttpContext {
 
     @Override
     public String path() {
-        String path = request.getHttpURI() != null ? request.getHttpURI().getPath() : null;
+        String path =
+            request.getHttpURI() != null
+                ? request.getHttpURI().getPath()
+                : null;
         return path != null ? path : "/";
     }
 
@@ -96,25 +105,35 @@ final class JettyHttpContext extends HttpContext {
         response.setStatus(200);
         setupSseHeaders();
         responded = true;
-        return new SseEmitter(new OutputStream() {
-            @Override
-            public void write(int b) throws IOException {
-                write(new byte[]{(byte) b}, 0, 1);
+        return new SseEmitter(
+            new OutputStream() {
+                @Override
+                public void write(int b) throws IOException {
+                    write(new byte[] { (byte) b }, 0, 1);
+                }
+
+                @Override
+                public void write(byte[] b, int off, int len)
+                    throws IOException {
+                    if (len == 0) return;
+                    response.write(
+                        true,
+                        ByteBuffer.wrap(b, off, len),
+                        Callback.NOOP
+                    );
+                }
+
+                @Override
+                public void flush() {
+                    // Jetty flushes internally via write(true, ...)
+                }
+
+                @Override
+                public void close() {
+                    callback.succeeded();
+                }
             }
-            @Override
-            public void write(byte[] b, int off, int len) throws IOException {
-                if (len == 0) return;
-                response.write(true, ByteBuffer.wrap(b, off, len), Callback.NOOP);
-            }
-            @Override
-            public void flush() {
-                // Jetty flushes internally via write(true, ...)
-            }
-            @Override
-            public void close() {
-                callback.succeeded();
-            }
-        });
+        );
     }
 
     @Override
@@ -151,10 +170,17 @@ final class JettyHttpContext extends HttpContext {
         }
         boolean headRequest = "HEAD".equalsIgnoreCase(method());
         if (!headRequest && responseStatus != 204 && responseStatus != 304) {
-            response.getHeaders().put(HttpHeader.CONTENT_LENGTH, String.valueOf(data.length));
+            response
+                .getHeaders()
+                .put(HttpHeader.CONTENT_LENGTH, String.valueOf(data.length));
         }
         responded = true;
-        if (headRequest || responseStatus == 204 || responseStatus == 304 || data.length == 0) {
+        if (
+            headRequest ||
+            responseStatus == 204 ||
+            responseStatus == 304 ||
+            data.length == 0
+        ) {
             callback.succeeded();
             return this;
         }
