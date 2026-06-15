@@ -1,12 +1,12 @@
 package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.Scope;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 final class ServiceRuntime {
-    private final ScopeControl scopeControl;
     private final ProxyFactory proxyFactory;
     private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
@@ -14,12 +14,10 @@ final class ServiceRuntime {
         ThreadLocal.withInitial(HashSet::new);
 
     ServiceRuntime(
-        ScopeControl scopeControl,
         ProxyFactory proxyFactory,
         Map<ServiceKey, Object> serviceCache,
         Map<ServiceKey, Object> targetCache
     ) {
-        this.scopeControl = scopeControl;
         this.proxyFactory = proxyFactory;
         this.serviceCache = serviceCache;
         this.targetCache = targetCache;
@@ -90,11 +88,13 @@ final class ServiceRuntime {
     }
 
     private <T> T realizeThreadScoped(BindingImpl<T> binding) {
-        ScopeSession session = scopeControl.current();
-        if (session == null) {
-            throw new IllegalStateException("No open scope for type " + binding.type().getName());
+        if (!ScopedCache.isActive()) {
+            throw new IllegalStateException(
+                "No open scope for type " + binding.type().getName()
+            );
         }
-        return session.realize(binding);
+        ServiceKey key = new ServiceKey(binding.type(), binding.id());
+        return binding.type().cast(ScopedCache.get(key, binding::directInstance));
     }
 
     private static void requireAdviceSupported(BindingImpl<?> binding) {

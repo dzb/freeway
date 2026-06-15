@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.*;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -15,9 +16,23 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 public final class ContainerImpl implements Container {
     private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
+
+    static {
+        ScopedCache.onClose(v -> {
+            Lifecycle.invokePreDestroy(v);
+            if (v instanceof AutoCloseable c) {
+                try {
+                    c.close();
+                } catch (Exception e) {
+                    LOG.warn("Failed to close resource: {}", v.getClass().getName(), e);
+                }
+            }
+        });
+    }
     private volatile boolean closed;
     private final BindingIndex bindingIndex = new BindingIndex();
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
@@ -29,7 +44,6 @@ public final class ContainerImpl implements Container {
     private final ProxyFactory proxyFactory;
     private final InjectResolver injectResolver;
     private final InstanceFactory instanceFactory;
-    private final ScopeControl scopeControl;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
     private final Map<Extension.Key, Extension<?>> extensions = new ConcurrentHashMap<>();
@@ -51,16 +65,14 @@ public final class ContainerImpl implements Container {
         this.proxyFactory = new ProxyFactoryDefault();
         this.injectResolver = new InjectResolver(this);
         this.instanceFactory = new InstanceFactory(this);
-        this.scopeControl = new ScopeControl(() -> closed);
-        this.scoping = scopeControl::within;
+        this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(
-            scopeControl,
             serviceCache,
             targetCache,
             bindingIndex,
             coercer
         );
-        this.serviceRuntime = new ServiceRuntime(scopeControl, proxyFactory, serviceCache, targetCache);
+        this.serviceRuntime = new ServiceRuntime(proxyFactory, serviceCache, targetCache);
         registerBuiltin(Container.class, this, "Container");
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Coercer.class, coercer, "Coercer");
@@ -144,6 +156,13 @@ public final class ContainerImpl implements Container {
                 coercer.register((CoerceRule) rule);
             }
         }
+    }
+
+    private <T> T scopedWithin(Supplier<T> work) {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
+        }
+        return ScopedCache.within(work);
     }
 
     @Override
