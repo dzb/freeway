@@ -14,7 +14,6 @@ import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.websockets.WebSocketConnectionCallback;
 import io.undertow.websockets.WebSocketProtocolHandshakeHandler;
-import java.util.Deque;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

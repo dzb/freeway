@@ -9,9 +9,12 @@ import com.jujin.freeway.ioc.*;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -55,11 +58,13 @@ public final class ContainerImpl implements Container {
     private final InstanceFactory instanceFactory;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
+    private final Set<Class<?>> moduleTypes = new HashSet<>();
+    private final List<Module2> loadedModules = new ArrayList<>();
     private final Map<Extension.Key, Extension<?>> extensions =
         new ConcurrentHashMap<>();
 
     public ContainerImpl(
-        Collection<? extends com.jujin.freeway.ioc.Module> modules
+        Collection<? extends Module2> modules
     ) {
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
@@ -94,7 +99,9 @@ public final class ContainerImpl implements Container {
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
         registerBuiltin(Scoping.class, scoping, "Scoping");
-        loadModules(modules);
+        loadAll(modules);
+        LOG.info("Loaded {} module(s): {}", loadedModules.size(),
+            loadedModules.stream().map(m -> m.getClass().getSimpleName()).toList());
         wireBuiltinExtensions();
     }
 
@@ -147,14 +154,22 @@ public final class ContainerImpl implements Container {
         register(binding);
     }
 
-    private void loadModules(
-        Collection<? extends com.jujin.freeway.ioc.Module> modules
-    ) {
-        Binder binder = new BinderImpl(this);
-        for (com.jujin.freeway.ioc.Module module : modules == null
-            ? List.<com.jujin.freeway.ioc.Module>of()
-            : List.copyOf(modules)) {
+    void installModule(Module2 module, Binder binder) {
+        if (moduleTypes.add(module.getClass())) {
+            LOG.debug("Installing module: {}", module.getClass().getSimpleName());
+            loadedModules.add(module);
             module.bind(binder);
+        }
+    }
+
+    private void loadAll(
+        Collection<? extends Module2> modules
+    ) {
+        BinderImpl binder = new BinderImpl(this);
+        for (Module2 module : modules == null
+            ? List.<Module2>of()
+            : List.copyOf(modules)) {
+            installModule(module, binder);
         }
     }
 

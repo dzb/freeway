@@ -8,10 +8,10 @@ Freeway is a lightweight, modern Java application framework for JDK 25+. Compose
 // A minimal HTTP application
 public class App {
     public static void main(String[] args) {
-        AppRuntime runtime = Launcher.run(AppModule.class, args);
+        AppRuntime runtime = Launcher.run(args, new AppModule());
     }
 
-    public static final class AppModule implements Module {
+    public static final class AppModule implements Module2 {
         public void bind(Binder b) {
             b.contribute(Route.class).add(Route.get("/", ctx ->
                 ctx.send(200, "Hello Freeway")));
@@ -46,11 +46,11 @@ Dependencies: `commons` ← `ioc` ← `boot`, `http`, `db`, `mq-kafka`. Core mod
 
 ## Module — The Fundamental Building Block
 
-`Module` is the central organizing concept in Freeway. Every application and library expresses its composition through modules. A module is a single unit that declares: *what services I provide, what I need from others, and what I contribute to the system.*
+`Module2` is the central organizing concept in Freeway. Every application and library expresses its composition through modules. A module is a single unit that declares: *what services I provide, what I need from others, and what I contribute to the system.* The name `Module2` avoids a naming conflict with `java.lang.Module` (JDK 9+); conceptually it is simply Freeway's Module.
 
 ```java
 @FunctionalInterface
-public interface Module {
+public interface Module2 {
     void bind(Binder binder);
 }
 ```
@@ -70,15 +70,15 @@ Modules are **self-contained** and **declarative**. They don't start work during
 Every application starts with a primary module:
 
 ```java
-public class AppModule implements Module {
+public class AppModule implements Module2 {
     public void bind(Binder b) {
         // Bind application services
         b.bind(UserService.class).to(UserServiceImpl.class);
         b.bind(OrderService.class).to(OrderServiceImpl.class);
 
-        // Install framework modules
-        b.install(new HttpModule());
-        b.install(new DbModule());
+        // Install framework modules (chainable on Binder)
+        b.install(new HttpModule())
+         .install(new DbModule());
 
         // Contribute routes
         b.contribute(Route.class)
@@ -98,7 +98,7 @@ public class AppModule implements Module {
 }
 
 // Bootstrap
-AppRuntime runtime = Launcher.run(AppModule.class, args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 ```
 
 ### Module Composition
@@ -107,7 +107,7 @@ Modules compose by passing all of them to the launcher. The container loads them
 
 ```java
 // Compose framework + application modules
-Launcher.run(AppModule.class, new HttpModule(), new DbModule());
+Launcher.run(args, new AppModule(), new HttpModule(), new DbModule());
 // or via Freeway.create()
 Freeway.create(new AppModule(), new HttpModule(), new DbModule());
 ```
@@ -136,7 +136,7 @@ orm.insert(new Post("Hello", "World"));
 **IoC usage (with Container):**
 
 ```java
-Launcher.run(AppModule.class, new DbModule());
+Launcher.run(args, new AppModule(), new DbModule());
 // Database, Orm, Coercer are now injectable
 @Inject Database db;
 ```
@@ -157,7 +157,7 @@ my-library/
 ├── src/main/java/com/example/mylib/
 │   ├── MyService.java           # public API — no IoC imports
 │   ├── MyServiceConfig.java     # configuration record
-│   └── MyLibModule.java         # IoC integration — implements Module
+│   └── MyLibModule.java         # IoC integration — implements Module2
 ```
 
 ```java
@@ -179,7 +179,7 @@ public record MyServiceConfig(String url, int timeout) {
 }
 
 // The Module — the only file that imports freeway-ioc
-public class MyLibModule implements Module {
+public class MyLibModule implements Module2 {
     public void bind(Binder b) {
         b.bind(MyServiceConfig.class).to(c -> MyServiceConfig.from(c));
         b.bind(MyService.class).to(c -> new MyService(c.get(MyServiceConfig.class)));
@@ -232,7 +232,7 @@ MyService svc = c.get(MyService.class);
 c.close();
 
 // Full application (config, profiles, hooks, lifecycle)
-AppRuntime runtime = Launcher.run(AppModule.class, args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 Container c = runtime.container();
 ```
 
@@ -410,9 +410,9 @@ bus.publishAsync(new PostCreatedEvent(post)); // fire-and-forget (virtual thread
 ## Boot
 
 ```java
-AppRuntime runtime = Launcher.run(AppModule.class, args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 // or with explicit module instance
-AppRuntime runtime = Launcher.run(new AppModule(), args);
+AppRuntime runtime = Launcher.run(args, new AppModule());
 ```
 
 `AppRuntime` provides:
@@ -632,7 +632,7 @@ Orm orm = Orm.of(db);
 ### IoC Usage
 
 ```java
-Launcher.run(AppModule.class, new DbModule());
+Launcher.run(args, new AppModule(), new DbModule());
 // Database and Orm are now injectable
 ```
 
@@ -761,7 +761,7 @@ Pool pool = new HikariPool(config);
 Database db = new DatabaseBuilder().config(config).pool(pool).build();
 
 // IoC: set freeway.db.pool=hikari + add HikariPoolModule
-Launcher.run(AppModule.class, new DbModule(), new HikariPoolModule());
+Launcher.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
 ```
 
 ### Batch
@@ -801,7 +801,7 @@ Database audit = hub.get("audit");
 ## Kafka (`freeway-mq-kafka`)
 
 ```java
-Launcher.run(AppModule.class, new KafkaModule());
+Launcher.run(args, new AppModule(), new KafkaModule());
 ```
 
 Config in `application.properties`:
