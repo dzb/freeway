@@ -60,7 +60,7 @@ public final class ContainerImpl implements Container {
     private final ServiceRuntime serviceRuntime;
     private final Set<Class<?>> moduleTypes = new HashSet<>();
     private final List<Module2> loadedModules = new ArrayList<>();
-    private final Map<Extension.Key, Extension<?>> extensions =
+    private final Map<Class<?>, Extension<?>> extensions =
         new ConcurrentHashMap<>();
 
     public ContainerImpl(
@@ -121,31 +121,12 @@ public final class ContainerImpl implements Container {
         return loggerSource;
     }
 
-    Extension<?> extension(Class<?> entryType) {
-        return ensureExtension(new Extension.Key(entryType, ""));
-    }
-
+    @Override
     @SuppressWarnings("unchecked")
-    <V> Extension<V> extension(Class<V> entryType, String name) {
-        return (Extension<V>) ensureExtension(
-            new Extension.Key(entryType, name)
+    public <T> Extension<T> extension(Class<T> entryType) {
+        return (Extension<T>) extensions.computeIfAbsent(
+            entryType, k -> new Extension<>(k)
         );
-    }
-
-    private Extension<?> ensureExtension(Extension.Key key) {
-        Extension<?> ext = extensions.computeIfAbsent(key, k ->
-            new Extension<>(key.entryType(), key.name())
-        );
-        String bindingId = key.entryType().getName();
-        if (bindingIndex.find(Extension.class, bindingId) == null) {
-            BindingImpl<Extension> binding = new BindingImpl<>(
-                ContainerImpl.this,
-                Extension.class
-            );
-            binding.id(bindingId).to(ext);
-            register(binding);
-        }
-        return ext;
     }
 
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
@@ -180,16 +161,14 @@ public final class ContainerImpl implements Container {
     @SuppressWarnings("rawtypes")
     private void wireBuiltinExtensions() {
         // SymbolProvider → SymbolSource
-        Extension.Key spKey = new Extension.Key(SymbolProvider.class, "");
-        Extension<?> spExt = extensions.get(spKey);
+        Extension<?> spExt = extensions.get(SymbolProvider.class);
         if (spExt != null) {
             for (Object p : spExt.all()) {
                 symbolSource.register((SymbolProvider) p);
             }
         }
         // CoerceRule → Coercer
-        Extension.Key crKey = new Extension.Key(CoerceRule.class, "");
-        Extension<?> crExt = extensions.get(crKey);
+        Extension<?> crExt = extensions.get(CoerceRule.class);
         if (crExt != null) {
             for (Object rule : crExt.all()) {
                 coercer.register((CoerceRule) rule);

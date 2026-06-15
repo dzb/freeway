@@ -252,17 +252,7 @@ public final class EventBus implements AutoCloseable {
 
     private synchronized void ensureIndexed() {
         if (moduleClassIndex != null) return;
-        Extension<?> ext;
-        try {
-            ext = container.get(
-                Extension.class,
-                EventSubscriber.class.getName()
-            );
-        } catch (IllegalArgumentException e) {
-            moduleClassIndex = Map.of();
-            moduleTopicIndex = Map.of();
-            return;
-        }
+        Extension<?> ext = container.extension(EventSubscriber.class);
         var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
         var topicIdx = new HashMap<String, List<Consumer<Object>>>();
         for (Object entry : ext.all()) {

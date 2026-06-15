@@ -1,5 +1,8 @@
 package com.jujin.freeway.boot.internal;
 
+import com.jujin.freeway.boot.AppConfig;
+import com.jujin.freeway.boot.AppConfigDefault;
+import com.jujin.freeway.boot.ConfigLoader;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.json.JsonObject;
 import java.io.IOException;
@@ -12,17 +15,23 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
 
-public final class BootConfigLoader {
+public final class BootConfigLoader implements ConfigLoader {
     private static final String ENV_PREFIX_PROPERTY = "freeway.env.prefix";
     private static final String DEFAULT_ENV_PREFIX = "FREEWAY_";
     private static final String PROFILE_KEY = "freeway.profile";
     private static final long MAX_PROPERTIES_RESOURCE_BYTES = 16L * 1024 * 1024;
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
-    private BootConfigLoader() {
+    public BootConfigLoader() {
     }
 
-    public static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
+    @Override
+    public AppConfig load(ClassLoader loader, String... args) {
+        BootConfigLayers layers = loadLayers(loader, args);
+        return new AppConfigDefault(layers.merged(), layers.profiles());
+    }
+
+    static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
         Map<String, String> environment = loadEnvironment();
         Map<String, String> properties = loadProperties(loader, "application.properties");
         Map<String, String> json = loadJson(loader, "application.json");
@@ -235,7 +244,7 @@ public final class BootConfigLoader {
             && !profile.contains("..");
     }
 
-    public static record BootConfigLayers(
+    record BootConfigLayers(
         List<String> profiles,
         Map<String, String> environment,
         Map<String, String> properties,

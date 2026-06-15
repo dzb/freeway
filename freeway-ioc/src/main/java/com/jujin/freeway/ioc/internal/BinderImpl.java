@@ -25,12 +25,7 @@ final class BinderImpl implements Binder {
 
     @Override
     public <V> Contributions<V> contribute(Class<V> entryType) {
-        return contribute(entryType, "");
-    }
-
-    @Override
-    public <V> Contributions<V> contribute(Class<V> entryType, String name) {
-        Extension<V> ext = container.extension(entryType, name);
+        Extension<V> ext = container.extension(entryType);
         return new Contributions<>() {
             @Override
             public void add(V value) {

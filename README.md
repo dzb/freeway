@@ -60,7 +60,7 @@ public final class AppModule implements Module2 {
     }
 }
 
-AppRuntime runtime = Launcher.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(args, new AppModule());
 Greeter greeter = runtime.get(Greeter.class);
 System.out.println(greeter.greet("World"));
 runtime.close();
@@ -118,7 +118,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `Launcher.run(args, Module2...)` - accepts command-line args and Module2 instances. Loads config, discovers SPI modules, starts the full application lifecycle.
+- `FreewayApp.run(args, Module2...)` - accepts command-line args and Module2 instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.

@@ -3,7 +3,6 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
-import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,9 +40,9 @@ public final class WebServer implements AutoCloseable {
         RouteIndex routes,
         WebSocketIndex websocketIndex,
         CorsFilter corsFilter,
-        Extension<StaticResourceMount> staticMounts,
-        Extension<HttpFilter> filters,
-        Extension<ExceptionMapper> mappers,
+        List<StaticResourceMount> staticMounts,
+        List<HttpFilter> filters,
+        List<ExceptionMapper> mappers,
         Container container,
         @Value("${web.engine:robaho}") String webEngineId,
         @Value("${web.server.host:127.0.0.1}") String host,
@@ -56,11 +55,11 @@ public final class WebServer implements AutoCloseable {
         this.routes = Objects.requireNonNull(routes, "routes");
         this.websocketIndex = Objects.requireNonNull(websocketIndex, "websocketIndex");
         this.corsFilter = Objects.requireNonNull(corsFilter, "corsFilter");
-        this.staticMounts = staticMounts.all();
-        PreparedFilters preparedFilters = prepareFilters(filters.all());
+        this.staticMounts = staticMounts;
+        PreparedFilters preparedFilters = prepareFilters(filters);
         this.filters = List.copyOf(preparedFilters.filters());
         this.timingFilter = preparedFilters.timingFilter();
-        this.mappers = mappers.all();
+        this.mappers = mappers;
         this.container = Objects.requireNonNull(container, "container");
         this.webEngineId = webEngineId;
         this.config = new HttpServerConfig(host, port, backlog, shutdownGraceSeconds);

@@ -2,7 +2,8 @@ package com.jujin.freeway.http;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.jujin.freeway.ioc.Extension;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 class RouteIndexTest {
@@ -10,11 +11,8 @@ class RouteIndexTest {
     @Test
     void matchesPathParameters() {
         RouteIndex registry = new RouteIndex(
-            Extension.of(
-                Route.class,
-                Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))
-            ),
-            Extension.of(RouteGroup.class)
+            List.of(Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))),
+            List.of()
         );
 
         RouteIndex.RouteMatch match = registry.match("GET", "/users/42");
@@ -25,11 +23,8 @@ class RouteIndexTest {
     @Test
     void nonTerminalDotStarConstraintMatchesOnlyOneSegment() {
         RouteIndex registry = new RouteIndex(
-            Extension.of(
-                Route.class,
-                Route.get("/files/{name:.*}/meta", ctx -> ctx.send(200, "ok"))
-            ),
-            Extension.of(RouteGroup.class)
+            List.of(Route.get("/files/{name:.*}/meta", ctx -> ctx.send(200, "ok"))),
+            List.of()
         );
 
         RouteIndex.RouteMatch match = registry.match(
@@ -44,11 +39,8 @@ class RouteIndexTest {
     @Test
     void terminalDotStarConstraintConsumesRemainingSegments() {
         RouteIndex registry = new RouteIndex(
-            Extension.of(
-                Route.class,
-                Route.get("/files/{path:.*}", ctx -> ctx.send(200, "ok"))
-            ),
-            Extension.of(RouteGroup.class)
+            List.of(Route.get("/files/{path:.*}", ctx -> ctx.send(200, "ok"))),
+            List.of()
         );
 
         RouteIndex.RouteMatch match = registry.match("GET", "/files/a/b/c.txt");
@@ -59,11 +51,8 @@ class RouteIndexTest {
     @Test
     void rejectsEmptyPathParameterSegments() {
         RouteIndex registry = new RouteIndex(
-            Extension.of(
-                Route.class,
-                Route.get("/users/{id}/profile", ctx -> ctx.send(200, "ok"))
-            ),
-            Extension.of(RouteGroup.class)
+            List.of(Route.get("/users/{id}/profile", ctx -> ctx.send(200, "ok"))),
+            List.of()
         );
 
         assertNull(registry.match("GET", "/users//profile"));
@@ -73,12 +62,11 @@ class RouteIndexTest {
     void rejectsDuplicateRoutes() {
         assertThrows(IllegalStateException.class, () ->
             new RouteIndex(
-                Extension.of(
-                    Route.class,
+                List.of(
                     Route.get("/users/{id}", ctx -> ctx.send(200, "ok")),
                     Route.get("/users/{id}", ctx -> ctx.send(200, "ok"))
                 ),
-                Extension.of(RouteGroup.class)
+                List.of()
             )
         );
     }

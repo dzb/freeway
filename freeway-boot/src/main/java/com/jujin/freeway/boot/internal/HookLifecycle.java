@@ -1,17 +1,18 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.Extension;
 import com.jujin.freeway.ioc.RuntimeHook;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class HookLifecycle {
-    private static final Logger LOG = LoggerFactory.getLogger(HookLifecycle.class);
+
+    private static final Logger LOG = LoggerFactory.getLogger(
+        HookLifecycle.class
+    );
     private final Container container;
     private final List<RuntimeHook> started = new ArrayList<>();
     private List<RuntimeHook> hooks;
@@ -23,7 +24,7 @@ public final class HookLifecycle {
     private List<RuntimeHook> resolveHooks() {
         if (hooks != null) return hooks;
         try {
-            hooks = container.get(Extension.class, RuntimeHook.class.getName()).all();
+            hooks = container.extension(RuntimeHook.class).all();
         } catch (IllegalArgumentException e) {
             hooks = List.of();
         }
@@ -43,7 +44,10 @@ public final class HookLifecycle {
             }
         } catch (Exception ex) {
             LOG.error("Hook start failed: {}", ex.getMessage(), ex);
-            RuntimeException failure = new RuntimeException("Runtime hook start failed", ex);
+            RuntimeException failure = new RuntimeException(
+                "Runtime hook start failed",
+                ex
+            );
             RuntimeException rollback = stopStarted();
             if (rollback != null) {
                 failure.addSuppressed(rollback);
@@ -74,7 +78,10 @@ public final class HookLifecycle {
                 hook.stop(container);
             } catch (Exception ex) {
                 LOG.warn("Hook stop failed: {}", ex.getMessage(), ex);
-                RuntimeException next = new RuntimeException("Runtime hook stop failed", ex);
+                RuntimeException next = new RuntimeException(
+                    "Runtime hook stop failed",
+                    ex
+                );
                 if (failure == null) {
                     failure = next;
                 } else {

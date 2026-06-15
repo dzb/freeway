@@ -1,7 +1,7 @@
 package com.jujin.freeway.http.engine;
 
 import com.jujin.freeway.boot.AppRuntime;
-import com.jujin.freeway.boot.Launcher;
+import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.http.*;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module2;
@@ -40,13 +40,13 @@ public abstract class AbstractWebEngineContractTest {
     }
 
     @Test
-    public void launcherDiscoversEngineAndServesRoutes() throws Exception {
+    public void appDiscoversEngineAndServesRoutes() throws Exception {
         int port = freePort();
         System.setProperty("web.server.host", "127.0.0.1");
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", engineId());
 
-        app = Launcher.run(new String[0], new TestAppModule());
+        app = FreewayApp.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
         assertInstanceOf(engineType(), app.get(HttpEngine.class, engineId()));
 
@@ -70,7 +70,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", engineId());
 
-        app = Launcher.run(new String[0], new TestAppModule());
+        app = FreewayApp.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -119,7 +119,7 @@ public abstract class AbstractWebEngineContractTest {
 
         ErrorAppModule.opened = opened;
         ErrorAppModule.errored = errored;
-        app = Launcher.run(new String[0], new ErrorAppModule());
+        app = FreewayApp.run(new String[0], new ErrorAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();
@@ -152,7 +152,7 @@ public abstract class AbstractWebEngineContractTest {
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", engineId());
 
-        app = Launcher.run(new String[0], new BodyLimitModule());
+        app = FreewayApp.run(new String[0], new BodyLimitModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         HttpClient client = HttpClient.newHttpClient();

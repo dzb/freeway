@@ -1,7 +1,7 @@
 package com.jujin.freeway.http.undertow;
 
 import com.jujin.freeway.boot.AppRuntime;
-import com.jujin.freeway.boot.Launcher;
+import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.http.*;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module2;
@@ -42,7 +42,7 @@ class UndertowFrameProbeTest {
         System.setProperty("web.server.port", String.valueOf(port));
         System.setProperty("web.engine", "undertow");
 
-        app = Launcher.run(new String[0], new TestAppModule());
+        app = FreewayApp.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
         try (Socket socket = new Socket("127.0.0.1", port)) {
