@@ -6,7 +6,7 @@ Zero classpath scanning. Compose-first API. No magic.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
-| `freeway-commons` | Shared utilities: JSON, coercion, Defer, logging fallback |
+| `freeway-commons` | Shared utilities: JSON, coercion, Defer, ScopedCache, logging |
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP/WebSocket layer: routing, filters, static, multipart |
@@ -15,6 +15,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | `├ freeway-http-undertow` | Undertow transport adapter                                |
 | `└ freeway-http-jetty` | Jetty transport adapter                                   |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
+| `└ freeway-db-hikari` | HikariCP connection pool adapter                          |
 | `freeway-mq-kafka` | Kafka adapter for EventBus: distributed pub/sub           |
 
 ## Philosophy
@@ -93,6 +94,7 @@ Shared utilities usable independently of the framework:
 - JSON — `JsonCodec` for object↔JSON mapping, `JsonUtils` for parsing/serialization.
 - Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
 - Defer — scope-bound deferred execution. Actions buffered inside a scope drain on commit, discard on rollback. Backed by `ScopedValue`.
+- ScopedCache — scope-bound value cache. Keys are lazily created and reused within a scope, cleaned up on exit via registered close handlers.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
 - Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
 
