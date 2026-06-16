@@ -40,6 +40,8 @@ public final class Row {
 
     public Integer integer(String col) { return get(col, Integer.class); }
 
+    public Long longVal(String col) { return get(col, Long.class); }
+
     public Boolean bool(String col) { return get(col, Boolean.class); }
 
     public BigDecimal decimal(String col) { return get(col, BigDecimal.class); }

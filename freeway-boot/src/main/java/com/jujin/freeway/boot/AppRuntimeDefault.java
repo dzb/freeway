@@ -67,8 +67,13 @@ final class AppRuntimeDefault implements AppRuntime {
         }
         AppState previous = state;
         state = AppState.STOPPING;
-        LOG.info("Application stopping");
-        publish(new AppStoppingEvent(container));
+        try {
+            LOG.info("Application stopping");
+            publish(new AppStoppingEvent(container));
+        } catch (RuntimeException ex) {
+            // Logging or event bus may be unavailable during JVM shutdown.
+            // Suppress silently — the shutdown itself is what matters.
+        }
 
         RuntimeException failure = null;
         if (
@@ -98,7 +103,11 @@ final class AppRuntimeDefault implements AppRuntime {
             throw failure;
         }
         state = AppState.STOPPED;
-        LOG.info("Application stopped");
+        try {
+            LOG.info("Application stopped");
+        } catch (RuntimeException ex) {
+            // JUL may be closed during JVM shutdown
+        }
     }
 
     private void publish(Object event) {

@@ -1,0 +1,82 @@
+name: Publish Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          mkdir -p ~/.gnupg
+          echo "default-key ${{ secrets.GPG_KEYNAME }}" >> ~/.gnupg/gpg.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+
+      - name: Maven settings
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << 'SETTINGS'
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${{ secrets.CENTRAL_USERNAME }}</username>
+                <password>${{ secrets.CENTRAL_PASSWORD }}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>central</id>
+                <activation>
+                  <activeByDefault>true</activeByDefault>
+                </activation>
+                <properties>
+                  <gpg.executable>gpg</gpg.executable>
+                  <gpg.keyname>${{ secrets.GPG_KEYNAME }}</gpg.keyname>
+                  <gpg.passphrase>${{ secrets.GPG_PASSPHRASE }}</gpg.passphrase>
+                  <gpg.useagent>false</gpg.useagent>
+                </properties>
+              </profile>
+            </profiles>
+          </settings>
+          SETTINGS
+
+      - name: Set release version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          # Strip leading 'v' from tag (e.g., v1.1.2 -> 1.1.2)
+          RELEASE_VERSION="${TAG#v}"
+          mvn versions:set -DnewVersion="$RELEASE_VERSION" --batch-mode
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add pom.xml **/pom.xml
+          git commit -m "release: ${RELEASE_VERSION}"
+
+      - name: Deploy to Maven Central
+        run: mvn deploy --batch-mode --no-transfer-progress -DskipTests -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Bump to next SNAPSHOT
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          RELEASE_VERSION="${TAG#v}"
+          # Parse major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_SNAPSHOT="${MAJOR}.${MINOR}.${NEXT_PATCH}-SNAPSHOT"
+          mvn versions:set -DnewVersion="$NEXT_SNAPSHOT" --batch-mode
+          git add pom.xml **/pom.xml
+          git commit -m "chore: bump to ${NEXT_SNAPSHOT}"
+          git push
