@@ -567,9 +567,23 @@ AppRuntime runtime = FreewayApp.run(args, new AppModule(), new HttpModule());
 
 `FreewayApp.run()` accepts command-line args and `Module2` instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
+For more control, use `AppBuilder`:
+
+```java
+AppRuntime app = FreewayApp.of(new MyModule())
+    .add(new HttpModule(), new DbModule())   // additional modules
+    .args("--freeway.profile=dev")            // config overrides
+    .classLoader(customLoader)               // custom class loader for SPI/resources
+    .autoDiscovery(false)                     // disable SPI module discovery
+    .shutdownHook(false)                      // skip JVM shutdown hook
+    .config(myConfigLoader)                   // custom ConfigLoader
+    .start();
+```
+
 | Type | Purpose |
 |------|---------|
-| `FreewayApp` | Application entry point: `run(args, Module2...)` |
+| `FreewayApp` | Application entry point: `run(args, Module2...)`, `of(Module2...)` |
+| `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
 | `AppRuntime` | Runtime API: container, config, state, start, close, `get(Class)`, `get(Class, String)` |
 | `AppState` | `CREATED` → `STARTING` → `RUNNING` → `STOPPING` → `STOPPED` (or `FAILED`) |
 
@@ -589,14 +603,14 @@ Startup invokes hooks in resolved contribution order. Shutdown invokes only star
 
 ### Config Cascade
 
-Priority high → low:
+Lowest to highest priority:
 
-1. CLI args (`--key=value`, `-Dkey=value`)
-2. Environment variables (`FREEWAY_` prefix)
-3. `application-{profile}.json`
-4. `application-{profile}.properties`
-5. `application.json`
-6. `application.properties`
+1. `application.properties`
+2. `application.json`
+3. `application-{profile}.properties`
+4. `application-{profile}.json`
+5. Environment variables (`FREEWAY_` prefix)
+6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles: `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
 
