@@ -34,6 +34,9 @@ public final class MigrationRunner {
     );
     static final int MAX_MIGRATION_BYTES = 16 * 1024 * 1024;
 
+    /** Flyway-compatible: V followed by digits and optional separators. */
+    private static final String VERSION_PATTERN = "V\\d[\\d._]*";
+
     private final Database database;
     private final boolean enabled;
     private final String path;
@@ -57,9 +60,34 @@ public final class MigrationRunner {
         }
 
         ensureTable();
+        acquireLock();
+        try {
+            return doRun();
+        } finally {
+            releaseLock();
+        }
+    }
+
+    private int doRun() {
+
         List<String> migrations = scanMigrations();
         if (migrations.isEmpty()) {
             return 0;
+        }
+
+        // Validate version format before any execution
+        for (String m : migrations) {
+            String v = versionFromPath(m);
+            if (!v.matches(VERSION_PATTERN)) {
+                throw new SqlException(
+                    "Bad migration version '" +
+                        v +
+                        "' in file " +
+                        m +
+                        " — must match pattern " +
+                        VERSION_PATTERN
+                );
+            }
         }
 
         // Reject duplicate versions before any execution
@@ -76,13 +104,14 @@ public final class MigrationRunner {
             }
         }
 
-        Map<String, String> existingChecksums = loadChecksums();
+        Map<String, String> existing = loadChecksums();
+        validateChecksums(migrations, existing);
 
-        int installedRank = existingChecksums.size();
+        int installedRank = existing.size();
         int ran = 0;
         for (String migration : migrations) {
             String version = versionFromPath(migration);
-            if (existingChecksums.containsKey(version)) {
+            if (existing.containsKey(version)) {
                 continue;
             }
             byte[] raw = readResourceBytes(migration);
@@ -95,6 +124,39 @@ public final class MigrationRunner {
         return ran;
     }
 
+    /**
+     * Fail fast if a previously-applied migration has been modified.
+     * This protects against silent drift where a SQL file changes
+     * after being applied, which could break assumptions made by
+     * later migrations.
+     */
+    private void validateChecksums(
+        List<String> migrations,
+        Map<String, String> existing
+    ) {
+        if (existing.isEmpty()) return;
+        for (String m : migrations) {
+            String version = versionFromPath(m);
+            String stored = existing.get(version);
+            if (stored == null) continue;
+            byte[] raw = readResourceBytes(m);
+            String current = sha256(raw);
+            if (!stored.equals(current)) {
+                throw new SqlException(
+                    "Checksum mismatch for version " +
+                        version +
+                        " (" +
+                        m +
+                        ") — the SQL file has been modified since it was applied. " +
+                        "Stored: " +
+                        stored +
+                        ", Current: " +
+                        current
+                );
+            }
+        }
+    }
+
     public static String versionFromPath(String path) {
         String normalized = path.replace('\\', '/');
         String name = normalized.substring(normalized.lastIndexOf('/') + 1);
@@ -103,6 +165,51 @@ public final class MigrationRunner {
         }
         int sep = name.indexOf("__");
         return sep > 0 ? name.substring(0, sep) : name;
+    }
+
+    private void acquireLock() {
+        try {
+            database.execute(
+                "insert into " +
+                    table +
+                    " (version, description, checksum, installed_rank) values ('__LOCK__', '', '', -1)"
+            );
+        } catch (SqlException e) {
+            if (isDuplicateKey(e)) {
+                throw new SqlException(
+                    "Cannot acquire migration lock — " +
+                        "another instance may be running migrations. " +
+                        "If no other instance is running, the lock may be stale: " +
+                        "delete from " +
+                        table +
+                        " where version = '__LOCK__'"
+                );
+            }
+            throw e;
+        }
+    }
+
+    private void releaseLock() {
+        try {
+            database.execute(
+                "delete from " + table + " where version = '__LOCK__'"
+            );
+        } catch (RuntimeException e) {
+            LOG.warn("Failed to release migration lock", e);
+        }
+    }
+
+    private static boolean isDuplicateKey(SqlException e) {
+        if (e.getCause() == null) return false;
+        String msg = e.getCause().getMessage();
+        if (msg == null) return false;
+        msg = msg.toLowerCase();
+        return (
+            msg.contains("unique") ||
+            msg.contains("duplicate") ||
+            msg.contains("primary key") ||
+            msg.contains("violation")
+        );
     }
 
     private void ensureTable() {

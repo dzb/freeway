@@ -18,7 +18,7 @@ public final class SchemaGenerator {
     private final Dialect dialect;
 
     public SchemaGenerator() {
-        this(new DialectDefault());
+        this(new PostgresDialect());
     }
 
     public SchemaGenerator(Dialect dialect) {

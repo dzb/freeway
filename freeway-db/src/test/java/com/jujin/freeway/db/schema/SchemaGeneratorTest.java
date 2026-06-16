@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class SchemaGeneratorTest {
 
-    private final SchemaGenerator gen = new SchemaGenerator(new DialectDefault());
+    private final SchemaGenerator gen = new SchemaGenerator(new PostgresDialect());
 
     // ====================== 基础 Record 映射 ======================
 

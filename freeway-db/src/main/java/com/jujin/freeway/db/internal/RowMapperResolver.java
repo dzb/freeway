@@ -10,6 +10,7 @@ import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.RowMapping;
 import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.db.schema.Column;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -277,10 +278,25 @@ public final class RowMapperResolver {
         );
     }
 
-    static int findColumn(ResultSetMetaData meta, String propertyName)
-        throws SQLException {
-        String snake = Names.camelToSnake(propertyName);
+    static int findColumn(
+        ResultSetMetaData meta,
+        String propertyName,
+        String columnOverride
+    ) throws SQLException {
         int columnCount = meta.getColumnCount();
+        // 1. @Column annotation override — exact match, highest priority
+        if (columnOverride != null && !columnOverride.isEmpty()) {
+            for (int i = 1; i <= columnCount; i++) {
+                String label = meta.getColumnLabel(i);
+                if (label == null) label = meta.getColumnName(i);
+                if (label == null) continue;
+                if (columnOverride.equalsIgnoreCase(label)) {
+                    return i;
+                }
+            }
+        }
+        // 2. Property name → camelCase / snake_case matching
+        String snake = Names.camelToSnake(propertyName);
         for (int i = 1; i <= columnCount; i++) {
             String label = meta.getColumnLabel(i);
             if (label == null) label = meta.getColumnName(i);
@@ -298,14 +314,21 @@ public final class RowMapperResolver {
     private static final class ColumnCache {
 
         private final String[] names;
+        private final String[] columnOverrides;
         private volatile Signature signature;
         private volatile int[] columns;
 
         private ColumnCache(List<BeanProperty> properties) {
-            this.names = properties
-                .stream()
-                .map(BeanProperty::name)
-                .toArray(String[]::new);
+            int n = properties.size();
+            this.names = new String[n];
+            this.columnOverrides = new String[n];
+            for (int i = 0; i < n; i++) {
+                BeanProperty prop = properties.get(i);
+                this.names[i] = prop.name();
+                Column col = prop.annotation(Column.class);
+                this.columnOverrides[i] =
+                    (col != null && !col.value().isEmpty()) ? col.value() : null;
+            }
         }
 
         int[] resolve(ResultSetMetaData meta) throws SQLException {
@@ -319,7 +342,7 @@ public final class RowMapperResolver {
             }
             int[] resolved = new int[names.length];
             for (int i = 0; i < names.length; i++) {
-                resolved[i] = findColumn(meta, names[i]);
+                resolved[i] = findColumn(meta, names[i], columnOverrides[i]);
             }
             signature = current;
             columns = resolved;

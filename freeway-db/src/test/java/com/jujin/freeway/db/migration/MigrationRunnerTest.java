@@ -9,6 +9,7 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import java.io.RandomAccessFile;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -108,6 +109,170 @@ class MigrationRunnerTest {
         } finally {
             Thread.currentThread().setContextClassLoader(previous);
         }
+    }
+
+    @Test
+    void detectsChecksumMismatch(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__create.sql"),
+            "create table checksum_test (id bigint primary key)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_cs")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            assertEquals(1, runner.run());
+
+            // Modify the SQL file after it was applied
+            Files.writeString(
+                migrationDir.resolve("V001__create.sql"),
+                "create table checksum_test (id bigint primary key, modified int)"
+            );
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("Checksum mismatch"));
+            assertTrue(ex.getMessage().contains("V001"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void rejectsBadVersionFormat(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        // File that doesn't start with V + digits
+        Files.writeString(
+            migrationDir.resolve("bad_name.sql"),
+            "create table t (id int)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_badver")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("Bad migration version"));
+            assertTrue(ex.getMessage().contains("bad_name"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void detectsDuplicateVersions(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        // Two files that resolve to the same version "V001"
+        Files.writeString(
+            migrationDir.resolve("V001__first.sql"),
+            "create table t1 (id bigint)"
+        );
+        Files.writeString(
+            migrationDir.resolve("V001__second.sql"),
+            "create table t2 (id bigint)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_dupver")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("Duplicate migration version"));
+            assertTrue(ex.getMessage().contains("V001"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void rejectsEmptyMigrationFile(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(migrationDir.resolve("V001__empty.sql"), "");
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_empty")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("empty"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void lockPreventsConcurrentRuns(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__step.sql"),
+            "create table lock_test (id bigint primary key)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_lock")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            // Ensure the tracking table exists before inserting a fake lock
+            db.execute(
+                "create table if not exists _migrations (" +
+                "version varchar(255) primary key," +
+                "description varchar(512)," +
+                "checksum char(64) not null," +
+                "installed_rank int not null," +
+                "executed_at timestamp default current_timestamp)"
+            );
+            // Simulate another instance holding the lock
+            db.execute(
+                "insert into _migrations (version, description, checksum, installed_rank) values ('__LOCK__', '', '', -1)"
+            );
+
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("Cannot acquire migration lock"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void disabledRunnerReturnsZero(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__step.sql"),
+            "create table t (id int)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_disabled")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, false, "db/migration", "_migrations");
+
+            assertEquals(0, runner.run());
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    private static Database tempDb(String name) {
+        String dbName = name + "_" + UUID.randomUUID().toString().replace('-', '_');
+        return new DatabaseBuilder()
+            .config(PoolConfig.defaults(
+                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+                "sa",
+                ""
+            ))
+            .build();
     }
 
     private static void restore(String key, String value) {

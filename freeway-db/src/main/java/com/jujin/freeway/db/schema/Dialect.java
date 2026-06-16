@@ -6,7 +6,7 @@ import java.util.Set;
 
 /**
  * SQL 方言 — 负责 DDL 语法差异和数据库元数据查询。
- * 默认实现 {@link DialectDefault} 适用于 PostgreSQL / H2 (PostgreSQL mode)。
+ * 默认实现 {@link PostgresDialect} 适用于 PostgreSQL / H2 (PostgreSQL mode)。
  */
 public interface Dialect {
 

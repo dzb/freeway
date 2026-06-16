@@ -51,14 +51,14 @@ public final class Schema {
      * 为实体类生成 CREATE TABLE DDL 字符串，不执行。
      */
     public static String define(Class<?> entityType) {
-        return new SchemaGenerator(new DialectDefault()).generate(entityType);
+        return new SchemaGenerator(new PostgresDialect()).generate(entityType);
     }
 
     /**
      * 为多个实体类生成 CREATE TABLE DDL 列表，不执行。
      */
     public static List<String> defineAll(Class<?>... entityTypes) {
-        return new SchemaGenerator(new DialectDefault()).generateAll(entityTypes);
+        return new SchemaGenerator(new PostgresDialect()).generateAll(entityTypes);
     }
 
     /**
@@ -70,7 +70,7 @@ public final class Schema {
      * @throws SqlException 执行失败时抛出
      */
     public static int ensure(Database db, Class<?>... entityTypes) {
-        return ensure(db, new DialectDefault(), entityTypes);
+        return ensure(db, new PostgresDialect(), entityTypes);
     }
 
     /**
@@ -138,7 +138,7 @@ public final class Schema {
      * 删除实体类对应的表。
      */
     public static void drop(Database db, Class<?>... entityTypes) {
-        drop(db, new DialectDefault(), entityTypes);
+        drop(db, new PostgresDialect(), entityTypes);
     }
 
     /**

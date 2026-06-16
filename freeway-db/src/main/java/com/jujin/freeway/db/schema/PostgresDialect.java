@@ -12,12 +12,17 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 默认 SQL 方言（PostgreSQL / H2 PostgreSQL mode）。
+ * PostgreSQL / H2 (PostgreSQL compatibility mode) SQL dialect.
+ * <p>
+ * This is the default dialect used when no explicit dialect is configured.
+ * It uses double-quote identifier quoting, {@code GENERATED ALWAYS AS IDENTITY}
+ * for auto-increment, and queries {@code INFORMATION_SCHEMA} for schema
+ * introspection.
  */
-final class DialectDefault implements Dialect {
-    private static final Logger LOG = LoggerFactory.getLogger(DialectDefault.class);
+public final class PostgresDialect implements Dialect {
+    private static final Logger LOG = LoggerFactory.getLogger(PostgresDialect.class);
 
-    /** 常见 SQL 保留字，始终需要引用。 */
+    /** Common SQL reserved words that always need quoting. */
     private static final Set<String> RESERVED = Set.of(
         "user", "order", "group", "table", "select", "from", "where",
         "insert", "update", "delete", "create", "alter", "drop", "index",

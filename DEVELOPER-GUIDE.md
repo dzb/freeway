@@ -1024,17 +1024,177 @@ List<ExecuteResult> results = db.batch("INSERT INTO t (a, b) VALUES (?, ?)")
     .execute();
 ```
 
-### Schema & Migrations
+    ### Dialect
+
+Database dialect controls DDL generation — identifier quoting, auto-increment clauses, and schema-introspection queries. Selection mirrors the config-driven pattern already used for pool engine and HTTP engine: bind an implementation by id, select it via a config key, and fall back to auto-detection from the JDBC URL.
+
+**Resolution chain:**
+
+```
+freeway.db.dialect=mysql
+    │
+    └─ configured? ──yes──→ container.get(Dialect.class, "mysql")
+    │                            │
+    │                            ├─ found? ──yes──→ use it
+    │                            └─ not found ──→ warn + fall through
+    │
+    └─ not configured ──→ detect from freeway.db.url
+                              │
+                              ├─ :postgresql:  → "postgresql"
+                              ├─ :mysql:       → "mysql"
+                              ├─ :mariadb:     → "mysql"
+                              ├─ :h2:          → "h2"
+                              └─ unknown       → ""
+                                   │
+                                   └─→ container.get(Dialect.class)
+                                           → PostgresDialect (primary)
+```
+
+**Built-in dialects:**
+
+| id | Class | Target |
+|----|-------|--------|
+| `postgresql` | `PostgresDialect` | PostgreSQL, H2 (PostgreSQL mode) — **default** |
+
+`DbModule` binds `PostgresDialect` as `id("postgresql").primary()`. Additional dialects (MySQL, SQLite, etc.) can be contributed by users or third-party modules — same pattern as `HikariPoolModule` for pool selection.
+
+**Custom dialect — write once, select via config:**
 
 ```java
-// AutoMigrate from entity classes
-Schema.ensure(database, User.class, Post.class);
+// 1. Implement Dialect
+public class MySqlDialect implements Dialect {
+    @Override public String quoteName(String name) { return "`" + name + "`"; }
+    @Override public String generatedClause() { return "AUTO_INCREMENT"; }
+    // ... remaining methods
+}
 
-// SQL-based migrations (files in db/migration/)
-// V001__create_users.sql, V002__add_email.sql, ...
-MigrationRunner runner = new MigrationRunner(database, true, "db/migration", "schema_version");
-runner.run();
+// 2. Bind in your module (or a dedicated MySqlDialectModule)
+binder.bind(Dialect.class).to(MySqlDialect.class).id("mysql").primary();
+
+// 3. Select via config
+// freeway.db.dialect=mysql
 ```
+
+**Per-group override** — a `SchemaEntity` can carry its own dialect, overriding the global one:
+
+```java
+binder.contribute(SchemaEntity.class)
+    .add(SchemaEntity.of("audit", new MySqlDialect(), AuditLog.class));
+```
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `freeway.db.dialect` | (auto-detect) | Dialect id to use; overrides URL detection |
+
+### Schema & Migrations
+
+Freeway provides two complementary mechanisms for database evolution: **Schema** (annotation-driven, current-state DDL) and **Migration** (versioned SQL files). They work together — Schema handles the "what should exist now," Migration handles the "how we got here."
+
+#### Schema — Annotation-Driven Auto-DDL
+
+`Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns.
+
+```java
+// Standalone usage
+Schema.ensure(db, User.class, Post.class);
+
+// AutoMigrate strategy
+// Table missing    → CREATE TABLE IF NOT EXISTS
+// Column missing   → ALTER TABLE ADD COLUMN
+// Index missing    → CREATE INDEX IF NOT EXISTS
+// Existing columns → never touched
+```
+
+**IoC integration** — contribute entity classes via `SchemaEntity`:
+
+```java
+public class AppModule implements Module2 {
+    public void bind(Binder b) {
+        b.install(new HttpModule())
+         .install(new DbModule());
+
+        // Register entities for auto-DDL on startup
+        b.contribute(SchemaEntity.class)
+            .add(SchemaEntity.of("app", User.class, Post.class, Comment.class));
+
+        // Custom dialect
+        b.contribute(SchemaEntity.class)
+            .add(SchemaEntity.of("profile", new PostgresDialect(), UserProfile.class));
+    }
+}
+```
+
+`DbModule` contributes a `RuntimeHook` (`"freeway.db.migration"`, before `"freeway.http.server"`). On startup it calls `Schema.ensure()` for contributed entities, then runs SQL migrations. The ordering is automatic — tables exist before migration SQL attempts to insert or alter them.
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `freeway.db.schema.auto` | `true` | Enable annotation-driven auto-DDL |
+| `freeway.db.schema.groups` | (all) | Comma-separated group names to run; empty = all |
+
+#### Migration — Versioned SQL Files
+
+SQL files live under `db/migration/` (configurable) on the classpath:
+
+```
+db/migration/
+├── V001__create_users.sql          ← create tables
+├── V002__add_email_column.sql      ← alter existing tables
+├── V003__seed_categories.sql       ← insert reference data
+└── V20240615120000__add_index.sql  ← timestamp-based versions
+```
+
+**Naming rules (enforced):**
+- Must start with `V` followed by digits: `V001`, `V20240615`, `V1_0_0`
+- Separator: `__` (double underscore) between version and description
+- Extensions: `.sql` only
+
+**Standalone usage:**
+
+```java
+MigrationRunner runner = new MigrationRunner(database, true, "db/migration", "_migrations");
+int applied = runner.run();  // returns count of newly-applied files
+```
+
+**IoC usage** — `DbModule` binds `MigrationRunner` and runs it automatically on startup:
+
+```java
+MigrationRunner runner = container.get(MigrationRunner.class);
+runner.run();  // idempotent — already-applied files are skipped
+```
+
+Each migration runs in its own database transaction. The tracking table is `_migrations` (configurable). Applied migrations are **immutable** — modifying a SQL file that has already been applied causes a checksum mismatch error at startup.
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `freeway.db.migration.enabled` | `true` | Set to `false` to skip SQL migrations |
+| `freeway.db.migration.path` | `db/migration/` | Classpath resource directory for `.sql` files |
+| `freeway.db.migration.table` | `_migrations` | Tracking table name |
+
+#### Dev vs Production Workflow
+
+Schema and Migration serve different roles across environments:
+
+```
+Development                           Production
+──────────                            ──────────
+freeway.db.schema.auto=true           freeway.db.schema.auto=false
+                                      freeway.db.migration.enabled=true
+
+① Add @Column("phone") to User
+   → restart → column auto-added     ② Write V004__add_phone.sql
+                                         from Schema.define() output
+                                     ③ Deploy → Migration applies V004
+```
+
+**Schema** shines in development — zero-friction iteration. Add a field, restart, the column appears. **Migration** shines in production — every schema change is versioned, auditable, reviewed, and can include data transformations and index tuning that annotations can't express.
+
+The same entity classes and SQL files work in both environments. Switching modes is just one config key.
 
 ### DatabaseHub
 

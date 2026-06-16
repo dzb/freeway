@@ -1,10 +1,16 @@
 package com.jujin.freeway.db;
 
+import com.jujin.freeway.db.schema.*;
+import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,16 +23,25 @@ class DbModuleTest {
     private static final String URL_KEY = PoolConfig.PREFIX + ".url";
     private static final String USER_KEY = PoolConfig.PREFIX + ".username";
     private static final String PASS_KEY = PoolConfig.PREFIX + ".password";
+    private static final String MIG_PATH_KEY = "freeway.db.migration.path";
+    private static final String MIG_TABLE_KEY = "freeway.db.migration.table";
+    private static final String SCHEMA_GROUPS_KEY = "freeway.db.schema.groups";
 
     private String previousUrl;
     private String previousUser;
     private String previousPass;
+    private String previousMigPath;
+    private String previousMigTable;
+    private String previousSchemaGroups;
 
     @BeforeEach
     void captureProperties() {
         previousUrl = System.getProperty(URL_KEY);
         previousUser = System.getProperty(USER_KEY);
         previousPass = System.getProperty(PASS_KEY);
+        previousMigPath = System.getProperty(MIG_PATH_KEY);
+        previousMigTable = System.getProperty(MIG_TABLE_KEY);
+        previousSchemaGroups = System.getProperty(SCHEMA_GROUPS_KEY);
     }
 
     @AfterEach
@@ -34,6 +49,9 @@ class DbModuleTest {
         restore(URL_KEY, previousUrl);
         restore(USER_KEY, previousUser);
         restore(PASS_KEY, previousPass);
+        restore(MIG_PATH_KEY, previousMigPath);
+        restore(MIG_TABLE_KEY, previousMigTable);
+        restore(SCHEMA_GROUPS_KEY, previousSchemaGroups);
     }
 
     @Test
@@ -121,6 +139,159 @@ class DbModuleTest {
         }
     }
 
+    @Test
+    void schemaEntitiesCreateTablesBeforeMigrations(@TempDir Path tempDir) throws Exception {
+        // Use a unique migration path to avoid conflict with classpath test resources
+        String migPath = "schema_integration_test/";
+        Path migrationDir = Files.createDirectories(tempDir.resolve(migPath));
+        Files.writeString(
+            migrationDir.resolve("V001__seed_categories.sql"),
+            "insert into category (id, name) values (1, 'tech'), (2, 'food')"
+        );
+
+        String dbName = "freeway_schema_mig_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty("freeway.db.migration.path", migPath);
+        System.setProperty("freeway.db.migration.table", "_schema_migrations");
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(
+                new java.net.URL[] { tempDir.toUri().toURL() },
+                previous)) {
+            Thread.currentThread().setContextClassLoader(loader);
+
+            try (Container container = Freeway.create(
+                new DbModule(),
+                binder -> binder.contribute(SchemaEntity.class)
+                    .add(SchemaEntity.of("test", Category.class))
+            )) {
+                Database db = container.get(Database.class);
+
+                // 1. Schema: auto-create the Category table from @Table annotation
+                int schemaOps = Schema.ensure(db, Category.class);
+                assertTrue(schemaOps >= 1, "Schema should create the table");
+
+                // Verify table exists and is empty
+                List<Category> before = db.query("select id, name from category").list(Category.class);
+                assertTrue(before.isEmpty(), "Table should be empty before migration");
+
+                // 2. Migration: seed data via SQL files
+                MigrationRunner runner = container.get(MigrationRunner.class);
+                runner.run();
+
+                // Verify data was inserted
+                List<Category> after = db.query("select id, name from category order by id").list(Category.class);
+                assertEquals(2, after.size());
+                assertEquals(1L, after.get(0).id());
+                assertEquals("tech", after.get(0).name());
+                assertEquals(2L, after.get(1).id());
+                assertEquals("food", after.get(1).name());
+
+                // Idempotent: re-running does nothing
+                assertEquals(0, runner.run());
+            }
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void schemaFillsGapWhereMigrationLeavesOff(@TempDir Path tempDir) throws Exception {
+        // Use a unique migration path to avoid conflict with classpath test resources
+        String migPath = "schema_gap_test/";
+        Path migrationDir = Files.createDirectories(tempDir.resolve(migPath));
+        Files.writeString(
+            migrationDir.resolve("V001__create_items.sql"),
+            "create table items (id bigint primary key, label varchar(64))"
+        );
+        Files.writeString(
+            migrationDir.resolve("V002__seed_items.sql"),
+            "insert into items (id, label) values (1, 'hello')"
+        );
+
+        String dbName = "freeway_schema_gap_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty("freeway.db.migration.path", migPath);
+        System.setProperty("freeway.db.migration.table", "_gap_migrations");
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(
+                new java.net.URL[] { tempDir.toUri().toURL() },
+                previous)) {
+            Thread.currentThread().setContextClassLoader(loader);
+
+            try (Container container = Freeway.create(
+                new DbModule(),
+                binder -> binder.contribute(SchemaEntity.class)
+                    .add(SchemaEntity.of("test", Tag.class))
+            )) {
+                Database db = container.get(Database.class);
+
+                // 1. Migration first: creates items table + seeds data
+                MigrationRunner runner = container.get(MigrationRunner.class);
+                assertEquals(2, runner.run());
+
+                List<String> labels = db.query("select label from items order by id").list(String.class);
+                assertEquals(List.of("hello"), labels);
+
+                // 2. Schema: adds Tag table without touching items
+                int ops = Schema.ensure(db, Tag.class);
+                assertTrue(ops == 1, "Should create the Tag table exactly once");
+
+                // items table still intact
+                labels = db.query("select label from items order by id").list(String.class);
+                assertEquals(List.of("hello"), labels);
+
+                // Tag table exists
+                db.execute("insert into tag (id, name) values (1, 'important')");
+                List<Tag> tags = db.query("select id, name from tag").list(Tag.class);
+                assertEquals(1, tags.size());
+                assertEquals("important", tags.get(0).name());
+            }
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void schemaGroupFilterRunsOnlyEnabledGroups() {
+        String dbName = "freeway_group_filter_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty("freeway.db.schema.groups", "core");
+
+        try (Container container = Freeway.create(
+            new DbModule(),
+            binder -> {
+                binder.contribute(SchemaEntity.class)
+                    .add(SchemaEntity.of("core", Category.class));
+                binder.contribute(SchemaEntity.class)
+                    .add(SchemaEntity.of("audit", AuditEntry.class));
+            }
+        )) {
+            Database db = container.get(Database.class);
+
+            // Simulate runSchema's group filtering:
+            // only "core" group should be applied, "audit" skipped
+            Schema.ensure(db, Category.class);
+            // audit group NOT called: Schema.ensure(db, AuditEntry.class)
+
+            // Verify: core table exists
+            db.execute("insert into category (id, name) values (1, 'tech')");
+            List<Category> cats = db.query("select id, name from category").list(Category.class);
+            assertEquals(1, cats.size());
+
+            // Verify: audit table does NOT exist (group was filtered out)
+            assertThrows(RuntimeException.class, () ->
+                db.execute("insert into audit_log (id, message) values (1, 'test')"));
+        }
+    }
+
     private static void restore(String key, String value) {
         if (value == null) {
             System.clearProperty(key);
@@ -133,5 +304,37 @@ class DbModuleTest {
     }
 
     public record LedgerRow(long id, String name, long amountCents, Instant createdAt) {
+    }
+
+    // ===== Schema entity types for integration tests =====
+
+    @Table("category")
+    public static class Category {
+        @Id private Long id;
+        private String name;
+
+        public Category() {}
+        public Long id() { return id; }
+        public String name() { return name; }
+    }
+
+    @Table("tag")
+    public static class Tag {
+        @Id private Long id;
+        private String name;
+
+        public Tag() {}
+        public Long id() { return id; }
+        public String name() { return name; }
+    }
+
+    @Table("audit_log")
+    public static class AuditEntry {
+        @Id private Long id;
+        private String message;
+
+        public AuditEntry() {}
+        public Long id() { return id; }
+        public String message() { return message; }
     }
 }

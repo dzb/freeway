@@ -170,11 +170,12 @@ A compact JDBC data access layer with ORM:
 - `Orm` - lightweight CRUD: `insert`, `update`, `delete`, `findById`, `findAll`, `save` (upsert).
 - `Row` - schema-less query result with type-safe column access.
 - `SQL` - programmatic SQL builder: `SQL.insert("t").set("col", v)`.
-- `RowMapper` - auto-mapping for records, beans, and basic types.
+- `RowMapper` - auto-mapping for records, beans, and basic types; `@Column` annotation drives column name matching.
 - Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus.
 - Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via `freeway.db.pool`. HikariCP adapter available (`freeway-db-hikari`).
-- Schema - `@Table`/`@Column`/`@Id`/`@Generated` annotations + AutoMigrate.
-- Migrations - SQL files in `db/migration/` with checksum tracking.
+- **Dialect** — config-driven selection via `freeway.db.dialect`, URL auto-detection, `PostgresDialect` default. Custom dialects bind by id: `binder.bind(Dialect.class).to(MyDialect.class).id("mysql").primary()`.
+- **Schema** — `@Table`/`@Column`/`@Id`/`@Generated` annotations + `Schema.ensure()` auto-DDL. Entity groups contributed via `SchemaEntity.of("core", User.class)`, filterable via `freeway.db.schema.groups`.
+- **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation, format enforcement, and database-level concurrency lock. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
 - `DatabaseHub` - multi-datasource routing.
 
 Freeway-db is independently usable outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
