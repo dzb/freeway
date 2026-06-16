@@ -1,6 +1,4 @@
-package com.jujin.freeway.db;
-
-import com.jujin.freeway.db.schema.Dialect;
+package com.jujin.freeway.db.schema;
 
 import java.util.Objects;
 
@@ -9,7 +7,7 @@ import java.util.Objects;
  * <p>
  * Contribute via {@code binder.contribute(SchemaEntity.class).add(...)}
  * inside a {@code Module2.bind()}. {@code DbModule} collects all
- * contributed groups and executes {@link com.jujin.freeway.db.schema.Schema#ensure}
+ * contributed groups and executes {@link Schema#ensure}
  * at startup (before migration SQL files), logged by group name.
  *
  * <h3>Usage</h3>
@@ -54,7 +52,9 @@ public final class SchemaEntity {
     /** Logical group name (e.g. "core", "audit"). */
     public String name() { return name; }
 
-    Dialect dialect() { return dialect; }
+    /** Per-group dialect override, or {@code null} to use the global dialect. */
+    public Dialect dialect() { return dialect; }
 
-    Class<?>[] entityTypes() { return entityTypes; }
+    /** The entity classes in this group. */
+    public Class<?>[] entityTypes() { return entityTypes; }
 }

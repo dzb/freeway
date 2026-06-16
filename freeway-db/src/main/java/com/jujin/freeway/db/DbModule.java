@@ -10,6 +10,7 @@ import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.db.schema.Dialect;
 import com.jujin.freeway.db.schema.PostgresDialect;
 import com.jujin.freeway.db.schema.Schema;
+import com.jujin.freeway.db.schema.SchemaEntity;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Module2;
