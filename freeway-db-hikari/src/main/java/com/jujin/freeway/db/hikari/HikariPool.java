@@ -10,11 +10,13 @@ import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class HikariPool implements Pool {
 
     private final HikariDataSource ds;
     private final HikariConfig config;
+    private final AtomicLong borrowCount = new AtomicLong(0);
 
     public HikariPool(PoolConfig config) {
         HikariConfig hc = new HikariConfig();
@@ -34,6 +36,7 @@ public final class HikariPool implements Pool {
     @Override
     public PooledConnection borrow() {
         try {
+            borrowCount.incrementAndGet();
             return new PooledConnection(ds.getConnection(), Instant.now());
         } catch (SQLException e) {
             throw new SqlException("Failed to borrow connection", e);
@@ -57,7 +60,9 @@ public final class HikariPool implements Pool {
             pool.getTotalConnections(),
             pool.getThreadsAwaitingConnection(),
             config.getMaximumPoolSize(),
-            0, 0, 0
+            0, // longLeased — HikariCP does not expose per-connection borrow duration
+            borrowCount.get(),
+            0  // borrowWaitNanos — HikariCP MXBean does not expose cumulative wait time
         );
     }
 

@@ -4,14 +4,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
+import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 class JdkHttpEngineTest {
 
@@ -120,6 +127,86 @@ class JdkHttpEngineTest {
             assertTrue(r.body().contains("Payload Too Large"));
         } finally {
             c.close();
+        }
+    }
+
+    @Test
+    void staticResourceFallthroughContinuesToRoutes(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("existing.txt"), "static file");
+
+        int port = freePort();
+        System.setProperty("web.server.host", "127.0.0.1");
+        System.setProperty("web.server.port", String.valueOf(port));
+        System.setProperty("web.engine", "jdk");
+
+        Container c = Freeway.create(new HttpModule(), binder -> {
+            binder.contribute(StaticResourceMount.class).add(
+                StaticResourceMount.directory("/", tempDir).fallthrough(true)
+            );
+            binder.contribute(Route.class).add(
+                Route.get("/missing.txt", ctx -> ctx.send(200, "route handled"))
+            );
+        });
+        try {
+            c.get(WebServer.class).start();
+            HttpClient client = HttpClient.newHttpClient();
+
+            // Existing file should be served by static mount
+            HttpResponse<String> r1 = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/existing.txt"))
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            assertEquals(200, r1.statusCode());
+            assertEquals("static file", r1.body());
+
+            // Missing file with fallthrough → route handles it
+            HttpResponse<String> r2 = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/missing.txt"))
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            assertEquals(200, r2.statusCode());
+            assertEquals("route handled", r2.body());
+        } finally {
+            c.close();
+        }
+    }
+
+    @Test
+    void engineFallsBackToJdkWhenDefaultUnavailable() throws Exception {
+        int port = freePort();
+        System.setProperty("web.server.host", "127.0.0.1");
+        System.setProperty("web.server.port", String.valueOf(port));
+        System.setProperty("web.engine", "robaho"); // not on classpath
+
+        Container c = Freeway.create(new HttpModule(), binder ->
+            binder.contribute(Route.class)
+                .add(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+        );
+        try {
+            c.get(WebServer.class).start();
+            assertTrue(c.get(WebServer.class).isRunning());
+
+            HttpClient client = HttpClient.newHttpClient();
+            HttpResponse<String> r = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/ping"))
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            assertEquals(200, r.statusCode());
+            assertEquals("pong", r.body());
+        } finally {
+            c.close();
+        }
+    }
+
+    private static int freePort() throws IOException {
+        try (ServerSocket s = new ServerSocket(0)) {
+            return s.getLocalPort();
         }
     }
 }

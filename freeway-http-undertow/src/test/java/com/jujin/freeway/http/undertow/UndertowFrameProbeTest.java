@@ -22,6 +22,12 @@ import java.util.Base64;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.websocket.WebSocketGroup;
+import com.jujin.freeway.http.websocket.WebSocketListener;
+import com.jujin.freeway.http.websocket.WebSocketRoute;
+
 class UndertowFrameProbeTest {
     private AppRuntime app;
 

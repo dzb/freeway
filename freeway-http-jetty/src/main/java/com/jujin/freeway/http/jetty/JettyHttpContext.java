@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.RequestContext;
-import com.jujin.freeway.http.SseEmitter;
+import com.jujin.freeway.http.sse.SseEmitter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -159,6 +159,7 @@ final class JettyHttpContext extends HttpContext {
 
     @Override
     public HttpContext headerSet(String name, String value) {
+        validateHeaderValue(value);
         response.getHeaders().put(name, value);
         return this;
     }

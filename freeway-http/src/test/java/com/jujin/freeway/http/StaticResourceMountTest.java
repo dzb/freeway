@@ -15,6 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.jujin.freeway.http.staticfile.StaticResourceMount;
+
 class StaticResourceMountTest {
     @TempDir
     Path tempDir;

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`List<T>` contribution injection** — contributions can now be injected directly as `List<T>` instead of requiring `Extension<T>` + manual `.all()`. Constructor params auto-resolve; fields need `@Inject`. (`resolveContributed`)
 - **`RowMapperResolver(Coercer, List<RowMapping>)`** — IoC-friendly constructor for contributed row mappers.
 - **`DatabaseHubImpl(List<DatabaseNamed>)`** — IoC-friendly constructor for contributed named databases.
+- **`HealthCheck`** — `@FunctionalInterface` for pluggable health endpoint responses. Default returns `{"status":"ok"}`; bind a custom implementation for DB/external service checks.
+- **`HealthFilter`** — `HttpFilter` that intercepts the health endpoint (`web.health.enabled`, `web.health.path`) before routing. Injected into `WebServer` alongside `CorsFilter`.
+- **CRLF validation in `headerSet`** — all `HttpContext` implementations now reject `\r`/`\n` in header values, preventing HTTP response header injection.
 
 ### Changed
 
@@ -21,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HTTP internals** — `RouteIndex`, `WebSocketIndex`, and `WebServer` constructors now take `List<T>` instead of `Extension<T>`. Seven parameters dropped `.all()` calls.
 - **`InjectResolver` restructured** — `Extension<Foo>` and `List<Foo>` resolution moved into dedicated `resolveContributed()` method, fixing a hidden bug where `@Inject Extension<Foo>` on fields would construct a broken empty Extension instance.
 - **POM hygiene** — removed empty `<compilerArgs>`, `<argLine>`, and `<configuration>` stanzas; removed stale `--enable-preview` documentation.
+- **`RequestBodyTooLargeException` → `BodyTooLargeException`** — shorter, cleaner name; moved to `body` sub-package.
+- **`WebServer` constructor** — `HealthFilter` parameter replaces individual `@Value web.health.enabled` / `web.health.path` parameters. Health check is now pluggable via `HealthCheck` binding.
+- **`PathJoiner` API** — consolidated `normalizePrefix` + `normalizePath` into a single `normalize` method.
+- **`HikariPool`** — now tracks `borrowCount` via internal counter (was hardcoded 0 in stats). Added 7 integration tests covering concurrency, exhaustion, close semantics, and health check query forwarding.
+- **`WebSocketRoute`** — `PathPattern` now cached at construction time instead of re-parsed on every match.
+- **`StaticResourceMount.StaticAsset`** — ETag computed once at construction (was SHA-256 per request).
+- **`WebServer` filter chain** — pre-built in constructor instead of reconstructed per request.
+- **Robaho `WebSocketSession`** — request headers snapshotted at upgrade time, matching Undertow/Jetty behavior.
+- **`UndertowWebEngine` exception handling** — removed double `RuntimeException` wrapping of handler errors.
+- **Enhanced test coverage** — HTTP module 30→62 tests (`FilterChain`, `ExceptionMapper`, `StaticResourceConditional`, `ClasspathResourceSource`, `HealthFilter`, engine fallback, static fallthrough).
 
 ### Removed
 

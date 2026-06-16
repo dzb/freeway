@@ -218,7 +218,7 @@ User sets `freeway.db.pool=hikari` in config; the primary binding resolves to `H
 
 | Module | Purpose |
 |--------|---------|
-| `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"`. |
+| `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"` and default exception mappers (`BodyTooLargeException` → 413, `ValidationException` → 400). |
 | `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (selectable via `freeway.db.pool`), registers `DatabaseHub`. |
 | `HikariPoolModule` | Binds `HikariPool` as a `Pool` implementation with `id("hikari").primary()`. |
 | `KafkaModule` | Creates `KafkaConfig`, binds `KafkaEventBridge` and `KafkaSubscriber`, registers `RuntimeHook` for Kafka lifecycle. |
@@ -627,7 +627,7 @@ The HTTP package stays flat under `com.jujin.freeway.http`. Public contracts and
 | Body | `BodyHandler`, `RequestContext`, `RequestContextDefault`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
-| Built-ins | `JsonCodecDefault`, `CorsFilter`, `RequestTimingFilter`, `StaticResources`, `ExceptionMapper` |
+| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`, `StaticResources`, `ExceptionMapper` |
 
 ### Routes
 
@@ -697,7 +697,33 @@ public class AuthFilter implements HttpFilter {
 binder.contribute(HttpFilter.class).add(new AuthFilter());
 ```
 
-Built-in filters: `RequestTimingFilter` (logs request duration), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys).
+Built-in filters: `RequestTimingFilter` (logs request duration), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys), `HealthFilter` (health endpoint, see below).
+
+### Health Check
+
+The health endpoint is powered by `HealthFilter` and `HealthCheck`. By default it responds `{"status":"ok"}` at `GET /healthz`. Customize the path via config or replace the check logic:
+
+```java
+// Custom health check — bind your own implementation
+binder.bind(HealthCheck.class).to(MyDbHealthCheck.class);
+
+public class MyDbHealthCheck implements HealthCheck {
+    private final Database db;
+    public MyDbHealthCheck(Database db) { this.db = db; }
+    public Object check() {
+        return Map.of("status", db.ping() ? "ok" : "degraded", "db", db.ping());
+    }
+}
+```
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `web.health.enabled` | `true` | Enable/disable the health endpoint |
+| `web.health.path` | `/healthz` | Path for the health check endpoint |
+
+The health endpoint responds before routing and static files, ensuring it always returns quickly regardless of registered routes.
 
 ### Static Resources
 
@@ -765,6 +791,8 @@ binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
     return false;     // not handled, continues to next mapper
 });
 ```
+
+Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationException` → 400.
 
 ### Engine Selection
 

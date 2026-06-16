@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.RequestContext;
-import com.jujin.freeway.http.SseEmitter;
+import com.jujin.freeway.http.sse.SseEmitter;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.HttpString;
 import java.io.IOException;
@@ -122,6 +122,7 @@ final class UndertowHttpContext extends HttpContext {
 
     @Override
     public HttpContext headerSet(String name, String value) {
+        validateHeaderValue(value);
         exchange.getResponseHeaders().put(new HttpString(name), value);
         return this;
     }

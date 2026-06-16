@@ -6,6 +6,9 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.http.sse.SseEmitter;
+import com.jujin.freeway.http.sse.SseEvent;
+
 class SseEmitterTest {
 
     @Test

@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.jujin.freeway.http.filter.CorsFilter;
+
 class CorsFilterTest {
     @Test
     void addsHeadersForPreflight() throws Exception {

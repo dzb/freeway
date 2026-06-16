@@ -6,6 +6,11 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteIndex;
+import com.jujin.freeway.http.websocket.WebSocketListener;
+import com.jujin.freeway.http.websocket.WebSocketRoute;
+
 class RouteIndexTest {
 
     @Test

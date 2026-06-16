@@ -1,6 +1,18 @@
 package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.defer.Defer;
+import com.jujin.freeway.http.event.*;
+import com.jujin.freeway.http.filter.CorsFilter;
+import com.jujin.freeway.http.filter.ExceptionMapper;
+import com.jujin.freeway.http.filter.HealthFilter;
+import com.jujin.freeway.http.filter.HttpFilter;
+import com.jujin.freeway.http.filter.RequestTimingFilter;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteHandler;
+import com.jujin.freeway.http.route.RouteIndex;
+import com.jujin.freeway.http.sse.SseEmitter;
+import com.jujin.freeway.http.staticfile.StaticResourceMount;
+import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.annotation.Value;
@@ -14,8 +26,8 @@ import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import com.jujin.freeway.http.websocket.WebSocketMatch;
 
 public final class WebServer implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(WebServer.class);
@@ -30,9 +42,9 @@ public final class WebServer implements AutoCloseable {
     private final Container container;
     private final String webEngineId;
     private final HttpServerConfig config;
-    private final boolean healthEnabled;
-    private final String healthPath;
+    private final HealthFilter healthFilter;
     private final HttpRequestHandler requestHandler;
+    private final RouteHandler filterChain;
 
     private volatile HttpServerHandle handle;
 
@@ -40,6 +52,7 @@ public final class WebServer implements AutoCloseable {
         RouteIndex routes,
         WebSocketIndex websocketIndex,
         CorsFilter corsFilter,
+        HealthFilter healthFilter,
         List<StaticResourceMount> staticMounts,
         List<HttpFilter> filters,
         List<ExceptionMapper> mappers,
@@ -48,9 +61,7 @@ public final class WebServer implements AutoCloseable {
         @Value("${web.server.host:127.0.0.1}") String host,
         @Value("${web.server.port:8080}") int port,
         @Value("${web.server.backlog:0}") int backlog,
-        @Value("${web.server.shutdown-grace-seconds:2}") int shutdownGraceSeconds,
-        @Value("${web.health.enabled:true}") boolean healthEnabled,
-        @Value("${web.health.path:/healthz}") String healthPath
+        @Value("${web.server.shutdown-grace-seconds:2}") int shutdownGraceSeconds
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");
         this.websocketIndex = Objects.requireNonNull(websocketIndex, "websocketIndex");
@@ -60,11 +71,11 @@ public final class WebServer implements AutoCloseable {
         this.filters = List.copyOf(preparedFilters.filters());
         this.timingFilter = preparedFilters.timingFilter();
         this.mappers = mappers;
+        this.filterChain = buildChain(this::dispatchToRoute, this.filters);
         this.container = Objects.requireNonNull(container, "container");
         this.webEngineId = webEngineId;
+        this.healthFilter = Objects.requireNonNull(healthFilter, "healthFilter");
         this.config = new HttpServerConfig(host, port, backlog, shutdownGraceSeconds);
-        this.healthEnabled = healthEnabled;
-        this.healthPath = normalizeHealthPath(healthPath);
         this.requestHandler = new HttpRequestHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
@@ -233,37 +244,26 @@ public final class WebServer implements AutoCloseable {
     }
 
     private void processRequest(HttpContext ctx) throws Exception {
-        RouteHandler inner = request -> {
-            if (healthEnabled && "GET".equalsIgnoreCase(request.method()) && healthPath.equals(request.path())) {
-                request.sendJson(200, Map.of("status", "ok"));
-                return;
-            }
-            for (StaticResourceMount mount : staticMounts) {
-                if (mount.matches(request.method(), request.path())) {
-                    if (mount.serve(request)) {
-                        return;
-                    }
-                    // fallthrough：文件不存在，继续交给后续路由处理
-                }
-            }
-            RouteIndex.RouteMatch match = routes.match(request.method(), request.path());
-            if (match == null) {
-                request.send(404, "Not Found");
-                return;
-            }
-            request.pathVariables(match.pathVariables());
-            match.handler().handle(request);
-        };
-        RouteHandler chain = buildChain(inner, this.filters);
+        RouteHandler chain = next -> healthFilter.doFilter(next, this.filterChain);
         corsFilter.doFilter(ctx, chain);
     }
 
-    private static String normalizeHealthPath(String healthPath) {
-        String path = HttpContext.blankToNull(healthPath);
-        if (path == null) {
-            return "/healthz";
+    private void dispatchToRoute(HttpContext request) throws Exception {
+        for (StaticResourceMount mount : staticMounts) {
+            if (mount.matches(request.method(), request.path())) {
+                if (mount.serve(request)) {
+                    return;
+                }
+                // fallthrough: file not found, continue to route matching
+            }
         }
-        return path.startsWith("/") ? path : "/" + path;
+        RouteIndex.RouteMatch match = routes.match(request.method(), request.path());
+        if (match == null) {
+            request.send(404, "Not Found");
+            return;
+        }
+        request.pathVariables(match.pathVariables());
+        match.handler().handle(request);
     }
 
     private void handleException(HttpContext ctx, Exception exception) {
@@ -288,7 +288,8 @@ public final class WebServer implements AutoCloseable {
     private void publish(Object event) {
         try {
             container.get(EventBus.class).publish(event);
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            LOG.debug("EventBus publish failed for {}: {}", event.getClass().getSimpleName(), ex.getMessage());
         }
     }
 

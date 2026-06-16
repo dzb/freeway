@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.http.*;
+import com.jujin.freeway.http.websocket.*;
 import io.undertow.Handlers;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
@@ -57,6 +58,8 @@ final class UndertowWebEngine implements HttpEngine {
     private void handle(HttpServerExchange exchange, HttpRequestHandler handler) {
         try {
             dispatch(exchange, handler);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
         } catch (Exception ex) {
             throw new RuntimeException("Undertow request dispatch failed", ex);
         }

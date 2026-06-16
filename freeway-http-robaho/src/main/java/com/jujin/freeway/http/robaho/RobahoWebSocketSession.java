@@ -1,12 +1,15 @@
 package com.jujin.freeway.http.robaho;
 
 import com.jujin.freeway.http.*;
+import com.jujin.freeway.http.internal.*;
+import com.jujin.freeway.http.websocket.*;
 import com.sun.net.httpserver.HttpExchange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import robaho.net.httpserver.websockets.*;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -21,6 +24,7 @@ final class RobahoWebSocketSession extends WebSocket implements WebSocketSession
     private final String path;
     private final Map<String, String> pathVariables;
     private final Map<String, List<String>> queryParams;
+    private final Map<String, List<String>> headers;
     private final Object sendLock = new Object();
     private volatile WebSocketListener listener = WebSocketListener.NOOP;
 
@@ -33,6 +37,7 @@ final class RobahoWebSocketSession extends WebSocket implements WebSocketSession
         this.path = exchange.getRequestURI().getPath();
         this.pathVariables = pathVariables == null ? Map.of() : Map.copyOf(pathVariables);
         this.queryParams = JdkHttpContext.parseQueryParams(exchange.getRequestURI().getRawQuery());
+        this.headers = snapshotHeaders(exchange);
     }
 
     private final StringBuilder continuationBuffer = new StringBuilder();
@@ -141,13 +146,13 @@ final class RobahoWebSocketSession extends WebSocket implements WebSocketSession
 
     @Override
     public String header(String name) {
-        return exchange.getRequestHeaders().getFirst(name);
+        List<String> values = headers.get(name);
+        return values != null && !values.isEmpty() ? values.get(0) : null;
     }
 
     @Override
     public List<String> headers(String name) {
-        List<String> values = exchange.getRequestHeaders().get(name);
-        return values != null ? values : List.of();
+        return headers.getOrDefault(name, List.of());
     }
 
     @Override
@@ -200,5 +205,12 @@ final class RobahoWebSocketSession extends WebSocket implements WebSocketSession
         super.close(closeCode, reason, false);
     }
 
+    private static Map<String, List<String>> snapshotHeaders(HttpExchange exchange) {
+        LinkedHashMap<String, List<String>> headers = new LinkedHashMap<>();
+        exchange.getRequestHeaders().forEach((name, values) -> {
+            headers.put(name, List.copyOf(values));
+        });
+        return Map.copyOf(headers);
+    }
 
 }

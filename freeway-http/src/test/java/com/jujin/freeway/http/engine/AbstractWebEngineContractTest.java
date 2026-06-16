@@ -21,6 +21,14 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.websocket.WebSocketGroup;
+import com.jujin.freeway.http.websocket.WebSocketListener;
+import com.jujin.freeway.http.websocket.WebSocketRoute;
+import com.jujin.freeway.http.websocket.WebSocketSession;
+
+import com.jujin.freeway.http.WebServer;
+
 public abstract class AbstractWebEngineContractTest {
     private AppRuntime app;
 
@@ -200,7 +208,7 @@ public abstract class AbstractWebEngineContractTest {
             binder.contribute(WebSocketGroup.class).add(WebSocketGroup.of("/ws",
                 WebSocketRoute.of("/lifecycle", session -> new WebSocketListener() {
                     @Override
-                    public void onOpen(com.jujin.freeway.http.WebSocketSession session) throws Exception {
+                    public void onOpen(com.jujin.freeway.http.websocket.WebSocketSession session) throws Exception {
                         opened.complete(null);
                     }
 

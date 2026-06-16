@@ -2,6 +2,9 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.body.MultipartForm;
+import com.jujin.freeway.http.body.BodyTooLargeException;
+import com.jujin.freeway.http.sse.SseEmitter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,6 +23,7 @@ public abstract class HttpContext {
     );
 
     private Map<String, String> pathVariables = Map.of();
+    // Each HttpContext is confined to a single request thread; no synchronization needed.
     private MultipartForm cachedMultipart;
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
@@ -122,7 +126,7 @@ public abstract class HttpContext {
                 continue;
             }
             if (total > maxBodySize - read) {
-                throw new RequestBodyTooLargeException(maxBodySize);
+                throw new BodyTooLargeException(maxBodySize);
             }
             out.write(buffer, 0, read);
             total += read;
@@ -150,6 +154,24 @@ public abstract class HttpContext {
     public abstract int statusCode();
 
     public abstract HttpContext headerSet(String name, String value);
+
+    /**
+     * Validates that a header value does not contain CR or LF characters,
+     * preventing HTTP response header injection.
+     *
+     * @throws IllegalArgumentException if the value contains CR or LF
+     */
+    protected static void validateHeaderValue(String value) {
+        if (value != null) {
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (c == '\r' || c == '\n') {
+                    throw new IllegalArgumentException(
+                        "Header value must not contain CR/LF");
+                }
+            }
+        }
+    }
 
     public abstract HttpContext output(byte[] data) throws IOException;
 

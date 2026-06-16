@@ -20,6 +20,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.body.MultipartForm;
+import com.jujin.freeway.http.filter.ExceptionMapper;
+import com.jujin.freeway.http.filter.HttpFilter;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteGroup;
+import com.jujin.freeway.http.staticfile.StaticResourceMount;
+import com.jujin.freeway.http.staticfile.StaticResources;
+
 class WebServerIntegrationTest {
     private Container container;
     private HttpClient client;

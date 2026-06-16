@@ -1,8 +1,8 @@
 package com.jujin.freeway.http.undertow;
 
 import com.jujin.freeway.http.RequestContext;
-import com.jujin.freeway.http.WebSocketListener;
-import com.jujin.freeway.http.WebSocketSession;
+import com.jujin.freeway.http.websocket.WebSocketListener;
+import com.jujin.freeway.http.websocket.WebSocketSession;
 import io.undertow.websockets.core.AbstractReceiveListener;
 import io.undertow.websockets.core.BufferedBinaryMessage;
 import io.undertow.websockets.core.BufferedTextMessage;

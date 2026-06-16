@@ -3,6 +3,7 @@ package com.jujin.freeway.http;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import com.jujin.freeway.http.internal.RequestContextDefault;
 
 public interface RequestContext {
     String correlationId();

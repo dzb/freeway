@@ -1,5 +1,7 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.http.websocket.WebSocketMatch;
+
 @FunctionalInterface
 public interface HttpRequestHandler {
     void handle(HttpContext ctx) throws Exception;

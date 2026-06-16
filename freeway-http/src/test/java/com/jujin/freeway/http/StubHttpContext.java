@@ -7,6 +7,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.jujin.freeway.http.sse.SseEmitter;
+
 final class StubHttpContext extends HttpContext {
 
     @SuppressWarnings("unchecked")

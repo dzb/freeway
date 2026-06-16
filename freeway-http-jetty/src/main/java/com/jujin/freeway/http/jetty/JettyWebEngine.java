@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.http.*;
+import com.jujin.freeway.http.websocket.*;
 import org.eclipse.jetty.server.*;
 import org.eclipse.jetty.server.handler.GracefulHandler;
 import org.eclipse.jetty.util.Fields;

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.jujin.freeway.http.body.MultipartForm;
+
 class MultipartFormTest {
     @Test
     void parsesFieldsAndFiles() throws Exception {

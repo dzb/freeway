@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.jujin.freeway.http.internal.JdkHttpContext;
+
 class HttpContextTest {
     @Test
     void maxBodySizeMustBePositive() {
