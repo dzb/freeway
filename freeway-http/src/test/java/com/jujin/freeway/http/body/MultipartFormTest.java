@@ -1,4 +1,4 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.body;
 
 import java.nio.charset.StandardCharsets;
 

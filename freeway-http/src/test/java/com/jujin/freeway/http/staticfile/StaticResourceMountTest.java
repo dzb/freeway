@@ -1,4 +1,6 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.staticfile;
+
+import com.jujin.freeway.http.StubHttpContext;
 
 import java.io.IOException;
 import java.io.InputStream;

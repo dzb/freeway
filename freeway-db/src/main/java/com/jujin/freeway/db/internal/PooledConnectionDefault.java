@@ -1,17 +1,18 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
 import java.sql.Connection;
 import java.time.Duration;
 import java.time.Instant;
 
-public final class PooledConnection {
+public final class PooledConnectionDefault implements PooledConnection {
 
     private final Connection conn;
     private final Instant createdAt;
     private volatile Instant lastReturned;
     private volatile Instant borrowedAt; // null when idle, non-null when borrowed
 
-    public PooledConnection(Connection conn, Instant createdAt) {
+    public PooledConnectionDefault(Connection conn, Instant createdAt) {
         this.conn = conn;
         this.createdAt = createdAt;
         this.lastReturned = createdAt;

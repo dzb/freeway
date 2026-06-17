@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.internal;
+package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.coercion.Coercer;

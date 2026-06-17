@@ -1,6 +1,6 @@
 package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway.db.Names;
+import com.jujin.freeway.db.util.Names;
 import java.util.ArrayList;
 import java.util.List;
 

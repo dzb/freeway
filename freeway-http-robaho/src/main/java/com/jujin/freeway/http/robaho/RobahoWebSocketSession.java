@@ -1,7 +1,6 @@
 package com.jujin.freeway.http.robaho;
 
 import com.jujin.freeway.http.*;
-import com.jujin.freeway.http.internal.*;
 import com.jujin.freeway.http.websocket.*;
 import com.sun.net.httpserver.HttpExchange;
 import org.slf4j.Logger;

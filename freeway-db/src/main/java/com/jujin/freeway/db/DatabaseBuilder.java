@@ -59,7 +59,9 @@ public final class DatabaseBuilder {
         Coercer effective = coercer;
         if (effective == null) {
             CoercerDefault cd = new CoercerDefault();
-            Coercions.registerJdbcDefaults(cd);
+            for (var rule : Coercions.jdbcDefaults()) {
+                cd.register(rule);
+            }
             effective = cd;
         }
         return new DatabaseImpl(

@@ -1,7 +1,7 @@
 package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.commons.bean.BeanPlan;
-import com.jujin.freeway.db.Names;
+import com.jujin.freeway.db.util.Names;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.validation.NotBlank;
 import com.jujin.freeway.commons.validation.NotNull;
@@ -18,16 +18,39 @@ import java.time.LocalTime;
 import java.util.*;
 
 /**
- * Java 类型到 SQL 类型的映射表。
- * 同时整合注解约束（{@code @NotNull}, {@code @Size} 等）推导列定义。
+ * Java-to-SQL type mapping.
+ * Also integrates annotation constraints ({@code @NotNull}, {@code @Size}, etc.)
+ * to derive column definitions.
  */
 public final class SqlTypeMapping {
 
     private SqlTypeMapping() {}
 
-    /**
-     * 从 BeanPlan 和属性推导完整的列定义列表。
-     */
+    private static final Set<Class<?>> BASIC_TYPES = Set.of(
+        String.class,
+        Integer.class, int.class,
+        Long.class, long.class,
+        Double.class, double.class,
+        Float.class, float.class,
+        Short.class, short.class,
+        Byte.class, byte.class,
+        Boolean.class, boolean.class,
+        Character.class, char.class,
+        BigDecimal.class,
+        BigInteger.class,
+        LocalDate.class,
+        LocalDateTime.class,
+        LocalTime.class,
+        Instant.class,
+        UUID.class,
+        byte[].class
+    );
+
+    public static boolean isBasicType(Class<?> type) {
+        return BASIC_TYPES.contains(type) || type.isEnum();
+    }
+
+    /** Derives a complete list of column definitions from a BeanPlan and its properties. */
     static List<ColumnDef> columns(BeanPlan plan, Dialect dialect) {
         List<ColumnDef> defs = new ArrayList<>();
         for (BeanProperty property : plan.properties()) {
@@ -40,8 +63,9 @@ public final class SqlTypeMapping {
     }
 
     /**
-     * 从 BeanPlan 提取索引定义。
-     * 多个字段使用相同索引名时合并为复合索引，列顺序按字段声明顺序。
+     * Extracts index definitions from a BeanPlan.
+     * Fields sharing the same index name are merged into a composite index,
+     * with column order matching field declaration order.
      */
     static List<IndexDef> indexes(BeanPlan plan, String tableName) {
         Map<String, List<String>> groups = new LinkedHashMap<>();
@@ -72,7 +96,7 @@ public final class SqlTypeMapping {
             String name = entry.getKey();
             List<String> cols = entry.getValue();
             boolean unique = uniqueFlags.getOrDefault(name, false);
-            // 复合索引中任一字段标记 unique 则整体为 unique
+            // Composite index: unique if any field is marked unique
             result.add(new IndexDef(name, List.copyOf(cols), unique));
         }
         return List.copyOf(result);
@@ -94,9 +118,7 @@ public final class SqlTypeMapping {
         );
     }
 
-    /**
-     * 列名：优先 @Column.value，其次字段名转 snake_case。
-     */
+    /** Column name: @Column.value first, then property name → snake_case. */
     public static String columnName(BeanProperty property, Column col) {
         if (col != null && !col.value().isBlank()) {
             return col.value().trim();
@@ -104,9 +126,7 @@ public final class SqlTypeMapping {
         return Names.camelToSnake(property.name());
     }
 
-    /**
-     * 表名：优先 @Table.value，其次类名转 snake_case。
-     */
+    /** Table name: @Table.value first, then class name → snake_case. */
     public static String tableName(Class<?> type) {
         Table table = type.getAnnotation(Table.class);
         if (table != null && !table.value().isBlank()) {
@@ -121,7 +141,7 @@ public final class SqlTypeMapping {
         Column col,
         Dialect dialect
     ) {
-        // 显式覆盖
+        // Explicit override
         if (col != null && !col.type().isBlank()) {
             return col.type().trim().toUpperCase();
         }
@@ -140,8 +160,8 @@ public final class SqlTypeMapping {
     }
 
     /**
-     * 字符串类型精度：@Column.length > @Size.max > 默认 255。
-     * 枚举默认 32。
+     * String precision: @Column.length > @Size.max > default 255.
+     * Enums default to 32.
      */
     private static String resolveStringType(
         Class<?> javaType,
@@ -168,8 +188,8 @@ public final class SqlTypeMapping {
     }
 
     /**
-     * DECIMAL 精度：@Column.precision > @Column.length（fallback）> 默认 30。
-     * 小数位：@Column.scale（仅当 precision &gt; 0），默认 2。
+     * DECIMAL precision: @Column.precision > @Column.length (fallback) > default 30.
+     * Scale: @Column.scale (only when precision &gt; 0), default 2.
      */
     private static String resolveDecimalType(Column col) {
         if (col == null) {

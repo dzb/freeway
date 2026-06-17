@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.internal;
+package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
@@ -13,12 +13,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpEngine;
-import com.jujin.freeway.http.HttpRequestHandler;
-import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.HttpServerHandle;
-import com.jujin.freeway.http.RequestContext;
 
 public final class JdkHttpEngine implements HttpEngine {
 

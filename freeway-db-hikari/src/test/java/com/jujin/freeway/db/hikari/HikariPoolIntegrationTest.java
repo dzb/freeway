@@ -1,7 +1,7 @@
 package com.jujin.freeway.db.hikari;
 
 import com.jujin.freeway.db.*;
-import com.jujin.freeway.db.internal.PooledConnection;
+import com.jujin.freeway.db.PooledConnection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;

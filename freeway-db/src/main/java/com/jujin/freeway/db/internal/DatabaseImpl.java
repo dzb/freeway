@@ -1,5 +1,8 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.util.Names;
+
 import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.db.*;
 import java.sql.SQLException;

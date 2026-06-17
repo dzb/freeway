@@ -5,12 +5,13 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.db.Names;
+import com.jujin.freeway.db.util.Names;
 import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.RowMapping;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.schema.Column;
+import com.jujin.freeway.db.schema.SqlTypeMapping;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -133,33 +134,7 @@ public final class RowMapperResolver {
     }
 
     private boolean isBasicType(Class<?> type) {
-        return (
-            type == String.class ||
-            type == Integer.class ||
-            type == int.class ||
-            type == Long.class ||
-            type == long.class ||
-            type == Double.class ||
-            type == double.class ||
-            type == Float.class ||
-            type == float.class ||
-            type == Short.class ||
-            type == short.class ||
-            type == Byte.class ||
-            type == byte.class ||
-            type == Boolean.class ||
-            type == boolean.class ||
-            type == Character.class ||
-            type == char.class ||
-            type == BigDecimal.class ||
-            type == BigInteger.class ||
-            type == LocalDate.class ||
-            type == LocalDateTime.class ||
-            type == LocalTime.class ||
-            type == Instant.class ||
-            type == UUID.class ||
-            type == byte[].class
-        );
+        return SqlTypeMapping.isBasicType(type);
     }
 
     private <T> RowMapper<T> createBasic(Class<T> type) {

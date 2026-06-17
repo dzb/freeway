@@ -3,7 +3,6 @@ package com.jujin.freeway.http.route;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import com.jujin.freeway.http.internal.PathJoiner;
 
 public record RouteGroup(String prefix, List<Route> routes) {
     public RouteGroup {

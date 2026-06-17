@@ -9,7 +9,7 @@ import java.util.Map;
 
 import com.jujin.freeway.http.sse.SseEmitter;
 
-final class StubHttpContext extends HttpContext {
+public final class StubHttpContext extends HttpContext {
 
     @SuppressWarnings("unchecked")
     private static <T> T coerce(Object input, Class<T> targetType) {
@@ -43,18 +43,18 @@ final class StubHttpContext extends HttpContext {
     private int statusCode = 200;
     private String body;
 
-    StubHttpContext() {
+    public StubHttpContext() {
         this("GET", "/");
     }
 
-    StubHttpContext(String method, String path) {
+    public StubHttpContext(String method, String path) {
         super(new JsonCodecDefault(COERCER), COERCER);
         this.method = method;
         this.path = path;
         this.requestContext = RequestContext.create();
     }
 
-    StubHttpContext header(String name, String value) {
+    public StubHttpContext header(String name, String value) {
         headers.put(name, value);
         return this;
     }
@@ -63,7 +63,7 @@ final class StubHttpContext extends HttpContext {
         return statusCode;
     }
 
-    String responseBody() {
+    public String responseBody() {
         return body;
     }
 

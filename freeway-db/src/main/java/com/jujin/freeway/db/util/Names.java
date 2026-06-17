@@ -1,4 +1,4 @@
-package com.jujin.freeway.db;
+package com.jujin.freeway.db.util;
 
 public final class Names {
     private Names() {}

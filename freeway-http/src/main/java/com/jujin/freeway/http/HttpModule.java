@@ -8,7 +8,6 @@ import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.filter.RequestTimingFilter;
-import com.jujin.freeway.http.internal.JdkHttpEngine;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.ioc.*;

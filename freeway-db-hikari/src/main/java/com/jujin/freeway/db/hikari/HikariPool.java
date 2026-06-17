@@ -3,13 +3,13 @@ package com.jujin.freeway.db.hikari;
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.PoolConfig;
+import com.jujin.freeway.db.PooledConnection;
 import com.jujin.freeway.db.SqlException;
-import com.jujin.freeway.db.internal.PooledConnection;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
+import java.sql.Connection;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class HikariPool implements Pool {
@@ -37,7 +37,7 @@ public final class HikariPool implements Pool {
     public PooledConnection borrow() {
         try {
             borrowCount.incrementAndGet();
-            return new PooledConnection(ds.getConnection(), Instant.now());
+            return new HkConn(ds.getConnection());
         } catch (SQLException e) {
             throw new SqlException("Failed to borrow connection", e);
         }
@@ -70,4 +70,6 @@ public final class HikariPool implements Pool {
     public void close() {
         ds.close();
     }
+
+    private record HkConn(Connection connection) implements PooledConnection {}
 }

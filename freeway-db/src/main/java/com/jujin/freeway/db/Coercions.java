@@ -1,7 +1,6 @@
 package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -23,9 +22,4 @@ final class Coercions {
         );
     }
 
-    static void registerJdbcDefaults(CoercerDefault coercer) {
-        for (CoerceRule<?, ?> rule : jdbcDefaults()) {
-            coercer.register(rule);
-        }
-    }
 }

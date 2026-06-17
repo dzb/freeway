@@ -1,22 +1,20 @@
-package com.jujin.freeway.http.internal;
-
-import com.jujin.freeway.commons.json.JsonCodec;
+package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.sse.SseEmitter;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.RequestContext;
-import com.jujin.freeway.http.sse.SseEmitter;
 
 public final class JdkHttpContext extends HttpContext {
+
     private final HttpExchange exchange;
     private final RequestContext requestContext;
     private final Map<String, List<String>> queryParams;
@@ -24,11 +22,18 @@ public final class JdkHttpContext extends HttpContext {
     private int responseStatus = 200;
     private boolean responded;
 
-    public JdkHttpContext(HttpExchange exchange, JsonCodec jsonCodec, Coercer coercer, RequestContext requestContext) {
+    public JdkHttpContext(
+        HttpExchange exchange,
+        JsonCodec jsonCodec,
+        Coercer coercer,
+        RequestContext requestContext
+    ) {
         super(jsonCodec, coercer);
         this.exchange = exchange;
         this.requestContext = requestContext;
-        this.queryParams = parseQueryParams(exchange.getRequestURI().getRawQuery());
+        this.queryParams = parseQueryParams(
+            exchange.getRequestURI().getRawQuery()
+        );
     }
 
     @Override
@@ -107,8 +112,11 @@ public final class JdkHttpContext extends HttpContext {
         if (responded) {
             return this;
         }
-        boolean headRequest = "HEAD".equalsIgnoreCase(exchange.getRequestMethod());
-        long length = responseStatus == 204 || responseStatus == 304 ? 0 : data.length;
+        boolean headRequest = "HEAD".equalsIgnoreCase(
+            exchange.getRequestMethod()
+        );
+        long length =
+            responseStatus == 204 || responseStatus == 304 ? 0 : data.length;
         exchange.sendResponseHeaders(responseStatus, length);
         responded = true;
         try (OutputStream os = exchange.getResponseBody()) {
@@ -141,9 +149,12 @@ public final class JdkHttpContext extends HttpContext {
         }
         for (String pair : rawQuery.split("&")) {
             int eq = pair.indexOf('=');
-            String name = eq >= 0 ? decode(pair.substring(0, eq)) : decode(pair);
+            String name =
+                eq >= 0 ? decode(pair.substring(0, eq)) : decode(pair);
             String value = eq >= 0 ? decode(pair.substring(eq + 1)) : "";
-            params.computeIfAbsent(name, ignored -> new ArrayList<>()).add(value);
+            params
+                .computeIfAbsent(name, ignored -> new ArrayList<>())
+                .add(value);
         }
         return params;
     }

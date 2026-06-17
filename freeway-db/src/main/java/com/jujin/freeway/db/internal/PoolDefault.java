@@ -1,5 +1,7 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
+
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.PoolConfig;
@@ -29,8 +31,8 @@ public final class PoolDefault implements Pool {
 
     private final PoolConfig config;
     private final Semaphore semaphore;
-    private final ConcurrentLinkedDeque<PooledConnection> idle;
-    private final ConcurrentLinkedDeque<PooledConnection> active;
+    private final ConcurrentLinkedDeque<PooledConnectionDefault> idle;
+    private final ConcurrentLinkedDeque<PooledConnectionDefault> active;
     private final AtomicInteger total;
     private final AtomicLong borrowCount;
     private final AtomicLong borrowWaitNanos;
@@ -49,7 +51,7 @@ public final class PoolDefault implements Pool {
         startCleaner();
     }
 
-    public PooledConnection borrow() {
+    public PooledConnectionDefault borrow() {
         ensureOpen();
         long waitStart = System.nanoTime();
         try {
@@ -74,7 +76,7 @@ public final class PoolDefault implements Pool {
 
         boolean success = false;
         try {
-            PooledConnection conn = idle.pollFirst();
+            PooledConnectionDefault conn = idle.pollFirst();
             if (conn != null) {
                 if (conn.isFresh(FRESH_IDLE_THRESHOLD) || isValid(conn)) {
                     success = true;
@@ -104,23 +106,24 @@ public final class PoolDefault implements Pool {
         if (conn == null) {
             return;
         }
-        if (!active.remove(conn)) {
+        PooledConnectionDefault pc = (PooledConnectionDefault) conn;
+        if (!active.remove(pc)) {
             // Already removed (e.g. force-closed during shutdown)
             return;
         }
-        if (closed || !isAlive(conn)) {
-            destroy(conn);
+        if (closed || !isAlive(pc)) {
+            destroy(pc);
             semaphore.release();
             return;
         }
-        conn.markReturned();
-        idle.offerFirst(conn);
+        pc.markReturned();
+        idle.offerFirst(pc);
         semaphore.release();
     }
 
     public DatabaseStats stats() {
         int longLeased = 0;
-        for (PooledConnection conn : active) {
+        for (PooledConnectionDefault conn : active) {
             if (conn.isLeaked(LEAK_THRESHOLD)) {
                 longLeased++;
             }
@@ -150,7 +153,7 @@ public final class PoolDefault implements Pool {
             }
         }
 
-        PooledConnection conn;
+        PooledConnectionDefault conn;
         while ((conn = idle.pollFirst()) != null) {
             closePhysical(conn);
             total.decrementAndGet();
@@ -195,7 +198,7 @@ public final class PoolDefault implements Pool {
                 break;
             }
             try {
-                PooledConnection conn = createConnection();
+                PooledConnectionDefault conn = createConnection();
                 total.incrementAndGet();
                 idle.offerFirst(conn);
                 semaphore.release();
@@ -230,7 +233,7 @@ public final class PoolDefault implements Pool {
         Instant now = Instant.now();
         var it = idle.iterator();
         while (it.hasNext()) {
-            PooledConnection conn = it.next();
+            PooledConnectionDefault conn = it.next();
             if (
                 conn.isExpired(now, config.maxLifetime(), config.maxIdleTime())
             ) {
@@ -249,7 +252,7 @@ public final class PoolDefault implements Pool {
                 break;
             }
             try {
-                PooledConnection conn = createConnection();
+                PooledConnectionDefault conn = createConnection();
                 total.incrementAndGet();
                 idle.offerFirst(conn);
                 semaphore.release();
@@ -260,7 +263,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private PooledConnection createConnection() {
+    private PooledConnectionDefault createConnection() {
         try {
             Properties properties = new Properties();
             properties.setProperty("user", config.username());
@@ -284,7 +287,7 @@ public final class PoolDefault implements Pool {
                         config.url()
                 );
             }
-            return new PooledConnection(conn, Instant.now());
+            return new PooledConnectionDefault(conn, Instant.now());
         } catch (SQLException e) {
             throw new SqlException(
                 "Failed to create connection: " + e.getMessage(),
@@ -293,11 +296,11 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private boolean isValid(PooledConnection conn) {
+    private boolean isValid(PooledConnectionDefault conn) {
         return isAlive(conn) && healthCheck(conn);
     }
 
-    private boolean isAlive(PooledConnection conn) {
+    private boolean isAlive(PooledConnectionDefault conn) {
         return !conn.isExpired(
             Instant.now(),
             config.maxLifetime(),
@@ -305,7 +308,7 @@ public final class PoolDefault implements Pool {
         );
     }
 
-    private boolean healthCheck(PooledConnection pooled) {
+    private boolean healthCheck(PooledConnectionDefault pooled) {
         try {
             Connection conn = pooled.connection();
             int timeoutSec = (int) Math.max(
@@ -328,7 +331,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private void closePhysical(PooledConnection conn) {
+    private void closePhysical(PooledConnectionDefault conn) {
         try {
             conn.connection().close();
         } catch (SQLException e) {
@@ -336,7 +339,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private void destroy(PooledConnection conn) {
+    private void destroy(PooledConnectionDefault conn) {
         closePhysical(conn);
         total.decrementAndGet();
     }

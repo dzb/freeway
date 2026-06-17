@@ -1,5 +1,7 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
+
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.PoolConfig;
 import java.time.Duration;
@@ -38,13 +40,13 @@ class PoolDefaultTest {
         DatabaseStats after = pool.stats();
 
         assertEquals(1, after.active());
-        assertNotNull(conn.borrowedAt());
+        assertNotNull(((PooledConnectionDefault) conn).borrowedAt());
 
         pool.release(conn);
         // 归还后：active 归零，borrowedAt 已清除
         DatabaseStats released = pool.stats();
         assertEquals(0, released.active());
-        assertNull(conn.borrowedAt());
+        assertNull(((PooledConnectionDefault) conn).borrowedAt());
 
         pool.close();
     }
@@ -92,17 +94,17 @@ class PoolDefaultTest {
         PooledConnection c2 = pool.borrow();
 
         assertEquals(2, pool.stats().active());
-        assertNotNull(c1.borrowedAt());
-        assertNotNull(c2.borrowedAt());
+        assertNotNull(((PooledConnectionDefault) c1).borrowedAt());
+        assertNotNull(((PooledConnectionDefault) c2).borrowedAt());
 
         pool.release(c1);
         assertEquals(1, pool.stats().active());
-        assertNull(c1.borrowedAt());
-        assertNotNull(c2.borrowedAt());
+        assertNull(((PooledConnectionDefault) c1).borrowedAt());
+        assertNotNull(((PooledConnectionDefault) c2).borrowedAt());
 
         pool.release(c2);
         assertEquals(0, pool.stats().active());
-        assertNull(c2.borrowedAt());
+        assertNull(((PooledConnectionDefault) c2).borrowedAt());
 
         pool.close();
     }

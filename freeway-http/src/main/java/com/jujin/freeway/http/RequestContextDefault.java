@@ -1,19 +1,23 @@
-package com.jujin.freeway.http.internal;
+package com.jujin.freeway.http;
 
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import com.jujin.freeway.http.RequestContext;
 
 public final class RequestContextDefault implements RequestContext {
+
     private final String correlationId;
     private final Instant startTime;
-    private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Object> attributes =
+        new ConcurrentHashMap<>();
     private volatile Object principal;
 
     public RequestContextDefault(String correlationId, Instant startTime) {
-        this.correlationId = Objects.requireNonNull(correlationId, "correlationId");
+        this.correlationId = Objects.requireNonNull(
+            correlationId,
+            "correlationId"
+        );
         this.startTime = Objects.requireNonNull(startTime, "startTime");
     }
 

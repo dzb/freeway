@@ -1,4 +1,6 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.staticfile;
+
+import com.jujin.freeway.http.StubHttpContext;
 
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import org.junit.jupiter.api.Test;

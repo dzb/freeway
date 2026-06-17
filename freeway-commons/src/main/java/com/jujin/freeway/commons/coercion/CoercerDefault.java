@@ -64,12 +64,16 @@ public final class CoercerDefault implements Coercer {
         CoercionKey key = new CoercionKey(sourceType, targetType);
 
         // 优先使用自定义规则
-        @SuppressWarnings("unchecked")
-        CoerceRule<Object, Object> rule = (CoerceRule<Object, Object>) rules.get(key);
+        CoerceRule<Object, Object> rule = (CoerceRule<
+            Object,
+            Object
+        >) rules.get(key);
         if (rule != null) {
             try {
                 //noinspection unchecked
-                return (T) rule.converter().apply(rule.sourceType().cast(input));
+                return (T) rule
+                    .converter()
+                    .apply(rule.sourceType().cast(input));
             } catch (Exception e) {
                 throw new IllegalStateException(
                     String.format(
@@ -143,12 +147,25 @@ public final class CoercerDefault implements Coercer {
     // --- canCoerce / conversions ---
 
     private static final Set<Class<?>> BUILTIN_SCALAR_TARGETS = Set.of(
-        String.class, Boolean.class, boolean.class,
-        Character.class, char.class,
-        Integer.class, int.class, Long.class, long.class,
-        Short.class, short.class, Byte.class, byte.class,
-        Double.class, double.class, Float.class, float.class,
-        BigDecimal.class, BigInteger.class
+        String.class,
+        Boolean.class,
+        boolean.class,
+        Character.class,
+        char.class,
+        Integer.class,
+        int.class,
+        Long.class,
+        long.class,
+        Short.class,
+        short.class,
+        Byte.class,
+        byte.class,
+        Double.class,
+        double.class,
+        Float.class,
+        float.class,
+        BigDecimal.class,
+        BigInteger.class
     );
 
     @Override
@@ -163,7 +180,10 @@ public final class CoercerDefault implements Coercer {
 
         // Step 2: 兼容匹配自定义规则（子类/实现类）
         for (CoercionKey k : rules.keySet()) {
-            if (k.targetType() == targetType && k.sourceType().isAssignableFrom(sourceType)) {
+            if (
+                k.targetType() == targetType &&
+                k.sourceType().isAssignableFrom(sourceType)
+            ) {
                 return true;
             }
         }
@@ -178,20 +198,25 @@ public final class CoercerDefault implements Coercer {
 
         // 自定义规则
         for (CoerceRule<?, ?> rule : rules.values()) {
-            map.computeIfAbsent(rule.targetType(), k -> new LinkedHashSet<>())
-               .add(rule.sourceType());
+            map.computeIfAbsent(rule.targetType(), k ->
+                new LinkedHashSet<>()
+            ).add(rule.sourceType());
         }
 
         // 内置标量 — Object.class 表示任意源类型
         for (Class<?> target : BUILTIN_SCALAR_TARGETS) {
-            map.computeIfAbsent(target, k -> new LinkedHashSet<>())
-               .add(Object.class);
+            map.computeIfAbsent(target, k -> new LinkedHashSet<>()).add(
+                Object.class
+            );
         }
 
         return Collections.unmodifiableMap(map);
     }
 
-    private static boolean canCoerceBuiltin(Class<?> sourceType, Class<?> targetType) {
+    private static boolean canCoerceBuiltin(
+        Class<?> sourceType,
+        Class<?> targetType
+    ) {
         // null → any (默认值)
         if (sourceType == Void.class) return true;
         // identity / 继承

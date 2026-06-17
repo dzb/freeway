@@ -4,7 +4,6 @@ import com.jujin.freeway.commons.json.JsonCodec;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.http.*;
-import com.jujin.freeway.http.internal.*;
 import com.jujin.freeway.http.websocket.*;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;

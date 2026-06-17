@@ -1,4 +1,6 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.filter;
+
+import com.jujin.freeway.http.StubHttpContext;
 
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;

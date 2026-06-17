@@ -1,4 +1,4 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.sse;
 
 import static org.junit.jupiter.api.Assertions.*;
 

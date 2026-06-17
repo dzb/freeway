@@ -1,5 +1,7 @@
 package com.jujin.freeway.db.schema;
 
+import com.jujin.freeway.db.schema.PostgresDialect;
+
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseBuilder;
@@ -73,7 +75,7 @@ class SchemaTest {
     void ensureCreatesTableWhenNotExists() {
         Database db = builder("ensure_create").build();
         try (db) {
-            int applied = Schema.ensure(db, User.class);
+            int applied = Schema.ensure(db, new PostgresDialect(), User.class);
             assertEquals(1, applied, "should create 1 table");
 
             // 验证表可查询
@@ -92,7 +94,7 @@ class SchemaTest {
     void ensureCreatesMultipleTables() {
         Database db = builder("ensure_multi").build();
         try (db) {
-            int applied = Schema.ensure(db, User.class, Post.class);
+            int applied = Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
             assertEquals(2, applied);
 
             String count1 = db.query("SELECT COUNT(*) FROM users").one(String.class).orElseThrow();
@@ -106,10 +108,10 @@ class SchemaTest {
     void ensureIsIdempotent() {
         Database db = builder("ensure_idempotent").build();
         try (db) {
-            int first = Schema.ensure(db, User.class);
+            int first = Schema.ensure(db, new PostgresDialect(), User.class);
             assertEquals(1, first);
 
-            int second = Schema.ensure(db, User.class);
+            int second = Schema.ensure(db, new PostgresDialect(), User.class);
             assertEquals(0, second);
         }
     }
@@ -118,9 +120,9 @@ class SchemaTest {
     void ensureIdempotentAcrossMultipleTables() {
         Database db = builder("ensure_idem_multi").build();
         try (db) {
-            Schema.ensure(db, User.class, Post.class);
+            Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
-            int again = Schema.ensure(db, User.class, Post.class);
+            int again = Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
             assertEquals(0, again, "second ensure should do nothing");
         }
     }
@@ -140,7 +142,7 @@ class SchemaTest {
                 """);
 
             // 新实体有 email 列
-            int applied = Schema.ensure(db, UserV2.class);
+            int applied = Schema.ensure(db, new PostgresDialect(), UserV2.class);
             assertEquals(1, applied, "should add 1 column");
 
             // 验证新列存在
@@ -165,7 +167,7 @@ class SchemaTest {
                 )
                 """);
 
-            int applied = Schema.ensure(db, UserV3.class);
+            int applied = Schema.ensure(db, new PostgresDialect(), UserV3.class);
             assertEquals(0, applied, "should NOT alter existing table");
 
             // 验证 extra_col 仍在
@@ -180,7 +182,7 @@ class SchemaTest {
     void ensureRespectsTableAnnotation() {
         Database db = builder("ensure_tableann").build();
         try (db) {
-            int applied = Schema.ensure(db, AnnotatedUser.class);
+            int applied = Schema.ensure(db, new PostgresDialect(), AnnotatedUser.class);
             assertEquals(1, applied, "should create table");
 
             // 验证表名存在
@@ -200,7 +202,7 @@ class SchemaTest {
     void ensureCreatesNotNullColumns() {
         Database db = builder("ensure_notnull").build();
         try (db) {
-            Schema.ensure(db, NotNullUser.class);
+            Schema.ensure(db, new PostgresDialect(), NotNullUser.class);
 
             var rows = db.query(
                 "SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE UPPER(TABLE_NAME) = ? ORDER BY ORDINAL_POSITION",
@@ -219,7 +221,7 @@ class SchemaTest {
     void ensureCreatesVarcharWithSize() {
         Database db = builder("ensure_size").build();
         try (db) {
-            Schema.ensure(db, SizedUser.class);
+            Schema.ensure(db, new PostgresDialect(), SizedUser.class);
 
             // 验证列存在即可（类型验证已在 DDL 生成测试中覆盖）
             Set<String> cols = columnNames(db, "sized_user");
@@ -233,8 +235,8 @@ class SchemaTest {
     void dropRemovesTable() {
         Database db = builder("drop_table").build();
         try (db) {
-            Schema.ensure(db, User.class);
-            Schema.drop(db, User.class);
+            Schema.ensure(db, new PostgresDialect(), User.class);
+            Schema.drop(db, new PostgresDialect(), User.class);
 
             List<String> tables = tableNames(db);
             assertFalse(tables.contains("users"), "table should be dropped");
@@ -245,10 +247,10 @@ class SchemaTest {
     void dropIsIdempotent() {
         Database db = builder("drop_idempotent").build();
         try (db) {
-            Schema.ensure(db, User.class);
-            Schema.drop(db, User.class);
+            Schema.ensure(db, new PostgresDialect(), User.class);
+            Schema.drop(db, new PostgresDialect(), User.class);
             // 再次 drop 不应报错（IF EXISTS）
-            Schema.drop(db, User.class);
+            Schema.drop(db, new PostgresDialect(), User.class);
         }
     }
 
@@ -259,7 +261,7 @@ class SchemaTest {
         Database db = builder("lifecycle").build();
         try (db) {
             // 1. 建表
-            Schema.ensure(db, User.class);
+            Schema.ensure(db, new PostgresDialect(), User.class);
 
             // 2. 插入
             db.execute("INSERT INTO users (name, email) VALUES (?, ?)", "Alice", "alice@example.com");
@@ -270,7 +272,7 @@ class SchemaTest {
             assertEquals("Alice", name);
 
             // 4. 新版本实体加列
-            int added = Schema.ensure(db, UserWithBio.class);
+            int added = Schema.ensure(db, new PostgresDialect(), UserWithBio.class);
             assertEquals(1, added);
 
             // 5. 更新新列
@@ -289,7 +291,7 @@ class SchemaTest {
     void ensureCreatesIndexOnNewTable() {
         Database db = builder("ensure_idx_new").build();
         try (db) {
-            int applied = Schema.ensure(db, IndexedUser.class);
+            int applied = Schema.ensure(db, new PostgresDialect(), IndexedUser.class);
             assertEquals(1, applied, "should create 1 table (indexes not counted)");
 
             // 验证索引存在
@@ -315,7 +317,7 @@ class SchemaTest {
                 """);
 
             // ensure 加索引（索引不计入 applied）
-            Schema.ensure(db, ExistingIdxUser.class);
+            Schema.ensure(db, new PostgresDialect(), ExistingIdxUser.class);
 
             var indexes = db.query(
                 "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES WHERE UPPER(TABLE_NAME) = ?",
@@ -330,9 +332,9 @@ class SchemaTest {
     void ensureIndexIsIdempotent() {
         Database db = builder("ensure_idx_idempotent").build();
         try (db) {
-            Schema.ensure(db, IndexedUser.class);
+            Schema.ensure(db, new PostgresDialect(), IndexedUser.class);
             // 第二次 ensure 不应重复创建索引
-            int again = Schema.ensure(db, IndexedUser.class);
+            int again = Schema.ensure(db, new PostgresDialect(), IndexedUser.class);
             assertEquals(0, again, "second ensure should do nothing");
         }
     }

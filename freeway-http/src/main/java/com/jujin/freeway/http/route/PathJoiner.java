@@ -1,17 +1,17 @@
-package com.jujin.freeway.http.internal;
-
-import java.util.Objects;
+package com.jujin.freeway.http.route;
 
 public final class PathJoiner {
-    private PathJoiner() {
-    }
+
+    private PathJoiner() {}
 
     /**
      * Normalizes a path segment for joining: ensures leading {@code /}, strips trailing
      * {@code /}, returns {@code ""} for the root path ({@code null}, empty, or {@code "/"}).
      */
     public static String normalize(String path) {
-        if (path == null || (path = path.trim()).isEmpty() || "/".equals(path)) {
+        if (
+            path == null || (path = path.trim()).isEmpty() || "/".equals(path)
+        ) {
             return "";
         }
         if (!path.startsWith("/")) {
