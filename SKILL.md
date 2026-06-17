@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、Module2、binder.install、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、Module2、binder.install、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway 开发技能
@@ -14,12 +14,15 @@ freeway-commons     JSON、类型转换、Defer、ScopedCache、Bean 内省、�
 freeway-ioc         IoC 容器：绑定、注入、作用域、AOP、事件总线、扩展
 freeway-boot        launcher、配置级联、profiles、运行时生命周期
 freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipart、SSE
-  ├ freeway-http-robaho  零依赖引擎（默认）
-  ├ freeway-http-undertow Undertow 适配
-  └ freeway-http-jetty   Jetty 适配
+  ├ 内置引擎          JDK HttpServer（HTTP only，无 WebSocket）
+  └ 外部引擎          Robaho / Undertow / Jetty → 见 freeway-ext
 freeway-db          JDBC：ORM、连接池、事务、SQL 构建器、迁移
-  └ freeway-db-hikari   HikariCP 连接池适配
-freeway-mq-kafka    Kafka 适配器 for EventBus
+  └ 外部连接池        HikariCP → 见 freeway-ext
+
+第三方库适配器（freeway-http-robaho, freeway-http-undertow,
+freeway-http-jetty, freeway-db-hikari, freeway-mq-kafka）已
+拆分到独立仓库 [freeway-ext](https://github.com/dzb/freeway-ext)。
+核心模块零外部依赖。
 ```
 
 ## 启动应用
@@ -604,6 +607,33 @@ binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
 });
 ```
 
+### 健康检查
+
+内置 `/healthz` 端点，可插拔：
+
+```java
+// 默认：返回 {"status": "ok"}
+// 自定义：绑定 HealthCheck 实现
+@FunctionalInterface
+public interface HealthCheck {
+    Object check();
+}
+
+binder.bind(HealthCheck.class).to(c -> () -> {
+    // 检查 DB、外部服务等
+    DataSource ds = c.get(DataSource.class);
+    try (var conn = ds.getConnection()) {
+        if (!conn.isValid(3)) return Map.of("status", "degraded", "db", "unreachable");
+    }
+    return Map.of("status", "ok", "db", "connected");
+}).primary();
+```
+
+| 配置键 | 默认值 | 说明 |
+|--------|--------|------|
+| `web.health.enabled` | `true` | 启用/关闭健康检查 |
+| `web.health.path` | `/healthz` | 健康检查路径 |
+
 ## 数据库
 
 ### 独立使用（无 IoC）
@@ -751,8 +781,8 @@ Freeway 提供两种互补的数据库演进机制：Schema（注解驱动，当
 #### Schema — 注解驱动的自动 DDL
 
 ```java
-// 独立使用
-Schema.ensure(db, User.class, Post.class);
+// 独立使用（dialect 参数必须显式提供）
+Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
 // 策略：表不存在 → CREATE TABLE IF NOT EXISTS
 //       列缺失   → ALTER TABLE ADD COLUMN
@@ -930,7 +960,7 @@ try {
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "");
 Database db = new DatabaseBuilder().config(config).build();
-Schema.ensure(db, TestEntity.class);
+Schema.ensure(db, new PostgresDialect(), TestEntity.class);
 ```
 
 ## 设计约定
