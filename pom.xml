@@ -71,21 +71,6 @@
             </dependency>
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-http-robaho</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-http-undertow</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-http-jetty</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
                 <artifactId>freeway-db</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -202,11 +187,6 @@
         <module>freeway-ioc</module>
         <module>freeway-boot</module>
         <module>freeway-http</module>
-        <module>freeway-http-robaho</module>
-        <module>freeway-http-undertow</module>
-        <module>freeway-http-jetty</module>
         <module>freeway-db</module>
-        <module>freeway-mq-kafka</module>
-        <module>freeway-db-hikari</module>
     </modules>
 </project>

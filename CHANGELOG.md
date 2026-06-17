@@ -23,20 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Container.extension()`** — default method changed to abstract; removed misleading `get(Extension.class, entryType.getName())` fallback.
 - **HTTP internals** — `RouteIndex`, `WebSocketIndex`, and `WebServer` constructors now take `List<T>` instead of `Extension<T>`. Seven parameters dropped `.all()` calls.
 - **`InjectResolver` restructured** — `Extension<Foo>` and `List<Foo>` resolution moved into dedicated `resolveContributed()` method, fixing a hidden bug where `@Inject Extension<Foo>` on fields would construct a broken empty Extension instance.
-- **POM hygiene** — removed empty `<compilerArgs>`, `<argLine>`, and `<configuration>` stanzas; removed stale `--enable-preview` documentation.
-- **`RequestBodyTooLargeException` → `BodyTooLargeException`** — shorter, cleaner name; moved to `body` sub-package.
-- **`WebServer` constructor** — `HealthFilter` parameter replaces individual `@Value web.health.enabled` / `web.health.path` parameters. Health check is now pluggable via `HealthCheck` binding.
-- **`PathJoiner` API** — consolidated `normalizePrefix` + `normalizePath` into a single `normalize` method.
+- **HTTP package restructuring** — filter, route, body, event, sse, staticfile, and websocket classes extracted into sub-packages. `JdkHttpContext`/`JdkHttpEngine`/`RequestContextDefault` moved from `internal` back to root. `PathJoiner` moved to `route`. `RequestBodyTooLargeException` renamed to `BodyTooLargeException`. Test packages mirrored to match source layout.
+- **`PooledConnection` interface** — extracted from the old concrete class (now `PooledConnectionDefault`). Public `Pool` API now returns the interface, eliminating the cross-module `internal` boundary violation in the HikariCP adapter.
+- **`HikariPoolModule`** — now binds `Pool.class` instead of `HikariPool.class`, aligning with `DbModule.resolvePool()`.
+- **`Schema.ensure()` / `drop()`** — no-dialect convenience overloads removed; caller must supply explicit dialect. `SchemaGenerator` no-arg constructor removed.
+- **`SqlTypeMapping.BASIC_TYPES`** — shared type set extracted; `RowMapperResolver.isBasicType()` delegates to `SqlTypeMapping.isBasicType()`, eliminating duplicated type lists.
+- **`Coercions`** — `registerJdbcDefaults()` removed; callers use `jdbcDefaults()` directly for a single entry point.
+- **`Names`** — moved from `db` to `db/util`.
+- **Schema package Javadoc** — all Chinese comments converted to English across 13 files.
 - **`HikariPool`** — now tracks `borrowCount` via internal counter (was hardcoded 0 in stats). Added 7 integration tests covering concurrency, exhaustion, close semantics, and health check query forwarding.
 - **`WebSocketRoute`** — `PathPattern` now cached at construction time instead of re-parsed on every match.
 - **`StaticResourceMount.StaticAsset`** — ETag computed once at construction (was SHA-256 per request).
 - **`WebServer` filter chain** — pre-built in constructor instead of reconstructed per request.
 - **Robaho `WebSocketSession`** — request headers snapshotted at upgrade time, matching Undertow/Jetty behavior.
 - **`UndertowWebEngine` exception handling** — removed double `RuntimeException` wrapping of handler errors.
-- **Enhanced test coverage** — HTTP module 30→62 tests (`FilterChain`, `ExceptionMapper`, `StaticResourceConditional`, `ClasspathResourceSource`, `HealthFilter`, engine fallback, static fallthrough).
+- **Enhanced test coverage** — HTTP module 30→62 tests (`FilterChain`, `ExceptionMapper`, `StaticResourceConditional`, `ClasspathResourceSource`, `HealthFilter`, engine fallback, static fallthrough). DB: `RowTest`, `PooledConnectionDefaultTest`.
 
 ### Removed
 
+- **Extension adapter modules** — `freeway-http-robaho`, `freeway-http-undertow`, `freeway-http-jetty`, `freeway-mq-kafka`, and `freeway-db-hikari` moved to the [freeway-ext](https://github.com/dzb/freeway-ext) repository. Core modules (`commons`, `ioc`, `boot`, `http`, `db`) remain in this repository, keeping their zero-external-dependency guarantee.
 - **`Extension.Key`** — the `(Class<?> entryType, String name)` record, superseded by bare `Class<?>` as map key.
 - **`Binder.contribute(Class, String name)`** — dead API surface, no callers.
 - **`DbModule.buildResolver()` / `buildHub()`** — static methods replaced with inline provider lambdas.
@@ -131,8 +136,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **freeway-commons** — shared utilities: JSON, coercion, logging bootstrap.
 - **freeway-ioc** — IoC container with singleton/prototype/thread scopes, constructor and field injection, `@Symbol`/`@Value` config injection, extension/contribution mechanism.
 - **freeway-boot** — application launcher with config cascade (CLI → env → profile files → default files), profile activation, and runtime lifecycle hooks.
-- **freeway-http** — HTTP/WebSocket layer with trie-based routing, path variables, regex constraints, static resources, multipart, SSE. Engine adapters: JDK (built-in), robaho (default, WebSocket), Undertow, Jetty.
+- **freeway-http** — HTTP/WebSocket layer with trie-based routing, path variables, regex constraints, static resources, multipart, SSE, pluggable engines.
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
+- Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
 [1.1.1]: https://github.com/dzb/freeway/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/dzb/freeway/compare/v1.0.0...v1.1.0

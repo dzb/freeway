@@ -9,14 +9,16 @@ Zero classpath scanning. Compose-first API. No magic.
 | `freeway-commons` | Shared utilities: JSON, coercion, Defer, ScopedCache, logging |
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
-| `freeway-http` | HTTP/WebSocket layer: routing, filters, static, multipart |
+| `freeway-http` | HTTP layer: routing, filters, static, multipart, websocket |
 | `├ built-in` | JDK HttpServer engine, HTTP only                          |
-| `├ freeway-http-robaho` | Zero-dep engine with WebSocket (default)                  |
-| `├ freeway-http-undertow` | Undertow transport adapter                                |
-| `└ freeway-http-jetty` | Jetty transport adapter                                   |
+| `└ engine adapters` | Undertow, Jetty, Robaho — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
-| `└ freeway-db-hikari` | HikariCP connection pool adapter                          |
-| `freeway-mq-kafka` | Kafka adapter for EventBus: distributed pub/sub           |
+| `└ connection pool` | HikariCP adapter — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+| `├ MQ adapter` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+
+Core modules have zero external dependencies. Extension modules with third-party
+library integrations live in **[freeway-ext](https://github.com/dzb/freeway-ext)**.
+Pick only the adapters you need.
 
 ## Philosophy
 
@@ -151,15 +153,15 @@ The HTTP layer is deliberately thin:
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
-- Pluggable engines - JDK, Robaho, Undertow, and Jetty adapters.
+- Pluggable engines — built-in JDK engine; Undertow, Jetty, and Robaho adapters available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
 Switch engines with config:
 
 ```properties
-web.engine=robaho
-web.engine=jdk
-web.engine=undertow
-web.engine=jetty
+web.engine=jdk          # built-in (HTTP only, no WebSocket)
+web.engine=robaho       # via freeway-ext
+web.engine=undertow     # via freeway-ext
+web.engine=jetty        # via freeway-ext
 ```
 
 ### DB (`freeway-db`)
@@ -172,7 +174,7 @@ A compact JDBC data access layer with ORM:
 - `SQL` - programmatic SQL builder: `SQL.insert("t").set("col", v)`.
 - `RowMapper` - auto-mapping for records, beans, and basic types; `@Column` annotation drives column name matching.
 - Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus.
-- Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via `freeway.db.pool`. HikariCP adapter available (`freeway-db-hikari`).
+- Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via `freeway.db.pool`. HikariCP adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).
 - **Dialect** — config-driven selection via `freeway.db.dialect`, URL auto-detection, `PostgresDialect` default. Custom dialects bind by id: `binder.bind(Dialect.class).to(MyDialect.class).id("mysql").primary()`.
 - **Schema** — `@Table`/`@Column`/`@Id`/`@Generated` annotations + `Schema.ensure()` auto-DDL. Entity groups contributed via `SchemaEntity.of("core", User.class)`, filterable via `freeway.db.schema.groups`.
 - **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation, format enforcement, and database-level concurrency lock. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
@@ -180,19 +182,26 @@ A compact JDBC data access layer with ORM:
 
 Freeway-db is independently usable outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
 
-### MQ (`freeway-mq-kafka`)
+### Extensions
 
-Kafka adapter for the EventBus — enables distributed pub/sub across JVM instances:
+Third-party integrations are available in the **[freeway-ext](https://github.com/dzb/freeway-ext)** repository:
 
-- `KafkaEventBridge` - implements `EventBridge`, sends events to Kafka broker.
-- `KafkaSubscriber` - polls Kafka, publishes back to local EventBus.
-- `KafkaModule` - registers services, wires bridge to EventBus at startup.
+| Module | Description |
+|--------|-------------|
+| `freeway-http-robaho` | Robaho HTTP engine with WebSocket |
+| `freeway-http-undertow` | Undertow web server adapter |
+| `freeway-http-jetty` | Jetty 12 web server + WebSocket adapter |
+| `freeway-db-hikari` | HikariCP connection pool adapter |
+| `freeway-mq-kafka` | Kafka EventBus bridge for distributed pub/sub |
 
-Activate with `new KafkaModule()` and configure:
+Add the snapshot repository and the extensions you need:
 
-```properties
-freeway.kafka.bootstrap-servers=localhost:9092
-freeway.kafka.topics=post.created,comment.added
+```xml
+<dependency>
+    <groupId>com.jujin8.freeway</groupId>
+    <artifactId>freeway-mq-kafka</artifactId>
+    <version>${freeway.version}</version>
+</dependency>
 ```
 
 ## Configuration
