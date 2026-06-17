@@ -1,0 +1,79 @@
+############################################################
+#  Freeway 2 Configuration Reference
+#  Copy to src/main/resources/application.properties
+############################################################
+
+# -- Profile activation ------------------------------------
+# Activate via: --freeway.profile=dev
+# or env: FREEWAY_PROFILE=dev
+
+# ================================
+#  HTTP / Web Server
+# ================================
+
+# Engine: jdk | robaho | undertow | jetty
+# jdk is built-in (HTTP only, no WebSocket).
+# robaho, undertow, jetty require freeway-ext on the classpath.
+web.engine=robaho
+
+# Server bind
+web.server.host=127.0.0.1
+web.server.port=8080
+web.server.backlog=0
+web.server.shutdown-grace-seconds=2
+
+# Health endpoint
+web.health.enabled=true
+web.health.path=/healthz
+
+# CORS
+web.cors.enabled=true
+web.cors.allowed-origins=*
+web.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
+web.cors.allowed-headers=Content-Type, Authorization
+web.cors.exposed-headers=
+web.cors.max-age=3600
+web.cors.allow-credentials=false
+
+# ================================
+#  Database
+# ================================
+
+# Connection (required — no defaults)
+freeway.db.url=jdbc:postgresql://localhost:5432/mydb
+freeway.db.username=postgres
+freeway.db.password=
+
+# Pool selection: builtin | hikari
+freeway.db.pool=builtin
+freeway.db.pool.max-size=10
+freeway.db.pool.min-idle=2
+freeway.db.pool.connection-timeout=30s
+freeway.db.pool.max-lifetime=30m
+freeway.db.pool.max-idle-time=10m
+freeway.db.pool.clean-interval=5m
+freeway.db.pool.health-check-query=
+freeway.db.pool.health-check-timeout=3s
+
+# Query
+freeway.db.query-timeout=30s
+
+# Schema Auto-DDL
+freeway.db.schema.auto=true
+freeway.db.schema.groups=
+
+# Dialect: postgresql (default) — detect from JDBC URL
+freeway.db.dialect=
+
+# SQL Migrations
+freeway.db.migration.enabled=true
+freeway.db.migration.path=db/migration/
+freeway.db.migration.table=_migrations
+
+# ================================
+#  Kafka (freeway-ext)
+# ================================
+
+freeway.kafka.bootstrap-servers=localhost:9092
+freeway.kafka.group-id=freeway
+freeway.kafka.topics=
