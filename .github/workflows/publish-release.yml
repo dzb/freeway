@@ -64,6 +64,9 @@ jobs:
           git add pom.xml **/pom.xml
           git commit -m "release: ${RELEASE_VERSION}"
 
+      - name: Test
+        run: mvn test --batch-mode --no-transfer-progress
+
       - name: Deploy to Maven Central
         run: mvn deploy --batch-mode --no-transfer-progress -DskipTests -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
 

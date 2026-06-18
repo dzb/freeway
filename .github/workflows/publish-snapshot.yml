@@ -52,5 +52,8 @@ jobs:
           </settings>
           SETTINGS
 
+      - name: Test
+        run: mvn test --batch-mode --no-transfer-progress
+
       - name: Deploy Snapshot
         run: mvn deploy --batch-mode --no-transfer-progress -DskipTests -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
