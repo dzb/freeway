@@ -92,11 +92,21 @@ public final class Extension<V> {
         for (Entry entry : entries) {
             for (String id : entry.afterIds) {
                 Entry dep = byId.get(id);
-                if (dep != null) addEdge(dep, entry, outgoing, indegree);
+                if (dep == null) {
+                    throw new IllegalArgumentException(
+                        "Unknown id '" + id + "' in after() — referenced by '"
+                            + entry.id + "'");
+                }
+                addEdge(dep, entry, outgoing, indegree);
             }
             for (String id : entry.beforeIds) {
                 Entry target = byId.get(id);
-                if (target != null) addEdge(entry, target, outgoing, indegree);
+                if (target == null) {
+                    throw new IllegalArgumentException(
+                        "Unknown id '" + id + "' in before() — referenced by '"
+                            + entry.id + "'");
+                }
+                addEdge(entry, target, outgoing, indegree);
             }
         }
 

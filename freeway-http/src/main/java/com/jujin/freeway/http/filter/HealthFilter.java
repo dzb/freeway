@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.filter;
 
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.ioc.annotation.Value;
 
@@ -41,6 +42,6 @@ public final class HealthFilter implements HttpFilter {
         if (path == null || path.isBlank()) {
             return "/healthz";
         }
-        return path.startsWith("/") ? path : "/" + path;
+        return PathPattern.normalizePath(path);
     }
 }
