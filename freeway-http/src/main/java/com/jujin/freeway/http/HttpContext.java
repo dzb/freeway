@@ -220,8 +220,9 @@ public abstract class HttpContext {
         return outputJson(value);
     }
 
+    @Deprecated
     public static String blankToNull(String s) {
-        return s != null && !s.isBlank() ? s : null;
+        return com.jujin.freeway.commons.util.Strings.blankToNull(s);
     }
 
     public static RequestContext createRequestContext(

@@ -5,8 +5,9 @@ import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.ConfigLoader;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.json.JsonObject;
+import com.jujin.freeway.commons.util.Maps;
 import java.io.IOException;
-import com.jujin.freeway.commons.io.InputStreams;
+import com.jujin.freeway.commons.util.IoUtils;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -82,7 +83,7 @@ public final class BootConfigLoader implements ConfigLoader {
             return Map.of();
         }
 
-        try (stream; InputStream bounded = InputStreams.bounded(stream, 16L * 1024 * 1024, resourceName)) {
+        try (stream; InputStream bounded = IoUtils.bounded(stream, 16L * 1024 * 1024, resourceName)) {
             Properties properties = new Properties();
             properties.load(bounded);
             Map<String, String> values = new LinkedHashMap<>();
@@ -104,9 +105,7 @@ public final class BootConfigLoader implements ConfigLoader {
 
         try (stream) {
             JsonObject root = JsonUtils.parseObject(stream);
-            Map<String, String> values = new LinkedHashMap<>();
-            flatten("", root.toMap(), values);
-            return values;
+            return Maps.flatten(root.toMap(), ".");
         } catch (IOException | RuntimeException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
         }
@@ -114,32 +113,6 @@ public final class BootConfigLoader implements ConfigLoader {
 
     private static String resourceName(String baseName, String profile, String suffix) {
         return baseName + "-" + profile + "." + suffix;
-    }
-
-    private static String childKey(String prefix, String key) {
-        return prefix.isEmpty() ? key : prefix + "." + key;
-    }
-
-    private static void flatten(String prefix, Map<String, Object> source, Map<String, String> target) {
-        source.forEach((key, value) -> flattenValue(childKey(prefix, key), value, target));
-    }
-
-    private static void flatten(String prefix, List<?> source, Map<String, String> target) {
-        for (int i = 0; i < source.size(); i++) {
-            flattenValue(prefix + "." + i, source.get(i), target);
-        }
-    }
-
-    private static void flattenValue(String key, Object value, Map<String, String> target) {
-        if (value instanceof Map<?, ?> map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> nested = (Map<String, Object>) map;
-            flatten(key, nested, target);
-        } else if (value instanceof List<?> list) {
-            flatten(key, list, target);
-        } else if (value != null) {
-            target.put(key, String.valueOf(value));
-        }
     }
 
     private static Map<String, String> parseArgs(String... args) {

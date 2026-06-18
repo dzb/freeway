@@ -3,20 +3,9 @@ package com.jujin.freeway.db.util;
 public final class Names {
     private Names() {}
 
+    @Deprecated
     public static String camelToSnake(String camel) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < camel.length(); i++) {
-            char c = camel.charAt(i);
-            if (Character.isUpperCase(c)) {
-                if (i > 0) {
-                    sb.append('_');
-                }
-                sb.append(Character.toLowerCase(c));
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
+        return com.jujin.freeway.commons.util.Strings.camelToSnake(camel);
     }
 
     public static boolean isValidParamStart(char c) {

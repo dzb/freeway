@@ -1,6 +1,7 @@
 package com.jujin.freeway.db.migration;
 
-import com.jujin.freeway.commons.io.InputStreams;
+import com.jujin.freeway.commons.util.Digests;
+import com.jujin.freeway.commons.util.IoUtils;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.util.SqlTextParser;
@@ -119,7 +120,7 @@ public final class MigrationRunner {
                 continue;
             }
             byte[] raw = readResourceBytes(migration);
-            String checksum = sha256(raw);
+            String checksum = Digests.sha256Hex(raw);
             applyMigration(migration, checksum, installedRank + ran + 1);
             ran++;
             LOG.info("Applied migration: {}", migration);
@@ -144,7 +145,7 @@ public final class MigrationRunner {
             String stored = existing.get(version);
             if (stored == null) continue;
             byte[] raw = readResourceBytes(m);
-            String current = sha256(raw);
+            String current = Digests.sha256Hex(raw);
             if (!stored.equals(current)) {
                 throw new SqlException(
                     "Checksum mismatch for version " +
@@ -383,7 +384,7 @@ public final class MigrationRunner {
                     "Migration file not found on classpath: " + resourcePath
                 );
             }
-            return InputStreams.readBytes(in, MAX_MIGRATION_BYTES, resourcePath);
+            return IoUtils.readBytes(in, MAX_MIGRATION_BYTES, resourcePath);
         } catch (IOException e) {
             throw new SqlException(
                 "Failed to read migration file: " + resourcePath,
@@ -453,13 +454,9 @@ public final class MigrationRunner {
         return value.substring(index);
     }
 
+    @Deprecated
     private static String sha256(byte[] content) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(md.digest(content));
-        } catch (NoSuchAlgorithmException e) {
-            throw new SqlException("SHA-256 not available", e);
-        }
+        return com.jujin.freeway.commons.util.Digests.sha256Hex(content);
     }
 
     private static String normalizePath(String path) {

@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.staticfile;
 
-import com.jujin.freeway.commons.io.InputStreams;
+import com.jujin.freeway.commons.util.IoUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -333,18 +333,12 @@ public final class StaticResourceMount {
                 throw new IOException("Classpath resource too large: " + resourceName + " (" + contentLength + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
             }
             try (InputStream in = connection.getInputStream()) {
-                return new StaticAsset(relative, InputStreams.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName), connection.getLastModified());
+                return new StaticAsset(relative, IoUtils.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName), connection.getLastModified());
             }
         }
     }
 
     private static String computeEtag(byte[] bytes) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(bytes);
-            return "\"sha256-" + Base64.getUrlEncoder().withoutPadding().encodeToString(hash) + "\"";
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 unavailable", ex);
-        }
+        return "\"sha256-" + com.jujin.freeway.commons.util.Digests.sha256Base64(bytes) + "\"";
     }
 }

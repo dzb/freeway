@@ -124,56 +124,18 @@ public final class PathPattern {
     }
 
     static String[] splitPath(String path) {
-        if (path == null || path.isEmpty() || "/".equals(path)) {
-            return new String[0];
-        }
-        String normalized = path.startsWith("/") ? path.substring(1) : path;
-        if (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        if (normalized.isEmpty()) {
-            return new String[0];
-        }
-        return normalized.split("/");
+        return com.jujin.freeway.commons.util.IoUtils.splitPath(path);
     }
 
     public static String normalizePath(String path) {
-        String value = HttpContext.blankToNull(path);
-        if (value == null || "/".equals(value)) {
-            return "/";
-        }
-        value = value.startsWith("/") ? value : "/" + value;
-        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+        return com.jujin.freeway.commons.util.IoUtils.normalizePath(path);
     }
 
     static boolean containsPathTraversal(String path) {
-        for (String seg : path.split("/")) {
-            if (isPathTraversalSegment(seg)) {
-                return true;
-            }
-        }
-        return false;
+        return com.jujin.freeway.commons.util.IoUtils.containsPathTraversal(path);
     }
 
     static boolean isPathTraversalSegment(String seg) {
-        // literal ".." or Windows-style "..\\xxx"
-        if ("..".equals(seg) || seg.startsWith("..\\")) {
-            return true;
-        }
-        // null byte trick
-        if (seg.contains("\0")) {
-            return true;
-        }
-        // URL-encoded path traversal: %2e%2e%2f, %2e%2e/foo, etc.
-        try {
-            String decoded = URLDecoder.decode(seg, StandardCharsets.UTF_8);
-            if (!decoded.equals(seg) && containsPathTraversal(decoded)) {
-                return true;
-            }
-        } catch (IllegalArgumentException e) {
-            // malformed percent encoding is suspicious
-            return true;
-        }
-        return false;
+        return containsPathTraversal(seg);
     }
 }
