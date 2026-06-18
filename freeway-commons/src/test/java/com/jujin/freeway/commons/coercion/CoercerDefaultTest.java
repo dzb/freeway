@@ -34,83 +34,83 @@ class CoercerDefaultTest {
         FAILURE
     }
 
-    // --- canCoerce tests ---
+    // --- supports tests ---
 
     @Test
-    void canCoerceBuiltinScalars() {
-        assertTrue(coercer.canCoerce(String.class, Integer.class));
-        assertTrue(coercer.canCoerce(String.class, int.class));
-        assertTrue(coercer.canCoerce(String.class, Long.class));
-        assertTrue(coercer.canCoerce(String.class, Double.class));
-        assertTrue(coercer.canCoerce(String.class, Boolean.class));
-        assertTrue(coercer.canCoerce(String.class, boolean.class));
-        assertTrue(coercer.canCoerce(String.class, Character.class));
-        assertTrue(coercer.canCoerce(String.class, char.class));
-        assertTrue(coercer.canCoerce(String.class, BigDecimal.class));
-        assertTrue(coercer.canCoerce(String.class, BigInteger.class));
-        assertTrue(coercer.canCoerce(String.class, LocalDate.class));
-        assertTrue(coercer.canCoerce(String.class, Instant.class));
-        assertTrue(coercer.canCoerce(String.class, UUID.class));
-        assertTrue(coercer.canCoerce(Integer.class, String.class));
-        assertTrue(coercer.canCoerce(Integer.class, Long.class));
-        assertTrue(coercer.canCoerce(Integer.class, double.class));
-        assertTrue(coercer.canCoerce(Double.class, Integer.class));
-        assertTrue(coercer.canCoerce(BigDecimal.class, BigInteger.class));
+    void supportsBuiltinScalars() {
+        assertTrue(coercer.supports(String.class, Integer.class));
+        assertTrue(coercer.supports(String.class, int.class));
+        assertTrue(coercer.supports(String.class, Long.class));
+        assertTrue(coercer.supports(String.class, Double.class));
+        assertTrue(coercer.supports(String.class, Boolean.class));
+        assertTrue(coercer.supports(String.class, boolean.class));
+        assertTrue(coercer.supports(String.class, Character.class));
+        assertTrue(coercer.supports(String.class, char.class));
+        assertTrue(coercer.supports(String.class, BigDecimal.class));
+        assertTrue(coercer.supports(String.class, BigInteger.class));
+        assertTrue(coercer.supports(String.class, LocalDate.class));
+        assertTrue(coercer.supports(String.class, Instant.class));
+        assertTrue(coercer.supports(String.class, UUID.class));
+        assertTrue(coercer.supports(Integer.class, String.class));
+        assertTrue(coercer.supports(Integer.class, Long.class));
+        assertTrue(coercer.supports(Integer.class, double.class));
+        assertTrue(coercer.supports(Double.class, Integer.class));
+        assertTrue(coercer.supports(BigDecimal.class, BigInteger.class));
     }
 
     @Test
-    void canCoerceNullToAny() {
-        assertTrue(coercer.canCoerce(Void.class, String.class));
-        assertTrue(coercer.canCoerce(Void.class, int.class));
-        assertTrue(coercer.canCoerce(Void.class, Boolean.class));
+    void supportsNullToAny() {
+        assertTrue(coercer.supports(Void.class, String.class));
+        assertTrue(coercer.supports(Void.class, int.class));
+        assertTrue(coercer.supports(Void.class, Boolean.class));
     }
 
     @Test
-    void canCoerceIdentityOrSubtype() {
-        assertTrue(coercer.canCoerce(String.class, String.class));
-        assertTrue(coercer.canCoerce(Integer.class, Object.class));
-        assertTrue(coercer.canCoerce(Integer.class, Number.class));
-        assertTrue(coercer.canCoerce(Integer.class, Comparable.class));
+    void supportsIdentityOrSubtype() {
+        assertTrue(coercer.supports(String.class, String.class));
+        assertTrue(coercer.supports(Integer.class, Object.class));
+        assertTrue(coercer.supports(Integer.class, Number.class));
+        assertTrue(coercer.supports(Integer.class, Comparable.class));
     }
 
     @Test
-    void canCoerceEnum() {
-        assertTrue(coercer.canCoerce(String.class, Color.class));
-        assertTrue(coercer.canCoerce(String.class, Status.class));
+    void supportsEnum() {
+        assertTrue(coercer.supports(String.class, Color.class));
+        assertTrue(coercer.supports(String.class, Status.class));
     }
 
     @Test
     void cannotCoerceUnsupported() {
-        assertFalse(coercer.canCoerce(Integer.class, java.nio.file.Path.class));
-        assertFalse(coercer.canCoerce(Color.class, java.nio.file.Path.class));
+        assertFalse(coercer.supports(Integer.class, java.nio.file.Path.class));
+        assertFalse(coercer.supports(Color.class, java.nio.file.Path.class));
     }
 
     @Test
-    void canCoerceWithCustomRule() {
+    void supportsWithCustomRule() {
         CoercerDefault c = new CoercerDefault()
             .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
 
-        assertTrue(c.canCoerce(String.class, Duration.class));
+        assertTrue(c.supports(String.class, Duration.class));
         // Duration is a built-in scalar target — any source can coerce to it
-        assertTrue(c.canCoerce(Integer.class, Duration.class));
+        assertTrue(c.supports(Integer.class, Duration.class));
     }
 
     @Test
-    void canCoerceWithCompatibleSourceType() {
+    void supportsWithCompatibleSourceType() {
         // CharSequence -> Duration 规则，String（子类）也应通过
         CoercerDefault c = new CoercerDefault()
             .register(new CoerceRule<>(CharSequence.class, Duration.class,
                 s -> Duration.parse(s.toString())));
 
-        assertTrue(c.canCoerce(String.class, Duration.class));
-        assertTrue(c.canCoerce(StringBuilder.class, Duration.class));
-        assertTrue(c.canCoerce(CharSequence.class, Duration.class));
+        assertTrue(c.supports(String.class, Duration.class));
+        assertTrue(c.supports(StringBuilder.class, Duration.class));
+        assertTrue(c.supports(CharSequence.class, Duration.class));
     }
 
     @Test
-    void canCoerceRejectsNullParams() {
-        assertThrows(NullPointerException.class, () -> coercer.canCoerce(null, String.class));
-        assertThrows(NullPointerException.class, () -> coercer.canCoerce(String.class, null));
+    void supportsRejectsNullParams() {
+        assertThrows(NullPointerException.class, () -> coercer.supports(null, String.class));
+        assertThrows(NullPointerException.class, () -> coercer.supports(String.class, null));
     }
 
     // --- conversions tests ---

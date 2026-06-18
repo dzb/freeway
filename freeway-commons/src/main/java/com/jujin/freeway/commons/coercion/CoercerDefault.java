@@ -1,5 +1,7 @@
 package com.jujin.freeway.commons.coercion;
 
+import static java.util.Map.entry;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
@@ -18,8 +20,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-
-import static java.util.Map.entry;
 
 public final class CoercerDefault implements Coercer {
 
@@ -100,10 +100,10 @@ public final class CoercerDefault implements Coercer {
         return BOXED_TYPES.get(type);
     }
 
-    // --- canCoerce / conversions ---
+    // --- supports / conversions ---
 
     @Override
-    public boolean canCoerce(Class<?> sourceType, Class<?> targetType) {
+    public boolean supports(Class<?> sourceType, Class<?> targetType) {
         Objects.requireNonNull(sourceType, "sourceType");
         Objects.requireNonNull(targetType, "targetType");
 
@@ -120,7 +120,7 @@ public final class CoercerDefault implements Coercer {
             }
         }
 
-        return canCoerceBuiltin(sourceType, targetType);
+        return supportsBuiltin(sourceType, targetType);
     }
 
     @Override
@@ -142,14 +142,15 @@ public final class CoercerDefault implements Coercer {
         return Collections.unmodifiableMap(map);
     }
 
-    private static boolean canCoerceBuiltin(
+    private static boolean supportsBuiltin(
         Class<?> sourceType,
         Class<?> targetType
     ) {
         if (sourceType == Void.class) return true;
         if (targetType.isAssignableFrom(sourceType)) return true;
-        return BUILTIN_COERCERS.containsKey(box(targetType))
-            || targetType.isEnum();
+        return (
+            BUILTIN_COERCERS.containsKey(box(targetType)) || targetType.isEnum()
+        );
     }
 
     // ==================================================================
@@ -176,32 +177,38 @@ public final class CoercerDefault implements Coercer {
 
             // -- integral numbers --
             entry(Integer.class, v -> coerceNumber(v, Integer.class)),
-            entry(int.class,     v -> coerceNumber(v, Integer.class)),
-            entry(Long.class,    v -> coerceNumber(v, Long.class)),
-            entry(long.class,    v -> coerceNumber(v, Long.class)),
-            entry(Short.class,   v -> coerceNumber(v, Short.class)),
-            entry(short.class,   v -> coerceNumber(v, Short.class)),
-            entry(Byte.class,    v -> coerceNumber(v, Byte.class)),
-            entry(byte.class,    v -> coerceNumber(v, Byte.class)),
+            entry(int.class, v -> coerceNumber(v, Integer.class)),
+            entry(Long.class, v -> coerceNumber(v, Long.class)),
+            entry(long.class, v -> coerceNumber(v, Long.class)),
+            entry(Short.class, v -> coerceNumber(v, Short.class)),
+            entry(short.class, v -> coerceNumber(v, Short.class)),
+            entry(Byte.class, v -> coerceNumber(v, Byte.class)),
+            entry(byte.class, v -> coerceNumber(v, Byte.class)),
 
             // -- floating-point --
             entry(Double.class, v -> coerceNumber(v, Double.class)),
             entry(double.class, v -> coerceNumber(v, Double.class)),
-            entry(Float.class,  v -> coerceNumber(v, Float.class)),
-            entry(float.class,  v -> coerceNumber(v, Float.class)),
+            entry(Float.class, v -> coerceNumber(v, Float.class)),
+            entry(float.class, v -> coerceNumber(v, Float.class)),
 
             // -- decimal --
             entry(BigDecimal.class, CoercerDefault::coerceToBigDecimal),
             entry(BigInteger.class, CoercerDefault::coerceToBigInteger),
 
             // -- temporal --
-            entry(LocalDate.class,      v -> LocalDate.parse(String.valueOf(v))),
-            entry(LocalTime.class,      v -> LocalTime.parse(String.valueOf(v))),
-            entry(LocalDateTime.class,  v -> LocalDateTime.parse(String.valueOf(v))),
-            entry(OffsetTime.class,     v -> OffsetTime.parse(String.valueOf(v))),
-            entry(OffsetDateTime.class, v -> OffsetDateTime.parse(String.valueOf(v))),
-            entry(ZonedDateTime.class,  v -> ZonedDateTime.parse(String.valueOf(v))),
-            entry(Instant.class,        v -> Instant.parse(String.valueOf(v))),
+            entry(LocalDate.class, v -> LocalDate.parse(String.valueOf(v))),
+            entry(LocalTime.class, v -> LocalTime.parse(String.valueOf(v))),
+            entry(LocalDateTime.class, v ->
+                LocalDateTime.parse(String.valueOf(v))
+            ),
+            entry(OffsetTime.class, v -> OffsetTime.parse(String.valueOf(v))),
+            entry(OffsetDateTime.class, v ->
+                OffsetDateTime.parse(String.valueOf(v))
+            ),
+            entry(ZonedDateTime.class, v ->
+                ZonedDateTime.parse(String.valueOf(v))
+            ),
+            entry(Instant.class, v -> Instant.parse(String.valueOf(v))),
 
             // -- uuid --
             entry(UUID.class, v -> UUID.fromString(String.valueOf(v))),
@@ -239,19 +246,25 @@ public final class CoercerDefault implements Coercer {
         if (value instanceof Boolean b) return b;
         if (value instanceof Number n) return n.intValue() != 0;
         String text = String.valueOf(value).trim();
-        if ("true".equalsIgnoreCase(text)
-            || "yes".equalsIgnoreCase(text)
-            || "on".equalsIgnoreCase(text)
-            || "1".equals(text)) {
+        if (
+            "true".equalsIgnoreCase(text) ||
+            "yes".equalsIgnoreCase(text) ||
+            "on".equalsIgnoreCase(text) ||
+            "1".equals(text)
+        ) {
             return true;
         }
-        if ("false".equalsIgnoreCase(text)
-            || "no".equalsIgnoreCase(text)
-            || "off".equalsIgnoreCase(text)
-            || "0".equals(text)) {
+        if (
+            "false".equalsIgnoreCase(text) ||
+            "no".equalsIgnoreCase(text) ||
+            "off".equalsIgnoreCase(text) ||
+            "0".equals(text)
+        ) {
             return false;
         }
-        throw new IllegalArgumentException("Unrecognized boolean value: " + value);
+        throw new IllegalArgumentException(
+            "Unrecognized boolean value: " + value
+        );
     }
 
     private static Character coerceToCharacter(Object value) {
@@ -276,18 +289,25 @@ public final class CoercerDefault implements Coercer {
     private static Duration coerceToDuration(Object value) {
         String text = String.valueOf(value).trim();
         if (text.endsWith("ms")) return Duration.ofMillis(
-            Long.parseLong(text.substring(0, text.length() - 2).trim()));
+            Long.parseLong(text.substring(0, text.length() - 2).trim())
+        );
         if (text.endsWith("s")) return Duration.ofSeconds(
-            Long.parseLong(text.substring(0, text.length() - 1).trim()));
+            Long.parseLong(text.substring(0, text.length() - 1).trim())
+        );
         if (text.endsWith("m")) return Duration.ofMinutes(
-            Long.parseLong(text.substring(0, text.length() - 1).trim()));
+            Long.parseLong(text.substring(0, text.length() - 1).trim())
+        );
         if (text.endsWith("h")) return Duration.ofHours(
-            Long.parseLong(text.substring(0, text.length() - 1).trim()));
+            Long.parseLong(text.substring(0, text.length() - 1).trim())
+        );
         return Duration.ofMillis(Long.parseLong(text));
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static <T extends Enum<T>> T coerceToEnum(Object value, Class<?> targetType) {
+    @SuppressWarnings("unchecked")
+    private static <T extends Enum<T>> T coerceToEnum(
+        Object value,
+        Class<?> targetType
+    ) {
         Class<T> enumType = (Class<T>) targetType.asSubclass(Enum.class);
         String name = String.valueOf(value);
         try {
@@ -313,44 +333,62 @@ public final class CoercerDefault implements Coercer {
         return coerceNumberFromString(String.valueOf(value), targetType);
     }
 
-    private static Number coerceNumberFromNumber(Number n, Class<?> targetType) {
+    private static Number coerceNumberFromNumber(
+        Number n,
+        Class<?> targetType
+    ) {
         if (targetType == Integer.class) return n.intValue();
-        if (targetType == Long.class)    return n.longValue();
-        if (targetType == Short.class)   return n.shortValue();
-        if (targetType == Byte.class)    return n.byteValue();
-        if (targetType == Double.class)  return n.doubleValue();
-        if (targetType == Float.class)   return n.floatValue();
+        if (targetType == Long.class) return n.longValue();
+        if (targetType == Short.class) return n.shortValue();
+        if (targetType == Byte.class) return n.byteValue();
+        if (targetType == Double.class) return n.doubleValue();
+        if (targetType == Float.class) return n.floatValue();
         return null;
     }
 
-    private static Number coerceNumberFromString(String text, Class<?> targetType) {
+    private static Number coerceNumberFromString(
+        String text,
+        Class<?> targetType
+    ) {
         if (targetType == Integer.class) return parseInteger(text);
-        if (targetType == Long.class)    return parseLong(text);
-        if (targetType == Short.class)   return parseShort(text);
-        if (targetType == Byte.class)    return parseByte(text);
-        if (targetType == Double.class)  return Double.parseDouble(text);
-        if (targetType == Float.class)   return Float.parseFloat(text);
+        if (targetType == Long.class) return parseLong(text);
+        if (targetType == Short.class) return parseShort(text);
+        if (targetType == Byte.class) return parseByte(text);
+        if (targetType == Double.class) return Double.parseDouble(text);
+        if (targetType == Float.class) return Float.parseFloat(text);
         return null;
     }
 
     private static Number parseInteger(String text) {
-        try { return Integer.parseInt(text); }
-        catch (NumberFormatException e) { return new BigDecimal(text).intValue(); }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException e) {
+            return new BigDecimal(text).intValue();
+        }
     }
 
     private static Number parseLong(String text) {
-        try { return Long.parseLong(text); }
-        catch (NumberFormatException e) { return new BigDecimal(text).longValue(); }
+        try {
+            return Long.parseLong(text);
+        } catch (NumberFormatException e) {
+            return new BigDecimal(text).longValue();
+        }
     }
 
     private static Number parseShort(String text) {
-        try { return Short.parseShort(text); }
-        catch (NumberFormatException e) { return new BigDecimal(text).shortValue(); }
+        try {
+            return Short.parseShort(text);
+        } catch (NumberFormatException e) {
+            return new BigDecimal(text).shortValue();
+        }
     }
 
     private static Number parseByte(String text) {
-        try { return Byte.parseByte(text); }
-        catch (NumberFormatException e) { return new BigDecimal(text).byteValue(); }
+        try {
+            return Byte.parseByte(text);
+        } catch (NumberFormatException e) {
+            return new BigDecimal(text).byteValue();
+        }
     }
 
     // ==================================================================
@@ -358,25 +396,41 @@ public final class CoercerDefault implements Coercer {
     // ==================================================================
 
     private static final Map<Class<?>, Object> PRIMITIVE_DEFAULTS = Map.of(
-        boolean.class, Boolean.FALSE,
-        char.class,    '\0',
-        byte.class,    (byte) 0,
-        short.class,   (short) 0,
-        int.class,     0,
-        long.class,    0L,
-        float.class,   0f,
-        double.class,  0d
+        boolean.class,
+        Boolean.FALSE,
+        char.class,
+        '\0',
+        byte.class,
+        (byte) 0,
+        short.class,
+        (short) 0,
+        int.class,
+        0,
+        long.class,
+        0L,
+        float.class,
+        0f,
+        double.class,
+        0d
     );
 
     private static final Map<Class<?>, Class<?>> BOXED_TYPES = Map.of(
-        boolean.class, Boolean.class,
-        byte.class,    Byte.class,
-        short.class,   Short.class,
-        int.class,     Integer.class,
-        long.class,    Long.class,
-        float.class,   Float.class,
-        double.class,  Double.class,
-        char.class,    Character.class
+        boolean.class,
+        Boolean.class,
+        byte.class,
+        Byte.class,
+        short.class,
+        Short.class,
+        int.class,
+        Integer.class,
+        long.class,
+        Long.class,
+        float.class,
+        Float.class,
+        double.class,
+        Double.class,
+        char.class,
+        Character.class
     );
 
     private record CoercionKey(Class<?> sourceType, Class<?> targetType) {

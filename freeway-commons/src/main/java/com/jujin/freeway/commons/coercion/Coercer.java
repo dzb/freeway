@@ -33,7 +33,7 @@ public interface Coercer {
      * @param targetType 目标类型，不能为 null
      * @return 如果支持该转换则返回 true，否则返回 false
      */
-    default boolean canCoerce(Class<?> sourceType, Class<?> targetType) {
+    default boolean supports(Class<?> sourceType, Class<?> targetType) {
         return false;
     }
 
