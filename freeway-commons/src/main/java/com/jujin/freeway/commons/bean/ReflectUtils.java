@@ -2,6 +2,7 @@ package com.jujin.freeway.commons.bean;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
@@ -11,6 +12,11 @@ import java.lang.reflect.Type;
 public final class ReflectUtils {
 
     private ReflectUtils() {}
+
+    /** Returns {@code true} if the type is concrete (not interface, not abstract). */
+    public static boolean isConcrete(Class<?> type) {
+        return !type.isInterface() && !Modifier.isAbstract(type.getModifiers());
+    }
 
     /**
      * Extracts the raw {@link Class} from a {@link Type}.
