@@ -17,6 +17,7 @@ import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.time.Duration;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -95,183 +96,72 @@ public final class DbModule implements Module2{
         }
 
     private static PoolConfig buildConfig(Container container) {
-        SymbolSource symbols = container.get(SymbolSource.class);
-        String url = Objects.requireNonNull(
-            symbols.resolve("freeway.db.url"),
-            "freeway.db.url is required"
-        );
-        String user = Objects.requireNonNull(
-            symbols.resolve("freeway.db.username"),
-            "freeway.db.username is required"
-        );
+        SymbolSource s = container.get(SymbolSource.class);
         return new PoolConfig(
-            url,
-            user,
-            resolveStr(symbols, "freeway.db.password", ""),
-            parseInt(
-                symbols,
-                "freeway.db.pool.max-size",
-                PoolConfig.DEFAULT_MAX_SIZE
-            ),
-            parseInt(
-                symbols,
-                "freeway.db.pool.min-idle",
-                PoolConfig.DEFAULT_MIN_IDLE
-            ),
-            parseDuration(
-                symbols,
-                "freeway.db.pool.connection-timeout",
-                PoolConfig.DEFAULT_CONNECTION_TIMEOUT
-            ),
-            parseDuration(
-                symbols,
-                "freeway.db.pool.max-lifetime",
-                PoolConfig.DEFAULT_MAX_LIFETIME
-            ),
-            parseDuration(
-                symbols,
-                "freeway.db.pool.max-idle-time",
-                PoolConfig.DEFAULT_MAX_IDLE_TIME
-            ),
-            parseDuration(
-                symbols,
-                "freeway.db.pool.clean-interval",
-                PoolConfig.DEFAULT_CLEAN_INTERVAL
-            ),
-            resolveStr(symbols, "freeway.db.pool.health-check-query", null),
-            parseDuration(
-                symbols,
-                "freeway.db.pool.health-check-timeout",
-                PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT
-            ),
-            parseDuration(
-                symbols,
-                "freeway.db.query-timeout",
-                PoolConfig.DEFAULT_QUERY_TIMEOUT
-            )
+            Objects.requireNonNull(s.resolve("freeway.db.url"), "freeway.db.url is required"),
+            Objects.requireNonNull(s.resolve("freeway.db.username"), "freeway.db.username is required"),
+            s.resolve("freeway.db.password", ""),
+            Integer.parseInt(s.resolve("freeway.db.pool.max-size", String.valueOf(PoolConfig.DEFAULT_MAX_SIZE))),
+            Integer.parseInt(s.resolve("freeway.db.pool.min-idle", String.valueOf(PoolConfig.DEFAULT_MIN_IDLE))),
+            resolveDuration(s, "freeway.db.pool.connection-timeout", PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
+            resolveDuration(s, "freeway.db.pool.max-lifetime", PoolConfig.DEFAULT_MAX_LIFETIME),
+            resolveDuration(s, "freeway.db.pool.max-idle-time", PoolConfig.DEFAULT_MAX_IDLE_TIME),
+            resolveDuration(s, "freeway.db.pool.clean-interval", PoolConfig.DEFAULT_CLEAN_INTERVAL),
+            s.resolve("freeway.db.pool.health-check-query", null),
+            resolveDuration(s, "freeway.db.pool.health-check-timeout", PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
+            resolveDuration(s, "freeway.db.query-timeout", PoolConfig.DEFAULT_QUERY_TIMEOUT)
         );
+    }
+
+    private static Duration resolveDuration(SymbolSource s, String key, Duration def) {
+        String raw = s.resolve(key, "");
+        return raw.isBlank() ? def : parseDuration(raw);
     }
 
     private static Database buildDatabase(Container container) {
         PoolConfig config = container.get(PoolConfig.class);
         RowMapperResolver resolver = container.get(RowMapperResolver.class);
-        SymbolSource symbols = container.get(SymbolSource.class);
-        String poolId = resolveStr(symbols, "freeway.db.pool", "builtin");
-        Pool pool = resolvePool(container, poolId);
-        return new DatabaseImpl(config, resolver, pool);
+        String poolId = container.get(SymbolSource.class)
+                .resolve("freeway.db.pool", "builtin");
+        return new DatabaseImpl(config, resolver, resolvePool(container, poolId));
     }
 
-    private static Pool resolvePool(
-        Container container,
-        String poolId
-    ) {
-        String id = poolId != null && !poolId.isBlank() ? poolId : "builtin";
+    private static Pool resolvePool(Container container, String poolId) {
         try {
-            return container.get(Pool.class, id);
+            return container.get(Pool.class, poolId);
         } catch (RuntimeException ex) {
             throw new IllegalStateException(
-                "Unable to resolve pool engine '" + id + "'",
-                ex
-            );
+                "Unable to resolve pool engine '" + poolId + "'", ex);
         }
     }
 
     private static MigrationRunner buildMigrationRunner(Container container) {
-        SymbolSource symbols = container.get(SymbolSource.class);
+        SymbolSource s = container.get(SymbolSource.class);
         return new MigrationRunner(
             container.get(Database.class),
-            parseBool(symbols, "freeway.db.migration.enabled", true),
-            resolveStr(symbols, "freeway.db.migration.path", "db/migration/"),
-            resolveStr(symbols, "freeway.db.migration.table", "_migrations")
+            parseBool(s.resolve("freeway.db.migration.enabled", "true")),
+            s.resolve("freeway.db.migration.path", "db/migration/"),
+            s.resolve("freeway.db.migration.table", "_migrations")
         );
     }
 
-    private static boolean parseBool(
-        SymbolSource symbols,
-        String key,
-        boolean defaultVal
-    ) {
-        String text = resolveStr(symbols, key, null);
-        if (text == null) {
-            return defaultVal;
+    private static boolean parseBool(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Boolean value must not be blank");
         }
-        String value = text.trim();
-        if (value.isEmpty()) {
-            throw new IllegalArgumentException(key + " must not be blank");
-        }
-        if (
-            "true".equalsIgnoreCase(value) ||
-            "yes".equalsIgnoreCase(value) ||
-            "on".equalsIgnoreCase(value) ||
-            "1".equals(value)
-        ) {
+        String v = value.trim();
+        if ("true".equalsIgnoreCase(v) || "yes".equalsIgnoreCase(v)
+                || "on".equalsIgnoreCase(v) || "1".equals(v)) {
             return true;
         }
-        if (
-            "false".equalsIgnoreCase(value) ||
-            "no".equalsIgnoreCase(value) ||
-            "off".equalsIgnoreCase(value) ||
-            "0".equals(value)
-        ) {
+        if ("false".equalsIgnoreCase(v) || "no".equalsIgnoreCase(v)
+                || "off".equalsIgnoreCase(v) || "0".equals(v)) {
             return false;
         }
-        throw new IllegalArgumentException("Invalid boolean value for " + key + ": " + text);
-    }
-
-    private static String resolveStr(
-        SymbolSource symbols,
-        String key,
-        String defaultVal
-    ) {
-        try {
-            return symbols.resolve(key);
-        } catch (IllegalArgumentException e) {
-            if (isUnknownSymbol(e, key)) {
-                return defaultVal;
-            }
-            throw e;
-        }
-    }
-
-    private static int parseInt(
-        SymbolSource symbols,
-        String key,
-        int defaultVal
-    ) {
-        String text = resolveStr(symbols, key, null);
-        if (text == null) {
-            return defaultVal;
-        }
-        String value = text.trim();
-        if (value.isEmpty()) {
-            throw new IllegalArgumentException(key + " must not be blank");
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                "Invalid integer value for " + key + ": " + text,
-                e
-            );
-        }
-    }
-
-    private static Duration parseDuration(
-        SymbolSource symbols,
-        String key,
-        Duration defaultVal
-    ) {
-        String text = resolveStr(symbols, key, null);
-        if (text == null) {
-            return defaultVal;
-        }
-        return parseDuration(text);
+        throw new IllegalArgumentException("Invalid boolean value: " + value);
     }
 
     static Duration parseDuration(String text) {
-        if (text == null) {
-            return null;
-        }
         String value = text.trim();
         if (value.isEmpty()) {
             throw new IllegalArgumentException("Invalid duration: " + text);
@@ -295,15 +185,9 @@ public final class DbModule implements Module2{
         }
     }
 
-    private static boolean isUnknownSymbol(IllegalArgumentException e, String key) {
-        String message = e.getMessage();
-        return message != null && message.equals("Unknown symbol: " + key);
-    }
-
     private static void runSchema(Container container) {
-        SymbolSource symbols = container.get(SymbolSource.class);
-        boolean auto = parseBool(symbols, "freeway.db.schema.auto", true);
-        if (!auto) {
+        SymbolSource s = container.get(SymbolSource.class);
+        if (!parseBool(s.resolve("freeway.db.schema.auto", "true"))) {
             return;
         }
         var entities = container.extension(SchemaEntity.class).all();
@@ -311,9 +195,8 @@ public final class DbModule implements Module2{
             return;
         }
 
-        // Optional group filter — only run named groups
         Set<String> enabledGroups = parseGroupFilter(
-            resolveStr(symbols, "freeway.db.schema.groups", "")
+            s.resolve("freeway.db.schema.groups", "")
         );
 
         Database db = container.get(Database.class);
@@ -353,26 +236,24 @@ public final class DbModule implements Module2{
      * default {@code PostgresDialect}.
      */
     static Dialect resolveDialect(Container container) {
-        SymbolSource symbols = container.get(SymbolSource.class);
-        String dialectId = resolveStr(symbols, "freeway.db.dialect", "");
+        SymbolSource s = container.get(SymbolSource.class);
+        String dialectId = s.resolve("freeway.db.dialect", "");
         if (dialectId.isBlank()) {
-            dialectId = detectDialect(symbols);
+            dialectId = detectDialect(s);
         }
         if (!dialectId.isBlank()) {
             try {
                 return container.get(Dialect.class, dialectId);
             } catch (RuntimeException ex) {
                 throw new IllegalStateException(
-                    "Unable to resolve dialect '" + dialectId + "'",
-                    ex
-                );
+                    "Unable to resolve dialect '" + dialectId + "'", ex);
             }
         }
         return container.get(Dialect.class);
     }
 
-    static String detectDialect(SymbolSource symbols) {
-        String url = resolveStr(symbols, "freeway.db.url", "");
+    static String detectDialect(SymbolSource s) {
+        String url = s.resolve("freeway.db.url", "");
         if (url.contains(":postgresql:")) return "postgresql";
         if (url.contains(":mysql:") || url.contains(":mariadb:")) return "mysql";
         if (url.contains(":h2:")) return "h2";
@@ -384,7 +265,7 @@ public final class DbModule implements Module2{
         if (value == null || value.isBlank()) {
             return Set.of();
         }
-        Set<String> set = new java.util.LinkedHashSet<>();
+        Set<String> set = new LinkedHashSet<>();
         for (String part : value.split(",")) {
             String trimmed = part.trim();
             if (!trimmed.isEmpty()) {

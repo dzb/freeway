@@ -145,7 +145,7 @@ public final class PathPattern {
             return true;
         }
         // null byte trick
-        if (seg.indexOf('\0') >= 0) {
+        if (seg.contains("\0")) {
             return true;
         }
         // URL-encoded path traversal: %2e%2e%2f, %2e%2e/foo, etc.

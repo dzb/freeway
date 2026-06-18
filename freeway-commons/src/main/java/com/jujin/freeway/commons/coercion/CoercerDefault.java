@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -181,7 +182,7 @@ public final class CoercerDefault implements Coercer {
         OffsetDateTime.class,
         ZonedDateTime.class,
         Instant.class,
-        java.util.UUID.class
+        UUID.class
     );
 
     @Override
@@ -356,10 +357,10 @@ public final class CoercerDefault implements Coercer {
         if (boxedTarget == Instant.class) {
             return (T) parseTemporalValue(value, Instant::parse, "Instant");
         }
-        if (boxedTarget == java.util.UUID.class) {
+        if (boxedTarget == UUID.class) {
             return (T) parseTemporalValue(
                 value,
-                java.util.UUID::fromString,
+                UUID::fromString,
                 "UUID"
             );
         }

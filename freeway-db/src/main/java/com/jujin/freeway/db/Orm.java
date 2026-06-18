@@ -3,6 +3,7 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.bean.ReflectUtils;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.schema.*;
@@ -80,7 +81,7 @@ public final class Orm {
             values);
 
         if (result.hasKey() && columns.generated != null && !plan.record()) {
-            columns.generated.write(entity, coercer.coerce(result.key(), rawType(columns.generated.type())));
+            columns.generated.write(entity, coercer.coerce(result.key(), ReflectUtils.rawClass(columns.generated.type())));
         }
         return result;
     }
@@ -125,7 +126,7 @@ public final class Orm {
         ExecuteResult result = db.execute(sql, insertValues);
 
         if (result.hasKey() && columns.generated != null && !plan.record()) {
-            Object coercedKey = coercer.coerce(result.key(), rawType(columns.generated.type()));
+            Object coercedKey = coercer.coerce(result.key(), ReflectUtils.rawClass(columns.generated.type()));
             columns.generated.write(entity, coercedKey);
         }
         return result;
@@ -232,19 +233,6 @@ public final class Orm {
             throw new SqlException("No @Id annotated property found on " + plan.type().getName());
         }
         return result;
-    }
-
-    private static Class<?> rawType(Type type) {
-        if (type instanceof Class<?> c) {
-            return c;
-        }
-        if (type instanceof ParameterizedType pt
-            && pt.getRawType() instanceof Class<?> raw) {
-            return raw;
-        }
-        throw new SqlException(
-            "Unsupported @Generated property type: " + type.getTypeName()
-        );
     }
 
     @SuppressWarnings("unchecked")

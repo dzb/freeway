@@ -94,7 +94,7 @@ public final class MethodHandleUtils {
         }
     }
 
-    static VarHandle createVarHandle(Field field) {
+    private static VarHandle createVarHandle(Field field) {
         try {
             MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(field.getDeclaringClass(), LOOKUP);
             return lookup.findVarHandle(field.getDeclaringClass(), field.getName(), field.getType());
@@ -103,7 +103,7 @@ public final class MethodHandleUtils {
         }
     }
 
-    static MethodHandle createConstructorHandle(Constructor<?> constructor) {
+    private static MethodHandle createConstructorHandle(Constructor<?> constructor) {
         try {
             MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(
                 constructor.getDeclaringClass(),

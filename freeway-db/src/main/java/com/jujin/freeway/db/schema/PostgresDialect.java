@@ -137,9 +137,6 @@ public final class PostgresDialect implements Dialect {
     }
 
     private static boolean needsQuoting(String name) {
-        if (name == null || name.isEmpty()) {
-            return false;
-        }
         if (RESERVED.contains(name.toLowerCase())) {
             return true;
         }

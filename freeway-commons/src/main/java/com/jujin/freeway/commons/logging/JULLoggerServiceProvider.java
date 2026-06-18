@@ -36,5 +36,32 @@ public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
         loggerFactory = new JULLoggerFactory();
         markerFactory = new BasicMarkerFactory();
         mdcAdapter = new JULMDCAdapter();
+        installFormatters();
+    }
+
+    private static void installFormatters() {
+        String format = System.getProperty("freeway.log.format",
+                System.getenv("FREEWAY_LOG_FORMAT"));
+
+        // "simple" — keep JUL native SimpleFormatter
+        if (format != null && "simple".equalsIgnoreCase(format.strip())) {
+            return;
+        }
+
+        if (format != null && !format.isBlank()) {
+            java.util.logging.Logger.getLogger("com.jujin.freeway.commons.logging")
+                    .warning("Unknown freeway.log.format '" + format.strip()
+                            + "' — ignoring");
+        }
+
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        if (root == null) {
+            return;
+        }
+
+        JULConsoleFormatter formatter = new JULConsoleFormatter();
+        for (java.util.logging.Handler h : root.getHandlers()) {
+            h.setFormatter(formatter);
+        }
     }
 }

@@ -16,10 +16,6 @@ import java.util.Properties;
 import java.util.regex.Pattern;
 
 public final class BootConfigLoader implements ConfigLoader {
-    private static final String ENV_PREFIX_PROPERTY = "freeway.env.prefix";
-    private static final String DEFAULT_ENV_PREFIX = "FREEWAY_";
-    private static final String PROFILE_KEY = "freeway.profile";
-    private static final long MAX_PROPERTIES_RESOURCE_BYTES = 16L * 1024 * 1024;
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     public BootConfigLoader() {
@@ -43,7 +39,7 @@ public final class BootConfigLoader implements ConfigLoader {
         base.putAll(json);
         base.putAll(parsedArgs);
 
-        List<String> profiles = parseProfiles(base.get(PROFILE_KEY));
+        List<String> profiles = parseProfiles(base.get("freeway.profile"));
         Map<String, String> profileProperties = new LinkedHashMap<>();
         Map<String, String> profileJson = new LinkedHashMap<>();
         for (String profile : profiles) {
@@ -63,7 +59,7 @@ public final class BootConfigLoader implements ConfigLoader {
     }
 
     private static Map<String, String> loadEnvironment() {
-        String prefix = System.getProperty(ENV_PREFIX_PROPERTY, DEFAULT_ENV_PREFIX);
+        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_");
         Map<String, String> values = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
             String key = entry.getKey();
@@ -84,7 +80,7 @@ public final class BootConfigLoader implements ConfigLoader {
             return Map.of();
         }
 
-        try (stream; InputStream bounded = bounded(stream, MAX_PROPERTIES_RESOURCE_BYTES, resourceName)) {
+        try (stream; InputStream bounded = bounded(stream, 16L * 1024 * 1024, resourceName)) {
             Properties properties = new Properties();
             properties.load(bounded);
             Map<String, String> values = new LinkedHashMap<>();

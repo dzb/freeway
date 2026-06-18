@@ -35,7 +35,7 @@ final class QueryImpl implements Query {
     private final Object[] positionalParams;
     private final Map<String, Object> namedParams;
     private final boolean mayHaveGeneratedKeys;
-    private NamedParamParser.Result parsed;
+    private SqlTextParser.Result parsed;
     private List<Integer> positionalIndexes;
     private boolean expandedChecked;
     private String expandedSql;
@@ -223,7 +223,7 @@ final class QueryImpl implements Query {
 
     private List<Integer> positionalPlaceholders() {
         if (positionalIndexes == null) {
-            positionalIndexes = NamedParamParser.positionalPlaceholderIndexes(
+            positionalIndexes = SqlTextParser.paramIndexes(
                 originalSql
             );
         }
@@ -248,9 +248,9 @@ final class QueryImpl implements Query {
         return originalSql;
     }
 
-    private NamedParamParser.Result parsed() {
+    private SqlTextParser.Result parsed() {
         if (parsed == null) {
-            parsed = NamedParamParser.parse(originalSql);
+            parsed = SqlTextParser.parseNamed(originalSql);
         }
         return parsed;
     }
@@ -263,7 +263,7 @@ final class QueryImpl implements Query {
         if (!namedParams.isEmpty()) {
             rejectMixedPlaceholderStyles();
             expandNamed();
-        } else if (NamedParamParser.hasNamedPlaceholders(originalSql)) {
+        } else if (SqlTextParser.hasNamedPlaceholders(originalSql)) {
             autoBindNamed();
         } else {
             expandPositional();
@@ -272,7 +272,7 @@ final class QueryImpl implements Query {
 
     private void autoBindNamed() {
         rejectMixedPlaceholderStyles();
-        var p = NamedParamParser.parse(originalSql);
+        var p = SqlTextParser.parseNamed(originalSql);
         if (positionalParams.length != p.names().size()) {
             throw new SqlException(
                 "Parameter count mismatch in '" + originalSql + "': " +
@@ -355,8 +355,8 @@ final class QueryImpl implements Query {
 
     private void rejectMixedPlaceholderStyles() {
         if (
-            NamedParamParser.hasNamedPlaceholders(originalSql) &&
-            !NamedParamParser.positionalPlaceholderIndexes(originalSql).isEmpty()
+            SqlTextParser.hasNamedPlaceholders(originalSql) &&
+            !SqlTextParser.paramIndexes(originalSql).isEmpty()
         ) {
             throw new SqlException(
                 "Cannot mix named and positional placeholders in SQL: " +

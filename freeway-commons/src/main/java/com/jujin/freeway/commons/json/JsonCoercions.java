@@ -3,11 +3,14 @@ package com.jujin.freeway.commons.json;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.bean.ReflectUtils;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 final class JsonCoercions {
     private static final CoercerDefault DEFAULT_COERCER = new CoercerDefault();
@@ -91,7 +94,7 @@ final class JsonCoercions {
     }
 
     private static Object coerceParameterized(Object value, ParameterizedType type, Coercer coercer, TypeContext context) {
-        Class<?> rawType = rawClass(type.getRawType());
+        Class<?> rawType = ReflectUtils.rawClass(type.getRawType());
         Object plain = normalize(value);
         if (plain == null) {
             return CoercerDefault.defaultValue(rawType);
@@ -187,7 +190,7 @@ final class JsonCoercions {
             throw new IllegalArgumentException("Unsupported JSON target type: " + arrayType.getTypeName());
         }
         Type componentType = context.resolve(arrayType.getGenericComponentType());
-        Class<?> componentClass = rawClass(componentType);
+        Class<?> componentClass = ReflectUtils.rawClass(componentType);
         Object result = Array.newInstance(componentClass, array.size());
         for (int i = 0; i < array.size(); i++) {
             Array.set(result, i, coerce(array.get(i), componentType, coercer, context));
@@ -201,16 +204,16 @@ final class JsonCoercions {
         }
         if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
             if (
-                java.util.SortedMap.class.isAssignableFrom(targetType) ||
-                java.util.NavigableMap.class.isAssignableFrom(targetType)
+                SortedMap.class.isAssignableFrom(targetType) ||
+                NavigableMap.class.isAssignableFrom(targetType)
             ) {
                 return new TreeMap<>();
             }
-            if (java.util.concurrent.ConcurrentNavigableMap.class.isAssignableFrom(targetType)) {
-                return new java.util.concurrent.ConcurrentSkipListMap<>();
+            if (ConcurrentNavigableMap.class.isAssignableFrom(targetType)) {
+                return new ConcurrentSkipListMap<>();
             }
-            if (java.util.concurrent.ConcurrentMap.class.isAssignableFrom(targetType)) {
-                return new java.util.concurrent.ConcurrentHashMap<>();
+            if (ConcurrentMap.class.isAssignableFrom(targetType)) {
+                return new ConcurrentHashMap<>();
             }
             return new LinkedHashMap<>();
         }
@@ -232,18 +235,18 @@ final class JsonCoercions {
         }
         if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
             if (
-                java.util.SortedSet.class.isAssignableFrom(targetType) ||
-                java.util.NavigableSet.class.isAssignableFrom(targetType)
+                SortedSet.class.isAssignableFrom(targetType) ||
+                NavigableSet.class.isAssignableFrom(targetType)
             ) {
                 return new TreeSet<>();
             }
             if (
-                java.util.Deque.class.isAssignableFrom(targetType) ||
-                java.util.Queue.class.isAssignableFrom(targetType)
+                Deque.class.isAssignableFrom(targetType) ||
+                Queue.class.isAssignableFrom(targetType)
             ) {
                 return new ArrayDeque<>();
             }
-            if (java.util.Set.class.isAssignableFrom(targetType)) {
+            if (Set.class.isAssignableFrom(targetType)) {
                 return new LinkedHashSet<>();
             }
             return new ArrayList<>();
@@ -258,7 +261,7 @@ final class JsonCoercions {
     }
 
     private static Map<Object, Object> newEnumMap(Type keyType) {
-        Class<?> enumType = rawClass(keyType);
+        Class<?> enumType = ReflectUtils.rawClass(keyType);
         if (!enumType.isEnum()) {
             throw new IllegalArgumentException(
                 "EnumMap requires an enum key type: " + keyType.getTypeName()
@@ -270,7 +273,7 @@ final class JsonCoercions {
     }
 
     private static Collection<Object> newEnumSet(Type elementType) {
-        Class<?> enumType = rawClass(elementType);
+        Class<?> enumType = ReflectUtils.rawClass(elementType);
         if (!enumType.isEnum()) {
             throw new IllegalArgumentException(
                 "EnumSet requires an enum element type: " + elementType.getTypeName()
@@ -283,9 +286,9 @@ final class JsonCoercions {
 
     private static Object instantiate(Class<?> targetType) {
         try {
-            var lookup = java.lang.invoke.MethodHandles.privateLookupIn(
+            var lookup = MethodHandles.privateLookupIn(
                 targetType,
-                java.lang.invoke.MethodHandles.lookup()
+                MethodHandles.lookup()
             );
             var constructorHandle = lookup.unreflectConstructor(targetType.getDeclaredConstructor());
             return constructorHandle.invoke();
@@ -320,19 +323,6 @@ final class JsonCoercions {
         return bounds.length > 0 ? bounds[0] : Object.class;
     }
 
-    private static Class<?> rawClass(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return clazz;
-        }
-        if (type instanceof ParameterizedType parameterizedType && parameterizedType.getRawType() instanceof Class<?> rawType) {
-            return rawType;
-        }
-        if (type instanceof GenericArrayType arrayType) {
-            return Array.newInstance(rawClass(arrayType.getGenericComponentType()), 0).getClass();
-        }
-        throw new IllegalArgumentException("Unsupported raw type: " + type.getTypeName());
-    }
-
     private static final class TypeContext {
         private static final TypeContext EMPTY = new TypeContext(Map.of());
         private final Map<TypeVariable<?>, Type> bindings;
@@ -346,7 +336,7 @@ final class JsonCoercions {
         }
 
         TypeContext child(ParameterizedType type) {
-            Class<?> rawType = rawClass(type.getRawType());
+            Class<?> rawType = ReflectUtils.rawClass(type.getRawType());
             TypeVariable<?>[] variables = rawType.getTypeParameters();
             Type[] arguments = type.getActualTypeArguments();
             Map<TypeVariable<?>, Type> next = new LinkedHashMap<>(bindings);
@@ -379,7 +369,7 @@ final class JsonCoercions {
                 if (!changed) {
                     return parameterizedType;
                 }
-                return new ResolvedParameterizedType(resolvedOwner, rawClass(parameterizedType.getRawType()), resolvedArguments);
+                return new ResolvedParameterizedType(resolvedOwner, ReflectUtils.rawClass(parameterizedType.getRawType()), resolvedArguments);
             }
             if (type instanceof GenericArrayType arrayType) {
                 Type resolvedComponent = resolve(arrayType.getGenericComponentType());

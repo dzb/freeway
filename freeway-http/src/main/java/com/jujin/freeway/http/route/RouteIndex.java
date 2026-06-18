@@ -264,6 +264,13 @@ public final class RouteIndex {
                 paramChild.freeze();
             }
         }
+
+        @Override
+        public String toString() {
+            if (segment != null) return segment;
+            if (paramName != null) return "{" + paramName + (wildcard ? ":*}" : "}");
+            return "/";
+        }
     }
 
     public record RouteMatch(

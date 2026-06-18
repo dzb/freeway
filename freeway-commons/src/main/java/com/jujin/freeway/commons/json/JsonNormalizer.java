@@ -1,11 +1,19 @@
 package com.jujin.freeway.commons.json;
 
 import java.lang.reflect.Array;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
@@ -36,14 +44,14 @@ final class JsonNormalizer {
         if (value instanceof Enum<?> enumeration) {
             return enumeration.name();
         }
-        if (value instanceof java.time.LocalDate d)   return d.toString();
-        if (value instanceof java.time.LocalTime t)   return t.toString();
-        if (value instanceof java.time.LocalDateTime dt) return dt.toString();
-        if (value instanceof java.time.OffsetTime ot)    return ot.toString();
-        if (value instanceof java.time.OffsetDateTime odt) return odt.toString();
-        if (value instanceof java.time.ZonedDateTime zdt) return zdt.toString();
-        if (value instanceof java.time.Instant i)    return i.toString();
-        if (value instanceof java.util.UUID u)       return u.toString();
+        if (value instanceof LocalDate d)   return d.toString();
+        if (value instanceof LocalTime t)   return t.toString();
+        if (value instanceof LocalDateTime dt) return dt.toString();
+        if (value instanceof OffsetTime ot)    return ot.toString();
+        if (value instanceof OffsetDateTime odt) return odt.toString();
+        if (value instanceof ZonedDateTime zdt) return zdt.toString();
+        if (value instanceof Instant i)    return i.toString();
+        if (value instanceof UUID u)       return u.toString();
         if (value instanceof Map<?, ?> map) {
             return normalizeMap(map, context, depth);
         }

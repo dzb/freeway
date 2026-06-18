@@ -159,7 +159,7 @@ class MigrationRunnerTest {
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
 
-            assertTrue(ex.getMessage().contains("Migration file too large"));
+            assertTrue(ex.getCause() != null && ex.getCause().getMessage().contains("too large"));
         } finally {
             Thread.currentThread().setContextClassLoader(previous);
         }

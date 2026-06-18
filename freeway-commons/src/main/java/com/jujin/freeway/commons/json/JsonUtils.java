@@ -67,8 +67,4 @@ public final class JsonUtils {
     public static Object normalize(Object value) {
         return JsonCoercions.normalize(value);
     }
-
-    static Object deepCopy(Object value) {
-        return JsonCoercions.deepCopy(value);
-    }
 }

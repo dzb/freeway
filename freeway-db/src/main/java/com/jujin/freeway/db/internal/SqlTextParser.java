@@ -4,11 +4,17 @@ import com.jujin.freeway.db.util.Names;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class SqlTextScanner {
+public final class SqlTextParser {
 
-    private SqlTextScanner() {}
+    private SqlTextParser() {}
 
-    static NamedParamParser.Result parseNamed(String sql) {
+    public record Result(
+        List<String> names,
+        String sql,
+        List<Integer> parameterIndexes
+    ) {}
+
+    static Result parseNamed(String sql) {
         var names = new ArrayList<String>();
         var parameterIndexes = new ArrayList<Integer>();
         var sb = new StringBuilder(sql.length());
@@ -66,14 +72,14 @@ public final class SqlTextScanner {
             i++;
         }
 
-        return new NamedParamParser.Result(
+        return new Result(
             List.copyOf(names),
             sb.toString(),
             List.copyOf(parameterIndexes)
         );
     }
 
-    static List<Integer> positionalPlaceholderIndexes(String sql) {
+    static List<Integer> paramIndexes(String sql) {
         var indexes = new ArrayList<Integer>();
         int len = sql.length();
         int i = 0;

@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.bean.ReflectUtils;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.db.util.Names;
 import com.jujin.freeway.db.Row;
@@ -74,10 +75,7 @@ public final class RowMapperResolver {
         Map<Class<?>, RowMapper<?>> manual,
         Map<Class<?>, RowMapper<?>> registrations
     ) {
-        if (
-            (manual == null || manual.isEmpty()) &&
-            (registrations == null || registrations.isEmpty())
-        ) {
+        if (manual.isEmpty() && registrations.isEmpty()) {
             return Map.of();
         }
         Map<Class<?>, RowMapper<?>> map = new LinkedHashMap<>();
@@ -90,7 +88,6 @@ public final class RowMapperResolver {
         Map<Class<?>, RowMapper<?>> map,
         Map<Class<?>, RowMapper<?>> source
     ) {
-        if (source == null) return;
         for (Map.Entry<Class<?>, RowMapper<?>> entry : source.entrySet()) {
             map.put(
                 Objects.requireNonNull(entry.getKey()),
@@ -103,8 +100,8 @@ public final class RowMapperResolver {
         if (type == Row.class) {
             return createRowMapper();
         }
-        if (isBasicType(type)) {
-            return createBasic(type);
+        if (SqlTypeMapping.isBasicType(type)) {
+            return (rs, rowNum) -> coercer.coerce(rs.getObject(1), type);
         }
         if (type.isInterface()) {
             throw new SqlException(
@@ -137,15 +134,7 @@ public final class RowMapperResolver {
         if (type.isPrimitive()) {
             return resolved;
         }
-        return wrap(type, resolved);
-    }
-
-    private boolean isBasicType(Class<?> type) {
-        return SqlTypeMapping.isBasicType(type);
-    }
-
-    private RowMapper<?> createBasic(Class<?> type) {
-        return (rs, rowNum) -> coercer.coerce(rs.getObject(1), type);
+        return (rs, rowNum) -> type.cast(resolved.map(rs, rowNum));
     }
 
     private RowMapper<Row> createRowMapper() {
@@ -179,9 +168,9 @@ public final class RowMapperResolver {
                     column >= 1
                         ? coercer.coerce(
                               rs.getObject(column),
-                              rawClass(property.type())
+                              ReflectUtils.rawClass(property.type())
                           )
-                        : coercer.coerce(null, rawClass(property.type()));
+                        : coercer.coerce(null, ReflectUtils.rawClass(property.type()));
             }
             try {
                 return type.cast(constructor.newInstance(args));
@@ -227,7 +216,7 @@ public final class RowMapperResolver {
                 BeanProperty property = properties.get(i);
                 Object value = coercer.coerce(
                     rs.getObject(column),
-                    rawClass(property.type())
+                    ReflectUtils.rawClass(property.type())
                 );
                 try {
                     property.write(instance, value);
@@ -243,21 +232,6 @@ public final class RowMapperResolver {
             }
             return instance;
         };
-    }
-
-    private static Class<?> rawClass(Type type) {
-        if (type instanceof Class<?> cls) {
-            return cls;
-        }
-        if (
-            type instanceof ParameterizedType parameterized &&
-            parameterized.getRawType() instanceof Class<?> raw
-        ) {
-            return raw;
-        }
-        throw new SqlException(
-            "Unsupported bean property type: " + type.getTypeName()
-        );
     }
 
     static int findColumn(
@@ -352,7 +326,4 @@ public final class RowMapperResolver {
         return (RowMapper<T>) mapper;
     }
 
-    private static <T> RowMapper<T> wrap(Class<T> type, RowMapper<?> mapper) {
-        return (rs, rowNum) -> type.cast(mapper.map(rs, rowNum));
-    }
 }

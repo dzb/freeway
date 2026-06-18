@@ -1,6 +1,6 @@
 package com.jujin.freeway.commons.json;
 
-import java.io.ByteArrayOutputStream;
+import com.jujin.freeway.commons.io.InputStreams;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -76,29 +76,11 @@ final class JsonParser {
     private static String readText(InputStream input) {
         Objects.requireNonNull(input, "input");
         try (input) {
-            byte[] data = readBytes(input);
+            byte[] data = InputStreams.readBytes(input, MAX_INPUT_BYTES, "JSON input");
             return new String(data, StandardCharsets.UTF_8);
         } catch (IOException ex) {
             throw new IllegalArgumentException("Unable to read JSON input", ex);
         }
-    }
-
-    private static byte[] readBytes(InputStream input) throws IOException {
-        var out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int total = 0;
-        int read;
-        while ((read = input.read(buffer)) >= 0) {
-            if (read == 0) {
-                continue;
-            }
-            if (total > MAX_INPUT_BYTES - read) {
-                throw new IllegalArgumentException("JSON input too large (max " + MAX_INPUT_BYTES + " bytes)");
-            }
-            out.write(buffer, 0, read);
-            total += read;
-        }
-        return out.toByteArray();
     }
 
     private static final class Parser {
@@ -106,7 +88,8 @@ final class JsonParser {
         private int index;
 
         private Parser(String text) {
-            this.text = stripBom(text);
+            String t = Objects.requireNonNull(text, "text");
+            this.text = t.startsWith("﻿") ? t.substring(1) : t;
         }
 
         private Object parse() {
@@ -344,8 +327,5 @@ final class JsonParser {
             return new IllegalArgumentException(message + " at index " + index);
         }
 
-        private static String stripBom(String text) {
-            return Objects.requireNonNull(text, "text").startsWith("\ufeff") ? text.substring(1) : text;
-        }
     }
 }

@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.staticfile;
 
-import java.io.ByteArrayOutputStream;
+import com.jujin.freeway.commons.io.InputStreams;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -159,7 +159,7 @@ public final class StaticResourceMount {
             return "index.html";
         }
         for (String segment : normalized.split("/")) {
-            if (segment.isBlank() || "..".equals(segment) || segment.indexOf('\\') >= 0 || segment.indexOf('\0') >= 0) {
+            if (segment.isBlank() || "..".equals(segment) || segment.contains("\\") || segment.contains("\0")) {
                 return null;
             }
         }
@@ -331,27 +331,9 @@ public final class StaticResourceMount {
                 throw new IOException("Classpath resource too large: " + resourceName + " (" + contentLength + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
             }
             try (InputStream in = connection.getInputStream()) {
-                return new StaticAsset(relative, readBytes(in, resourceName), connection.getLastModified());
+                return new StaticAsset(relative, InputStreams.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName), connection.getLastModified());
             }
         }
-    }
-
-    private static byte[] readBytes(InputStream in, String name) throws IOException {
-        var out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        long total = 0;
-        int read;
-        while ((read = in.read(buffer)) >= 0) {
-            if (read == 0) {
-                continue;
-            }
-            if (total > MAX_FILE_SIZE_BYTES - read) {
-                throw new IOException("File too large: " + name + " (max " + MAX_FILE_SIZE_BYTES + " bytes)");
-            }
-            out.write(buffer, 0, read);
-            total += read;
-        }
-        return out.toByteArray();
     }
 
     private static String computeEtag(byte[] bytes) {

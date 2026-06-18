@@ -376,7 +376,7 @@ public final class WebServer implements AutoCloseable {
                 LOG.warn(
                     "Exception mapper {} failed while handling {}",
                     mapper.getClass().getSimpleName(),
-                    exception.getMessage(),
+                    String.valueOf(exception.getMessage()),
                     mapperEx
                 );
             }
@@ -386,7 +386,7 @@ public final class WebServer implements AutoCloseable {
             ctx.method(),
             ctx.path(),
             exception.getClass().getSimpleName(),
-            exception.getMessage()
+            String.valueOf(exception.getMessage())
         );
         try {
             ctx.status(500);

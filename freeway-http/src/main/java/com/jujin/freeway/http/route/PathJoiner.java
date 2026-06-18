@@ -9,18 +9,8 @@ public final class PathJoiner {
      * {@code /}, returns {@code ""} for the root path ({@code null}, empty, or {@code "/"}).
      */
     public static String normalize(String path) {
-        if (
-            path == null || (path = path.trim()).isEmpty() || "/".equals(path)
-        ) {
-            return "";
-        }
-        if (!path.startsWith("/")) {
-            path = "/" + path;
-        }
-        if (path.endsWith("/")) {
-            path = path.substring(0, path.length() - 1);
-        }
-        return path;
+        String result = PathPattern.normalizePath(path);
+        return "/".equals(result) ? "" : result;
     }
 
     public static String join(String prefix, String path) {

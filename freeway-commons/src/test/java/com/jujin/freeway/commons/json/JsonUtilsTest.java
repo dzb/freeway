@@ -92,7 +92,7 @@ class JsonUtilsTest {
             () -> JsonUtils.parse(input)
         );
 
-        assertTrue(ex.getMessage().contains("JSON input too large"));
+        assertTrue(ex.getCause() != null && ex.getCause().getMessage().contains("JSON input too large"));
         assertTrue(input.closed);
     }
 

@@ -39,7 +39,7 @@ public final class PooledConnectionDefault implements PooledConnection {
     }
 
     boolean isLeaked(Duration leakThreshold) {
-        Instant ba = borrowedAt;
+        Instant ba = borrowedAt();
         return (
             ba != null &&
             Duration.between(ba, Instant.now()).compareTo(leakThreshold) > 0

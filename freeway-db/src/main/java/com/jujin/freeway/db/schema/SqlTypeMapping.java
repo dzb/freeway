@@ -1,8 +1,9 @@
 package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.commons.bean.BeanPlan;
-import com.jujin.freeway.db.util.Names;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.bean.ReflectUtils;
+import com.jujin.freeway.db.util.Names;
 import com.jujin.freeway.commons.validation.NotBlank;
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.commons.validation.Size;
@@ -105,7 +106,7 @@ public final class SqlTypeMapping {
     private static ColumnDef columnDef(BeanProperty property, Dialect dialect) {
         Column col = property.annotation(Column.class);
         String colName = columnName(property, col);
-        Class<?> javaType = rawType(property.type());
+        Class<?> javaType = ReflectUtils.rawClass(property.type());
         boolean isNullable = nullable(property, col);
         String sqlType = resolveSqlType(javaType, property, col, dialect);
 
@@ -279,26 +280,11 @@ public final class SqlTypeMapping {
             return false;
         }
         // Primitive types are NOT NULL by default
-        Class<?> raw = rawType(property.type());
+        Class<?> raw = ReflectUtils.rawClass(property.type());
         if (raw.isPrimitive()) {
             return false;
         }
         return true;
-    }
-
-    static Class<?> rawType(Type type) {
-        if (type instanceof Class<?> cls) {
-            return cls;
-        }
-        if (
-            type instanceof ParameterizedType pt &&
-            pt.getRawType() instanceof Class<?> raw
-        ) {
-            return raw;
-        }
-        throw new IllegalArgumentException(
-            "Unsupported type: " + type.getTypeName()
-        );
     }
 
 }

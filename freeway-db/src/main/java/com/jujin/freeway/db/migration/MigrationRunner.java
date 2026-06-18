@@ -1,8 +1,9 @@
 package com.jujin.freeway.db.migration;
 
+import com.jujin.freeway.commons.io.InputStreams;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
-import com.jujin.freeway.db.internal.SqlTextScanner;
+import com.jujin.freeway.db.internal.SqlTextParser;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -206,16 +207,27 @@ public final class MigrationRunner {
     }
 
     private static boolean isDuplicateKey(SqlException e) {
-        if (e.getCause() == null) return false;
-        String msg = e.getCause().getMessage();
-        if (msg == null) return false;
-        msg = msg.toLowerCase();
-        return (
-            msg.contains("unique") ||
-            msg.contains("duplicate") ||
-            msg.contains("primary key") ||
-            msg.contains("violation")
-        );
+        // primary: keyword matching on the cause's message (broad coverage)
+        if (e.getCause() != null) {
+            String msg = e.getCause().getMessage();
+            if (msg != null) {
+                msg = msg.toLowerCase();
+                if (msg.contains("unique")
+                        || msg.contains("duplicate")
+                        || msg.contains("primary key")
+                        || msg.contains("violation")) {
+                    return true;
+                }
+            }
+        }
+        // fallback: SQL standard state codes (driver-agnostic)
+        if (e.getCause() instanceof java.sql.SQLException se) {
+            String state = se.getSQLState();
+            if (state != null && (state.startsWith("23") || "40001".equals(state))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void ensureTable() {
@@ -264,7 +276,7 @@ public final class MigrationRunner {
     }
 
     static List<String> splitStatements(String sql) {
-        return SqlTextScanner.splitStatements(sql);
+        return SqlTextParser.splitStatements(sql);
     }
 
     private List<String> scanMigrations() {
@@ -370,7 +382,7 @@ public final class MigrationRunner {
                     "Migration file not found on classpath: " + resourcePath
                 );
             }
-            return readBytes(in, resourcePath);
+            return InputStreams.readBytes(in, MAX_MIGRATION_BYTES, resourcePath);
         } catch (IOException e) {
             throw new SqlException(
                 "Failed to read migration file: " + resourcePath,
@@ -447,120 +459,6 @@ public final class MigrationRunner {
         } catch (NoSuchAlgorithmException e) {
             throw new SqlException("SHA-256 not available", e);
         }
-    }
-
-    private static byte[] readBytes(InputStream in, String resourcePath)
-        throws IOException {
-        var out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int total = 0;
-        int read;
-        while ((read = in.read(buffer)) >= 0) {
-            if (read == 0) {
-                continue;
-            }
-            if (total > MAX_MIGRATION_BYTES - read) {
-                throw new SqlException(
-                    "Migration file too large: " +
-                        resourcePath +
-                        " (max " +
-                        MAX_MIGRATION_BYTES +
-                        " bytes)"
-                );
-            }
-            out.write(buffer, 0, read);
-            total += read;
-        }
-        return out.toByteArray();
-    }
-
-    private static int appendQuoted(
-        String sql,
-        int start,
-        StringBuilder current,
-        char quote
-    ) {
-        int len = sql.length();
-        current.append(quote);
-        int i = start + 1;
-        while (i < len) {
-            char c = sql.charAt(i);
-            current.append(c);
-            i++;
-            if (c == quote) {
-                if (i < len && sql.charAt(i) == quote) {
-                    current.append(quote);
-                    i++;
-                } else {
-                    return i;
-                }
-            }
-        }
-        return len;
-    }
-
-    private static int skipLineComment(String sql, int start) {
-        int len = sql.length();
-        int i = start + 2;
-        while (i < len && sql.charAt(i) != '\n' && sql.charAt(i) != '\r') {
-            i++;
-        }
-        return i;
-    }
-
-    private static int skipBlockComment(String sql, int start) {
-        int len = sql.length();
-        int i = start + 2;
-        while (i < len) {
-            char c = sql.charAt(i);
-            i++;
-            if (c == '*' && i < len && sql.charAt(i) == '/') {
-                return i + 1;
-            }
-        }
-        return len;
-    }
-
-    private static int skipDollarQuote(
-        String sql,
-        int start,
-        StringBuilder current
-    ) {
-        int len = sql.length();
-        if (start >= len || sql.charAt(start) != '$') {
-            return start;
-        }
-        int tagEnd = start + 1;
-        while (tagEnd < len && sql.charAt(tagEnd) != '$') {
-            char c = sql.charAt(tagEnd);
-            if (!Character.isLetterOrDigit(c) && c != '_') {
-                return start;
-            }
-            tagEnd++;
-        }
-        if (tagEnd >= len) {
-            return start;
-        }
-        String tag = sql.substring(start, tagEnd + 1);
-        int close = sql.indexOf(tag, tagEnd + 1);
-        if (close < 0) {
-            current.append(sql, start, len);
-            return len;
-        }
-        int end = close + tag.length();
-        current.append(sql, start, end);
-        return end;
-    }
-
-    private static void addStatement(
-        List<String> statements,
-        StringBuilder current
-    ) {
-        String statement = current.toString().trim();
-        if (!statement.isEmpty()) {
-            statements.add(statement);
-        }
-        current.setLength(0);
     }
 
     private static String normalizePath(String path) {

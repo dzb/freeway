@@ -23,7 +23,7 @@ final class BatchQueryImpl implements BatchQuery {
     private final DatabaseImpl db;
     private final PooledConnection boundConnection;
     private final String sql;
-    private final NamedParamParser.Result parsed;
+    private final SqlTextParser.Result parsed;
     private final boolean mayHaveGeneratedKeys;
     private final int positionalParameterCount;
     private List<Object[]> positionalRows = List.of();
@@ -37,10 +37,10 @@ final class BatchQueryImpl implements BatchQuery {
         this.db = db;
         this.boundConnection = boundConnection;
         this.sql = sql;
-        this.parsed = NamedParamParser.parse(sql);
+        this.parsed = SqlTextParser.parseNamed(sql);
         this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql);
         this.positionalParameterCount =
-            NamedParamParser.positionalPlaceholderIndexes(parsed.sql()).size();
+            SqlTextParser.paramIndexes(parsed.sql()).size();
     }
 
     @Override

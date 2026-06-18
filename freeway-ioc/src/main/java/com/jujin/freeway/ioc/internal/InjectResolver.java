@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.bean.ReflectUtils;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Extension;
@@ -47,7 +48,7 @@ final class InjectResolver {
                 ownerType,
                 annotations(property),
                 property.type(),
-                memberTargetType(property.type()),
+                ReflectUtils.rawClass(property.type()),
                 false
             );
             if (value == null) {
@@ -66,18 +67,8 @@ final class InjectResolver {
 
     private Object resolveParameter(Class<?> ownerType, BeanParameter parameter) {
         Type parameterType = parameter.type();
-        Class<?> rawType = rawClass(parameterType);
+        Class<?> rawType = ReflectUtils.rawClass(parameterType);
         return resolveValue(ownerType, annotations(parameter), parameterType, rawType, true);
-    }
-
-    private static Class<?> memberTargetType(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return clazz;
-        }
-        if (type instanceof ParameterizedType parameterizedType && parameterizedType.getRawType() instanceof Class<?> rawType) {
-            return rawType;
-        }
-        throw new IllegalArgumentException("Unsupported member type: " + type.getTypeName());
     }
 
     private Object resolveValue(
@@ -233,19 +224,6 @@ final class InjectResolver {
 
     private static AnnotationLookup annotations(BeanParameter parameter) {
         return parameter::annotation;
-    }
-
-    private static Class<?> rawClass(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return clazz;
-        }
-        if (type instanceof ParameterizedType parameterizedType && parameterizedType.getRawType() instanceof Class<?> rawType) {
-            return rawType;
-        }
-        if (type instanceof GenericArrayType arrayType) {
-            return Array.newInstance(rawClass(arrayType.getGenericComponentType()), 0).getClass();
-        }
-        throw new IllegalArgumentException("Unsupported parameter type: " + type.getTypeName());
     }
 
     private void validateScopeCompatibility(Class<?> ownerType, Class<?> targetType, Object service) {

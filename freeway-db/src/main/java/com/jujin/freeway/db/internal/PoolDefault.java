@@ -12,6 +12,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Semaphore;
@@ -103,10 +104,7 @@ public final class PoolDefault implements Pool {
     }
 
     public void release(PooledConnection conn) {
-        if (conn == null) {
-            return;
-        }
-        PooledConnectionDefault pc = (PooledConnectionDefault) conn;
+        PooledConnectionDefault pc = (PooledConnectionDefault) Objects.requireNonNull(conn, "conn");
         if (!active.remove(pc)) {
             // Already removed (e.g. force-closed during shutdown)
             return;
