@@ -74,7 +74,7 @@ public final class JdkHttpEngine implements HttpEngine {
         return new JdkHandle(
             server,
             executor,
-            config.shutdownGraceSeconds(),
+            config.shutdownGrace(),
             config.host()
         );
     }
@@ -101,7 +101,7 @@ public final class JdkHttpEngine implements HttpEngine {
     private record JdkHandle(
         HttpServer server,
         ExecutorService executor,
-        int shutdownGraceSeconds,
+        java.time.Duration shutdownGrace,
         String host
     ) implements HttpServerHandle {
         @Override
@@ -112,7 +112,7 @@ public final class JdkHttpEngine implements HttpEngine {
         @Override
         public void close() {
             try {
-                server.stop(shutdownGraceSeconds);
+                server.stop((int) shutdownGrace.toSeconds());
             } finally {
                 executor.shutdown();
                 try {

@@ -73,18 +73,9 @@ public final class DbModule implements Module2{
             .to(container -> buildMigrationRunner(container));
 
         // coercion
-        binder
-            .contribute(CoerceRule.class)
-            .add(
-                new CoerceRule<>(
-                    String.class,
-                    Duration.class,
-                    DbModule::parseDuration
-                )
-            );
-            for (CoerceRule<?, ?> rule : Coercions.jdbcDefaults()) {
-                binder.contribute(CoerceRule.class).add(rule);
-            }
+        for (CoerceRule<?, ?> rule : Coercions.jdbcDefaults()) {
+            binder.contribute(CoerceRule.class).add(rule);
+        }
 
             // lifecycle: Schema (auto-DDL) → Migration (SQL evolution)
             binder

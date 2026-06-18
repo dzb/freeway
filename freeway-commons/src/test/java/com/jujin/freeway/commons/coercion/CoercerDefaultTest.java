@@ -85,7 +85,8 @@ class CoercerDefaultTest {
             .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
 
         assertTrue(c.canCoerce(String.class, Duration.class));
-        assertFalse(c.canCoerce(Integer.class, Duration.class));
+        // Duration is a built-in scalar target — any source can coerce to it
+        assertTrue(c.canCoerce(Integer.class, Duration.class));
     }
 
     @Test
@@ -135,10 +136,11 @@ class CoercerDefaultTest {
     }
 
     @Test
-    void conversionsEmptyWhenNoCustomRules() {
-        // 没有自定义规则时，conversions 不包含非内置类型
+    void conversionsIncludesBuiltinDuration() {
+        // Duration is now a built-in scalar target
         Map<Class<?>, Set<Class<?>>> result = coercer.conversions();
-        assertFalse(result.containsKey(Duration.class));
+        assertTrue(result.containsKey(Duration.class));
+        assertTrue(result.get(Duration.class).contains(Object.class));
     }
 
     @Test

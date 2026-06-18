@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.Collections;
@@ -182,7 +183,8 @@ public final class CoercerDefault implements Coercer {
         OffsetDateTime.class,
         ZonedDateTime.class,
         Instant.class,
-        UUID.class
+        UUID.class,
+        Duration.class
     );
 
     @Override
@@ -364,6 +366,9 @@ public final class CoercerDefault implements Coercer {
                 "UUID"
             );
         }
+        if (boxedTarget == Duration.class) {
+            return (T) parseDuration(String.valueOf(value));
+        }
         if (boxedTarget.isEnum()) {
             @SuppressWarnings("unchecked")
             Class<? extends Enum> enumType = (Class<
@@ -405,6 +410,29 @@ public final class CoercerDefault implements Coercer {
                 e
             );
         }
+    }
+
+    /**
+     * Parses a human-friendly duration string into a {@link Duration}.
+     * Supported suffixes: {@code ms} (millis), {@code s} (seconds),
+     * {@code m} (minutes), {@code h} (hours). Bare numbers are treated
+     * as milliseconds.
+     */
+    private static Duration parseDuration(String text) {
+        String value = text.trim();
+        if (value.endsWith("ms")) return Duration.ofMillis(
+            Long.parseLong(value.substring(0, value.length() - 2).trim())
+        );
+        if (value.endsWith("s")) return Duration.ofSeconds(
+            Long.parseLong(value.substring(0, value.length() - 1).trim())
+        );
+        if (value.endsWith("m")) return Duration.ofMinutes(
+            Long.parseLong(value.substring(0, value.length() - 1).trim())
+        );
+        if (value.endsWith("h")) return Duration.ofHours(
+            Long.parseLong(value.substring(0, value.length() - 1).trim())
+        );
+        return Duration.ofMillis(Long.parseLong(value));
     }
 
     // --- internal: number coercion helpers (ex-ScalarCoercions) ---

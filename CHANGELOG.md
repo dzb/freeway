@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`Coercer.coerce()`** — throws `IllegalArgumentException` instead of `IllegalStateException` for coercion failures.
 - **`CorsFilter`** — only intercepts genuine CORS preflight (`Access-Control-Request-Method` header present). Non-preflight `OPTIONS` requests pass through to route handlers.
-- **`HttpServerConfig`** — invalid port/backlog/shutdownGraceSeconds now throw `IllegalArgumentException` instead of silently clamping.
+- **`HttpServerConfig`** — invalid port/backlog/shutdownGrace now throw `IllegalArgumentException`; `shutdownGrace` is now `Duration` (config key `freeway.web.server.shutdown-grace`, e.g. `2s`), consistent with DB pool duration keys.
 - **`HealthFilter.normalize()`** — delegates to `PathPattern.normalizePath()`, stripping trailing slashes consistently.
 - **`PathJoiner.normalize()`** — delegates to `PathPattern.normalizePath()` with root-path transformation.
 - **`PathPattern.validateRegistrationPath()`** — rejects empty path segments (`/a//b`), unbalanced braces (`/{id`), and empty parameter names (`{}`, `/:regex`).

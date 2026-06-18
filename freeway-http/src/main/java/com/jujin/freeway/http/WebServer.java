@@ -60,8 +60,8 @@ public final class WebServer implements AutoCloseable {
         @Value("${freeway.web.server.port:8080}") int port,
         @Value("${freeway.web.server.backlog:0}") int backlog,
         @Value(
-            "${freeway.web.server.shutdown-grace-seconds:2}"
-        ) int shutdownGraceSeconds
+            "${freeway.web.server.shutdown-grace:2s}"
+        ) java.time.Duration shutdownGrace
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");
         this.websocketIndex = Objects.requireNonNull(
@@ -85,7 +85,7 @@ public final class WebServer implements AutoCloseable {
             host,
             port,
             backlog,
-            shutdownGraceSeconds
+            shutdownGrace
         );
         this.requestHandler = new HttpRequestHandler() {
             @Override

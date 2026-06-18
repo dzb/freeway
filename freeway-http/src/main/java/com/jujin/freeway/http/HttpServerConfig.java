@@ -1,6 +1,8 @@
 package com.jujin.freeway.http;
 
-public record HttpServerConfig(String host, int port, int backlog, int shutdownGraceSeconds) {
+import java.time.Duration;
+
+public record HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {
     public HttpServerConfig {
         host = host == null || host.isBlank() ? "127.0.0.1" : host;
         if (port < 0 || port > 65535) {
@@ -9,9 +11,9 @@ public record HttpServerConfig(String host, int port, int backlog, int shutdownG
         if (backlog < 0) {
             throw new IllegalArgumentException("backlog must be >= 0: " + backlog);
         }
-        if (shutdownGraceSeconds < 0) {
+        if (shutdownGrace == null || shutdownGrace.isNegative()) {
             throw new IllegalArgumentException(
-                "shutdownGraceSeconds must be >= 0: " + shutdownGraceSeconds);
+                "shutdownGrace must be non-negative: " + shutdownGrace);
         }
     }
 }

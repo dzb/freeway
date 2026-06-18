@@ -56,7 +56,9 @@
 # freeway.web.server.host=127.0.0.1
 # freeway.web.server.port=8080
 # freeway.web.server.backlog=0
-# freeway.web.server.shutdown-grace-seconds=2
+
+# Shutdown grace period for in-flight requests (human-friendly duration).
+# freeway.web.server.shutdown-grace=2s
 
 # ================================
 #  HTTP / Health
