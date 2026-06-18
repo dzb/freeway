@@ -88,7 +88,7 @@ public final class AppBuilder {
     /** Build and start the application. */
     public AppRuntime start() {
         if (modules.isEmpty()) {
-            throw new IllegalStateException("At least one module is required");
+            throw new IllegalArgumentException("At least one module is required");
         }
         long startNanos = System.nanoTime();
 
@@ -98,81 +98,55 @@ public final class AppBuilder {
             : new BootConfigLoader();
         AppConfig config = effectiveConfigLoader.load(effectiveLoader, args);
 
-        boolean strict = "true".equalsIgnoreCase(config.get("freeway.strict"));
-        String previousStrict = null;
-        if (strict) {
-            previousStrict = System.getProperty("freeway.strict");
-            System.setProperty("freeway.strict", "true");
+        LinkedHashMap<Class<?>, Module2> allModules = new LinkedHashMap<>();
+        allModules.put(BootConfigModule.class, new BootConfigModule(config));
+        for (Module2 module : modules) {
+            addModule(allModules, module);
         }
+        if (autoDiscovery) {
+            for (Module2 module : ServiceLoader.load(Module2.class, effectiveLoader)) {
+                addModule(allModules, module);
+            }
+        }
+        List<Module2> moduleList = List.copyOf(allModules.values());
+
+        Container container = Freeway.create(moduleList.toArray(Module2[]::new));
+        AppRuntime app = new AppRuntimeDefault(container, config);
+
         try {
-            LinkedHashMap<Class<?>, Module2> allModules = new LinkedHashMap<>();
-            allModules.put(BootConfigModule.class, new BootConfigModule(config));
-            for (Module2 module : modules) {
-                addModule(allModules, module, strict);
-            }
-            if (autoDiscovery) {
-                for (Module2 module : ServiceLoader.load(Module2.class, effectiveLoader)) {
-                    addModule(allModules, module, strict);
-                }
-            }
-            List<Module2> moduleList = List.copyOf(allModules.values());
-
-            Container container = Freeway.create(moduleList.toArray(Module2[]::new));
-            AppRuntime app = new AppRuntimeDefault(container, config);
-
+            app.start();
+        } catch (RuntimeException ex) {
             try {
-                app.start();
-            } catch (RuntimeException ex) {
+                app.close();
+            } catch (RuntimeException closeFailure) {
+                ex.addSuppressed(closeFailure);
+            }
+            throw ex;
+        }
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+        LOG.info("Started freeway application in {} ms", elapsedMs);
+
+        if (shutdownHook) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
                     app.close();
-                } catch (RuntimeException closeFailure) {
-                    ex.addSuppressed(closeFailure);
+                } catch (Exception ex) {
+                    LOG.warn("Error during shutdown", ex);
                 }
-                throw ex;
-            }
-            long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-            LOG.info("Started freeway application in {} ms", elapsedMs);
-
-            if (shutdownHook) {
-                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                    try {
-                        app.close();
-                    } catch (Exception ex) {
-                        LOG.warn("Error during shutdown", ex);
-                    }
-                }, "freeway-shutdown-hook"));
-            }
-            return app;
-        } finally {
-            if (strict) {
-                if (previousStrict == null) {
-                    System.clearProperty("freeway.strict");
-                } else {
-                    System.setProperty("freeway.strict", previousStrict);
-                }
-            }
+            }, "freeway-shutdown-hook"));
         }
+        return app;
     }
 
     private static void addModule(
         LinkedHashMap<Class<?>, Module2> allModules,
-        Module2 module,
-        boolean strict
+        Module2 module
     ) {
         Module2 existing = allModules.putIfAbsent(module.getClass(), module);
         if (existing == null) {
             return;
         }
-        if (strict) {
-            throw new IllegalStateException(
-                "Duplicate module class " + module.getClass().getSimpleName()
-                    + " - remove the duplicate or set freeway.strict=false"
-            );
-        }
-        LOG.debug(
-            "Duplicate module instance for {} ignored (strict=false)",
-            module.getClass().getSimpleName()
-        );
+        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
     }
 
     private ClassLoader resolveClassLoader() {

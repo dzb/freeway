@@ -22,7 +22,7 @@ public interface Coercer {
      * @param targetType 目标类型，不能为 null
      * @return 转换后的目标类型实例
      * @throws IllegalArgumentException 当 targetType 为 null 时抛出
-     * @throws IllegalStateException    当转换失败时抛出
+     * @throws IllegalArgumentException 当转换失败时抛出
      */
     <T> T coerce(Object value, Class<T> targetType);
 

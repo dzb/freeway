@@ -187,7 +187,7 @@ class CoercerDefaultTest {
         assertEquals(Status.SUCCESS, coercer.coerce("Success", Status.class));
         assertEquals(Status.FAILURE, coercer.coerce("failure", Status.class));
         assertEquals(Status.FAILURE, coercer.coerce("FAILURE", Status.class));
-        assertThrows(IllegalStateException.class, () ->
+        assertThrows(IllegalArgumentException.class, () ->
             coercer.coerce("unknown", Status.class));
     }
 
@@ -250,7 +250,7 @@ class CoercerDefaultTest {
 
     @Test
     void rejectsInvalidNumericString() {
-        assertThrows(IllegalStateException.class, () ->
+        assertThrows(IllegalArgumentException.class, () ->
             coercer.coerce("not-a-number", Integer.class));
     }
 

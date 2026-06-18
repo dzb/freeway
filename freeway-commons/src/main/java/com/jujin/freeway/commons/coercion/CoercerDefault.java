@@ -60,7 +60,7 @@ public final class CoercerDefault implements Coercer {
      * @param targetType 目标类型，不能为 null
      * @return 转换后的目标类型实例，如果转换失败可能抛出异常
      * @throws IllegalArgumentException 当 targetType 为 null 时抛出
-     * @throws IllegalStateException    当转换过程中发生错误时抛出，包含原始异常信息
+     * @throws IllegalArgumentException 当转换过程中发生错误时抛出，包含原始异常信息
      */
     @Override
     @SuppressWarnings("unchecked")
@@ -84,7 +84,7 @@ public final class CoercerDefault implements Coercer {
                     .converter()
                     .apply(rule.sourceType().cast(input));
             } catch (Exception e) {
-                throw new IllegalStateException(
+                throw new IllegalArgumentException(
                     String.format(
                         "Failed to coerce %s to %s using custom rule",
                         sourceType.getSimpleName(),
@@ -99,7 +99,7 @@ public final class CoercerDefault implements Coercer {
         try {
             return coerceInternal(input, targetType);
         } catch (Exception e) {
-            throw new IllegalStateException(
+            throw new IllegalArgumentException(
                 String.format(
                     "Failed to coerce %s to %s",
                     sourceType.getSimpleName(),

@@ -1,6 +1,7 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.util.SqlTextParser;
 
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.Pool;

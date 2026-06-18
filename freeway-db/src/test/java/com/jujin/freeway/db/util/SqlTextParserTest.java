@@ -1,4 +1,4 @@
-package com.jujin.freeway.db.internal;
+package com.jujin.freeway.db.util;
 
 import org.junit.jupiter.api.Test;
 import java.util.List;

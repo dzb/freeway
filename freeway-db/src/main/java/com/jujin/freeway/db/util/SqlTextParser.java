@@ -1,4 +1,4 @@
-package com.jujin.freeway.db.internal;
+package com.jujin.freeway.db.util;
 
 import com.jujin.freeway.db.util.Names;
 import java.util.ArrayList;
@@ -14,7 +14,7 @@ public final class SqlTextParser {
         List<Integer> parameterIndexes
     ) {}
 
-    static Result parseNamed(String sql) {
+    public static Result parseNamed(String sql) {
         var names = new ArrayList<String>();
         var parameterIndexes = new ArrayList<Integer>();
         var sb = new StringBuilder(sql.length());
@@ -79,7 +79,7 @@ public final class SqlTextParser {
         );
     }
 
-    static List<Integer> paramIndexes(String sql) {
+    public static List<Integer> paramIndexes(String sql) {
         var indexes = new ArrayList<Integer>();
         int len = sql.length();
         int i = 0;
@@ -124,7 +124,7 @@ public final class SqlTextParser {
         return List.copyOf(indexes);
     }
 
-    static boolean hasNamedPlaceholders(String sql) {
+    public static boolean hasNamedPlaceholders(String sql) {
         int len = sql.length();
         int i = 0;
         while (i < len) {

@@ -82,18 +82,6 @@ class FreewayAppTest {
     }
 
     @Test
-    void strictModeRejectsDuplicateAutoDiscoveredModules() {
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.of()
-                .add(new StrictAutoModule())
-                .args("--freeway.strict=true")
-                .start()
-        );
-
-        assertTrue(ex.getMessage().contains("Duplicate module class"));
-    }
-
-    @Test
     void autoDiscoveryDisabledExcludesSPI() {
         AppRuntime app = FreewayApp.of()
             .add(new TestBootApp())
@@ -140,7 +128,7 @@ class FreewayAppTest {
 
     @Test
     void ofRequiresAtLeastOneModule() {
-        assertThrows(IllegalStateException.class, () -> FreewayApp.of().start());
+        assertThrows(IllegalArgumentException.class, () -> FreewayApp.of().start());
     }
 
     @Test
@@ -231,12 +219,6 @@ class FreewayAppTest {
         @Override
         public void bind(Binder binder) {
             binder.bind(PrimaryMarker.class).to(new PrimaryMarker("instance"));
-        }
-    }
-
-    public static final class StrictAutoModule implements Module2 {
-        @Override
-        public void bind(Binder binder) {
         }
     }
 

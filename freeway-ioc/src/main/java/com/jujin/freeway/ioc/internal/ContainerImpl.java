@@ -50,7 +50,6 @@ public final class ContainerImpl implements Container {
     private final InstanceFactory instanceFactory;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
-    private final boolean strict;
     private final Set<Class<?>> moduleTypes = new HashSet<>();
     private final List<Module2> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
@@ -75,7 +74,6 @@ public final class ContainerImpl implements Container {
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(serviceCache, targetCache, bindingIndex, coercer);
         this.serviceRuntime = new ServiceRuntime(proxyFactory, serviceCache, targetCache);
-        this.strict = Boolean.getBoolean("freeway.strict");
         registerBuiltin(Container.class, this, "Container");
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Coercer.class, coercer, "Coercer");
@@ -122,12 +120,6 @@ public final class ContainerImpl implements Container {
             loadedModules.add(module);
             module.bind(binder);
             return;
-        }
-        if (strict) {
-            throw new IllegalStateException(
-                "Duplicate module class " + moduleType.getSimpleName()
-                    + " - remove the duplicate or set freeway.strict=false"
-            );
         }
         LOG.debug("Ignoring duplicate module: {}", moduleType.getSimpleName());
     }
@@ -220,12 +212,6 @@ public final class ContainerImpl implements Container {
             throw noServiceRegistered(type);
         }
         if (isConcrete(type)) {
-            if (strict) {
-                throw new IllegalArgumentException(
-                    "No service bound for " + type.getName()
-                        + " - strict mode requires explicit binding for all concrete types"
-                );
-            }
             return instantiate(type);
         }
         throw noServiceRegistered(type);

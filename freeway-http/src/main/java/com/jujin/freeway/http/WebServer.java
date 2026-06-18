@@ -153,13 +153,7 @@ public final class WebServer implements AutoCloseable {
     }
 
     public synchronized void stop() {
-        HttpServerHandle h = this.handle;
-        if (h == null) {
-            return;
-        }
-        this.handle = null;
-        h.close();
-        LOG.info("Freeway web server stopped");
+        close();
     }
 
     public boolean isRunning() {
@@ -167,8 +161,14 @@ public final class WebServer implements AutoCloseable {
     }
 
     @Override
-    public void close() {
-        stop();
+    public synchronized void close() {
+        HttpServerHandle h = this.handle;
+        if (h == null) {
+            return;
+        }
+        this.handle = null;
+        h.close();
+        LOG.info("Freeway web server stopped");
     }
 
     private HttpServerHandle requireStarted() {
@@ -279,15 +279,7 @@ public final class WebServer implements AutoCloseable {
         } catch (RuntimeException ex) {
             if (!"robaho".equals(engineId)) {
                 throw new IllegalStateException(
-                    "Unable to resolve web engine " + engineId,
-                    ex
-                );
-            }
-            if (Boolean.getBoolean("freeway.strict")) {
-                throw new IllegalStateException(
-                    "Default engine 'robaho' is not available in strict mode",
-                    ex
-                );
+                    "Unable to resolve web engine " + engineId, ex);
             }
             LOG.warn(
                 "Default engine 'robaho' not found, falling back to built-in JDK engine"

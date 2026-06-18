@@ -3,7 +3,7 @@ package com.jujin.freeway.db.migration;
 import com.jujin.freeway.commons.io.InputStreams;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
-import com.jujin.freeway.db.internal.SqlTextParser;
+import com.jujin.freeway.db.util.SqlTextParser;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;

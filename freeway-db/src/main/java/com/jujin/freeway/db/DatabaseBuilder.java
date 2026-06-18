@@ -54,7 +54,7 @@ public final class DatabaseBuilder {
 
     public Database build() {
         if (config == null) {
-            throw new IllegalStateException("config is required");
+            throw new IllegalArgumentException("config is required");
         }
         Coercer effective = coercer;
         if (effective == null) {
