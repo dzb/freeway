@@ -160,10 +160,7 @@ final class JsonCoercions {
     }
 
     private static Object coerceToMap(JsonObject object, Class<?> targetType, Type keyType, Type valueType, Coercer coercer, TypeContext context) {
-        Object target = newMutableInstance(targetType, LinkedHashMap.class);
-        Map<Object, Object> mutable = target instanceof Map<?, ?> map
-            ? castMap(map)
-            : new LinkedHashMap<>();
+        Map<Object, Object> mutable = newMapInstance(targetType, keyType);
         object.forEach((key, value) ->
             mutable.put(
                 coerce(key, keyType, coercer, context),
@@ -174,10 +171,7 @@ final class JsonCoercions {
     }
 
     private static Object coerceToCollection(JsonArray array, Class<?> targetType, Type elementType, Coercer coercer, TypeContext context) {
-        Object target = newMutableInstance(targetType, ArrayList.class);
-        Collection<Object> mutable = target instanceof Collection<?> collection
-            ? castCollection(collection)
-            : new ArrayList<>();
+        Collection<Object> mutable = newCollectionInstance(targetType, elementType);
         for (int i = 0; i < array.size(); i++) {
             mutable.add(coerce(array.get(i), elementType, coercer, context));
         }
@@ -201,20 +195,98 @@ final class JsonCoercions {
         return result;
     }
 
-    private static Object newMutableInstance(Class<?> targetType, Class<?> fallbackType) {
+    private static Map<Object, Object> newMapInstance(Class<?> targetType, Type keyType) {
+        if (targetType == EnumMap.class) {
+            return newEnumMap(keyType);
+        }
         if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
-            return fallbackType == null ? null : instantiate(fallbackType);
+            if (
+                java.util.SortedMap.class.isAssignableFrom(targetType) ||
+                java.util.NavigableMap.class.isAssignableFrom(targetType)
+            ) {
+                return new TreeMap<>();
+            }
+            if (java.util.concurrent.ConcurrentNavigableMap.class.isAssignableFrom(targetType)) {
+                return new java.util.concurrent.ConcurrentSkipListMap<>();
+            }
+            if (java.util.concurrent.ConcurrentMap.class.isAssignableFrom(targetType)) {
+                return new java.util.concurrent.ConcurrentHashMap<>();
+            }
+            return new LinkedHashMap<>();
         }
         Object instance = instantiate(targetType);
-        if (instance != null) {
-            return instance;
+        if (instance instanceof Map<?, ?> map) {
+            return castMap(map);
         }
-        return fallbackType == null ? null : instantiate(fallbackType);
+        throw new IllegalArgumentException(
+            "Cannot instantiate map type: " + targetType.getName()
+        );
+    }
+
+    private static Collection<Object> newCollectionInstance(
+        Class<?> targetType,
+        Type elementType
+    ) {
+        if (targetType == EnumSet.class) {
+            return newEnumSet(elementType);
+        }
+        if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
+            if (
+                java.util.SortedSet.class.isAssignableFrom(targetType) ||
+                java.util.NavigableSet.class.isAssignableFrom(targetType)
+            ) {
+                return new TreeSet<>();
+            }
+            if (
+                java.util.Deque.class.isAssignableFrom(targetType) ||
+                java.util.Queue.class.isAssignableFrom(targetType)
+            ) {
+                return new ArrayDeque<>();
+            }
+            if (java.util.Set.class.isAssignableFrom(targetType)) {
+                return new LinkedHashSet<>();
+            }
+            return new ArrayList<>();
+        }
+        Object instance = instantiate(targetType);
+        if (instance instanceof Collection<?> collection) {
+            return castCollection(collection);
+        }
+        throw new IllegalArgumentException(
+            "Cannot instantiate collection type: " + targetType.getName()
+        );
+    }
+
+    private static Map<Object, Object> newEnumMap(Type keyType) {
+        Class<?> enumType = rawClass(keyType);
+        if (!enumType.isEnum()) {
+            throw new IllegalArgumentException(
+                "EnumMap requires an enum key type: " + keyType.getTypeName()
+            );
+        }
+        @SuppressWarnings("unchecked")
+        Class<? extends Enum> rawEnum = (Class<? extends Enum>) enumType.asSubclass(Enum.class);
+        return castMap(new EnumMap<>(rawEnum));
+    }
+
+    private static Collection<Object> newEnumSet(Type elementType) {
+        Class<?> enumType = rawClass(elementType);
+        if (!enumType.isEnum()) {
+            throw new IllegalArgumentException(
+                "EnumSet requires an enum element type: " + elementType.getTypeName()
+            );
+        }
+        @SuppressWarnings("unchecked")
+        Class<? extends Enum> rawEnum = (Class<? extends Enum>) enumType.asSubclass(Enum.class);
+        return castCollection(EnumSet.noneOf(rawEnum));
     }
 
     private static Object instantiate(Class<?> targetType) {
         try {
-            var lookup = java.lang.invoke.MethodHandles.privateLookupIn(targetType, java.lang.invoke.MethodHandles.lookup());
+            var lookup = java.lang.invoke.MethodHandles.privateLookupIn(
+                targetType,
+                java.lang.invoke.MethodHandles.lookup()
+            );
             var constructorHandle = lookup.unreflectConstructor(targetType.getDeclaredConstructor());
             return constructorHandle.invoke();
         } catch (ReflectiveOperationException ex) {

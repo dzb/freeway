@@ -1,19 +1,14 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.extension.Contribution;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-public final class EventSubscriber<E> implements Contribution {
+public final class EventSubscriber<E> {
 
     private final Class<E> eventType;
     private final Consumer<E> handler;
     private final String id;
     private final String topic;
-    private final List<String> beforeIds = new ArrayList<>();
-    private final List<String> afterIds = new ArrayList<>();
 
     private EventSubscriber(
         Class<E> eventType,
@@ -60,7 +55,7 @@ public final class EventSubscriber<E> implements Contribution {
         Consumer<Object> handler
     ) {
         return new EventSubscriber<>(
-            null,
+            Object.class,
             handler,
             null,
             Objects.requireNonNull(topic, "topic")
@@ -74,7 +69,7 @@ public final class EventSubscriber<E> implements Contribution {
         Consumer<Object> handler
     ) {
         return new EventSubscriber<>(
-            null,
+            Object.class,
             handler,
             Objects.requireNonNull(id, "id"),
             Objects.requireNonNull(topic, "topic")
@@ -95,17 +90,5 @@ public final class EventSubscriber<E> implements Contribution {
 
     String topic() {
         return topic;
-    }
-
-    @Override
-    public Contribution before(String... ids) {
-        for (String s : ids) beforeIds.add(s);
-        return this;
-    }
-
-    @Override
-    public Contribution after(String... ids) {
-        for (String s : ids) afterIds.add(s);
-        return this;
     }
 }

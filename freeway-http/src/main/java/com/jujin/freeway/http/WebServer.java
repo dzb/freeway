@@ -198,15 +198,41 @@ public final class WebServer implements AutoCloseable {
                     ex
                 );
             }
-            awaitReady(h.host(), h.port());
-            this.handle = h;
-            LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
-            publish(new HttpServerStartedEvent(h.host(), h.port()));
-            return h;
+            boolean closed = false;
+            try {
+                if (!awaitReady(h.host(), h.port())) {
+                    closed = true;
+                    closeQuietly(h);
+                    throw new RuntimeException(
+                        "Web server did not become ready on " + h.host() + ":" + h.port()
+                            + " within 10s — engine started but not accepting HTTP"
+                    );
+                }
+                this.handle = h;
+                LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
+                publish(new HttpServerStartedEvent(h.host(), h.port()));
+                return h;
+            } catch (RuntimeException ex) {
+                if (!closed) {
+                    closeQuietly(h);
+                }
+                throw ex;
+            }
         }
     }
 
-    private static void awaitReady(String host, int port) {
+    private static void closeQuietly(HttpServerHandle handle) {
+        if (handle == null) {
+            return;
+        }
+        try {
+            handle.close();
+        } catch (Exception ignored) {
+            // Startup is already failing; keep the original exception.
+        }
+    }
+
+    private static boolean awaitReady(String host, int port) {
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline) {
             try (Socket s = new Socket(host, port)) {
@@ -225,7 +251,7 @@ public final class WebServer implements AutoCloseable {
                         StandardCharsets.US_ASCII
                     );
                     if (response.startsWith("HTTP/")) {
-                        return;
+                        return true;
                     }
                 }
             } catch (IOException ignored) {
@@ -233,10 +259,11 @@ public final class WebServer implements AutoCloseable {
                     Thread.sleep(50);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    return;
+                    return false;
                 }
             }
         }
+        return false;
     }
 
     private static HttpEngine resolveEngine(
@@ -256,10 +283,23 @@ public final class WebServer implements AutoCloseable {
                     ex
                 );
             }
+            if (Boolean.getBoolean("freeway.strict")) {
+                throw new IllegalStateException(
+                    "Default engine 'robaho' is not available in strict mode",
+                    ex
+                );
+            }
             LOG.warn(
                 "Default engine 'robaho' not found, falling back to built-in JDK engine"
             );
-            return container.get(HttpEngine.class, "jdk");
+            try {
+                return container.get(HttpEngine.class, "jdk");
+            } catch (RuntimeException fallbackEx) {
+                throw new IllegalStateException(
+                    "Built-in JDK engine is not available",
+                    fallbackEx
+                );
+            }
         }
     }
 

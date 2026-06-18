@@ -189,11 +189,17 @@ public abstract class HttpContext {
     }
 
     public HttpContext output(String text) throws IOException {
+        if (!allowsResponseBody()) {
+            return output(new byte[0]);
+        }
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;
     }
 
     public HttpContext outputJson(Object value) throws IOException {
+        if (!allowsResponseBody()) {
+            return output(new byte[0]);
+        }
         headerSet("Content-Type", "application/json; charset=utf-8");
         output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
         return this;
@@ -201,10 +207,11 @@ public abstract class HttpContext {
 
     public HttpContext send(int status, String text) throws IOException {
         status(status);
-        if (status != 204 && status != 304) {
+        if (allowsResponseBody()) {
             headerSet("Content-Type", "text/plain; charset=utf-8");
+            return output(text);
         }
-        return output(text);
+        return output(new byte[0]);
     }
 
     public HttpContext sendJson(int status, Object value) throws IOException {
@@ -225,6 +232,11 @@ public abstract class HttpContext {
 
     protected <T> T coerceText(String value, Class<T> type) {
         return coercer.coerce(value, type);
+    }
+
+    protected final boolean allowsResponseBody() {
+        int status = statusCode();
+        return status >= 200 && status != 204 && status != 205 && status != 304;
     }
 
     private Charset charsetFromContentType() {

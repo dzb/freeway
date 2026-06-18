@@ -19,7 +19,7 @@ public final class JsonCodecDefault implements JsonCodec {
 
     @Override
     public String toJson(Object value) {
-        return JsonUtils.stringify(JsonUtils.normalize(value));
+        return JsonUtils.stringify(value);
     }
 
     @Override

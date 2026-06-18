@@ -23,11 +23,7 @@ public final class HookLifecycle {
 
     private List<RuntimeHook> resolveHooks() {
         if (hooks != null) return hooks;
-        try {
-            hooks = container.extension(RuntimeHook.class).all();
-        } catch (IllegalArgumentException e) {
-            hooks = List.of();
-        }
+        hooks = container.extension(RuntimeHook.class).all();
         return hooks;
     }
 

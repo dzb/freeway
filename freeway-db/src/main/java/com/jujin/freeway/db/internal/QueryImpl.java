@@ -261,6 +261,7 @@ final class QueryImpl implements Query {
         }
         expandedChecked = true;
         if (!namedParams.isEmpty()) {
+            rejectMixedPlaceholderStyles();
             expandNamed();
         } else if (NamedParamParser.hasNamedPlaceholders(originalSql)) {
             autoBindNamed();
@@ -270,6 +271,7 @@ final class QueryImpl implements Query {
     }
 
     private void autoBindNamed() {
+        rejectMixedPlaceholderStyles();
         var p = NamedParamParser.parse(originalSql);
         if (positionalParams.length != p.names().size()) {
             throw new SqlException(
@@ -324,6 +326,7 @@ final class QueryImpl implements Query {
     }
 
     private void expandNamed() {
+        rejectMixedPlaceholderStyles();
         var p = parsed();
         validateNamedParameters();
 
@@ -347,6 +350,18 @@ final class QueryImpl implements Query {
         if (anyExpanded) {
             expandedSql = sqlOut.toString();
             expandedFlatParams = flat.toArray();
+        }
+    }
+
+    private void rejectMixedPlaceholderStyles() {
+        if (
+            NamedParamParser.hasNamedPlaceholders(originalSql) &&
+            !NamedParamParser.positionalPlaceholderIndexes(originalSql).isEmpty()
+        ) {
+            throw new SqlException(
+                "Cannot mix named and positional placeholders in SQL: " +
+                    originalSql
+            );
         }
     }
 
@@ -474,12 +489,7 @@ final class QueryImpl implements Query {
         private StreamResources(ResultSet rs, ExecuteContext ctx) {
             this.rs = rs;
             this.ctx = ctx;
-            this.cleanable = STREAM_CLEANER.register(this, () -> {
-                try {
-                    rs.close();
-                } catch (SQLException ignored) {}
-                ctx.close();
-            });
+            this.cleanable = STREAM_CLEANER.register(this, this::closeResources);
         }
 
         private ResultSet rs() {
@@ -497,6 +507,9 @@ final class QueryImpl implements Query {
             }
             closed = true;
             cleanable.clean();
+        }
+
+        private void closeResources() {
             try {
                 rs.close();
             } catch (SQLException ignored) {}

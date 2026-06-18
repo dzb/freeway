@@ -16,11 +16,20 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.AfterEach;
 
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 class JdkHttpEngineTest {
+
+    @AfterEach
+    void tearDown() {
+        System.clearProperty("web.server.host");
+        System.clearProperty("web.server.port");
+        System.clearProperty("web.engine");
+        System.clearProperty("freeway.strict");
+    }
 
     @Test
     void servesRoutesViaJdkEngine() throws Exception {
@@ -199,6 +208,29 @@ class JdkHttpEngineTest {
             );
             assertEquals(200, r.statusCode());
             assertEquals("pong", r.body());
+        } finally {
+            c.close();
+        }
+    }
+
+    @Test
+    void strictModeRejectsMissingDefaultEngine() throws Exception {
+        int port = freePort();
+        System.setProperty("web.server.host", "127.0.0.1");
+        System.setProperty("web.server.port", String.valueOf(port));
+        System.setProperty("web.engine", "robaho"); // not on classpath
+        System.setProperty("freeway.strict", "true");
+
+        Container c = Freeway.create(new HttpModule(), binder ->
+            binder.contribute(Route.class)
+                .add(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+        );
+        try {
+            IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> c.get(WebServer.class).start()
+            );
+            assertTrue(ex.getMessage().contains("strict mode"));
         } finally {
             c.close();
         }

@@ -5,14 +5,13 @@ import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.Module2;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.ServiceLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fluent builder for {@link FreewayApp}, created via {@link FreewayApp#of(Module2...)}.
@@ -99,45 +98,81 @@ public final class AppBuilder {
             : new BootConfigLoader();
         AppConfig config = effectiveConfigLoader.load(effectiveLoader, args);
 
-        LinkedHashMap<Class<?>, Module2> allModules = new LinkedHashMap<>();
-        allModules.put(BootConfigModule.class, new BootConfigModule(config));
-        for (Module2 module : modules) {
-            allModules.putIfAbsent(module.getClass(), module);
+        boolean strict = "true".equalsIgnoreCase(config.get("freeway.strict"));
+        String previousStrict = null;
+        if (strict) {
+            previousStrict = System.getProperty("freeway.strict");
+            System.setProperty("freeway.strict", "true");
         }
-        if (autoDiscovery) {
-            for (Module2 module : ServiceLoader.load(Module2.class, effectiveLoader)) {
-                allModules.putIfAbsent(module.getClass(), module);
-            }
-        }
-        List<Module2> moduleList = List.copyOf(allModules.values());
-
-        Container container = Freeway.create(moduleList.toArray(Module2[]::new));
-        AppRuntime app = new AppRuntimeDefault(container, config);
-
         try {
-            app.start();
-        } catch (RuntimeException ex) {
-            try {
-                app.close();
-            } catch (RuntimeException closeFailure) {
-                ex.addSuppressed(closeFailure);
+            LinkedHashMap<Class<?>, Module2> allModules = new LinkedHashMap<>();
+            allModules.put(BootConfigModule.class, new BootConfigModule(config));
+            for (Module2 module : modules) {
+                addModule(allModules, module, strict);
             }
-            throw ex;
-        }
+            if (autoDiscovery) {
+                for (Module2 module : ServiceLoader.load(Module2.class, effectiveLoader)) {
+                    addModule(allModules, module, strict);
+                }
+            }
+            List<Module2> moduleList = List.copyOf(allModules.values());
 
-        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-        LOG.info("Started freeway application in {} ms", elapsedMs);
+            Container container = Freeway.create(moduleList.toArray(Module2[]::new));
+            AppRuntime app = new AppRuntimeDefault(container, config);
 
-        if (shutdownHook) {
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                app.start();
+            } catch (RuntimeException ex) {
                 try {
                     app.close();
-                } catch (Exception ex) {
-                    LOG.warn("Error during shutdown", ex);
+                } catch (RuntimeException closeFailure) {
+                    ex.addSuppressed(closeFailure);
                 }
-            }, "freeway-shutdown-hook"));
+                throw ex;
+            }
+            long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+            LOG.info("Started freeway application in {} ms", elapsedMs);
+
+            if (shutdownHook) {
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    try {
+                        app.close();
+                    } catch (Exception ex) {
+                        LOG.warn("Error during shutdown", ex);
+                    }
+                }, "freeway-shutdown-hook"));
+            }
+            return app;
+        } finally {
+            if (strict) {
+                if (previousStrict == null) {
+                    System.clearProperty("freeway.strict");
+                } else {
+                    System.setProperty("freeway.strict", previousStrict);
+                }
+            }
         }
-        return app;
+    }
+
+    private static void addModule(
+        LinkedHashMap<Class<?>, Module2> allModules,
+        Module2 module,
+        boolean strict
+    ) {
+        Module2 existing = allModules.putIfAbsent(module.getClass(), module);
+        if (existing == null) {
+            return;
+        }
+        if (strict) {
+            throw new IllegalStateException(
+                "Duplicate module class " + module.getClass().getSimpleName()
+                    + " - remove the duplicate or set freeway.strict=false"
+            );
+        }
+        LOG.debug(
+            "Duplicate module instance for {} ignored (strict=false)",
+            module.getClass().getSimpleName()
+        );
     }
 
     private ClassLoader resolveClassLoader() {

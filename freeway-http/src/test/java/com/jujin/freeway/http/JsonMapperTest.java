@@ -5,6 +5,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonUtilsTest {
     private record Endpoint(String value) {
@@ -66,13 +67,17 @@ class JsonUtilsTest {
     void serializesRecordsAndBeansAsTrees() {
         assertEquals(
             "{\"endpoint\":{\"value\":\"alpha\"},\"mode\":\"fast\"}",
-            JsonUtils.stringify(JsonUtils.normalize(new Payload(new Endpoint("alpha"), "fast")))
+            JsonUtils.stringify(new Payload(new Endpoint("alpha"), "fast"))
         );
         assertEquals(
             "{\"name\":\"demo\",\"count\":3}",
-            JsonUtils.stringify(JsonUtils.normalize(new View("demo", 3)))
+            JsonUtils.stringify(new View("demo", 3))
         );
-        assertEquals("null", JsonUtils.stringify(JsonUtils.normalize(null)));
+        assertEquals("null", JsonUtils.stringify(null));
+
+        String pretty = JsonUtils.stringifyPretty(new View("demo", 3));
+        assertTrue(pretty.contains("\n"));
+        assertTrue(pretty.contains("\"count\": 3"));
     }
 
     @Test

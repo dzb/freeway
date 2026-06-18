@@ -10,8 +10,10 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class CoercerDefaultTest {
@@ -40,6 +42,9 @@ class CoercerDefaultTest {
         assertTrue(coercer.canCoerce(String.class, char.class));
         assertTrue(coercer.canCoerce(String.class, BigDecimal.class));
         assertTrue(coercer.canCoerce(String.class, BigInteger.class));
+        assertTrue(coercer.canCoerce(String.class, LocalDate.class));
+        assertTrue(coercer.canCoerce(String.class, Instant.class));
+        assertTrue(coercer.canCoerce(String.class, UUID.class));
         assertTrue(coercer.canCoerce(Integer.class, String.class));
         assertTrue(coercer.canCoerce(Integer.class, Long.class));
         assertTrue(coercer.canCoerce(Integer.class, double.class));
@@ -70,8 +75,8 @@ class CoercerDefaultTest {
 
     @Test
     void cannotCoerceUnsupported() {
-        assertFalse(coercer.canCoerce(Integer.class, LocalDate.class));
-        assertFalse(coercer.canCoerce(Color.class, LocalDate.class));
+        assertFalse(coercer.canCoerce(Integer.class, java.nio.file.Path.class));
+        assertFalse(coercer.canCoerce(Color.class, java.nio.file.Path.class));
     }
 
     @Test
@@ -156,6 +161,16 @@ class CoercerDefaultTest {
         assertEquals(new BigDecimal("12"), coercer.coerce(12, BigDecimal.class));
         assertEquals(new BigInteger("12"), coercer.coerce(12, BigInteger.class));
         assertEquals("12", coercer.coerce(12, String.class));
+    }
+
+    @Test
+    void coercesTemporalAndUuidScalars() {
+        assertEquals(LocalDate.of(2026, 6, 18), coercer.coerce("2026-06-18", LocalDate.class));
+        assertEquals(Instant.parse("2026-06-18T01:02:03Z"), coercer.coerce("2026-06-18T01:02:03Z", Instant.class));
+        assertEquals(
+            UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
+            coercer.coerce("550e8400-e29b-41d4-a716-446655440000", UUID.class)
+        );
     }
 
     @Test

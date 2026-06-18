@@ -28,6 +28,10 @@ class DbModuleTest {
     private static final String MIG_PATH_KEY = "freeway.db.migration.path";
     private static final String MIG_TABLE_KEY = "freeway.db.migration.table";
     private static final String SCHEMA_GROUPS_KEY = "freeway.db.schema.groups";
+    private static final String POOL_MAX_SIZE_KEY = "freeway.db.pool.max-size";
+    private static final String POOL_CONNECTION_TIMEOUT_KEY = "freeway.db.pool.connection-timeout";
+    private static final String MIGRATION_ENABLED_KEY = "freeway.db.migration.enabled";
+    private static final String DIALECT_KEY = "freeway.db.dialect";
 
     private String previousUrl;
     private String previousUser;
@@ -35,6 +39,10 @@ class DbModuleTest {
     private String previousMigPath;
     private String previousMigTable;
     private String previousSchemaGroups;
+    private String previousPoolMaxSize;
+    private String previousPoolConnectionTimeout;
+    private String previousMigrationEnabled;
+    private String previousDialect;
 
     @BeforeEach
     void captureProperties() {
@@ -44,6 +52,10 @@ class DbModuleTest {
         previousMigPath = System.getProperty(MIG_PATH_KEY);
         previousMigTable = System.getProperty(MIG_TABLE_KEY);
         previousSchemaGroups = System.getProperty(SCHEMA_GROUPS_KEY);
+        previousPoolMaxSize = System.getProperty(POOL_MAX_SIZE_KEY);
+        previousPoolConnectionTimeout = System.getProperty(POOL_CONNECTION_TIMEOUT_KEY);
+        previousMigrationEnabled = System.getProperty(MIGRATION_ENABLED_KEY);
+        previousDialect = System.getProperty(DIALECT_KEY);
     }
 
     @AfterEach
@@ -54,6 +66,10 @@ class DbModuleTest {
         restore(MIG_PATH_KEY, previousMigPath);
         restore(MIG_TABLE_KEY, previousMigTable);
         restore(SCHEMA_GROUPS_KEY, previousSchemaGroups);
+        restore(POOL_MAX_SIZE_KEY, previousPoolMaxSize);
+        restore(POOL_CONNECTION_TIMEOUT_KEY, previousPoolConnectionTimeout);
+        restore(MIGRATION_ENABLED_KEY, previousMigrationEnabled);
+        restore(DIALECT_KEY, previousDialect);
     }
 
     @Test
@@ -111,6 +127,59 @@ class DbModuleTest {
                 .orElseThrow();
             assertEquals(1350L, updated);
             assertNotNull(db.stats());
+        }
+    }
+
+    @Test
+    void poolConfigRejectsInvalidInteger() {
+        String dbName = "freeway_pool_int_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty("freeway.db.pool.max-size", "bogus");
+
+        try (Container container = Freeway.create(new DbModule())) {
+            assertThrows(IllegalArgumentException.class, () -> container.get(PoolConfig.class));
+        }
+    }
+
+    @Test
+    void poolConfigRejectsInvalidDuration() {
+        String dbName = "freeway_pool_duration_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty("freeway.db.pool.connection-timeout", "bogus");
+
+        try (Container container = Freeway.create(new DbModule())) {
+            assertThrows(IllegalArgumentException.class, () -> container.get(PoolConfig.class));
+        }
+    }
+
+    @Test
+    void migrationRunnerRejectsInvalidBoolean() {
+        String dbName = "freeway_migration_bool_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty("freeway.db.migration.enabled", "maybe");
+
+        try (Container container = Freeway.create(new DbModule())) {
+            assertThrows(IllegalArgumentException.class, () -> container.get(MigrationRunner.class));
+        }
+    }
+
+    @Test
+    void resolveDialectRejectsUnknownDialectId() {
+        String dbName = "freeway_dialect_unknown_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.setProperty("freeway.db.dialect", "unknown");
+
+        try (Container container = Freeway.create(new DbModule())) {
+            IllegalStateException ex = assertThrows(IllegalStateException.class, () -> DbModule.resolveDialect(container));
+            assertTrue(ex.getMessage().contains("unknown"));
         }
     }
 

@@ -2,6 +2,14 @@ package com.jujin.freeway.commons.coercion;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -165,7 +173,15 @@ public final class CoercerDefault implements Coercer {
         Float.class,
         float.class,
         BigDecimal.class,
-        BigInteger.class
+        BigInteger.class,
+        LocalDate.class,
+        LocalTime.class,
+        LocalDateTime.class,
+        OffsetTime.class,
+        OffsetDateTime.class,
+        ZonedDateTime.class,
+        Instant.class,
+        java.util.UUID.class
     );
 
     @Override
@@ -295,6 +311,58 @@ public final class CoercerDefault implements Coercer {
             }
             return (T) new BigInteger(String.valueOf(value));
         }
+        if (boxedTarget == LocalDate.class) {
+            return (T) parseTemporalValue(
+                value,
+                LocalDate::parse,
+                "LocalDate"
+            );
+        }
+        if (boxedTarget == LocalTime.class) {
+            return (T) parseTemporalValue(
+                value,
+                LocalTime::parse,
+                "LocalTime"
+            );
+        }
+        if (boxedTarget == LocalDateTime.class) {
+            return (T) parseTemporalValue(
+                value,
+                LocalDateTime::parse,
+                "LocalDateTime"
+            );
+        }
+        if (boxedTarget == OffsetTime.class) {
+            return (T) parseTemporalValue(
+                value,
+                OffsetTime::parse,
+                "OffsetTime"
+            );
+        }
+        if (boxedTarget == OffsetDateTime.class) {
+            return (T) parseTemporalValue(
+                value,
+                OffsetDateTime::parse,
+                "OffsetDateTime"
+            );
+        }
+        if (boxedTarget == ZonedDateTime.class) {
+            return (T) parseTemporalValue(
+                value,
+                ZonedDateTime::parse,
+                "ZonedDateTime"
+            );
+        }
+        if (boxedTarget == Instant.class) {
+            return (T) parseTemporalValue(value, Instant::parse, "Instant");
+        }
+        if (boxedTarget == java.util.UUID.class) {
+            return (T) parseTemporalValue(
+                value,
+                java.util.UUID::fromString,
+                "UUID"
+            );
+        }
         if (boxedTarget.isEnum()) {
             @SuppressWarnings("unchecked")
             Class<? extends Enum> enumType = (Class<
@@ -316,6 +384,26 @@ public final class CoercerDefault implements Coercer {
         throw new IllegalArgumentException(
             "Unsupported coercion to " + targetType.getName()
         );
+    }
+
+    @FunctionalInterface
+    private interface TemporalParser<T> {
+        T parse(String text);
+    }
+
+    private static <T> T parseTemporalValue(
+        Object value,
+        TemporalParser<T> parser,
+        String typeName
+    ) {
+        try {
+            return parser.parse(String.valueOf(value));
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException(
+                "Invalid " + typeName + " value: " + value,
+                e
+            );
+        }
     }
 
     // --- internal: number coercion helpers (ex-ScalarCoercions) ---

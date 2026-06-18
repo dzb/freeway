@@ -136,6 +136,10 @@ public final class StubHttpContext extends HttpContext {
 
     @Override
     public HttpContext output(byte[] data) {
+        if (!allowsResponseBody()) {
+            this.body = "";
+            return this;
+        }
         this.body = new String(data, java.nio.charset.StandardCharsets.UTF_8);
         return this;
     }

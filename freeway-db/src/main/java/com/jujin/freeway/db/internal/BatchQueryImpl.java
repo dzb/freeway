@@ -25,6 +25,7 @@ final class BatchQueryImpl implements BatchQuery {
     private final String sql;
     private final NamedParamParser.Result parsed;
     private final boolean mayHaveGeneratedKeys;
+    private final int positionalParameterCount;
     private List<Object[]> positionalRows = List.of();
     private List<Map<String, Object>> namedRows = List.of();
 
@@ -38,6 +39,8 @@ final class BatchQueryImpl implements BatchQuery {
         this.sql = sql;
         this.parsed = NamedParamParser.parse(sql);
         this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql);
+        this.positionalParameterCount =
+            NamedParamParser.positionalPlaceholderIndexes(parsed.sql()).size();
     }
 
     @Override
@@ -91,6 +94,17 @@ final class BatchQueryImpl implements BatchQuery {
                     }
                 } else {
                     for (var row : positionalRows) {
+                        if (row.length != positionalParameterCount) {
+                            throw new SqlException(
+                                "Parameter count mismatch in batch SQL: " +
+                                    sql +
+                                    ". Expected " +
+                                    positionalParameterCount +
+                                    " value(s) per row but got " +
+                                    row.length
+                            );
+                        }
+                        stmt.clearParameters();
                         for (int i = 0; i < row.length; i++) {
                             stmt.setObject(i + 1, row[i]);
                         }

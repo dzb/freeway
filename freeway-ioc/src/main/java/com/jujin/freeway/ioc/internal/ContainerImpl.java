@@ -22,9 +22,7 @@ import org.slf4j.LoggerFactory;
 
 public final class ContainerImpl implements Container {
 
-    private static final Logger LOG = LoggerFactory.getLogger(
-        ContainerImpl.class
-    );
+    private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
 
     static {
         ScopedCache.onClose(v -> {
@@ -33,11 +31,7 @@ public final class ContainerImpl implements Container {
                 try {
                     c.close();
                 } catch (Exception e) {
-                    LOG.warn(
-                        "Failed to close resource: {}",
-                        v.getClass().getName(),
-                        e
-                    );
+                    LOG.warn("Failed to close resource: {}", v.getClass().getName(), e);
                 }
             }
         });
@@ -45,10 +39,8 @@ public final class ContainerImpl implements Container {
 
     private volatile boolean closed;
     private final BindingIndex bindingIndex = new BindingIndex();
-    private final Map<ServiceKey, Object> serviceCache =
-        new ConcurrentHashMap<>();
-    private final Map<ServiceKey, Object> targetCache =
-        new ConcurrentHashMap<>();
+    private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
+    private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
     private final SymbolSourceDefault symbolSource;
     private final CoercerDefault coercer;
     private final LoggerSource loggerSource;
@@ -58,14 +50,12 @@ public final class ContainerImpl implements Container {
     private final InstanceFactory instanceFactory;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
+    private final boolean strict;
     private final Set<Class<?>> moduleTypes = new HashSet<>();
     private final List<Module2> loadedModules = new ArrayList<>();
-    private final Map<Class<?>, Extension<?>> extensions =
-        new ConcurrentHashMap<>();
+    private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 
-    public ContainerImpl(
-        Collection<? extends Module2> modules
-    ) {
+    public ContainerImpl(Collection<? extends Module2> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
         this.loggerSource = new LoggerSource() {
@@ -83,17 +73,9 @@ public final class ContainerImpl implements Container {
         this.injectResolver = new InjectResolver(this);
         this.instanceFactory = new InstanceFactory(this);
         this.scoping = this::scopedWithin;
-        this.shutdown = new Shutdown(
-            serviceCache,
-            targetCache,
-            bindingIndex,
-            coercer
-        );
-        this.serviceRuntime = new ServiceRuntime(
-            proxyFactory,
-            serviceCache,
-            targetCache
-        );
+        this.shutdown = new Shutdown(serviceCache, targetCache, bindingIndex, coercer);
+        this.serviceRuntime = new ServiceRuntime(proxyFactory, serviceCache, targetCache);
+        this.strict = Boolean.getBoolean("freeway.strict");
         registerBuiltin(Container.class, this, "Container");
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Coercer.class, coercer, "Coercer");
@@ -124,9 +106,7 @@ public final class ContainerImpl implements Container {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Extension<T> extension(Class<T> entryType) {
-        return (Extension<T>) extensions.computeIfAbsent(
-            entryType, k -> new Extension<>(k)
-        );
+        return (Extension<T>) extensions.computeIfAbsent(entryType, k -> new Extension<>(k));
     }
 
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
@@ -136,20 +116,25 @@ public final class ContainerImpl implements Container {
     }
 
     void installModule(Module2 module, Binder binder) {
-        if (moduleTypes.add(module.getClass())) {
-            LOG.debug("Installing module: {}", module.getClass().getSimpleName());
+        Class<?> moduleType = module.getClass();
+        if (moduleTypes.add(moduleType)) {
+            LOG.debug("Installing module: {}", moduleType.getSimpleName());
             loadedModules.add(module);
             module.bind(binder);
+            return;
         }
+        if (strict) {
+            throw new IllegalStateException(
+                "Duplicate module class " + moduleType.getSimpleName()
+                    + " - remove the duplicate or set freeway.strict=false"
+            );
+        }
+        LOG.debug("Ignoring duplicate module: {}", moduleType.getSimpleName());
     }
 
-    private void loadAll(
-        Collection<? extends Module2> modules
-    ) {
+    private void loadAll(Collection<? extends Module2> modules) {
         BinderImpl binder = new BinderImpl(this);
-        for (Module2 module : modules == null
-            ? List.<Module2>of()
-            : List.copyOf(modules)) {
+        for (Module2 module : modules == null ? List.<Module2>of() : List.copyOf(modules)) {
             installModule(module, binder);
         }
     }
@@ -160,14 +145,14 @@ public final class ContainerImpl implements Container {
      */
     @SuppressWarnings("rawtypes")
     private void wireBuiltinExtensions() {
-        // SymbolProvider → SymbolSource
+        // SymbolProvider -> SymbolSource
         Extension<?> spExt = extensions.get(SymbolProvider.class);
         if (spExt != null) {
             for (Object p : spExt.all()) {
                 symbolSource.register((SymbolProvider) p);
             }
         }
-        // CoerceRule → Coercer
+        // CoerceRule -> Coercer
         Extension<?> crExt = extensions.get(CoerceRule.class);
         if (crExt != null) {
             for (Object rule : crExt.all()) {
@@ -213,16 +198,10 @@ public final class ContainerImpl implements Container {
         if (closed) {
             throw new IllegalStateException("Container is closed");
         }
-        BindingImpl<T> binding = bindingIndex.find(
-            type,
-            ServiceIds.normalize(id)
-        );
+        BindingImpl<T> binding = bindingIndex.find(type, ServiceIds.normalize(id));
         if (binding == null) {
             throw new IllegalArgumentException(
-                "No service registered for type " +
-                    type.getName() +
-                    " and id " +
-                    id
+                "No service registered for type " + type.getName() + " and id " + id
             );
         }
         return serviceRuntime.get(binding);
@@ -232,11 +211,7 @@ public final class ContainerImpl implements Container {
         bindingIndex.register(binding);
     }
 
-    synchronized void updateId(
-        BindingImpl<?> binding,
-        String previousId,
-        String newId
-    ) {
+    synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {
         bindingIndex.updateId(binding, previousId, newId);
     }
 
@@ -245,6 +220,12 @@ public final class ContainerImpl implements Container {
             throw noServiceRegistered(type);
         }
         if (isConcrete(type)) {
+            if (strict) {
+                throw new IllegalArgumentException(
+                    "No service bound for " + type.getName()
+                        + " - strict mode requires explicit binding for all concrete types"
+                );
+            }
             return instantiate(type);
         }
         throw noServiceRegistered(type);
@@ -255,9 +236,7 @@ public final class ContainerImpl implements Container {
     }
 
     private static IllegalArgumentException noServiceRegistered(Class<?> type) {
-        return new IllegalArgumentException(
-            "No service registered for type " + type.getName()
-        );
+        return new IllegalArgumentException("No service registered for type " + type.getName());
     }
 
     <T> T instantiate(Class<T> type) {
@@ -276,10 +255,7 @@ public final class ContainerImpl implements Container {
         Lifecycle.invokePostConstruct(instance);
     }
 
-    Object[] resolveArguments(
-        Class<?> ownerType,
-        List<BeanParameter> parameters
-    ) {
+    Object[] resolveArguments(Class<?> ownerType, List<BeanParameter> parameters) {
         return injectResolver.resolveArguments(ownerType, parameters);
     }
 

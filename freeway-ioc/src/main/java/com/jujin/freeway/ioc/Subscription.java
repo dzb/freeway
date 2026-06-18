@@ -34,4 +34,8 @@ public final class Subscription<E> implements Consumer<E> {
     public void accept(E event) {
         handler.accept(event);
     }
+
+    void dispatch(Object event) {
+        handler.accept(eventType.cast(event));
+    }
 }

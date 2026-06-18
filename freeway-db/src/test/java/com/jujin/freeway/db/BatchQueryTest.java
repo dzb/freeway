@@ -34,6 +34,27 @@ class BatchQueryTest {
     }
 
     @Test
+    void batchInsertWithPositionalParamsRejectsShortRows() {
+        String dbName = uniqueDb("batch_pos_short");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint primary key, label varchar(16))");
+
+            assertThrows(SqlException.class, () ->
+                db.batch("insert into t (id, label) values (?, ?)")
+                    .rows(
+                        new Object[]{1L, "a"},
+                        new Object[]{2L}
+                    )
+                    .execute()
+            );
+
+            long total = db.query("select count(*) from t").one(Long.class).orElseThrow();
+            assertEquals(0L, total);
+        }
+    }
+
+    @Test
     void batchInsertWithNamedParams() {
         String dbName = uniqueDb("batch_named");
         Database db = builder(dbName).build();

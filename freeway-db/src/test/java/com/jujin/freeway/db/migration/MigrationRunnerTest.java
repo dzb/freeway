@@ -67,9 +67,19 @@ class MigrationRunnerTest {
                 new Item(2L, "beta")
             ), items);
 
-            List<String> versions = db.query("select version from _migrations order by version")
-                .list(String.class);
-            assertEquals(List.of("V001", "V002", "V003"), versions);
+            List<MigrationRow> migrations = db
+                .query(
+                    "select version, installed_rank from _migrations where version <> '__LOCK__' order by installed_rank"
+                )
+                .list(MigrationRow.class);
+            assertEquals(
+                List.of(
+                    new MigrationRow("V001", 1),
+                    new MigrationRow("V002", 2),
+                    new MigrationRow("V003", 3)
+                ),
+                migrations
+            );
 
             assertEquals(0, runner.run());
         } finally {
@@ -81,6 +91,50 @@ class MigrationRunnerTest {
     void versionFromPathStripsSuffixAndDescription() {
         assertEquals("V001", MigrationRunner.versionFromPath("db/migration/V001__create_table.sql"));
         assertEquals("abc", MigrationRunner.versionFromPath("abc.sql"));
+    }
+
+    @Test
+    void runsMigrationsInNaturalVersionOrder(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V1_2__create_table.sql"),
+            "create table natural_order (id bigint primary key)"
+        );
+        Files.writeString(
+            migrationDir.resolve("V1_10__seed_table.sql"),
+            "insert into natural_order (id) values (1)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_natural_order")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            assertEquals(2, runner.run());
+            assertEquals(List.of(1L), db.query("select id from natural_order order by id").list(Long.class));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void splitsStatementsOutsideQuotesCommentsAndDollarQuotes() {
+        String sql = """
+            -- header comment
+            create table t (id bigint primary key);
+            insert into t (id, note) values (1, 'semi;colon');
+            do $$ begin perform 1; end $$;
+            """;
+
+        assertEquals(
+            List.of(
+                "create table t (id bigint primary key)",
+                "insert into t (id, note) values (1, 'semi;colon')",
+                "do $$ begin perform 1; end $$"
+            ),
+            MigrationRunner.splitStatements(sql)
+        );
     }
 
     @Test
@@ -210,6 +264,69 @@ class MigrationRunnerTest {
     }
 
     @Test
+    void rejectsCommentOnlyMigrationFile(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__comment_only.sql"),
+            """
+            -- only comments
+            /* and blocks */
+            """
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_comment_only")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("empty"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void runsMultiStatementMigrationFile(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__multi_step.sql"),
+            """
+            -- create and seed in one file
+            create table migration_multi (
+                id bigint primary key,
+                note varchar(64) not null
+            );
+            insert into migration_multi (id, note) values (1, 'semi;colon');
+            insert into migration_multi (id, note) values (2, 'beta');
+            """
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_multi")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            assertEquals(1, runner.run());
+
+            List<Item> items = db
+                .query("select id, note as label from migration_multi order by id")
+                .list(Item.class);
+            assertEquals(
+                List.of(
+                    new Item(1L, "semi;colon"),
+                    new Item(2L, "beta")
+                ),
+                items
+            );
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
     void lockPreventsConcurrentRuns(@TempDir Path tempDir) throws Exception {
         Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
         Files.writeString(
@@ -284,5 +401,8 @@ class MigrationRunnerTest {
     }
 
     public record Item(long id, String label) {
+    }
+
+    public record MigrationRow(String version, int installedRank) {
     }
 }

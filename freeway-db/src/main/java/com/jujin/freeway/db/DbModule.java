@@ -157,25 +157,22 @@ public final class DbModule implements Module2{
         RowMapperResolver resolver = container.get(RowMapperResolver.class);
         SymbolSource symbols = container.get(SymbolSource.class);
         String poolId = resolveStr(symbols, "freeway.db.pool", "builtin");
-        Pool pool = resolvePool(container, poolId, config);
+        Pool pool = resolvePool(container, poolId);
         return new DatabaseImpl(config, resolver, pool);
     }
 
     private static Pool resolvePool(
         Container container,
-        String poolId,
-        PoolConfig config
+        String poolId
     ) {
         String id = poolId != null && !poolId.isBlank() ? poolId : "builtin";
         try {
             return container.get(Pool.class, id);
         } catch (RuntimeException ex) {
-            if (!"builtin".equals(id)) {
-                throw new IllegalStateException(
-                    "Unable to resolve pool engine '" + id + "'", ex
-                );
-            }
-            return new PoolDefault(config);
+            throw new IllegalStateException(
+                "Unable to resolve pool engine '" + id + "'",
+                ex
+            );
         }
     }
 
@@ -194,11 +191,31 @@ public final class DbModule implements Module2{
         String key,
         boolean defaultVal
     ) {
-        try {
-            return Boolean.parseBoolean(symbols.resolve(key));
-        } catch (Exception e) {
+        String text = resolveStr(symbols, key, null);
+        if (text == null) {
             return defaultVal;
         }
+        String value = text.trim();
+        if (value.isEmpty()) {
+            throw new IllegalArgumentException(key + " must not be blank");
+        }
+        if (
+            "true".equalsIgnoreCase(value) ||
+            "yes".equalsIgnoreCase(value) ||
+            "on".equalsIgnoreCase(value) ||
+            "1".equals(value)
+        ) {
+            return true;
+        }
+        if (
+            "false".equalsIgnoreCase(value) ||
+            "no".equalsIgnoreCase(value) ||
+            "off".equalsIgnoreCase(value) ||
+            "0".equals(value)
+        ) {
+            return false;
+        }
+        throw new IllegalArgumentException("Invalid boolean value for " + key + ": " + text);
     }
 
     private static String resolveStr(
@@ -209,7 +226,10 @@ public final class DbModule implements Module2{
         try {
             return symbols.resolve(key);
         } catch (IllegalArgumentException e) {
-            return defaultVal;
+            if (isUnknownSymbol(e, key)) {
+                return defaultVal;
+            }
+            throw e;
         }
     }
 
@@ -218,10 +238,21 @@ public final class DbModule implements Module2{
         String key,
         int defaultVal
     ) {
-        try {
-            return Integer.parseInt(symbols.resolve(key));
-        } catch (Exception e) {
+        String text = resolveStr(symbols, key, null);
+        if (text == null) {
             return defaultVal;
+        }
+        String value = text.trim();
+        if (value.isEmpty()) {
+            throw new IllegalArgumentException(key + " must not be blank");
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                "Invalid integer value for " + key + ": " + text,
+                e
+            );
         }
     }
 
@@ -230,16 +261,21 @@ public final class DbModule implements Module2{
         String key,
         Duration defaultVal
     ) {
-        try {
-            return parseDuration(symbols.resolve(key));
-        } catch (Exception e) {
+        String text = resolveStr(symbols, key, null);
+        if (text == null) {
             return defaultVal;
         }
+        return parseDuration(text);
     }
 
     static Duration parseDuration(String text) {
-        if (text == null || text.isBlank()) return null;
+        if (text == null) {
+            return null;
+        }
         String value = text.trim();
+        if (value.isEmpty()) {
+            throw new IllegalArgumentException("Invalid duration: " + text);
+        }
         try {
             if (value.endsWith("ms")) return Duration.ofMillis(
                 Long.parseLong(value.substring(0, value.length() - 2).trim())
@@ -257,6 +293,11 @@ public final class DbModule implements Module2{
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid duration: " + text, e);
         }
+    }
+
+    private static boolean isUnknownSymbol(IllegalArgumentException e, String key) {
+        String message = e.getMessage();
+        return message != null && message.equals("Unknown symbol: " + key);
     }
 
     private static void runSchema(Container container) {
@@ -321,7 +362,10 @@ public final class DbModule implements Module2{
             try {
                 return container.get(Dialect.class, dialectId);
             } catch (RuntimeException ex) {
-                LOG.warn("Dialect '{}' not found, falling back to default", dialectId);
+                throw new IllegalStateException(
+                    "Unable to resolve dialect '" + dialectId + "'",
+                    ex
+                );
             }
         }
         return container.get(Dialect.class);

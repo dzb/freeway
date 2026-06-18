@@ -115,12 +115,12 @@ public final class JdkHttpContext extends HttpContext {
         boolean headRequest = "HEAD".equalsIgnoreCase(
             exchange.getRequestMethod()
         );
-        long length =
-            responseStatus == 204 || responseStatus == 304 ? 0 : data.length;
+        boolean bodyAllowed = allowsResponseBody();
+        long length = bodyAllowed && !headRequest ? data.length : 0;
         exchange.sendResponseHeaders(responseStatus, length);
         responded = true;
         try (OutputStream os = exchange.getResponseBody()) {
-            if (!headRequest && data.length > 0) {
+            if (bodyAllowed && !headRequest && data.length > 0) {
                 os.write(data);
             }
         }

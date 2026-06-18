@@ -2,6 +2,7 @@ package com.jujin.freeway.db.migration;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.db.internal.SqlTextScanner;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,6 +34,7 @@ public final class MigrationRunner {
         MigrationRunner.class
     );
     static final int MAX_MIGRATION_BYTES = 16 * 1024 * 1024;
+    private static final String LOCK_VERSION = "__LOCK__";
 
     /** Flyway-compatible: V followed by digits and optional separators. */
     private static final String VERSION_PATTERN = "V\\d[\\d._]*";
@@ -172,7 +174,9 @@ public final class MigrationRunner {
             database.execute(
                 "insert into " +
                     table +
-                    " (version, description, checksum, installed_rank) values ('__LOCK__', '', '', -1)"
+                    " (version, description, checksum, installed_rank) values ('" +
+                    LOCK_VERSION +
+                    "', '', '', -1)"
             );
         } catch (SqlException e) {
             if (isDuplicateKey(e)) {
@@ -182,7 +186,9 @@ public final class MigrationRunner {
                         "If no other instance is running, the lock may be stale: " +
                         "delete from " +
                         table +
-                        " where version = '__LOCK__'"
+                        " where version = '" +
+                        LOCK_VERSION +
+                        "'"
                 );
             }
             throw e;
@@ -192,7 +198,7 @@ public final class MigrationRunner {
     private void releaseLock() {
         try {
             database.execute(
-                "delete from " + table + " where version = '__LOCK__'"
+                "delete from " + table + " where version = '" + LOCK_VERSION + "'"
             );
         } catch (RuntimeException e) {
             LOG.warn("Failed to release migration lock", e);
@@ -232,13 +238,19 @@ public final class MigrationRunner {
         int installedRank
     ) {
         String sql = readResource(resourcePath);
-        if (sql.isBlank()) {
-            throw new SqlException("Migration file is empty: " + resourcePath);
+        List<String> statements = splitStatements(sql);
+        if (statements.isEmpty()) {
+            throw new SqlException(
+                "Migration file is empty or contains no executable SQL: " +
+                    resourcePath
+            );
         }
         String version = versionFromPath(resourcePath);
         String description = descriptionFromPath(resourcePath);
         database.transaction(() -> {
-            database.execute(sql);
+            for (String statement : statements) {
+                database.execute(statement);
+            }
             database.execute(
                 "insert into " +
                     table +
@@ -251,9 +263,13 @@ public final class MigrationRunner {
         });
     }
 
+    static List<String> splitStatements(String sql) {
+        return SqlTextScanner.splitStatements(sql);
+    }
+
     private List<String> scanMigrations() {
         ClassLoader classLoader = classLoader();
-        Set<String> result = new TreeSet<>();
+        Set<String> result = new TreeSet<>(MigrationRunner::compareMigrationPaths);
         try {
             Enumeration<URL> roots = classLoader.getResources(path);
             while (roots.hasMoreElements()) {
@@ -332,11 +348,14 @@ public final class MigrationRunner {
             .query(
                 "select version, checksum from " +
                     table +
+                    " where version <> '" + LOCK_VERSION + "'" +
                     " order by installed_rank"
             )
             .list(ChecksumRow.class);
         for (ChecksumRow row : rows) {
-            map.put(row.version(), row.checksum());
+            if (!LOCK_VERSION.equals(row.version())) {
+                map.put(row.version(), row.checksum());
+            }
         }
         return map;
     }
@@ -365,6 +384,60 @@ public final class MigrationRunner {
             readResourceBytes(resourcePath),
             StandardCharsets.UTF_8
         );
+    }
+
+    private static int compareMigrationPaths(String left, String right) {
+        int versionCompare = compareVersionStrings(
+            versionFromPath(left),
+            versionFromPath(right)
+        );
+        if (versionCompare != 0) {
+            return versionCompare;
+        }
+        return left.compareTo(right);
+    }
+
+    private static int compareVersionStrings(String left, String right) {
+        String[] leftParts = splitVersion(left);
+        String[] rightParts = splitVersion(right);
+        int count = Math.min(leftParts.length, rightParts.length);
+        for (int i = 0; i < count; i++) {
+            int cmp = compareVersionPart(leftParts[i], rightParts[i]);
+            if (cmp != 0) {
+                return cmp;
+            }
+        }
+        return Integer.compare(leftParts.length, rightParts.length);
+    }
+
+    private static String[] splitVersion(String version) {
+        String body = version.startsWith("V") ? version.substring(1) : version;
+        return body.split("[._]");
+    }
+
+    private static int compareVersionPart(String left, String right) {
+        String normalizedLeft = stripLeadingZeros(left);
+        String normalizedRight = stripLeadingZeros(right);
+        int lengthCompare = Integer.compare(
+            normalizedLeft.length(),
+            normalizedRight.length()
+        );
+        if (lengthCompare != 0) {
+            return lengthCompare;
+        }
+        int compare = normalizedLeft.compareTo(normalizedRight);
+        if (compare != 0) {
+            return compare;
+        }
+        return Integer.compare(left.length(), right.length());
+    }
+
+    private static String stripLeadingZeros(String value) {
+        int index = 0;
+        while (index < value.length() - 1 && value.charAt(index) == '0') {
+            index++;
+        }
+        return value.substring(index);
     }
 
     private static String sha256(byte[] content) {
@@ -399,6 +472,95 @@ public final class MigrationRunner {
             total += read;
         }
         return out.toByteArray();
+    }
+
+    private static int appendQuoted(
+        String sql,
+        int start,
+        StringBuilder current,
+        char quote
+    ) {
+        int len = sql.length();
+        current.append(quote);
+        int i = start + 1;
+        while (i < len) {
+            char c = sql.charAt(i);
+            current.append(c);
+            i++;
+            if (c == quote) {
+                if (i < len && sql.charAt(i) == quote) {
+                    current.append(quote);
+                    i++;
+                } else {
+                    return i;
+                }
+            }
+        }
+        return len;
+    }
+
+    private static int skipLineComment(String sql, int start) {
+        int len = sql.length();
+        int i = start + 2;
+        while (i < len && sql.charAt(i) != '\n' && sql.charAt(i) != '\r') {
+            i++;
+        }
+        return i;
+    }
+
+    private static int skipBlockComment(String sql, int start) {
+        int len = sql.length();
+        int i = start + 2;
+        while (i < len) {
+            char c = sql.charAt(i);
+            i++;
+            if (c == '*' && i < len && sql.charAt(i) == '/') {
+                return i + 1;
+            }
+        }
+        return len;
+    }
+
+    private static int skipDollarQuote(
+        String sql,
+        int start,
+        StringBuilder current
+    ) {
+        int len = sql.length();
+        if (start >= len || sql.charAt(start) != '$') {
+            return start;
+        }
+        int tagEnd = start + 1;
+        while (tagEnd < len && sql.charAt(tagEnd) != '$') {
+            char c = sql.charAt(tagEnd);
+            if (!Character.isLetterOrDigit(c) && c != '_') {
+                return start;
+            }
+            tagEnd++;
+        }
+        if (tagEnd >= len) {
+            return start;
+        }
+        String tag = sql.substring(start, tagEnd + 1);
+        int close = sql.indexOf(tag, tagEnd + 1);
+        if (close < 0) {
+            current.append(sql, start, len);
+            return len;
+        }
+        int end = close + tag.length();
+        current.append(sql, start, end);
+        return end;
+    }
+
+    private static void addStatement(
+        List<String> statements,
+        StringBuilder current
+    ) {
+        String statement = current.toString().trim();
+        if (!statement.isEmpty()) {
+            statements.add(statement);
+        }
+        current.setLength(0);
     }
 
     private static String normalizePath(String path) {

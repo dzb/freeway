@@ -62,13 +62,12 @@ public final class RowMapperResolver {
         return map;
     }
 
-    @SuppressWarnings("unchecked")
     public <T> RowMapper<T> resolve(Class<T> type) {
         RowMapper<?> mapper = custom.get(type);
         if (mapper != null) {
-            return (RowMapper<T>) mapper;
+            return narrow(mapper);
         }
-        return (RowMapper<T>) cache.computeIfAbsent(type, this::create);
+        return narrow(cache.computeIfAbsent(type, this::createCached));
     }
 
     private static Map<Class<?>, RowMapper<?>> customMap(
@@ -100,9 +99,9 @@ public final class RowMapperResolver {
         }
     }
 
-    private <T> RowMapper<T> create(Class<T> type) {
+    private RowMapper<?> create(Class<?> type) {
         if (type == Row.class) {
-            return (RowMapper<T>) createRowMapper();
+            return createRowMapper();
         }
         if (isBasicType(type)) {
             return createBasic(type);
@@ -133,11 +132,19 @@ public final class RowMapperResolver {
         return createBean(type, plan);
     }
 
+    private RowMapper<?> createCached(Class<?> type) {
+        RowMapper<?> resolved = create(type);
+        if (type.isPrimitive()) {
+            return resolved;
+        }
+        return wrap(type, resolved);
+    }
+
     private boolean isBasicType(Class<?> type) {
         return SqlTypeMapping.isBasicType(type);
     }
 
-    private <T> RowMapper<T> createBasic(Class<T> type) {
+    private RowMapper<?> createBasic(Class<?> type) {
         return (rs, rowNum) -> coercer.coerce(rs.getObject(1), type);
     }
 
@@ -157,7 +164,7 @@ public final class RowMapperResolver {
         };
     }
 
-    private <T> RowMapper<T> createRecord(Class<T> type, BeanPlan plan) {
+    private RowMapper<?> createRecord(Class<?> type, BeanPlan plan) {
         BeanConstructor constructor = plan.constructor();
         List<BeanProperty> properties = plan.properties();
         ColumnCache columns = new ColumnCache(properties);
@@ -187,7 +194,7 @@ public final class RowMapperResolver {
         };
     }
 
-    private <T> RowMapper<T> createBean(Class<T> type, BeanPlan plan) {
+    private RowMapper<?> createBean(Class<?> type, BeanPlan plan) {
         if (!plan.isConstructable()) {
             throw new SqlException(
                 "Cannot map " + type.getName() + ": no default constructor"
@@ -203,7 +210,7 @@ public final class RowMapperResolver {
         return (rs, rowNum) -> {
             ResultSetMetaData meta = rs.getMetaData();
             int[] indexes = columns.resolve(meta);
-            T instance;
+            Object instance;
             try {
                 instance = type.cast(constructor.newInstance());
             } catch (RuntimeException e) {
@@ -338,5 +345,14 @@ public final class RowMapperResolver {
             }
             return new Signature(List.copyOf(labels));
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> RowMapper<T> narrow(RowMapper<?> mapper) {
+        return (RowMapper<T>) mapper;
+    }
+
+    private static <T> RowMapper<T> wrap(Class<T> type, RowMapper<?> mapper) {
+        return (rs, rowNum) -> type.cast(mapper.map(rs, rowNum));
     }
 }

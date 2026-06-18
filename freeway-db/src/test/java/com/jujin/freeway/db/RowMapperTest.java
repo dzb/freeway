@@ -335,6 +335,16 @@ class RowMapperTest {
     }
 
     @Test
+    void resolverCachesWrappedPojoMappers() {
+        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
+
+        RowMapper<ExactRecord> first = resolver.resolve(ExactRecord.class);
+        RowMapper<ExactRecord> second = resolver.resolve(ExactRecord.class);
+
+        assertSame(first, second);
+    }
+
+    @Test
     void resolverRejectsInterfaceTypesWithClearMessage() {
         RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
 

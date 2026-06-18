@@ -39,11 +39,13 @@ class FreewayTest {
     private static final String ENDPOINT_KEY = "freeway.test.endpoint";
     private static final String TIMEOUT_KEY = "freeway.test.timeout";
     private static final String APP_NAME_KEY = "freeway.test.app.name";
+    private static final String STRICT_KEY = "freeway.strict";
     private String previousPort;
     private String previousName;
     private String previousEndpoint;
     private String previousTimeout;
     private String previousAppName;
+    private String previousStrict;
 
     @BeforeEach
     void captureSystemProperties() {
@@ -52,6 +54,7 @@ class FreewayTest {
         previousEndpoint = System.getProperty(ENDPOINT_KEY);
         previousTimeout = System.getProperty(TIMEOUT_KEY);
         previousAppName = System.getProperty(APP_NAME_KEY);
+        previousStrict = System.getProperty(STRICT_KEY);
         GreeterImpl.created.set(0);
     }
 
@@ -62,6 +65,7 @@ class FreewayTest {
         restoreProperty(ENDPOINT_KEY, previousEndpoint);
         restoreProperty(TIMEOUT_KEY, previousTimeout);
         restoreProperty(APP_NAME_KEY, previousAppName);
+        restoreProperty(STRICT_KEY, previousStrict);
     }
 
     private static void restoreProperty(String key, String value) {
@@ -191,6 +195,30 @@ class FreewayTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> container.get(PaymentGateway.class));
 
         assertTrue(ex.getMessage().contains("Multiple primary services"));
+    }
+
+    @Test
+    void strictModeRejectsDuplicateModuleClasses() {
+        System.setProperty(STRICT_KEY, "true");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            Freeway.create(new StrictModule(), new StrictModule())
+        );
+
+        assertTrue(ex.getMessage().contains("Duplicate module class"));
+    }
+
+    @Test
+    void strictModeRejectsUnboundConcreteTypes() {
+        System.setProperty(STRICT_KEY, "true");
+
+        Container container = Freeway.create();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            container.get(StrictConcreteType.class)
+        );
+
+        assertTrue(ex.getMessage().contains("strict mode requires explicit binding"));
     }
 
     @Test
@@ -1066,6 +1094,15 @@ class FreewayTest {
         @Inject
         @Value("${some.path}")
         private PaymentGateway gateway;
+    }
+
+    public static final class StrictModule implements Module2 {
+        @Override
+        public void bind(Binder binder) {
+        }
+    }
+
+    public static final class StrictConcreteType {
     }
 
     // ========== @PostConstruct / @PreDestroy tests ==========

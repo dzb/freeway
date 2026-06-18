@@ -193,20 +193,37 @@ public final class PoolDefault implements Pool {
     }
 
     private void warmUp() {
-        for (int i = 0; i < config.minIdle(); i++) {
-            if (!semaphore.tryAcquire()) {
+        int warmed = 0;
+        try {
+            for (int i = 0; i < config.minIdle(); i++) {
+                if (!semaphore.tryAcquire()) {
+                    throw new SqlException(
+                        "Failed to warm up connection pool: no permits available"
+                    );
+                }
+                try {
+                    PooledConnectionDefault conn = createConnection();
+                    total.incrementAndGet();
+                    idle.offerFirst(conn);
+                    warmed++;
+                } finally {
+                    semaphore.release();
+                }
+            }
+        } catch (RuntimeException e) {
+            closeWarmUpConnections(warmed);
+            throw new SqlException("Failed to warm up connection pool", e);
+        }
+    }
+
+    private void closeWarmUpConnections(int warmed) {
+        for (int i = 0; i < warmed; i++) {
+            PooledConnectionDefault conn = idle.pollFirst();
+            if (conn == null) {
                 break;
             }
-            try {
-                PooledConnectionDefault conn = createConnection();
-                total.incrementAndGet();
-                idle.offerFirst(conn);
-                semaphore.release();
-            } catch (Exception e) {
-                LOG.warn("Failed to warm up connection", e);
-                semaphore.release();
-                break;
-            }
+            closePhysical(conn);
+            total.decrementAndGet();
         }
     }
 
