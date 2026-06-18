@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.route;
 
 import java.util.Objects;
+import java.util.Locale;
 import com.jujin.freeway.commons.validation.BeanValidator;
 import com.jujin.freeway.http.body.BodyHandler;
 import com.jujin.freeway.http.ValidationException;
@@ -93,6 +94,6 @@ public record Route(
     }
 
     private static String normalizeMethod(String method) {
-        return Objects.requireNonNull(method, "method").trim().toUpperCase();
+        return Objects.requireNonNull(method, "method").trim().toUpperCase(Locale.ROOT);
     }
 }

@@ -36,7 +36,7 @@ public final class SchemaEntity {
     private SchemaEntity(String name, Dialect dialect, Class<?>[] entityTypes) {
         this.name = Objects.requireNonNull(name, "name");
         this.dialect = dialect;
-        this.entityTypes = Objects.requireNonNull(entityTypes, "entityTypes");
+        this.entityTypes = Objects.requireNonNull(entityTypes, "entityTypes").clone();
     }
 
     /** Register a named group with the default dialect. */
@@ -56,5 +56,5 @@ public final class SchemaEntity {
     public Dialect dialect() { return dialect; }
 
     /** The entity classes in this group. */
-    public Class<?>[] entityTypes() { return entityTypes; }
+    public Class<?>[] entityTypes() { return entityTypes.clone(); }
 }

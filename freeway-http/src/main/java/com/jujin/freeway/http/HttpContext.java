@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Locale;
 
 public abstract class HttpContext {
 
@@ -78,7 +79,7 @@ public abstract class HttpContext {
 
     public boolean isMultipart() {
         String ct = header("Content-Type");
-        return ct != null && ct.toLowerCase().startsWith("multipart/form-data");
+        return ct != null && ct.toLowerCase(Locale.ROOT).startsWith("multipart/form-data");
     }
 
     public MultipartForm multipart() throws IOException {
@@ -254,7 +255,7 @@ public abstract class HttpContext {
 
     private void checkJsonContentType() throws IOException {
         String ct = header("Content-Type");
-        if (ct != null && !ct.isBlank() && !ct.toLowerCase().contains("json")) {
+        if (ct != null && !ct.isBlank() && !ct.toLowerCase(Locale.ROOT).contains("json")) {
             throw new IOException("Expected application/json but got " + ct);
         }
     }
@@ -264,7 +265,7 @@ public abstract class HttpContext {
         if (
             ct == null ||
             ct.isBlank() ||
-            !ct.toLowerCase().startsWith("multipart/form-data")
+            !ct.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")
         ) {
             throw new IOException("Expected multipart/form-data but got " + ct);
         }

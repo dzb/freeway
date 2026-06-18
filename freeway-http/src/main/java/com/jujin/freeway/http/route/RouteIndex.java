@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.Locale;
 
 /**
  * Trie-based HTTP route index.
@@ -70,7 +71,7 @@ public final class RouteIndex {
     }
 
     private void addRoute(String method, String path, RouteHandler handler) {
-        String key = method == null ? "" : method.toUpperCase();
+        String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
         TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
         String[] segments = PathPattern.splitPath(path);
         TrieNode current = root;
@@ -129,7 +130,7 @@ public final class RouteIndex {
     }
 
     public RouteMatch match(String method, String path) {
-        String key = method == null ? "" : method.toUpperCase();
+        String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
         TrieNode root = methodRoots.get(key);
         RouteMatch result = matchTrie(root, path);
         if (result != null || !"HEAD".equals(key)) {

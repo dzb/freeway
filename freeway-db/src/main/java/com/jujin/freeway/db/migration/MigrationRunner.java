@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -211,7 +212,7 @@ public final class MigrationRunner {
         if (e.getCause() != null) {
             String msg = e.getCause().getMessage();
             if (msg != null) {
-                msg = msg.toLowerCase();
+                msg = msg.toLowerCase(Locale.ROOT);
                 if (msg.contains("unique")
                         || msg.contains("duplicate")
                         || msg.contains("primary key")

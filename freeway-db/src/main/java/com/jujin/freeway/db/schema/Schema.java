@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.Locale;
 
 /**
  * Database schema utility — auto-generates and migrates tables from entity classes.
@@ -85,7 +86,7 @@ public final class Schema {
         SchemaGenerator gen = new SchemaGenerator(dialect);
         int executed = 0;
 
-        Set<String> existingTables = dialect.existingTables(db);
+        Set<String> existingTables = new HashSet<>(dialect.existingTables(db));
         if (LOG.isDebugEnabled()) {
             LOG.debug("Existing tables in schema: {}", existingTables);
         }
@@ -93,7 +94,7 @@ public final class Schema {
         for (Class<?> type : entityTypes) {
             TableDef table = gen.define(type);
             String tableName = table.name();
-            String normalizedTableName = tableName.toLowerCase();
+            String normalizedTableName = tableName.toLowerCase(Locale.ROOT);
 
             if (!existingTables.contains(normalizedTableName)) {
                 String ddl = dialect.createTable(table);
@@ -111,7 +112,7 @@ public final class Schema {
             }
 
             for (ColumnDef col : table.columns()) {
-                if (!existingCols.contains(col.name().toLowerCase())) {
+                if (!existingCols.contains(col.name().toLowerCase(Locale.ROOT))) {
                     String alter = dialect.addColumn(tableName, col);
                     LOG.info("Adding column: {}.{}", tableName, col.name());
                     db.execute(alter);
@@ -128,7 +129,7 @@ public final class Schema {
                 : dialect.existingIndexes(db, table.name());
             for (IndexDef index : table.indexes()) {
                 if (!existingIndexes.isEmpty() &&
-                    existingIndexes.contains(index.name().toLowerCase())) {
+                    existingIndexes.contains(index.name().toLowerCase(Locale.ROOT))) {
                     continue;
                 }
                 LOG.info("Ensuring index on {}", table.name());

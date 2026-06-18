@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.Locale;
 
 /**
  * PostgreSQL / H2 (PostgreSQL compatibility mode) SQL dialect.
@@ -83,7 +84,7 @@ public final class PostgresDialect implements Dialect {
         try {
             List<String> indexes = db.query(
                 "SELECT indexname FROM pg_indexes WHERE schemaname = ? AND tablename = ?",
-                effectiveSchema().toLowerCase(), tableName.toLowerCase()
+                effectiveSchema().toLowerCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)
             ).list(String.class);
             return indexes.stream()
                 .filter(i -> i != null)
@@ -137,7 +138,7 @@ public final class PostgresDialect implements Dialect {
         try {
             List<String> columns = db.query(
                 "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE UPPER(TABLE_NAME) = ? AND TABLE_SCHEMA = ?",
-                tableName.toUpperCase(), effectiveSchema()
+                tableName.toUpperCase(Locale.ROOT), effectiveSchema()
             ).list(String.class);
             return columns.stream()
                 .filter(c -> c != null)
@@ -154,7 +155,7 @@ public final class PostgresDialect implements Dialect {
     }
 
     private static boolean needsQuoting(String name) {
-        if (RESERVED.contains(name.toLowerCase())) {
+        if (RESERVED.contains(name.toLowerCase(Locale.ROOT))) {
             return true;
         }
         for (int i = 0; i < name.length(); i++) {

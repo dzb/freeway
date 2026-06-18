@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.Locale;
 
 /**
  * Java-to-SQL type mapping.
@@ -146,7 +147,7 @@ public final class SqlTypeMapping {
     ) {
         // Explicit override
         if (col != null && !col.type().isBlank()) {
-            String explicit = col.type().trim().toUpperCase();
+            String explicit = col.type().trim().toUpperCase(Locale.ROOT);
             return normalizeGeneratedSqlType(explicit, javaType, dialect, generated);
         }
 

@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
+import java.util.Locale;
 
 public final class BootConfigLoader implements ConfigLoader {
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
@@ -64,8 +65,8 @@ public final class BootConfigLoader implements ConfigLoader {
         for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
             String key = entry.getKey();
             if (key.startsWith(prefix)) {
-                String converted = key.substring(prefix.length())
-                    .toLowerCase()
+                String converted = "freeway." + key.substring(prefix.length())
+                    .toLowerCase(Locale.ROOT)
                     .replace('_', '.');
                 values.put(converted, entry.getValue());
             }

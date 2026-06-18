@@ -13,6 +13,13 @@ public interface SymbolSource {
      * {@code ${name:default}} syntax.
      */
     default String resolve(String name, String defaultValue) {
+        if (defaultValue == null) {
+            try {
+                return resolve(name);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
         return expand("${" + name + ":" + defaultValue + "}");
     }
 

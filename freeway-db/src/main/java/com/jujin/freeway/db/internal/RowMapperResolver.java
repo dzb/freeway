@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Locale;
 
 public final class RowMapperResolver {
 
@@ -145,7 +146,7 @@ public final class RowMapperResolver {
             for (int i = 1; i <= count; i++) {
                 String label = meta.getColumnLabel(i);
                 values.put(
-                    label != null ? label.toLowerCase() : "",
+                    label != null ? label.toLowerCase(Locale.ROOT) : "",
                     rs.getObject(i)
                 );
             }
