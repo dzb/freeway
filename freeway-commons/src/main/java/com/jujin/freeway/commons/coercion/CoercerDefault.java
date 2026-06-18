@@ -263,7 +263,32 @@ public final class CoercerDefault implements Coercer {
             return (T) String.valueOf(value);
         }
         if (boxedTarget == Boolean.class) {
-            return (T) Boolean.valueOf(parseBool(value));
+            if (value instanceof Boolean b) {
+                return (T) b;
+            }
+            if (value instanceof Number n) {
+                return (T) Boolean.valueOf(n.intValue() != 0);
+            }
+            String text = String.valueOf(value).trim();
+            if (
+                "true".equalsIgnoreCase(text) ||
+                "yes".equalsIgnoreCase(text) ||
+                "on".equalsIgnoreCase(text) ||
+                "1".equals(text)
+            ) {
+                return (T) Boolean.TRUE;
+            }
+            if (
+                "false".equalsIgnoreCase(text) ||
+                "no".equalsIgnoreCase(text) ||
+                "off".equalsIgnoreCase(text) ||
+                "0".equals(text)
+            ) {
+                return (T) Boolean.FALSE;
+            }
+            throw new IllegalArgumentException(
+                "Unrecognized boolean value: " + value
+            );
         }
         if (boxedTarget == Character.class) {
             String text = String.valueOf(value);
@@ -352,7 +377,20 @@ public final class CoercerDefault implements Coercer {
             );
         }
         if (boxedTarget == Duration.class) {
-            return (T) parseDuration(String.valueOf(value));
+            String text = String.valueOf(value).trim();
+            if (text.endsWith("ms")) return (T) Duration.ofMillis(
+                Long.parseLong(text.substring(0, text.length() - 2).trim())
+            );
+            if (text.endsWith("s")) return (T) Duration.ofSeconds(
+                Long.parseLong(text.substring(0, text.length() - 1).trim())
+            );
+            if (text.endsWith("m")) return (T) Duration.ofMinutes(
+                Long.parseLong(text.substring(0, text.length() - 1).trim())
+            );
+            if (text.endsWith("h")) return (T) Duration.ofHours(
+                Long.parseLong(text.substring(0, text.length() - 1).trim())
+            );
+            return (T) Duration.ofMillis(Long.parseLong(text));
         }
         if (boxedTarget.isEnum()) {
             @SuppressWarnings("unchecked")
@@ -395,42 +433,6 @@ public final class CoercerDefault implements Coercer {
                 e
             );
         }
-    }
-
-    private static Duration parseDuration(String text) {
-        String value = text.trim();
-        if (value.endsWith("ms")) return Duration.ofMillis(
-            Long.parseLong(value.substring(0, value.length() - 2).trim())
-        );
-        if (value.endsWith("s")) return Duration.ofSeconds(
-            Long.parseLong(value.substring(0, value.length() - 1).trim())
-        );
-        if (value.endsWith("m")) return Duration.ofMinutes(
-            Long.parseLong(value.substring(0, value.length() - 1).trim())
-        );
-        if (value.endsWith("h")) return Duration.ofHours(
-            Long.parseLong(value.substring(0, value.length() - 1).trim())
-        );
-        return Duration.ofMillis(Long.parseLong(value));
-    }
-
-    private static boolean parseBool(Object value) {
-        if (value instanceof Boolean b) return b;
-        if (value instanceof Number n) return n.intValue() != 0;
-        String text = String.valueOf(value).trim();
-        if ("true".equalsIgnoreCase(text)
-            || "yes".equalsIgnoreCase(text)
-            || "on".equalsIgnoreCase(text)
-            || "1".equals(text)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(text)
-            || "no".equalsIgnoreCase(text)
-            || "off".equalsIgnoreCase(text)
-            || "0".equals(text)) {
-            return false;
-        }
-        throw new IllegalArgumentException("Unrecognized boolean value: " + value);
     }
 
     // --- internal: number coercion helpers (ex-ScalarCoercions) ---
