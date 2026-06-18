@@ -3,14 +3,20 @@ package com.jujin.freeway.commons.coercion;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -173,6 +179,74 @@ class CoercerDefaultTest {
             UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
             coercer.coerce("550e8400-e29b-41d4-a716-446655440000", UUID.class)
         );
+    }
+
+    @Test
+    void coercesAllTemporalTypes() {
+        assertEquals(LocalTime.of(14, 30), coercer.coerce("14:30", LocalTime.class));
+        assertEquals(LocalDateTime.of(2026, 6, 18, 14, 30),
+            coercer.coerce("2026-06-18T14:30", LocalDateTime.class));
+        assertEquals(OffsetTime.parse("14:30+08:00"),
+            coercer.coerce("14:30+08:00", OffsetTime.class));
+        assertEquals(OffsetDateTime.parse("2026-06-18T14:30+08:00"),
+            coercer.coerce("2026-06-18T14:30+08:00", OffsetDateTime.class));
+        assertEquals(ZonedDateTime.parse("2026-06-18T14:30+08:00[Asia/Shanghai]"),
+            coercer.coerce("2026-06-18T14:30+08:00[Asia/Shanghai]", ZonedDateTime.class));
+    }
+
+    @Test
+    void coercesDurationWithAllSuffixes() {
+        assertEquals(Duration.ofMillis(500), coercer.coerce("500ms", Duration.class));
+        assertEquals(Duration.ofSeconds(10), coercer.coerce("10s", Duration.class));
+        assertEquals(Duration.ofMinutes(5), coercer.coerce("5m", Duration.class));
+        assertEquals(Duration.ofHours(2), coercer.coerce("2h", Duration.class));
+        assertEquals(Duration.ofMillis(1000), coercer.coerce("1000", Duration.class));
+    }
+
+    @Test
+    void coercesBigDecimalAndBigIntegerFromString() {
+        assertEquals(new BigDecimal("12.34"), coercer.coerce("12.34", BigDecimal.class));
+        assertEquals(new BigInteger("42"), coercer.coerce("42", BigInteger.class));
+    }
+
+    @Test
+    void coercesNumberToNumberAllPairs() {
+        // int → all
+        assertEquals(Long.valueOf(12), coercer.coerce(12, Long.class));
+        assertEquals(Double.valueOf(12.0), coercer.coerce(12, Double.class));
+        assertEquals(Float.valueOf(12f), coercer.coerce(12, Float.class));
+        assertEquals(Short.valueOf((short) 12), coercer.coerce(12, Short.class));
+        assertEquals(Byte.valueOf((byte) 12), coercer.coerce(12, Byte.class));
+        // long → all
+        assertEquals(Integer.valueOf(12), coercer.coerce(12L, Integer.class));
+        assertEquals(Double.valueOf(12.0), coercer.coerce(12L, Double.class));
+        // double → all
+        assertEquals(Integer.valueOf(12), coercer.coerce(12.0, Integer.class));
+        assertEquals(Long.valueOf(12L), coercer.coerce(12.0, Long.class));
+    }
+
+    @Test
+    void coercesEnumFromNumberByOrdinal() {
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce(0, Color.class));
+    }
+
+    @Test
+    void coercesInstanceDirectly() {
+        LocalDate date = LocalDate.of(2026, 6, 18);
+        assertSame(date, coercer.coerce(date, LocalDate.class));
+        assertSame(date, coercer.coerce(date, Object.class));
+        assertSame(date, coercer.coerce(date, Comparable.class));
+    }
+
+    @Test
+    void coercesInvalidTemporalThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("not-a-date", LocalDate.class));
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("garbage", Instant.class));
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("not-a-uuid", UUID.class));
     }
 
     @Test
