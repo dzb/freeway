@@ -1,75 +1,28 @@
 package com.jujin.freeway.commons.coercion;
 
-import static java.util.Map.entry;
-
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.OffsetTime;
-import java.time.ZonedDateTime;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.time.*;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static java.util.Map.entry;
 
 public final class CoercerDefault implements Coercer {
 
     private final ConcurrentHashMap<CoercionKey, CoerceRule<?, ?>> rules =
         new ConcurrentHashMap<>();
 
-    @Override
-    @SuppressWarnings("unchecked")
-    public <T> T coerce(Object input, Class<T> targetType) {
-        if (targetType == null) {
-            throw new IllegalArgumentException("targetType must not be null");
-        }
-
-        Class<?> sourceType = input == null ? Void.class : input.getClass();
-        CoercionKey key = new CoercionKey(sourceType, targetType);
-
-        CoerceRule<Object, Object> rule = (CoerceRule<
-            Object,
-            Object
-        >) rules.get(key);
-        if (rule != null) {
-            try {
-                return (T) rule
-                    .mapping()
-                    .apply(rule.sourceType().cast(input));
-            } catch (Exception e) {
-                throw new IllegalArgumentException(
-                    String.format(
-                        "Failed to coerce %s to %s using custom rule",
-                        sourceType.getSimpleName(),
-                        targetType.getSimpleName()
-                    ),
-                    e
-                );
-            }
-        }
-
-        try {
-            return coerceInternal(input, targetType);
-        } catch (Exception e) {
-            throw new IllegalArgumentException(
-                String.format(
-                    "Failed to coerce %s to %s",
-                    sourceType.getSimpleName(),
-                    targetType.getSimpleName()
-                ),
-                e
-            );
-        }
-    }
+    private static final Map<Class<?>, Object> PRIMITIVE_DEFAULTS = Map.of(
+            boolean.class, Boolean.FALSE,
+        char.class,     '\0',
+        byte.class,         (byte) 0,
+        short.class,        (short) 0,
+        int.class,      0,
+        long.class,     0L,
+        float.class,    0f,
+        double.class,   0d
+    );
 
     public CoercerDefault register(CoerceRule<?, ?> rule) {
         if (rule == null) {
@@ -395,42 +348,58 @@ public final class CoercerDefault implements Coercer {
     //  Constants
     // ==================================================================
 
-    private static final Map<Class<?>, Object> PRIMITIVE_DEFAULTS = Map.of(
-        boolean.class,
-        Boolean.FALSE,
-        char.class,
-        '\0',
-        byte.class,
-        (byte) 0,
-        short.class,
-        (short) 0,
-        int.class,
-        0,
-        long.class,
-        0L,
-        float.class,
-        0f,
-        double.class,
-        0d
-    );
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T coerce(Object input, Class<T> targetType) {
+        if (targetType == null) {
+            throw new IllegalArgumentException("targetType must not be null");
+        }
+
+        Class<?> sourceType = input == null ? Void.class : input.getClass();
+        CoercionKey key = new CoercionKey(sourceType, targetType);
+
+        CoerceRule<Object, Object> rule = (CoerceRule<
+            Object,
+            Object
+        >) rules.get(key);
+        if (rule != null) {
+            try {
+                return (T) rule.mapping().apply(rule.sourceType().cast(input));
+            } catch (Exception e) {
+                throw new IllegalArgumentException(
+                    String.format(
+                        "Failed to coerce %s to %s using custom rule",
+                        sourceType.getSimpleName(),
+                        targetType.getSimpleName()
+                    ),
+                    e
+                );
+            }
+        }
+
+        try {
+            return coerceInternal(input, targetType);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                String.format(
+                    "Failed to coerce %s to %s",
+                    sourceType.getSimpleName(),
+                    targetType.getSimpleName()
+                ),
+                e
+            );
+        }
+    }
 
     private static final Map<Class<?>, Class<?>> BOXED_TYPES = Map.of(
-        boolean.class,
-        Boolean.class,
-        byte.class,
-        Byte.class,
-        short.class,
-        Short.class,
-        int.class,
-        Integer.class,
-        long.class,
-        Long.class,
-        float.class,
-        Float.class,
-        double.class,
-        Double.class,
-        char.class,
-        Character.class
+        boolean.class,     Boolean.class,
+        byte.class,        Byte.class,
+        short.class,       Short.class,
+        int.class,         Integer.class,
+        long.class,        Long.class,
+        float.class,       Float.class,
+        double.class,      Double.class,
+        char.class,        Character.class
     );
 
     private record CoercionKey(Class<?> sourceType, Class<?> targetType) {
