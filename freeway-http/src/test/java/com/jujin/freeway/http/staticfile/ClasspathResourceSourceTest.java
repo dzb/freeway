@@ -52,7 +52,7 @@ class ClasspathResourceSourceTest {
 
         StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
         mount.serve(ctx);
-        assertEquals("text/plain; charset=utf-8", ctx.header("Content-Type"));
+        assertEquals("text/plain; charset=utf-8", ctx.responseHeader("Content-Type"));
     }
 
     @Test
@@ -61,6 +61,6 @@ class ClasspathResourceSourceTest {
 
         StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
         mount.serve(ctx);
-        assertEquals("nosniff", ctx.header("X-Content-Type-Options"));
+        assertEquals("nosniff", ctx.responseHeader("X-Content-Type-Options"));
     }
 }

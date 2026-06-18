@@ -33,18 +33,18 @@ class HttpContextTest {
         noContent.send(204, "ignored");
         assertEquals(204, noContent.statusCode());
         assertEquals("", noContent.responseBody());
-        assertNull(noContent.header("Content-Type"));
+        assertNull(noContent.responseHeader("Content-Type"));
 
         StubHttpContext resetContent = new StubHttpContext();
         resetContent.send(205, "ignored");
         assertEquals(205, resetContent.statusCode());
         assertEquals("", resetContent.responseBody());
-        assertNull(resetContent.header("Content-Type"));
+        assertNull(resetContent.responseHeader("Content-Type"));
 
         StubHttpContext notModified = new StubHttpContext();
         notModified.status(304).outputJson(Map.of("ok", true));
         assertEquals(304, notModified.statusCode());
         assertEquals("", notModified.responseBody());
-        assertNull(notModified.header("Content-Type"));
+        assertNull(notModified.responseHeader("Content-Type"));
     }
 }

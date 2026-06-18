@@ -24,6 +24,9 @@ public interface RequestContext {
     }
 
     static RequestContext create(String correlationId) {
+        if (correlationId == null || correlationId.isBlank()) {
+            return create();
+        }
         return new RequestContextDefault(correlationId, Instant.now());
     }
 }

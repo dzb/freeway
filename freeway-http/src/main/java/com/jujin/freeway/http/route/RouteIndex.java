@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Objects;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -255,14 +254,19 @@ public final class RouteIndex {
                 paramChild.paramPattern = regex;
                 paramChild.wildcard = isWildcard;
             } else {
+                boolean sameRegex = (paramChild.paramPattern == null && regex == null)
+                        || (paramChild.paramPattern != null && regex != null
+                            && paramChild.paramPattern.pattern().equals(regex.pattern()));
                 if (!paramChild.paramName.equals(name)
-                        || !Objects.equals(paramChild.paramPattern, regex)
+                        || !sameRegex
                         || paramChild.wildcard != isWildcard) {
+                    String existing = "{" + paramChild.paramName
+                        + (paramChild.wildcard ? ":.*}" : paramChild.paramPattern != null ? ":" + paramChild.paramPattern.pattern() + "}" : "}");
+                    String incoming = "{" + name
+                        + (isWildcard ? ":.*}" : regex != null ? ":" + regex.pattern() + "}" : "}");
                     throw new IllegalArgumentException(
-                        "Conflicting parameter definitions at same path level: "
-                            + "'{" + paramChild.paramName + (paramChild.paramPattern != null ? ":" + paramChild.paramPattern.pattern() : "") + "}'"
-                            + " vs "
-                            + "'{" + name + (regex != null ? ":" + regex.pattern() : "") + "}'");
+                        "Conflicting parameter definitions at same path level: '"
+                            + existing + "' vs '" + incoming + "'");
                 }
             }
             return paramChild;

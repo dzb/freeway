@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,7 @@ public final class JdkHttpContext extends HttpContext {
         this.queryParams = parseQueryParams(
             exchange.getRequestURI().getRawQuery()
         );
+        queryParams.replaceAll((k, v) -> List.copyOf(v));
     }
 
     @Override
@@ -54,12 +56,13 @@ public final class JdkHttpContext extends HttpContext {
 
     @Override
     public List<String> queryParams(String name) {
-        return queryParams.getOrDefault(name, List.of());
+        List<String> vals = queryParams.get(name);
+        return vals != null ? List.copyOf(vals) : List.of();
     }
 
     @Override
     public Map<String, List<String>> queryParams() {
-        return queryParams;
+        return Collections.unmodifiableMap(queryParams);
     }
 
     @Override
@@ -70,7 +73,7 @@ public final class JdkHttpContext extends HttpContext {
     @Override
     public List<String> headers(String name) {
         List<String> values = exchange.getRequestHeaders().get(name);
-        return values != null ? values : List.of();
+        return values != null ? List.copyOf(values) : List.of();
     }
 
     @Override
@@ -79,7 +82,6 @@ public final class JdkHttpContext extends HttpContext {
             try (var is = exchange.getRequestBody()) {
                 cachedBody = readBodyLimited(is);
             } catch (IOException e) {
-                cachedBody = new byte[0];
                 throw e;
             }
         }

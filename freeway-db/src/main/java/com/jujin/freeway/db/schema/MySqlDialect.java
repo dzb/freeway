@@ -93,7 +93,7 @@ public final class MySqlDialect implements Dialect {
             ).list(String.class);
             return indexes.stream()
                 .filter(i -> i != null)
-                .map(String::toLowerCase)
+                .map(s -> s.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toCollection(HashSet::new));
         } catch (Exception e) {
             LOG.warn("Failed to list existing indexes for table '{}'", tableName, e);
@@ -139,7 +139,7 @@ public final class MySqlDialect implements Dialect {
             ).list(String.class);
             return tables.stream()
                 .filter(t -> t != null)
-                .map(String::toLowerCase)
+                .map(s -> s.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toCollection(HashSet::new));
         } catch (Exception e) {
             LOG.warn("Failed to list existing tables", e);
@@ -156,7 +156,7 @@ public final class MySqlDialect implements Dialect {
             ).list(String.class);
             return columns.stream()
                 .filter(c -> c != null)
-                .map(String::toLowerCase)
+                .map(s -> s.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toCollection(HashSet::new));
         } catch (Exception e) {
             LOG.warn("Failed to list existing columns for table '{}'", tableName, e);
