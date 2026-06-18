@@ -1,0 +1,31 @@
+{
+  "//": "Freeway — Development Profile (JSON)",
+  "//_copy": "Copy to src/main/resources/application-dev.json",
+  "//_activate": "--freeway.profile=dev",
+
+  "freeway.web.engine": "robaho",
+  "freeway.web.server.host": "127.0.0.1",
+  "freeway.web.server.port": "8080",
+  "freeway.web.server.shutdown-grace": "2s",
+
+  "freeway.web.health.enabled": "true",
+  "freeway.web.health.path": "/healthz",
+
+  "freeway.web.cors.enabled": "true",
+  "freeway.web.cors.allowed-origins": "*",
+  "freeway.web.cors.allowed-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+  "freeway.web.cors.allowed-headers": "Content-Type, Authorization",
+  "freeway.web.cors.allow-credentials": "true",
+
+  "freeway.db.url": "jdbc:h2:mem:devdb;DB_CLOSE_DELAY=-1",
+  "freeway.db.username": "sa",
+  "freeway.db.password": "",
+
+  "freeway.db.pool": "builtin",
+  "freeway.db.pool.max-size": "4",
+  "freeway.db.pool.min-idle": "1",
+  "freeway.db.query-timeout": "30s",
+
+  "freeway.db.schema.auto": "true",
+  "freeway.db.migration.enabled": "true"
+}

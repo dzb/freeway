@@ -1,0 +1,34 @@
+{
+  "//": "Freeway — Production Profile (JSON)",
+  "//_copy": "Copy to src/main/resources/application-prod.json",
+  "//_activate": "--freeway.profile=prod",
+  "//_warning": "Sensitive values MUST be set via environment variables, not here",
+
+  "freeway.web.engine": "robaho",
+  "freeway.web.server.host": "0.0.0.0",
+  "freeway.web.server.shutdown-grace": "30s",
+
+  "freeway.web.health.enabled": "true",
+  "freeway.web.health.path": "/healthz",
+
+  "freeway.web.cors.enabled": "true",
+  "freeway.web.cors.allowed-origins": "",
+  "freeway.web.cors.allow-credentials": "false",
+
+  "freeway.db.url": "jdbc:postgresql://localhost:5432/mydb",
+  "freeway.db.username": "",
+  "freeway.db.password": "",
+
+  "freeway.db.pool": "hikari",
+  "freeway.db.pool.max-size": "20",
+  "freeway.db.pool.min-idle": "4",
+  "freeway.db.pool.connection-timeout": "30s",
+  "freeway.db.pool.max-lifetime": "30m",
+  "freeway.db.pool.max-idle-time": "10m",
+  "freeway.db.pool.health-check-query": "SELECT 1",
+  "freeway.db.pool.health-check-timeout": "5s",
+  "freeway.db.query-timeout": "15s",
+
+  "freeway.db.schema.auto": "false",
+  "freeway.db.migration.enabled": "true"
+}
