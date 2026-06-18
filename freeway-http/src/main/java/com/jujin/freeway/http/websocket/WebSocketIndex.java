@@ -29,7 +29,9 @@ public final class WebSocketIndex {
         if (!"GET".equalsIgnoreCase(method)) {
             return null;
         }
-        for (WebSocketRoute route : routes) {
+        // reverse iteration: individuals (added last) override groups (added first)
+        for (int i = routes.size() - 1; i >= 0; i--) {
+            WebSocketRoute route = routes.get(i);
             Map<String, String> vars = route.pattern().match(path);
             if (vars != null) {
                 return new WebSocketMatch(route.endpoint(), vars);

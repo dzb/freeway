@@ -38,11 +38,16 @@ public final class CorsFilter implements HttpFilter {
         this.allowedOriginList = all || allowedOrigins == null || allowedOrigins.isBlank()
             ? new String[0]
             : allowedOrigins.split("\\s*,\\s*");
+        if (all && allowCredentials) {
+            throw new IllegalArgumentException(
+                "allowCredentials=true is incompatible with allowed-origins=* — "
+                    + "set explicit origins to use credentials");
+        }
         this.allowedMethods = allowedMethods;
         this.allowedHeaders = allowedHeaders;
         this.exposedHeaders = HttpContext.blankToNull(exposedHeaders);
         this.maxAge = maxAge;
-        this.allowCredentials = allowCredentials && !all;
+        this.allowCredentials = allowCredentials;
     }
 
     @Override
@@ -67,11 +72,15 @@ public final class CorsFilter implements HttpFilter {
             ctx.headerSet("Access-Control-Expose-Headers", exposedHeaders);
         }
 
-        // Only intercept CORS preflight — real OPTIONS routes pass through
-        boolean preflight = "OPTIONS".equalsIgnoreCase(ctx.method())
-                && acao != null
-                && ctx.header("Access-Control-Request-Method") != null;
-        if (preflight) {
+        // Intercept only genuine CORS preflight (Origin + Access-Control-Request-Method).
+        // Non-preflight OPTIONS pass through to route handlers.
+        if ("OPTIONS".equalsIgnoreCase(ctx.method())
+                && ctx.header("Access-Control-Request-Method") != null) {
+            if (acao == null) {
+                LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
+                ctx.status(403).output(new byte[0]);
+                return;
+            }
             if (allowedMethods != null) {
                 ctx.headerSet("Access-Control-Allow-Methods", allowedMethods);
             }
@@ -82,11 +91,6 @@ public final class CorsFilter implements HttpFilter {
                 ctx.headerSet("Access-Control-Max-Age", maxAge);
             }
             ctx.send(204, "");
-            return;
-        }
-        if (acao == null && "OPTIONS".equalsIgnoreCase(ctx.method())) {
-            LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
-            ctx.status(403).output(new byte[0]);
             return;
         }
 

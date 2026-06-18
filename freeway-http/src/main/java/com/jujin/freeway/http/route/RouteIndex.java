@@ -162,6 +162,11 @@ public final class RouteIndex {
             if (param != null) {
                 // Wildcard consumes remaining segments
                 if (param.wildcard) {
+                    for (int j = i; j < segments.length; j++) {
+                        if (segments[j].isEmpty()) {
+                            return null;
+                        }
+                    }
                     String remainder = String.join(
                         "/",
                         Arrays.copyOfRange(segments, i, segments.length)
