@@ -123,4 +123,19 @@ public final class PathPattern {
         return vars;
     }
 
+    public static String normalizePath(String path) {
+        return IoUtils.normalizePath(path);
+    }
+
+    static String[] splitPath(String path) {
+        return IoUtils.splitPath(path);
+    }
+
+    static boolean containsPathTraversal(String path) {
+        return IoUtils.containsPathTraversal(path);
+    }
+
+    static boolean isPathTraversalSegment(String seg) {
+        return IoUtils.isPathTraversalSegment(seg);
+    }
 }

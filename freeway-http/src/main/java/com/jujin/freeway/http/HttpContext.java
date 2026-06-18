@@ -220,6 +220,10 @@ public abstract class HttpContext {
         return outputJson(value);
     }
 
+    public static String blankToNull(String s) {
+        return com.jujin.freeway.commons.util.Strings.blankToNull(s);
+    }
+
     public static RequestContext createRequestContext(
         String correlationIdHeader
     ) {
