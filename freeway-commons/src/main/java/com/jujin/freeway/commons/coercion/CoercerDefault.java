@@ -397,13 +397,7 @@ public final class CoercerDefault implements Coercer {
         }
     }
 
-    /**
-     * Parses a human-friendly duration string into a {@link Duration}.
-     * Supported suffixes: {@code ms} (millis), {@code s} (seconds),
-     * {@code m} (minutes), {@code h} (hours). Bare numbers are treated
-     * as milliseconds.
-     */
-    public static Duration parseDuration(String text) {
+    private static Duration parseDuration(String text) {
         String value = text.trim();
         if (value.endsWith("ms")) return Duration.ofMillis(
             Long.parseLong(value.substring(0, value.length() - 2).trim())
@@ -420,14 +414,7 @@ public final class CoercerDefault implements Coercer {
         return Duration.ofMillis(Long.parseLong(value));
     }
 
-    /**
-     * Parses a boolean from a human-friendly value.
-     * Truthy: {@code true}, {@code yes}, {@code on}, {@code 1} (case-insensitive).
-     * Falsy:  {@code false}, {@code no}, {@code off}, {@code 0} (case-insensitive).
-     *
-     * @throws IllegalArgumentException for any unrecognized value
-     */
-    public static boolean parseBool(Object value) {
+    private static boolean parseBool(Object value) {
         if (value instanceof Boolean b) return b;
         if (value instanceof Number n) return n.intValue() != 0;
         String text = String.valueOf(value).trim();
