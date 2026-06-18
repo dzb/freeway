@@ -42,6 +42,6 @@ public final class HealthFilter implements HttpFilter {
         if (path == null || path.isBlank()) {
             return "/healthz";
         }
-        return com.jujin.freeway.commons.util.IoUtils.normalizePath(path);
+        return PathPattern.normalizePath(path);
     }
 }

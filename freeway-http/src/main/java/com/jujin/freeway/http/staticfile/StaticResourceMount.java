@@ -260,7 +260,7 @@ public final class StaticResourceMount {
     }
 
     private static String normalizeMount(String mountPath) {
-        return com.jujin.freeway.commons.util.IoUtils.normalizePath(mountPath);
+        return PathPattern.normalizePath(mountPath);
     }
 
     private interface ResourceSource {

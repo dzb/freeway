@@ -7,8 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import com.jujin.freeway.commons.util.IoUtils;
-
 public final class PathPattern {
     private final String template;
     private final String[] segments;
@@ -19,8 +17,8 @@ public final class PathPattern {
     static final int MAX_REGEX_LENGTH = 64;
 
     public PathPattern(String template) {
-        this.template = IoUtils.normalizePath(template);
-        String[] raw = IoUtils.splitPath(this.template);
+        this.template = PathPattern.normalizePath(template);
+        String[] raw = PathPattern.splitPath(this.template);
         this.segments = new String[raw.length];
         this.paramNames = new String[raw.length];
         this.paramPatterns = new Pattern[raw.length];
@@ -67,13 +65,13 @@ public final class PathPattern {
     }
 
     public static void validateRegistrationPath(String path) {
-        String normalized = IoUtils.normalizePath(path);
-        for (String seg : IoUtils.splitPath(normalized)) {
+        String normalized = PathPattern.normalizePath(path);
+        for (String seg : PathPattern.splitPath(normalized)) {
             if (seg.isEmpty()) {
                 throw new IllegalArgumentException(
                     "Path must not contain empty segments (path: " + path + ")");
             }
-            if (IoUtils.isPathTraversalSegment(seg)) {
+            if (PathPattern.isPathTraversalSegment(seg)) {
                 throw new IllegalArgumentException(
                     "Path must not contain traversal segments (path: " + path + ")");
             }
@@ -89,7 +87,7 @@ public final class PathPattern {
     }
 
     public Map<String, String> match(String path) {
-        String[] input = IoUtils.splitPath(path);
+        String[] input = PathPattern.splitPath(path);
         if (wildcard) {
             if (input.length < segments.length) {
                 return null;
@@ -102,12 +100,12 @@ public final class PathPattern {
             if (segments[i] == null) {
                 if (wildcard && i == segments.length - 1) {
                     String remainder = String.join("/", Arrays.copyOfRange(input, i, input.length));
-                    if (remainder.isEmpty() || IoUtils.containsPathTraversal(remainder)) {
+                    if (remainder.isEmpty() || PathPattern.containsPathTraversal(remainder)) {
                         return null;
                     }
                     vars.put(paramNames[i], remainder);
                 } else {
-                    if (input[i].isEmpty() || IoUtils.isPathTraversalSegment(input[i])) {
+                    if (input[i].isEmpty() || PathPattern.isPathTraversalSegment(input[i])) {
                         return null;
                     }
                     Pattern p = paramPatterns[i];
@@ -124,18 +122,36 @@ public final class PathPattern {
     }
 
     public static String normalizePath(String path) {
-        return IoUtils.normalizePath(path);
+        String value = path == null || path.isBlank() ? null : path;
+        if (value == null || "/".equals(value)) return "/";
+        value = value.startsWith("/") ? value : "/" + value;
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
     static String[] splitPath(String path) {
-        return IoUtils.splitPath(path);
+        if (path == null || path.isEmpty() || "/".equals(path)) return new String[0];
+        String normalized = path.startsWith("/") ? path.substring(1) : path;
+        if (normalized.endsWith("/")) normalized = normalized.substring(0, normalized.length() - 1);
+        if (normalized.isEmpty()) return new String[0];
+        return normalized.split("/");
     }
 
     static boolean containsPathTraversal(String path) {
-        return IoUtils.containsPathTraversal(path);
+        for (String seg : path.split("/")) {
+            if (isPathTraversalSegment(seg)) return true;
+        }
+        return false;
     }
 
     static boolean isPathTraversalSegment(String seg) {
-        return IoUtils.isPathTraversalSegment(seg);
+        if ("..".equals(seg) || seg.startsWith("..\\")) return true;
+        if (seg.contains("\0")) return true;
+        try {
+            String decoded = java.net.URLDecoder.decode(seg, java.nio.charset.StandardCharsets.UTF_8);
+            if (!decoded.equals(seg) && containsPathTraversal(decoded)) return true;
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+        return false;
     }
 }
