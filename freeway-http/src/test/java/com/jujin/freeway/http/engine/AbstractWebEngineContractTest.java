@@ -42,17 +42,17 @@ public abstract class AbstractWebEngineContractTest {
             app.close();
             app = null;
         }
-        System.clearProperty("web.server.port");
-        System.clearProperty("web.server.host");
-        System.clearProperty("web.engine");
+        System.clearProperty("freeway.web.server.port");
+        System.clearProperty("freeway.web.server.host");
+        System.clearProperty("freeway.web.engine");
     }
 
     @Test
     public void appDiscoversEngineAndServesRoutes() throws Exception {
         int port = freePort();
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", engineId());
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", engineId());
 
         app = FreewayApp.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
@@ -74,9 +74,9 @@ public abstract class AbstractWebEngineContractTest {
     @Test
     public void websocketEchoesMessages() throws Exception {
         int port = freePort();
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", engineId());
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", engineId());
 
         app = FreewayApp.run(new String[0], new TestAppModule());
         assertTrue(app.get(WebServer.class).isRunning());
@@ -118,9 +118,9 @@ public abstract class AbstractWebEngineContractTest {
     @Test
     public void websocketLifecycleInvokesOpenAndErrorCallbacks() throws Exception {
         int port = freePort();
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", engineId());
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", engineId());
 
         CompletableFuture<Void> opened = new CompletableFuture<>();
         CompletableFuture<Void> errored = new CompletableFuture<>();
@@ -156,9 +156,9 @@ public abstract class AbstractWebEngineContractTest {
     @Test
     public void oversizedRequestBodyReturnsPayloadTooLarge() throws Exception {
         int port = freePort();
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", engineId());
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", engineId());
 
         app = FreewayApp.run(new String[0], new BodyLimitModule());
         assertTrue(app.get(WebServer.class).isRunning());

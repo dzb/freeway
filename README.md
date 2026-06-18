@@ -158,10 +158,10 @@ The HTTP layer is deliberately thin:
 Switch engines with config:
 
 ```properties
-web.engine=jdk          # built-in (HTTP only, no WebSocket)
-web.engine=robaho       # via freeway-ext
-web.engine=undertow     # via freeway-ext
-web.engine=jetty        # via freeway-ext
+freeway.web.engine=jdk          # built-in (HTTP only, no WebSocket)
+freeway.web.engine=robaho       # via freeway-ext
+freeway.web.engine=undertow     # via freeway-ext
+freeway.web.engine=jetty        # via freeway-ext
 ```
 
 ### DB (`freeway-db`)

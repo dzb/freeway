@@ -25,9 +25,9 @@ class JdkHttpEngineTest {
 
     @AfterEach
     void tearDown() {
-        System.clearProperty("web.server.host");
-        System.clearProperty("web.server.port");
-        System.clearProperty("web.engine");
+        System.clearProperty("freeway.web.server.host");
+        System.clearProperty("freeway.web.server.port");
+        System.clearProperty("freeway.web.engine");
     }
 
     @Test
@@ -36,9 +36,9 @@ class JdkHttpEngineTest {
         try (ServerSocket s = new ServerSocket(0)) {
             port = s.getLocalPort();
         }
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", "jdk");
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", "jdk");
 
         Container c = Freeway.create(new HttpModule(), binder ->
             binder
@@ -66,9 +66,9 @@ class JdkHttpEngineTest {
         try (ServerSocket s = new ServerSocket(0)) {
             port = s.getLocalPort();
         }
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", "jdk");
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", "jdk");
 
         CountDownLatch serverDone = new CountDownLatch(1);
 
@@ -107,9 +107,9 @@ class JdkHttpEngineTest {
         try (ServerSocket s = new ServerSocket(0)) {
             port = s.getLocalPort();
         }
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", "jdk");
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", "jdk");
 
         Container c = Freeway.create(new HttpModule(), binder ->
             binder.contribute(Route.class).add(
@@ -143,9 +143,9 @@ class JdkHttpEngineTest {
         Files.writeString(tempDir.resolve("existing.txt"), "static file");
 
         int port = freePort();
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", "jdk");
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", "jdk");
 
         Container c = Freeway.create(new HttpModule(), binder -> {
             binder.contribute(StaticResourceMount.class).add(
@@ -186,9 +186,9 @@ class JdkHttpEngineTest {
     @Test
     void engineFallsBackToJdkWhenDefaultUnavailable() throws Exception {
         int port = freePort();
-        System.setProperty("web.server.host", "127.0.0.1");
-        System.setProperty("web.server.port", String.valueOf(port));
-        System.setProperty("web.engine", "robaho"); // not on classpath
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty("freeway.web.engine", "robaho"); // not on classpath
 
         Container c = Freeway.create(new HttpModule(), binder ->
             binder.contribute(Route.class)

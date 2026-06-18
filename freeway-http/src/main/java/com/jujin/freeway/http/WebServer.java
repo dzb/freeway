@@ -55,12 +55,12 @@ public final class WebServer implements AutoCloseable {
         List<HttpFilter> filters,
         List<ExceptionMapper> mappers,
         Container container,
-        @Value("${web.engine:robaho}") String webEngineId,
-        @Value("${web.server.host:127.0.0.1}") String host,
-        @Value("${web.server.port:8080}") int port,
-        @Value("${web.server.backlog:0}") int backlog,
+        @Value("${freeway.web.engine:robaho}") String webEngineId,
+        @Value("${freeway.web.server.host:127.0.0.1}") String host,
+        @Value("${freeway.web.server.port:8080}") int port,
+        @Value("${freeway.web.server.backlog:0}") int backlog,
         @Value(
-            "${web.server.shutdown-grace-seconds:2}"
+            "${freeway.web.server.shutdown-grace-seconds:2}"
         ) int shutdownGraceSeconds
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");

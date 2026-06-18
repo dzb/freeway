@@ -631,8 +631,8 @@ binder.bind(HealthCheck.class).to(c -> () -> {
 
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
-| `web.health.enabled` | `true` | 启用/关闭健康检查 |
-| `web.health.path` | `/healthz` | 健康检查路径 |
+| `freeway.web.health.enabled` | `true` | 启用/关闭健康检查 |
+| `freeway.web.health.path` | `/healthz` | 健康检查路径 |
 
 ## 数据库
 

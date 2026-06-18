@@ -722,8 +722,8 @@ Config:
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `web.health.enabled` | `true` | Enable/disable the health endpoint |
-| `web.health.path` | `/healthz` | Path for the health check endpoint |
+| `freeway.web.health.enabled` | `true` | Enable/disable the health endpoint |
+| `freeway.web.health.path` | `/healthz` | Path for the health check endpoint |
 
 The health endpoint responds before routing and static files, ensuring it always returns quickly regardless of registered routes.
 
@@ -798,7 +798,7 @@ Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationEx
 
 ### Engine Selection
 
-`web.engine` config property selects the transport:
+`freeway.web.engine` config property selects the transport:
 
 | Value | Engine |
 |-------|--------|

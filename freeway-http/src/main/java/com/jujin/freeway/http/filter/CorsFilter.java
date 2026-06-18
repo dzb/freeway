@@ -24,13 +24,13 @@ public final class CorsFilter implements HttpFilter {
     }
 
     public CorsFilter(
-        @Value("${web.cors.enabled:true}") boolean enabled,
-        @Value("${web.cors.allowed-origins:*}") String allowedOrigins,
-        @Value("${web.cors.allowed-methods:GET, POST, PUT, DELETE, PATCH, OPTIONS}") String allowedMethods,
-        @Value("${web.cors.allowed-headers:Content-Type, Authorization}") String allowedHeaders,
-        @Value("${web.cors.exposed-headers:}") String exposedHeaders,
-        @Value("${web.cors.max-age:3600}") String maxAge,
-        @Value("${web.cors.allow-credentials:false}") boolean allowCredentials
+        @Value("${freeway.web.cors.enabled:true}") boolean enabled,
+        @Value("${freeway.web.cors.allowed-origins:*}") String allowedOrigins,
+        @Value("${freeway.web.cors.allowed-methods:GET, POST, PUT, DELETE, PATCH, OPTIONS}") String allowedMethods,
+        @Value("${freeway.web.cors.allowed-headers:Content-Type, Authorization}") String allowedHeaders,
+        @Value("${freeway.web.cors.exposed-headers:}") String exposedHeaders,
+        @Value("${freeway.web.cors.max-age:3600}") String maxAge,
+        @Value("${freeway.web.cors.allow-credentials:false}") boolean allowCredentials
     ) {
         this.enabled = enabled;
         boolean all = "*".equals(allowedOrigins);

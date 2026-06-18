@@ -8,8 +8,8 @@ import com.jujin.freeway.ioc.annotation.Value;
 /**
  * Filter that intercepts the health endpoint before routing.
  * <p>
- * Configured via {@code web.health.enabled} (default {@code true}) and
- * {@code web.health.path} (default {@code /healthz}).
+ * Configured via {@code freeway.web.health.enabled} (default {@code true}) and
+ * {@code freeway.web.health.path} (default {@code /healthz}).
  * The response body is produced by {@link HealthCheck}; bind a custom
  * implementation to replace the default {@code {"status":"ok"}}.
  */
@@ -20,8 +20,8 @@ public final class HealthFilter implements HttpFilter {
     private final HealthCheck healthCheck;
 
     public HealthFilter(
-        @Value("${web.health.enabled:true}") boolean enabled,
-        @Value("${web.health.path:/healthz}") String healthPath,
+        @Value("${freeway.web.health.enabled:true}") boolean enabled,
+        @Value("${freeway.web.health.path:/healthz}") String healthPath,
         HealthCheck healthCheck
     ) {
         this.enabled = enabled;
