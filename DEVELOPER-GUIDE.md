@@ -555,6 +555,8 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 `freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 
+Console output is single-line with ANSI colors (auto-detected via TTY). Colors are disabled when output is piped or redirected to a file. Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
+
 ---
 
 ## Boot
@@ -609,7 +611,7 @@ Startup invokes hooks in resolved contribution order. Shutdown invokes only star
 	2. `application.json`
 	3. `application-{profile}.properties`
 	4. `application-{profile}.json`
-	5. Environment variables (`FREEWAY_` prefix)
+	5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
 	6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles: `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
@@ -1082,9 +1084,11 @@ freeway.db.dialect=mysql
 
 | id | Class | Target |
 |----|-------|--------|
-| `postgresql` | `PostgresDialect` | PostgreSQL, H2 (PostgreSQL mode) — **default** |
+| `postgresql` | `PostgresDialect` | PostgreSQL, H2 (all modes except MySQL) — **default** |
+| `mysql` | `MySqlDialect` | MySQL, MariaDB, H2 with `MODE=MySQL` |
+| `sqlite` | `SqliteDialect` | SQLite |
 
-`DbModule` binds `PostgresDialect` as `id("postgresql").primary()`. Additional dialects (MySQL, SQLite, etc.) can be contributed by users or third-party modules — same pattern as `HikariPoolModule` for pool selection.
+`DbModule` binds `PostgresDialect` as `id("postgresql").primary()`, plus `MySqlDialect` (`id("mysql")`) and `SqliteDialect` (`id("sqlite")`) — all three built-in. Custom dialects can be contributed by users or third-party modules — same pattern as `HikariPoolModule` for pool selection.
 
 **Custom dialect — write once, select via config:**
 
