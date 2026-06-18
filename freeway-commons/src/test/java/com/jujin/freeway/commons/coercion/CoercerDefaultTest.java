@@ -225,7 +225,8 @@ class CoercerDefaultTest {
         assertFalse(coercer.coerce("no", Boolean.class));
         assertFalse(coercer.coerce("off", Boolean.class));
         assertFalse(coercer.coerce("0", Boolean.class));
-        assertFalse(coercer.coerce("garbage", Boolean.class));
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("garbage", Boolean.class));
     }
 
     @Test

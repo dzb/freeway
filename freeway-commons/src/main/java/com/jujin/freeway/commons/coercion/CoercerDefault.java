@@ -263,22 +263,7 @@ public final class CoercerDefault implements Coercer {
             return (T) String.valueOf(value);
         }
         if (boxedTarget == Boolean.class) {
-            if (value instanceof Boolean b) {
-                return (T) b;
-            }
-            if (value instanceof Number n) {
-                return (T) Boolean.valueOf(n.intValue() != 0);
-            }
-            String text = String.valueOf(value);
-            if (
-                "true".equalsIgnoreCase(text) ||
-                "yes".equalsIgnoreCase(text) ||
-                "on".equalsIgnoreCase(text) ||
-                "1".equals(text)
-            ) {
-                return (T) Boolean.TRUE;
-            }
-            return (T) Boolean.FALSE;
+            return (T) Boolean.valueOf(parseBool(value));
         }
         if (boxedTarget == Character.class) {
             String text = String.valueOf(value);
@@ -418,7 +403,7 @@ public final class CoercerDefault implements Coercer {
      * {@code m} (minutes), {@code h} (hours). Bare numbers are treated
      * as milliseconds.
      */
-    private static Duration parseDuration(String text) {
+    public static Duration parseDuration(String text) {
         String value = text.trim();
         if (value.endsWith("ms")) return Duration.ofMillis(
             Long.parseLong(value.substring(0, value.length() - 2).trim())
@@ -433,6 +418,32 @@ public final class CoercerDefault implements Coercer {
             Long.parseLong(value.substring(0, value.length() - 1).trim())
         );
         return Duration.ofMillis(Long.parseLong(value));
+    }
+
+    /**
+     * Parses a boolean from a human-friendly value.
+     * Truthy: {@code true}, {@code yes}, {@code on}, {@code 1} (case-insensitive).
+     * Falsy:  {@code false}, {@code no}, {@code off}, {@code 0} (case-insensitive).
+     *
+     * @throws IllegalArgumentException for any unrecognized value
+     */
+    public static boolean parseBool(Object value) {
+        if (value instanceof Boolean b) return b;
+        if (value instanceof Number n) return n.intValue() != 0;
+        String text = String.valueOf(value).trim();
+        if ("true".equalsIgnoreCase(text)
+            || "yes".equalsIgnoreCase(text)
+            || "on".equalsIgnoreCase(text)
+            || "1".equals(text)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(text)
+            || "no".equalsIgnoreCase(text)
+            || "off".equalsIgnoreCase(text)
+            || "0".equals(text)) {
+            return false;
+        }
+        throw new IllegalArgumentException("Unrecognized boolean value: " + value);
     }
 
     // --- internal: number coercion helpers (ex-ScalarCoercions) ---

@@ -2,6 +2,7 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
@@ -110,7 +111,7 @@ public final class DbModule implements Module2{
 
     private static Duration resolveDuration(SymbolSource s, String key, Duration def) {
         String raw = s.resolve(key, "");
-        return raw.isBlank() ? def : parseDuration(raw);
+        return raw.isBlank() ? def : CoercerDefault.parseDuration(raw);
     }
 
     private static Database buildDatabase(Container container) {
@@ -134,55 +135,17 @@ public final class DbModule implements Module2{
         SymbolSource s = container.get(SymbolSource.class);
         return new MigrationRunner(
             container.get(Database.class),
-            parseBool(s.resolve("freeway.db.migration.enabled", "true")),
+            CoercerDefault.parseBool(s.resolve("freeway.db.migration.enabled", "true")),
             s.resolve("freeway.db.migration.path", "db/migration/"),
             s.resolve("freeway.db.migration.table", "_migrations")
         );
     }
 
-    private static boolean parseBool(String value) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Boolean value must not be blank");
-        }
-        String v = value.trim();
-        if ("true".equalsIgnoreCase(v) || "yes".equalsIgnoreCase(v)
-                || "on".equalsIgnoreCase(v) || "1".equals(v)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(v) || "no".equalsIgnoreCase(v)
-                || "off".equalsIgnoreCase(v) || "0".equals(v)) {
-            return false;
-        }
-        throw new IllegalArgumentException("Invalid boolean value: " + value);
-    }
-
-    static Duration parseDuration(String text) {
-        String value = text.trim();
-        if (value.isEmpty()) {
-            throw new IllegalArgumentException("Invalid duration: " + text);
-        }
-        try {
-            if (value.endsWith("ms")) return Duration.ofMillis(
-                Long.parseLong(value.substring(0, value.length() - 2).trim())
-            );
-            if (value.endsWith("s")) return Duration.ofSeconds(
-                Long.parseLong(value.substring(0, value.length() - 1).trim())
-            );
-            if (value.endsWith("m")) return Duration.ofMinutes(
-                Long.parseLong(value.substring(0, value.length() - 1).trim())
-            );
-            if (value.endsWith("h")) return Duration.ofHours(
-                Long.parseLong(value.substring(0, value.length() - 1).trim())
-            );
-            return Duration.ofMillis(Long.parseLong(value));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid duration: " + text, e);
-        }
-    }
+    // parseBool and parseDuration moved to CoercerDefault
 
     private static void runSchema(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        if (!parseBool(s.resolve("freeway.db.schema.auto", "true"))) {
+        if (!CoercerDefault.parseBool(s.resolve("freeway.db.schema.auto", "true"))) {
             return;
         }
         var entities = container.extension(SchemaEntity.class).all();
