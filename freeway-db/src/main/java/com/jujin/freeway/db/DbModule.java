@@ -2,7 +2,6 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
@@ -93,25 +92,26 @@ public final class DbModule implements Module2{
 
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
+        Coercer coercer = container.get(Coercer.class);
         return new PoolConfig(
             Objects.requireNonNull(s.resolve("freeway.db.url"), "freeway.db.url is required"),
             Objects.requireNonNull(s.resolve("freeway.db.username"), "freeway.db.username is required"),
             s.resolve("freeway.db.password", ""),
             Integer.parseInt(s.resolve("freeway.db.pool.max-size", String.valueOf(PoolConfig.DEFAULT_MAX_SIZE))),
             Integer.parseInt(s.resolve("freeway.db.pool.min-idle", String.valueOf(PoolConfig.DEFAULT_MIN_IDLE))),
-            resolveDuration(s, "freeway.db.pool.connection-timeout", PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
-            resolveDuration(s, "freeway.db.pool.max-lifetime", PoolConfig.DEFAULT_MAX_LIFETIME),
-            resolveDuration(s, "freeway.db.pool.max-idle-time", PoolConfig.DEFAULT_MAX_IDLE_TIME),
-            resolveDuration(s, "freeway.db.pool.clean-interval", PoolConfig.DEFAULT_CLEAN_INTERVAL),
+            resolveDuration(coercer, s, "freeway.db.pool.connection-timeout", PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
+            resolveDuration(coercer, s, "freeway.db.pool.max-lifetime", PoolConfig.DEFAULT_MAX_LIFETIME),
+            resolveDuration(coercer, s, "freeway.db.pool.max-idle-time", PoolConfig.DEFAULT_MAX_IDLE_TIME),
+            resolveDuration(coercer, s, "freeway.db.pool.clean-interval", PoolConfig.DEFAULT_CLEAN_INTERVAL),
             s.resolve("freeway.db.pool.health-check-query", null),
-            resolveDuration(s, "freeway.db.pool.health-check-timeout", PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
-            resolveDuration(s, "freeway.db.query-timeout", PoolConfig.DEFAULT_QUERY_TIMEOUT)
+            resolveDuration(coercer, s, "freeway.db.pool.health-check-timeout", PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
+            resolveDuration(coercer, s, "freeway.db.query-timeout", PoolConfig.DEFAULT_QUERY_TIMEOUT)
         );
     }
 
-    private static Duration resolveDuration(SymbolSource s, String key, Duration def) {
+    private static Duration resolveDuration(Coercer coercer, SymbolSource s, String key, Duration def) {
         String raw = s.resolve(key, "");
-        return raw.isBlank() ? def : CoercerDefault.parseDuration(raw);
+        return raw.isBlank() ? def : coercer.coerce(raw, Duration.class);
     }
 
     private static Database buildDatabase(Container container) {
@@ -133,19 +133,19 @@ public final class DbModule implements Module2{
 
     private static MigrationRunner buildMigrationRunner(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
+        Coercer coercer = container.get(Coercer.class);
         return new MigrationRunner(
             container.get(Database.class),
-            CoercerDefault.parseBool(s.resolve("freeway.db.migration.enabled", "true")),
+            coercer.coerce(s.resolve("freeway.db.migration.enabled", "true"), boolean.class),
             s.resolve("freeway.db.migration.path", "db/migration/"),
             s.resolve("freeway.db.migration.table", "_migrations")
         );
     }
 
-    // parseBool and parseDuration moved to CoercerDefault
-
     private static void runSchema(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        if (!CoercerDefault.parseBool(s.resolve("freeway.db.schema.auto", "true"))) {
+        Coercer coercer = container.get(Coercer.class);
+        if (!coercer.coerce(s.resolve("freeway.db.schema.auto", "true"), boolean.class)) {
             return;
         }
         var entities = container.extension(SchemaEntity.class).all();
