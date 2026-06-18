@@ -20,41 +20,54 @@ public final class IoUtils {
      * {@link IOException}. Use when passing the stream to a consumer that
      * does not accept a size limit (e.g. {@code Properties.load}).
      *
+     * @param stream the input stream to wrap (must not be null)
+     * @param maxBytes the maximum number of bytes allowed to read (must be non-negative)
      * @param label used in the error message (e.g. a resource path)
+     * @return a bounded input stream
+     * @throws IllegalArgumentException if maxBytes is negative or stream is null
      */
     public static InputStream bounded(InputStream stream, long maxBytes, String label) {
+        if (stream == null) {
+            throw new IllegalArgumentException("stream must not be null");
+        }
+        if (maxBytes < 0) {
+            throw new IllegalArgumentException("maxBytes must be non-negative: " + maxBytes);
+        }
         return new InputStream() {
             private long count;
 
             @Override
             public int read() throws IOException {
                 if (count >= maxBytes) {
-                    int extra = stream.read();
-                    if (extra == -1) return -1;
                     throw tooLarge();
                 }
                 int read = stream.read();
-                if (read >= 0) count++;
+                if (read >= 0) {
+                    count++;
+                }
                 return read;
             }
 
             @Override
             public int read(byte[] bytes, int off, int len) throws IOException {
                 Objects.checkFromIndexSize(off, len, bytes.length);
-                if (len == 0) return 0;
+                if (len == 0) {
+                    return 0;
+                }
                 if (count >= maxBytes) {
-                    int extra = stream.read();
-                    if (extra == -1) return -1;
                     throw tooLarge();
                 }
-                int allowed = (int) Math.min(len, maxBytes - count);
+                long remaining = maxBytes - count;
+                int allowed = (int) Math.min(len, remaining);
                 int read = stream.read(bytes, off, allowed);
-                if (read > 0) count += read;
+                if (read > 0) {
+                    count += read;
+                }
                 return read;
             }
 
             private IOException tooLarge() {
-                return new IOException(label + " exceeds " + maxBytes + " bytes");
+                return new IOException(label + " exceeds " + maxBytes + " bytes (read " + count + " bytes)");
             }
         };
     }
@@ -115,13 +128,33 @@ public final class IoUtils {
         return false;
     }
 
+    /**
+     * Checks if a single path segment contains directory traversal patterns.
+     * <p>
+     * Detects the following dangerous patterns:
+     * <ul>
+     *   <li>Parent directory references (".." or "..\")</li>
+     *   <li>Null bytes that could truncate paths</li>
+     *   <li>URL-encoded traversal sequences (e.g., "%2e%2e")</li>
+     *   <li>Malformed URL encoding that may indicate evasion attempts</li>
+     * </ul>
+     *
+     * @param seg the path segment to check (typically one component between slashes)
+     * @return {@code true} if the segment contains any traversal pattern, {@code false} otherwise
+     */
     public static boolean isPathTraversalSegment(String seg) {
+        // Check for direct parent directory references
         if ("..".equals(seg) || seg.startsWith("..\\")) return true;
+        
+        // Reject segments containing null bytes
         if (seg.contains("\0")) return true;
+        
+        // Decode URL encoding and recursively check for traversal patterns
         try {
             String decoded = URLDecoder.decode(seg, StandardCharsets.UTF_8);
             if (!decoded.equals(seg) && containsPathTraversal(decoded)) return true;
         } catch (IllegalArgumentException e) {
+            // Malformed encoding is treated as suspicious
             return true;
         }
         return false;
