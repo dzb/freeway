@@ -13,7 +13,8 @@ class CorsFilterTest {
     void addsHeadersForPreflight() throws Exception {
         CorsFilter filter = CorsFilter.builder().allowAllOrigins().build();
         StubHttpContext ctx = new StubHttpContext("OPTIONS", "/any")
-            .header("Origin", "https://example.com");
+            .header("Origin", "https://example.com")
+            .header("Access-Control-Request-Method", "POST");
 
         filter.doFilter(ctx, next -> next.send(200, "ok"));
 

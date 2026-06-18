@@ -67,13 +67,11 @@ public final class CorsFilter implements HttpFilter {
             ctx.headerSet("Access-Control-Expose-Headers", exposedHeaders);
         }
 
-        if ("OPTIONS".equalsIgnoreCase(ctx.method())) {
-            // preflight must still validate origin
-            if (acao == null) {
-                LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
-                ctx.status(403).output(new byte[0]);
-                return;
-            }
+        // Only intercept CORS preflight — real OPTIONS routes pass through
+        boolean preflight = "OPTIONS".equalsIgnoreCase(ctx.method())
+                && acao != null
+                && ctx.header("Access-Control-Request-Method") != null;
+        if (preflight) {
             if (allowedMethods != null) {
                 ctx.headerSet("Access-Control-Allow-Methods", allowedMethods);
             }
@@ -84,6 +82,11 @@ public final class CorsFilter implements HttpFilter {
                 ctx.headerSet("Access-Control-Max-Age", maxAge);
             }
             ctx.send(204, "");
+            return;
+        }
+        if (acao == null && "OPTIONS".equalsIgnoreCase(ctx.method())) {
+            LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
+            ctx.status(403).output(new byte[0]);
             return;
         }
 

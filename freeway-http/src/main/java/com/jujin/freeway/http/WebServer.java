@@ -235,9 +235,11 @@ public final class WebServer implements AutoCloseable {
     }
 
     private static boolean awaitReady(String host, int port) {
+        // wildcard bind addresses are not connectable — use loopback
+        String probe = isWildcardAddress(host) ? "127.0.0.1" : host;
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline) {
-            try (Socket s = new Socket(host, port)) {
+            try (Socket s = new Socket(probe, port)) {
                 return true;
             } catch (IOException ignored) {
                 try {
@@ -249,6 +251,10 @@ public final class WebServer implements AutoCloseable {
             }
         }
         return false;
+    }
+
+    private static boolean isWildcardAddress(String host) {
+        return "0.0.0.0".equals(host) || "::".equals(host);
     }
 
     private static HttpEngine resolveEngine(

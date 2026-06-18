@@ -61,6 +61,10 @@ public final class PathPattern {
     public static void validateRegistrationPath(String path) {
         String normalized = normalizePath(path);
         for (String seg : splitPath(normalized)) {
+            if (seg.isEmpty()) {
+                throw new IllegalArgumentException(
+                    "Path must not contain empty segments (path: " + path + ")");
+            }
             if (isPathTraversalSegment(seg)) {
                 throw new IllegalArgumentException(
                     "Path must not contain traversal segments (path: " + path + ")");
