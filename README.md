@@ -49,7 +49,7 @@ Freeway 2 keeps its core concepts and public API intentionally small:
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the web server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider with ANSI-colored single-line console output (auto-detected via TTY). Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
 - Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 ## Quick Start
@@ -175,7 +175,7 @@ A compact JDBC data access layer with ORM:
 - `RowMapper` - auto-mapping for records, beans, and basic types; `@Column` annotation drives column name matching.
 - Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus.
 - Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via `freeway.db.pool`. HikariCP adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).
-- **Dialect** — config-driven selection via `freeway.db.dialect`, URL auto-detection, `PostgresDialect` default. Custom dialects bind by id: `binder.bind(Dialect.class).to(MyDialect.class).id("mysql").primary()`.
+- **Dialect** — config-driven selection via `freeway.db.dialect`, JDBC URL auto-detection. Built-in: `PostgresDialect` (default), `MySqlDialect`, `SqliteDialect`. H2 auto-detected as PostgreSQL-compatible (or MySQL if `MODE=MySQL`).
 - **Schema** — `@Table`/`@Column`/`@Id`/`@Generated` annotations + `Schema.ensure()` auto-DDL. Entity groups contributed via `SchemaEntity.of("core", User.class)`, filterable via `freeway.db.schema.groups`.
 - **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation, format enforcement, and database-level concurrency lock. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
 - `DatabaseHub` - multi-datasource routing.
@@ -212,7 +212,7 @@ Configuration flows in a layered cascade, from lowest to highest priority:
 2. `application.json`
 3. `application-{profile}.properties`
 4. `application-{profile}.json`
-5. Environment variables (`FREEWAY_` prefix)
+5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
 6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles with:
