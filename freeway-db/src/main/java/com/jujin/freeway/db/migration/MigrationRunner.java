@@ -454,11 +454,6 @@ public final class MigrationRunner {
         return value.substring(index);
     }
 
-    @Deprecated
-    private static String sha256(byte[] content) {
-        return com.jujin.freeway.commons.util.Digests.sha256Hex(content);
-    }
-
     private static String normalizePath(String path) {
         String value =
             path == null || path.isBlank() ? "db/migration/" : path.trim();

@@ -45,7 +45,7 @@ public final class CorsFilter implements HttpFilter {
         }
         this.allowedMethods = allowedMethods;
         this.allowedHeaders = allowedHeaders;
-        this.exposedHeaders = HttpContext.blankToNull(exposedHeaders);
+        this.exposedHeaders = com.jujin.freeway.commons.util.Strings.blankToNull(exposedHeaders);
         this.maxAge = maxAge;
         this.allowCredentials = allowCredentials;
     }

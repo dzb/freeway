@@ -72,7 +72,7 @@ public final class RouteIndex {
     private void addRoute(String method, String path, RouteHandler handler) {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
         TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
-        String[] segments = PathPattern.splitPath(path);
+        String[] segments = com.jujin.freeway.commons.util.IoUtils.splitPath(path);
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
             String seg = segments[i];
@@ -143,12 +143,12 @@ public final class RouteIndex {
         if (root == null) {
             return null;
         }
-        String[] segments = PathPattern.splitPath(path);
+        String[] segments = com.jujin.freeway.commons.util.IoUtils.splitPath(path);
         Map<String, String> vars = new LinkedHashMap<>();
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
             String seg = segments[i];
-            if (seg.isEmpty() || PathPattern.isPathTraversalSegment(seg)) {
+            if (seg.isEmpty() || com.jujin.freeway.commons.util.IoUtils.isPathTraversalSegment(seg)) {
                 return null;
             }
             // Try literal match first
@@ -174,7 +174,7 @@ public final class RouteIndex {
                     );
                     if (
                         remainder.isEmpty() ||
-                        PathPattern.containsPathTraversal(remainder)
+                        com.jujin.freeway.commons.util.IoUtils.containsPathTraversal(remainder)
                     ) {
                         return null;
                     }

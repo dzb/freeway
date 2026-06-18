@@ -220,15 +220,10 @@ public abstract class HttpContext {
         return outputJson(value);
     }
 
-    @Deprecated
-    public static String blankToNull(String s) {
-        return com.jujin.freeway.commons.util.Strings.blankToNull(s);
-    }
-
     public static RequestContext createRequestContext(
         String correlationIdHeader
     ) {
-        String id = blankToNull(correlationIdHeader);
+        String id = com.jujin.freeway.commons.util.Strings.blankToNull(correlationIdHeader);
         return id != null ? RequestContext.create(id) : RequestContext.create();
     }
 

@@ -8,6 +8,11 @@ public final class Maps {
 
     private Maps() {}
 
+    /** Flattens with {@code "."} as the key delimiter. */
+    public static Map<String, String> flatten(Map<String, Object> source) {
+        return flatten(source, ".");
+    }
+
     /**
      * Recursively flattens nested maps and lists into a flat {@code Map<String, String>}
      * with {@code delimiter}-separated keys.

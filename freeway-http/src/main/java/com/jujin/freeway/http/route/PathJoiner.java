@@ -9,7 +9,7 @@ public final class PathJoiner {
      * {@code /}, returns {@code ""} for the root path ({@code null}, empty, or {@code "/"}).
      */
     public static String normalize(String path) {
-        String result = PathPattern.normalizePath(path);
+        String result = com.jujin.freeway.commons.util.IoUtils.normalizePath(path);
         return "/".equals(result) ? "" : result;
     }
 

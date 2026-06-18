@@ -20,6 +20,6 @@ public record WebSocketRoute(String path, WebSocketEndpoint endpoint, PathPatter
     }
 
     private static String normalizePath(String path) {
-        return PathPattern.normalizePath(path);
+        return com.jujin.freeway.commons.util.IoUtils.normalizePath(path);
     }
 }

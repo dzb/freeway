@@ -261,7 +261,7 @@ public final class WebServer implements AutoCloseable {
         Container container,
         String webEngineId
     ) {
-        String engineId = HttpContext.blankToNull(webEngineId);
+        String engineId = com.jujin.freeway.commons.util.Strings.blankToNull(webEngineId);
         if (engineId == null) {
             engineId = "robaho";
         }

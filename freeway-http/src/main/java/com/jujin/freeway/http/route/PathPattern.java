@@ -7,7 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.commons.util.IoUtils;
 
 public final class PathPattern {
     private final String template;
@@ -19,8 +19,8 @@ public final class PathPattern {
     static final int MAX_REGEX_LENGTH = 64;
 
     public PathPattern(String template) {
-        this.template = normalizePath(template);
-        String[] raw = splitPath(this.template);
+        this.template = IoUtils.normalizePath(template);
+        String[] raw = IoUtils.splitPath(this.template);
         this.segments = new String[raw.length];
         this.paramNames = new String[raw.length];
         this.paramPatterns = new Pattern[raw.length];
@@ -67,13 +67,13 @@ public final class PathPattern {
     }
 
     public static void validateRegistrationPath(String path) {
-        String normalized = normalizePath(path);
-        for (String seg : splitPath(normalized)) {
+        String normalized = IoUtils.normalizePath(path);
+        for (String seg : IoUtils.splitPath(normalized)) {
             if (seg.isEmpty()) {
                 throw new IllegalArgumentException(
                     "Path must not contain empty segments (path: " + path + ")");
             }
-            if (isPathTraversalSegment(seg)) {
+            if (IoUtils.isPathTraversalSegment(seg)) {
                 throw new IllegalArgumentException(
                     "Path must not contain traversal segments (path: " + path + ")");
             }
@@ -89,7 +89,7 @@ public final class PathPattern {
     }
 
     public Map<String, String> match(String path) {
-        String[] input = splitPath(path);
+        String[] input = IoUtils.splitPath(path);
         if (wildcard) {
             if (input.length < segments.length) {
                 return null;
@@ -102,12 +102,12 @@ public final class PathPattern {
             if (segments[i] == null) {
                 if (wildcard && i == segments.length - 1) {
                     String remainder = String.join("/", Arrays.copyOfRange(input, i, input.length));
-                    if (remainder.isEmpty() || containsPathTraversal(remainder)) {
+                    if (remainder.isEmpty() || IoUtils.containsPathTraversal(remainder)) {
                         return null;
                     }
                     vars.put(paramNames[i], remainder);
                 } else {
-                    if (input[i].isEmpty() || isPathTraversalSegment(input[i])) {
+                    if (input[i].isEmpty() || IoUtils.isPathTraversalSegment(input[i])) {
                         return null;
                     }
                     Pattern p = paramPatterns[i];
@@ -123,19 +123,4 @@ public final class PathPattern {
         return vars;
     }
 
-    static String[] splitPath(String path) {
-        return com.jujin.freeway.commons.util.IoUtils.splitPath(path);
-    }
-
-    public static String normalizePath(String path) {
-        return com.jujin.freeway.commons.util.IoUtils.normalizePath(path);
-    }
-
-    static boolean containsPathTraversal(String path) {
-        return com.jujin.freeway.commons.util.IoUtils.containsPathTraversal(path);
-    }
-
-    static boolean isPathTraversalSegment(String seg) {
-        return containsPathTraversal(seg);
-    }
 }

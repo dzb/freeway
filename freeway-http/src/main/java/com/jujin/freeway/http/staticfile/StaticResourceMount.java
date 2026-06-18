@@ -131,7 +131,7 @@ public final class StaticResourceMount {
     }
 
     private String relativePath(String path) {
-        String normalized = HttpContext.blankToNull(path);
+        String normalized = com.jujin.freeway.commons.util.Strings.blankToNull(path);
         if (normalized == null) {
             return null;
         }
@@ -181,11 +181,11 @@ public final class StaticResourceMount {
     }
 
     private boolean isNotModified(HttpContext ctx, StaticAsset asset) {
-        String ifNoneMatch = HttpContext.blankToNull(ctx.header("If-None-Match"));
+        String ifNoneMatch = com.jujin.freeway.commons.util.Strings.blankToNull(ctx.header("If-None-Match"));
         if (ifNoneMatch != null) {
             return etagMatches(ifNoneMatch, asset.etag());
         }
-        String ifModifiedSince = HttpContext.blankToNull(ctx.header("If-Modified-Since"));
+        String ifModifiedSince = com.jujin.freeway.commons.util.Strings.blankToNull(ctx.header("If-Modified-Since"));
         if (ifModifiedSince == null || asset.lastModifiedMillis() <= 0) {
             return false;
         }
@@ -260,7 +260,7 @@ public final class StaticResourceMount {
     }
 
     private static String normalizeMount(String mountPath) {
-        return PathPattern.normalizePath(mountPath);
+        return com.jujin.freeway.commons.util.IoUtils.normalizePath(mountPath);
     }
 
     private interface ResourceSource {
@@ -310,7 +310,7 @@ public final class StaticResourceMount {
         private final ClassLoader loader;
 
         private ClasspathResourceSource(String resourceRoot) {
-            String normalized = HttpContext.blankToNull(resourceRoot);
+            String normalized = com.jujin.freeway.commons.util.Strings.blankToNull(resourceRoot);
             if (normalized == null) {
                 normalized = "";
             }

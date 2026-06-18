@@ -166,8 +166,8 @@ public final class MultipartForm {
         byte[] bytes = content.getBytes(RAW);
         return new Part(
             name,
-            HttpContext.blankToNull(filename),
-            HttpContext.blankToNull(contentType),
+            com.jujin.freeway.commons.util.Strings.blankToNull(filename),
+            com.jujin.freeway.commons.util.Strings.blankToNull(contentType),
             bytes
         );
     }
@@ -262,8 +262,8 @@ public final class MultipartForm {
         public Part {
             name = Objects.requireNonNull(name, "name");
             bytes = bytes != null ? bytes.clone() : new byte[0];
-            filename = HttpContext.blankToNull(filename);
-            contentType = HttpContext.blankToNull(contentType);
+            filename = com.jujin.freeway.commons.util.Strings.blankToNull(filename);
+            contentType = com.jujin.freeway.commons.util.Strings.blankToNull(contentType);
         }
 
         public boolean isFile() {

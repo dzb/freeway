@@ -253,7 +253,7 @@ public final class RowMapperResolver {
             }
         }
         // 2. Property name → camelCase / snake_case matching
-        String snake = Names.camelToSnake(propertyName);
+        String snake = com.jujin.freeway.commons.util.Strings.camelToSnake(propertyName);
         for (int i = 1; i <= columnCount; i++) {
             String label = meta.getColumnLabel(i);
             if (label == null) label = meta.getColumnName(i);

@@ -3,11 +3,6 @@ package com.jujin.freeway.db.util;
 public final class Names {
     private Names() {}
 
-    @Deprecated
-    public static String camelToSnake(String camel) {
-        return com.jujin.freeway.commons.util.Strings.camelToSnake(camel);
-    }
-
     public static boolean isValidParamStart(char c) {
         return Character.isLetter(c) || c == '_';
     }

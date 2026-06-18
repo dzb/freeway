@@ -82,11 +82,11 @@ public final class SqlTypeMapping {
                 continue;
             }
             String idxName = idx.name().isBlank()
-                ? "idx_" + tableName + "_" + Names.camelToSnake(property.name())
+                ? "idx_" + tableName + "_" + com.jujin.freeway.commons.util.Strings.camelToSnake(property.name())
                 : idx.name().trim();
             groups
                 .computeIfAbsent(idxName, k -> new ArrayList<>())
-                .add(Names.camelToSnake(property.name()));
+                .add(com.jujin.freeway.commons.util.Strings.camelToSnake(property.name()));
             uniqueFlags.put(
                 idxName,
                 uniqueFlags.getOrDefault(idxName, false) || idx.unique()
@@ -126,7 +126,7 @@ public final class SqlTypeMapping {
         if (col != null && !col.value().isBlank()) {
             return col.value().trim();
         }
-        return Names.camelToSnake(property.name());
+        return com.jujin.freeway.commons.util.Strings.camelToSnake(property.name());
     }
 
     /** Table name: @Table.value first, then class name → snake_case. */
@@ -135,7 +135,7 @@ public final class SqlTypeMapping {
         if (table != null && !table.value().isBlank()) {
             return table.value().trim();
         }
-        return Names.camelToSnake(type.getSimpleName());
+        return com.jujin.freeway.commons.util.Strings.camelToSnake(type.getSimpleName());
     }
 
     private static String resolveSqlType(

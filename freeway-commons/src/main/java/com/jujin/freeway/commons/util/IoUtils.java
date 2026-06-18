@@ -115,7 +115,7 @@ public final class IoUtils {
         return false;
     }
 
-    private static boolean isPathTraversalSegment(String seg) {
+    public static boolean isPathTraversalSegment(String seg) {
         if ("..".equals(seg) || seg.startsWith("..\\")) return true;
         if (seg.contains("\0")) return true;
         try {
