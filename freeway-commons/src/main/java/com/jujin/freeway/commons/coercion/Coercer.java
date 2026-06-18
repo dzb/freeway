@@ -43,7 +43,7 @@ public interface Coercer {
      *
      * @return 不可修改的转换映射表，键为目标类型，值为支持的源类型集合
      */
-    default Map<Class<?>, Set<Class<?>>> conversions() {
+    default Map<Class<?>, Set<Class<?>>> supported() {
         return Map.of();
     }
 }
