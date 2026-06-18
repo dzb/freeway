@@ -99,6 +99,7 @@ public final class Schema {
                 String ddl = dialect.createTable(table);
                 LOG.info("Creating table: {}", tableName);
                 db.execute(ddl);
+                existingTables.add(normalizedTableName);
                 executed++;
                 continue;
             }

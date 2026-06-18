@@ -31,4 +31,14 @@ record ColumnDef(String name, String sqlType, boolean nullable, boolean primaryK
     String toAlterSql(Dialect dialect) {
         return "ADD COLUMN " + toSql(dialect);
     }
+
+    /** Same as {@link #toAlterSql} but without the generated clause. */
+    String toAlterSqlWithoutGenerated(Dialect dialect) {
+        StringBuilder sb = new StringBuilder("ADD COLUMN ");
+        sb.append(dialect.quoteName(name)).append(' ').append(sqlType);
+        if (!nullable) {
+            sb.append(" NOT NULL");
+        }
+        return sb.toString();
+    }
 }

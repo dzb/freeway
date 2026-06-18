@@ -8,9 +8,7 @@ public record WebSocketRoute(String path, WebSocketEndpoint endpoint, PathPatter
         path = normalizePath(path);
         endpoint = Objects.requireNonNull(endpoint, "endpoint");
         PathPattern.validateRegistrationPath(path);
-        if (pattern == null) {
-            pattern = new PathPattern(path);
-        }
+        pattern = new PathPattern(path);
     }
 
     public WebSocketRoute(String path, WebSocketEndpoint endpoint) {

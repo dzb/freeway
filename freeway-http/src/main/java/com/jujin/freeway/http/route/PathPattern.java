@@ -32,6 +32,10 @@ public final class PathPattern {
                 int colon = inner.indexOf(':');
                 if (colon >= 0) {
                     String name = inner.substring(0, colon);
+                    if (name.isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "Empty parameter name in path: " + template);
+                    }
                     String regex = inner.substring(colon + 1);
                     if (regex.length() > MAX_REGEX_LENGTH) {
                         throw new IllegalArgumentException(
@@ -49,6 +53,10 @@ public final class PathPattern {
                         }
                     }
                 } else {
+                    if (inner.isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "Empty parameter name in path: " + template);
+                    }
                     paramNames[i] = inner;
                 }
             } else {
@@ -68,6 +76,10 @@ public final class PathPattern {
             if (isPathTraversalSegment(seg)) {
                 throw new IllegalArgumentException(
                     "Path must not contain traversal segments (path: " + path + ")");
+            }
+            if (seg.startsWith("{") && !seg.endsWith("}")) {
+                throw new IllegalArgumentException(
+                    "Unclosed parameter — missing '}': " + seg + " (path: " + path + ")");
             }
         }
     }

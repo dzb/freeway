@@ -81,7 +81,11 @@ public final class SqliteDialect implements Dialect {
 
     @Override
     public String addColumn(String tableName, ColumnDef column) {
-        return "ALTER TABLE " + quoteName(tableName) + " " + column.toAlterSql(this);
+        // SQLite does not support AUTOINCREMENT in ALTER TABLE ADD COLUMN
+        String def = column.generated()
+            ? column.toAlterSqlWithoutGenerated(this)
+            : column.toAlterSql(this);
+        return "ALTER TABLE " + quoteName(tableName) + " " + def;
     }
 
     @Override
