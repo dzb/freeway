@@ -43,7 +43,7 @@ public final class CoercerDefault implements Coercer {
         if (rule != null) {
             try {
                 return (T) rule
-                    .converter()
+                    .mapping()
                     .apply(rule.sourceType().cast(input));
             } catch (Exception e) {
                 throw new IllegalArgumentException(

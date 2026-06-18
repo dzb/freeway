@@ -13,11 +13,11 @@ import java.util.function.Function;
  * @param <T> 目标类型
  * @param sourceType 源类型Class类型
  * @param targetType 目标类型Class类型
- * @param converter 执行实际转换的函数
+ * @param mapping 执行实际转换的函数
  */
 public record CoerceRule<S, T>(
     Class<S> sourceType,
     Class<T> targetType,
-    Function<S, T> converter
+    Function<S, T> mapping
 ) {
 }
