@@ -105,7 +105,7 @@ public final class BootConfigLoader implements ConfigLoader {
 
         try (stream) {
             JsonObject root = JsonUtils.parseObject(stream);
-            return com.jujin.freeway.commons.util.Maps.flatten(root.toMap(), ".");
+            return Maps.flatten(root.toMap(), ".");
         } catch (IOException | RuntimeException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
         }

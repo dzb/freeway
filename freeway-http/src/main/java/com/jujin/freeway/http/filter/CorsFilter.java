@@ -1,5 +1,6 @@
 package com.jujin.freeway.http.filter;
 
+import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.ioc.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +46,7 @@ public final class CorsFilter implements HttpFilter {
         }
         this.allowedMethods = allowedMethods;
         this.allowedHeaders = allowedHeaders;
-        this.exposedHeaders = com.jujin.freeway.commons.util.Strings.blankToNull(exposedHeaders);
+        this.exposedHeaders = Strings.blankToNull(exposedHeaders);
         this.maxAge = maxAge;
         this.allowCredentials = allowCredentials;
     }

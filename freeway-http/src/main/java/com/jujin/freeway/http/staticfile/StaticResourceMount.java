@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.staticfile;
 
+import com.jujin.freeway.commons.util.Digests;
+import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.util.IoUtils;
 import java.io.IOException;
 import java.io.InputStream;
@@ -131,7 +133,7 @@ public final class StaticResourceMount {
     }
 
     private String relativePath(String path) {
-        String normalized = com.jujin.freeway.commons.util.Strings.blankToNull(path);
+        String normalized = Strings.blankToNull(path);
         if (normalized == null) {
             return null;
         }
@@ -181,11 +183,11 @@ public final class StaticResourceMount {
     }
 
     private boolean isNotModified(HttpContext ctx, StaticAsset asset) {
-        String ifNoneMatch = com.jujin.freeway.commons.util.Strings.blankToNull(ctx.header("If-None-Match"));
+        String ifNoneMatch = Strings.blankToNull(ctx.header("If-None-Match"));
         if (ifNoneMatch != null) {
             return etagMatches(ifNoneMatch, asset.etag());
         }
-        String ifModifiedSince = com.jujin.freeway.commons.util.Strings.blankToNull(ctx.header("If-Modified-Since"));
+        String ifModifiedSince = Strings.blankToNull(ctx.header("If-Modified-Since"));
         if (ifModifiedSince == null || asset.lastModifiedMillis() <= 0) {
             return false;
         }
@@ -310,7 +312,7 @@ public final class StaticResourceMount {
         private final ClassLoader loader;
 
         private ClasspathResourceSource(String resourceRoot) {
-            String normalized = com.jujin.freeway.commons.util.Strings.blankToNull(resourceRoot);
+            String normalized = Strings.blankToNull(resourceRoot);
             if (normalized == null) {
                 normalized = "";
             }
@@ -339,6 +341,6 @@ public final class StaticResourceMount {
     }
 
     private static String computeEtag(byte[] bytes) {
-        return "\"sha256-" + com.jujin.freeway.commons.util.Digests.sha256Base64(bytes) + "\"";
+        return "\"sha256-" + Digests.sha256Base64(bytes) + "\"";
     }
 }

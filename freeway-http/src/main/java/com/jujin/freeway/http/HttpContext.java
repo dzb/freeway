@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.body.MultipartForm;
@@ -221,13 +222,13 @@ public abstract class HttpContext {
     }
 
     public static String blankToNull(String s) {
-        return com.jujin.freeway.commons.util.Strings.blankToNull(s);
+        return Strings.blankToNull(s);
     }
 
     public static RequestContext createRequestContext(
         String correlationIdHeader
     ) {
-        String id = com.jujin.freeway.commons.util.Strings.blankToNull(correlationIdHeader);
+        String id = Strings.blankToNull(correlationIdHeader);
         return id != null ? RequestContext.create(id) : RequestContext.create();
     }
 

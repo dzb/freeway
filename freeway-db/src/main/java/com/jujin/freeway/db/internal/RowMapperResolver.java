@@ -1,5 +1,6 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
@@ -253,7 +254,7 @@ public final class RowMapperResolver {
             }
         }
         // 2. Property name → camelCase / snake_case matching
-        String snake = com.jujin.freeway.commons.util.Strings.camelToSnake(propertyName);
+        String snake = Strings.camelToSnake(propertyName);
         for (int i = 1; i <= columnCount; i++) {
             String label = meta.getColumnLabel(i);
             if (label == null) label = meta.getColumnName(i);

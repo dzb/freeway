@@ -1,5 +1,6 @@
 package com.jujin.freeway.http;
 
+import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.http.event.*;
 import com.jujin.freeway.http.filter.CorsFilter;
@@ -261,7 +262,7 @@ public final class WebServer implements AutoCloseable {
         Container container,
         String webEngineId
     ) {
-        String engineId = com.jujin.freeway.commons.util.Strings.blankToNull(webEngineId);
+        String engineId = Strings.blankToNull(webEngineId);
         if (engineId == null) {
             engineId = "robaho";
         }

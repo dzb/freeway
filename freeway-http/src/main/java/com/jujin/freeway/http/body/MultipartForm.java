@@ -1,5 +1,6 @@
 package com.jujin.freeway.http.body;
 
+import com.jujin.freeway.commons.util.Strings;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -166,8 +167,8 @@ public final class MultipartForm {
         byte[] bytes = content.getBytes(RAW);
         return new Part(
             name,
-            com.jujin.freeway.commons.util.Strings.blankToNull(filename),
-            com.jujin.freeway.commons.util.Strings.blankToNull(contentType),
+            Strings.blankToNull(filename),
+            Strings.blankToNull(contentType),
             bytes
         );
     }
@@ -262,8 +263,8 @@ public final class MultipartForm {
         public Part {
             name = Objects.requireNonNull(name, "name");
             bytes = bytes != null ? bytes.clone() : new byte[0];
-            filename = com.jujin.freeway.commons.util.Strings.blankToNull(filename);
-            contentType = com.jujin.freeway.commons.util.Strings.blankToNull(contentType);
+            filename = Strings.blankToNull(filename);
+            contentType = Strings.blankToNull(contentType);
         }
 
         public boolean isFile() {
