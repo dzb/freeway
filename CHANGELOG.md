@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`JULConsoleFormatter`** — ANSI-colored single-line JUL console output with TTY auto-detection. Colors disabled automatically when output is piped. Override with `-Dfreeway.log.color=always|never`. Opt out entirely with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
+- **`MySqlDialect`** — built-in MySQL/MariaDB dialect with backtick quoting, `AUTO_INCREMENT`, `VARCHAR(36)` UUID, `DATETIME(6)` Instant, `LONGBLOB` binary.
+- **`SqliteDialect`** — built-in SQLite dialect with double-quote quoting, `AUTOINCREMENT`, `TEXT` UUID/Instant, `BLOB` binary, `sqlite_master` introspection.
+- **Dialect auto-detection** — `detectDialect()` maps JDBC URLs to built-in dialects. H2 maps to PostgreSQL (or MySQL if `MODE=MySQL`). Explicit unknown dialect throws `IllegalStateException`; auto-detected unknown falls back with warning.
+- **`SymbolSource.resolve(name, defaultValue)`** — default value overload. Returns `defaultValue` when the key is not found; delegates to `expand()` with `${name:default}` syntax.
+- **`ReflectUtils.rawClass(Type)`** — shared utility in `commons/bean` extracting `Class<?>` from `Type`. Eliminates 5 duplicated implementations across commons/ioc/db.
+- **`InputStreams.readBytes(in, max, label)`** — shared bounded stream reader in `commons/io`. Eliminates 3 duplicated implementations.
 - **`List<T>` contribution injection** — contributions can now be injected directly as `List<T>` instead of requiring `Extension<T>` + manual `.all()`. Constructor params auto-resolve; fields need `@Inject`. (`resolveContributed`)
 - **`RowMapperResolver(Coercer, List<RowMapping>)`** — IoC-friendly constructor for contributed row mappers.
 - **`DatabaseHubImpl(List<DatabaseNamed>)`** — IoC-friendly constructor for contributed named databases.
@@ -16,8 +23,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`HealthFilter`** — `HttpFilter` that intercepts the health endpoint (`web.health.enabled`, `web.health.path`) before routing. Injected into `WebServer` alongside `CorsFilter`.
 - **CRLF validation in `headerSet`** — all `HttpContext` implementations now reject `\r`/`\n` in header values, preventing HTTP response header injection.
 
+### Fixed
+
+- `toUpperCase()`/`toLowerCase()` without `Locale.ROOT` across 12 files — Turkish locale would corrupt SQL DDL, config keys, column labels, and migration lock detection.
+- `SymbolSource.resolve(name, null)` no longer expands to string `"null"` — fixes health-check-query default.
+- `SqliteDialect.addColumn()` no longer doubles `ADD COLUMN`.
+- `IndexDef.toSql()` conditionally omits `IF NOT EXISTS` for MySQL (via `Dialect.supportsIndexIfNotExists()`).
+- `SchemaEntity.entityTypes()` returns cloned array — prevents external mutation.
+- `SchemaEntity` constructor clones input array — prevents caller-side mutation.
+- `RequestContext.attribute()` now validates null key (was inconsistent with `setAttribute()`).
+- `StaticResourceMount` `URLDecoder` `+` → space bug fixed by pre-replacing `+` with `%2B`.
+
 ### Changed
 
+- **`Coercer.coerce()`** — throws `IllegalArgumentException` instead of `IllegalStateException` for coercion failures.
+- **`CorsFilter`** — only intercepts genuine CORS preflight (`Access-Control-Request-Method` header present). Non-preflight `OPTIONS` requests pass through to route handlers.
+- **`HttpServerConfig`** — invalid port/backlog/shutdownGraceSeconds now throw `IllegalArgumentException` instead of silently clamping.
+- **`HealthFilter.normalize()`** — delegates to `PathPattern.normalizePath()`, stripping trailing slashes consistently.
+- **`PathJoiner.normalize()`** — delegates to `PathPattern.normalizePath()` with root-path transformation.
+- **`PathPattern.validateRegistrationPath()`** — rejects empty path segments (`/a//b`), unbalanced braces (`/{id`), and empty parameter names (`{}`, `/:regex`).
+- **`RouteIndex`** — wildcard params (`{path:.*}`) now reject literal children and vice versa, preventing unreachable routes. Param conflicts now compare regex by pattern string (value equality).
+- **`WebSocketIndex.match()`** — iterates in reverse; individuals (added last) override group routes (added first).
+- **`WebSocketRoute`** — always rebuilds `PathPattern` from path in canonical constructor, guaranteeing path/pattern consistency.
+- **`MigrationRunner.isDuplicateKey()`** — SQL state code checking (`state.startsWith("23")`) added as fallback to keyword matching.
+- **`Schema.ensure()`** — `existingTables` refreshed after `CREATE TABLE` to prevent duplicate DDL for multi-entity same-table batches.
+- **`Schema.ensure()`** — copies `existingTables` to `HashSet` for safe mutation by custom dialect implementations.
+- **`SqlTextScanner`** — renamed to `SqlTextParser` and moved from `db/internal` to `db/util`.
+- **`BatchQueryImpl`** — rejects mixed positional/named parameters at construction time. Defensive `List.copyOf()` for `rows()`/`named()` inputs.
+- **`PoolDefault.release()`** — `Objects.requireNonNull(conn)` instead of silently returning on null.
+- **`Extension.order()`** — throws `IllegalArgumentException` on unknown `before`/`after` ids (was silent skip).
+- **`JdkHttpContext`** — `queryParams()` now returns deep-frozen map with immutable inner lists. `headers()` returns `List.copyOf()` (was mutable).
+- **`StubHttpContext`** — request/response headers separated; request headers support multi-value (`List<String>`). `requestHeader()` fluent setter, `responseHeader()` query method. `headerSet()` validates CR/LF. `queryParam()` allows null→empty for bare params.
+- **`RequestContext.create(String)`** — normalizes blank input to random UUID. `RequestContextDefault` constructor mirrors this behavior.
+- **Environment variable mapping** — `FREEWAY_DB_URL` now maps to `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended).
+- **`@SuppressWarnings("SameParameterValue")` removed** — `coerceNumber` parameter narrowed to `Number`.
+- **`BootConfigLoader`** — four one-use String constants inlined.
+- **CI** — `mvn test` added before deploy in both snapshot and release workflows.
 - **Extension mechanism simplified** — removed `Extension.Key` record (was `Class<?> entryType` + `String name`, the latter dead). `extensions` map changed to `Map<Class<?>, Extension<?>>`. FQN-based binding registration removed; extensions live exclusively in their own `ConcurrentHashMap`.
 - **`Binder` API cleaned** — removed unused `contribute(Class, String name)` overload. Removed never-implemented `contributeMapped`.
 - **`Container.extension()`** — default method changed to abstract; removed misleading `get(Extension.class, entryType.getName())` fallback.
@@ -41,6 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Strict mode (`freeway.strict`)** — removed entirely. Duplicate modules now logged (not thrown). Unbound concrete types always auto-instantiate. Engine fallback always warns + falls back. Eliminates `System.setProperty` side channel between `AppBuilder` and `ContainerImpl`/`WebServer`.
+- **`NamedParamParser`** — thin 27-line delegation wrapper around `SqlTextParser`; `Result` record moved into `SqlTextParser`.
+- **`MigrationRunner` dead scanning methods** — `skipLineComment`, `skipBlockComment`, `skipDollarQuote`, `appendQuoted`, `addStatement` (duplicate of `SqlTextParser.addStatement`).
+- **`IsolationLevel` unused `sqlLevel` parameter** — JDBC constants already match SQL standard values.
+- **`DbModule` defensive wrappers** — `resolveStr`, `parseInt`, `parseBool(SymbolSource,...)`, `parseDuration(SymbolSource,...)`, `isUnknownSymbol` replaced by `SymbolSource.resolve(name, defaultValue)`.
+- **`JsonUtils.deepCopy(Object)`** — package-private method with zero callers.
+- **`RowMapperResolver` null guards** — `customMap()` and `addAll()` dead null checks removed.
 - **Extension adapter modules** — `freeway-http-robaho`, `freeway-http-undertow`, `freeway-http-jetty`, `freeway-mq-kafka`, and `freeway-db-hikari` moved to the [freeway-ext](https://github.com/dzb/freeway-ext) repository. Core modules (`commons`, `ioc`, `boot`, `http`, `db`) remain in this repository, keeping their zero-external-dependency guarantee.
 - **`Extension.Key`** — the `(Class<?> entryType, String name)` record, superseded by bare `Class<?>` as map key.
 - **`Binder.contribute(Class, String name)`** — dead API surface, no callers.
