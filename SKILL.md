@@ -752,10 +752,11 @@ IoC 下通过 `freeway.db.pool` 选择：`builtin`（默认）或 `hikari`。
 freeway.db.dialect=mysql          ← 配置？
   → container.get(Dialect, id)    ← 按 id 查找绑定
   → jdbc:postgresql://...         ← URL 自动检测
+      (postgresql / mysql / mariadb / h2 / sqlite)
   → PostgresDialect               ← 默认 primary
 ```
 
-**内置：** `PostgresDialect`（id `"postgresql"`，默认）
+**内置：** `PostgresDialect`（id `"postgresql"`，默认）、`MySqlDialect`（id `"mysql"`）、`SqliteDialect`（id `"sqlite"`）
 
 **自定义方言：**
 ```java
@@ -827,7 +828,7 @@ db/migration/
 └── V20240615__add_index.sql  ← 时间戳版本也支持
 ```
 
-每个迁移在独立事务中执行。已应用的迁移不可再修改 — SHA-256 校验和不匹配会阻止启动。多实例并发有数据库级锁保护。
+每个迁移文件在独立事务中执行，文件内多条 SQL 语句（`;` 分隔）自动拆分逐条执行。已应用的迁移不可再修改 — SHA-256 校验和不匹配会阻止启动。多实例并发有数据库级锁保护。
 
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
