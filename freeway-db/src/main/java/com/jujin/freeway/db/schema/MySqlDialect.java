@@ -1,28 +1,24 @@
 package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.Database;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * PostgreSQL / H2 (PostgreSQL compatibility mode) SQL dialect.
- * <p>
- * This is the default dialect used when no explicit dialect is configured.
- * It uses double-quote identifier quoting, {@code GENERATED ALWAYS AS IDENTITY}
- * for auto-increment, and queries {@code INFORMATION_SCHEMA} for schema
- * introspection.
+ * MySQL / MariaDB SQL dialect.
+ *
+ * <p>Uses backtick quoting, {@code AUTO_INCREMENT}, and queries
+ * {@code INFORMATION_SCHEMA} for schema introspection.
  */
-public final class PostgresDialect implements Dialect {
-    private static final Logger LOG = LoggerFactory.getLogger(PostgresDialect.class);
+public final class MySqlDialect implements Dialect {
+    private static final Logger LOG = LoggerFactory.getLogger(MySqlDialect.class);
 
-    /** Common SQL reserved words that always need quoting. */
     private static final Set<String> RESERVED = Set.of(
         "user", "order", "group", "table", "select", "from", "where",
         "insert", "update", "delete", "create", "alter", "drop", "index",
@@ -37,13 +33,16 @@ public final class PostgresDialect implements Dialect {
         "with", "recursive", "values", "set", "default", "unique",
         "distinct", "cast", "coalesce", "nullif", "true", "false",
         "asc", "desc", "nulls", "first", "last",
-        "to", "add", "rename", "comment", "commit", "rollback", "begin", "start", "by"
+        "to", "add", "rename", "comment", "commit", "rollback", "begin", "start", "by",
+        "status", "show", "describe", "explain", "use", "repeat", "loop", "leave",
+        "iterate", "return", "while", "declare", "handler", "condition", "signal",
+        "resignal", "get", "diagnostics", "sqlstate", "call", "do", "if", "for"
     );
 
     @Override
     public String quoteName(String name) {
         if (needsQuoting(name)) {
-            return '"' + name + '"';
+            return '`' + name + '`';
         }
         return name;
     }
@@ -70,6 +69,11 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public boolean supportsIndexIfNotExists() {
+        return false;
+    }
+
+    @Override
     public List<String> createIndexes(TableDef table) {
         List<String> ddls = new ArrayList<>();
         for (IndexDef idx : table.indexes()) {
@@ -82,8 +86,9 @@ public final class PostgresDialect implements Dialect {
     public Set<String> existingIndexes(Database db, String tableName) {
         try {
             List<String> indexes = db.query(
-                "SELECT indexname FROM pg_indexes WHERE schemaname = ? AND tablename = ?",
-                effectiveSchema().toLowerCase(), tableName.toLowerCase()
+                "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                tableName
             ).list(String.class);
             return indexes.stream()
                 .filter(i -> i != null)
@@ -107,20 +112,29 @@ public final class PostgresDialect implements Dialect {
 
     @Override
     public String generatedClause() {
-        return "GENERATED ALWAYS AS IDENTITY";
+        return "AUTO_INCREMENT";
     }
 
     @Override
     public String defaultUUIDType() {
-        return "UUID";
+        return "VARCHAR(36)";
+    }
+
+    @Override
+    public String defaultInstantType() {
+        return "DATETIME(6)";
+    }
+
+    @Override
+    public String defaultBinaryType() {
+        return "LONGBLOB";
     }
 
     @Override
     public Set<String> existingTables(Database db) {
         try {
             List<String> tables = db.query(
-                "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?",
-                effectiveSchema()
+                "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE()"
             ).list(String.class);
             return tables.stream()
                 .filter(t -> t != null)
@@ -136,8 +150,8 @@ public final class PostgresDialect implements Dialect {
     public Set<String> existingColumns(Database db, String tableName) {
         try {
             List<String> columns = db.query(
-                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE UPPER(TABLE_NAME) = ? AND TABLE_SCHEMA = ?",
-                tableName.toUpperCase(), effectiveSchema()
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE()",
+                tableName
             ).list(String.class);
             return columns.stream()
                 .filter(c -> c != null)
@@ -147,10 +161,6 @@ public final class PostgresDialect implements Dialect {
             LOG.warn("Failed to list existing columns for table '{}'", tableName, e);
             return Collections.emptySet();
         }
-    }
-
-    private static String effectiveSchema() {
-        return "PUBLIC";
     }
 
     private static boolean needsQuoting(String name) {

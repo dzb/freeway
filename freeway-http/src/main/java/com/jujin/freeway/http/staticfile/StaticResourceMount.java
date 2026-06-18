@@ -148,7 +148,9 @@ public final class StaticResourceMount {
             normalized = "index.html";
         }
         try {
-            normalized = URLDecoder.decode(normalized, StandardCharsets.UTF_8);
+            // URLDecoder treats + as space (form encoding); file paths use %2B
+            normalized = URLDecoder.decode(
+                normalized.replace("+", "%2B"), StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
             return null;
         }

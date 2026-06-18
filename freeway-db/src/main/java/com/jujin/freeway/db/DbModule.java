@@ -8,8 +8,10 @@ import com.jujin.freeway.db.internal.PoolDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.migration.MigrationRunner;
 import com.jujin.freeway.db.schema.Dialect;
+import com.jujin.freeway.db.schema.MySqlDialect;
 import com.jujin.freeway.db.schema.PostgresDialect;
 import com.jujin.freeway.db.schema.Schema;
+import com.jujin.freeway.db.schema.SqliteDialect;
 import com.jujin.freeway.db.schema.SchemaEntity;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -47,6 +49,8 @@ public final class DbModule implements Module2{
             .to(PostgresDialect.class)
             .id("postgresql")
             .primary();
+        binder.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
+        binder.bind(Dialect.class).to(SqliteDialect.class).id("sqlite");
 
         // database
         binder.bind(RowMapperResolver.class).to(container ->
@@ -237,16 +241,18 @@ public final class DbModule implements Module2{
      */
     static Dialect resolveDialect(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        String dialectId = s.resolve("freeway.db.dialect", "");
-        if (dialectId.isBlank()) {
-            dialectId = detectDialect(s);
-        }
+        String configured = s.resolve("freeway.db.dialect", "");
+        boolean explicit = !configured.isBlank();
+        String dialectId = explicit ? configured : detectDialect(s);
         if (!dialectId.isBlank()) {
             try {
                 return container.get(Dialect.class, dialectId);
             } catch (RuntimeException ex) {
-                throw new IllegalStateException(
-                    "Unable to resolve dialect '" + dialectId + "'", ex);
+                if (explicit) {
+                    throw new IllegalStateException(
+                        "Unknown dialect '" + dialectId + "'", ex);
+                }
+                LOG.warn("Dialect '{}' not found, falling back to default", dialectId);
             }
         }
         return container.get(Dialect.class);
@@ -256,7 +262,10 @@ public final class DbModule implements Module2{
         String url = s.resolve("freeway.db.url", "");
         if (url.contains(":postgresql:")) return "postgresql";
         if (url.contains(":mysql:") || url.contains(":mariadb:")) return "mysql";
-        if (url.contains(":h2:")) return "h2";
+        if (url.contains(":h2:")) {
+            return url.contains("MODE=MySQL") || url.contains("MODE=MariaDB")
+                    ? "mysql" : "postgresql";
+        }
         if (url.contains(":sqlite:")) return "sqlite";
         return "";
     }

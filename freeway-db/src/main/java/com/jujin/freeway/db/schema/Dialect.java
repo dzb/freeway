@@ -26,11 +26,31 @@ public interface Dialect {
     /** Generates a DROP TABLE IF EXISTS statement. */
     String dropTable(String tableName);
 
+    /** Whether {@code CREATE INDEX IF NOT EXISTS} is supported. */
+    default boolean supportsIndexIfNotExists() {
+        return true;
+    }
+
+    /** Returns the set of existing index names for a given table. */
+    default Set<String> existingIndexes(Database db, String tableName) {
+        return Set.of();
+    }
+
     /** Returns the auto-increment clause, e.g. {@code "GENERATED ALWAYS AS IDENTITY"}. */
     String generatedClause();
 
-    /** Returns the default SQL type for UUID columns. */
+    /** Returns the SQL type for UUID columns. */
     String defaultUUIDType();
+
+    /** Returns the SQL type for timestamp-with-timezone columns. */
+    default String defaultInstantType() {
+        return "TIMESTAMP WITH TIME ZONE";
+    }
+
+    /** Returns the SQL type for binary / BLOB columns. */
+    default String defaultBinaryType() {
+        return "BYTEA";
+    }
 
     /** Queries the set of existing table names in the database. */
     Set<String> existingTables(Database db);

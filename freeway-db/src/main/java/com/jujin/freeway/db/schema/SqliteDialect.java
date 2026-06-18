@@ -1,43 +1,38 @@
 package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.Database;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * PostgreSQL / H2 (PostgreSQL compatibility mode) SQL dialect.
- * <p>
- * This is the default dialect used when no explicit dialect is configured.
- * It uses double-quote identifier quoting, {@code GENERATED ALWAYS AS IDENTITY}
- * for auto-increment, and queries {@code INFORMATION_SCHEMA} for schema
- * introspection.
+ * SQLite SQL dialect.
+ *
+ * <p>Uses double-quote quoting, {@code AUTOINCREMENT}, and {@code sqlite_master}
+ * for schema introspection (SQLite has no {@code INFORMATION_SCHEMA}).
  */
-public final class PostgresDialect implements Dialect {
-    private static final Logger LOG = LoggerFactory.getLogger(PostgresDialect.class);
+public final class SqliteDialect implements Dialect {
+    private static final Logger LOG = LoggerFactory.getLogger(SqliteDialect.class);
 
-    /** Common SQL reserved words that always need quoting. */
     private static final Set<String> RESERVED = Set.of(
         "user", "order", "group", "table", "select", "from", "where",
         "insert", "update", "delete", "create", "alter", "drop", "index",
         "primary", "key", "foreign", "references", "check", "constraint",
-        "grant", "revoke", "role", "schema", "catalog", "database",
-        "column", "view", "trigger", "function", "procedure", "sequence",
-        "case", "when", "then", "else", "end", "as", "on", "off",
-        "like", "in", "is", "not", "null", "and", "or", "between",
-        "join", "inner", "left", "right", "outer", "cross", "full",
+        "column", "view", "trigger", "case", "when", "then", "else", "end",
+        "as", "on", "off", "like", "in", "is", "not", "null", "and", "or",
+        "between", "join", "inner", "left", "right", "outer", "cross",
         "union", "intersect", "except", "all", "any", "some", "exists",
-        "having", "limit", "offset", "fetch", "next", "rows", "only",
-        "with", "recursive", "values", "set", "default", "unique",
-        "distinct", "cast", "coalesce", "nullif", "true", "false",
-        "asc", "desc", "nulls", "first", "last",
-        "to", "add", "rename", "comment", "commit", "rollback", "begin", "start", "by"
+        "having", "limit", "offset", "with", "recursive", "values", "set",
+        "default", "unique", "distinct", "cast", "coalesce", "nullif",
+        "true", "false", "asc", "desc", "nulls", "first", "last",
+        "to", "add", "rename", "commit", "rollback", "begin", "start", "by",
+        "abort", "attach", "detach", "reindex", "release", "savepoint",
+        "vacuum", "glob", "match", "regexp", "escape", "collate", "rowid"
     );
 
     @Override
@@ -52,15 +47,21 @@ public final class PostgresDialect implements Dialect {
     public String createTable(TableDef table) {
         StringBuilder sb = new StringBuilder("CREATE TABLE IF NOT EXISTS ");
         sb.append(quoteName(table.name())).append(" (\n");
+        List<String> pks = table.primaryKeys();
+        ColumnDef generatedPk = generatedPrimaryKey(table);
+        if (generatedPk != null && pks.size() != 1) {
+            throw new IllegalArgumentException(
+                "SQLite AUTOINCREMENT requires a single primary key column"
+            );
+        }
         for (int i = 0; i < table.columns().size(); i++) {
             ColumnDef col = table.columns().get(i);
-            sb.append("    ").append(col.toSql(this));
+            sb.append("    ").append(renderColumn(col, generatedPk));
             if (i < table.columns().size() - 1) {
                 sb.append(",\n");
             }
         }
-        List<String> pks = table.primaryKeys();
-        if (!pks.isEmpty()) {
+        if (!pks.isEmpty() && generatedPk == null) {
             sb.append(",\n    PRIMARY KEY (");
             sb.append(pks.stream().map(this::quoteName).collect(Collectors.joining(", ")));
             sb.append(")");
@@ -79,23 +80,6 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
-    public Set<String> existingIndexes(Database db, String tableName) {
-        try {
-            List<String> indexes = db.query(
-                "SELECT indexname FROM pg_indexes WHERE schemaname = ? AND tablename = ?",
-                effectiveSchema().toLowerCase(), tableName.toLowerCase()
-            ).list(String.class);
-            return indexes.stream()
-                .filter(i -> i != null)
-                .map(String::toLowerCase)
-                .collect(Collectors.toCollection(HashSet::new));
-        } catch (Exception e) {
-            LOG.warn("Failed to list existing indexes for table '{}'", tableName, e);
-            return Collections.emptySet();
-        }
-    }
-
-    @Override
     public String addColumn(String tableName, ColumnDef column) {
         return "ALTER TABLE " + quoteName(tableName) + " " + column.toAlterSql(this);
     }
@@ -107,20 +91,29 @@ public final class PostgresDialect implements Dialect {
 
     @Override
     public String generatedClause() {
-        return "GENERATED ALWAYS AS IDENTITY";
+        return "AUTOINCREMENT";
     }
 
     @Override
     public String defaultUUIDType() {
-        return "UUID";
+        return "TEXT";
+    }
+
+    @Override
+    public String defaultInstantType() {
+        return "TEXT";
+    }
+
+    @Override
+    public String defaultBinaryType() {
+        return "BLOB";
     }
 
     @Override
     public Set<String> existingTables(Database db) {
         try {
             List<String> tables = db.query(
-                "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?",
-                effectiveSchema()
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).list(String.class);
             return tables.stream()
                 .filter(t -> t != null)
@@ -136,8 +129,7 @@ public final class PostgresDialect implements Dialect {
     public Set<String> existingColumns(Database db, String tableName) {
         try {
             List<String> columns = db.query(
-                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE UPPER(TABLE_NAME) = ? AND TABLE_SCHEMA = ?",
-                tableName.toUpperCase(), effectiveSchema()
+                "SELECT name FROM pragma_table_info(?)", tableName
             ).list(String.class);
             return columns.stream()
                 .filter(c -> c != null)
@@ -147,10 +139,6 @@ public final class PostgresDialect implements Dialect {
             LOG.warn("Failed to list existing columns for table '{}'", tableName, e);
             return Collections.emptySet();
         }
-    }
-
-    private static String effectiveSchema() {
-        return "PUBLIC";
     }
 
     private static boolean needsQuoting(String name) {
@@ -175,5 +163,33 @@ public final class PostgresDialect implements Dialect {
             }
         }
         return false;
+    }
+
+    private String renderColumn(ColumnDef column, ColumnDef generatedPk) {
+        if (column == generatedPk) {
+            return quoteName(column.name()) + " INTEGER PRIMARY KEY " + generatedClause();
+        }
+        return column.toSql(this);
+    }
+
+    private ColumnDef generatedPrimaryKey(TableDef table) {
+        ColumnDef generatedPk = null;
+        for (ColumnDef column : table.columns()) {
+            if (!column.generated()) {
+                continue;
+            }
+            if (!column.primaryKey()) {
+                throw new IllegalArgumentException(
+                    "SQLite AUTOINCREMENT columns must also be primary keys"
+                );
+            }
+            if (generatedPk != null) {
+                throw new IllegalArgumentException(
+                    "SQLite AUTOINCREMENT requires a single generated primary key column"
+                );
+            }
+            generatedPk = column;
+        }
+        return generatedPk;
     }
 }

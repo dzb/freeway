@@ -42,6 +42,14 @@ final class BatchQueryImpl implements BatchQuery {
         this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql);
         this.positionalParameterCount =
             SqlTextParser.paramIndexes(parsed.sql()).size();
+        if (
+            SqlTextParser.hasNamedPlaceholders(sql) &&
+            !SqlTextParser.paramIndexes(sql).isEmpty()
+        ) {
+            throw new SqlException(
+                "Cannot mix named and positional placeholders in SQL: " +
+                    sql);
+        }
     }
 
     @Override

@@ -108,14 +108,15 @@ public final class SqlTypeMapping {
         String colName = columnName(property, col);
         Class<?> javaType = ReflectUtils.rawClass(property.type());
         boolean isNullable = nullable(property, col);
-        String sqlType = resolveSqlType(javaType, property, col, dialect);
+        boolean generated = property.hasAnnotation(Generated.class);
+        String sqlType = resolveSqlType(javaType, property, col, dialect, generated);
 
         return new ColumnDef(
             colName,
             sqlType,
             isNullable,
             property.hasAnnotation(Id.class),
-            property.hasAnnotation(Generated.class)
+            generated
         );
     }
 
@@ -140,24 +141,65 @@ public final class SqlTypeMapping {
         Class<?> javaType,
         BeanProperty property,
         Column col,
-        Dialect dialect
+        Dialect dialect,
+        boolean generated
     ) {
         // Explicit override
         if (col != null && !col.type().isBlank()) {
-            return col.type().trim().toUpperCase();
+            String explicit = col.type().trim().toUpperCase();
+            return normalizeGeneratedSqlType(explicit, javaType, dialect, generated);
         }
 
         String baseType = defaultSqlType(javaType, dialect);
 
         if (baseType.startsWith("VARCHAR") || baseType.startsWith("CHAR")) {
-            return resolveStringType(javaType, property, col, baseType);
+            return normalizeGeneratedSqlType(
+                resolveStringType(javaType, property, col, baseType),
+                javaType,
+                dialect,
+                generated
+            );
         }
 
         if (baseType.startsWith("DECIMAL") || baseType.startsWith("NUMERIC")) {
-            return resolveDecimalType(col);
+            return normalizeGeneratedSqlType(
+                resolveDecimalType(col),
+                javaType,
+                dialect,
+                generated
+            );
         }
 
-        return baseType;
+        return normalizeGeneratedSqlType(baseType, javaType, dialect, generated);
+    }
+
+    private static String normalizeGeneratedSqlType(
+        String sqlType,
+        Class<?> javaType,
+        Dialect dialect,
+        boolean generated
+    ) {
+        if (!generated || !(dialect instanceof SqliteDialect)) {
+            return sqlType;
+        }
+        if (isIntegralType(javaType) || "INTEGER".equalsIgnoreCase(sqlType)) {
+            return "INTEGER";
+        }
+        throw new IllegalArgumentException(
+            "SQLite AUTOINCREMENT columns must use an integer type: " +
+                javaType.getName()
+        );
+    }
+
+    private static boolean isIntegralType(Class<?> type) {
+        return type == Long.class ||
+            type == long.class ||
+            type == Integer.class ||
+            type == int.class ||
+            type == Short.class ||
+            type == short.class ||
+            type == Byte.class ||
+            type == byte.class;
     }
 
     /**
@@ -245,13 +287,13 @@ public final class SqlTypeMapping {
             return "TIME";
         }
         if (javaType == Instant.class) {
-            return "TIMESTAMP WITH TIME ZONE";
+            return dialect.defaultInstantType();
         }
         if (javaType == UUID.class) {
             return dialect.defaultUUIDType();
         }
         if (javaType == byte[].class) {
-            return "BYTEA";
+            return dialect.defaultBinaryType();
         }
         if (javaType.isEnum()) {
             return "VARCHAR(32)";

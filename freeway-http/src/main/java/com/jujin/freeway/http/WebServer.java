@@ -97,6 +97,8 @@ public final class WebServer implements AutoCloseable {
                                 processRequest(request);
                             } catch (Exception ex) {
                                 handleException(request, ex);
+                                publish(new HttpErrorEvent(
+                                    request.method(), request.path(), ex));
                             }
                         });
                     } catch (Exception ex) {
@@ -236,24 +238,7 @@ public final class WebServer implements AutoCloseable {
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline) {
             try (Socket s = new Socket(host, port)) {
-                s.setSoTimeout(1000);
-                s.getOutputStream().write(
-                    "GET / HTTP/1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8)
-                );
-                s.getOutputStream().flush();
-                byte[] buf = new byte[12];
-                int read = s.getInputStream().read(buf);
-                if (read >= 5) {
-                    String response = new String(
-                        buf,
-                        0,
-                        read,
-                        StandardCharsets.US_ASCII
-                    );
-                    if (response.startsWith("HTTP/")) {
-                        return true;
-                    }
-                }
+                return true;
             } catch (IOException ignored) {
                 try {
                     Thread.sleep(50);

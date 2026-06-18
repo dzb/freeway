@@ -196,6 +196,25 @@ class SchemaTest {
         }
     }
 
+    @Test
+    void ensureHandlesExplicitMixedCaseNames() {
+        Database db = builder("ensure_mixed_case").build();
+        try (db) {
+            int first = Schema.ensure(db, new PostgresDialect(), MixedCaseUser.class);
+            assertEquals(1, first, "should create table");
+
+            int second = Schema.ensure(db, new PostgresDialect(), MixedCaseUser.class);
+            assertEquals(0, second, "second ensure should be idempotent");
+
+            List<String> tables = tableNames(db);
+            assertTrue(tables.contains("appusers"), "tables: " + tables);
+
+            Set<String> cols = columnNames(db, "AppUsers");
+            assertTrue(cols.contains("username"), "cols: " + cols);
+            assertTrue(cols.contains("emailaddr"));
+        }
+    }
+
     // ====================== ensure — 约束 ======================
 
     @Test
@@ -366,6 +385,13 @@ class SchemaTest {
         @Id @Generated Long id,
         @Column("user_name") String name,
         @Column("email_addr") String email
+    ) {}
+
+    @Table("AppUsers")
+    public record MixedCaseUser(
+        @Id @Generated Long id,
+        @Column("UserName") String name,
+        @Column("EmailAddr") String email
     ) {}
 
     @Table("not_null_user")

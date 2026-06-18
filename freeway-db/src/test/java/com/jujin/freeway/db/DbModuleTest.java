@@ -178,7 +178,8 @@ class DbModuleTest {
         System.setProperty("freeway.db.dialect", "unknown");
 
         try (Container container = Freeway.create(new DbModule())) {
-            IllegalStateException ex = assertThrows(IllegalStateException.class, () -> DbModule.resolveDialect(container));
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> DbModule.resolveDialect(container));
             assertTrue(ex.getMessage().contains("unknown"));
         }
     }

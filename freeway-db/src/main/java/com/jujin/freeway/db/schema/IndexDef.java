@@ -19,13 +19,16 @@ record IndexDef(String name, List<String> columns, boolean unique) {
         }
     }
 
-    /** Generates a CREATE INDEX IF NOT EXISTS statement. */
+    /** Generates a CREATE INDEX statement. */
     String toSql(Dialect dialect, String tableName) {
         StringBuilder sb = new StringBuilder("CREATE ");
         if (unique) {
             sb.append("UNIQUE ");
         }
-        sb.append("INDEX IF NOT EXISTS ");
+        sb.append("INDEX ");
+        if (dialect.supportsIndexIfNotExists()) {
+            sb.append("IF NOT EXISTS ");
+        }
         sb.append(dialect.quoteName(name));
         sb.append(" ON ").append(dialect.quoteName(tableName));
         sb.append(" (");

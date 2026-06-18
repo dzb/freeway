@@ -41,12 +41,10 @@ public final class WebSocketIndex {
     private void add(WebSocketRoute route) {
         WebSocketRoute value = Objects.requireNonNull(route, "route");
         synchronized (routes) {
-            for (WebSocketRoute existing : routes) {
-                if (existing.path().equals(value.path())) {
-                    throw new IllegalStateException(
-                        "Duplicate websocket route detected: GET " +
-                            value.path()
-                    );
+            for (int i = 0; i < routes.size(); i++) {
+                if (routes.get(i).path().equals(value.path())) {
+                    routes.set(i, value); // individuals override groups
+                    return;
                 }
             }
             routes.add(value);

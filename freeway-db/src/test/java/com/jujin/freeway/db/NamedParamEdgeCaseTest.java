@@ -194,6 +194,20 @@ class NamedParamEdgeCaseTest {
         }
     }
 
+    @Test
+    void mixedPositionalAndNamedRejectedInBatch() {
+        String dbName = uniqueDb("mixed_batch_reject");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (id bigint, label varchar(16))");
+
+            assertThrows(SqlException.class,
+                () -> db.batch("insert into t values ($id, ?)")
+                    .rows(new Object[]{1L, "x"})
+                    .execute());
+        }
+    }
+
     // ====================== execute() + 命名参数自动绑定 ======================
 
     @Test

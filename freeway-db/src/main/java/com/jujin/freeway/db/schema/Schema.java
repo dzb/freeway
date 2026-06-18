@@ -24,9 +24,9 @@ import java.util.*;
  *
  * <h3>AutoMigrate strategy</h3>
  * <ul>
- *   <li>Table missing → {@code CREATE TABLE IF NOT EXISTS} + {@code CREATE INDEX IF NOT EXISTS}</li>
+ *   <li>Table missing → {@code CREATE TABLE IF NOT EXISTS} + dialect-specific index handling</li>
  *   <li>Table exists, column missing → {@code ALTER TABLE ADD COLUMN}</li>
- *   <li>Table exists, index missing → {@code CREATE INDEX IF NOT EXISTS}</li>
+ *   <li>Table exists, index missing → {@code CREATE INDEX IF NOT EXISTS} or an explicit existence check</li>
  *   <li>Never drops existing columns/indexes or alters existing column types</li>
  * </ul>
  *
@@ -93,8 +93,9 @@ public final class Schema {
         for (Class<?> type : entityTypes) {
             TableDef table = gen.define(type);
             String tableName = table.name();
+            String normalizedTableName = tableName.toLowerCase();
 
-            if (!existingTables.contains(tableName)) {
+            if (!existingTables.contains(normalizedTableName)) {
                 String ddl = dialect.createTable(table);
                 LOG.info("Creating table: {}", tableName);
                 db.execute(ddl);
@@ -109,7 +110,7 @@ public final class Schema {
             }
 
             for (ColumnDef col : table.columns()) {
-                if (!existingCols.contains(col.name())) {
+                if (!existingCols.contains(col.name().toLowerCase())) {
                     String alter = dialect.addColumn(tableName, col);
                     LOG.info("Adding column: {}.{}", tableName, col.name());
                     db.execute(alter);
@@ -118,12 +119,19 @@ public final class Schema {
             }
         }
 
-        // Indexes: CREATE INDEX IF NOT EXISTS is natively idempotent, run all
+        // Indexes: dialects that do not support IF NOT EXISTS must skip existing indexes.
         for (Class<?> type : entityTypes) {
             TableDef table = gen.define(type);
-            for (String indexDdl : dialect.createIndexes(table)) {
+            Set<String> existingIndexes = dialect.supportsIndexIfNotExists()
+                ? Set.of()
+                : dialect.existingIndexes(db, table.name());
+            for (IndexDef index : table.indexes()) {
+                if (!existingIndexes.isEmpty() &&
+                    existingIndexes.contains(index.name().toLowerCase())) {
+                    continue;
+                }
                 LOG.info("Ensuring index on {}", table.name());
-                db.execute(indexDdl);
+                db.execute(index.toSql(dialect, table.name()));
             }
         }
 

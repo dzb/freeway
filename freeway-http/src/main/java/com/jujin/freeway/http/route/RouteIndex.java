@@ -214,6 +214,11 @@ public final class RouteIndex {
             if (frozen) {
                 throw new IllegalStateException("RouteIndex is frozen");
             }
+            if (paramChild != null && paramChild.wildcard) {
+                throw new IllegalArgumentException(
+                    "Cannot register literal segment '" + seg
+                        + "' under a wildcard — wildcard captures all remaining path segments");
+            }
             if (literals == null) {
                 literals = new LinkedHashMap<>();
             }
@@ -233,12 +238,16 @@ public final class RouteIndex {
                 throw new IllegalStateException("RouteIndex is frozen");
             }
             if (paramChild == null) {
+                if (isWildcard && literals != null && !literals.isEmpty()) {
+                    throw new IllegalArgumentException(
+                        "Cannot register wildcard '{"
+                            + name + ":.*}' under a node that already has literal children");
+                }
                 paramChild = new TrieNode();
                 paramChild.paramName = name;
                 paramChild.paramPattern = regex;
                 paramChild.wildcard = isWildcard;
             } else {
-                // Multiple params at same level: validate compatibility
                 if (!paramChild.paramName.equals(name)) {
                     throw new IllegalArgumentException(
                         "Conflicting parameter names at same path level: '" +
