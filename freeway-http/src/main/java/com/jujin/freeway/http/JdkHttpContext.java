@@ -4,88 +4,59 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.sse.SseEmitter;
 import com.sun.net.httpserver.HttpExchange;
+
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
+/**
+ * {@link HttpContext} implementation backed by a {@link com.sun.net.httpserver.HttpExchange}.
+ * Designed for use by external adapters (e.g. freeway-http-robaho) that run on
+ * {@code com.sun.net.httpserver} implementations.
+ */
 public final class JdkHttpContext extends HttpContext {
 
     private final HttpExchange exchange;
     private final RequestContext requestContext;
-    private final Map<String, List<String>> queryParams;
-    private byte[] cachedBody;
-    private int responseStatus = 200;
+    private final Map<String, List<String>> headers;
+    private final Map<String, String> pathVariables = new LinkedHashMap<>(4);
+    private String method;
+    private String path;
+    private Map<String, List<String>> queryParams;
     private boolean responded;
+    private int responseStatus = 200;
 
-    public JdkHttpContext(
-        HttpExchange exchange,
-        JsonCodec jsonCodec,
-        Coercer coercer,
-        RequestContext requestContext
-    ) {
+    public JdkHttpContext(HttpExchange exchange, JsonCodec jsonCodec, Coercer coercer, RequestContext requestContext) {
         super(jsonCodec, coercer);
-        this.exchange = exchange;
-        this.requestContext = requestContext;
-        this.queryParams = parseQueryParams(
-            exchange.getRequestURI().getRawQuery()
-        );
-        queryParams.replaceAll((k, v) -> List.copyOf(v));
+        this.exchange = Objects.requireNonNull(exchange, "exchange");
+        this.requestContext = Objects.requireNonNull(requestContext, "requestContext");
+        this.headers = adaptHeaders(exchange.getRequestHeaders());
+        this.method = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
+        this.path = exchange.getRequestURI().getRawPath();
     }
 
     @Override
-    public String method() {
-        return exchange.getRequestMethod();
+    public String method() { return method; }
+
+    @Override
+    public String path() { return path; }
+
+    @Override
+    public String pathVar(String name) {
+        return pathVariables.get(name);
     }
 
     @Override
-    public String path() {
-        return exchange.getRequestURI().getPath();
-    }
+    public Map<String, String> pathVars() { return pathVariables; }
 
     @Override
-    public String queryParam(String name) {
-        List<String> values = queryParams.get(name);
-        return values != null && !values.isEmpty() ? values.get(0) : null;
-    }
-
-    @Override
-    public List<String> queryParams(String name) {
-        List<String> vals = queryParams.get(name);
-        return vals != null ? List.copyOf(vals) : List.of();
-    }
-
-    @Override
-    public Map<String, List<String>> queryParams() {
-        return Collections.unmodifiableMap(queryParams);
-    }
-
-    @Override
-    public String header(String name) {
-        return exchange.getRequestHeaders().getFirst(name);
-    }
-
-    @Override
-    public List<String> headers(String name) {
-        List<String> values = exchange.getRequestHeaders().get(name);
-        return values != null ? List.copyOf(values) : List.of();
-    }
-
-    @Override
-    public byte[] body() throws IOException {
-        if (cachedBody == null) {
-            try (var is = exchange.getRequestBody()) {
-                cachedBody = readBodyLimited(is);
-            } catch (IOException e) {
-                throw e;
-            }
-        }
-        return cachedBody;
+    public HttpContext pathVars(Map<String, String> vars) {
+        pathVariables.putAll(vars);
+        return this;
     }
 
     @Override
@@ -95,77 +66,93 @@ public final class JdkHttpContext extends HttpContext {
     }
 
     @Override
-    public int statusCode() {
-        return responseStatus;
-    }
+    public int status() { return responseStatus; }
 
     @Override
     public HttpContext headerSet(String name, String value) {
-        if (responded) {
-            return this;
-        }
         validateHeaderValue(value);
         exchange.getResponseHeaders().set(name, value);
         return this;
     }
 
     @Override
-    public HttpContext output(byte[] data) throws IOException {
-        if (responded) {
-            return this;
+    public String header(String name) {
+        var values = headers.get(name);
+        return values != null && !values.isEmpty() ? values.getFirst() : null;
+    }
+
+    @Override
+    public List<String> headers(String name) {
+        var values = headers.get(name);
+        return values != null ? values : List.of();
+    }
+
+    public Map<String, List<String>> headers() { return headers; }
+
+    @Override
+    public Map<String, List<String>> queryParams() {
+        if (queryParams == null) {
+            String rawQuery = exchange.getRequestURI().getRawQuery();
+            queryParams = rawQuery != null ? parseQueryParams(rawQuery) : Map.of();
         }
-        boolean headRequest = "HEAD".equalsIgnoreCase(
-            exchange.getRequestMethod()
-        );
-        boolean bodyAllowed = allowsResponseBody();
-        long length = bodyAllowed && !headRequest ? data.length : 0;
-        exchange.sendResponseHeaders(responseStatus, length);
-        responded = true;
-        try (OutputStream os = exchange.getResponseBody()) {
-            if (bodyAllowed && !headRequest && data.length > 0) {
-                os.write(data);
+        return queryParams;
+    }
+
+    @Override
+    public String queryParam(String name) {
+        var params = queryParams();
+        var values = params.get(name);
+        return values != null && !values.isEmpty() ? values.getFirst() : null;
+    }
+
+    @Override
+    public List<String> queryParams(String name) {
+        var params = queryParams();
+        return params.getOrDefault(name, List.of());
+    }
+
+    @Override
+    public RequestContext requestContext() { return requestContext; }
+
+    @Override
+    public byte[] body() throws IOException {
+        try (InputStream in = exchange.getRequestBody()) {
+            var out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                out.write(buffer, 0, read);
             }
+            return out.toByteArray();
         }
-        return this;
     }
 
     @Override
     public SseEmitter sse() throws IOException {
-        setupSseHeaders();
-        // JDK 25: sendResponseHeaders(200, -1) does not properly switch the response
-        // body stream from PlaceholderOutputStream; use 0 instead.
-        exchange.sendResponseHeaders(200, 0);
+        exchange.sendResponseHeaders(HttpStatus.OK, 0);
         responded = true;
         return new SseEmitter(exchange.getResponseBody());
     }
 
     @Override
-    public RequestContext requestContext() {
-        return requestContext;
+    public HttpContext output(byte[] data) throws IOException {
+        if (responded) return this;
+        responded = true;
+        if (!allowsResponseBody()) {
+            exchange.sendResponseHeaders(responseStatus, -1);
+            return this;
+        }
+        exchange.sendResponseHeaders(responseStatus, data.length);
+        exchange.getResponseBody().write(data);
+        exchange.getResponseBody().close();
+        return this;
     }
 
-    public static Map<String, List<String>> parseQueryParams(String rawQuery) {
-        LinkedHashMap<String, List<String>> params = new LinkedHashMap<>();
-        if (rawQuery == null || rawQuery.isBlank()) {
-            return params;
+    private static Map<String, List<String>> adaptHeaders(Map<String, List<String>> raw) {
+        var result = new LinkedHashMap<String, List<String>>(raw.size());
+        for (var entry : raw.entrySet()) {
+            result.put(entry.getKey().toLowerCase(Locale.ROOT), entry.getValue());
         }
-        for (String pair : rawQuery.split("&")) {
-            int eq = pair.indexOf('=');
-            String name =
-                eq >= 0 ? decode(pair.substring(0, eq)) : decode(pair);
-            String value = eq >= 0 ? decode(pair.substring(eq + 1)) : "";
-            params
-                .computeIfAbsent(name, ignored -> new ArrayList<>())
-                .add(value);
-        }
-        return params;
-    }
-
-    private static String decode(String text) {
-        try {
-            return URLDecoder.decode(text, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException e) {
-            return text;
-        }
+        return result;
     }
 }

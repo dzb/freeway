@@ -8,14 +8,14 @@ import java.io.InputStream;
  * then reports EOF. {@code close()} drains any remaining unread bytes
  * so the connection can be reused for keep-alive.
  */
-final class FixedLengthInputStream extends InputStream {
+public final class FixedLengthInputStream extends InputStream {
 
     private final InputStream in;
     private long remaining;
     private boolean closed;
     private boolean eof;
 
-    FixedLengthInputStream(InputStream in, long contentLength) {
+    public FixedLengthInputStream(InputStream in, long contentLength) {
         this.in = in;
         this.remaining = contentLength;
         this.eof = contentLength == 0;

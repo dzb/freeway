@@ -24,6 +24,8 @@ public final class RouteIndex {
     private static final int MAX_REGEX_LENGTH = PathPattern.MAX_REGEX_LENGTH;
 
     private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
+    // Fast path: exact match cache for routes without path variables
+    private final Map<String, RouteHandler> exactCache = new ConcurrentHashMap<>();
 
     public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
         // Phase 1: collect all routes
@@ -38,7 +40,7 @@ public final class RouteIndex {
                 all.add(route);
             }
         }
-        // Phase 2: insert into trie — duplicate detection done at insert time
+        // Phase 2: insert into trie + exact cache
         for (Route route : all) {
             addRoute(route.method(), route.path(), route.handler());
         }
@@ -73,6 +75,14 @@ public final class RouteIndex {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
         TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
         String[] segments = PathPattern.splitPath(path);
+        // Populate exact cache for routes without path variables
+        boolean hasVariables = false;
+        for (String seg : segments) {
+            if (seg.startsWith("{") && seg.endsWith("}")) { hasVariables = true; break; }
+        }
+        if (!hasVariables) {
+            exactCache.put(key + ":" + path, handler);
+        }
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
             String seg = segments[i];
@@ -130,12 +140,17 @@ public final class RouteIndex {
 
     public RouteMatch match(String method, String path) {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
+        // Fast path: exact match cache bypasses trie for routes without variables
+        RouteHandler exact = exactCache.get(key + ":" + path);
+        if (exact != null) return new RouteMatch(exact, Map.of());
+        // HEAD fallback to GET exact cache
+        if ("HEAD".equals(key)) {
+            exact = exactCache.get("GET:" + path);
+            if (exact != null) return new RouteMatch(exact, Map.of());
+        }
         TrieNode root = methodRoots.get(key);
         RouteMatch result = matchTrie(root, path);
-        if (result != null || !"HEAD".equals(key)) {
-            return result;
-        }
-        // HEAD fallback to GET
+        if (result != null || !"HEAD".equals(key)) return result;
         return matchTrie(methodRoots.get("GET"), path);
     }
 

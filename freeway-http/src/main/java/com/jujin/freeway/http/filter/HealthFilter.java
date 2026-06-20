@@ -3,7 +3,6 @@ package com.jujin.freeway.http.filter;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
-import com.jujin.freeway.ioc.annotation.Value;
 
 /**
  * Filter that intercepts the health endpoint before routing.
@@ -19,11 +18,11 @@ public final class HealthFilter implements HttpFilter {
     private final String healthPath;
     private final HealthCheck healthCheck;
 
-    public HealthFilter(
-        @Value("${freeway.web.health.enabled:true}") boolean enabled,
-        @Value("${freeway.web.health.path:/healthz}") String healthPath,
-        HealthCheck healthCheck
-    ) {
+    /** Default: enabled, /healthz path, default health check. */
+    public static final HealthFilter DEFAULT = new HealthFilter(
+        true, "/healthz", new HealthCheck.Default());
+
+    public HealthFilter(boolean enabled, String healthPath, HealthCheck healthCheck) {
         this.enabled = enabled;
         this.healthPath = normalize(healthPath);
         this.healthCheck = healthCheck;

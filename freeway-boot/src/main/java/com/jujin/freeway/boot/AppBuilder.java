@@ -110,7 +110,7 @@ public final class AppBuilder {
         }
         List<Module2> moduleList = List.copyOf(allModules.values());
 
-        Container container = Freeway.create(moduleList.toArray(Module2[]::new));
+        Container container = Freeway.create(moduleList);
         AppRuntime app = new AppRuntimeDefault(container, config);
 
         try {

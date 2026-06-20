@@ -2,7 +2,9 @@ package com.jujin.freeway.http;
 
 import java.time.Duration;
 
-public record HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {
+public record HttpServerConfig(String host, int port, int backlog, int socketBufferSize, Duration shutdownGrace) {
+    public static final int DEFAULT_SOCKET_BUFFER_SIZE = 1024;
+
     public HttpServerConfig {
         host = host == null || host.isBlank() ? "127.0.0.1" : host;
         if (port < 0 || port > 65535) {
@@ -11,9 +13,16 @@ public record HttpServerConfig(String host, int port, int backlog, Duration shut
         if (backlog < 0) {
             throw new IllegalArgumentException("backlog must be >= 0: " + backlog);
         }
+        if (socketBufferSize < 256) {
+            throw new IllegalArgumentException("socketBufferSize must be at least 256: " + socketBufferSize);
+        }
         if (shutdownGrace == null || shutdownGrace.isNegative()) {
             throw new IllegalArgumentException(
                 "shutdownGrace must be non-negative: " + shutdownGrace);
         }
+    }
+
+    public HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {
+        this(host, port, backlog, DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace);
     }
 }

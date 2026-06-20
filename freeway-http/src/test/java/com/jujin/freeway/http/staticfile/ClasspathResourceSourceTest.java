@@ -15,7 +15,7 @@ class ClasspathResourceSourceTest {
 
         StubHttpContext ctx = new StubHttpContext("GET", "/assets/test.txt");
         assertTrue(mount.serve(ctx));
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
         assertTrue(ctx.responseBody().contains("classpath test content"));
     }
 
@@ -25,7 +25,7 @@ class ClasspathResourceSourceTest {
 
         StubHttpContext ctx = new StubHttpContext("GET", "/assets/nonexistent.txt");
         assertTrue(mount.serve(ctx));
-        assertEquals(404, ctx.statusCode());
+        assertEquals(404, ctx.status());
     }
 
     @Test
@@ -43,7 +43,7 @@ class ClasspathResourceSourceTest {
 
         StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
         assertTrue(mount.serve(ctx));
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
     }
 
     @Test

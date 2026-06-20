@@ -18,7 +18,7 @@ class CorsFilterTest {
 
         filter.doFilter(ctx, next -> next.send(200, "ok"));
 
-        assertEquals(204, ctx.statusCode());
+        assertEquals(204, ctx.status());
         assertEquals("*", ctx.responseHeader("Access-Control-Allow-Origin"));
         assertEquals("GET, POST, PUT, DELETE, PATCH, OPTIONS", ctx.responseHeader("Access-Control-Allow-Methods"));
     }

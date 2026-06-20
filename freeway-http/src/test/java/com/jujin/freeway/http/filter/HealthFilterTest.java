@@ -23,7 +23,7 @@ class HealthFilterTest {
         StubHttpContext ctx = new StubHttpContext("GET", "/healthz");
         filter.doFilter(ctx, next);
 
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
         assertTrue(ctx.responseBody().contains("status"));
         assertFalse(nextCalled.get());
     }
@@ -73,7 +73,7 @@ class HealthFilterTest {
         StubHttpContext ctx = new StubHttpContext("GET", "/ping");
         filter.doFilter(ctx, next);
 
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
         assertFalse(nextCalled.get());
     }
 
@@ -86,7 +86,7 @@ class HealthFilterTest {
         StubHttpContext ctx = new StubHttpContext("GET", "/healthz");
         filter.doFilter(ctx, next);
 
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
     }
 
     @Test
@@ -98,7 +98,7 @@ class HealthFilterTest {
         StubHttpContext ctx = new StubHttpContext("GET", "/healthz");
         filter.doFilter(ctx, next);
 
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
         assertTrue(ctx.responseBody().contains("db"));
     }
 

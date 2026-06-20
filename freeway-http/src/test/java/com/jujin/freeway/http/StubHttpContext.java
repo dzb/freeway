@@ -45,7 +45,7 @@ public final class StubHttpContext extends HttpContext {
     private final Map<String, List<String>> requestHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private final Map<String, String> responseHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private final Map<String, List<String>> queryParams = new LinkedHashMap<>();
-    private int statusCode = 200;
+    private int status = 200;
     private String body;
 
     public StubHttpContext() {
@@ -58,7 +58,7 @@ public final class StubHttpContext extends HttpContext {
         int q = path.indexOf('?');
         if (q >= 0) {
             this.path = path.substring(0, q);
-            this.queryParams.putAll(JdkHttpContext.parseQueryParams(path.substring(q + 1)));
+            this.queryParams.putAll(parseQueryParams(path.substring(q + 1)));
         } else {
             this.path = path;
         }
@@ -76,8 +76,8 @@ public final class StubHttpContext extends HttpContext {
         return this;
     }
 
-    public int statusCode() {
-        return statusCode;
+    public int status() {
+        return status;
     }
 
     public String responseBody() {
@@ -138,7 +138,7 @@ public final class StubHttpContext extends HttpContext {
 
     @Override
     public HttpContext status(int status) {
-        this.statusCode = status;
+        this.status = status;
         return this;
     }
 

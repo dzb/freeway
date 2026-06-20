@@ -8,7 +8,7 @@ public final class BodyTooLargeException extends RuntimeException {
         this.maxSize = maxSize;
     }
 
-    public long getMaxSize() {
+    public long maxSize() {
         return maxSize;
     }
 }

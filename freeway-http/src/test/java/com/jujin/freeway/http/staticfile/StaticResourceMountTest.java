@@ -35,7 +35,7 @@ class StaticResourceMountTest {
 
         mount.serve(ctx);
 
-        assertEquals(404, ctx.statusCode());
+        assertEquals(404, ctx.status());
         assertEquals("Not Found", ctx.responseBody());
     }
 
@@ -51,7 +51,7 @@ class StaticResourceMountTest {
 
         mount.serve(ctx);
 
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
         assertTrue(ctx.responseBody().contains("console.log"));
     }
 
@@ -65,7 +65,7 @@ class StaticResourceMountTest {
 
         mount.serve(ctx);
 
-        assertEquals(404, ctx.statusCode());
+        assertEquals(404, ctx.status());
         assertEquals("Not Found", ctx.responseBody());
     }
 
@@ -79,7 +79,7 @@ class StaticResourceMountTest {
 
         mount.serve(ctx);
 
-        assertEquals(404, ctx.statusCode());
+        assertEquals(404, ctx.status());
         assertEquals("Not Found", ctx.responseBody());
     }
 

@@ -14,14 +14,18 @@ public final class RequestTimingFilter implements HttpFilter {
 
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
+        if (!LOG.isDebugEnabled()) {
+            next.handle(ctx);
+            return;
+        }
         RequestContext rc = ctx.requestContext();
         Instant startedAt = rc.startTime();
         try {
             next.handle(ctx);
         } finally {
             long elapsedMillis = Duration.between(startedAt, Instant.now()).toMillis();
-            LOG.info("{} {} -> {} ({} ms, id={})",
-                ctx.method(), ctx.path(), ctx.statusCode(), elapsedMillis, rc.correlationId());
+            LOG.debug("{} {} -> {} ({} ms, id={})",
+                ctx.method(), ctx.path(), ctx.status(), elapsedMillis, rc.correlationId());
         }
     }
 }

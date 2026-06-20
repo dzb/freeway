@@ -24,7 +24,7 @@ class StaticResourceConditionalTest {
         // first request — get the ETag
         StubHttpContext first = new StubHttpContext("GET", "/test.txt");
         assertTrue(mount.serve(first));
-        assertEquals(200, first.statusCode());
+        assertEquals(200, first.status());
         String etag = first.responseHeader("ETag");
         assertNotNull(etag);
 
@@ -32,7 +32,7 @@ class StaticResourceConditionalTest {
         StubHttpContext second = new StubHttpContext("GET", "/test.txt");
         second.requestHeader("If-None-Match", etag);
         assertTrue(mount.serve(second));
-        assertEquals(304, second.statusCode());
+        assertEquals(304, second.status());
     }
 
     @Test
@@ -45,7 +45,7 @@ class StaticResourceConditionalTest {
         StubHttpContext ctx = new StubHttpContext("GET", "/data.txt");
         ctx.requestHeader("If-None-Match", "\"sha256-wronghash\"");
         assertTrue(mount.serve(ctx));
-        assertEquals(200, ctx.statusCode());
+        assertEquals(200, ctx.status());
     }
 
     @Test
@@ -62,7 +62,7 @@ class StaticResourceConditionalTest {
         StubHttpContext second = new StubHttpContext("GET", "/weak.txt");
         second.requestHeader("If-None-Match", "W/" + etag);
         assertTrue(mount.serve(second));
-        assertEquals(304, second.statusCode());
+        assertEquals(304, second.status());
     }
 
     @Test
@@ -75,7 +75,7 @@ class StaticResourceConditionalTest {
         StubHttpContext ctx = new StubHttpContext("GET", "/star.txt");
         ctx.requestHeader("If-None-Match", "*");
         assertTrue(mount.serve(ctx));
-        assertEquals(304, ctx.statusCode());
+        assertEquals(304, ctx.status());
     }
 
     @Test

@@ -50,7 +50,7 @@ class FilterChainTest {
         StubHttpContext ctx = new StubHttpContext();
         chain.handle(ctx);
 
-        assertEquals(403, ctx.statusCode());
+        assertEquals(403, ctx.status());
         assertEquals(0, handlerCalled.get());
     }
 

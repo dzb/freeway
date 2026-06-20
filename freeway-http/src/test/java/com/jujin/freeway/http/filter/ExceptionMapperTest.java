@@ -25,7 +25,7 @@ class ExceptionMapperTest {
         boolean handled = mapper.handle(ctx, new IllegalArgumentException("bad"));
 
         assertTrue(handled);
-        assertEquals(400, ctx.statusCode());
+        assertEquals(400, ctx.status());
     }
 
     @Test
@@ -65,7 +65,7 @@ class ExceptionMapperTest {
         }
 
         assertTrue(handled);
-        assertEquals(500, ctx.statusCode());
+        assertEquals(500, ctx.status());
     }
 
     @Test

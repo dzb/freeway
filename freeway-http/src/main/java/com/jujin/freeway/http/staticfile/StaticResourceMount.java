@@ -22,6 +22,7 @@ import java.util.Base64;
 import java.util.Locale;
 import java.util.Objects;
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.PathPattern;
 
 public final class StaticResourceMount {
@@ -114,10 +115,10 @@ public final class StaticResourceMount {
         }
         applyCacheHeaders(ctx, asset);
         if (isNotModified(ctx, asset)) {
-            ctx.status(304).output(new byte[0]);
+            ctx.status(HttpStatus.NOT_MODIFIED).output(new byte[0]);
             return true;
         }
-        ctx.status(200);
+        ctx.status(HttpStatus.OK);
         ctx.headerSet("Content-Type", contentType(asset.name()));
         ctx.headerSet("X-Content-Type-Options", "nosniff");
         ctx.output(asset.bytes());

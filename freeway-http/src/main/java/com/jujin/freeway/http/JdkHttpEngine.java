@@ -2,23 +2,28 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class JdkHttpEngine implements HttpEngine {
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-    private static final Logger LOG = LoggerFactory.getLogger(
-        JdkHttpEngine.class
-    );
+/**
+ * {@link HttpEngine} implementation backed by {@link com.sun.net.httpserver.HttpServer}.
+ * Suitable for lightweight scenarios where a minimal HTTP engine is sufficient.
+ * <p>
+ * This engine does NOT support WebSocket. For WebSocket-capable engines,
+ * use {@code FreewayHttpEngine} or an external adapter (e.g. freeway-http-undertow).
+ */
+public final class JdkHttpEngine implements HttpEngine {
+    private static final Logger LOG = LoggerFactory.getLogger(JdkHttpEngine.class);
+    private static final int POOL_SIZE = Runtime.getRuntime().availableProcessors() * 4;
+
     private final JsonCodec jsonCodec;
     private final Coercer coercer;
 
@@ -28,86 +33,36 @@ public final class JdkHttpEngine implements HttpEngine {
     }
 
     @Override
-    public JdkHandle start(HttpServerConfig config, HttpRequestHandler handler)
-        throws IOException {
-        Objects.requireNonNull(config, "config");
-        Objects.requireNonNull(handler, "handler");
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-        HttpServer server = HttpServer.create(
-            new InetSocketAddress(config.host(), config.port()),
-            config.backlog()
-        );
+    public HttpServerHandle start(HttpServerConfig config, HttpRequestHandler handler) throws IOException {
+        var executor = Executors.newFixedThreadPool(POOL_SIZE);
+        var server = HttpServer.create(
+            new InetSocketAddress(config.host(), config.port()), config.backlog());
         server.setExecutor(executor);
         server.createContext("/", exchange -> {
-            RequestContext requestContext = HttpContext.createRequestContext(
-                exchange.getRequestHeaders().getFirst("X-Request-Id")
-            );
-            JdkHttpContext ctx = new JdkHttpContext(
-                exchange,
-                jsonCodec,
-                coercer,
-                requestContext
-            );
+            var requestContext = HttpContext.createRequestContext(
+                exchange.getRequestHeaders().getFirst("X-Request-Id"));
+            var ctx = new JdkHttpContext(exchange, jsonCodec, coercer, requestContext);
             ctx.headerSet("X-Request-Id", requestContext.correlationId());
-            if (isWebSocketUpgrade(exchange.getRequestHeaders())) {
-                ctx.send(
-                    426,
-                    "WebSocket not supported by JDK engine; add freeway-http-robaho, freeway-http-undertow, or freeway-http-jetty to the classpath"
-                );
-                return;
-            }
             try {
                 handler.handle(ctx);
             } catch (Exception ex) {
-                if (ex instanceof IOException ioe) {
-                    throw ioe;
-                }
-                throw new IOException("Web request handler failed", ex);
+                if (ex instanceof IOException) throw (IOException) ex;
+                throw new IOException("request handler failed", ex);
             }
         });
         server.start();
-        LOG.info(
-            "Freeway JDK web engine started on {}:{}",
-            config.host(),
-            server.getAddress().getPort()
-        );
-        return new JdkHandle(
-            server,
-            executor,
-            config.shutdownGrace(),
-            config.host()
-        );
-    }
-
-    private static boolean isWebSocketUpgrade(Headers headers) {
-        List<String> connection = headers.get("Connection");
-        List<String> upgrade = headers.get("Upgrade");
-        if (connection == null || upgrade == null) {
-            return false;
-        }
-        boolean connectionUpgrade = connection
-            .stream()
-            .anyMatch(v ->
-                List.of(v.split("\\s*,\\s*"))
-                    .stream()
-                    .anyMatch("upgrade"::equalsIgnoreCase)
-            );
-        boolean websocketUpgrade = upgrade
-            .stream()
-            .anyMatch("websocket"::equalsIgnoreCase);
-        return connectionUpgrade && websocketUpgrade;
+        LOG.info("JDK HTTP engine started on {}:{}", config.host(), server.getAddress().getPort());
+        return new JdkHandle(server, executor, config.shutdownGrace(), config.host());
     }
 
     private record JdkHandle(
         HttpServer server,
-        ExecutorService executor,
-        java.time.Duration shutdownGrace,
+        java.util.concurrent.ExecutorService executor,
+        Duration shutdownGrace,
         String host
     ) implements HttpServerHandle {
         @Override
-        public int port() {
-            return server.getAddress().getPort();
-        }
+        public int port() { return server.getAddress().getPort(); }
 
         @Override
         public void close() {
@@ -123,7 +78,7 @@ public final class JdkHttpEngine implements HttpEngine {
                     executor.shutdownNow();
                     Thread.currentThread().interrupt();
                 }
-                LOG.info("Freeway JDK web engine stopped");
+                LOG.info("JDK HTTP engine stopped");
             }
         }
     }

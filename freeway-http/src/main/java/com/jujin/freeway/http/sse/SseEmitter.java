@@ -20,10 +20,12 @@ public class SseEmitter implements AutoCloseable {
     private final OutputStream outputStream;
     private volatile boolean closed;
 
+    /** Creates a new SseEmitter that writes to the given output stream. */
     public SseEmitter(OutputStream outputStream) {
         this.outputStream = Objects.requireNonNull(outputStream, "outputStream");
     }
 
+    /** Writes a single SSE event to the output stream with full event metadata. */
     public void send(SseEvent event) throws IOException {
         Objects.requireNonNull(event, "event");
         if (closed) return;
@@ -43,7 +45,6 @@ public class SseEmitter implements AutoCloseable {
             write(Long.toString(event.retry()));
             write("\n");
         }
-        // Split data by newlines — each line becomes "data: <line>"
         String data = event.data();
         int start = 0;
         for (int i = 0; i < data.length(); i++) {
@@ -60,10 +61,12 @@ public class SseEmitter implements AutoCloseable {
         outputStream.flush();
     }
 
+    /** Sends a simple SSE event with the given data and no additional metadata. */
     public void send(String data) throws IOException {
         send(new SseEvent(data));
     }
 
+    /** Closes the emitter. Subsequent sends are silently ignored. */
     public void complete() throws IOException {
         if (closed) return;
         closed = true;
@@ -71,9 +74,7 @@ public class SseEmitter implements AutoCloseable {
     }
 
     @Override
-    public void close() throws IOException {
-        complete();
-    }
+    public void close() throws IOException { complete(); }
 
     private void write(String text) throws IOException {
         outputStream.write(text.getBytes(StandardCharsets.UTF_8));

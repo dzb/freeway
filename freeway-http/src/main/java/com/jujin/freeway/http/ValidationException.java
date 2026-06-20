@@ -10,7 +10,7 @@ public final class ValidationException extends RuntimeException {
         this.result = result;
     }
 
-    public ValidationResult getResult() {
+    public ValidationResult result() {
         return result;
     }
 }

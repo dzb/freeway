@@ -1,7 +1,5 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.http.event.*;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
@@ -13,23 +11,21 @@ import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
-import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
-import com.jujin.freeway.ioc.annotation.Value;
 import java.io.IOException;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class WebServer implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(WebServer.class);
+    static final Consumer<Object> NOOP_SINK = event -> {};
 
     private final RouteIndex routes;
     private final WebSocketIndex websocketIndex;
@@ -38,89 +34,54 @@ public final class WebServer implements AutoCloseable {
     private final List<HttpFilter> filters;
     private final List<ExceptionMapper> mappers;
     private final RequestTimingFilter timingFilter;
-    private final Container container;
-    private final String webEngineId;
-    private final HttpServerConfig config;
     private final HealthFilter healthFilter;
+    private final HttpEngine engine;
+    private final HttpServerConfig config;
+    private final Consumer<Object> eventSink;
     private final HttpRequestHandler requestHandler;
     private final RouteHandler filterChain;
+    private final boolean publishEvents;
 
     private volatile HttpServerHandle handle;
 
     public WebServer(
-        RouteIndex routes,
-        WebSocketIndex websocketIndex,
-        CorsFilter corsFilter,
-        HealthFilter healthFilter,
-        List<StaticResourceMount> staticMounts,
-        List<HttpFilter> filters,
-        List<ExceptionMapper> mappers,
-        Container container,
-        @Value("${freeway.web.engine:robaho}") String webEngineId,
-        @Value("${freeway.web.server.host:127.0.0.1}") String host,
-        @Value("${freeway.web.server.port:8080}") int port,
-        @Value("${freeway.web.server.backlog:0}") int backlog,
-        @Value(
-            "${freeway.web.server.shutdown-grace:2s}"
-        ) java.time.Duration shutdownGrace
+        HttpEngine engine,
+        HttpServerConfig config,
+        Consumer<Object> eventSink,
+        RequestPipeline pipeline
     ) {
-        this.routes = Objects.requireNonNull(routes, "routes");
-        this.websocketIndex = Objects.requireNonNull(
-            websocketIndex,
-            "websocketIndex"
-        );
-        this.corsFilter = Objects.requireNonNull(corsFilter, "corsFilter");
-        this.staticMounts = staticMounts;
-        PreparedFilters preparedFilters = prepareFilters(filters);
+        this.routes = Objects.requireNonNull(pipeline.routes(), "routes");
+        this.websocketIndex = Objects.requireNonNull(pipeline.websocketIndex(), "websocketIndex");
+        this.corsFilter = Objects.requireNonNull(pipeline.corsFilter(), "corsFilter");
+        this.staticMounts = pipeline.staticMounts() != null ? pipeline.staticMounts() : List.of();
+        PreparedFilters preparedFilters = prepareFilters(pipeline.filters());
         this.filters = List.copyOf(preparedFilters.filters());
         this.timingFilter = preparedFilters.timingFilter();
-        this.mappers = mappers;
+        this.mappers = pipeline.mappers();
         this.filterChain = buildChain(this::dispatchToRoute, this.filters);
-        this.container = Objects.requireNonNull(container, "container");
-        this.webEngineId = webEngineId;
-        this.healthFilter = Objects.requireNonNull(
-            healthFilter,
-            "healthFilter"
-        );
-        this.config = new HttpServerConfig(
-            host,
-            port,
-            backlog,
-            shutdownGrace
-        );
+        this.healthFilter = Objects.requireNonNull(pipeline.healthFilter(), "healthFilter");
+        this.engine = Objects.requireNonNull(engine, "engine");
+        this.config = Objects.requireNonNull(config, "config");
+        this.eventSink = eventSink != null ? eventSink : event -> {};
+        // Skip event computation when sink is the noop sentinel
+        this.publishEvents = this.eventSink != NOOP_SINK;
+
         this.requestHandler = new HttpRequestHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
-                Defer.within(() -> {
-                    try {
-                        timingFilter.doFilter(ctx, request -> {
-                            try {
-                                processRequest(request);
-                            } catch (Exception ex) {
-                                handleException(request, ex);
-                                publish(new HttpErrorEvent(
-                                    request.method(), request.path(), ex));
-                            }
-                        });
-                    } catch (Exception ex) {
-                        handleException(ctx, ex);
-                        publish(
-                            new HttpErrorEvent(ctx.method(), ctx.path(), ex)
-                        );
-                    }
+                try {
+                    timingFilter.doFilter(ctx, r -> processRequest(r));
+                } catch (Exception ex) {
+                    handleException(ctx, ex);
+                    if (publishEvents)
+                        publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
+                }
+                if (publishEvents) {
                     long elapsed = Duration.between(
-                        ctx.requestContext().startTime(),
-                        Instant.now()
-                    ).toMillis();
-                    publish(
-                        new HttpRequestEvent(
-                            ctx.method(),
-                            ctx.path(),
-                            ctx.statusCode(),
-                            elapsed
-                        )
-                    );
-                });
+                        ctx.requestContext().startTime(), Instant.now()).toMillis();
+                    publish(new HttpRequestEvent(
+                        ctx.method(), ctx.path(), ctx.status(), elapsed));
+                }
             }
 
             @Override
@@ -192,14 +153,11 @@ public final class WebServer implements AutoCloseable {
             if (h != null) {
                 return h;
             }
-            HttpEngine engine = resolveEngine(container, webEngineId);
             try {
                 h = engine.start(config, requestHandler);
             } catch (IOException ex) {
                 throw new RuntimeException(
-                    "Failed to start web engine " + webEngineId,
-                    ex
-                );
+                    "Failed to start HTTP engine", ex);
             }
             boolean closed = false;
             try {
@@ -208,8 +166,7 @@ public final class WebServer implements AutoCloseable {
                     closeQuietly(h);
                     throw new RuntimeException(
                         "Web server did not become ready on " + h.host() + ":" + h.port()
-                            + " within 10s — engine started but not accepting HTTP"
-                    );
+                            + " within 10s");
                 }
                 this.handle = h;
                 LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
@@ -225,18 +182,11 @@ public final class WebServer implements AutoCloseable {
     }
 
     private static void closeQuietly(HttpServerHandle handle) {
-        if (handle == null) {
-            return;
-        }
-        try {
-            handle.close();
-        } catch (Exception ignored) {
-            // Startup is already failing; keep the original exception.
-        }
+        if (handle == null) return;
+        try { handle.close(); } catch (Exception ignored) {}
     }
 
     private static boolean awaitReady(String host, int port) {
-        // wildcard bind addresses are not connectable — use loopback
         String probe = isWildcardAddress(host) ? "127.0.0.1" : host;
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline) {
@@ -258,42 +208,11 @@ public final class WebServer implements AutoCloseable {
         return "0.0.0.0".equals(host) || "::".equals(host);
     }
 
-    private static HttpEngine resolveEngine(
-        Container container,
-        String webEngineId
-    ) {
-        String engineId = Strings.blankToNull(webEngineId);
-        if (engineId == null) {
-            engineId = "robaho";
-        }
-        try {
-            return container.get(HttpEngine.class, engineId);
-        } catch (RuntimeException ex) {
-            if (!"robaho".equals(engineId)) {
-                throw new IllegalStateException(
-                    "Unable to resolve web engine " + engineId, ex);
-            }
-            LOG.warn(
-                "Default engine 'robaho' not found, falling back to built-in JDK engine"
-            );
-            try {
-                return container.get(HttpEngine.class, "jdk");
-            } catch (RuntimeException fallbackEx) {
-                throw new IllegalStateException(
-                    "Built-in JDK engine is not available",
-                    fallbackEx
-                );
-            }
-        }
-    }
-
     private RouteHandler buildChain(
         RouteHandler handler,
         List<HttpFilter> filters
     ) {
-        if (filters.isEmpty()) {
-            return handler;
-        }
+        if (filters.isEmpty()) return handler;
         RouteHandler chain = handler;
         for (int i = filters.size() - 1; i >= 0; i--) {
             HttpFilter filter = filters.get(i);
@@ -310,9 +229,7 @@ public final class WebServer implements AutoCloseable {
             ? List.<HttpFilter>of()
             : filters) {
             if (filter instanceof RequestTimingFilter candidate) {
-                if (timing == null) {
-                    timing = candidate;
-                }
+                if (timing == null) timing = candidate;
             } else {
                 items.add(filter);
             }
@@ -324,18 +241,16 @@ public final class WebServer implements AutoCloseable {
     }
 
     private void processRequest(HttpContext ctx) throws Exception {
-        RouteHandler chain = next ->
-            healthFilter.doFilter(next, this.filterChain);
+        RouteHandler chain = next -> healthFilter.doFilter(next, this.filterChain);
         corsFilter.doFilter(ctx, chain);
     }
 
     private void dispatchToRoute(HttpContext request) throws Exception {
-        for (StaticResourceMount mount : staticMounts) {
-            if (mount.matches(request.method(), request.path())) {
-                if (mount.serve(request)) {
-                    return;
+        if (!staticMounts.isEmpty()) {
+            for (StaticResourceMount mount : staticMounts) {
+                if (mount.matches(request.method(), request.path())) {
+                    if (mount.serve(request)) return;
                 }
-                // fallthrough: file not found, continue to route matching
             }
         }
         RouteIndex.RouteMatch match = routes.match(
@@ -346,16 +261,14 @@ public final class WebServer implements AutoCloseable {
             request.send(404, "Not Found");
             return;
         }
-        request.pathVariables(match.pathVariables());
+        request.pathVars(match.pathVariables());
         match.handler().handle(request);
     }
 
     private void handleException(HttpContext ctx, Exception exception) {
         for (ExceptionMapper mapper : mappers) {
             try {
-                if (mapper.handle(ctx, exception)) {
-                    return;
-                }
+                if (mapper.handle(ctx, exception)) return;
             } catch (Exception mapperEx) {
                 LOG.warn(
                     "Exception mapper {} failed while handling {}",
@@ -373,7 +286,7 @@ public final class WebServer implements AutoCloseable {
             String.valueOf(exception.getMessage())
         );
         try {
-            ctx.status(500);
+            ctx.status(HttpStatus.INTERNAL_ERROR);
             ctx.send(500, "Internal Server Error");
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
@@ -382,13 +295,10 @@ public final class WebServer implements AutoCloseable {
 
     private void publish(Object event) {
         try {
-            container.get(EventBus.class).publish(event);
+            eventSink.accept(event);
         } catch (Exception ex) {
-            LOG.debug(
-                "EventBus publish failed for {}: {}",
-                event.getClass().getSimpleName(),
-                ex.getMessage()
-            );
+            LOG.debug("Event publish failed for {}: {}",
+                event.getClass().getSimpleName(), ex.getMessage());
         }
     }
 

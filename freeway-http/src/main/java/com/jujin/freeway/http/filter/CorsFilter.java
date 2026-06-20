@@ -1,16 +1,22 @@
 package com.jujin.freeway.http.filter;
 
 import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.ioc.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.RouteHandler;
 
 public final class CorsFilter implements HttpFilter {
     private static final Logger LOG = LoggerFactory.getLogger(CorsFilter.class);
+
+    /** CORS enabled, allow all origins, common methods and headers. */
+    public static final CorsFilter DEFAULT = new CorsFilter(
+        true, "*", "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+        "Content-Type, Authorization", null, "3600", false);
+
     private final boolean enabled;
     private final boolean allowAll;
     private final String[] allowedOriginList;
@@ -24,15 +30,10 @@ public final class CorsFilter implements HttpFilter {
         return new Builder();
     }
 
-    public CorsFilter(
-        @Value("${freeway.web.cors.enabled:true}") boolean enabled,
-        @Value("${freeway.web.cors.allowed-origins:*}") String allowedOrigins,
-        @Value("${freeway.web.cors.allowed-methods:GET, POST, PUT, DELETE, PATCH, OPTIONS}") String allowedMethods,
-        @Value("${freeway.web.cors.allowed-headers:Content-Type, Authorization}") String allowedHeaders,
-        @Value("${freeway.web.cors.exposed-headers:}") String exposedHeaders,
-        @Value("${freeway.web.cors.max-age:3600}") String maxAge,
-        @Value("${freeway.web.cors.allow-credentials:false}") boolean allowCredentials
-    ) {
+    public CorsFilter(boolean enabled, String allowedOrigins,
+                      String allowedMethods, String allowedHeaders,
+                      String exposedHeaders, String maxAge,
+                      boolean allowCredentials) {
         this.enabled = enabled;
         boolean all = "*".equals(allowedOrigins);
         this.allowAll = all;
@@ -79,7 +80,7 @@ public final class CorsFilter implements HttpFilter {
                 && ctx.header("Access-Control-Request-Method") != null) {
             if (acao == null) {
                 LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
-                ctx.status(403).output(new byte[0]);
+                ctx.status(HttpStatus.FORBIDDEN).output(new byte[0]);
                 return;
             }
             if (allowedMethods != null) {

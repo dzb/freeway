@@ -7,14 +7,20 @@ import java.io.OutputStream;
  * Non-synchronized buffered output stream designed for virtual threads
  * where each connection has exclusive access to its streams.
  */
-final class BufferedOutputStream extends OutputStream {
+public final class BufferedOutputStream extends OutputStream {
 
     private final OutputStream out;
     private byte[] buf = new byte[1024];
     private int count;
 
     public BufferedOutputStream(OutputStream out) {
+        this(out, 1024);
+    }
+
+    public BufferedOutputStream(OutputStream out, int bufferSize) {
         this.out = out;
+        if (bufferSize < 256) throw new IllegalArgumentException("bufferSize must be at least 256");
+        this.buf = new byte[bufferSize];
     }
 
     @Override
