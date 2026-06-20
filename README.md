@@ -10,8 +10,8 @@ Zero classpath scanning. Compose-first API. No magic.
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP layer: routing, filters, static, multipart, websocket |
-| `├ built-in` | JDK HttpServer engine, HTTP only                          |
-| `└ engine adapters` | Undertow, Jetty, Robaho — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+| `├ built-in` | Freeway HttpServer engine, HTTP/1.1 HTTP/2 Websocket                           |
+| `└ engine adapters` | Undertow — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
 | `└ connection pool` | HikariCP adapter — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 | `├ MQ adapter` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
