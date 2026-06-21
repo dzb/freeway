@@ -3,6 +3,26 @@ package com.jujin.freeway.ioc;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+/**
+ * Module-level event subscriber. Contributed at bind time via
+ * {@code binder.contribute(EventSubscriber.class)} and supports ordering.
+ *
+ * <p>Usage:
+ * <pre>{@code
+ * // Class-based
+ * binder.contribute(EventSubscriber.class)
+ *     .add(EventSubscriber.of(PostCreated.class, e -> index(e)));
+ *
+ * // Named + ordered
+ * binder.contribute(EventSubscriber.class)
+ *     .add("notify", EventSubscriber.of(PostCreated.class, e -> sendEmail(e)))
+ *     .after("index");
+ *
+ * // String-topic
+ * binder.contribute(EventSubscriber.class)
+ *     .add(EventSubscriber.of("order.placed", payload -> process(payload)));
+ * }</pre>
+ */
 public final class EventSubscriber<E> {
 
     private final Class<E> eventType;

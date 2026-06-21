@@ -52,6 +52,7 @@ public final class PoolDefault implements Pool {
         startCleaner();
     }
 
+    @Override
     public PooledConnectionDefault borrow() {
         ensureOpen();
         long waitStart = System.nanoTime();
@@ -103,6 +104,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
+    @Override
     public void release(PooledConnection conn) {
         PooledConnectionDefault pc = (PooledConnectionDefault) Objects.requireNonNull(conn, "conn");
         if (!active.remove(pc)) {

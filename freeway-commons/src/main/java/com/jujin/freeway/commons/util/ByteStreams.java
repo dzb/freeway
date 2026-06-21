@@ -3,13 +3,11 @@ package com.jujin.freeway.commons.util;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-public final class IoUtils {
+public final class ByteStreams {
 
-    private IoUtils() {}
+    private ByteStreams() {}
 
     // ==================================================================
     //  Stream helpers
@@ -26,12 +24,18 @@ public final class IoUtils {
      * @return a bounded input stream
      * @throws IllegalArgumentException if maxBytes is negative or stream is null
      */
-    public static InputStream bounded(InputStream stream, long maxBytes, String label) {
+    public static InputStream bounded(
+        InputStream stream,
+        long maxBytes,
+        String label
+    ) {
         if (stream == null) {
             throw new IllegalArgumentException("stream must not be null");
         }
         if (maxBytes < 0) {
-            throw new IllegalArgumentException("maxBytes must be non-negative: " + maxBytes);
+            throw new IllegalArgumentException(
+                "maxBytes must be non-negative: " + maxBytes
+            );
         }
         return new InputStream() {
             private long count;
@@ -67,7 +71,14 @@ public final class IoUtils {
             }
 
             private IOException tooLarge() {
-                return new IOException(label + " exceeds " + maxBytes + " bytes (read " + count + " bytes)");
+                return new IOException(
+                    label +
+                        " exceeds " +
+                        maxBytes +
+                        " bytes (read " +
+                        count +
+                        " bytes)"
+                );
             }
         };
     }
@@ -79,7 +90,7 @@ public final class IoUtils {
      * @throws IOException if the stream exceeds the limit
      */
     public static byte[] readBytes(InputStream in, long maxBytes, String label)
-            throws IOException {
+        throws IOException {
         var out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         long total = 0;
@@ -87,12 +98,13 @@ public final class IoUtils {
         while ((read = in.read(buffer)) >= 0) {
             if (read == 0) continue;
             if (total > maxBytes - read) {
-                throw new IOException(label + " too large (max " + maxBytes + " bytes)");
+                throw new IOException(
+                    label + " too large (max " + maxBytes + " bytes)"
+                );
             }
             out.write(buffer, 0, read);
             total += read;
         }
         return out.toByteArray();
     }
-
 }

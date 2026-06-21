@@ -16,34 +16,34 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * HPACK 编解码器实现（RFC 7541）
- * <p>负责 HTTP/2 头部压缩和解压缩，包括：
+ * HPACK codec implementation (RFC 7541).
+ * <p>Handles HTTP/2 header compression and decompression including:
  * <ul>
- *   <li>静态表查找（StaticHeaderTable）</li>
- *   <li>动态表管理</li>
- *   <li>Huffman 编码/解码</li>
- *   <li>整数编码/解码</li>
+ *   <li>Static table lookup (StaticHeaderTable)</li>
+ *   <li>Dynamic table management</li>
+ *   <li>Huffman encoding/decoding</li>
+ *   <li>Variable-length integer encoding/decoding</li>
  * </ul>
  */
 public final class HPackContext {
-    /** 动态表（最大 1024 条目） */
+    /** Dynamic table (max 1024 entries). */
     private final List<Http2HeaderField> dynamicTable = new ArrayList<>(1024);
 
     /**
-     * 读取可变长度整数
+     * Reads a variable-length integer.
      *
-     * @param b    字节数组
-     * @param p    起始位置
-     * @param bits 前缀位数
-     * @return 解析结果（新位置和整数值）
+     * @param b    the byte array
+     * @param p    the starting position
+     * @param bits the number of prefix bits
+     * @return the parse result (new position and integer value)
      */
     static IntR readInt(byte[] b, int p, int bits) {
         int mask = (1 << bits) - 1;
         int value = b[p] & mask;
         p++;
         if (value < mask) return new IntR(p, value);
-        
-        // 多字节编码
+
+        // Multi-byte encoding
         int shift = 0;
         int x;
         do {
@@ -56,30 +56,30 @@ public final class HPackContext {
     }
 
     /**
-     * 编码字面量头部字段
+     * Encodes a literal header field.
      */
     private static byte[] encodeLiteral(String name, String value) {
-        // 检查 :status 特殊处理
+        // :status special handling
         if (":status".equals(name)) {
             byte[] index = StaticHeaderTable.statusIndex(value);
             if (index != null) return index;
         }
-        
+
         Integer nameIndex = StaticHeaderTable.nameIndex(name);
         byte[] prefix = nameIndex != null ? encodeIntValue(nameIndex, 4) : encodeIntValue(0, 4);
         byte[] nameBytes = nameIndex != null ? null : encodeString(name.getBytes());
         byte[] valueBytes = encodeString(value.getBytes());
-        
+
         return nameBytes == null ? BinUtils.combine(prefix, valueBytes) : BinUtils.combine(prefix, nameBytes, valueBytes);
     }
 
     /**
-     * 编码整数值（可变长度）
+     * Encodes an integer value with variable-length encoding.
      */
     static byte[] encodeIntValue(int value, int prefixBits) {
         int mask = (1 << prefixBits) - 1;
         if (value < mask) return new byte[]{(byte) value};
-        
+
         byte[] result = new byte[]{(byte) mask};
         value -= mask;
         while (value >= 128) {
@@ -93,7 +93,7 @@ public final class HPackContext {
     }
 
     /**
-     * 编码字符串（支持 Huffman 标记）
+     * Encodes a string (with Huffman flag support).
      */
     static byte[] encodeString(byte[] value) {
         int length = value.length;
@@ -103,7 +103,7 @@ public final class HPackContext {
             System.arraycopy(value, 0, result, 1, length);
             return result;
         }
-        // 长字符串使用两字节长度编码
+        // Long strings use two-byte length encoding
         byte[] result = new byte[2 + length];
         result[0] = (byte) (length | 0x80);
         result[1] = (byte) (length >> 7);
@@ -112,7 +112,7 @@ public final class HPackContext {
     }
 
     /**
-     * 根据索引获取头部字段（静态表或动态表）
+     * Retrieves a header field by index (static or dynamic table).
      */
     public Http2HeaderField get(int index) {
         if (index > 0 && index <= 61) return StaticHeaderTable.get(index);
@@ -121,10 +121,10 @@ public final class HPackContext {
     }
 
     /**
-     * 解码头部块为字段列表
+     * Decodes a header block into a list of header fields.
      *
-     * @param block 编码后的字节数组
-     * @return 解码后的头部字段列表
+     * @param block the encoded byte array
+     * @return the decoded list of header fields
      */
     public List<Http2HeaderField> decode(byte[] block) throws IOException {
         var fields = new ArrayList<Http2HeaderField>(8);
@@ -132,22 +132,22 @@ public final class HPackContext {
         while (pos < block.length) {
             var field = new Http2HeaderField();
             byte firstByte = block[pos];
-            
+
             if ((firstByte & 0x80) != 0) {
-                // 索引表示的头部字段
+                // Indexed header field
                 pos = decodeIndexed(block, pos, field);
             } else if ((firstByte & 0x40) != 0) {
-                // 增量索引的字面量头部
+                // Incremental-indexed literal header
                 pos = decodeIncremental(block, pos, field);
                 dynamicTable.addFirst(field);
             } else if ((firstByte & 0xF0) == 0) {
-                // 不索引的字面量头部
+                // Without-indexing literal header
                 pos = decodeWithoutIndexing(block, pos, field);
             } else if ((firstByte & 0xF0) == 0x10) {
-                // 从不索引的字面量头部
+                // Never-indexed literal header
                 pos = decodeNeverIndexed(block, pos, field);
             } else if ((firstByte & 0xE0) == 0x20) {
-                // 动态表大小更新
+                // Dynamic table size update
                 if (!fields.isEmpty()) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
                 pos = decodeDynamicTableSize(block, pos);
                 continue;
@@ -159,9 +159,7 @@ public final class HPackContext {
         return fields;
     }
 
-    /**
-     * 解码索引表示的头部字段
-     */
+    /** Decodes an indexed header field. */
     private int decodeIndexed(byte[] block, int pos, Http2HeaderField field) throws IOException {
         var result = readInt(block, pos, 7);
         var indexedField = get(result.value);
@@ -172,36 +170,28 @@ public final class HPackContext {
         return result.position;
     }
 
-    /**
-     * 解码增量索引的字面量头部
-     */
+    /** Decodes an incremental-indexed literal header. */
     private int decodeIncremental(byte[] block, int pos, Http2HeaderField field) throws IOException {
         var result = readInt(block, pos, 6);
         pos = decodeName(block, result.position, result.value, field);
         return decodeValue(block, pos, field);
     }
 
-    /**
-     * 解码不索引的字面量头部
-     */
+    /** Decodes a without-indexing literal header. */
     private int decodeWithoutIndexing(byte[] block, int pos, Http2HeaderField field) throws IOException {
         var result = readInt(block, pos, 4);
         pos = decodeName(block, result.position, result.value, field);
         return decodeValue(block, pos, field);
     }
 
-    /**
-     * 解码从不索引的字面量头部
-     */
+    /** Decodes a never-indexed literal header. */
     private int decodeNeverIndexed(byte[] block, int pos, Http2HeaderField field) throws IOException {
         var result = readInt(block, pos, 4);
         pos = decodeName(block, result.position, result.value, field);
         return decodeValue(block, pos, field);
     }
 
-    /**
-     * 解码动态表大小更新
-     */
+    /** Decodes a dynamic table size update. */
     private int decodeDynamicTableSize(byte[] block, int pos) throws IOException {
         var result = readInt(block, pos, 5);
         if (result.value > 4096) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
@@ -210,11 +200,11 @@ public final class HPackContext {
     }
 
     /**
-     * 解码头部名称（可能是索引或字面量）
+     * Decodes a header name (may be indexed or literal).
      */
     private int decodeName(byte[] block, int pos, int index, Http2HeaderField field) throws IOException {
         if (index == 0) {
-            // 字面量名称
+            // Literal name
             boolean huffmanEncoded = (block[pos] & 0x80) != 0;
             int length = block[pos] & 0x7F;
             pos++;
@@ -224,7 +214,7 @@ public final class HPackContext {
             field.normalizedName = Http2HeaderField.normalize(name);
             return pos + length;
         }
-        // 索引名称
+        // Indexed name
         var indexedField = get(index);
         if (indexedField == null) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
         field.name = indexedField.name;
@@ -233,7 +223,7 @@ public final class HPackContext {
     }
 
     /**
-     * 解码头部值（支持 Huffman 编码）
+     * Decodes a header value (supports Huffman encoding).
      */
     private int decodeValue(byte[] block, int pos, Http2HeaderField field) throws IOException {
         boolean huffmanEncoded = (block[pos] & 0x80) != 0;
@@ -243,32 +233,32 @@ public final class HPackContext {
     }
 
     /**
-     * 写入响应头部到输出流
+     * Writes response headers to the output stream.
      *
-     * @param headers 响应头部Map
-     * @param out     输出流
-     * @param streamId 流ID
-     * @param endStream 是否结束流
+     * @param headers   the response header map
+     * @param out       the output stream
+     * @param streamId  the stream ID
+     * @param endStream whether to end the stream
      */
     public void writeResponseHeaders(Map<String, List<String>> headers, OutputStream out, int streamId, boolean endStream) throws IOException {
         var buffer = new ByteArrayOutputStream(256);
-        
-        // 写入 :status 伪头部
+
+        // Write :status pseudo-header
         String status = headers.getOrDefault(":status", List.of("200")).getFirst();
         buffer.write(encodeLiteral(":status", status));
-        
-        // 写入其他头部字段
+
+        // Write remaining header fields
         for (var entry : headers.entrySet()) {
-            if (entry.getKey().startsWith(":")) continue;  // 跳过伪头部
+            if (entry.getKey().startsWith(":")) continue;  // skip pseudo-headers
             String key = Character.toLowerCase(entry.getKey().charAt(0)) + entry.getKey().substring(1);
             for (String value : entry.getValue()) {
                 buffer.write(encodeLiteral(key, value));
             }
         }
-        
-        // 写入帧头和数据
-        var flags = endStream 
-            ? FrameFlag.FlagSet.of(FrameFlag.END_HEADERS, FrameFlag.END_STREAM) 
+
+        // Write frame header and data
+        var flags = endStream
+            ? FrameFlag.FlagSet.of(FrameFlag.END_HEADERS, FrameFlag.END_STREAM)
             : FrameFlag.FlagSet.of(FrameFlag.END_HEADERS);
         FrameHeader.writeTo(out, buffer.size(), FrameType.HEADERS, flags, streamId);
         buffer.writeTo(out);

@@ -3,6 +3,7 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
@@ -13,15 +14,18 @@ import com.jujin.freeway.http.filter.RequestTimingFilter;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
-import com.jujin.freeway.ioc.*;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
-import com.jujin.freeway.http.body.BodyTooLargeException;
 
-public final class HttpModule implements Module2{
+public final class HttpModule implements Module2 {
     public static final String SERVER_HOOK = "freeway.http.server";
 
     @Override

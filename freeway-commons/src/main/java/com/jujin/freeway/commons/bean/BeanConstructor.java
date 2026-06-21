@@ -9,6 +9,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Wraps a {@link Constructor} with a cached {@link MethodHandle} for fast
+ * invocation and provides access to constructor parameters and annotations.
+ *
+ * <p>Obtained via {@link BeanIntrospector#constructor(Constructor)} or
+ * {@link BeanIntrospector#selectConstructor(Class, Class)}.
+ */
 public final class BeanConstructor {
     private final Constructor<?> constructor;
     private final MethodHandle handle;
@@ -32,18 +39,22 @@ public final class BeanConstructor {
         );
     }
 
+    /** Returns the underlying JDK constructor. */
     public Constructor<?> constructor() {
         return constructor;
     }
 
+    /** Returns the annotations declared on this constructor. */
     public Annotation[] annotations() {
         return annotations.clone();
     }
 
+    /** Returns the constructor parameter descriptors. */
     public List<BeanParameter> parameters() {
         return parameters;
     }
 
+    /** Looks up an annotation by type. */
     public <A extends Annotation> A annotation(Class<A> type) {
         for (Annotation annotation : annotations) {
             if (type.isInstance(annotation)) {
@@ -53,14 +64,22 @@ public final class BeanConstructor {
         return null;
     }
 
+    /** Returns true if this constructor has the given annotation. */
     public boolean hasAnnotation(Class<? extends Annotation> type) {
         return annotation(type) != null;
     }
 
+    /**
+     * Invokes the constructor with the given arguments.
+     *
+     * @param args the constructor arguments
+     * @return a new instance
+     * @throws IllegalArgumentException if the constructor throws
+     */
     public Object newInstance(Object... args) {
         try {
             return handle.invokeWithArguments(args == null ? new Object[0] : args);
-        } catch (Throwable ex) {
+        } catch (Error e) { throw e; } catch (Throwable ex) {
             throw new IllegalArgumentException("Cannot invoke constructor: " + constructor, ex);
         }
     }

@@ -2,7 +2,7 @@ package com.jujin.freeway.http.staticfile;
 
 import com.jujin.freeway.commons.util.Digests;
 import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.commons.util.IoUtils;
+import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -65,8 +65,9 @@ public final class StaticResourceMount {
     }
 
     /**
-     * 文件不存在时是否把请求交还给路由链（而非返回 404）。
-     * 启用后行为类似 nginx 的 {@code try_files}，适合 SPA 前端路由场景。
+     * When true, passes the request back to the route chain instead of
+     * returning 404 when the file is not found. Similar to nginx's
+     * {@code try_files} directive — useful for SPA front-end routing.
      */
     public StaticResourceMount fallthrough(boolean fallthrough) {
         return new StaticResourceMount(mountPath, source, cacheMaxAgeSeconds, immutable, fallthrough);
@@ -99,10 +100,10 @@ public final class StaticResourceMount {
     }
 
     /**
-     * 处理静态资源请求。
+     * Handles a static resource request.
      *
-     * @return true 表示请求已被处理（文件已发送或 404 已返回）；
-     *         false 表示文件不存在且 {@link #fallthrough} 启用，请求应交还给路由链
+     * @return true if the request was handled (file sent or 404 returned);
+     * *         false if the file was not found and {@link #fallthrough} is on, so the request should continue
      */
     public boolean serve(HttpContext ctx) throws IOException {
         String relative = relativePath(ctx.path());
@@ -336,7 +337,7 @@ public final class StaticResourceMount {
                 throw new IOException("Classpath resource too large: " + resourceName + " (" + contentLength + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
             }
             try (InputStream in = connection.getInputStream()) {
-                return new StaticAsset(relative, IoUtils.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName), connection.getLastModified());
+                return new StaticAsset(relative, ByteStreams.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName), connection.getLastModified());
             }
         }
     }

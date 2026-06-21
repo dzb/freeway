@@ -80,10 +80,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`WebServer` filter chain** — pre-built in constructor instead of reconstructed per request.
 - **Robaho `WebSocketSession`** — request headers snapshotted at upgrade time, matching Undertow/Jetty behavior.
 - **`UndertowWebEngine` exception handling** — removed double `RuntimeException` wrapping of handler errors.
+- **Engine selection** — switched from config-key-based (`freeway.web.engine`) to `.primary()`-based IoC resolution. `HttpModule` binds `FreewayHttpEngine` without `.primary()`; extension modules (e.g. `UndertowModule`) bind with `.primary()`. No config key needed — just add or remove the extension module.
+- **DEVELOPER-GUIDE.md** — updated engine switching section with `.primary()` mechanism explanation, code examples, and corrected module tree (removed robaho/jetty references).
+- **SKILL.md** — updated module tree and added HTTP engine switching section in Chinese, matching DEVELOPER-GUIDE.md.
 - **Enhanced test coverage** — HTTP module 30→62 tests (`FilterChain`, `ExceptionMapper`, `StaticResourceConditional`, `ClasspathResourceSource`, `HealthFilter`, engine fallback, static fallthrough). DB: `RowTest`, `PooledConnectionDefaultTest`.
 
 ### Removed
 
+- **`JdkHttpContext` / `JdkHttpEngine`** — built-in JDK `com.sun.net.httpserver` engine removed. The only built-in engine is now `FreewayHttpEngine`. Users needing an alternative engine add `freeway-http-undertow`.
+- **HTTP/2 frame types** — flat `engine/` subpackage classes restructured into `engine/http20/frame/`, `engine/http20/hpack/`, and `engine/http20/util/`. Deleted: `BufferedBuilder` (replaced by `StringBuilder`), `ChunkedOutputStream` (replaced by inner class), `FixedLengthOutputStream` (unused).
 - **Strict mode (`freeway.strict`)** — removed entirely. Duplicate modules now logged (not thrown). Unbound concrete types always auto-instantiate. Engine fallback always warns + falls back. Eliminates `System.setProperty` side channel between `AppBuilder` and `ContainerImpl`/`WebServer`.
 - **`NamedParamParser`** — thin 27-line delegation wrapper around `SqlTextParser`; `Result` record moved into `SqlTextParser`.
 - **`MigrationRunner` dead scanning methods** — `skipLineComment`, `skipBlockComment`, `skipDollarQuote`, `appendQuoted`, `addStatement` (duplicate of `SqlTextParser.addStatement`).

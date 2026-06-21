@@ -1,4 +1,4 @@
-package com.jujin.freeway.commons.bean;
+package com.jujin.freeway.commons.util;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
@@ -9,9 +9,9 @@ import java.lang.reflect.Type;
 /**
  * Minimal reflection utilities used by the bean and coercion subsystems.
  */
-public final class ReflectUtils {
+public final class Types {
 
-    private ReflectUtils() {}
+    private Types() {}
 
     /** Returns {@code true} if the type is concrete (not interface, not abstract). */
     public static boolean isConcrete(Class<?> type) {

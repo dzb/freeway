@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.extension.Extension;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

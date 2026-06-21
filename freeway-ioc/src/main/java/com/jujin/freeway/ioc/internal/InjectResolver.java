@@ -4,12 +4,16 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.bean.ReflectUtils;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.Extension;
+import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.Scope;
-import com.jujin.freeway.ioc.annotation.*;
+import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.annotation.IntermediateType;
+import com.jujin.freeway.ioc.annotation.Named;
+import com.jujin.freeway.ioc.annotation.Symbol;
+import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.slf4j.Logger;
 
@@ -48,7 +52,7 @@ final class InjectResolver {
                 ownerType,
                 annotations(property),
                 property.type(),
-                ReflectUtils.rawClass(property.type()),
+                Types.rawClass(property.type()),
                 false
             );
             if (value == null) {
@@ -67,7 +71,7 @@ final class InjectResolver {
 
     private Object resolveParameter(Class<?> ownerType, BeanParameter parameter) {
         Type parameterType = parameter.type();
-        Class<?> rawType = ReflectUtils.rawClass(parameterType);
+        Class<?> rawType = Types.rawClass(parameterType);
         return resolveValue(ownerType, annotations(parameter), parameterType, rawType, true);
     }
 

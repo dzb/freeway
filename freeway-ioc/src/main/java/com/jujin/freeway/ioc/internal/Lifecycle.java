@@ -33,7 +33,7 @@ final class Lifecycle {
         }
         try {
             MethodHandleUtils.invoke(handle, instance);
-        } catch (Throwable ex) {
+        } catch (Error e) { throw e; } catch (Throwable ex) {
             throw new RuntimeException(
                 annotationName + " invocation failed on " + instance.getClass().getName(), ex
             );

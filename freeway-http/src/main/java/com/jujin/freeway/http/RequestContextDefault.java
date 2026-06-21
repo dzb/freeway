@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class RequestContextDefault implements RequestContext {
+final class RequestContextDefault implements RequestContext {
 
     private final String correlationId;
     private final Instant startTime;

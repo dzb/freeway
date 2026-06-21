@@ -10,7 +10,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP layer: routing, filters, static, multipart, websocket |
-| `├ built-in` | Freeway http-engine, HTTP/1.1 HTTP/2 websocket support |
+| `├ built-in` | FreewayHttpEngine, high-performance, HTTP/2 + WebSocket       |
 | `└ engine adapters` | Undertow — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
 | `└ connection pool` | HikariCP adapter — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
@@ -153,15 +153,16 @@ The HTTP layer is deliberately thin:
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
-- Pluggable engines — built-in JDK engine; Undertow, Jetty, and Robaho adapters available in [freeway-ext](https://github.com/dzb/freeway-ext).
+- Pluggable engines — `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow adapter available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
 
-Switch engines with config:
+Switch engines by adding the extension module — the container selects it via `.primary()`:
 
-```properties
-freeway.web.engine=jdk          # built-in (HTTP only, no WebSocket)
-freeway.web.engine=robaho       # via freeway-ext
-freeway.web.engine=undertow     # via freeway-ext
-freeway.web.engine=jetty        # via freeway-ext
+```java
+// FreewayHttpEngine (default)
+FreewayApp.run(args, new AppModule(), new HttpModule());
+
+// Undertow — just add the module
+FreewayApp.run(args, new AppModule(), new HttpModule(), new UndertowModule());
 ```
 
 ### DB (`freeway-db`)
@@ -174,7 +175,7 @@ A compact JDBC data access layer with ORM:
 - `SQL` - programmatic SQL builder: `SQL.insert("t").set("col", v)`.
 - `RowMapper` - auto-mapping for records, beans, and basic types; `@Column` annotation drives column name matching.
 - Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus.
-- Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via `freeway.db.pool`. HikariCP adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).
+- Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via module `.primary()` (same pattern as HTTP engine). HikariCP adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).
 - **Dialect** — config-driven selection via `freeway.db.dialect`, JDBC URL auto-detection. Built-in: `PostgresDialect` (default), `MySqlDialect`, `SqliteDialect`. H2 auto-detected as PostgreSQL-compatible (or MySQL if `MODE=MySQL`).
 - **Schema** — `@Table`/`@Column`/`@Id`/`@Generated` annotations + `Schema.ensure()` auto-DDL. Entity groups contributed via `SchemaEntity.of("core", User.class)`, filterable via `freeway.db.schema.groups`.
 - **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation, format enforcement, and database-level concurrency lock. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
@@ -188,9 +189,7 @@ Third-party integrations are available in the **[freeway-ext](https://github.com
 
 | Module | Description |
 |--------|-------------|
-| `freeway-http-robaho` | Robaho HTTP engine with WebSocket |
-| `freeway-http-undertow` | Undertow web server adapter |
-| `freeway-http-jetty` | Jetty 12 web server + WebSocket adapter |
+| `freeway-http-undertow` | Undertow web server adapter (HTTP + WebSocket) |
 | `freeway-db-hikari` | HikariCP connection pool adapter |
 | `freeway-mq-kafka` | Kafka EventBus bridge for distributed pub/sub |
 

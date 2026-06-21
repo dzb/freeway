@@ -1,7 +1,7 @@
 package com.jujin.freeway.db.migration;
 
 import com.jujin.freeway.commons.util.Digests;
-import com.jujin.freeway.commons.util.IoUtils;
+import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.util.SqlTextParser;
@@ -19,7 +19,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -384,7 +383,7 @@ public final class MigrationRunner {
                     "Migration file not found on classpath: " + resourcePath
                 );
             }
-            return IoUtils.readBytes(in, MAX_MIGRATION_BYTES, resourcePath);
+            return ByteStreams.readBytes(in, MAX_MIGRATION_BYTES, resourcePath);
         } catch (IOException e) {
             throw new SqlException(
                 "Failed to read migration file: " + resourcePath,

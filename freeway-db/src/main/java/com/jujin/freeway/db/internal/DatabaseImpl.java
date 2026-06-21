@@ -1,7 +1,16 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.commons.defer.Defer;
-import com.jujin.freeway.db.*;
+import com.jujin.freeway.db.BatchQuery;
+import com.jujin.freeway.db.Database;
+import com.jujin.freeway.db.DatabaseStats;
+import com.jujin.freeway.db.ExecuteResult;
+import com.jujin.freeway.db.IsolationLevel;
+import com.jujin.freeway.db.Pool;
+import com.jujin.freeway.db.PoolConfig;
+import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.Query;
+import com.jujin.freeway.db.Transactional;
 import com.jujin.freeway.db.util.Names;
 import java.sql.SQLException;
 import org.slf4j.Logger;

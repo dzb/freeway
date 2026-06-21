@@ -5,6 +5,8 @@ import org.slf4j.IMarkerFactory;
 import org.slf4j.helpers.BasicMarkerFactory;
 import org.slf4j.spi.MDCAdapter;
 import org.slf4j.spi.SLF4JServiceProvider;
+import java.util.logging.Handler;
+import java.util.logging.Logger;
 
 public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
     private ILoggerFactory loggerFactory;
@@ -49,18 +51,18 @@ public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
         }
 
         if (format != null && !format.isBlank()) {
-            java.util.logging.Logger.getLogger("com.jujin.freeway.commons.logging")
+            Logger.getLogger("com.jujin.freeway.commons.logging")
                     .warning("Unknown freeway.log.format '" + format.strip()
                             + "' — ignoring");
         }
 
-        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        Logger root = Logger.getLogger("");
         if (root == null) {
             return;
         }
 
         JULConsoleFormatter formatter = new JULConsoleFormatter();
-        for (java.util.logging.Handler h : root.getHandlers()) {
+        for (Handler h : root.getHandlers()) {
             h.setFormatter(formatter);
         }
     }

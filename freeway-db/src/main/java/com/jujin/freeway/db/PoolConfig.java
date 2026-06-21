@@ -3,6 +3,32 @@ package com.jujin.freeway.db;
 import java.time.Duration;
 import java.util.Objects;
 
+/**
+ * Configuration for a JDBC connection pool.
+ *
+ * <p>Create with custom values or use the {@link #defaults(String, String, String)} shortcut:
+ * <pre>{@code
+ * var config = new PoolConfig(url, user, pass, 20, 5,
+ *     Duration.ofSeconds(30), Duration.ofMinutes(30), Duration.ofMinutes(10),
+ *     Duration.ofMinutes(2), null, Duration.ofSeconds(5), Duration.ofSeconds(15));
+ *
+ * // or with defaults:
+ * var config = PoolConfig.defaults(url, user, pass);
+ * }</pre>
+ *
+ * @param url                JDBC connection URL
+ * @param username           database username
+ * @param password           database password (may be empty)
+ * @param maxSize            maximum number of connections in the pool
+ * @param minIdle            minimum number of idle connections to maintain
+ * @param connectionTimeout  maximum time to wait for a connection
+ * @param maxLifetime        maximum lifetime of a connection in the pool
+ * @param maxIdleTime        maximum time a connection may remain idle
+ * @param cleanInterval      interval between idle-eviction cycles
+ * @param healthCheckQuery   optional query for connection health checks (null = use JDBC isValid)
+ * @param healthCheckTimeout timeout for the health check query
+ * @param queryTimeout       default timeout for all queries from this pool
+ */
 public record PoolConfig(
     String url,
     String username,

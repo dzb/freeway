@@ -1,6 +1,6 @@
 package com.jujin.freeway.commons.json;
 
-import com.jujin.freeway.commons.util.IoUtils;
+import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -76,7 +76,7 @@ final class JsonParser {
     private static String readText(InputStream input) {
         Objects.requireNonNull(input, "input");
         try (input) {
-            byte[] data = IoUtils.readBytes(input, MAX_INPUT_BYTES, "JSON input");
+            byte[] data = ByteStreams.readBytes(input, MAX_INPUT_BYTES, "JSON input");
             return new String(data, StandardCharsets.UTF_8);
         } catch (IOException ex) {
             throw new IllegalArgumentException("Unable to read JSON input", ex);

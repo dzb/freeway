@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 /**
- * HTTP/2 帧头结构（9字节）
+ * HTTP/2 frame header (9 bytes)
  * <pre>
  * +---------------+---------------+---------------+
  * |   Length (3)  |   Type (1)    |   Flags (1)   |
@@ -27,9 +27,7 @@ public final class FrameHeader {
         this.streamId = streamId;
     }
 
-    /**
-     * 从9字节数组解析帧头
-     */
+    /** Parses a frame header from a 9-byte array. */
     public static FrameHeader parse(byte[] buffer) {
         int length = BinUtils.readInt(buffer, 0, 3);
         FrameType type = FrameType.fromValue(buffer[3] & 0xFF);
@@ -38,9 +36,7 @@ public final class FrameHeader {
         return new FrameHeader(length, type, flags, streamId);
     }
 
-    /**
-     * 将帧头写入输出流
-     */
+    /** Writes a frame header to the output stream. */
     public static void writeTo(OutputStream outputStream, int length, FrameType type, FrameFlag.FlagSet flags, int streamId) throws IOException {
         BinUtils.writeInt(outputStream, length, 3);
         outputStream.write(type.value & 0xFF);
@@ -48,9 +44,7 @@ public final class FrameHeader {
         BinUtils.writeInt(outputStream, streamId);
     }
 
-    /**
-     * 编码帧头为9字节数组
-     */
+    /** Encodes a frame header as a 9-byte array. */
     public static byte[] encode(int length, FrameType type, FrameFlag.FlagSet flags, int streamId) {
         byte[] buffer = new byte[9];
         BinUtils.writeInt(buffer, 0, length, 3);
@@ -60,37 +54,27 @@ public final class FrameHeader {
         return buffer;
     }
 
-    /**
-     * 获取载荷长度
-     */
+    /** Returns the payload length. */
     public int length() {
         return len;
     }
 
-    /**
-     * 获取帧类型
-     */
+    /** Returns the frame type. */
     public FrameType type() {
         return type;
     }
 
-    /**
-     * 获取标志位集合
-     */
+    /** Returns the flags. */
     public FrameFlag.FlagSet flags() {
         return flags;
     }
 
-    /**
-     * 获取流ID（最高位保留，实际为31位）
-     */
+    /** Returns the stream ID (high bit is reserved; effective width is 31 bits). */
     public int streamId() {
         return streamId;
     }
 
-    /**
-     * 将帧头写入输出流
-     */
+    /** Writes this header to the output stream. */
     public void writeTo(OutputStream outputStream) throws IOException {
         BinUtils.writeInt(outputStream, len, 3);
         outputStream.write(type.value & 0xFF);
@@ -98,9 +82,7 @@ public final class FrameHeader {
         BinUtils.writeInt(outputStream, streamId);
     }
 
-    /**
-     * 编码帧头为9字节数组
-     */
+    /** Encodes this header as a 9-byte array. */
     public byte[] encode() {
         byte[] buffer = new byte[9];
         BinUtils.writeInt(buffer, 0, len, 3);

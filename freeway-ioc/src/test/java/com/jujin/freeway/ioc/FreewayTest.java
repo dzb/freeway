@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.Named;
 import com.jujin.freeway.ioc.annotation.PostConstruct;

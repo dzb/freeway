@@ -2,6 +2,7 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.Database;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -22,6 +23,39 @@ public interface Dialect {
 
     /** Generates an ALTER TABLE ADD COLUMN statement. */
     String addColumn(String tableName, ColumnDef column);
+
+    /** Returns the set of reserved words for this dialect. */
+    default Set<String> reservedWords() {
+        return Set.of();
+    }
+
+    /**
+     * Returns true if the given identifier needs quoting (is a reserved word
+     * or contains non-standard characters).
+     */
+    default boolean needsQuoting(String name) {
+        if (reservedWords().contains(name.toLowerCase(Locale.ROOT))) {
+            return true;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (i == 0) {
+                if (!Character.isLetter(c) && c != '_') {
+                    return true;
+                }
+            } else {
+                if (!Character.isLetterOrDigit(c) && c != '_') {
+                    return true;
+                }
+            }
+        }
+        for (int i = 0; i < name.length(); i++) {
+            if (Character.isUpperCase(name.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /** Generates a DROP TABLE IF EXISTS statement. */
     String dropTable(String tableName);

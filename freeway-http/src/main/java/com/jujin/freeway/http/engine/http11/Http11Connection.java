@@ -1,5 +1,6 @@
 package com.jujin.freeway.http.engine.http11;
-import com.jujin.freeway.http.engine.*;
+import com.jujin.freeway.http.engine.BufferedInputStream;
+import com.jujin.freeway.http.engine.BufferedOutputStream;
 
 import java.io.IOException;
 import java.io.InputStream;

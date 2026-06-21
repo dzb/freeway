@@ -154,27 +154,8 @@ public final class PostgresDialect implements Dialect {
         return "PUBLIC";
     }
 
-    private static boolean needsQuoting(String name) {
-        if (RESERVED.contains(name.toLowerCase(Locale.ROOT))) {
-            return true;
-        }
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            if (i == 0) {
-                if (!Character.isLetter(c) && c != '_') {
-                    return true;
-                }
-            } else {
-                if (!Character.isLetterOrDigit(c) && c != '_') {
-                    return true;
-                }
-            }
-        }
-        for (int i = 0; i < name.length(); i++) {
-            if (Character.isUpperCase(name.charAt(i))) {
-                return true;
-            }
-        }
-        return false;
+    @Override
+    public Set<String> reservedWords() {
+        return RESERVED;
     }
 }

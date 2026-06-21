@@ -7,23 +7,23 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * 不可变的链式 SQL 构建器。
+ * Immutable chainable SQL builder.
  * <p>
- * 与 {@link Database#sql(String, Object...)} 完全兼容——输出 {@link #sql()} 和 {@link #args()}
- * 可直接传入。支持 {@code ?} 位置参数和 {@code :name} / {@code $name} 命名参数，风格自选。
+ * Fully compatible with {@link Database#sql(String, Object...)} — pass {@link #sql()} and {@link #args()}
+ * directly. Supports {@code ?} positional parameters and {@code :name} / {@code $name} named parameters.
  * <p>
- * 示例：
+ * Examples:
  * <pre>{@code
- * // 纯文本块（Java 25+）
+ * // raw text block (Java 25+)
  * db.sql(SQL.select("*").from("users").where("status = ?", 1));
  *
- * // 动态条件
+ * // dynamic conditions
  * SQL q = SQL.select("*").from("users");
  * if (name != null)  q = q.where("name LIKE ?", name);
  * if (status != 0)   q = q.where("status = ?", status);
  * db.sql(q.sql(), q.args()).list(User.class);
  *
- * // 命名参数风格
+ * // named parameter style
  * SQL q = SQL.select("*").from("users").where("name = :name", name);
  * db.sql(q.sql(), q.args()).list(User.class);
  *
@@ -46,12 +46,12 @@ public final class SQL {
     private final boolean compoundQuery;
     private final List<Cte> ctes;
 
-    // INSERT 专用
+    // INSERT-specific fields
     private final String insertTable;
     private final List<String> insertColumns;
     private final List<Object> insertValues;
 
-    // UPDATE SET 专用
+    // UPDATE SET-specific fields
     private final String updateTable;
     private final List<String> setClauses;
     private final List<Object> setArgs;
@@ -84,30 +84,30 @@ public final class SQL {
         this.setArgs = setArgs;
     }
 
-    // ====================== 静态工厂 ======================
+    // ====================== static factories ======================
 
-    /** SELECT 查询：{@code SQL.select("id, name").from("users").where(...)} */
+    /** SELECT:{@code SQL.select("id, name").from("users").where(...)} */
     public static SQL select(String columns) {
         return new SQL("SELECT " + columns, List.of(), "", new Object[0],
             false, List.of(),
             null, List.of(), List.of(), null, List.of(), List.of());
     }
 
-    /** UPDATE 更新：{@code SQL.update("users").set("name = ?", v).where("id = ?", id)} */
+    /** UPDATE:{@code SQL.update("users").set("name = ?", v).where("id = ?", id)} */
     public static SQL update(String table) {
         return new SQL("UPDATE " + table, List.of(), "", new Object[0],
             false, List.of(),
             null, List.of(), List.of(), table, List.of(), List.of());
     }
 
-    /** INSERT 插入：{@code SQL.insert("users").set("name", v).set("status", v)} */
+    /** INSERT:{@code SQL.insert("users").set("name", v).set("status", v)} */
     public static SQL insert(String table) {
         return new SQL(null, List.of(), "", new Object[0],
             false, List.of(),
             table, List.of(), List.of(), null, List.of(), List.of());
     }
 
-    /** DELETE 删除：{@code SQL.delete("users").where("id = ?", id)} */
+    /** DELETE:{@code SQL.delete("users").where("id = ?", id)} */
     public static SQL delete(String table) {
         return new SQL("DELETE FROM " + table, List.of(), "", new Object[0],
             false, List.of(),
@@ -165,9 +165,9 @@ public final class SQL {
         return withHead(head + " ON " + expr);
     }
 
-    // ====================== WHERE 条件 ======================
+    // ====================== WHERE conditions ======================
 
-    /** {@code WHERE expr}（若已有条件则为 {@code AND expr}） */
+    /** {@code WHERE expr} (or {@code AND expr} when a condition already exists). */
     public SQL where(String expr, Object... values) {
         requireWhereAllowed("WHERE");
         String connector = conditions.isEmpty() ? "" : "AND";
@@ -299,7 +299,7 @@ public final class SQL {
         return combineCompound("UNION ALL", other);
     }
 
-    /** INSERT / UPDATE / DELETE 的返回列。 */
+    /** Return columns for INSERT / UPDATE / DELETE. */
     public SQL returning(String columns) {
         Objects.requireNonNull(columns, "columns");
         if (!isDml()) {
@@ -332,17 +332,17 @@ public final class SQL {
     // ====================== SET (UPDATE / INSERT) ======================
 
     /**
-     * 用于 UPDATE 或 INSERT。
+    * Used for UPDATE or INSERT.
      * <p>
-     * <b>UPDATE</b>：{@code .set("name = ?", value)} —— 完整表达式
+    * <b>UPDATE</b>: {@code .set("name = ?", value)} — full expression
      * <br>
-     * <b>INSERT</b>：{@code .set("name", value)} —— 列名 + 值
+    * <b>INSERT</b>: {@code .set("name", value)} — column name + value
      */
     public SQL set(String expr, Object value) {
         requireUpdateOrInsert("SET");
         requireNoPendingJoin("SET");
         if (insertTable != null) {
-            // INSERT 模式：set("col", value)
+            // INSERT mode: set("col", value)
             List<String> newCols = new ArrayList<>(insertColumns);
             List<Object> newVals = new ArrayList<>(insertValues);
             newCols.add(expr);
@@ -353,7 +353,7 @@ public final class SQL {
                 insertTable, newCols, newVals,
                 null, List.of(), List.of());
         }
-        // UPDATE 模式：set("col = ?", value)
+        // UPDATE mode: set("col = ?", value)
         Object[] parsed = normalizeArgs(expr, value);
         String normalized = (String) parsed[0];
         Object[] extraArgs = (Object[]) parsed[1];
@@ -371,9 +371,9 @@ public final class SQL {
             updateTable, newSets, newSetArgs);
     }
 
-    // ====================== 输出 ======================
+    // ====================== output ======================
 
-    /** 生成完整的 SQL 字符串。 */
+    /** Produces the complete SQL string. */
     public String sql() {
         requireNoPendingJoin("render SQL");
         String withClause = renderWithClause();
@@ -385,13 +385,13 @@ public final class SQL {
         }
         var sb = new StringBuilder(head);
 
-        // SET 子句（UPDATE）
+        // SET clause (UPDATE)
         if (!setClauses.isEmpty()) {
             sb.append(" SET ");
             sb.append(String.join(", ", setClauses));
         }
 
-        // WHERE 子句
+        // WHERE clause
         if (!conditions.isEmpty()) {
             sb.append(" WHERE ");
             sb.append(renderConditions(conditions));
@@ -403,20 +403,20 @@ public final class SQL {
         return withClause + sb;
     }
 
-    /** 返回按 {@code ?} 位置顺序排列的参数数组。可直接传入 {@link Database#sql(String, Object...)}。 */
+    /** Returns the arguments ordered by {@code ?} position. Pass directly to {@link Database#sql(String, Object...)}. */
     public Object[] args() {
         Object[] cteArgs = cteArgs();
         if (insertTable != null) {
             return concat(cteArgs, insertValues.toArray());
         }
         if (!setArgs.isEmpty()) {
-            // UPDATE: setArgs 在 args 之前（SET 在 WHERE 之前）
+            // UPDATE: setArgs before args (SET before WHERE)
             return concat(cteArgs, concat(setArgs.toArray(), args));
         }
         return concat(cteArgs, args);
     }
 
-    // ====================== 内部 ======================
+    // ====================== internals ======================
 
     private record Condition(String connector, String expr) {}
 
@@ -667,8 +667,8 @@ public final class SQL {
     }
 
     /**
-     * 解析 SQL 片段中的 {@code ?}、{:name}、{$name} 占位符，
-     * 全部替换为 {@code ?}，并从 values 中按顺序取出实参。
+     * Parses SQL fragments containing {@code ?}, {@code :name}, and {@code $name} placeholders.
+     * Replaces all with {@code ?} and extracts arguments from the values array in order.
      *
      * @return [normalizedSql(String), extraArgs(Object[])]
      */
@@ -712,7 +712,7 @@ public final class SQL {
         while (i < len) {
             char c = fragment.charAt(i);
 
-            // 字符串字面量 '...'
+            // string literal '...'
             if (c == '\'') {
                 sb.append(c);
                 i++;
@@ -732,7 +732,7 @@ public final class SQL {
                 continue;
             }
 
-            // 标识符引用 "..."
+            // identifier "..."
             if (c == '"') {
                 sb.append(c);
                 i++;
@@ -747,7 +747,7 @@ public final class SQL {
                 continue;
             }
 
-            // 行注释 --
+            // line comment --
             if (c == '-' && i + 1 < len && fragment.charAt(i + 1) == '-') {
                 sb.append(c);
                 i++;
@@ -760,7 +760,7 @@ public final class SQL {
                 continue;
             }
 
-            // 块注释 /* */
+            // block comment /* */
             if (c == '/' && i + 1 < len && fragment.charAt(i + 1) == '*') {
                 sb.append('/');
                 i++;
@@ -779,7 +779,7 @@ public final class SQL {
                 continue;
             }
 
-            // :name 或 $name 命名参数
+            // :name or $name named parameter
             if ((c == ':' || c == '$') && i + 1 < len && Names.isValidParamStart(fragment.charAt(i + 1))) {
                 int start = i + 1;
                 i += 2;
@@ -797,7 +797,7 @@ public final class SQL {
                 continue;
             }
 
-            // ? 位置参数
+            // ? positional parameter
             if (c == '?') {
                 if (vi < values.length) {
                     appendValue(sb, matched, values[vi++]);
@@ -849,7 +849,7 @@ public final class SQL {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof SQL sql)) return false;
-        return Objects.equals(sql(), sql.sql());
+        String s = sql(); return Objects.equals(s, sql.sql());
     }
 
     @Override

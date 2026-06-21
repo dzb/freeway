@@ -6,8 +6,8 @@ import com.jujin.freeway.boot.ConfigLoader;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.util.Maps;
+import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
-import com.jujin.freeway.commons.util.IoUtils;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,6 +18,18 @@ import java.util.Properties;
 import java.util.regex.Pattern;
 import java.util.Locale;
 
+/**
+ * Default {@link ConfigLoader} implementation. Loads configuration from
+ * the following sources in ascending priority order:
+ * <ol>
+ *   <li>{@code application.properties}</li>
+ *   <li>{@code application.json}</li>
+ *   <li>{@code application-{profile}.properties}</li>
+ *   <li>{@code application-{profile}.json}</li>
+ *   <li>Environment variables (prefix {@code FREEWAY_}, mapped to dots)</li>
+ *   <li>CLI arguments ({@code --key=value})</li>
+ * </ol>
+ */
 public final class BootConfigLoader implements ConfigLoader {
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
@@ -83,7 +95,7 @@ public final class BootConfigLoader implements ConfigLoader {
             return Map.of();
         }
 
-        try (stream; InputStream bounded = IoUtils.bounded(stream, 16L * 1024 * 1024, resourceName)) {
+        try (stream; InputStream bounded = ByteStreams.bounded(stream, 16L * 1024 * 1024, resourceName)) {
             Properties properties = new Properties();
             properties.load(bounded);
             Map<String, String> values = new LinkedHashMap<>();

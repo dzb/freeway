@@ -15,6 +15,22 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * A schema-less query result row with type-safe column access.
+ *
+ * <p>Supports coercion from the raw JDBC value to common Java types:
+ * {@link #string(String)}, {@link #integer(String)}, {@link #longVal(String)},
+ * {@link #bool(String)}, {@link #decimal(String)}, {@link #date(String)},
+ * {@link #dateTime(String)}, {@link #instant(String)}, {@link #uuid(String)},
+ * and more.
+ *
+ * <p>Example:
+ * <pre>{@code
+ * Row row = db.query("SELECT id, name FROM users WHERE id = ?", 1).list(Row.class).get(0);
+ * long id = row.longVal("id");
+ * String name = row.string("name");
+ * }</pre>
+ */
 public final class Row {
     private final Map<String, Object> values;
     private final Coercer coercer;

@@ -67,7 +67,7 @@ final class BindingImpl<T> implements Binding<T> {
         setProvider(ignored -> {
             try {
                 return container.construct(actual);
-            } catch (Throwable ex) {
+            } catch (Error e) { throw e; } catch (Throwable ex) {
                 throw new RuntimeException("Unable to construct " + actual.getName(), ex);
             }
         });

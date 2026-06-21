@@ -3,7 +3,7 @@ package com.jujin.freeway.commons.json;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.bean.ReflectUtils;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 
@@ -94,7 +94,7 @@ final class JsonCoercions {
     }
 
     private static Object coerceParameterized(Object value, ParameterizedType type, Coercer coercer, TypeContext context) {
-        Class<?> rawType = ReflectUtils.rawClass(type.getRawType());
+        Class<?> rawType = Types.rawClass(type.getRawType());
         Object plain = normalize(value);
         if (plain == null) {
             return CoercerDefault.defaultValue(rawType);
@@ -190,7 +190,7 @@ final class JsonCoercions {
             throw new IllegalArgumentException("Unsupported JSON target type: " + arrayType.getTypeName());
         }
         Type componentType = context.resolve(arrayType.getGenericComponentType());
-        Class<?> componentClass = ReflectUtils.rawClass(componentType);
+        Class<?> componentClass = Types.rawClass(componentType);
         Object result = Array.newInstance(componentClass, array.size());
         for (int i = 0; i < array.size(); i++) {
             Array.set(result, i, coerce(array.get(i), componentType, coercer, context));
@@ -261,7 +261,7 @@ final class JsonCoercions {
     }
 
     private static Map<Object, Object> newEnumMap(Type keyType) {
-        Class<?> enumType = ReflectUtils.rawClass(keyType);
+        Class<?> enumType = Types.rawClass(keyType);
         if (!enumType.isEnum()) {
             throw new IllegalArgumentException(
                 "EnumMap requires an enum key type: " + keyType.getTypeName()
@@ -273,7 +273,7 @@ final class JsonCoercions {
     }
 
     private static Collection<Object> newEnumSet(Type elementType) {
-        Class<?> enumType = ReflectUtils.rawClass(elementType);
+        Class<?> enumType = Types.rawClass(elementType);
         if (!enumType.isEnum()) {
             throw new IllegalArgumentException(
                 "EnumSet requires an enum element type: " + elementType.getTypeName()
@@ -294,7 +294,7 @@ final class JsonCoercions {
             return constructorHandle.invoke();
         } catch (ReflectiveOperationException ex) {
             return null;
-        } catch (Throwable ex) {
+        } catch (Error e) { throw e; } catch (Throwable ex) {
             return null;
         }
     }
@@ -336,7 +336,7 @@ final class JsonCoercions {
         }
 
         TypeContext child(ParameterizedType type) {
-            Class<?> rawType = ReflectUtils.rawClass(type.getRawType());
+            Class<?> rawType = Types.rawClass(type.getRawType());
             TypeVariable<?>[] variables = rawType.getTypeParameters();
             Type[] arguments = type.getActualTypeArguments();
             Map<TypeVariable<?>, Type> next = new LinkedHashMap<>(bindings);
@@ -369,7 +369,7 @@ final class JsonCoercions {
                 if (!changed) {
                     return parameterizedType;
                 }
-                return new ResolvedParameterizedType(resolvedOwner, ReflectUtils.rawClass(parameterizedType.getRawType()), resolvedArguments);
+                return new ResolvedParameterizedType(resolvedOwner, Types.rawClass(parameterizedType.getRawType()), resolvedArguments);
             }
             if (type instanceof GenericArrayType arrayType) {
                 Type resolvedComponent = resolve(arrayType.getGenericComponentType());

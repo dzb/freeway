@@ -3,7 +3,7 @@ package com.jujin.freeway.db;
 import java.sql.Connection;
 
 /**
- * 事务隔离级别，映射 JDBC {@link Connection} 常量。
+ * Transaction isolation levels, mapped from JDBC {@link Connection} constants.
  */
 public enum IsolationLevel {
     DEFAULT(Connection.TRANSACTION_NONE),

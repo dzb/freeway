@@ -5,15 +5,11 @@ See [BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md) for the benchmark rules and r
 
 ## Prerequisites
 
-Install the core reactor and the transport adapters into your local Maven
-repository before running the smoke benchmark:
+Install the core reactor into your local Maven repository before running the smoke benchmark:
 
 ```bash
 cd freeway
 mvn -pl freeway-commons,freeway-ioc,freeway-boot,freeway-http,freeway-db -am install -DskipTests "-Dgpg.skip=true"
-
-cd freeway-ext
-mvn -pl freeway-http-robaho,freeway-http-undertow -am install -DskipTests "-Dgpg.skip=true"
 ```
 
 ## JMH
@@ -21,7 +17,7 @@ mvn -pl freeway-http-robaho,freeway-http-undertow -am install -DskipTests "-Dgpg
 Run the microbenchmarks through the JMH launcher:
 
 ```bash
-mvn -pl freeway-benchmarks -am -DskipTests exec:java \
+mvn -pl freeway-benchmark -am -DskipTests exec:java \
   -Dexec.mainClass=com.jujin.freeway.benchmarks.BenchmarkMain \
   -Dexec.args='-bm thrpt -f 0 -wi 5 -i 5 com.jujin.freeway.http.engine.HttpParserBenchmark'
 ```
@@ -45,7 +41,7 @@ classpath drift and is the safest default for local iteration.
 Use the separate-process benchmark when comparing engines:
 
 ```bash
-mvn -pl freeway-benchmarks -am -DskipTests exec:java \
+mvn -pl freeway-benchmark -am -DskipTests exec:java \
   -Dexec.mainClass=com.jujin.freeway.benchmarks.http.HttpEngineDecisionMain \
   -Dbench.engine=freeway \
   -Dbench.requests=2000 \
@@ -56,15 +52,15 @@ mvn -pl freeway-benchmarks -am -DskipTests exec:java \
 
 This runner starts the server in a child JVM, runs the client load in another
 child JVM, and reports the median of three independent runs.
-Use `bench.engine=jdk` as the lower-bound baseline, and compare freeway against
-`robaho` or `undertow` on the same request shape.
+Use `bench.engine=jdk-native` as the lower-bound baseline, and compare `freeway`
+against `jdk-native`, `undertow-native`, or `robaho-native` on the same request shape.
 
 ## HTTP smoke benchmark
 
 Run the black-box server benchmark with a single engine per JVM:
 
 ```bash
-mvn -pl freeway-benchmarks -am -DskipTests exec:java \
+mvn -pl freeway-benchmark -am -DskipTests exec:java \
   -Dexec.mainClass=com.jujin.freeway.benchmarks.http.HttpEngineSmokeMain \
   -Dbench.engine=freeway \
   -Dbench.requests=20000 \
@@ -75,6 +71,6 @@ mvn -pl freeway-benchmarks -am -DskipTests exec:java \
 Supported engines:
 
 - `freeway`
-- `jdk`
-- `robaho`
-- `undertow`
+- `jdk-native`
+- `undertow-native`
+- `robaho-native`

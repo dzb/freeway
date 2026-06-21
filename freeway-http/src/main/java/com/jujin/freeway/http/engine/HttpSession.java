@@ -1,7 +1,11 @@
 package com.jujin.freeway.http.engine;
-import com.jujin.freeway.http.engine.http11.*;
-import com.jujin.freeway.http.engine.http20.*;
-import com.jujin.freeway.http.engine.ws.*;
+import com.jujin.freeway.http.engine.http11.Http11Connection;
+import com.jujin.freeway.http.engine.http11.HttpParser;
+import com.jujin.freeway.http.engine.http20.Http2Connection;
+import com.jujin.freeway.http.engine.http20.Http2Stream;
+import com.jujin.freeway.http.engine.ws.WebSocket;
+import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
+import com.jujin.freeway.http.engine.ws.WsUtil;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
@@ -13,8 +17,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import javax.net.ssl.SSLSocket;
 import org.slf4j.Logger;
@@ -173,7 +179,7 @@ public final class HttpSession implements Runnable {
 
     private void handleHttp2Stream(Http2Stream stream, InputStream in,
                                     OutputStream out,
-                                    java.util.Map<String, java.util.List<String>> reqHeaders) {
+                                    Map<String, List<String>> reqHeaders) {
         try {
             String method = headerValue(reqHeaders, ":method");
             String path = headerValue(reqHeaders, ":path");
@@ -265,7 +271,7 @@ public final class HttpSession implements Runnable {
     }
 
     private static void writeLine(OutputStream out, String line) throws IOException {
-        out.write(line.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+        out.write(line.getBytes(StandardCharsets.ISO_8859_1));
         out.write('\r'); out.write('\n');
     }
 
@@ -276,7 +282,7 @@ public final class HttpSession implements Runnable {
         return null;
     }
 
-    private static String headerValue(java.util.Map<String, java.util.List<String>> h, String n) {
+    private static String headerValue(Map<String, List<String>> h, String n) {
         for (var e : h.entrySet())
             if (e.getKey().equalsIgnoreCase(n) && !e.getValue().isEmpty())
                 return e.getValue().getFirst();

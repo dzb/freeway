@@ -1,12 +1,17 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanParameter;
-import com.jujin.freeway.commons.bean.ReflectUtils;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.scoped.ScopedCache;
-import com.jujin.freeway.ioc.*;
+import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.extension.Extension;
+import com.jujin.freeway.ioc.LoggerSource;
+import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.util.ArrayList;
@@ -211,7 +216,7 @@ public final class ContainerImpl implements Container {
         if (type == String.class) {
             throw noServiceRegistered(type);
         }
-        if (ReflectUtils.isConcrete(type)) {
+        if (Types.isConcrete(type)) {
             return instantiate(type);
         }
         throw noServiceRegistered(type);

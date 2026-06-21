@@ -1,6 +1,5 @@
-package com.jujin.freeway.ioc;
+package com.jujin.freeway.ioc.extension;
 
-import com.jujin.freeway.ioc.extension.Contribution;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -11,6 +10,23 @@ import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
 
+/**
+ * Aggregates contributed values of a given entry type and provides ordered
+ * access to them. Each extension point is identified by the entry class
+ * itself.
+ *
+ * <p>Contributions are added via {@link Contributions} during module binding
+ * and retrieved at runtime through {@code container.extension(EntryType.class)}:
+ * <pre>{@code
+ * // Contribute
+ * binder.contribute(Route.class).add(Route.get("/", handler));
+ *
+ * // Consume
+ * List<Route> routes = container.extension(Route.class).all();
+ * }</pre>
+ *
+ * @param <V> the entry type (extension point type)
+ */
 public final class Extension<V> {
 
     private final List<Entry> entries = new ArrayList<>();
@@ -22,6 +38,14 @@ public final class Extension<V> {
         this.entryType = Objects.requireNonNull(entryType, "entryType");
     }
 
+    /**
+     * Adds a named contribution with ordering support.
+     *
+     * @param id    unique id for ordering via {@link Contribution#before}/{@link Contribution#after}
+     * @param value the contribution value
+     * @return a {@link Contribution} handle for declaring ordering constraints
+     * @throws IllegalStateException if the id is a duplicate
+     */
     public Contribution add(String id, V value) {
         Objects.requireNonNull(value, "value");
         String normalizedId = normalizeOptionalId(id);
@@ -39,6 +63,14 @@ public final class Extension<V> {
         return entry;
     }
 
+    /**
+     * Creates an extension pre-populated with values (no ordering).
+     *
+     * @param entryType the entry type
+     * @param values    the values to include
+     * @param <V>       the entry type
+     * @return a new Extension containing the given values
+     */
     @SafeVarargs
     public static <V> Extension<V> of(Class<V> entryType, V... values) {
         Extension<V> ext = new Extension<>(entryType);
@@ -46,6 +78,13 @@ public final class Extension<V> {
         return ext;
     }
 
+    /**
+     * Returns all contributions in insertion order (or topological order
+     * when {@code before/after} constraints are used). The result is cached
+     * and invalidated when new contributions are added.
+     *
+     * @return an unmodifiable list of contributed values
+     */
     public List<V> all() {
         if (sorted == null) {
             sorted = order();

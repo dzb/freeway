@@ -5,6 +5,21 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
+/**
+ * Entry point for creating a lightweight IoC {@link Container}.
+ *
+ * <p>Minimal example:
+ * <pre>{@code
+ * Container c = Freeway.create(binder -> {
+ *     binder.bind(Greeter.class).to(GreeterImpl.class);
+ * });
+ * Greeter g = c.get(Greeter.class);
+ * c.close();
+ * }</pre>
+ *
+ * @see Container
+ * @see Module2
+ */
 public final class Freeway {
 
     private Freeway() {}

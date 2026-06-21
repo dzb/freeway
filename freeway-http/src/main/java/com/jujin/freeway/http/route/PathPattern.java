@@ -147,7 +147,7 @@ public final class PathPattern {
         if ("..".equals(seg) || seg.startsWith("..\\")) return true;
         if (seg.contains("\0")) return true;
         try {
-            String decoded = java.net.URLDecoder.decode(seg, java.nio.charset.StandardCharsets.UTF_8);
+            String decoded = URLDecoder.decode(seg, StandardCharsets.UTF_8);
             if (!decoded.equals(seg) && containsPathTraversal(decoded)) return true;
         } catch (IllegalArgumentException e) {
             return true;

@@ -11,9 +11,9 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>freeway-benchmarks</artifactId>
-    <name>Freeway :: Benchmarks</name>
-    <description>JMH and smoke benchmarks for freeway-http</description>
+    <artifactId>freeway-benchmark</artifactId>
+    <name>Freeway :: Benchmark</name>
+    <description>Performance benchmarks for freeway-http</description>
 
     <dependencies>
         <dependency>
@@ -21,19 +21,14 @@
             <artifactId>freeway-http</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-http-robaho</artifactId>
-            <version>${project.version}</version>
+            <groupId>io.undertow</groupId>
+            <artifactId>undertow-core</artifactId>
+            <version>2.3.24.Final</version>
         </dependency>
         <dependency>
             <groupId>io.github.robaho</groupId>
             <artifactId>httpserver</artifactId>
             <version>1.0.29</version>
-        </dependency>
-        <dependency>
-            <groupId>com.jujin8.freeway</groupId>
-            <artifactId>freeway-http-undertow</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>org.openjdk.jmh</groupId>

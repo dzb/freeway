@@ -18,8 +18,9 @@ freeway.log.color=always
 # ================================
 #  HTTP / Web Server
 # ================================
+# Engine selected via module inclusion (.primary() mechanism):
+#   default → FreewayHttpEngine; add UndertowModule for Undertow
 
-freeway.web.engine=robaho
 freeway.web.server.host=127.0.0.1
 freeway.web.server.port=8080
 

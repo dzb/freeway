@@ -3,12 +3,14 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.bean.ReflectUtils;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.db.schema.*;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
+import com.jujin.freeway.db.schema.Column;
+import com.jujin.freeway.db.schema.Generated;
+import com.jujin.freeway.db.schema.Id;
+import com.jujin.freeway.db.schema.SqlTypeMapping;
+import com.jujin.freeway.db.schema.Transient;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +20,19 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+/**
+ * Lightweight ORM for entities annotated with {@code @Table}, {@code @Id},
+ * {@code @Generated}, and {@code @Column}.
+ *
+ * <p>Provides basic CRUD operations:
+ * <pre>{@code
+ * Orm orm = Orm.of(db);
+ * orm.insert(new Post("Hello", "World"));
+ * Post p = orm.findById(Post.class, 1L).orElseThrow();
+ * orm.save(p);  // upsert
+ * orm.delete(p);
+ * }</pre>
+ */
 public final class Orm {
     private final Database db;
     private final Coercer coercer;
@@ -81,7 +96,7 @@ public final class Orm {
             values);
 
         if (result.hasKey() && columns.generated != null && !plan.record()) {
-            columns.generated.write(entity, coercer.coerce(result.key(), ReflectUtils.rawClass(columns.generated.type())));
+            columns.generated.write(entity, coercer.coerce(result.key(), Types.rawClass(columns.generated.type())));
         }
         return result;
     }
@@ -126,7 +141,7 @@ public final class Orm {
         ExecuteResult result = db.execute(sql, insertValues);
 
         if (result.hasKey() && columns.generated != null && !plan.record()) {
-            Object coercedKey = coercer.coerce(result.key(), ReflectUtils.rawClass(columns.generated.type()));
+            Object coercedKey = coercer.coerce(result.key(), Types.rawClass(columns.generated.type()));
             columns.generated.write(entity, coercedKey);
         }
         return result;

@@ -46,11 +46,9 @@
 #  HTTP / Web Server
 # ================================
 
-# Engine id: robaho | jdk | undertow | jetty
-# Default 'robaho' is built-in (zero-dep, HTTP + WebSocket).
-# 'jdk' is built-in (HTTP only, no WebSocket).
-# 'undertow' and 'jetty' require freeway-ext on the classpath.
-# freeway.web.engine=robaho
+# Engine selected via module inclusion (.primary() mechanism).
+# Default: FreewayHttpEngine (built-in, high-performance HTTP/2 + WebSocket).
+# For Undertow: add UndertowModule to launcher — container auto-selects it.
 
 # Server bind
 # freeway.web.server.host=127.0.0.1

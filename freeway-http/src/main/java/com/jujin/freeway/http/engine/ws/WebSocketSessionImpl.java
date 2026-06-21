@@ -5,6 +5,9 @@ import com.jujin.freeway.http.websocket.WebSocketSession;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -86,12 +89,12 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     @Override
     public void sendText(String text) throws IOException {
-        WebSocket.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
+        WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Text, true, text));
     }
 
     @Override
     public void sendBinary(byte[] data) throws IOException {
-        WebSocket.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Binary, true, data));
+        WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Binary, true, data));
     }
 
     @Override
@@ -105,7 +108,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     }
 
     @Override
-    public void sendTextBatch(java.util.List<String> texts) throws IOException {
+    public void sendTextBatch(List<String> texts) throws IOException {
         for (String text : texts) {
             WebSocket.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
         }
@@ -138,7 +141,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
                     int eq = pair.indexOf('=');
                     String k = eq >= 0 ? decode(pair.substring(0, eq)) : decode(pair);
                     String v = eq >= 0 ? decode(pair.substring(eq + 1)) : "";
-                    map.computeIfAbsent(k, ignored -> new java.util.ArrayList<>()).add(v);
+                    map.computeIfAbsent(k, ignored -> new ArrayList<>()).add(v);
                 }
             }
             queryParams = map;
@@ -148,7 +151,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     private static String decode(String s) {
         try {
-            return java.net.URLDecoder.decode(s, java.nio.charset.StandardCharsets.UTF_8);
+            return URLDecoder.decode(s, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
             return s;
         }

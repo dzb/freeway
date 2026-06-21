@@ -198,7 +198,7 @@
         <module>freeway-ioc</module>
         <module>freeway-boot</module>
         <module>freeway-http</module>
-        <module>freeway-benchmarks</module>
+        <module>freeway-benchmark</module>
         <module>freeway-db</module>
     </modules>
 </project>

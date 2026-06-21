@@ -5,9 +5,8 @@ import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.bean.ReflectUtils;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.db.util.Names;
 import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.RowMapping;
@@ -170,9 +169,9 @@ public final class RowMapperResolver {
                     column >= 1
                         ? coercer.coerce(
                               rs.getObject(column),
-                              ReflectUtils.rawClass(property.type())
+                              Types.rawClass(property.type())
                           )
-                        : coercer.coerce(null, ReflectUtils.rawClass(property.type()));
+                        : coercer.coerce(null, Types.rawClass(property.type()));
             }
             try {
                 return type.cast(constructor.newInstance(args));
@@ -218,7 +217,7 @@ public final class RowMapperResolver {
                 BeanProperty property = properties.get(i);
                 Object value = coercer.coerce(
                     rs.getObject(column),
-                    ReflectUtils.rawClass(property.type())
+                    Types.rawClass(property.type())
                 );
                 try {
                     property.write(instance, value);

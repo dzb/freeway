@@ -3,7 +3,7 @@ package com.jujin.freeway.db.schema;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.bean.ReflectUtils;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.db.util.Names;
 import com.jujin.freeway.commons.validation.NotBlank;
 import com.jujin.freeway.commons.validation.NotNull;
@@ -108,7 +108,7 @@ public final class SqlTypeMapping {
     private static ColumnDef columnDef(BeanProperty property, Dialect dialect) {
         Column col = property.annotation(Column.class);
         String colName = columnName(property, col);
-        Class<?> javaType = ReflectUtils.rawClass(property.type());
+        Class<?> javaType = Types.rawClass(property.type());
         boolean isNullable = nullable(property, col);
         boolean generated = property.hasAnnotation(Generated.class);
         String sqlType = resolveSqlType(javaType, property, col, dialect, generated);
@@ -324,7 +324,7 @@ public final class SqlTypeMapping {
             return false;
         }
         // Primitive types are NOT NULL by default
-        Class<?> raw = ReflectUtils.rawClass(property.type());
+        Class<?> raw = Types.rawClass(property.type());
         if (raw.isPrimitive()) {
             return false;
         }

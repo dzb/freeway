@@ -25,7 +25,21 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class DbModule implements Module2{
+/**
+ * IoC module that integrates {@code freeway-db} with the Freeway container.
+ *
+ * <p>Installing this module provides:
+ * <ul>
+ *   <li>{@link Database} — created from {@link PoolConfig} resolved from config cascade</li>
+ *   <li>{@link Orm} — bound as a singleton</li>
+ *   <li>{@link DatabaseHub} — multi-datasource routing</li>
+ *   <li>{@link Pool} — built-in; override via extension module with {@code .primary()}</li>
+ *   <li>{@link Dialect} — auto-detected from JDBC URL or overridden via {@code freeway.db.dialect}</li>
+ *   <li>{@link MigrationRunner} — versioned SQL migration at startup</li>
+ *   <li>RuntimeHook that runs Schema auto-DDL and migrations before the HTTP server starts</li>
+ * </ul>
+ */
+public final class DbModule implements Module2 {
 
     private static final Logger LOG = LoggerFactory.getLogger(DbModule.class);
 
@@ -117,18 +131,8 @@ public final class DbModule implements Module2{
     private static Database buildDatabase(Container container) {
         PoolConfig config = container.get(PoolConfig.class);
         RowMapperResolver resolver = container.get(RowMapperResolver.class);
-        String poolId = container.get(SymbolSource.class)
-                .resolve("freeway.db.pool", "builtin");
-        return new DatabaseImpl(config, resolver, resolvePool(container, poolId));
-    }
-
-    private static Pool resolvePool(Container container, String poolId) {
-        try {
-            return container.get(Pool.class, poolId);
-        } catch (RuntimeException ex) {
-            throw new IllegalStateException(
-                "Unable to resolve pool engine '" + poolId + "'", ex);
-        }
+        Pool pool = container.get(Pool.class);
+        return new DatabaseImpl(config, resolver, pool);
     }
 
     private static MigrationRunner buildMigrationRunner(Container container) {

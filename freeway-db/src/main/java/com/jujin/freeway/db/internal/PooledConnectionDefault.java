@@ -5,7 +5,7 @@ import java.sql.Connection;
 import java.time.Duration;
 import java.time.Instant;
 
-public final class PooledConnectionDefault implements PooledConnection {
+final class PooledConnectionDefault implements PooledConnection {
 
     private final Connection conn;
     private final Instant createdAt;
@@ -18,6 +18,7 @@ public final class PooledConnectionDefault implements PooledConnection {
         this.lastReturned = createdAt;
     }
 
+    @Override
     public Connection connection() {
         return conn;
     }
@@ -32,7 +33,7 @@ public final class PooledConnectionDefault implements PooledConnection {
     }
 
     /**
-     * 连接被借出的时刻，null 表示空闲中。
+     * Timestamp when the connection was borrowed; null when idle.
      */
     Instant borrowedAt() {
         return borrowedAt;

@@ -8,6 +8,25 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Fluent builder for creating a {@link Database} instance.
+ *
+ * <p>Minimal example:
+ * <pre>{@code
+ * Database db = DatabaseBuilder.from(PoolConfig.defaults(url, user, pass)).build();
+ * }</pre>
+ *
+ * <p>Custom pool, coercer, or row mappers can be configured before calling {@link #build()}:
+ * <pre>{@code
+ * Database db = DatabaseBuilder.from(config)
+ *     .pool(myPool)
+ *     .rowMapper(User.class, (rs, n) -> new User(rs.getLong("id"), rs.getString("name")))
+ *     .build();
+ * }</pre>
+ *
+ * @see Database
+ * @see PoolConfig
+ */
 public final class DatabaseBuilder {
 
     private PoolConfig config;

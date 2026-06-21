@@ -37,9 +37,7 @@ freeway-commons          shared utilities: JSON, coercion, Defer, ScopedCache, b
 freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, extensions
 freeway-boot             launcher, config cascade, profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
-  ├ freeway-http-robaho  zero-dep engine with WebSocket (default)
-  ├ freeway-http-undertow Undertow adapter
-  └ freeway-http-jetty   Jetty adapter
+  └ freeway-http-undertow Undertow adapter (HTTP + WebSocket)
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
   └ freeway-db-hikari    HikariCP connection pool adapter
 freeway-mq-kafka         Kafka adapter for EventBus
@@ -203,23 +201,23 @@ public class MyLibModule implements Module2 {
 
 ### Config-Driven Module Selection
 
-Modules can read config to decide what to bind. The HTTP engine selection and DB pool selection both use this pattern:
+### Config-Driven Module Selection
+
+Modules can read config to decide what to bind. The dialect selection uses this pattern:
 
 ```java
-// freeway.db.pool=builtin  → binds PoolDefault
-// freeway.db.pool=hikari   → binds HikariPool (if HikariPoolModule is installed)
-b.bind(Pool.class).to(PoolDefault.class).id("builtin");
-// HikariPoolModule binds: b.bind(Pool.class).to(HikariPool.class).id("hikari").primary();
+// freeway.db.dialect=mysql  → container.get(Dialect.class, "mysql")
+// freeway.db.dialect=       → auto-detect from JDBC URL → PostgresDialect (primary)
+b.bind(Dialect.class).to(PostgresDialect.class).id("postgresql").primary();
+b.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
 ```
-
-User sets `freeway.db.pool=hikari` in config; the primary binding resolves to `HikariPool`. No code change needed.
 
 ### Built-in Framework Modules
 
 | Module | Purpose |
 |--------|---------|
 | `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"` and default exception mappers (`BodyTooLargeException` → 413, `ValidationException` → 400). |
-| `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (selectable via `freeway.db.pool`), registers `DatabaseHub`. |
+| `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (built-in `PoolDefault`; override via extension module `.primary()`), registers `DatabaseHub`. |
 | `HikariPoolModule` | Binds `HikariPool` as a `Pool` implementation with `id("hikari").primary()`. |
 | `KafkaModule` | Creates `KafkaConfig`, binds `KafkaEventBridge` and `KafkaSubscriber`, registers `RuntimeHook` for Kafka lifecycle. |
 
@@ -798,20 +796,30 @@ Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationEx
 
 ### Engine Selection
 
-`freeway.web.engine` config property selects the transport:
+`HttpModule` bundles `FreewayHttpEngine` as the default (high-performance, built-in HTTP/2 + WebSocket). Extension modules bind their engine with `.primary()` — when multiple `HttpEngine` bindings exist, the container resolves the primary one automatically:
 
-| Value | Engine |
-|-------|--------|
-| `robaho` (default) | Zero-dep, WebSocket |
-| `jdk` | Built-in JDK, HTTP only |
-| `undertow` | Undertow adapter |
-| `jetty` | Jetty adapter |
-
-Engine adapters bind their engine by string id:
+| Engine | Module | Features |
+|--------|--------|----------|
+| `FreewayHttpEngine` | Built-in in `HttpModule` | High-performance, HTTP/2 + WebSocket (default) |
+| `UndertowEngine` | `freeway-http-undertow` | HTTP + WebSocket, production-grade |
 
 ```java
-binder.bind(MyEngine.class).to(MyEngine.class).id("my-engine");
+// Default — FreewayHttpEngine
+FreewayApp.run(args, new AppModule(), new HttpModule());
+
+// Undertow — just add the module, container picks it via .primary()
+FreewayApp.run(args, new AppModule(), new HttpModule(), new UndertowModule());
 ```
+
+**How it works:**
+
+1. `HttpModule` binds `HttpEngine` → `FreewayHttpEngine` **without** `.primary()`
+2. `UndertowModule` binds `HttpEngine` → `UndertowEngine` **with** `.primary()`
+3. With only `HttpModule`, `FreewayHttpEngine` is the sole binding and used automatically
+4. With both modules, the container resolves `.primary()` → `UndertowEngine`
+5. `WebServerBuilder.engine(…)` bypasses container resolution entirely for programmatic override
+
+No config keys needed — just add or remove the extension module. Same `.primary()` pattern used by `freeway-db-hikari` and custom database dialects.
 
 ### Testing with HTTP
 
@@ -1023,12 +1031,17 @@ Pool pool = new PoolDefault(config);
 Database db = new DatabaseBuilder().config(config).pool(pool).build();
 ```
 
-**IoC pool selection:** when using `DbModule`, the pool is selected via `freeway.db.pool` config property (default `"builtin"`). The built-in `id("builtin")` binding creates a `PoolDefault`; binding another `Pool` implementation with id and primary selects that implementation — mirroring the HTTP engine selection pattern:
+**IoC pool selection:** `DbModule` binds `PoolDefault` (id `"builtin"`, no `.primary()`). Extension modules like `HikariPoolModule` bind their pool with `.primary()`. The container automatically selects the primary pool when multiple bindings exist — same pattern as HTTP engine selection:
 
 ```java
-// freeway.db.pool=hikari → HikariPool is primary
+// Default — PoolDefault
+FreewayApp.run(args, new AppModule(), new DbModule());
+
+// HikariCP — add the module, container selects it via .primary()
 FreewayApp.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
 ```
+
+No config keys needed — just add or remove the extension module.
 
 ### HikariCP (`freeway-db-hikari`)
 
@@ -1042,7 +1055,7 @@ HikariPool pool = new HikariPool(config);
 Database db = new DatabaseBuilder().config(config).pool(pool).build();
 ```
 
-**IoC usage:** add `HikariPoolModule` to the launcher — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. Then set `freeway.db.pool=hikari` to activate it.
+**IoC usage:** add `HikariPoolModule` to the launcher — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. No config keys needed.
 
 `HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `DatabaseStats`.
 
