@@ -42,4 +42,7 @@ tmp/
 _script_*.bat
 
 .soloncode/
-.agents/ 
+.agents/
+
+# Bench SQLite database
+bench.db

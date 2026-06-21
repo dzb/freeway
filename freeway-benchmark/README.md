@@ -5,14 +5,13 @@ See [BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md) for the benchmark rules and r
 
 ## Prerequisites
 
-Install the core reactor into your local Maven repository before running the smoke benchmark:
+Install the core reactor into your local Maven repository before running benchmarks:
 
 ```bash
-cd freeway
 mvn -pl freeway-commons,freeway-ioc,freeway-boot,freeway-http,freeway-db -am install -DskipTests "-Dgpg.skip=true"
 ```
 
-## JMH
+## JMH Microbenchmarks
 
 Run the microbenchmarks through the JMH launcher:
 
@@ -24,10 +23,14 @@ mvn -pl freeway-benchmark -am -DskipTests exec:java \
 
 Useful benchmark classes:
 
-- `com.jujin.freeway.http.engine.HttpParserBenchmark`
-- `com.jujin.freeway.http.route.RouteIndexBenchmark`
-- `com.jujin.freeway.http.body.MultipartFormBenchmark`
-- `com.jujin.freeway.http.HttpContextLookupBenchmark`
+- `com.jujin.freeway.http.engine.HttpParserBenchmark` — HTTP/1.1 request parsing
+- `com.jujin.freeway.http.engine.HttpContextOutputBenchmark` — response output (text, JSON, not-found)
+- `com.jujin.freeway.http.engine.HttpContextLookupBenchmark` — header/query/param lookup
+- `com.jujin.freeway.http.engine.FilterChainBenchmark` — full filter chain (timing → cors → health)
+- `com.jujin.freeway.http.engine.JsonCodecBenchmark` — JSON serialization/deserialization
+- `com.jujin.freeway.http.engine.ws.WebSocketFrameBenchmark` — WebSocket frame read/write/construct
+- `com.jujin.freeway.http.route.RouteIndexBenchmark` — route matching (exact, param, wildcard)
+- `com.jujin.freeway.http.body.MultipartFormBenchmark` — multipart form parsing
 
 The microbenchmarks are the decision-grade inputs. The HTTP smoke harness is for
 local validation and release gating, not for final performance claims.
@@ -36,41 +39,56 @@ If you want forked JMH runs (`-f > 0`), run them with an explicit benchmark
 classpath. The plain `exec:java` sample above is the zero-fork path; it avoids
 classpath drift and is the safest default for local iteration.
 
-## Decision-grade HTTP benchmark
+## HTTP Black-box Benchmark
 
-Use the separate-process benchmark when comparing engines:
-
-```bash
-mvn -pl freeway-benchmark -am -DskipTests exec:java \
-  -Dexec.mainClass=com.jujin.freeway.benchmarks.http.HttpEngineDecisionMain \
-  -Dbench.engine=freeway \
-  -Dbench.requests=2000 \
-  -Dbench.concurrency=2 \
-  -Dbench.warmup=200 \
-  -Dbench.runs=3
-```
-
-This runner starts the server in a child JVM, runs the client load in another
-child JVM, and reports the median of three independent runs.
-Use `bench.engine=jdk-native` as the lower-bound baseline, and compare `freeway`
-against `jdk-native`, `undertow-native`, or `robaho-native` on the same request shape.
-
-## HTTP smoke benchmark
-
-Run the black-box server benchmark with a single engine per JVM:
+Run the server benchmark with the built-in engine:
 
 ```bash
 mvn -pl freeway-benchmark -am -DskipTests exec:java \
-  -Dexec.mainClass=com.jujin.freeway.benchmarks.http.HttpEngineSmokeMain \
+  -Dexec.mainClass=com.jujin.freeway.benchmarks.BenchmarkRunner \
   -Dbench.engine=freeway \
   -Dbench.requests=20000 \
   -Dbench.concurrency=32 \
   -Dbench.warmup=2000
 ```
 
-Supported engines:
+Use `bench.engine=jdk-native` as the lower-bound baseline for comparison.
+Run directly with `java -cp` for fully isolated classpath (avoids exec:java classpath issues):
 
-- `freeway`
-- `jdk-native`
-- `undertow-native`
-- `robaho-native`
+```bash
+mvn -pl freeway-benchmark -am process-classes -DskipTests
+java --add-opens=java.base/java.lang=ALL-UNNAMED \
+     --enable-native-access=ALL-UNNAMED \
+     -cp "$(cat freeway-benchmark/target/benchmark.classpath);freeway-benchmark/target/classes" \
+     -Dbench.engine=freeway -Dbench.requests=20000 -Dbench.concurrency=32 -Dbench.warmup=2000 \
+     -Dbench.runs=3 -Dbench.fork=false \
+     com.jujin.freeway.benchmarks.BenchmarkRunner
+```
+
+| Engine           | Description |
+|------------------|-------------|
+| `freeway`        | Freeway's built-in HTTP engine (`FreewayHttpEngine`) |
+| `jdk-native`     | Bare JDK `com.sun.net.httpserver.HttpServer` (baseline) |
+| `robaho-native`  | Robaho's `HttpServer` implementation (`robaho.net.httpserver`) |
+| `undertow-native`| Native Undertow server (`io.undertow.Undertow`) |
+
+## ServerHarness API
+
+The `ServerHarness` supports three benchmark scenarios via `Engine` + `Scenario` enums:
+
+```java
+// Start a server
+try (var h = ServerHarness.start(Engine.FREEWAY, Scenario.PING)) {
+    int port = h.port();
+    // ... send requests ...
+}
+```
+
+| Scenario   | Method | Path | Response |
+|------------|--------|------|----------|
+| `PING`     | GET    | `/ping` | 200 "pong" text/plain |
+| `JSON`     | GET    | `/api/resource` | 200 `{"id":1,"name":"test"}` |
+| `ECHO_BODY`| POST   | `/echo` | 200 + request body echo |
+
+To add a new scenario, add a case in `ServerHarness.freewayHandler()`,
+`bareHandler()`, and `undertowHandler()`.

@@ -54,42 +54,52 @@ public final class BenchmarkRunner {
         Path serverLog = Files.createTempFile("bench-server-", ".log");
         // Start server in child JVM
         Process server = new ProcessBuilder(javaBin(), "-cp", classpath(),
-            "com.jujin.freeway.benchmarks.BenchmarkRunner",
-            "-Dbench.role=server", "-Dbench.engine=" + engine, "-Dbench.mode=" + mode)
+            "-Dbench.role=server", "-Dbench.engine=" + engine, "-Dbench.mode=" + mode,
+            "com.jujin.freeway.benchmarks.BenchmarkRunner")
             .redirectErrorStream(true).redirectOutput(serverLog.toFile()).start();
         try {
             int port = awaitReady(server, serverLog, Duration.ofSeconds(30));
             // Start client in child JVM
             Path clientLog = Files.createTempFile("bench-client-", ".log");
             Process client = new ProcessBuilder(javaBin(), "-cp", classpath(),
-                "com.jujin.freeway.benchmarks.BenchmarkRunner",
                 "-Dbench.role=client", "-Dbench.engine=" + engine, "-Dbench.mode=" + mode,
                 "-Dbench.port=" + port, "-Dbench.requests=" + requests,
-                "-Dbench.concurrency=" + concurrency, "-Dbench.warmup=" + warmup)
+                "-Dbench.concurrency=" + concurrency, "-Dbench.warmup=" + warmup,
+                "com.jujin.freeway.benchmarks.BenchmarkRunner")
                 .redirectErrorStream(true).redirectOutput(clientLog.toFile()).start();
             try {
                 int exit = client.waitFor();
-                if (exit != 0) throw new RuntimeException("Client exit " + exit + "\n" + Files.readString(clientLog));
-                return parseResult(Files.readString(clientLog));
-            } finally { client.destroyForcibly(); Files.deleteIfExists(clientLog); }
-        } finally { server.destroyForcibly(); Files.deleteIfExists(serverLog); }
+                if (exit != 0) throw new RuntimeException("Client exit " + exit + "\n" + readAllSafe(clientLog));
+                return parseResult(readAllSafe(clientLog));
+            } finally { client.destroyForcibly(); deleteSafe(clientLog); }
+        } finally { server.destroyForcibly(); deleteSafe(serverLog); }
     }
 
     private static int awaitReady(Process p, Path log, Duration timeout) throws IOException, InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
             if (Files.exists(log)) {
-                for (String line : Files.readString(log, StandardCharsets.ISO_8859_1).lines().toList()) {
-                    if (line.startsWith("READY ")) {
-                        String port = line.substring(line.indexOf('=') + 1).split("\\s")[0];
-                        return Integer.parseInt(port);
+                try {
+                    String content = new String(Files.readAllBytes(log), StandardCharsets.ISO_8859_1);
+                    for (String line : content.lines().toList()) {
+                        if (line.startsWith("READY ")) {
+                            String port = line.substring(line.indexOf('=') + 1).split("\\s")[0];
+                            return Integer.parseInt(port);
+                        }
                     }
+                } catch (IOException ignored) {
+                    // log file may be temporarily locked by child process
                 }
             }
-            if (!p.isAlive()) throw new RuntimeException("Server died: " + Files.readString(log));
+            if (!p.isAlive()) throw new RuntimeException("Server died: " + readAllSafe(log));
             Thread.sleep(100);
         }
-        throw new RuntimeException("Server not ready: " + Files.readString(log));
+        throw new RuntimeException("Server not ready: " + readAllSafe(log));
+    }
+
+    private static String readAllSafe(Path log) {
+        try { return new String(Files.readAllBytes(log), StandardCharsets.ISO_8859_1); }
+        catch (IOException e) { return "(unreadable: " + e.getMessage() + ")"; }
     }
 
     private static Result parseResult(String output) {
@@ -101,7 +111,8 @@ public final class BenchmarkRunner {
     // --- in-process mode ---
 
     private static Result runInProcess(String engine, String mode, int requests, int concurrency, int warmup) throws Exception {
-        try (var h = ServerHarness.start(engine, mode)) {
+        var eng = ServerHarness.Engine.fromString(engine);
+        try (var h = ServerHarness.start(eng, ServerHarness.Scenario.PING)) {
             return "ws".equalsIgnoreCase(mode)
                 ? benchWs(engine, mode, h.port(), requests, concurrency, warmup)
                 : benchHttp(engine, mode, h.port(), requests, concurrency, warmup);
@@ -111,7 +122,8 @@ public final class BenchmarkRunner {
     // --- server/client subcommands ---
 
     private static void runServer(String engine, String mode) throws Exception {
-        try (var h = ServerHarness.start(engine, mode)) {
+        var eng = ServerHarness.Engine.fromString(engine);
+        try (var h = ServerHarness.start(eng, ServerHarness.Scenario.PING)) {
             System.out.println("READY port=" + h.port() + " engine=" + engine);
             System.out.flush();
             Thread.sleep(Long.MAX_VALUE); // wait until killed
@@ -189,6 +201,16 @@ public final class BenchmarkRunner {
 
     private static String javaBin() { return ProcessHandle.current().info().command().orElse("java"); }
 
+    /** Delete a file, retrying briefly on Windows where the child process handle may linger. */
+    private static void deleteSafe(Path file) {
+        for (int i = 0; i < 5; i++) {
+            try { Files.deleteIfExists(file); return; }
+            catch (IOException e) {
+                try { Thread.sleep(100); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); return; }
+            }
+        }
+    }
+
     private static String classpath() {
         String override = System.getProperty("bench.classpath");
         if (override != null && !override.isBlank()) return override;
@@ -198,7 +220,7 @@ public final class BenchmarkRunner {
             if (Files.isRegularFile(f)) {
                 try {
                     String deps = Files.readString(f).trim();
-                    String classes = f.getParent().resolveSibling("classes").toString();
+                    String classes = f.getParent().resolve("classes").toString();
                     return classes + File.pathSeparator + deps;
                 } catch (IOException ignored) {}
             }

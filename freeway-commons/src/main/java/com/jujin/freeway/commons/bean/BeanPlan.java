@@ -51,29 +51,30 @@ public final class BeanPlan {
         return type;
     }
 
-    public boolean record() {
     /** Returns true if the type is a Java record. */
+    public boolean record() {
         return record;
     }
 
+    /** Returns the constructor metadata, or null if the type has no usable constructor. */
     public BeanConstructor constructor() {
         return constructor;
-    /** Returns the constructor metadata. */
     }
 
+    /** Returns true if the type has a usable constructor. */
     public boolean isConstructable() {
         return constructor != null;
     }
-    /** Returns an unmodifiable list of all properties. */
 
+    /** Returns an unmodifiable list of all properties. */
     public List<BeanProperty> properties() {
         return properties;
     }
 
+    /** Looks up a property by name. Returns null if not found. */
     public BeanProperty property(String name) {
         return index.get(name);
     }
-    /** Looks up a property by name. Returns null if not found. */
 
     private static BeanPlan forRecord(Class<?> type) {
         try {

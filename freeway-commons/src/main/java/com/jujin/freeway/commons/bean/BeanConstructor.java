@@ -29,6 +29,12 @@ public final class BeanConstructor {
         this.parameters = List.copyOf(parameters);
     }
 
+    /**
+     * Wraps a JDK {@link Constructor} in a cached {@link BeanConstructor}.
+     *
+     * @param constructor the constructor to wrap
+     * @return a new bean constructor with a cached method handle
+     */
     public static BeanConstructor of(Constructor<?> constructor) {
         Objects.requireNonNull(constructor, "constructor");
         return new BeanConstructor(
@@ -39,7 +45,11 @@ public final class BeanConstructor {
         );
     }
 
-    /** Returns the underlying JDK constructor. */
+    /**
+     * Returns the underlying JDK constructor.
+     *
+     * @return the JDK constructor
+     */
     public Constructor<?> constructor() {
         return constructor;
     }
@@ -54,7 +64,13 @@ public final class BeanConstructor {
         return parameters;
     }
 
-    /** Looks up an annotation by type. */
+    /**
+     * Looks up an annotation by type on this constructor.
+     *
+     * @param type the annotation class to look for
+     * @param <A>  the annotation type
+     * @return the annotation, or null if not present
+     */
     public <A extends Annotation> A annotation(Class<A> type) {
         for (Annotation annotation : annotations) {
             if (type.isInstance(annotation)) {
@@ -64,7 +80,12 @@ public final class BeanConstructor {
         return null;
     }
 
-    /** Returns true if this constructor has the given annotation. */
+    /**
+     * Returns true if this constructor has the given annotation.
+     *
+     * @param type the annotation class to check for
+     * @return true if the annotation is present
+     */
     public boolean hasAnnotation(Class<? extends Annotation> type) {
         return annotation(type) != null;
     }

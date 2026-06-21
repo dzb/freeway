@@ -8,7 +8,7 @@ public record Result(String engine, String mode, int requests, int ok, int error
                       double rps, long p50us, long p95us, long p99us) {
     @Override public String toString() {
         return String.format(Locale.ROOT,
-            "engine=%s mode=%s requests=%d ok=%d errors=%d rps=%.0f p50=%dus p95=%dus p99=%dus",
+            "engine=%s mode=%s requests=%d ok=%d errors=%d rps=%.0f p50=%d p95=%d p99=%d",
             engine, mode, requests, ok, errors, rps, p50us, p95us, p99us);
     }
     public static Result median(List<Result> rs) {

@@ -9,6 +9,16 @@ import java.lang.reflect.Method;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * Caching utility for {@link MethodHandle}, {@link VarHandle}, and
+ * constructor handles used by the bean introspection framework.
+ *
+ * <p>All handles are lazily created and cached in concurrent maps. Public
+ * methods expose method-handle lookup and invocation for external use
+ * (primarily by the IoC container), while package-private methods support
+ * handle creation for fields and constructors used internally by
+ * {@link BeanIntrospector}.
+ */
 public final class MethodHandleUtils {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
     private static final ConcurrentMap<Constructor<?>, MethodHandle> CONSTRUCTOR_HANDLES = new ConcurrentHashMap<>();
@@ -77,10 +87,22 @@ public final class MethodHandleUtils {
 
     // -- package-private: varHandle/constructorHandle (internal to commons.bean) --
 
+    /**
+     * Returns a cached {@link VarHandle} for the given field.
+     *
+     * @param field the reflection field object
+     * @return the corresponding VarHandle
+     */
     static VarHandle varHandle(Field field) {
         return VAR_HANDLES.computeIfAbsent(field, MethodHandleUtils::createVarHandle);
     }
 
+    /**
+     * Returns a cached {@link MethodHandle} for the given constructor.
+     *
+     * @param constructor the reflection constructor object
+     * @return the corresponding MethodHandle
+     */
     static MethodHandle constructorHandle(Constructor<?> constructor) {
         return CONSTRUCTOR_HANDLES.computeIfAbsent(constructor, MethodHandleUtils::createConstructorHandle);
     }
