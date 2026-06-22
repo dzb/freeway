@@ -72,7 +72,6 @@ public final class FreewayHttpEngine implements HttpEngine {
                     }
                 }
             }, "freeway-http-acceptor");
-        acceptor.setDaemon(true);
         acceptor.start();
 
         String scheme = sslContext != null ? "https" : "http";
