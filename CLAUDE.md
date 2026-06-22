@@ -21,31 +21,31 @@ JUnit 5.12, SLF4J 2.0.17.
 ## Module Dependency Graph
 
 ```
-freeway-commons
- ├─ freeway-ioc
- │   └─ freeway-boot
- ├─ freeway-http
- │   └─ (built-in: FreewayHttpEngine; external: Undertow in freeway-ext)
- └─ freeway-db
-     └─ (pools: built-in / hikari)
+freeway-commons         zero deps
+ ├─ freeway-ioc         depends on commons
+ │   ├─ freeway-boot    depends on ioc
+ │   └─ freeway-http    depends on ioc (+ commons transitive)
+ └─ freeway-db          depends on commons (ioc optional)
 ```
 
 Core modules are in this repository and have zero external dependencies.
-Adapter modules with third-party library integrations live in the
-[freeway-ext](https://github.com/dzb/freeway-ext) repository and track
-the same version.
+Engine adapters, connection pools, and MQ bridges with third-party
+library integrations live in [freeway-ext](https://github.com/dzb/freeway-ext).
+Only Undertow remains as an external HTTP engine; Robaho and Jetty
+adapters have been removed.
 
 ## Architecture Boundaries
 
 - **`Container`** — IoC boundary only: `get(Class)`, `get(Class, String)`, `close()`. Created via `Freeway.create(Module2...)`.
-- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `Launcher.run(args, Module2...)`.
+- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `FreewayApp.run(args, Module2...)`.
 - **`ServiceId`** is intentionally not a public type — service ids are plain strings, normalized internally by `ServiceIds`.
 - **`Defer` / `ScopedCache`** — commons-level `ScopedValue` primitives. `Defer` buffers actions for commit-time drain; `ScopedCache` caches key-value pairs with lifecycle cleanup on scope exit. IoC's thread scope is built on `ScopedCache`.
 - **Scopes** declared only via `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`. Thread scope is entered through `Scoping.within()`.
 - **`RuntimeHook`** — module-level start/stop extension. Contributed through `Contribution<RuntimeHook>`, ordered with `before/after`. `HttpModule` contributes the server hook with stable id `"freeway.http.server"`.
-- **`LoggerSource`** — built-in logger service. Commons provides JUL fallback for SLF4J only when no external provider is present. Low-level code calls `LoggingBootstrap.logger(...)`, not `LoggerFactory` directly.
-- **HTTP** — `WebServer` has explicit `start()`/`stop()`. In boot, the `HttpModule` runtime hook handles this. In tests using `Container` directly, start/stop the server explicitly.
-- **DB** — `Database` is the entry point. Named params (`:name`/`$name`), programmatic transactions, built-in pooling, `DatabaseHub` for multi-datasource.
+- **`LoggerSource`** — built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery; activates only when no external SLF4J provider is detected. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
+- **`.primary()` pattern** — used for engine, pool, and dialect selection. Default implementation bound without `.primary()`; extension modules bind their alternative with `.primary()`. Container resolves the primary binding automatically — no config keys needed. Same pattern across HTTP engine (`FreewayHttpEngine` vs `UndertowEngine`), connection pool (`PoolDefault` vs `HikariPool`), and DB dialect (`PostgresDialect` vs custom).
+- **HTTP** — `FreewayHttpEngine` is the built-in engine (virtual threads, synchronous I/O, HTTP/1.1 + HTTP/2 h2c/h2 + WebSocket + HTTPS). `WebServer` has explicit `start()`/`stop()`. In boot, the `HttpModule` runtime hook handles this. In tests using `Container` directly, start/stop the server explicitly. HttpParser's `bodyStream()` provides the request body stream including any bytes buffered past the header boundary.
+- **DB** — `Database` is the entry point. Named params (`:name`/`$name`), programmatic transactions, built-in pooling, dialect auto-detection from JDBC URL, `DatabaseHub` for multi-datasource. Schema (annotation-driven DDL) and Migration (versioned SQL) provide complementary DB evolution.
 
 ## Naming Rules
 
@@ -57,10 +57,16 @@ the same version.
 
 ## Injection Annotations
 
-All in `com.jujin.freeway.ioc.annotation`: `@Inject`, `@Named`, `@Primary`, `@Symbol`, `@Value`.
+All in `com.jujin.freeway.ioc.annotation`: `@Inject`, `@Named`, `@Symbol`, `@Value`, `@PostConstruct`, `@PreDestroy`.
 
+- `@Inject` — field/constructor/parameter injection; `@Inject("id")` for qualified injection.
+- `@Named("id")` — alias for `@Inject("id")`, qualifier by binding id.
 - `@Symbol("key")` — strict config lookup, missing key fails.
 - `@Value("${key:default}")` — expression expansion with optional default.
+- `@PostConstruct` — lifecycle callback after injection is complete.
+- `@PreDestroy` — lifecycle callback before the instance is destroyed.
+
+Primary resolution uses `binding.primary()` on the binding DSL, not an annotation.
 
 ## Design Rules
 
