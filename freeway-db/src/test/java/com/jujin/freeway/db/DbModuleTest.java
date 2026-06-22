@@ -22,16 +22,16 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DbModuleTest {
-    private static final String URL_KEY = PoolConfig.PREFIX + ".url";
-    private static final String USER_KEY = PoolConfig.PREFIX + ".username";
-    private static final String PASS_KEY = PoolConfig.PREFIX + ".password";
-    private static final String MIG_PATH_KEY = "freeway.db.migration.path";
-    private static final String MIG_TABLE_KEY = "freeway.db.migration.table";
-    private static final String SCHEMA_GROUPS_KEY = "freeway.db.schema.groups";
-    private static final String POOL_MAX_SIZE_KEY = "freeway.db.pool.max-size";
-    private static final String POOL_CONNECTION_TIMEOUT_KEY = "freeway.db.pool.connection-timeout";
-    private static final String MIGRATION_ENABLED_KEY = "freeway.db.migration.enabled";
-    private static final String DIALECT_KEY = "freeway.db.dialect";
+    private static final String URL_KEY = DbConfigKeys.URL;
+    private static final String USER_KEY = DbConfigKeys.USERNAME;
+    private static final String PASS_KEY = DbConfigKeys.PASSWORD;
+    private static final String MIG_PATH_KEY = DbConfigKeys.MIGRATION_PATH;
+    private static final String MIG_TABLE_KEY = DbConfigKeys.MIGRATION_TABLE;
+    private static final String SCHEMA_GROUPS_KEY = DbConfigKeys.SCHEMA_GROUPS;
+    private static final String POOL_MAX_SIZE_KEY = DbConfigKeys.POOL_MAX_SIZE;
+    private static final String POOL_CONNECTION_TIMEOUT_KEY = DbConfigKeys.POOL_CONNECTION_TIMEOUT;
+    private static final String MIGRATION_ENABLED_KEY = DbConfigKeys.MIGRATION_ENABLED;
+    private static final String DIALECT_KEY = DbConfigKeys.DIALECT;
 
     private String previousUrl;
     private String previousUser;

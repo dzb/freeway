@@ -2,6 +2,7 @@ package com.jujin.freeway.db.migration;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseBuilder;
+import com.jujin.freeway.db.DbConfigKeys;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.DbModule;
 import com.jujin.freeway.db.SqlException;
@@ -24,9 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MigrationRunnerTest {
-    private static final String URL_KEY = PoolConfig.PREFIX + ".url";
-    private static final String USER_KEY = PoolConfig.PREFIX + ".username";
-    private static final String PASS_KEY = PoolConfig.PREFIX + ".password";
+    private static final String URL_KEY = DbConfigKeys.URL;
+    private static final String USER_KEY = DbConfigKeys.USERNAME;
+    private static final String PASS_KEY = DbConfigKeys.PASSWORD;
 
     private String previousUrl;
     private String previousUser;

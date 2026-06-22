@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.engine;
 
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
@@ -38,15 +39,15 @@ class FreewayHttpEngineTest {
             app.close();
             app = null;
         }
-        System.clearProperty("freeway.web.server.port");
-        System.clearProperty("freeway.web.server.host");
+        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(HttpConfigKeys.SERVER_HOST);
     }
 
     @Test
     void servesRoutes() throws Exception {
         int port = freePort();
-        System.setProperty("freeway.web.server.host", "127.0.0.1");
-        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(WebServer.class).isRunning());
@@ -66,8 +67,8 @@ class FreewayHttpEngineTest {
     @Test
     void websocketEchoesMessages() throws Exception {
         int port = freePort();
-        System.setProperty("freeway.web.server.host", "127.0.0.1");
-        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(WebServer.class).isRunning());
@@ -106,8 +107,8 @@ class FreewayHttpEngineTest {
     @Test
     void sseStreamReturnsEvents() throws Exception {
         int port = freePort();
-        System.setProperty("freeway.web.server.host", "127.0.0.1");
-        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         CompletableFuture<Void> serverDone = new CompletableFuture<>();
 
@@ -144,8 +145,8 @@ class FreewayHttpEngineTest {
     @Test
     void websocketLifecycleInvokesOpenAndErrorCallbacks() throws Exception {
         int port = freePort();
-        System.setProperty("freeway.web.server.host", "127.0.0.1");
-        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         CompletableFuture<Void> opened = new CompletableFuture<>();
         CompletableFuture<Void> errored = new CompletableFuture<>();
@@ -194,8 +195,8 @@ class FreewayHttpEngineTest {
     @Test
     void oversizedRequestBodyReturnsPayloadTooLarge() throws Exception {
         int port = freePort();
-        System.setProperty("freeway.web.server.host", "127.0.0.1");
-        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(Route.post("/echo", ctx -> {
@@ -222,8 +223,8 @@ class FreewayHttpEngineTest {
         Files.writeString(tempDir.resolve("existing.txt"), "static file");
 
         int port = freePort();
-        System.setProperty("freeway.web.server.host", "127.0.0.1");
-        System.setProperty("freeway.web.server.port", String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
 
         app = FreewayApp.run(new String[0], binder -> {
             binder.contribute(StaticResourceMount.class).add(

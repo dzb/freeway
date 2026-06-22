@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@link Orm} — bound as a singleton</li>
  *   <li>{@link DatabaseHub} — multi-datasource routing</li>
  *   <li>{@link Pool} — built-in; override via extension module with {@code .primary()}</li>
- *   <li>{@link Dialect} — auto-detected from JDBC URL or overridden via {@code freeway.db.dialect}</li>
+ *   <li>{@link Dialect} — auto-detected from JDBC URL or overridden via {@link DbConfigKeys#DIALECT}</li>
  *   <li>{@link MigrationRunner} — versioned SQL migration at startup</li>
  *   <li>RuntimeHook that runs Schema auto-DDL and migrations before the HTTP server starts</li>
  * </ul>
@@ -108,18 +108,18 @@ public final class DbModule implements Module2 {
         SymbolSource s = container.get(SymbolSource.class);
         Coercer coercer = container.get(Coercer.class);
         return new PoolConfig(
-            Objects.requireNonNull(s.resolve("freeway.db.url"), "freeway.db.url is required"),
-            Objects.requireNonNull(s.resolve("freeway.db.username"), "freeway.db.username is required"),
-            s.resolve("freeway.db.password", ""),
-            Integer.parseInt(s.resolve("freeway.db.pool.max-size", String.valueOf(PoolConfig.DEFAULT_MAX_SIZE))),
-            Integer.parseInt(s.resolve("freeway.db.pool.min-idle", String.valueOf(PoolConfig.DEFAULT_MIN_IDLE))),
-            resolveDuration(coercer, s, "freeway.db.pool.connection-timeout", PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
-            resolveDuration(coercer, s, "freeway.db.pool.max-lifetime", PoolConfig.DEFAULT_MAX_LIFETIME),
-            resolveDuration(coercer, s, "freeway.db.pool.max-idle-time", PoolConfig.DEFAULT_MAX_IDLE_TIME),
-            resolveDuration(coercer, s, "freeway.db.pool.clean-interval", PoolConfig.DEFAULT_CLEAN_INTERVAL),
-            s.resolve("freeway.db.pool.health-check-query", null),
-            resolveDuration(coercer, s, "freeway.db.pool.health-check-timeout", PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
-            resolveDuration(coercer, s, "freeway.db.query-timeout", PoolConfig.DEFAULT_QUERY_TIMEOUT)
+            Objects.requireNonNull(s.resolve(DbConfigKeys.URL), DbConfigKeys.URL + " is required"),
+            Objects.requireNonNull(s.resolve(DbConfigKeys.USERNAME), DbConfigKeys.USERNAME + " is required"),
+            s.resolve(DbConfigKeys.PASSWORD, ""),
+            Integer.parseInt(s.resolve(DbConfigKeys.POOL_MAX_SIZE, String.valueOf(PoolConfig.DEFAULT_MAX_SIZE))),
+            Integer.parseInt(s.resolve(DbConfigKeys.POOL_MIN_IDLE, String.valueOf(PoolConfig.DEFAULT_MIN_IDLE))),
+            resolveDuration(coercer, s, DbConfigKeys.POOL_CONNECTION_TIMEOUT, PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
+            resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_LIFETIME, PoolConfig.DEFAULT_MAX_LIFETIME),
+            resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_IDLE_TIME, PoolConfig.DEFAULT_MAX_IDLE_TIME),
+            resolveDuration(coercer, s, DbConfigKeys.POOL_CLEAN_INTERVAL, PoolConfig.DEFAULT_CLEAN_INTERVAL),
+            s.resolve(DbConfigKeys.POOL_HEALTH_CHECK_QUERY, null),
+            resolveDuration(coercer, s, DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
+            resolveDuration(coercer, s, DbConfigKeys.QUERY_TIMEOUT, PoolConfig.DEFAULT_QUERY_TIMEOUT)
         );
     }
 
@@ -140,16 +140,16 @@ public final class DbModule implements Module2 {
         Coercer coercer = container.get(Coercer.class);
         return new MigrationRunner(
             container.get(Database.class),
-            coercer.coerce(s.resolve("freeway.db.migration.enabled", "true"), boolean.class),
-            s.resolve("freeway.db.migration.path", "db/migration/"),
-            s.resolve("freeway.db.migration.table", "_migrations")
+            coercer.coerce(s.resolve(DbConfigKeys.MIGRATION_ENABLED, "true"), boolean.class),
+            s.resolve(DbConfigKeys.MIGRATION_PATH, "db/migration/"),
+            s.resolve(DbConfigKeys.MIGRATION_TABLE, "_migrations")
         );
     }
 
     private static void runSchema(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
         Coercer coercer = container.get(Coercer.class);
-        if (!coercer.coerce(s.resolve("freeway.db.schema.auto", "true"), boolean.class)) {
+        if (!coercer.coerce(s.resolve(DbConfigKeys.SCHEMA_AUTO, "true"), boolean.class)) {
             return;
         }
         var entities = container.extension(SchemaEntity.class).all();
@@ -158,7 +158,7 @@ public final class DbModule implements Module2 {
         }
 
         Set<String> enabledGroups = parseGroupFilter(
-            s.resolve("freeway.db.schema.groups", "")
+            s.resolve(DbConfigKeys.SCHEMA_GROUPS, "")
         );
 
         Database db = container.get(Database.class);
@@ -168,7 +168,7 @@ public final class DbModule implements Module2 {
             if (se.entityTypes().length == 0) continue;
 
             if (!enabledGroups.isEmpty() && !enabledGroups.contains(se.name())) {
-                LOG.debug("Schema group '{}' skipped (not in freeway.db.schema.groups)", se.name());
+                LOG.debug("Schema group '{}' skipped (not in {})", se.name(), DbConfigKeys.SCHEMA_GROUPS);
                 continue;
             }
 
@@ -199,7 +199,7 @@ public final class DbModule implements Module2 {
      */
     static Dialect resolveDialect(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        String configured = s.resolve("freeway.db.dialect", "");
+        String configured = s.resolve(DbConfigKeys.DIALECT, "");
         boolean explicit = !configured.isBlank();
         String dialectId = explicit ? configured : detectDialect(s);
         if (!dialectId.isBlank()) {
@@ -217,7 +217,7 @@ public final class DbModule implements Module2 {
     }
 
     static String detectDialect(SymbolSource s) {
-        String url = s.resolve("freeway.db.url", "");
+        String url = s.resolve(DbConfigKeys.URL, "");
         if (url.contains(":postgresql:")) return "postgresql";
         if (url.contains(":mysql:") || url.contains(":mariadb:")) return "mysql";
         if (url.contains(":h2:")) {

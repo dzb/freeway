@@ -296,6 +296,18 @@ Freeway.create(binder -> {
 
 Advisors require interface-to-class bindings because the container uses JDK proxies.
 
+### Binding Registration & Conflict Resolution
+
+Bindings are registered after each module's `bind()` method completes — not during the fluent chain. This means `.id()`, `.scope()`, `.primary()` etc. are all resolved before the binding enters the index. Combined with unique default ids (internal, not user-facing), the container avoids false collisions during module loading.
+
+| Scenario | Outcome |
+|---|---|
+| Two modules bind same type, one sets `.id("xxx")` | ✅ Registered under different ids — no collision |
+| Two modules bind same type, both keep default id | ✅ Both registered, `get()` → `findUnique` reports multiple matches and asks for `.primary()` |
+| Same module binds same type twice, no explicit id | ✅ Both registered, `get()` → `findUnique` reports multiple matches |
+| Two modules bind same type with the **same** explicit id | ❌ `updateId()` detects the collision at registration time |
+| Same module binds same type twice with the same explicit id | ❌ Caught at registration time |
+
 ### Resolution
 
 ```java

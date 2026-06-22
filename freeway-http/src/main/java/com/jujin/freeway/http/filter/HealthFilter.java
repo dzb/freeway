@@ -7,8 +7,8 @@ import com.jujin.freeway.http.route.RouteHandler;
 /**
  * Filter that intercepts the health endpoint before routing.
  * <p>
- * Configured via {@code freeway.web.health.enabled} (default {@code true}) and
- * {@code freeway.web.health.path} (default {@code /healthz}).
+ * Configured via {@link com.jujin.freeway.http.HttpConfigKeys#HEALTH_ENABLED} (default {@code true}) and
+ * {@link com.jujin.freeway.http.HttpConfigKeys#HEALTH_PATH} (default {@code /healthz}).
  * The response body is produced by {@link HealthCheck}; bind a custom
  * implementation to replace the default {@code {"status":"ok"}}.
  */

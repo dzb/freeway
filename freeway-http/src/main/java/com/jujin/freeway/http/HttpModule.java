@@ -36,15 +36,15 @@ public final class HttpModule implements Module2 {
 
         // CorsFilter — bridge ioC config to plain constructor
         binder.bind(CorsFilter.class).to(container -> {
-            boolean enabled = boolConfig(container, "freeway.web.cors.enabled", true);
-            String origins = stringConfig(container, "freeway.web.cors.allowed-origins", "*");
-            String methods = stringConfig(container, "freeway.web.cors.allowed-methods",
+            boolean enabled = config(container, HttpConfigKeys.CORS_ENABLED, true);
+            String origins = config(container, HttpConfigKeys.CORS_ALLOWED_ORIGINS, "*");
+            String methods = config(container, HttpConfigKeys.CORS_ALLOWED_METHODS,
                 "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-            String headers = stringConfig(container, "freeway.web.cors.allowed-headers",
+            String headers = config(container, HttpConfigKeys.CORS_ALLOWED_HEADERS,
                 "Content-Type, Authorization");
-            String exposed = stringConfig(container, "freeway.web.cors.exposed-headers", "");
-            String maxAge = stringConfig(container, "freeway.web.cors.max-age", "3600");
-            boolean credentials = boolConfig(container, "freeway.web.cors.allow-credentials", false);
+            String exposed = config(container, HttpConfigKeys.CORS_EXPOSED_HEADERS, "");
+            String maxAge = config(container, HttpConfigKeys.CORS_MAX_AGE, "3600");
+            boolean credentials = config(container, HttpConfigKeys.CORS_ALLOW_CREDENTIALS, false);
             return new CorsFilter(enabled, origins, methods, headers,
                 exposed.isBlank() ? null : exposed, maxAge, credentials);
         });
@@ -58,17 +58,17 @@ public final class HttpModule implements Module2 {
 
         // HttpEngine — bind to FreewayHttpEngine
         binder.bind(HttpEngine.class).to(container ->
-            container.get(FreewayHttpEngine.class)).id("freeway");
+            container.get(FreewayHttpEngine.class)).id("builtin");
 
         // WebServer — bridge IoC capabilities to plain constructor
         binder.bind(WebServer.class).to(container -> {
             HttpEngine engine = container.get(HttpEngine.class);
 
-            String host = stringConfig(container, "freeway.web.server.host", "127.0.0.1");
-            int port = intConfig(container, "freeway.web.server.port", 8080);
-            int backlog = intConfig(container, "freeway.web.server.backlog", 0);
-            Duration shutdownGrace = durationConfig(container,
-                "freeway.web.server.shutdown-grace", Duration.ofSeconds(2));
+            String host = config(container, HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+            int port = config(container, HttpConfigKeys.SERVER_PORT, 8080);
+            int backlog = config(container, HttpConfigKeys.SERVER_BACKLOG, 0);
+            Duration shutdownGrace = config(container,
+                HttpConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.ofSeconds(2));
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
@@ -105,8 +105,8 @@ public final class HttpModule implements Module2 {
 
         binder.bind(HealthCheck.class).to(HealthCheck.Default.class);
         binder.bind(HealthFilter.class).to(container -> {
-            boolean enabled = boolConfig(container, "freeway.web.health.enabled", true);
-            String path = stringConfig(container, "freeway.web.health.path", "/healthz");
+            boolean enabled = config(container, HttpConfigKeys.HEALTH_ENABLED, true);
+            String path = config(container, HttpConfigKeys.HEALTH_PATH, "/healthz");
             HealthCheck check = container.get(HealthCheck.class);
             return new HealthFilter(enabled, path, check);
         });
@@ -135,45 +135,12 @@ public final class HttpModule implements Module2 {
         });
     }
 
-    private static String stringConfig(Container container, String key, String defaultValue) {
-        return container.get(SymbolSource.class).resolve(key, defaultValue);
-    }
-
-    private static boolean boolConfig(Container container, String key, boolean defaultValue) {
-        String value = stringConfig(container, key, null);
-        if (value == null) return defaultValue;
-        return "true".equalsIgnoreCase(value) || "1".equals(value);
-    }
-
-    private static int intConfig(Container container, String key, int defaultValue) {
-        String value = stringConfig(container, key, null);
-        if (value == null) return defaultValue;
-        try { return Integer.parseInt(value); }
-        catch (NumberFormatException e) { return defaultValue; }
-    }
-
-    private static Duration durationConfig(Container container, String key,
-                                           Duration defaultValue) {
-        String value = stringConfig(container, key, null);
-        if (value == null) return defaultValue;
-        // Support "2s", "500ms", "1m" suffixes
-        value = value.trim();
-        try {
-            if (value.endsWith("ms")) {
-                return Duration.ofMillis(Long.parseLong(
-                    value.substring(0, value.length() - 2)));
-            }
-            if (value.endsWith("s")) {
-                return Duration.ofSeconds(Long.parseLong(
-                    value.substring(0, value.length() - 1)));
-            }
-            if (value.endsWith("m")) {
-                return Duration.ofMinutes(Long.parseLong(
-                    value.substring(0, value.length() - 1)));
-            }
-            return Duration.ofSeconds(Long.parseLong(value));
-        } catch (NumberFormatException e) {
+    @SuppressWarnings("unchecked")
+    private static <T> T config(Container container, String key, T defaultValue) {
+        String raw = container.get(SymbolSource.class).resolve(key, null);
+        if (raw == null) {
             return defaultValue;
         }
+        return container.get(Coercer.class).coerce(raw, (Class<T>) defaultValue.getClass());
     }
 }

@@ -6,12 +6,15 @@ import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.advisor.Advisor;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.Objects;
 import java.lang.reflect.Modifier;
 
 final class BindingImpl<T> implements Binding<T> {
+    private static final AtomicInteger ID_COUNTER = new AtomicInteger();
+
     private final ContainerImpl container;
     private final Class<T> type;
     private String id;
@@ -24,7 +27,7 @@ final class BindingImpl<T> implements Binding<T> {
     BindingImpl(ContainerImpl container, Class<T> type) {
         this.container = Objects.requireNonNull(container, "container");
         this.type = Objects.requireNonNull(type, "type");
-        this.id = ServiceIds.normalize(type.getSimpleName());
+        this.id = ServiceIds.normalize(type.getSimpleName()) + "@" + ID_COUNTER.getAndIncrement();
     }
 
     Class<T> type() {

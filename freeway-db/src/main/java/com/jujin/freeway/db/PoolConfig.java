@@ -43,7 +43,6 @@ public record PoolConfig(
     Duration healthCheckTimeout,
     Duration queryTimeout
 ) {
-    public static final String PREFIX = "freeway.db";
     public static final int DEFAULT_MAX_SIZE = 10;
     public static final int DEFAULT_MIN_IDLE = 2;
     public static final Duration DEFAULT_CONNECTION_TIMEOUT = Duration.ofSeconds(10);
@@ -55,18 +54,22 @@ public record PoolConfig(
     public static final Duration DEFAULT_QUERY_TIMEOUT = Duration.ofSeconds(15);
 
     public PoolConfig {
-        requireText(url, "url");
-        requireText(username, "username");
+        url = requireNonBlank(url, "url");
+        username = requireNonBlank(username, "username");
         if (password == null) password = "";
-        requirePositive(maxSize, "maxSize");
-        requireRange(minIdle, 0, maxSize, "minIdle");
+
+        if (maxSize <= 0) throw new IllegalArgumentException("maxSize must be positive");
+        if (minIdle < 0 || minIdle > maxSize)
+            throw new IllegalArgumentException("minIdle must be between 0 and " + maxSize);
+
         requireDuration(connectionTimeout, "connectionTimeout");
         requireDuration(maxLifetime, "maxLifetime");
         requireDuration(maxIdleTime, "maxIdleTime");
         requireDuration(cleanInterval, "cleanInterval");
-        if (healthCheckQuery != null && healthCheckQuery.isBlank()) healthCheckQuery = null;
         requireDuration(healthCheckTimeout, "healthCheckTimeout");
         requireDuration(queryTimeout, "queryTimeout");
+
+        if (healthCheckQuery != null && healthCheckQuery.isBlank()) healthCheckQuery = null;
     }
 
     public static PoolConfig defaults(String url, String username, String password) {
@@ -79,27 +82,15 @@ public record PoolConfig(
         );
     }
 
-    private static String requireText(String value, String name) {
+    private static String requireNonBlank(String value, String name) {
         Objects.requireNonNull(value, name);
         String trimmed = value.trim();
         if (trimmed.isEmpty()) throw new IllegalArgumentException(name + " must not be blank");
         return trimmed;
     }
 
-    private static int requirePositive(int value, String name) {
-        if (value <= 0) throw new IllegalArgumentException(name + " must be positive");
-        return value;
-    }
-
-    private static int requireRange(int value, int min, int max, String name) {
-        if (value < min || value > max)
-            throw new IllegalArgumentException(name + " must be between " + min + " and " + max);
-        return value;
-    }
-
-    private static Duration requireDuration(Duration value, String name) {
+    private static void requireDuration(Duration value, String name) {
         if (value == null || value.isZero() || value.isNegative())
             throw new IllegalArgumentException(name + " must be positive");
-        return value;
     }
 }

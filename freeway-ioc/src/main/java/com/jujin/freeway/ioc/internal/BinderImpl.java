@@ -7,10 +7,13 @@ import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 final class BinderImpl implements Binder {
     private final ContainerImpl container;
+    private final List<BindingImpl<?>> pending = new ArrayList<>();
 
     BinderImpl(ContainerImpl container) {
         this.container = Objects.requireNonNull(container, "container");
@@ -19,8 +22,15 @@ final class BinderImpl implements Binder {
     @Override
     public <T> Binding<T> bind(Class<T> type) {
         BindingImpl<T> binding = new BindingImpl<>(container, type);
-        container.register(binding);
+        pending.add(binding);
         return binding;
+    }
+
+    void flushPending() {
+        for (BindingImpl<?> binding : pending) {
+            container.register(binding);
+        }
+        pending.clear();
     }
 
     @Override

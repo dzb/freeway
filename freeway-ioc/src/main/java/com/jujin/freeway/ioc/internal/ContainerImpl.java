@@ -124,6 +124,7 @@ public final class ContainerImpl implements Container {
             LOG.debug("Installing module: {}", moduleType.getSimpleName());
             loadedModules.add(module);
             module.bind(binder);
+            ((BinderImpl) binder).flushPending();
             return;
         }
         LOG.debug("Ignoring duplicate module: {}", moduleType.getSimpleName());
