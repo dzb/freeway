@@ -63,8 +63,9 @@ public final class FreewayHttpEngine implements HttpEngine {
                 while (!finished.get()) {
                     try {
                         var socket = ss.accept();
-                        Thread.ofVirtual().start(
-                            new HttpSession(socket, handler, jsonCodec, coercer, this, config.socketBufferSize()));
+                        Thread.ofVirtual()
+                            .name("http-" + socket.getRemoteSocketAddress())
+                            .start(new HttpSession(socket, handler, jsonCodec, coercer, this, config.socketBufferSize()));
                     } catch (IOException e) {
                         if (!finished.get()) LOG.error("Accept failed", e);
                         break;

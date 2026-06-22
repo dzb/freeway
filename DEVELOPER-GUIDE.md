@@ -37,13 +37,14 @@ freeway-commons          shared utilities: JSON, coercion, Defer, ScopedCache, b
 freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, extensions
 freeway-boot             launcher, config cascade, profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
-  └ freeway-http-undertow Undertow adapter (HTTP + WebSocket)
+  └ built-in              FreewayHttpEngine (HTTP/1.1 + HTTP/2 + WebSocket + HTTPS)
+  └ engine adapters       Undertow → see freeway-ext
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
-  └ freeway-db-hikari    HikariCP connection pool adapter
-freeway-mq-kafka         Kafka adapter for EventBus
+  └ connection pool       HikariCP adapter → see freeway-ext
+freeway-mq-kafka         Kafka adapter for EventBus → see freeway-ext
 ```
 
-Dependencies flow downward. Core modules (`commons`, `ioc`) carry zero external dependencies beyond SLF4J API. Starter modules (`freeway-starter-*`) are empty JARs that only bundle dependency sets via POM — they contain no Java source.
+Dependencies flow downward. Core modules (`commons`, `ioc`) carry zero external dependencies beyond SLF4J API. Engine/connection-pool/MQ adapters with third-party library integrations live in the [freeway-ext](https://github.com/dzb/freeway-ext) repository, keeping the core modules dependency-free.
 
 ```
 freeway-boot        freeway-http        freeway-db

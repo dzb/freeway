@@ -112,7 +112,7 @@ public final class HttpSession implements Runnable {
                     ? reqIdHeader.getFirst() : null;
                 RequestContext requestContext = HttpContext.createRequestContext(correlationId);
 
-                InputStream bodyStream = createBodyStream(in, req);
+                InputStream bodyStream = parser.bodyStream();
 
                 ctx.reset(req.method(), req.path(), req.queryString(),
                     req.headers(), bodyStream, req.contentLength(), req.isChunked(),
@@ -253,13 +253,6 @@ public final class HttpSession implements Runnable {
     }
 
     // --- helpers ---
-
-    private static InputStream createBodyStream(InputStream raw,
-                                                 HttpParser.ParsedRequest req) {
-        if (req.isChunked()) return new ChunkedInputStream(raw);
-        if (req.contentLength() >= 0) return new FixedLengthInputStream(raw, req.contentLength());
-        return raw;
-    }
 
     private static void sendUpgradeError(OutputStream out, int code, String msg)
         throws IOException {

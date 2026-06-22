@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`JULConsoleFormatter`** — ANSI-colored single-line JUL console output with TTY auto-detection. Colors disabled automatically when output is piped. Override with `-Dfreeway.log.color=always|never`. Opt out entirely with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
+- **`HttpParser.bodyStream()`** — returns an `InputStream` for reading the request body that includes any bytes already buffered past the header boundary, followed by the remaining raw socket input. Eliminates the need for manual `ChunkedInputStream`/`FixedLengthInputStream` wrapping in `HttpSession`.
+- **Named virtual threads** — HTTP connection handler threads now named `http-<remote-address>` for easier debugging and monitoring of per-connection activity.
 - **`MySqlDialect`** — built-in MySQL/MariaDB dialect with backtick quoting, `AUTO_INCREMENT`, `VARCHAR(36)` UUID, `DATETIME(6)` Instant, `LONGBLOB` binary.
 - **`SqliteDialect`** — built-in SQLite dialect with double-quote quoting, `AUTOINCREMENT`, `TEXT` UUID/Instant, `BLOB` binary, `sqlite_master` introspection.
 - **Dialect auto-detection** — `detectDialect()` maps JDBC URLs to built-in dialects. H2 maps to PostgreSQL (or MySQL if `MODE=MySQL`). Explicit unknown dialect throws `IllegalStateException`; auto-detected unknown falls back with warning.
@@ -80,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`WebServer` filter chain** — pre-built in constructor instead of reconstructed per request.
 - **Robaho `WebSocketSession`** — request headers snapshotted at upgrade time, matching Undertow/Jetty behavior.
 - **`UndertowWebEngine` exception handling** — removed double `RuntimeException` wrapping of handler errors.
+- **`HttpSession.createBodyStream()`** — removed private helper; body stream creation moved to `HttpParser.bodyStream()`, which properly handles bytes already buffered past the header boundary.
 - **Engine selection** — switched from config-key-based (`freeway.web.engine`) to `.primary()`-based IoC resolution. `HttpModule` binds `FreewayHttpEngine` without `.primary()`; extension modules (e.g. `UndertowModule`) bind with `.primary()`. No config key needed — just add or remove the extension module.
 - **DEVELOPER-GUIDE.md** — updated engine switching section with `.primary()` mechanism explanation, code examples, and corrected module tree (removed robaho/jetty references).
 - **SKILL.md** — updated module tree and added HTTP engine switching section in Chinese, matching DEVELOPER-GUIDE.md.

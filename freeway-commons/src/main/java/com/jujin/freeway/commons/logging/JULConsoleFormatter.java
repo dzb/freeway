@@ -15,8 +15,8 @@ import java.util.logging.LogRecord;
  * <p>Format — level column left-aligned at {@value #LEVEL_WIDTH} chars,
  * full timestamp and FQN logger for audit trails:
  * <pre>{@code
- * 2026-06-18 12:34:56.789  INFO     [main]  com.jujin.freeway.db.DbModule  -  Applied migration
- * 2026-06-18 12:34:56.790  WARNING  [worker]  com.jujin.freeway.http.WebServer  -  Slow request
+ * 2026-06-18 12:34:56.789  INFO     [main]  c.j.f.db.DbModule  -  Applied migration
+ * 2026-06-18 12:34:56.790  WARNING  [worker]  c.j.f.http.WebServer  -  Slow request
  * }</pre>
  *
  * <p>Colors are enabled when the JVM has a TTY ({@link System#console()}
@@ -72,10 +72,10 @@ public final class JULConsoleFormatter extends Formatter {
         out.append(' ');
         out.append(dim('[' + Thread.currentThread().getName() + ']'));
 
-        // logger — FQN for audit traceability
+        // logger — abbreviated package, full class name
         out.append(' ');
         String loggerName = record.getLoggerName();
-        out.append(color(loggerName != null ? loggerName : "", useColor ? CYAN : null));
+        out.append(color(loggerName != null ? abbreviate(loggerName) : "", useColor ? CYAN : null));
 
         // message
         out.append(' ');
@@ -191,6 +191,19 @@ public final class JULConsoleFormatter extends Formatter {
     }
 
     // ── utilities ────────────────────────────────────────────────────
+
+    /** Abbreviate first 3 segments (groupId) to first letter, keep the rest intact. */
+    private static String abbreviate(String fqn) {
+        String[] parts = fqn.split("\\.");
+        if (parts.length <= 3) return fqn;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 3; i++) sb.append(parts[i].charAt(0)).append('.');
+        for (int i = 3; i < parts.length; i++) {
+            sb.append(parts[i]);
+            if (i < parts.length - 1) sb.append('.');
+        }
+        return sb.toString();
+    }
 
     private static String padRight(String s, int n) {
         if (s.length() >= n) return s;

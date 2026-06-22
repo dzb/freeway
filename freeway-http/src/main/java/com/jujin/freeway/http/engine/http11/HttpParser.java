@@ -1,7 +1,9 @@
 package com.jujin.freeway.http.engine.http11;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -185,6 +187,19 @@ public final class HttpParser {
         for (int i = 0; i <= hl - nl; i++)
             if (haystack.regionMatches(true, i, needle, 0, nl)) return true;
         return false;
+    }
+
+    /**
+     * Returns an {@code InputStream} for reading the request body.
+     * Includes any bytes already buffered past the header boundary,
+     * followed by the remaining raw socket input.
+     * Call this once after {@link #parse()}.
+     */
+    public InputStream bodyStream() {
+        if (pos >= end) return in;
+        var prefix = new ByteArrayInputStream(buf, pos, end - pos);
+        pos = end; // consumed
+        return new SequenceInputStream(prefix, in);
     }
 
     public record ParsedRequest(

@@ -28,8 +28,8 @@ class JULConsoleFormatterTest {
         assertTrue(output.startsWith(expectedDate), "should start with full timestamp: " + output);
         assertTrue(output.contains("INFO   "), "level should be padded to 7: " + output);
         assertTrue(output.contains("Hello world"), "should contain message: " + output);
-        assertTrue(output.contains("com.jujin.freeway.db.DbModule"),
-                "should contain FQN logger: " + output);
+        assertTrue(output.contains("c.j.f.db.DbModule"),
+                "should contain abbreviated logger: " + output);
         assertTrue(output.endsWith("\n"), "should end with newline");
         assertFalse(output.contains("\033["), "should not contain ANSI codes: " + output);
     }

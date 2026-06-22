@@ -14,13 +14,13 @@ freeway-commons     JSON、类型转换、Defer、ScopedCache、Bean 内省、�
 freeway-ioc         IoC 容器：绑定、注入、作用域、AOP、事件总线、扩展
 freeway-boot        launcher、配置级联、profiles、运行时生命周期
 freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipart、SSE
-  ├ 内置引擎          JDK HttpServer（HTTP only，无 WebSocket）
-  └ 外部引擎          Robaho / Undertow / Jetty → 见 freeway-ext
+  ├ 内置引擎          FreewayHttpEngine（HTTP/1.1 + HTTP/2 + WebSocket + HTTPS）
+  └ 外部引擎          Undertow → 见 freeway-ext
 freeway-db          JDBC：ORM、连接池、事务、SQL 构建器、迁移
   └ 外部连接池        HikariCP → 见 freeway-ext
 
-第三方库适配器（freeway-http-robaho, freeway-http-undertow,
-freeway-http-jetty, freeway-db-hikari, freeway-mq-kafka）已
+第三方库适配器（freeway-http-undertow,
+freeway-db-hikari, freeway-mq-kafka）已
 拆分到独立仓库 [freeway-ext](https://github.com/dzb/freeway-ext)。
 核心模块零外部依赖。
 ```
@@ -633,6 +633,32 @@ binder.bind(HealthCheck.class).to(c -> () -> {
 |--------|--------|------|
 | `freeway.web.health.enabled` | `true` | 启用/关闭健康检查 |
 | `freeway.web.health.path` | `/healthz` | 健康检查路径 |
+
+### 引擎切换
+
+`HttpModule` 内置 `FreewayHttpEngine`（高性能，HTTP/1.1 + HTTP/2 + WebSocket + HTTPS）。扩展引擎通过 `.primary()` 模式覆盖：
+
+| 引擎 | 模块 | 特性 |
+|------|------|------|
+| `FreewayHttpEngine` | `HttpModule` 内置 | 虚拟线程 + 同步 I/O，HTTP/2 h2c/h2，WebSocket，HTTPS（默认） |
+| `UndertowEngine` | `freeway-http-undertow` | HTTP + WebSocket，生产级 |
+
+```java
+// 默认 — FreewayHttpEngine
+FreewayApp.run(args, new AppModule(), new HttpModule());
+
+// 切换到 Undertow — 添加扩展模块，容器通过 .primary() 自动选择
+FreewayApp.run(args, new AppModule(), new HttpModule(), new UndertowModule());
+```
+
+**原理：**
+1. `HttpModule` 绑定 `HttpEngine` → `FreewayHttpEngine`，**不设** `.primary()`
+2. `UndertowModule` 绑定 `HttpEngine` → `UndertowEngine`，**设** `.primary()`
+3. 仅使用 `HttpModule` 时，`FreewayHttpEngine` 是唯一绑定，自动使用
+4. 同时存在时，容器解析 `.primary()` → `UndertowEngine`
+5. `WebServerBuilder.engine(...)` 可绕过容器直接指定引擎
+
+无需配置键 — 添加或移除扩展模块即可。与 `freeway-db-hikari` 和自定义数据库方言使用相同的 `.primary()` 模式。
 
 ## 数据库
 
