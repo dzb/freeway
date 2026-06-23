@@ -14,7 +14,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | `└ engine adapters` | Undertow — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
 | `└ connection pool` | HikariCP adapter — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
-| `├ MQ adapter` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+| `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have zero external dependencies. Extension modules with third-party
 library integrations live in **[freeway-ext](https://github.com/dzb/freeway-ext)**.

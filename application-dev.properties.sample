@@ -54,7 +54,7 @@ freeway.db.username=sa
 freeway.db.password=
 
 # Light pool — single developer
-freeway.db.pool=builtin
+# Pool engine: default built-in (PoolDefault), selected via module inclusion
 freeway.db.pool.max-size=4
 freeway.db.pool.min-idle=1
 freeway.db.query-timeout=30s

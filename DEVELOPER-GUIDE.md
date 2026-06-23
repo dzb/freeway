@@ -202,8 +202,6 @@ public class MyLibModule implements Module2 {
 
 ### Config-Driven Module Selection
 
-### Config-Driven Module Selection
-
 Modules can read config to decide what to bind. The dialect selection uses this pattern:
 
 ```java
@@ -213,14 +211,14 @@ b.bind(Dialect.class).to(PostgresDialect.class).id("postgresql").primary();
 b.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
 ```
 
-### Built-in Framework Modules
+### Framework Modules
 
 | Module | Purpose |
 |--------|---------|
 | `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"` and default exception mappers (`BodyTooLargeException` → 413, `ValidationException` → 400). |
 | `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (built-in `PoolDefault`; override via extension module `.primary()`), registers `DatabaseHub`. |
-| `HikariPoolModule` | Binds `HikariPool` as a `Pool` implementation with `id("hikari").primary()`. |
-| `KafkaModule` | Creates `KafkaConfig`, binds `KafkaEventBridge` and `KafkaSubscriber`, registers `RuntimeHook` for Kafka lifecycle. |
+| `HikariPoolModule` | Binds `HikariPool` as a `Pool` implementation with `id("hikari").primary()`. → [freeway-ext](https://github.com/dzb/freeway-ext) |
+| `KafkaModule` | Creates `KafkaConfig`, binds `KafkaEventBridge` and `KafkaSubscriber`, registers `RuntimeHook` for Kafka lifecycle. → [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 ### Module Best Practices
 
@@ -580,23 +578,23 @@ AppRuntime runtime = FreewayApp.run(args, new AppModule(), new HttpModule());
 
 `FreewayApp.run()` accepts command-line args and `Module2` instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
-	For more control, use `AppBuilder`:
+For more control, use `AppBuilder`:
 
-	```java
-	AppRuntime app = FreewayApp.of(new MyModule())
-	    .add(new HttpModule(), new DbModule())   // additional modules
-	    .args("--freeway.profile=dev")            // config overrides
-	    .classLoader(customLoader)               // custom class loader for SPI/resources
-	    .autoDiscovery(false)                     // disable SPI module discovery
-	    .shutdownHook(false)                      // skip JVM shutdown hook
-	    .config(myConfigLoader)                   // custom ConfigLoader
-	    .start();
-	```
+```java
+AppRuntime app = FreewayApp.of(new MyModule())
+    .add(new HttpModule(), new DbModule())   // additional modules
+    .args("--freeway.profile=dev")            // config overrides
+    .classLoader(customLoader)               // custom class loader for SPI/resources
+    .autoDiscovery(false)                     // disable SPI module discovery
+    .shutdownHook(false)                      // skip JVM shutdown hook
+    .config(myConfigLoader)                   // custom ConfigLoader
+    .start();
+```
 
-	| Type | Purpose |
-	|------|---------|
-	| `FreewayApp` | Application entry point: `run(args, Module2...)`, `of(Module2...)` |
-	| `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
+| Type | Purpose |
+|------|---------|
+| `FreewayApp` | Application entry point: `run(args, Module2...)`, `of(Module2...)` |
+| `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
 | `AppRuntime` | Runtime API: container, config, state, start, close, `get(Class)`, `get(Class, String)` |
 | `AppState` | `CREATED` → `STARTING` → `RUNNING` → `STOPPING` → `STOPPED` (or `FAILED`) |
 
@@ -616,14 +614,14 @@ Startup invokes hooks in resolved contribution order. Shutdown invokes only star
 
 ### Config Cascade
 
-	Lowest to highest priority:
+Lowest to highest priority:
 
-	1. `application.properties`
-	2. `application.json`
-	3. `application-{profile}.properties`
-	4. `application-{profile}.json`
-	5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
-	6. CLI arguments (`--key=value`, `-Dkey=value`)
+1. `application.properties`
+2. `application.json`
+3. `application-{profile}.properties`
+4. `application-{profile}.json`
+5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
+6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles: `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
 

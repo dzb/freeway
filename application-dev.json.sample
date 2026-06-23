@@ -1,7 +1,6 @@
 {
 	"freeway": {
 		"web": {
-			"engine": "robaho",
 			"server": {
 				"host": "127.0.0.1",
 				"port": "8080",
@@ -24,7 +23,6 @@
 			"username": "sa",
 			"password": "",
 			"query-timeout": "30s",
-			"pool": "builtin",
 			"pool.max-size": "4",
 			"pool.min-idle": "1",
 			"schema.auto": "true",
