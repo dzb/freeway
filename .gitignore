@@ -31,9 +31,6 @@ Desktop.ini
 *.log
 *.trace
 
-# Claude Code
-CLAUDE.md
-
 # Temp
 temp_*
 tmp/
