@@ -76,6 +76,31 @@ Container container = Freeway.create(
 );
 ```
 
+### Web App
+
+```java
+public final class App implements Module2 {
+    @Override
+    public void bind(Binder b) {
+        b.install(new HttpModule());
+
+        b.contribute(Route.class)
+            .add(Route.get("/", ctx -> ctx.send(200, "Hello Freeway")))
+            .add(Route.get("/users/:id", ctx ->
+                ctx.sendJson(200, Map.of("id", ctx.pathVar("id"), "name", "Alice"))));
+    }
+
+    public static void main(String[] args) {
+        FreewayApp.run(args, new App());
+    }
+}
+```
+
+```bash
+curl http://localhost:8080/           # Hello Freeway
+curl http://localhost:8080/users/42   # {"id":"42","name":"Alice"}
+```
+
 ## Build
 
 Requires JDK 25.
