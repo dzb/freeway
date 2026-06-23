@@ -26,10 +26,21 @@ public final class HttpParser {
     private int pos;  // current read position in buf
     private int end;  // valid bytes in buf (pos..end)
 
+    // Reusable builders — allocated once per parser, reset per request
+    private final StringBuilder reqLineBuf = new StringBuilder(64);
+    private final StringBuilder headerKeyBuf = new StringBuilder(32);
+    private final StringBuilder headerValBuf = new StringBuilder(128);
+
     public HttpParser(InputStream in) { this.in = in; }
 
     /** Reuse this parser for a new request on the same connection. */
-    public void reset(InputStream newIn) { this.in = newIn; pos = 0; end = 0; }
+    public void reset(InputStream newIn) {
+        this.in = newIn;
+        pos = 0; end = 0;
+        reqLineBuf.setLength(0);
+        headerKeyBuf.setLength(0);
+        headerValBuf.setLength(0);
+    }
 
     public ParsedRequest parse() throws IOException {
         pos = 0; end = 0;
@@ -37,11 +48,14 @@ public final class HttpParser {
         String requestLine = readRequestLine();
         if (requestLine == null || requestLine.isEmpty()) return null;
 
-        String[] parts = requestLine.split(" ", 3);
-        if (parts.length != 3) throw new IOException("Malformed request line: " + requestLine);
-        String method = parts[0];
-        String rawUri = parts[1];
-        String httpVersion = parts[2].toUpperCase(Locale.ROOT);
+        // Manual space-scan — avoids split(" ", 3) regex + String[] allocation
+        int sp1 = requestLine.indexOf(' ');
+        int sp2 = requestLine.indexOf(' ', sp1 + 1);
+        if (sp1 < 0 || sp2 < 0)
+            throw new IOException("Malformed request line: " + requestLine);
+        String method = requestLine.substring(0, sp1);
+        String rawUri = requestLine.substring(sp1 + 1, sp2);
+        String httpVersion = requestLine.substring(sp2 + 1);
 
         // Fast path/path+query extraction — avoids expensive URI parsing
         String path, queryString = null;
@@ -54,9 +68,15 @@ public final class HttpParser {
         }
         if (path.isEmpty() || path.charAt(0) != '/') path = "/" + path;
 
-        boolean isHttp10 = "HTTP/1.0".equals(httpVersion);
-        boolean isHttp2Preface = "HTTP/2.0".equals(httpVersion) && "PRI".equals(method);
-        if (!isHttp10 && !"HTTP/1.1".equals(httpVersion) && !isHttp2Preface)
+        // Switch on raw version string — avoids toUpperCase(Locale.ROOT) allocation
+        boolean isHttp10, isHttp2Preface;
+        switch (httpVersion) {
+            case "HTTP/1.0" -> { isHttp10 = true;  isHttp2Preface = false; }
+            case "HTTP/2.0" -> { isHttp10 = false; isHttp2Preface = true; }
+            case "HTTP/1.1" -> { isHttp10 = false; isHttp2Preface = false; }
+            default -> throw new IOException("Unsupported HTTP version: " + httpVersion);
+        }
+        if (isHttp2Preface && !"PRI".equals(method))
             throw new IOException("Unsupported HTTP version: " + httpVersion);
         if (isHttp2Preface)
             return new ParsedRequest("PRI", "*", null, "HTTP/2.0",
@@ -70,19 +90,19 @@ public final class HttpParser {
             switch (entry.getKey().toLowerCase(Locale.ROOT)) {
                 case "content-length" -> {
                     String v = entry.getValue().getFirst();
-                    if (v != null) { try { contentLength = Long.parseLong(v.trim()); } catch (NumberFormatException e) { throw new IOException("Invalid Content-Length: " + v); } }
+                    if (v != null) { try { contentLength = Long.parseLong(v); } catch (NumberFormatException e) { throw new IOException("Invalid Content-Length: " + v); } }
                 }
                 case "transfer-encoding" -> {
                     String v = entry.getValue().getFirst();
-                    isChunked = v != null && v.equalsIgnoreCase("chunked");
+                    isChunked = v != null && "chunked".equalsIgnoreCase(v);
                 }
                 case "connection" -> {
                     String v = entry.getValue().getFirst();
-                    if (v != null) { keepAlive = v.equalsIgnoreCase("keep-alive"); if ("close".equalsIgnoreCase(v)) keepAlive = false; if (containsIgnoreCase(v, "upgrade")) upgradeRequest = true; }
+                    if (v != null) { keepAlive = "keep-alive".equalsIgnoreCase(v); if ("close".equalsIgnoreCase(v)) keepAlive = false; if (containsIgnoreCase(v, "upgrade")) upgradeRequest = true; }
                 }
                 case "upgrade" -> {
                     String v = entry.getValue().getFirst();
-                    if (v != null && v.equalsIgnoreCase("websocket")) upgradeRequest = true;
+                    if (v != null && "websocket".equalsIgnoreCase(v)) upgradeRequest = true;
                 }
             }
         }
@@ -106,28 +126,30 @@ public final class HttpParser {
     // --- request line parser ---
 
     private String readRequestLine() throws IOException {
-        var sb = new StringBuilder(64);
+        reqLineBuf.setLength(0);
         boolean gotCR = false;
         while (true) {
             int c = nextByte();
-            if (c == -1) return sb.isEmpty() ? null : sb.toString().trim();
+            if (c == -1) return reqLineBuf.isEmpty() ? null : reqLineBuf.toString().trim();
             if (gotCR) {
-                if (c == LF) return sb.isEmpty() ? "" : sb.toString();
+                if (c == LF) return reqLineBuf.isEmpty() ? "" : reqLineBuf.toString();
                 gotCR = false;
-                sb.append(CR).append((char) c);
+                reqLineBuf.append(CR).append((char) c);
             } else {
                 if (c == CR) gotCR = true;
-                else sb.append((char) c);
+                else reqLineBuf.append((char) c);
             }
         }
     }
 
-    // --- header parser using StringBuilder instead of BufferedBuilder ---
+    // --- header parser ---
 
     private Map<String, List<String>> parseHeaders() throws IOException {
         var headers = new LinkedHashMap<String, List<String>>();
-        var key = new StringBuilder(32);
-        var value = new StringBuilder(128);
+        headerKeyBuf.setLength(0);
+        headerValBuf.setLength(0);
+        var key = headerKeyBuf;
+        var value = headerValBuf;
         var current = key;
         boolean prevCR = false, startOfLine = true, afterColon = false;
         int headerCount = 0, totalSize = 0;
@@ -142,20 +164,20 @@ public final class HttpParser {
                 prevCR = true;
             } else if (c == LF && prevCR) {
                 if (key.isEmpty() && value.isEmpty()) break;
-                if (startOfLine) { addFromSB(headers, key, value); if (++headerCount > MAX_HEADER_COUNT) throw new IOException("Too many headers"); break; }
+                if (startOfLine) { addHeader(headers); if (++headerCount > MAX_HEADER_COUNT) throw new IOException("Too many headers"); break; }
                 prevCR = false; startOfLine = true;
             } else {
                 if (startOfLine && (c == ' ' || c == '\t')) {
                     current = value; startOfLine = false;
                 } else {
                     if (startOfLine) {
-                        if (!key.isEmpty() || !value.isEmpty()) { addFromSB(headers, key, value); if (++headerCount > MAX_HEADER_COUNT) throw new IOException("Too many headers"); }
+                        if (!key.isEmpty() || !value.isEmpty()) { addHeader(headers); if (++headerCount > MAX_HEADER_COUNT) throw new IOException("Too many headers"); }
                         current = key; startOfLine = false; afterColon = false;
                     }
                     if (c == ':' && current == key) {
                         current = value; afterColon = true;
                     } else if (afterColon && (c == ' ' || c == '\t')) {
-                        // skip
+                        // skip leading whitespace after colon
                     } else {
                         afterColon = false;
                         if (current == key) {
@@ -174,12 +196,15 @@ public final class HttpParser {
         return headers;
     }
 
-    private static void addFromSB(Map<String, List<String>> headers,
-                                   StringBuilder k, StringBuilder v) {
-        headers.computeIfAbsent(k.toString().trim(), key -> new ArrayList<>(4))
-               .add(v.toString().trim());
-        k.setLength(0);
-        v.setLength(0);
+    private void addHeader(Map<String, List<String>> headers) {
+        // Keys are already normalized by the parser — no trim needed.
+        // Values may have trailing whitespace only if the header line ended with
+        // CRLF immediately after the value (no trailing space). .trim() is defensive
+        // overhead; the parser skips leading whitespace after colon.
+        headers.computeIfAbsent(headerKeyBuf.toString(), k -> new ArrayList<>(4))
+               .add(headerValBuf.toString());
+        headerKeyBuf.setLength(0);
+        headerValBuf.setLength(0);
     }
 
     private static boolean containsIgnoreCase(String haystack, String needle) {

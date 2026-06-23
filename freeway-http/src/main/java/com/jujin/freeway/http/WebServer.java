@@ -68,22 +68,28 @@ public final class WebServer implements AutoCloseable {
         // Skip event computation when sink is the noop sentinel
         this.publishEvents = this.eventSink != NOOP_SINK;
 
+        // Pre-build chains to avoid per-request lambda allocation
+        RouteHandler corsChain = ctx -> healthFilter.doFilter(ctx, this.filterChain);
+        RouteHandler timedChain = ctx -> {
+            try {
+                corsFilter.doFilter(ctx, corsChain);
+            } catch (Exception ex) {
+                WebServer.this.handleException(ctx, ex);
+                if (publishEvents)
+                    publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
+            }
+            if (publishEvents) {
+                long elapsed = Duration.between(
+                    ctx.requestContext().startTime(), Instant.now()).toMillis();
+                publish(new HttpRequestEvent(
+                    ctx.method(), ctx.path(), ctx.status(), elapsed));
+            }
+        };
+
         this.requestHandler = new HttpRequestHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
-                try {
-                    timingFilter.doFilter(ctx, r -> processRequest(r));
-                } catch (Exception ex) {
-                    handleException(ctx, ex);
-                    if (publishEvents)
-                        publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
-                }
-                if (publishEvents) {
-                    long elapsed = Duration.between(
-                        ctx.requestContext().startTime(), Instant.now()).toMillis();
-                    publish(new HttpRequestEvent(
-                        ctx.method(), ctx.path(), ctx.status(), elapsed));
-                }
+                timingFilter.doFilter(ctx, timedChain);
             }
 
             @Override
@@ -240,11 +246,6 @@ public final class WebServer implements AutoCloseable {
             items,
             timing != null ? timing : new RequestTimingFilter()
         );
-    }
-
-    private void processRequest(HttpContext ctx) throws Exception {
-        RouteHandler chain = next -> healthFilter.doFilter(next, this.filterChain);
-        corsFilter.doFilter(ctx, chain);
     }
 
     private void dispatchToRoute(HttpContext request) throws Exception {

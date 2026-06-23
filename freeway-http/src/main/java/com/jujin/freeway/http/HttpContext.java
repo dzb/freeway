@@ -33,22 +33,6 @@ public abstract class HttpContext {
     protected volatile long maxBodySize = 10_485_760L;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
 
-    private static final int[][] RESPONSE_CLASS =
-        {{100, 199}, {200, 299}, {300, 399}, {400, 499}, {500, 599}};
-    private static final String[][] RESPONSE_REASONS = {
-        {"Continue", "Switching Protocols"},
-        {"OK", "Created", "Accepted", "Non-authoritative Information", "No Content",
-            "Reset Content", "Partial Content"},
-        {"Multiple Choices", "Moved Permanently", "Found", "See Other", "Not Modified",
-            "Temporary Redirect"},
-        {"Bad Request", "Unauthorized", "Payment Required", "Forbidden", "Not Found",
-            "Method Not Allowed", "Not Acceptable", "Proxy Authentication Required",
-            "Request Timeout", "Conflict", "Gone", "Length Required",
-            "Precondition Failed", "Payload Too Large"},
-        {"Internal Server Error", "Not Implemented", "Bad Gateway", "Service Unavailable",
-            "Gateway Timeout"}
-    };
-
     protected HttpContext(JsonCodec jsonCodec, Coercer coercer) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
@@ -385,30 +369,6 @@ public abstract class HttpContext {
     private static String urlDecode(String text) {
         try { return URLDecoder.decode(text, StandardCharsets.UTF_8); }
         catch (Exception e) { return text; }
-    }
-
-    // == Static response helpers ==
-
-    private static final byte[][] REASON_BYTES = buildReasonBytes();
-
-    private static byte[][] buildReasonBytes() {
-        byte[][] r = new byte[600][];
-        for (int cls = 0; cls < RESPONSE_CLASS.length; cls++) {
-            int[] range = RESPONSE_CLASS[cls];
-            String[] reasons = RESPONSE_REASONS[cls];
-            for (int i = 0; i < reasons.length; i++) {
-                r[range[0] + i] = reasons[i].getBytes(StandardCharsets.ISO_8859_1);
-            }
-        }
-        return r;
-    }
-
-    static byte[] reasonBytes(int status) {
-        if (status >= 0 && status < REASON_BYTES.length) {
-            byte[] b = REASON_BYTES[status];
-            if (b != null) return b;
-        }
-        return new byte[0];
     }
 
     /**

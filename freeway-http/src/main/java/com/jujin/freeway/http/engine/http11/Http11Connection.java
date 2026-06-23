@@ -11,9 +11,8 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 
 /**
- * Wraps a connected {@code Socket} with buffered I/O streams and activity
- * tracking for idle timeout management. Each connection is owned by a
- * single virtual thread — no synchronization needed.
+ * Wraps a connected {@code Socket} with buffered I/O streams.
+ * Each connection is owned by a single virtual thread — no synchronization needed.
  */
 public final class Http11Connection {
 
@@ -21,7 +20,6 @@ public final class Http11Connection {
     private final InputStream bufferedIn;
     private final OutputStream bufferedOut;
 
-    volatile long lastActivityTime;
     public volatile boolean closed;
 
     public Http11Connection(Socket socket) throws IOException {
@@ -30,9 +28,8 @@ public final class Http11Connection {
 
     public Http11Connection(Socket socket, int bufferSize) throws IOException {
         this.socket = socket;
-        this.bufferedIn = new BufferedInputStream(new ActivityTrackingInputStream(socket.getInputStream()));
-        this.bufferedOut = new BufferedOutputStream(new ActivityTrackingOutputStream(socket.getOutputStream()), bufferSize);
-        this.lastActivityTime = System.currentTimeMillis();
+        this.bufferedIn = new BufferedInputStream(socket.getInputStream());
+        this.bufferedOut = new BufferedOutputStream(socket.getOutputStream(), bufferSize);
     }
 
     public boolean isSSL() { return socket instanceof SSLSocket; }
@@ -62,25 +59,4 @@ public final class Http11Connection {
         try { socket.close(); } catch (IOException ignored) {}
     }
 
-    private class ActivityTrackingInputStream extends InputStream {
-        private final InputStream delegate;
-        ActivityTrackingInputStream(InputStream delegate) { this.delegate = delegate; }
-        @Override public int read() throws IOException { return delegate.read(); }
-        @Override public int read(byte[] b, int off, int len) throws IOException {
-            return delegate.read(b, off, len);
-        }
-        @Override public int available() throws IOException { return delegate.available(); }
-        @Override public void close() throws IOException { delegate.close(); }
-    }
-
-    private class ActivityTrackingOutputStream extends OutputStream {
-        private final OutputStream delegate;
-        ActivityTrackingOutputStream(OutputStream delegate) { this.delegate = delegate; }
-        @Override public void write(int b) throws IOException { delegate.write(b); }
-        @Override public void write(byte[] b, int off, int len) throws IOException {
-            delegate.write(b, off, len);
-        }
-        @Override public void flush() throws IOException { delegate.flush(); }
-        @Override public void close() throws IOException { delegate.close(); }
-    }
 }

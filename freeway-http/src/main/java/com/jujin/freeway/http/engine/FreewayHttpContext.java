@@ -32,8 +32,8 @@ public final class FreewayHttpContext extends HttpContext {
     private int responseStatus = 200;
     private boolean responded;
     private byte[] cachedBody;
-    // Reusable response buffer — allocated once per connection
-    private byte[] rspBuf = new byte[4096];
+    // Shared drain buffer — reused across drainUnreadBody calls
+    private byte[] drainBuf;
 
     public FreewayHttpContext(JsonCodec jsonCodec, Coercer coercer) {
         super(jsonCodec, coercer);
@@ -60,6 +60,7 @@ public final class FreewayHttpContext extends HttpContext {
         this.responseStatus = 200;
         this.responded = false;
         this.responseHeaders.clear();
+        this.pathVariables.clear();
         this.cachedBody = null;
     }
 
@@ -162,54 +163,41 @@ public final class FreewayHttpContext extends HttpContext {
         boolean bodyAllowed = allowsResponseBody();
         int length = bodyAllowed && !headRequest ? data.length : 0;
 
-        // Write entire response into reusable buffer, then one socket write
-        int p = 0;
-
         // Status line: "HTTP/1.1 {code} {reason}\r\n"
-        p = copy(rspBuf, p, HTTP11);
-        byte[] statusBytes = String.valueOf(responseStatus).getBytes(StandardCharsets.ISO_8859_1);
-        p = copy(rspBuf, p, statusBytes);
-        p = copy(rspBuf, p, SPACE);
-        p = copy(rspBuf, p, reasonBytes(responseStatus));
-        p = copy(rspBuf, p, CRLF);
+        rawOut.write(HTTP11);
+        rawOut.write(String.valueOf(responseStatus).getBytes(StandardCharsets.ISO_8859_1));
+        rawOut.write(SPACE);
+        rawOut.write(reasonBytes(responseStatus));
+        rawOut.write(CRLF);
 
         // Response headers
         for (var entry : responseHeaders.entrySet()) {
-            p = copy(rspBuf, p, entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
-            p = copy(rspBuf, p, COLSP);
-            p = copy(rspBuf, p, entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
-            p = copy(rspBuf, p, CRLF);
+            rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
+            rawOut.write(COLSP);
+            rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
+            rawOut.write(CRLF);
         }
 
         // Content-Length
         if (bodyAllowed && !responseHeaders.containsKey("Content-Length")) {
-            p = copy(rspBuf, p, CL_PREFIX);
-            byte[] lenBytes = String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
-            p = copy(rspBuf, p, lenBytes);
-            p = copy(rspBuf, p, CRLF);
+            rawOut.write(CL_PREFIX);
+            rawOut.write(String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1));
+            rawOut.write(CRLF);
         }
         // Connection
         if (!responseHeaders.containsKey("Connection")) {
-            p = copy(rspBuf, p, keepAlive ? CONN_KA : CONN_CLOSE);
+            rawOut.write(keepAlive ? CONN_KA : CONN_CLOSE);
         }
 
-        p = copy(rspBuf, p, CRLF); // end headers
+        rawOut.write(CRLF); // end headers
 
         // Body
         if (bodyAllowed && !headRequest && data.length > 0) {
-            p = copy(rspBuf, p, data);
+            rawOut.write(data);
         }
 
-        // Single socket write
-        rawOut.write(rspBuf, 0, p);
         rawOut.flush();
         return this;
-    }
-
-    /** Copy src bytes into dst at position, return new position. */
-    private static int copy(byte[] dst, int pos, byte[] src) {
-        System.arraycopy(src, 0, dst, pos, src.length);
-        return pos + src.length;
     }
 
     @Override
@@ -251,8 +239,8 @@ public final class FreewayHttpContext extends HttpContext {
         if (contentLength <= 0 && !chunked) return;
         try {
             if (bodyStream != null) {
-                byte[] buf = new byte[2048];
-                while (bodyStream.read(buf) >= 0) { /* drain */ }
+                if (drainBuf == null) drainBuf = new byte[2048];
+                while (bodyStream.read(drainBuf) >= 0) { /* drain */ }
             }
         } catch (IOException ignored) { /* best-effort */ }
     }

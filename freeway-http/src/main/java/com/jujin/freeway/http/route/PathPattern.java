@@ -130,10 +130,25 @@ public final class PathPattern {
 
     static String[] splitPath(String path) {
         if (path == null || path.isEmpty() || "/".equals(path)) return new String[0];
-        String normalized = path.startsWith("/") ? path.substring(1) : path;
-        if (normalized.endsWith("/")) normalized = normalized.substring(0, normalized.length() - 1);
-        if (normalized.isEmpty()) return new String[0];
-        return normalized.split("/");
+        int start = 0, end = path.length();
+        if (path.charAt(0) == '/') start = 1;
+        if (end > start && path.charAt(end - 1) == '/') end--;
+        if (start >= end) return new String[0];
+
+        // Count segments to size the array in one pass
+        int count = 1;
+        for (int i = start; i < end; i++) {
+            if (path.charAt(i) == '/') count++;
+        }
+        String[] segs = new String[count];
+        int idx = 0, segStart = start;
+        for (int i = start; i <= end; i++) {
+            if (i == end || path.charAt(i) == '/') {
+                segs[idx++] = path.substring(segStart, i);
+                segStart = i + 1;
+            }
+        }
+        return segs;
     }
 
     static boolean containsPathTraversal(String path) {

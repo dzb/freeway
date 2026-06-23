@@ -141,11 +141,12 @@ public final class RouteIndex {
     public RouteMatch match(String method, String path) {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
         // Fast path: exact match cache bypasses trie for routes without variables
-        RouteHandler exact = exactCache.get(key + ":" + path);
+        String cacheKey = key.concat(":").concat(path);
+        RouteHandler exact = exactCache.get(cacheKey);
         if (exact != null) return new RouteMatch(exact, Map.of());
         // HEAD fallback to GET exact cache
         if ("HEAD".equals(key)) {
-            exact = exactCache.get("GET:" + path);
+            exact = exactCache.get("GET:".concat(path));
             if (exact != null) return new RouteMatch(exact, Map.of());
         }
         TrieNode root = methodRoots.get(key);
@@ -159,7 +160,7 @@ public final class RouteIndex {
             return null;
         }
         String[] segments = PathPattern.splitPath(path);
-        Map<String, String> vars = new LinkedHashMap<>();
+        Map<String, String> vars = null;
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
             String seg = segments[i];
@@ -193,6 +194,7 @@ public final class RouteIndex {
                     ) {
                         return null;
                     }
+                    if (vars == null) vars = new LinkedHashMap<>();
                     vars.put(param.paramName, remainder);
                     current = param;
                     break;
@@ -204,6 +206,7 @@ public final class RouteIndex {
                 ) {
                     return null;
                 }
+                if (vars == null) vars = new LinkedHashMap<>();
                 vars.put(param.paramName, seg);
                 current = param;
                 continue;
@@ -213,7 +216,7 @@ public final class RouteIndex {
         if (current.handler == null) {
             return null;
         }
-        return new RouteMatch(current.handler, vars);
+        return new RouteMatch(current.handler, vars != null ? vars : Map.of());
     }
 
     // ---- Trie node ----
