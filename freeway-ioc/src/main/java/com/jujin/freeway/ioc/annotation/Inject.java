@@ -6,15 +6,17 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 标记需要容器注入的字段或构造参数。
+ * Marks a field or constructor parameter for container injection.
  * <p>
- * 与 {@link Named @Named} 功能等价，二者可互换使用。
- * 当同时标注 {@code @Inject("foo")} 和 {@code @Named("bar")} 时值必须一致，否则抛出异常。
+ * Functionally equivalent to {@link Named @Named}; the two can be used
+ * interchangeably. When both {@code @Inject("foo")} and
+ * {@code @Named("bar")} are present on the same target their values must
+ * match, otherwise an exception is thrown.
  * <p>
- * 示例：
+ * Examples:
  * <pre>{@code
  *   @Inject("paypal") PaymentGateway gateway;
- *   // 等价于
+ *   // equivalent to
  *   @Named("paypal") PaymentGateway gateway;
  * }</pre>
  */

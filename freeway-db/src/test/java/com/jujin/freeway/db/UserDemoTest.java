@@ -1,5 +1,7 @@
 package com.jujin.freeway.db;
 
+import com.jujin.freeway.db.schema.PostgresDialect;
+
 import com.jujin.freeway.db.schema.*;
 import org.junit.jupiter.api.Test;
 
@@ -88,7 +90,7 @@ class UserDemoTest {
         // ★ 展示 Schema.ensure() 自动建表
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, User.class);
+            Schema.ensure(db, new PostgresDialect(), User.class);
 
             // 验证表已存在 — 可以正常插入
             Orm orm = Orm.of(db);
@@ -105,7 +107,7 @@ class UserDemoTest {
         var db = builder(uniqueDb()).build();
         try (db) {
             // ----- 建表（DDL） -----
-            Schema.ensure(db, User.class);
+            Schema.ensure(db, new PostgresDialect(), User.class);
             Orm orm = Orm.of(db);
 
             // ----- C: Create -----
@@ -137,7 +139,7 @@ class UserDemoTest {
 
             // ----- U: Update (使用 Bean 风格) -----
             // Record 是不可变的，update 用 Bean
-            Schema.ensure(db, UserBean.class);
+            Schema.ensure(db, new PostgresDialect(), UserBean.class);
             Orm ormBean = Orm.of(db);
 
             UserBean bean = new UserBean("闪电", 3);
@@ -199,7 +201,7 @@ class UserDemoTest {
         // ★ SQL 构建器风格
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, User.class);
+            Schema.ensure(db, new PostgresDialect(), User.class);
             Orm orm = Orm.of(db);
 
             orm.insert(new User("闪电", 3));
@@ -224,7 +226,7 @@ class UserDemoTest {
         // ★ 事务操作
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, User.class);
+            Schema.ensure(db, new PostgresDialect(), User.class);
             Orm orm = Orm.of(db);
 
             db.transaction(() -> {
@@ -258,7 +260,7 @@ class UserDemoTest {
         // 注意：ON CONFLICT 是 PostgreSQL 语法，H2 不支持，所以这里只测 INSERT 路径
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, UserBean.class);
+            Schema.ensure(db, new PostgresDialect(), UserBean.class);
             Orm orm = Orm.of(db);
 
             // id=null → INSERT

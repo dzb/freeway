@@ -6,8 +6,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 标记主键列。
- * 多个 {@code @Id} 标注的字段组成复合主键。
+ * Marks a primary key column.
+ * Multiple {@code @Id} fields form a composite primary key.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.RECORD_COMPONENT})

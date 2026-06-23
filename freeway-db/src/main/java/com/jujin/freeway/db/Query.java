@@ -14,6 +14,6 @@ public interface Query {
 
     <T> Stream<T> stream(Class<T> targetType);
 
-    /** 执行 INSERT / UPDATE / DELETE 并返回影响行数。支持命名参数和集合展开。 */
+    /** Executes INSERT / UPDATE / DELETE and returns the affected row count. Supports named parameters and collection expansion. */
     ExecuteResult execute();
 }

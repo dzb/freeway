@@ -3,7 +3,7 @@ package com.jujin.freeway.db.schema;
 import java.util.List;
 
 /**
- * 表的完整定义（内部使用）。
+ * Complete table definition (internal use).
  */
 record TableDef(String name, List<ColumnDef> columns, List<IndexDef> indexes) {
 
@@ -23,7 +23,7 @@ record TableDef(String name, List<ColumnDef> columns, List<IndexDef> indexes) {
         this(name, columns, List.of());
     }
 
-    /** 返回主键列名列表。 */
+    /** Returns the list of primary key column names. */
     List<String> primaryKeys() {
         return columns.stream()
             .filter(ColumnDef::primaryKey)

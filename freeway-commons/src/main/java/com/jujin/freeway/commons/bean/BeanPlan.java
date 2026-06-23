@@ -7,6 +7,14 @@ import java.lang.invoke.VarHandle;
 import java.lang.reflect.*;
 import java.util.*;
 
+/**
+ * Immutable metadata snapshot of a class's bean/record structure.
+ *
+ * <p>Describes the type's constructor, all readable/writable properties,
+ * and whether it is a record or a regular Java bean.
+ *
+ * <p>Obtained via {@link BeanIntrospector#plan(Class)}.
+ */
 public final class BeanPlan {
     private final Class<?> type;
     private final boolean record;
@@ -26,31 +34,44 @@ public final class BeanPlan {
         this.index = Map.copyOf(map);
     }
 
+    /**
+     * Creates a {@link BeanPlan} for the given type. Results are cached by
+     * {@link BeanIntrospector}.
+     *
+     * @param type the class to introspect
+     * @return a new bean plan
+     */
     public static BeanPlan of(Class<?> type) {
         Objects.requireNonNull(type, "type");
         return type.isRecord() ? forRecord(type) : forBean(type);
     }
 
+    /** Returns the underlying class. */
     public Class<?> type() {
         return type;
     }
 
+    /** Returns true if the type is a Java record. */
     public boolean record() {
         return record;
     }
 
+    /** Returns the constructor metadata, or null if the type has no usable constructor. */
     public BeanConstructor constructor() {
         return constructor;
     }
 
+    /** Returns true if the type has a usable constructor. */
     public boolean isConstructable() {
         return constructor != null;
     }
 
+    /** Returns an unmodifiable list of all properties. */
     public List<BeanProperty> properties() {
         return properties;
     }
 
+    /** Looks up a property by name. Returns null if not found. */
     public BeanProperty property(String name) {
         return index.get(name);
     }
@@ -170,7 +191,7 @@ public final class BeanPlan {
         public Object read(Object target) {
             try {
                 return MethodHandleUtils.invoke(accessor, target);
-            } catch (Throwable ex) {
+            } catch (Error e) { throw e; } catch (Throwable ex) {
                 throw new IllegalArgumentException("Cannot read record property: " + name, ex);
             }
         }
@@ -204,7 +225,7 @@ public final class BeanPlan {
             if (setter != null) {
                 try {
                     MethodHandleUtils.invoke(setter, target, value);
-                } catch (Throwable ex) {
+                } catch (Error e) { throw e; } catch (Throwable ex) {
                     throw new IllegalArgumentException("Cannot write property: " + name, ex);
                 }
             } else {

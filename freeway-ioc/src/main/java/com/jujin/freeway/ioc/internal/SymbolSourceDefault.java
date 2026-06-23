@@ -16,15 +16,16 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     /**
-     * 创建标准符号源，按优先级依次从 System Property 和 System Env 查找。
+     * Creates a standard symbol source that looks up values from System
+     * Properties first, then falls back to Environment Variables.
      * <p>
-     * 查找顺序：先 {@link System#getProperty(String)}，未命中再
-     * {@link System#getenv(String)}，即 Property 优先于 Env。
+     * Lookup order: {@link System#getProperty(String)} first, then
+     * {@link System#getenv(String)} (property wins).
      * <p>
-     * 注意 {@code System.getenv()} 的大小写行为依赖操作系统：
+     * Note: {@code System.getenv()} behaviour depends on the OS:
      * <ul>
-     *   <li><b>Windows</b>：不区分大小写，{@code PATH} 与 {@code path} 等效；</li>
-     *   <li><b>Linux / macOS</b>：区分大小写，{@code PATH} 与 {@code path} 被视为不同变量。</li>
+     *   <li><b>Windows</b>: case-insensitive — {@code PATH} equals {@code path}</li>
+     *   <li><b>Linux / macOS</b>: case-sensitive — {@code PATH} and {@code path} are distinct</li>
      * </ul>
      */
     static SymbolSourceDefault standard() {
@@ -58,11 +59,12 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     /**
-     * 递归展开字符串中的 {@code ${...}} 符号引用。
+     * Recursively expands {@code ${...}} symbol references in the input string.
      * <p>
-     * 展开后的值如果还包含 {@code ${...}} 表达式，会继续递归展开。
-     * 注意：这意味着如果某个符号的值本身包含未转义的 {@code ${...}} 语法，
-     * 且恰好匹配另一个符号名，也会被展开。
+     * If the expanded value itself contains {@code ${...}} expressions they
+     * will be expanded recursively. This means that if a symbol's value
+     * contains unescaped {@code ${...}} syntax that matches another symbol
+     * name, it will also be expanded.
      */
     @Override
     public String expand(String input) {
@@ -70,19 +72,22 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     /**
-     * 递归展开字符串中的 {@code ${...}} 符号引用，带深度限制防止栈溢出。
+     * Recursively expands {@code ${...}} symbol references with a depth limit
+     * to prevent stack overflow.
      * <p>
-     * 展开后的值如果还包含 {@code ${...}} 表达式，会继续递归展开。
-     * 注意：这意味着如果某个符号的值本身包含未转义的 {@code ${...}} 语法，
-     * 且恰好匹配另一个符号名，也会被展开。
+     * If the expanded value itself contains {@code ${...}} expressions they
+     * will be expanded recursively. This means that if a symbol's value
+     * contains unescaped {@code ${...}} syntax that matches another symbol
+     * name, it will also be expanded.
      * <p>
-     * 默认值语法 {@code ${name:-default}} 中 default 值如果包含 {@code ${...}}
-     * 也会被递归展开，因此需避免在默认值中引入循环引用。
+     * Default value syntax {@code ${name:-default}} — if the default value
+     * itself contains {@code ${...}} it will also be expanded, so avoid
+     * introducing circular references in defaults.
      *
-     * @param input 待展开的字符串
-     * @param depth 当前递归深度
-     * @return 展开后的字符串
-     * @throws IllegalArgumentException 如果深度超过限制或符号未闭合
+     * @param input the string to expand
+     * @param depth the current recursion depth
+     * @return the expanded string
+     * @throws IllegalArgumentException if depth exceeds the limit or a symbol is unclosed
      */
     private String expand(String input, int depth) {
         if (depth > MAX_EXPAND_DEPTH) {

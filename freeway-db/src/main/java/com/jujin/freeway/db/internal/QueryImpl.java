@@ -1,5 +1,8 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.util.SqlTextParser;
+
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.Query;
@@ -33,7 +36,7 @@ final class QueryImpl implements Query {
     private final Object[] positionalParams;
     private final Map<String, Object> namedParams;
     private final boolean mayHaveGeneratedKeys;
-    private NamedParamParser.Result parsed;
+    private SqlTextParser.Result parsed;
     private List<Integer> positionalIndexes;
     private boolean expandedChecked;
     private String expandedSql;
@@ -221,7 +224,7 @@ final class QueryImpl implements Query {
 
     private List<Integer> positionalPlaceholders() {
         if (positionalIndexes == null) {
-            positionalIndexes = NamedParamParser.positionalPlaceholderIndexes(
+            positionalIndexes = SqlTextParser.paramIndexes(
                 originalSql
             );
         }
@@ -246,9 +249,9 @@ final class QueryImpl implements Query {
         return originalSql;
     }
 
-    private NamedParamParser.Result parsed() {
+    private SqlTextParser.Result parsed() {
         if (parsed == null) {
-            parsed = NamedParamParser.parse(originalSql);
+            parsed = SqlTextParser.parseNamed(originalSql);
         }
         return parsed;
     }
@@ -259,8 +262,9 @@ final class QueryImpl implements Query {
         }
         expandedChecked = true;
         if (!namedParams.isEmpty()) {
+            rejectMixedPlaceholderStyles();
             expandNamed();
-        } else if (NamedParamParser.hasNamedPlaceholders(originalSql)) {
+        } else if (SqlTextParser.hasNamedPlaceholders(originalSql)) {
             autoBindNamed();
         } else {
             expandPositional();
@@ -268,7 +272,8 @@ final class QueryImpl implements Query {
     }
 
     private void autoBindNamed() {
-        var p = NamedParamParser.parse(originalSql);
+        rejectMixedPlaceholderStyles();
+        var p = SqlTextParser.parseNamed(originalSql);
         if (positionalParams.length != p.names().size()) {
             throw new SqlException(
                 "Parameter count mismatch in '" + originalSql + "': " +
@@ -322,6 +327,7 @@ final class QueryImpl implements Query {
     }
 
     private void expandNamed() {
+        rejectMixedPlaceholderStyles();
         var p = parsed();
         validateNamedParameters();
 
@@ -345,6 +351,18 @@ final class QueryImpl implements Query {
         if (anyExpanded) {
             expandedSql = sqlOut.toString();
             expandedFlatParams = flat.toArray();
+        }
+    }
+
+    private void rejectMixedPlaceholderStyles() {
+        if (
+            SqlTextParser.hasNamedPlaceholders(originalSql) &&
+            !SqlTextParser.paramIndexes(originalSql).isEmpty()
+        ) {
+            throw new SqlException(
+                "Cannot mix named and positional placeholders in SQL: " +
+                    originalSql
+            );
         }
     }
 
@@ -472,12 +490,7 @@ final class QueryImpl implements Query {
         private StreamResources(ResultSet rs, ExecuteContext ctx) {
             this.rs = rs;
             this.ctx = ctx;
-            this.cleanable = STREAM_CLEANER.register(this, () -> {
-                try {
-                    rs.close();
-                } catch (SQLException ignored) {}
-                ctx.close();
-            });
+            this.cleanable = STREAM_CLEANER.register(this, this::closeResources);
         }
 
         private ResultSet rs() {
@@ -495,6 +508,9 @@ final class QueryImpl implements Query {
             }
             closed = true;
             cleanable.clean();
+        }
+
+        private void closeResources() {
             try {
                 rs.close();
             } catch (SQLException ignored) {}

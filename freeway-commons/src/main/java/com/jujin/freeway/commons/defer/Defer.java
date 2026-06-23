@@ -45,7 +45,8 @@ import java.util.function.Supplier;
  */
 public final class Defer {
 
-    private static final ScopedValue<DeferScope> CURRENT = ScopedValue.newInstance();
+    private static final ScopedValue<DeferScope> CURRENT =
+        ScopedValue.newInstance();
 
     private Defer() {}
 
@@ -148,15 +149,11 @@ public final class Defer {
      * supports {@link DeferAction#before} / {@link DeferAction#after}
      * for ordering relative to other named actions.
      */
-    public static <T> DeferAction supply(
-        String id,
-        Callable<T> callable
-    ) {
+    public static <T> DeferAction supply(String id, Callable<T> callable) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(callable, "callable");
         if (CURRENT.isBound()) {
             DeferredSupplier<T> ds = new DeferredSupplier<>(callable);
-            @SuppressWarnings("unchecked")
             DeferAction da = new DeferAction(id, (Runnable) ds::compute);
             CURRENT.get().add(da);
             return da;
@@ -167,6 +164,7 @@ public final class Defer {
     // ==================== internal ====================
 
     private static final class DeferredSupplier<T> implements Supplier<T> {
+
         private final Callable<T> callable;
         private T value;
         private boolean computed;
@@ -180,7 +178,10 @@ public final class Defer {
                 value = callable.call();
                 computed = true;
             } catch (Exception e) {
-                throw new RuntimeException("Defer supply computation failed", e);
+                throw new RuntimeException(
+                    "Defer supply computation failed",
+                    e
+                );
             }
         }
 

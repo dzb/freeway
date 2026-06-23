@@ -2,7 +2,7 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.commons.validation.ValidationResult;
 
-public class ValidationException extends RuntimeException {
+public final class ValidationException extends RuntimeException {
     private final transient ValidationResult result;
 
     public ValidationException(ValidationResult result) {
@@ -10,7 +10,7 @@ public class ValidationException extends RuntimeException {
         this.result = result;
     }
 
-    public ValidationResult getResult() {
+    public ValidationResult result() {
         return result;
     }
 }

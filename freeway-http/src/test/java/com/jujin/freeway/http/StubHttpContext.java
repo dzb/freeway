@@ -3,11 +3,17 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 
-final class StubHttpContext extends HttpContext {
+import com.jujin.freeway.http.sse.SseEmitter;
+
+public final class StubHttpContext extends HttpContext {
 
     @SuppressWarnings("unchecked")
     private static <T> T coerce(Object input, Class<T> targetType) {
@@ -35,33 +41,46 @@ final class StubHttpContext extends HttpContext {
 
     private final String method;
     private final String path;
-    private final RequestContext requestContext;
-    private final Map<String, String> headers = new HashMap<>();
-    private final Map<String, List<String>> queryParams = new HashMap<>();
-    private int statusCode = 200;
+    private RequestContext requestContext;
+    private final Map<String, List<String>> requestHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    private final Map<String, String> responseHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    private final Map<String, List<String>> queryParams = new LinkedHashMap<>();
+    private int status = 200;
     private String body;
 
-    StubHttpContext() {
+    public StubHttpContext() {
         this("GET", "/");
     }
 
-    StubHttpContext(String method, String path) {
+    public StubHttpContext(String method, String path) {
         super(new JsonCodecDefault(COERCER), COERCER);
         this.method = method;
-        this.path = path;
-        this.requestContext = RequestContext.create();
+        int q = path.indexOf('?');
+        if (q >= 0) {
+            this.path = path.substring(0, q);
+            this.queryParams.putAll(parseQueryParams(path.substring(q + 1)));
+        } else {
+            this.path = path;
+        }
     }
 
-    StubHttpContext header(String name, String value) {
-        headers.put(name, value);
+    public StubHttpContext requestHeader(String name, String value) {
+        requestHeaders.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
         return this;
     }
 
-    public int statusCode() {
-        return statusCode;
+    public StubHttpContext queryParam(String name, String value) {
+        Objects.requireNonNull(name, "name");
+        queryParams.computeIfAbsent(name, k -> new ArrayList<>()).add(
+            value != null ? value : "");
+        return this;
     }
 
-    String responseBody() {
+    public int status() {
+        return status;
+    }
+
+    public String responseBody() {
         return body;
     }
 
@@ -83,22 +102,31 @@ final class StubHttpContext extends HttpContext {
 
     @Override
     public List<String> queryParams(String name) {
-        return queryParams.getOrDefault(name, List.of());
+        List<String> vals = queryParams.get(name);
+        return vals != null ? List.copyOf(vals) : List.of();
     }
 
     @Override
     public Map<String, List<String>> queryParams() {
-        return queryParams;
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        queryParams.forEach((k, v) -> copy.put(k, List.copyOf(v)));
+        return Collections.unmodifiableMap(copy);
     }
 
     @Override
     public String header(String name) {
-        return headers.get(name);
+        List<String> values = requestHeaders.get(name);
+        return values != null && !values.isEmpty() ? values.get(0) : null;
     }
 
     @Override
     public List<String> headers(String name) {
-        return List.of();
+        List<String> v = requestHeaders.get(name);
+        return v != null ? List.copyOf(v) : List.of();
+    }
+
+    public String responseHeader(String name) {
+        return responseHeaders.get(name);
     }
 
     @Override
@@ -110,7 +138,7 @@ final class StubHttpContext extends HttpContext {
 
     @Override
     public HttpContext status(int status) {
-        this.statusCode = status;
+        this.status = status;
         return this;
     }
 
@@ -123,17 +151,25 @@ final class StubHttpContext extends HttpContext {
 
     @Override
     public RequestContext requestContext() {
+        if (requestContext == null) {
+            requestContext = HttpContext.createRequestContext(header("X-Request-Id"));
+        }
         return requestContext;
     }
 
     @Override
     public HttpContext headerSet(String name, String value) {
-        headers.put(name, value);
+        validateHeaderValue(value);
+        responseHeaders.put(name, value);
         return this;
     }
 
     @Override
     public HttpContext output(byte[] data) {
+        if (!allowsResponseBody()) {
+            this.body = "";
+            return this;
+        }
         this.body = new String(data, java.nio.charset.StandardCharsets.UTF_8);
         return this;
     }

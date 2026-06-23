@@ -6,20 +6,20 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 标记字段需要创建数据库索引。
+ * Marks a field for index creation.
  * <p>
- * 多个字段使用相同的 {@link #name()} 将合并为复合索引，
- * 列顺序按字段在类中的声明顺序。
+ * Multiple fields with the same {@link #name()} are merged into a composite index,
+ * with column order matching field declaration order.
  *
- * <h3>示例</h3>
+ * <h3>Examples</h3>
  * <pre>{@code
- * // 单列索引（自动命名 idx_users_email）
+ * // Single-column index (auto-named idx_users_email)
  * @Index String email;
  *
- * // 命名唯一索引
+ * // Named unique index
  * @Index(name = "uq_username", unique = true) String username;
  *
- * // 复合索引
+ * // Composite index
  * @Index(name = "idx_order_lookup") String userId;
  * @Index(name = "idx_order_lookup") LocalDateTime createdAt;
  * }</pre>
@@ -29,11 +29,11 @@ import java.lang.annotation.Target;
 public @interface Index {
 
     /**
-     * 索引名。空字符串表示自动生成 {@code idx_{table}_{column}}。
-     * 多个字段使用相同名称时合并为复合索引。
+     * Index name. Empty string auto-generates {@code idx_{table}_{column}}.
+     * Multiple fields with the same name are merged into a composite index.
      */
     String name() default "";
 
-    /** 是否为唯一索引。 */
+    /** Whether this is a unique index. */
     boolean unique() default false;
 }

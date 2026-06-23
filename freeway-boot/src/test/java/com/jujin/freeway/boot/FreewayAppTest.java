@@ -128,7 +128,7 @@ class FreewayAppTest {
 
     @Test
     void ofRequiresAtLeastOneModule() {
-        assertThrows(IllegalStateException.class, () -> FreewayApp.of().start());
+        assertThrows(IllegalArgumentException.class, () -> FreewayApp.of().start());
     }
 
     @Test

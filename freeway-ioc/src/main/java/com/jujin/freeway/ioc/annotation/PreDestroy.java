@@ -8,16 +8,16 @@ import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
- * 标记一个无参 void 方法，在容器关闭时由容器自动调用。
+ * Marks a no-arg void method to be invoked by the container when it shuts down.
  * <p>
- * 适用规则：
+ * Rules:
  * <ul>
- *   <li>只能标注在方法上</li>
- *   <li>方法不能有参数</li>
- *   <li>方法返回类型必须为 void</li>
- *   <li>方法不能是 static</li>
- *   <li>{@code @PreDestroy} 在 {@link AutoCloseable#close()} 之前执行</li>
- *   <li>一个类中最多只能有一个 {@code @PreDestroy} 方法（含继承链）</li>
+ *   <li>May only be placed on a method</li>
+ *   <li>The method must not have parameters</li>
+ *   <li>The return type must be {@code void}</li>
+ *   <li>The method must not be {@code static}</li>
+ *   <li>{@code @PreDestroy} runs before {@link AutoCloseable#close()}</li>
+ *   <li>At most one {@code @PreDestroy} per class (including inherited methods)</li>
  * </ul>
  */
 @Documented

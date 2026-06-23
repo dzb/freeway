@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.defer.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.extension.Extension;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -22,6 +24,7 @@ public final class EventBus implements AutoCloseable {
     private final Container container;
     private volatile EventBridge bridge;
     private volatile Executor asyncExecutor;
+    private volatile ExecutorService defaultAsyncExecutor;
     private volatile Map<Class<?>, List<Consumer<Object>>> moduleClassIndex;
     private volatile Map<String, List<Consumer<Object>>> moduleTopicIndex;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
@@ -89,7 +92,7 @@ public final class EventBus implements AutoCloseable {
         )) {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
-                ((Subscription<E>) sub).accept(event);
+                sub.dispatch(event);
                 consumed = true;
             } catch (Exception ex) {
                 LOG.warn(
@@ -144,9 +147,7 @@ public final class EventBus implements AutoCloseable {
             List.of()
         )) {
             try {
-                @SuppressWarnings("unchecked")
-                var s = (Subscription<Object>) sub;
-                s.accept(payload);
+                sub.dispatch(payload);
                 consumed = true;
             } catch (Exception ex) {
                 LOG.warn(
@@ -173,9 +174,13 @@ public final class EventBus implements AutoCloseable {
         this.asyncExecutor = Objects.requireNonNull(executor, "executor");
     }
 
-    private Executor executor() {
+    private synchronized Executor executor() {
         Executor e = asyncExecutor;
-        return e != null ? e : Executors.newVirtualThreadPerTaskExecutor();
+        if (e != null) return e;
+        if (defaultAsyncExecutor == null) {
+            defaultAsyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        }
+        return defaultAsyncExecutor;
     }
 
     /** Async version of {@link #publish(Object)}. */
@@ -234,6 +239,14 @@ public final class EventBus implements AutoCloseable {
     public void close() {
         runtimeSubs.clear();
         runtimeTopicSubs.clear();
+        if (defaultAsyncExecutor != null) {
+            try {
+                defaultAsyncExecutor.close();
+            } catch (RuntimeException e) {
+                LOG.warn("Failed to close default async executor", e);
+            }
+            defaultAsyncExecutor = null;
+        }
     }
 
     // ==================== internals ====================
@@ -257,16 +270,12 @@ public final class EventBus implements AutoCloseable {
         var topicIdx = new HashMap<String, List<Consumer<Object>>>();
         for (Object entry : ext.all()) {
             if (!(entry instanceof EventSubscriber<?> sub)) continue;
-            if (sub.eventType() != null) {
-                @SuppressWarnings("unchecked")
-                Consumer<Object> handler = (Consumer<Object>) sub.handler();
+            Consumer<Object> handler = adapt(sub);
+            if (sub.topic() == null) {
                 classIdx
                     .computeIfAbsent(sub.eventType(), k -> new ArrayList<>())
                     .add(handler);
-            }
-            if (sub.topic() != null) {
-                @SuppressWarnings("unchecked")
-                Consumer<Object> handler = (Consumer<Object>) sub.handler();
+            } else {
                 topicIdx
                     .computeIfAbsent(sub.topic(), k -> new ArrayList<>())
                     .add(handler);
@@ -274,6 +283,12 @@ public final class EventBus implements AutoCloseable {
         }
         moduleClassIndex = classIdx;
         moduleTopicIndex = topicIdx;
+    }
+
+    private static <E> Consumer<Object> adapt(EventSubscriber<E> sub) {
+        Class<E> eventType = sub.eventType();
+        Consumer<E> handler = sub.handler();
+        return event -> handler.accept(eventType.cast(event));
     }
 
     private static String resolveTopic(Class<?> eventType) {

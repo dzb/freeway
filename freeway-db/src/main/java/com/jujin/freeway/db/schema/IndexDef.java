@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 索引定义（内部使用）。
+ * Index definition (internal use).
  */
 record IndexDef(String name, List<String> columns, boolean unique) {
 
@@ -19,13 +19,16 @@ record IndexDef(String name, List<String> columns, boolean unique) {
         }
     }
 
-    /** 生成 CREATE INDEX IF NOT EXISTS 语句。 */
+    /** Generates a CREATE INDEX statement. */
     String toSql(Dialect dialect, String tableName) {
         StringBuilder sb = new StringBuilder("CREATE ");
         if (unique) {
             sb.append("UNIQUE ");
         }
-        sb.append("INDEX IF NOT EXISTS ");
+        sb.append("INDEX ");
+        if (dialect.supportsIndexIfNotExists()) {
+            sb.append("IF NOT EXISTS ");
+        }
         sb.append(dialect.quoteName(name));
         sb.append(" ON ").append(dialect.quoteName(tableName));
         sb.append(" (");

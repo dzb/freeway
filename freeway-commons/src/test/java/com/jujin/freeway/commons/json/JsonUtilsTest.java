@@ -5,11 +5,20 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.ArrayDeque;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonUtilsTest {
+    private static final CoercerDefault FALLBACK_COERCER = new CoercerDefault();
     private static final Coercer COERCER = new Coercer() {
         @Override
         public <T> T coerce(Object input, Class<T> targetType) {
@@ -82,7 +92,7 @@ class JsonUtilsTest {
             () -> JsonUtils.parse(input)
         );
 
-        assertTrue(ex.getMessage().contains("JSON input too large"));
+        assertTrue(ex.getCause() != null && ex.getCause().getMessage().contains("JSON input too large"));
         assertTrue(input.closed);
     }
 
@@ -322,6 +332,52 @@ class JsonUtilsTest {
     }
 
     @Test
+    void coercesQueueSortedMapAndEnumContainers() {
+        Type queueType = new TypeRef<Queue<Endpoint>>() {
+        }.type();
+        @SuppressWarnings("unchecked")
+        Queue<Endpoint> queue = (Queue<Endpoint>) JsonUtils.coerce(
+            JsonUtils.parse("[\"alpha\", \"beta\"]"),
+            queueType,
+            COERCER
+        );
+        assertEquals(List.of(new Endpoint("alpha"), new Endpoint("beta")), List.copyOf(queue));
+        assertTrue(queue instanceof ArrayDeque);
+
+        Type sortedMapType = new TypeRef<SortedMap<Integer, Endpoint>>() {
+        }.type();
+        @SuppressWarnings("unchecked")
+        SortedMap<Integer, Endpoint> sortedMap = (SortedMap<Integer, Endpoint>) JsonUtils.coerce(
+            JsonUtils.parse("{\"2\":\"beta\",\"1\":\"alpha\"}"),
+            sortedMapType,
+            COERCER
+        );
+        assertEquals(List.of(1, 2), List.copyOf(sortedMap.keySet()));
+        assertEquals(new Endpoint("alpha"), sortedMap.get(1));
+        assertTrue(sortedMap instanceof TreeMap);
+
+        Type enumSetType = new TypeRef<EnumSet<Color>>() {
+        }.type();
+        @SuppressWarnings("unchecked")
+        EnumSet<Color> colors = (EnumSet<Color>) JsonUtils.coerce(
+            JsonUtils.parse("[\"RED\"]"),
+            enumSetType,
+            COERCER
+        );
+        assertEquals(EnumSet.of(Color.RED), colors);
+
+        Type enumMapType = new TypeRef<EnumMap<Color, Endpoint>>() {
+        }.type();
+        @SuppressWarnings("unchecked")
+        EnumMap<Color, Endpoint> enumMap = (EnumMap<Color, Endpoint>) JsonUtils.coerce(
+            JsonUtils.parse("{\"RED\":\"alpha\"}"),
+            enumMapType,
+            COERCER
+        );
+        assertEquals(new Endpoint("alpha"), enumMap.get(Color.RED));
+    }
+
+    @Test
     void coercesParameterizedBeans() {
         Type type = new TypeRef<Box<Endpoint>>() {
         }.type();
@@ -334,6 +390,19 @@ class JsonUtilsTest {
         );
 
         assertEquals(new Endpoint("alpha"), box.value());
+    }
+
+    @Test
+    void roundTripsTemporalAndUuidValues() {
+        TemporalEntry entry = new TemporalEntry(
+            Instant.parse("2026-06-18T01:02:03Z"),
+            UUID.fromString("550e8400-e29b-41d4-a716-446655440000")
+        );
+
+        String json = JsonUtils.stringify(entry);
+        TemporalEntry roundTrip = JsonUtils.coerce(JsonUtils.parseObject(json), TemporalEntry.class);
+
+        assertEquals(entry, roundTrip);
     }
 
     @SuppressWarnings("unchecked")
@@ -409,13 +478,20 @@ class JsonUtilsTest {
             String text = String.valueOf(input);
             return (T) Character.valueOf(text.isEmpty() ? '\0' : text.charAt(0));
         }
-        throw new IllegalArgumentException("Unsupported coercion to " + targetType.getName());
+        return FALLBACK_COERCER.coerce(input, targetType);
     }
 
     private record Endpoint(String value) {
     }
 
     private record Box<T>(T value) {
+    }
+
+    private record TemporalEntry(Instant createdAt, UUID id) {
+    }
+
+    private enum Color {
+        RED
     }
 
     private static final class CountingInputStream extends java.io.InputStream {

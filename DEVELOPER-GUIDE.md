@@ -37,15 +37,14 @@ freeway-commons          shared utilities: JSON, coercion, Defer, ScopedCache, b
 freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, extensions
 freeway-boot             launcher, config cascade, profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
-  ├ freeway-http-robaho  zero-dep engine with WebSocket (default)
-  ├ freeway-http-undertow Undertow adapter
-  └ freeway-http-jetty   Jetty adapter
+  └ built-in              FreewayHttpEngine (HTTP/1.1 + HTTP/2 + WebSocket + HTTPS)
+  └ engine adapters       Undertow → see freeway-ext
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
-  └ freeway-db-hikari    HikariCP connection pool adapter
-freeway-mq-kafka         Kafka adapter for EventBus
+  └ connection pool       HikariCP adapter → see freeway-ext
+freeway-mq-kafka         Kafka adapter for EventBus → see freeway-ext
 ```
 
-Dependencies flow downward. Core modules (`commons`, `ioc`) carry zero external dependencies beyond SLF4J API. Starter modules (`freeway-starter-*`) are empty JARs that only bundle dependency sets via POM — they contain no Java source.
+Dependencies flow downward. Core modules (`commons`, `ioc`) carry zero external dependencies beyond SLF4J API. Engine/connection-pool/MQ adapters with third-party library integrations live in the [freeway-ext](https://github.com/dzb/freeway-ext) repository, keeping the core modules dependency-free.
 
 ```
 freeway-boot        freeway-http        freeway-db
@@ -203,23 +202,23 @@ public class MyLibModule implements Module2 {
 
 ### Config-Driven Module Selection
 
-Modules can read config to decide what to bind. The HTTP engine selection and DB pool selection both use this pattern:
+### Config-Driven Module Selection
+
+Modules can read config to decide what to bind. The dialect selection uses this pattern:
 
 ```java
-// freeway.db.pool=builtin  → binds PoolDefault
-// freeway.db.pool=hikari   → binds HikariPool (if HikariPoolModule is installed)
-b.bind(Pool.class).to(PoolDefault.class).id("builtin");
-// HikariPoolModule binds: b.bind(Pool.class).to(HikariPool.class).id("hikari").primary();
+// freeway.db.dialect=mysql  → container.get(Dialect.class, "mysql")
+// freeway.db.dialect=       → auto-detect from JDBC URL → PostgresDialect (primary)
+b.bind(Dialect.class).to(PostgresDialect.class).id("postgresql").primary();
+b.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
 ```
-
-User sets `freeway.db.pool=hikari` in config; the primary binding resolves to `HikariPool`. No code change needed.
 
 ### Built-in Framework Modules
 
 | Module | Purpose |
 |--------|---------|
-| `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"`. |
-| `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (selectable via `freeway.db.pool`), registers `DatabaseHub`. |
+| `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"` and default exception mappers (`BodyTooLargeException` → 413, `ValidationException` → 400). |
+| `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (built-in `PoolDefault`; override via extension module `.primary()`), registers `DatabaseHub`. |
 | `HikariPoolModule` | Binds `HikariPool` as a `Pool` implementation with `id("hikari").primary()`. |
 | `KafkaModule` | Creates `KafkaConfig`, binds `KafkaEventBridge` and `KafkaSubscriber`, registers `RuntimeHook` for Kafka lifecycle. |
 
@@ -296,6 +295,18 @@ Freeway.create(binder -> {
 ```
 
 Advisors require interface-to-class bindings because the container uses JDK proxies.
+
+### Binding Registration & Conflict Resolution
+
+Bindings are registered after each module's `bind()` method completes — not during the fluent chain. This means `.id()`, `.scope()`, `.primary()` etc. are all resolved before the binding enters the index. Combined with unique default ids (internal, not user-facing), the container avoids false collisions during module loading.
+
+| Scenario | Outcome |
+|---|---|
+| Two modules bind same type, one sets `.id("xxx")` | ✅ Registered under different ids — no collision |
+| Two modules bind same type, both keep default id | ✅ Both registered, `get()` → `findUnique` reports multiple matches and asks for `.primary()` |
+| Same module binds same type twice, no explicit id | ✅ Both registered, `get()` → `findUnique` reports multiple matches |
+| Two modules bind same type with the **same** explicit id | ❌ `updateId()` detects the collision at registration time |
+| Same module binds same type twice with the same explicit id | ❌ Caught at registration time |
 
 ### Resolution
 
@@ -555,6 +566,8 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 `freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 
+Console output is single-line with ANSI colors (auto-detected via TTY). Colors are disabled when output is piped or redirected to a file. Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
+
 ---
 
 ## Boot
@@ -567,23 +580,23 @@ AppRuntime runtime = FreewayApp.run(args, new AppModule(), new HttpModule());
 
 `FreewayApp.run()` accepts command-line args and `Module2` instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
-For more control, use `AppBuilder`:
+	For more control, use `AppBuilder`:
 
-```java
-AppRuntime app = FreewayApp.of(new MyModule())
-    .add(new HttpModule(), new DbModule())   // additional modules
-    .args("--freeway.profile=dev")            // config overrides
-    .classLoader(customLoader)               // custom class loader for SPI/resources
-    .autoDiscovery(false)                     // disable SPI module discovery
-    .shutdownHook(false)                      // skip JVM shutdown hook
-    .config(myConfigLoader)                   // custom ConfigLoader
-    .start();
-```
+	```java
+	AppRuntime app = FreewayApp.of(new MyModule())
+	    .add(new HttpModule(), new DbModule())   // additional modules
+	    .args("--freeway.profile=dev")            // config overrides
+	    .classLoader(customLoader)               // custom class loader for SPI/resources
+	    .autoDiscovery(false)                     // disable SPI module discovery
+	    .shutdownHook(false)                      // skip JVM shutdown hook
+	    .config(myConfigLoader)                   // custom ConfigLoader
+	    .start();
+	```
 
-| Type | Purpose |
-|------|---------|
-| `FreewayApp` | Application entry point: `run(args, Module2...)`, `of(Module2...)` |
-| `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
+	| Type | Purpose |
+	|------|---------|
+	| `FreewayApp` | Application entry point: `run(args, Module2...)`, `of(Module2...)` |
+	| `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
 | `AppRuntime` | Runtime API: container, config, state, start, close, `get(Class)`, `get(Class, String)` |
 | `AppState` | `CREATED` → `STARTING` → `RUNNING` → `STOPPING` → `STOPPED` (or `FAILED`) |
 
@@ -603,14 +616,14 @@ Startup invokes hooks in resolved contribution order. Shutdown invokes only star
 
 ### Config Cascade
 
-Lowest to highest priority:
+	Lowest to highest priority:
 
-1. `application.properties`
-2. `application.json`
-3. `application-{profile}.properties`
-4. `application-{profile}.json`
-5. Environment variables (`FREEWAY_` prefix)
-6. CLI arguments (`--key=value`, `-Dkey=value`)
+	1. `application.properties`
+	2. `application.json`
+	3. `application-{profile}.properties`
+	4. `application-{profile}.json`
+	5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
+	6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles: `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
 
@@ -627,7 +640,7 @@ The HTTP package stays flat under `com.jujin.freeway.http`. Public contracts and
 | Body | `BodyHandler`, `RequestContext`, `RequestContextDefault`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
-| Built-ins | `JsonCodecDefault`, `CorsFilter`, `RequestTimingFilter`, `StaticResources`, `ExceptionMapper` |
+| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`, `StaticResources`, `ExceptionMapper` |
 
 ### Routes
 
@@ -697,7 +710,33 @@ public class AuthFilter implements HttpFilter {
 binder.contribute(HttpFilter.class).add(new AuthFilter());
 ```
 
-Built-in filters: `RequestTimingFilter` (logs request duration), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys).
+Built-in filters: `RequestTimingFilter` (logs request duration), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys), `HealthFilter` (health endpoint, see below).
+
+### Health Check
+
+The health endpoint is powered by `HealthFilter` and `HealthCheck`. By default it responds `{"status":"ok"}` at `GET /healthz`. Customize the path via config or replace the check logic:
+
+```java
+// Custom health check — bind your own implementation
+binder.bind(HealthCheck.class).to(MyDbHealthCheck.class);
+
+public class MyDbHealthCheck implements HealthCheck {
+    private final Database db;
+    public MyDbHealthCheck(Database db) { this.db = db; }
+    public Object check() {
+        return Map.of("status", db.ping() ? "ok" : "degraded", "db", db.ping());
+    }
+}
+```
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `freeway.web.health.enabled` | `true` | Enable/disable the health endpoint |
+| `freeway.web.health.path` | `/healthz` | Path for the health check endpoint |
+
+The health endpoint responds before routing and static files, ensuring it always returns quickly regardless of registered routes.
 
 ### Static Resources
 
@@ -766,22 +805,34 @@ binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
 });
 ```
 
+Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationException` → 400.
+
 ### Engine Selection
 
-`web.engine` config property selects the transport:
+`HttpModule` bundles `FreewayHttpEngine` as the default (high-performance, built-in HTTP/2 + WebSocket). Extension modules bind their engine with `.primary()` — when multiple `HttpEngine` bindings exist, the container resolves the primary one automatically:
 
-| Value | Engine |
-|-------|--------|
-| `robaho` (default) | Zero-dep, WebSocket |
-| `jdk` | Built-in JDK, HTTP only |
-| `undertow` | Undertow adapter |
-| `jetty` | Jetty adapter |
-
-Engine adapters bind their engine by string id:
+| Engine | Module | Features |
+|--------|--------|----------|
+| `FreewayHttpEngine` | Built-in in `HttpModule` | High-performance, HTTP/2 + WebSocket (default) |
+| `UndertowEngine` | `freeway-http-undertow` | HTTP + WebSocket, production-grade |
 
 ```java
-binder.bind(MyEngine.class).to(MyEngine.class).id("my-engine");
+// Default — FreewayHttpEngine
+FreewayApp.run(args, new AppModule(), new HttpModule());
+
+// Undertow — just add the module, container picks it via .primary()
+FreewayApp.run(args, new AppModule(), new HttpModule(), new UndertowModule());
 ```
+
+**How it works:**
+
+1. `HttpModule` binds `HttpEngine` → `FreewayHttpEngine` **without** `.primary()`
+2. `UndertowModule` binds `HttpEngine` → `UndertowEngine` **with** `.primary()`
+3. With only `HttpModule`, `FreewayHttpEngine` is the sole binding and used automatically
+4. With both modules, the container resolves `.primary()` → `UndertowEngine`
+5. `WebServerBuilder.engine(…)` bypasses container resolution entirely for programmatic override
+
+No config keys needed — just add or remove the extension module. Same `.primary()` pattern used by `freeway-db-hikari` and custom database dialects.
 
 ### Testing with HTTP
 
@@ -993,12 +1044,17 @@ Pool pool = new PoolDefault(config);
 Database db = new DatabaseBuilder().config(config).pool(pool).build();
 ```
 
-**IoC pool selection:** when using `DbModule`, the pool is selected via `freeway.db.pool` config property (default `"builtin"`). The built-in `id("builtin")` binding creates a `PoolDefault`; binding another `Pool` implementation with id and primary selects that implementation — mirroring the HTTP engine selection pattern:
+**IoC pool selection:** `DbModule` binds `PoolDefault` (id `"builtin"`, no `.primary()`). Extension modules like `HikariPoolModule` bind their pool with `.primary()`. The container automatically selects the primary pool when multiple bindings exist — same pattern as HTTP engine selection:
 
 ```java
-// freeway.db.pool=hikari → HikariPool is primary
+// Default — PoolDefault
+FreewayApp.run(args, new AppModule(), new DbModule());
+
+// HikariCP — add the module, container selects it via .primary()
 FreewayApp.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
 ```
+
+No config keys needed — just add or remove the extension module.
 
 ### HikariCP (`freeway-db-hikari`)
 
@@ -1012,7 +1068,7 @@ HikariPool pool = new HikariPool(config);
 Database db = new DatabaseBuilder().config(config).pool(pool).build();
 ```
 
-**IoC usage:** add `HikariPoolModule` to the launcher — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. Then set `freeway.db.pool=hikari` to activate it.
+**IoC usage:** add `HikariPoolModule` to the launcher — it binds `HikariPool` as `id("hikari").primary()`, overriding the built-in `PoolDefault`. No config keys needed.
 
 `HikariPool` maps `PoolConfig` fields to Hikari's configuration (pool size, timeouts, health check query) and adapts Hikari's `HikariPoolMXBean` stats to `DatabaseStats`.
 
@@ -1024,17 +1080,179 @@ List<ExecuteResult> results = db.batch("INSERT INTO t (a, b) VALUES (?, ?)")
     .execute();
 ```
 
-### Schema & Migrations
+    ### Dialect
+
+Database dialect controls DDL generation — identifier quoting, auto-increment clauses, and schema-introspection queries. Selection mirrors the config-driven pattern already used for pool engine and HTTP engine: bind an implementation by id, select it via a config key, and fall back to auto-detection from the JDBC URL.
+
+**Resolution chain:**
+
+```
+freeway.db.dialect=mysql
+    │
+    └─ configured? ──yes──→ container.get(Dialect.class, "mysql")
+    │                            │
+    │                            ├─ found? ──yes──→ use it
+    │                            └─ not found ──→ warn + fall through
+    │
+    └─ not configured ──→ detect from freeway.db.url
+                              │
+                              ├─ :postgresql:  → "postgresql"
+                              ├─ :mysql:       → "mysql"
+                              ├─ :mariadb:     → "mysql"
+                              ├─ :h2:          → "h2"
+                              └─ unknown       → ""
+                                   │
+                                   └─→ container.get(Dialect.class)
+                                           → PostgresDialect (primary)
+```
+
+**Built-in dialects:**
+
+| id | Class | Target |
+|----|-------|--------|
+| `postgresql` | `PostgresDialect` | PostgreSQL, H2 (all modes except MySQL) — **default** |
+| `mysql` | `MySqlDialect` | MySQL, MariaDB, H2 with `MODE=MySQL` |
+| `sqlite` | `SqliteDialect` | SQLite |
+
+`DbModule` binds `PostgresDialect` as `id("postgresql").primary()`, plus `MySqlDialect` (`id("mysql")`) and `SqliteDialect` (`id("sqlite")`) — all three built-in. Custom dialects can be contributed by users or third-party modules — same pattern as `HikariPoolModule` for pool selection.
+
+**Custom dialect — write once, select via config:**
 
 ```java
-// AutoMigrate from entity classes
-Schema.ensure(database, User.class, Post.class);
+// 1. Implement Dialect
+public class MySqlDialect implements Dialect {
+    @Override public String quoteName(String name) { return "`" + name + "`"; }
+    @Override public String generatedClause() { return "AUTO_INCREMENT"; }
+    // ... remaining methods
+}
 
-// SQL-based migrations (files in db/migration/)
-// V001__create_users.sql, V002__add_email.sql, ...
-MigrationRunner runner = new MigrationRunner(database, true, "db/migration", "schema_version");
-runner.run();
+// 2. Bind in your module (or a dedicated MySqlDialectModule)
+binder.bind(Dialect.class).to(MySqlDialect.class).id("mysql").primary();
+
+// 3. Select via config
+// freeway.db.dialect=mysql
 ```
+
+**Per-group override** — a `SchemaEntity` can carry its own dialect, overriding the global one:
+
+```java
+binder.contribute(SchemaEntity.class)
+    .add(SchemaEntity.of("audit", new MySqlDialect(), AuditLog.class));
+```
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `freeway.db.dialect` | (auto-detect) | Dialect id to use; overrides URL detection |
+
+### Schema & Migrations
+
+Freeway provides two complementary mechanisms for database evolution: **Schema** (annotation-driven, current-state DDL) and **Migration** (versioned SQL files). They work together — Schema handles the "what should exist now," Migration handles the "how we got here."
+
+#### Schema — Annotation-Driven Auto-DDL
+
+`Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns.
+
+```java
+// Standalone usage
+Schema.ensure(db, User.class, Post.class);
+
+// AutoMigrate strategy
+// Table missing    → CREATE TABLE IF NOT EXISTS
+// Column missing   → ALTER TABLE ADD COLUMN
+// Index missing    → CREATE INDEX IF NOT EXISTS
+// Existing columns → never touched
+```
+
+**IoC integration** — contribute entity classes via `SchemaEntity`:
+
+```java
+public class AppModule implements Module2 {
+    public void bind(Binder b) {
+        b.install(new HttpModule())
+         .install(new DbModule());
+
+        // Register entities for auto-DDL on startup
+        b.contribute(SchemaEntity.class)
+            .add(SchemaEntity.of("app", User.class, Post.class, Comment.class));
+
+        // Custom dialect
+        b.contribute(SchemaEntity.class)
+            .add(SchemaEntity.of("profile", new PostgresDialect(), UserProfile.class));
+    }
+}
+```
+
+`DbModule` contributes a `RuntimeHook` (`"freeway.db.migration"`, before `"freeway.http.server"`). On startup it calls `Schema.ensure()` for contributed entities, then runs SQL migrations. The ordering is automatic — tables exist before migration SQL attempts to insert or alter them.
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `freeway.db.schema.auto` | `true` | Enable annotation-driven auto-DDL |
+| `freeway.db.schema.groups` | (all) | Comma-separated group names to run; empty = all |
+
+#### Migration — Versioned SQL Files
+
+SQL files live under `db/migration/` (configurable) on the classpath:
+
+```
+db/migration/
+├── V001__create_users.sql          ← create tables
+├── V002__add_email_column.sql      ← alter existing tables
+├── V003__seed_categories.sql       ← insert reference data
+└── V20240615120000__add_index.sql  ← timestamp-based versions
+```
+
+**Naming rules (enforced):**
+- Must start with `V` followed by digits: `V001`, `V20240615`, `V1_0_0`
+- Separator: `__` (double underscore) between version and description
+- Extensions: `.sql` only
+
+**Standalone usage:**
+
+```java
+MigrationRunner runner = new MigrationRunner(database, true, "db/migration", "_migrations");
+int applied = runner.run();  // returns count of newly-applied files
+```
+
+**IoC usage** — `DbModule` binds `MigrationRunner` and runs it automatically on startup:
+
+```java
+MigrationRunner runner = container.get(MigrationRunner.class);
+runner.run();  // idempotent — already-applied files are skipped
+```
+
+Each migration runs in its own database transaction. The tracking table is `_migrations` (configurable). Applied migrations are **immutable** — modifying a SQL file that has already been applied causes a checksum mismatch error at startup.
+
+Config:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `freeway.db.migration.enabled` | `true` | Set to `false` to skip SQL migrations |
+| `freeway.db.migration.path` | `db/migration/` | Classpath resource directory for `.sql` files |
+| `freeway.db.migration.table` | `_migrations` | Tracking table name |
+
+#### Dev vs Production Workflow
+
+Schema and Migration serve different roles across environments:
+
+```
+Development                           Production
+──────────                            ──────────
+freeway.db.schema.auto=true           freeway.db.schema.auto=false
+                                      freeway.db.migration.enabled=true
+
+① Add @Column("phone") to User
+   → restart → column auto-added     ② Write V004__add_phone.sql
+                                         from Schema.define() output
+                                     ③ Deploy → Migration applies V004
+```
+
+**Schema** shines in development — zero-friction iteration. Add a field, restart, the column appears. **Migration** shines in production — every schema change is versioned, auditable, reviewed, and can include data transformations and index tuning that annotations can't express.
+
+The same entity classes and SQL files work in both environments. Switching modes is just one config key.
 
 ### DatabaseHub
 

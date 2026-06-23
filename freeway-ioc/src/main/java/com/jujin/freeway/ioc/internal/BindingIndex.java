@@ -9,7 +9,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Predicate;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 final class BindingIndex {
+    private static final Logger LOG = LoggerFactory.getLogger(BindingIndex.class);
+
     private final Map<ServiceKey, BindingImpl<?>> bindings = new ConcurrentHashMap<>();
     private final Deque<ServiceKey> bindingOrder = new ConcurrentLinkedDeque<>();
     private final Map<Class<?>, List<BindingImpl<?>>> typeIndex = new ConcurrentHashMap<>();
@@ -26,7 +31,14 @@ final class BindingIndex {
             throw duplicateMessage(binding.type().getName(), binding.id());
         }
         bindingOrder.addLast(key);
-        typeIndex.computeIfAbsent(binding.type(), k -> new ArrayList<>()).add(binding);
+        List<BindingImpl<?>> typeBindings = typeIndex.computeIfAbsent(
+            binding.type(), k -> new ArrayList<>());
+        typeBindings.add(binding);
+        if (typeBindings.size() > 1) {
+            LOG.warn("Multiple bindings registered for type {} — " +
+                "injection by type requires one .primary() or injection by id",
+                binding.type().getName());
+        }
     }
 
     synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {

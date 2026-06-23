@@ -1,6 +1,6 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.db.internal.PooledConnection;
+import com.jujin.freeway.db.PooledConnection;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

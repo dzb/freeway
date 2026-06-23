@@ -38,6 +38,14 @@ class BeanValidatorTest {
         String city;
     }
 
+    static class CyclicNode {
+        @NotBlank
+        String name;
+
+        @Valid
+        CyclicNode next;
+    }
+
     // --- Tests ---
 
     @Test
@@ -117,6 +125,17 @@ class BeanValidatorTest {
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
         assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("address.city")));
+    }
+
+    @Test
+    void cyclicGraphDoesNotOverflow() {
+        var node = new CyclicNode();
+        node.name = "root";
+        node.next = node;
+
+        var result = BeanValidator.validate(node);
+
+        assertFalse(result.hasErrors());
     }
 
     @Test

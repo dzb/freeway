@@ -57,18 +57,14 @@ public final class JsonUtils {
     }
 
     public static String stringify(Object value) {
-        return JsonWriter.stringify(value);
+        return JsonWriter.stringify(normalize(value));
     }
 
     public static String stringifyPretty(Object value) {
-        return JsonWriter.stringifyPretty(value);
+        return JsonWriter.stringifyPretty(normalize(value));
     }
 
     public static Object normalize(Object value) {
         return JsonCoercions.normalize(value);
-    }
-
-    static Object deepCopy(Object value) {
-        return JsonCoercions.deepCopy(value);
     }
 }

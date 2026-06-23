@@ -1,5 +1,8 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.util.SqlTextParser;
+
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.SqlException;
@@ -21,8 +24,9 @@ final class BatchQueryImpl implements BatchQuery {
     private final DatabaseImpl db;
     private final PooledConnection boundConnection;
     private final String sql;
-    private final NamedParamParser.Result parsed;
+    private final SqlTextParser.Result parsed;
     private final boolean mayHaveGeneratedKeys;
+    private final int positionalParameterCount;
     private List<Object[]> positionalRows = List.of();
     private List<Map<String, Object>> namedRows = List.of();
 
@@ -34,8 +38,18 @@ final class BatchQueryImpl implements BatchQuery {
         this.db = db;
         this.boundConnection = boundConnection;
         this.sql = sql;
-        this.parsed = NamedParamParser.parse(sql);
+        this.parsed = SqlTextParser.parseNamed(sql);
         this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql);
+        this.positionalParameterCount =
+            SqlTextParser.paramIndexes(parsed.sql()).size();
+        if (
+            SqlTextParser.hasNamedPlaceholders(sql) &&
+            !SqlTextParser.paramIndexes(sql).isEmpty()
+        ) {
+            throw new SqlException(
+                "Cannot mix named and positional placeholders in SQL: " +
+                    sql);
+        }
     }
 
     @Override
@@ -47,14 +61,14 @@ final class BatchQueryImpl implements BatchQuery {
 
     @Override
     public BatchQuery rows(List<Object[]> rows) {
-        this.positionalRows = rows == null ? List.of() : rows;
+        this.positionalRows = rows == null ? List.of() : List.copyOf(rows);
         this.namedRows = List.of();
         return this;
     }
 
     @Override
     public BatchQuery named(List<Map<String, Object>> rows) {
-        this.namedRows = rows == null ? List.of() : rows;
+        this.namedRows = rows == null ? List.of() : List.copyOf(rows);
         this.positionalRows = List.of();
         return this;
     }
@@ -89,6 +103,17 @@ final class BatchQueryImpl implements BatchQuery {
                     }
                 } else {
                     for (var row : positionalRows) {
+                        if (row.length != positionalParameterCount) {
+                            throw new SqlException(
+                                "Parameter count mismatch in batch SQL: " +
+                                    sql +
+                                    ". Expected " +
+                                    positionalParameterCount +
+                                    " value(s) per row but got " +
+                                    row.length
+                            );
+                        }
+                        stmt.clearParameters();
                         for (int i = 0; i < row.length; i++) {
                             stmt.setObject(i + 1, row[i]);
                         }

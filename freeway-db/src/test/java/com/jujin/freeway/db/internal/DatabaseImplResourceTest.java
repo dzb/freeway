@@ -1,5 +1,7 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
+
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.IsolationLevel;

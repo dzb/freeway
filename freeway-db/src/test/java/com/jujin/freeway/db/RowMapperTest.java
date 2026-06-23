@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
+import com.jujin.freeway.db.schema.Column;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -334,6 +335,16 @@ class RowMapperTest {
     }
 
     @Test
+    void resolverCachesWrappedPojoMappers() {
+        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
+
+        RowMapper<ExactRecord> first = resolver.resolve(ExactRecord.class);
+        RowMapper<ExactRecord> second = resolver.resolve(ExactRecord.class);
+
+        assertSame(first, second);
+    }
+
+    @Test
     void resolverRejectsInterfaceTypesWithClearMessage() {
         RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
 
@@ -365,6 +376,71 @@ class RowMapperTest {
 
             assertThrows(SqlException.class,
                 () -> db.query("select v from t").one(Object.class));
+        }
+    }
+
+    // ====================== @Column 注解映射 ======================
+
+    @Test
+    void columnAnnotationOverridesRecordMapping() {
+        String dbName = uniqueDb("col_record");
+        Database db = builder(dbName).build();
+        try (db) {
+            // 列名使用 snake_case，与属性名不匹配但 @Column 指定了映射
+            db.execute("create table t (user_id bigint primary key, display_name varchar(32) not null)");
+            db.execute("insert into t values (1, 'Alice')");
+
+            ColumnRecord result = db.query("select user_id, display_name from t")
+                .one(ColumnRecord.class).orElseThrow();
+            assertEquals(1L, result.id());
+            assertEquals("Alice", result.name());
+        }
+    }
+
+    @Test
+    void columnAnnotationOverridesBeanMapping() {
+        String dbName = uniqueDb("col_bean");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (order_id bigint primary key, order_status varchar(16) not null)");
+            db.execute("insert into t values (99, 'SHIPPED')");
+
+            ColumnBean result = db.query("select order_id, order_status from t")
+                .one(ColumnBean.class).orElseThrow();
+            assertEquals(99L, result.getId());
+            assertEquals("SHIPPED", result.getStatus());
+        }
+    }
+
+    @Test
+    void columnAnnotationWithPartialOverrides() {
+        String dbName = uniqueDb("col_partial");
+        Database db = builder(dbName).build();
+        try (db) {
+            // display_name 通过 @Column 映射到 name，score 没有注解直接用驼峰→snake
+            db.execute("create table t (display_name varchar(32) not null, score int)");
+            db.execute("insert into t values ('test', 42)");
+
+            MixedColumnRecord result = db.query("select display_name, score from t")
+                .one(MixedColumnRecord.class).orElseThrow();
+            assertEquals("test", result.name());
+            assertEquals(42, result.score());
+        }
+    }
+
+    @Test
+    void columnAnnotationFallsThroughToNameMatch() {
+        String dbName = uniqueDb("col_fallback");
+        Database db = builder(dbName).build();
+        try (db) {
+            // @Column 指定了不存在的列名，但属性名可以匹配
+            db.execute("create table t (code varchar(8) not null)");
+            db.execute("insert into t values ('OK')");
+
+            ColumnFallbackRecord result = db.query("select code from t")
+                .one(ColumnFallbackRecord.class).orElseThrow();
+            // @Column("status_code") 不存在，但属性名 code 匹配
+            assertEquals("OK", result.code());
         }
     }
 
@@ -441,4 +517,32 @@ class RowMapperTest {
 
     abstract static class AbstractTarget {
     }
+
+    // ====================== @Column 测试类型 ======================
+
+    public record ColumnRecord(
+        @Column("user_id") long id,
+        @Column("display_name") String name
+    ) {}
+
+    public static class ColumnBean {
+        @Column("order_id")
+        private long id;
+        @Column("order_status")
+        private String status;
+
+        public long getId() { return id; }
+        public void setId(long id) { this.id = id; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+    }
+
+    public record MixedColumnRecord(
+        @Column("display_name") String name,
+        int score
+    ) {}
+
+    public record ColumnFallbackRecord(
+        @Column("status_code") String code
+    ) {}
 }

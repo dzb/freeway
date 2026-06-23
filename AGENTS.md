@@ -8,7 +8,7 @@ Key modules:
 - `freeway-commons`: shared JSON, scalar coercion, validation, and logging utilities.
 - `freeway-ioc`: container, binding DSL, scopes, injection, and extension support.
 - `freeway-boot`: launcher, runtime lifecycle, profiles, and config loading.
-- `freeway-http` plus `freeway-http-*`: routing and engine adapters.
+- `freeway-http`: routing with built-in `FreewayHttpEngine` (HTTP/1.1 + HTTP/2 + WebSocket + HTTPS). Undertow engine adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).
 - `freeway-db`: JDBC access, transactions, pooling, and SQL migrations.
 - Starter artifacts may be listed in dependency management, but they are not part of the current reactor modules.
 

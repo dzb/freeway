@@ -9,6 +9,16 @@ import java.lang.reflect.Method;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * Caching utility for {@link MethodHandle}, {@link VarHandle}, and
+ * constructor handles used by the bean introspection framework.
+ *
+ * <p>All handles are lazily created and cached in concurrent maps. Public
+ * methods expose method-handle lookup and invocation for external use
+ * (primarily by the IoC container), while package-private methods support
+ * handle creation for fields and constructors used internally by
+ * {@link BeanIntrospector}.
+ */
 public final class MethodHandleUtils {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
     private static final ConcurrentMap<Constructor<?>, MethodHandle> CONSTRUCTOR_HANDLES = new ConcurrentHashMap<>();
@@ -18,50 +28,52 @@ public final class MethodHandleUtils {
     private MethodHandleUtils() {
     }
 
-    // -- public: method + invoke（被 ioc 调用） --
+    // -- public: method + invoke (called by ioc) --
 
     /**
-     * 获取或创建指定方法的MethodHandle。
+     * Returns a cached MethodHandle for the given method.
      * <p>
-     * 使用缓存机制提高性能，如果该方法的MethodHandle已存在则直接返回，
-     * 否则通过createMethodHandle创建并缓存新的MethodHandle。
+     * Uses a concurrent cache: if a MethodHandle already exists for this
+     * method it is returned directly; otherwise one is created and cached.
      *
-     * @param method 要获取MethodHandle的反射方法对象
-     * @return 对应的MethodHandle实例
+     * @param method the reflection method object
+     * @return the corresponding MethodHandle
      */
     public static MethodHandle methodHandle(Method method) {
         return METHOD_HANDLES.computeIfAbsent(method, MethodHandleUtils::createMethodHandle);
     }
 
     /**
-     * 使用可变参数调用方法句柄。
+     * Invokes a method handle with varargs.
      * <p>
-     * 此方法提供便捷的调用方式，支持可变数量的参数。如果参数为null，
-     * 则转换为空数组进行调用。
+     * Convenience wrapper that supports a variable number of arguments.
+     * A null argument is treated as an empty array.
      *
-     * @param handle 要调用的方法句柄
-     * @param args   可变参数列表，可以为null
-     * @return 方法调用的返回值
-     * @throws Throwable 当方法调用过程中发生异常时抛出
+     * @param handle the method handle to invoke
+     * @param args   the arguments, may be null
+     * @return the invocation result
+     * @throws Throwable if the invocation fails
      */
     public static Object invoke(MethodHandle handle, Object... args) throws Throwable {
         return handle.invokeWithArguments(args == null ? new Object[0] : args);
     }
 
     /**
-     * 使用接收者对象和参数数组调用方法句柄。
+     * Invokes a method handle with a receiver and argument array.
      * <p>
-     * 此方法将接收者对象作为第一个参数，与提供的参数数组合并后调用目标方法句柄。
-     * 适用于实例方法的调用场景，其中接收者对象需要作为隐式的第一个参数传递。
+     * Prepends the receiver as the first argument and merges it with the
+     * provided argument array before invoking the target method handle.
+     * This is useful for instance methods where the receiver must be
+     * passed as the implicit first argument.
      *
-     * @param handle   要调用的方法句柄
-     * @param receiver 接收者对象，作为方法调用的第一个参数（对于实例方法即为目标对象）
-     * @param args     方法参数数组，可以为null或空数组
-     * @return 方法调用的返回值
-     * @throws Throwable 当方法调用过程中发生异常时抛出
+     * @param handle   the method handle to invoke
+     * @param receiver the receiver object (the target for instance methods)
+     * @param args     the method arguments, may be null or empty
+     * @return the invocation result
+     * @throws Throwable if the invocation fails
      */
     public static Object invoke(MethodHandle handle, Object receiver, Object[] args) throws Throwable {
-        // 构建包含接收者对象的完整参数数组
+        // Build the full argument array including the receiver
         Object[] invocationArgs;
         if (args == null || args.length == 0) {
             invocationArgs = new Object[]{receiver};
@@ -73,17 +85,29 @@ public final class MethodHandleUtils {
         return invoke(handle, invocationArgs);
     }
 
-    // -- package-private: varHandle/constructorHandle（仅 commons.bean 内部使用） --
+    // -- package-private: varHandle/constructorHandle (internal to commons.bean) --
 
+    /**
+     * Returns a cached {@link VarHandle} for the given field.
+     *
+     * @param field the reflection field object
+     * @return the corresponding VarHandle
+     */
     static VarHandle varHandle(Field field) {
         return VAR_HANDLES.computeIfAbsent(field, MethodHandleUtils::createVarHandle);
     }
 
+    /**
+     * Returns a cached {@link MethodHandle} for the given constructor.
+     *
+     * @param constructor the reflection constructor object
+     * @return the corresponding MethodHandle
+     */
     static MethodHandle constructorHandle(Constructor<?> constructor) {
         return CONSTRUCTOR_HANDLES.computeIfAbsent(constructor, MethodHandleUtils::createConstructorHandle);
     }
 
-    // -- private 工厂 --
+    // -- private factories --
 
     private static MethodHandle createMethodHandle(Method method) {
         try {
@@ -94,7 +118,7 @@ public final class MethodHandleUtils {
         }
     }
 
-    static VarHandle createVarHandle(Field field) {
+    private static VarHandle createVarHandle(Field field) {
         try {
             MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(field.getDeclaringClass(), LOOKUP);
             return lookup.findVarHandle(field.getDeclaringClass(), field.getName(), field.getType());
@@ -103,7 +127,7 @@ public final class MethodHandleUtils {
         }
     }
 
-    static MethodHandle createConstructorHandle(Constructor<?> constructor) {
+    private static MethodHandle createConstructorHandle(Constructor<?> constructor) {
         try {
             MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(
                 constructor.getDeclaringClass(),

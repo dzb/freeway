@@ -5,6 +5,8 @@ import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.ConfigLoader;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.json.JsonObject;
+import com.jujin.freeway.commons.util.Maps;
+import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -14,12 +16,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
+import java.util.Locale;
 
+/**
+ * Default {@link ConfigLoader} implementation. Loads configuration from
+ * the following sources in ascending priority order:
+ * <ol>
+ *   <li>{@code application.properties}</li>
+ *   <li>{@code application.json}</li>
+ *   <li>{@code application-{profile}.properties}</li>
+ *   <li>{@code application-{profile}.json}</li>
+ *   <li>Environment variables (prefix {@code FREEWAY_}, mapped to dots)</li>
+ *   <li>CLI arguments ({@code --key=value})</li>
+ * </ol>
+ */
 public final class BootConfigLoader implements ConfigLoader {
-    private static final String ENV_PREFIX_PROPERTY = "freeway.env.prefix";
-    private static final String DEFAULT_ENV_PREFIX = "FREEWAY_";
-    private static final String PROFILE_KEY = "freeway.profile";
-    private static final long MAX_PROPERTIES_RESOURCE_BYTES = 16L * 1024 * 1024;
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     public BootConfigLoader() {
@@ -43,7 +54,7 @@ public final class BootConfigLoader implements ConfigLoader {
         base.putAll(json);
         base.putAll(parsedArgs);
 
-        List<String> profiles = parseProfiles(base.get(PROFILE_KEY));
+        List<String> profiles = parseProfiles(base.get("freeway.profile"));
         Map<String, String> profileProperties = new LinkedHashMap<>();
         Map<String, String> profileJson = new LinkedHashMap<>();
         for (String profile : profiles) {
@@ -63,13 +74,13 @@ public final class BootConfigLoader implements ConfigLoader {
     }
 
     private static Map<String, String> loadEnvironment() {
-        String prefix = System.getProperty(ENV_PREFIX_PROPERTY, DEFAULT_ENV_PREFIX);
+        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_");
         Map<String, String> values = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
             String key = entry.getKey();
             if (key.startsWith(prefix)) {
-                String converted = key.substring(prefix.length())
-                    .toLowerCase()
+                String converted = "freeway." + key.substring(prefix.length())
+                    .toLowerCase(Locale.ROOT)
                     .replace('_', '.');
                 values.put(converted, entry.getValue());
             }
@@ -84,7 +95,7 @@ public final class BootConfigLoader implements ConfigLoader {
             return Map.of();
         }
 
-        try (stream; InputStream bounded = bounded(stream, MAX_PROPERTIES_RESOURCE_BYTES, resourceName)) {
+        try (stream; InputStream bounded = ByteStreams.bounded(stream, 16L * 1024 * 1024, resourceName)) {
             Properties properties = new Properties();
             properties.load(bounded);
             Map<String, String> values = new LinkedHashMap<>();
@@ -106,9 +117,7 @@ public final class BootConfigLoader implements ConfigLoader {
 
         try (stream) {
             JsonObject root = JsonUtils.parseObject(stream);
-            Map<String, String> values = new LinkedHashMap<>();
-            flatten("", root.toMap(), values);
-            return values;
+            return Maps.flatten(root.toMap(), ".");
         } catch (IOException | RuntimeException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
         }
@@ -116,79 +125,6 @@ public final class BootConfigLoader implements ConfigLoader {
 
     private static String resourceName(String baseName, String profile, String suffix) {
         return baseName + "-" + profile + "." + suffix;
-    }
-
-    private static InputStream bounded(InputStream stream, long maxBytes, String resourceName) {
-        return new InputStream() {
-            private long count;
-
-            @Override
-            public int read() throws IOException {
-                if (count >= maxBytes) {
-                    int extra = stream.read();
-                    if (extra == -1) {
-                        return -1;
-                    }
-                    throw tooLarge();
-                }
-                int read = stream.read();
-                if (read >= 0) {
-                    count++;
-                }
-                return read;
-            }
-
-            @Override
-            public int read(byte[] bytes, int off, int len) throws IOException {
-                Objects.checkFromIndexSize(off, len, bytes.length);
-                if (len == 0) {
-                    return 0;
-                }
-                if (count >= maxBytes) {
-                    int extra = stream.read();
-                    if (extra == -1) {
-                        return -1;
-                    }
-                    throw tooLarge();
-                }
-                int allowed = (int) Math.min(len, maxBytes - count);
-                int read = stream.read(bytes, off, allowed);
-                if (read > 0) {
-                    count += read;
-                }
-                return read;
-            }
-
-            private IOException tooLarge() {
-                return new IOException(resourceName + " exceeds " + maxBytes + " bytes");
-            }
-        };
-    }
-
-    private static String childKey(String prefix, String key) {
-        return prefix.isEmpty() ? key : prefix + "." + key;
-    }
-
-    private static void flatten(String prefix, Map<String, Object> source, Map<String, String> target) {
-        source.forEach((key, value) -> flattenValue(childKey(prefix, key), value, target));
-    }
-
-    private static void flatten(String prefix, List<?> source, Map<String, String> target) {
-        for (int i = 0; i < source.size(); i++) {
-            flattenValue(prefix + "." + i, source.get(i), target);
-        }
-    }
-
-    private static void flattenValue(String key, Object value, Map<String, String> target) {
-        if (value instanceof Map<?, ?> map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> nested = (Map<String, Object>) map;
-            flatten(key, nested, target);
-        } else if (value instanceof List<?> list) {
-            flatten(key, list, target);
-        } else if (value != null) {
-            target.put(key, String.valueOf(value));
-        }
     }
 
     private static Map<String, String> parseArgs(String... args) {

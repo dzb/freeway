@@ -3,21 +3,21 @@ package com.jujin.freeway.commons.coercion;
 import java.util.function.Function;
 
 /**
- * 类型转换规则记录类，用于定义从源类型到目标类型的转换逻辑。
+ * A record that defines a conversion rule from a source type to a target type.
  * <p>
- * 该记录封装了类型转换所需的三个要素：源类型、目标类型和转换器函数。
- * 主要用于注册自定义的类型转换规则，以扩展默认的类型转换能力。
+ * Encapsulates three elements of a type conversion: the source type, the target
+ * type, and the mapping function. Primarily used to register custom coercion
+ * rules that extend the default coercion capabilities.
  * </p>
  *
- * @param <S> 源类型
- * @param <T> 目标类型
- * @param sourceType 源类型Class类型
- * @param targetType 目标类型Class类型
- * @param converter 执行实际转换的函数
+ * @param <S>  the source type
+ * @param <T>  the target type
+ * @param sourceType  the source class
+ * @param targetType  the target class
+ * @param mapping     the conversion function
  */
 public record CoerceRule<S, T>(
     Class<S> sourceType,
     Class<T> targetType,
-    Function<S, T> converter
-) {
-}
+    Function<S, T> mapping
+) {}

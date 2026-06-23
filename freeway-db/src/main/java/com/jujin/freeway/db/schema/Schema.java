@@ -6,40 +6,42 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.Locale;
 
 /**
- * 数据库 Schema 工具 — 实体类自动建表 / 迁移。
+ * Database schema utility — auto-generates and migrates tables from entity classes.
  *
- * <h3>快速开始</h3>
+ * <h3>Quick start</h3>
  * <pre>{@code
- * // 只生成 DDL，不执行
+ * // Generate DDL only, no execution
  * String ddl = Schema.define(User.class);
  *
- * // AutoMigrate：自动建表 + 添加缺失列（不删列、不改列）
- * Schema.ensure(db, User.class, Post.class);
+ * // AutoMigrate: create tables + add missing columns (never drops or alters)
+ * Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
  *
- * // 删表
- * Schema.drop(db, User.class);
+ * // Drop tables
+ * Schema.drop(db, new PostgresDialect(), User.class);
  * }</pre>
  *
- * <h3>AutoMigrate 策略</h3>
+ * <h3>AutoMigrate strategy</h3>
  * <ul>
- *   <li>表不存在 → {@code CREATE TABLE IF NOT EXISTS} + {@code CREATE INDEX IF NOT EXISTS}</li>
- *   <li>表已存在、列缺失 → {@code ALTER TABLE ADD COLUMN}</li>
- *   <li>表已存在、索引缺失 → {@code CREATE INDEX IF NOT EXISTS}</li>
- *   <li>绝不删除已有列/索引、不修改已有列类型</li>
+ *   <li>Table missing → {@code CREATE TABLE IF NOT EXISTS} + dialect-specific index handling</li>
+ *   <li>Table exists, column missing → {@code ALTER TABLE ADD COLUMN}</li>
+ *   <li>Table exists, index missing → {@code CREATE INDEX IF NOT EXISTS} or an explicit existence check</li>
+ *   <li>Never drops existing columns/indexes or alters existing column types</li>
  * </ul>
  *
- * <h3>注解支持</h3>
+ * <h3>Supported annotations</h3>
  * <ul>
- *   <li>{@link Table @Table} — 表名覆盖</li>
- *   <li>{@link Column @Column} — 列名、类型、可空性覆盖</li>
- *   <li>{@link Id @Id} — 主键</li>
- *   <li>{@link Generated @Generated} — 自增列</li>
- *   <li>{@link Transient @Transient} — 排除字段</li>
- *   <li>{@link Index @Index} — 索引（支持复合索引和唯一索引）</li>
+ *   <li>{@link Table @Table} — table name override</li>
+ *   <li>{@link Column @Column} — column name, type, nullability override</li>
+ *   <li>{@link Id @Id} — primary key</li>
+ *   <li>{@link Generated @Generated} — auto-increment column</li>
+ *   <li>{@link Transient @Transient} — exclude field</li>
+ *   <li>{@link Index @Index} — index (supports composite and unique)</li>
  * </ul>
- * 并自动识别 commons 中的验证注解（{@code @NotNull}, {@code @NotBlank}, {@code @Size}）。
+ * Also automatically recognizes validation annotations from commons
+ * ({@code @NotNull}, {@code @NotBlank}, {@code @Size}).
  */
 public final class Schema {
     private static final Logger LOG = LoggerFactory.getLogger(Schema.class);
@@ -48,33 +50,31 @@ public final class Schema {
     }
 
     /**
-     * 为实体类生成 CREATE TABLE DDL 字符串，不执行。
+     * Generates a CREATE TABLE DDL string for the given entity type.
+     * Uses PostgresDialect by default (suitable for PostgreSQL / H2).
      */
     public static String define(Class<?> entityType) {
-        return new SchemaGenerator(new DialectDefault()).generate(entityType);
+        return new SchemaGenerator(new PostgresDialect()).generate(entityType);
     }
 
     /**
-     * 为多个实体类生成 CREATE TABLE DDL 列表，不执行。
+     * Generates CREATE TABLE DDL for multiple entity types.
+     * Uses PostgresDialect by default (suitable for PostgreSQL / H2).
      */
     public static List<String> defineAll(Class<?>... entityTypes) {
-        return new SchemaGenerator(new DialectDefault()).generateAll(entityTypes);
+        return new SchemaGenerator(new PostgresDialect()).generateAll(entityTypes);
     }
 
     /**
-     * AutoMigrate — 确保实体类对应的表结构和列存在。
+     * Ensures tables and columns exist for the given entity types using the
+     * specified dialect. Creates missing tables, adds missing columns, and
+     * creates missing indexes. Never drops or alters existing columns.
      *
-     * @param db          数据库连接
-     * @param entityTypes 实体类列表
-     * @return 实际执行的 DDL 语句数
-     * @throws SqlException 执行失败时抛出
-     */
-    public static int ensure(Database db, Class<?>... entityTypes) {
-        return ensure(db, new DialectDefault(), entityTypes);
-    }
-
-    /**
-     * AutoMigrate — 使用指定方言。
+     * @param db          database connection
+     * @param dialect     SQL dialect for DDL generation
+     * @param entityTypes entity classes annotated with @Table, @Id, etc.
+     * @return number of DDL statements executed
+     * @throws SqlException if execution fails
      */
     public static int ensure(Database db, Dialect dialect, Class<?>... entityTypes) {
         Objects.requireNonNull(db, "db");
@@ -86,7 +86,7 @@ public final class Schema {
         SchemaGenerator gen = new SchemaGenerator(dialect);
         int executed = 0;
 
-        Set<String> existingTables = dialect.existingTables(db);
+        Set<String> existingTables = new HashSet<>(dialect.existingTables(db));
         if (LOG.isDebugEnabled()) {
             LOG.debug("Existing tables in schema: {}", existingTables);
         }
@@ -94,23 +94,25 @@ public final class Schema {
         for (Class<?> type : entityTypes) {
             TableDef table = gen.define(type);
             String tableName = table.name();
+            String normalizedTableName = tableName.toLowerCase(Locale.ROOT);
 
-            if (!existingTables.contains(tableName)) {
+            if (!existingTables.contains(normalizedTableName)) {
                 String ddl = dialect.createTable(table);
                 LOG.info("Creating table: {}", tableName);
                 db.execute(ddl);
+                existingTables.add(normalizedTableName);
                 executed++;
                 continue;
             }
 
-            // 表已存在 — 检查缺失列
+            // Table exists — check for missing columns
             Set<String> existingCols = dialect.existingColumns(db, tableName);
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Existing columns for {}: {}", tableName, existingCols);
             }
 
             for (ColumnDef col : table.columns()) {
-                if (!existingCols.contains(col.name())) {
+                if (!existingCols.contains(col.name().toLowerCase(Locale.ROOT))) {
                     String alter = dialect.addColumn(tableName, col);
                     LOG.info("Adding column: {}.{}", tableName, col.name());
                     db.execute(alter);
@@ -119,12 +121,19 @@ public final class Schema {
             }
         }
 
-        // 索引：CREATE INDEX IF NOT EXISTS 天生幂等，直接全量执行
+        // Indexes: dialects that do not support IF NOT EXISTS must skip existing indexes.
         for (Class<?> type : entityTypes) {
             TableDef table = gen.define(type);
-            for (String indexDdl : dialect.createIndexes(table)) {
+            Set<String> existingIndexes = dialect.supportsIndexIfNotExists()
+                ? Set.of()
+                : dialect.existingIndexes(db, table.name());
+            for (IndexDef index : table.indexes()) {
+                if (!existingIndexes.isEmpty() &&
+                    existingIndexes.contains(index.name().toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
                 LOG.info("Ensuring index on {}", table.name());
-                db.execute(indexDdl);
+                db.execute(index.toSql(dialect, table.name()));
             }
         }
 
@@ -135,14 +144,7 @@ public final class Schema {
     }
 
     /**
-     * 删除实体类对应的表。
-     */
-    public static void drop(Database db, Class<?>... entityTypes) {
-        drop(db, new DialectDefault(), entityTypes);
-    }
-
-    /**
-     * 删除实体类对应的表，使用指定方言。
+     * Drops tables for the given entity types using the specified dialect.
      */
     public static void drop(Database db, Dialect dialect, Class<?>... entityTypes) {
         Objects.requireNonNull(db, "db");

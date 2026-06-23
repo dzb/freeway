@@ -1,11 +1,24 @@
 package com.jujin.freeway.db.internal;
 
+import com.jujin.freeway.db.PooledConnection;
+
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.PoolConfig;
+import com.jujin.freeway.db.SqlException;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.DriverPropertyInfo;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,13 +51,13 @@ class PoolDefaultTest {
         DatabaseStats after = pool.stats();
 
         assertEquals(1, after.active());
-        assertNotNull(conn.borrowedAt());
+        assertNotNull(((PooledConnectionDefault) conn).borrowedAt());
 
         pool.release(conn);
         // 归还后：active 归零，borrowedAt 已清除
         DatabaseStats released = pool.stats();
         assertEquals(0, released.active());
-        assertNull(conn.borrowedAt());
+        assertNull(((PooledConnectionDefault) conn).borrowedAt());
 
         pool.close();
     }
@@ -92,17 +105,17 @@ class PoolDefaultTest {
         PooledConnection c2 = pool.borrow();
 
         assertEquals(2, pool.stats().active());
-        assertNotNull(c1.borrowedAt());
-        assertNotNull(c2.borrowedAt());
+        assertNotNull(((PooledConnectionDefault) c1).borrowedAt());
+        assertNotNull(((PooledConnectionDefault) c2).borrowedAt());
 
         pool.release(c1);
         assertEquals(1, pool.stats().active());
-        assertNull(c1.borrowedAt());
-        assertNotNull(c2.borrowedAt());
+        assertNull(((PooledConnectionDefault) c1).borrowedAt());
+        assertNotNull(((PooledConnectionDefault) c2).borrowedAt());
 
         pool.release(c2);
         assertEquals(0, pool.stats().active());
-        assertNull(c2.borrowedAt());
+        assertNull(((PooledConnectionDefault) c2).borrowedAt());
 
         pool.close();
     }
@@ -147,5 +160,112 @@ class PoolDefaultTest {
         assertTrue(stats.averageBorrowWaitNanos() > 0L);
 
         pool.close();
+    }
+
+    @Test
+    void warmUpFailureClosesAlreadyCreatedConnections() throws Exception {
+        AtomicInteger opens = new AtomicInteger();
+        AtomicInteger closes = new AtomicInteger();
+        Driver driver = new Driver() {
+            @Override
+            public Connection connect(String url, Properties info)
+                throws SQLException {
+                if (!acceptsURL(url)) {
+                    return null;
+                }
+                if (opens.incrementAndGet() == 1) {
+                    return connectionProxy(closes);
+                }
+                throw new SQLException("boom");
+            }
+
+            @Override
+            public boolean acceptsURL(String url) {
+                return url != null && url.startsWith("jdbc:freeway-warmup:");
+            }
+
+            @Override
+            public DriverPropertyInfo[] getPropertyInfo(
+                String url,
+                Properties info
+            ) {
+                return new DriverPropertyInfo[0];
+            }
+
+            @Override
+            public int getMajorVersion() {
+                return 1;
+            }
+
+            @Override
+            public int getMinorVersion() {
+                return 0;
+            }
+
+            @Override
+            public boolean jdbcCompliant() {
+                return false;
+            }
+
+            @Override
+            public Logger getParentLogger() {
+                return Logger.getLogger("test");
+            }
+        };
+
+        DriverManager.registerDriver(driver);
+        try {
+            var config = new PoolConfig(
+                "jdbc:freeway-warmup:test", "sa", "",
+                2, 2,
+                Duration.ofSeconds(5),
+                Duration.ofMinutes(30),
+                Duration.ofMinutes(5),
+                Duration.ofSeconds(30),
+                null,
+                Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
+            );
+
+            SqlException ex = assertThrows(SqlException.class, () -> new PoolDefault(config));
+            assertTrue(ex.getMessage().contains("Failed to warm up connection pool"));
+            assertEquals(2, opens.get());
+            assertEquals(1, closes.get());
+        } finally {
+            DriverManager.deregisterDriver(driver);
+        }
+    }
+
+    private static Connection connectionProxy(AtomicInteger closes) {
+        InvocationHandler handler = (proxy, method, args) -> {
+            String name = method.getName();
+            if ("setAutoCommit".equals(name)) {
+                return null;
+            }
+            if ("isValid".equals(name)) {
+                return Boolean.TRUE;
+            }
+            if ("close".equals(name)) {
+                closes.incrementAndGet();
+                return null;
+            }
+            if ("isClosed".equals(name)) {
+                return Boolean.FALSE;
+            }
+            if ("unwrap".equals(name)) {
+                throw new SQLException("Not a wrapper");
+            }
+            if ("isWrapperFor".equals(name)) {
+                return Boolean.FALSE;
+            }
+            if ("toString".equals(name)) {
+                return "test-connection";
+            }
+            throw new UnsupportedOperationException(name);
+        };
+        return (Connection) Proxy.newProxyInstance(
+            Connection.class.getClassLoader(),
+            new Class<?>[] { Connection.class },
+            handler
+        );
     }
 }

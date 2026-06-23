@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class SchemaGeneratorTest {
 
-    private final SchemaGenerator gen = new SchemaGenerator(new DialectDefault());
+    private final SchemaGenerator gen = new SchemaGenerator(new PostgresDialect());
 
     // ====================== 基础 Record 映射 ======================
 
@@ -284,6 +285,31 @@ class SchemaGeneratorTest {
     }
 
     @Test
+    void mysqlIndexOmitsIfNotExists() {
+        String ddl = new IndexDef("idx_email", List.of("email"), false)
+            .toSql(new MySqlDialect(), "users");
+        assertEquals("CREATE INDEX idx_email ON users (email)", ddl);
+    }
+
+    @Test
+    void sqliteAddColumnDoesNotDuplicateKeyword() {
+        String ddl = new SqliteDialect().addColumn(
+            "users",
+            new ColumnDef("email", "TEXT", true, false, false)
+        );
+        assertEquals("ALTER TABLE users ADD COLUMN email TEXT", ddl);
+    }
+
+    @Test
+    void sqliteGeneratedPrimaryKeyUsesInteger() {
+        String ddl = new SchemaGenerator(new SqliteDialect()).generate(
+            SqliteGeneratedUser.class
+        );
+        assertTrue(ddl.contains("id INTEGER PRIMARY KEY AUTOINCREMENT"));
+        assertFalse(ddl.contains("BIGINT"));
+    }
+
+    @Test
     void noIndexesForEntityWithoutAnnotations() {
         var indexes = gen.generateIndexes(SimpleUser.class);
         assertTrue(indexes.isEmpty());
@@ -451,5 +477,10 @@ class SchemaGeneratorTest {
         @Id Long id,
         @Index String email,
         @Index String username
+    ) {}
+
+    public record SqliteGeneratedUser(
+        @Id @Generated Long id,
+        String name
     ) {}
 }

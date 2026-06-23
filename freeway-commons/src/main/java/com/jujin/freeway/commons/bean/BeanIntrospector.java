@@ -6,6 +6,20 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * Cached bean/record introspection engine.
+ *
+ * <p>Produces {@link BeanPlan} metadata (properties, constructor, annotations)
+ * for any class. Results are cached via {@link ClassValue} and
+ * {@link ConcurrentHashMap}.
+ *
+ * <p>Usage:
+ * <pre>{@code
+ * BeanPlan plan = BeanIntrospector.plan(User.class);
+ * plan.properties().forEach(p -> System.out.println(p.name()));
+ * Object user = plan.constructor().newInstance("Alice", 30);
+ * }</pre>
+ */
 public final class BeanIntrospector {
     private static final ClassValue<BeanPlan> PLANS = new ClassValue<>() {
         @Override
@@ -19,10 +33,22 @@ public final class BeanIntrospector {
     private BeanIntrospector() {
     }
 
+    /**
+     * Returns the cached {@link BeanPlan} for the given type.
+     *
+     * @param type the class to introspect
+     * @return the bean plan
+     */
     public static BeanPlan plan(Class<?> type) {
         return PLANS.get(Objects.requireNonNull(type, "type"));
     }
 
+    /**
+     * Returns a cached {@link BeanConstructor} wrapping a {@link Constructor}.
+     *
+     * @param constructor the JDK constructor
+     * @return the bean constructor handle
+     */
     public static BeanConstructor constructor(Constructor<?> constructor) {
         return CONSTRUCTORS.computeIfAbsent(
             Objects.requireNonNull(constructor, "constructor"),
@@ -30,6 +56,20 @@ public final class BeanIntrospector {
         );
     }
 
+    /**
+     * Selects the best constructor for the given type.
+     * <ul>
+     *   <li>If a constructor annotated with {@code preferredAnnotation} exists,
+     *       that one is returned (multiple matches throw).</li>
+     *   <li>Otherwise the constructor with the most parameters is returned.</li>
+     * </ul>
+     *
+     * @param type                 the class to inspect
+     * @param preferredAnnotation  optional annotation to prefer (e.g. {@code @Inject})
+     * @return the best constructor
+     * @throws NoSuchMethodException if no constructor is found
+     * @throws IllegalArgumentException if multiple annotated constructors exist
+     */
     public static BeanConstructor selectConstructor(
         Class<?> type,
         Class<? extends Annotation> preferredAnnotation

@@ -6,7 +6,7 @@
 
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-parent</artifactId>
-    <version>1.1.2-SNAPSHOT</version>
+    <version>1.2.2-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>Freeway Framework</name>
@@ -43,6 +43,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <junit.version>5.12.0</junit.version>
+        <jmh.version>1.37</jmh.version>
         <slf4j.version>2.0.17</slf4j.version>
     </properties>
 
@@ -67,21 +68,6 @@
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
                 <artifactId>freeway-http</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-http-robaho</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-http-undertow</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-http-jetty</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -121,6 +107,16 @@
                 <artifactId>junit-jupiter</artifactId>
                 <version>${junit.version}</version>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.openjdk.jmh</groupId>
+                <artifactId>jmh-core</artifactId>
+                <version>${jmh.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjdk.jmh</groupId>
+                <artifactId>jmh-generator-annprocess</artifactId>
+                <version>${jmh.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -202,11 +198,6 @@
         <module>freeway-ioc</module>
         <module>freeway-boot</module>
         <module>freeway-http</module>
-        <module>freeway-http-robaho</module>
-        <module>freeway-http-undertow</module>
-        <module>freeway-http-jetty</module>
         <module>freeway-db</module>
-        <module>freeway-mq-kafka</module>
-        <module>freeway-db-hikari</module>
     </modules>
 </project>

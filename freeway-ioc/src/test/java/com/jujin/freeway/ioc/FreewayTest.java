@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.Named;
 import com.jujin.freeway.ioc.annotation.PostConstruct;
@@ -1007,10 +1008,12 @@ class FreewayTest {
 
     @Test
     void rejectsDuplicateBinding() {
-        assertThrows(IllegalStateException.class, () -> Freeway.create(binder -> {
+        Container container = Freeway.create(binder -> {
             binder.bind(Greeter.class).to(GreeterImpl.class);
             binder.bind(Greeter.class).to(GreeterImpl.class);
-        }));
+        });
+        // Multiple bindings of the same type without .primary() is caught at resolve time
+        assertThrows(IllegalArgumentException.class, () -> container.get(Greeter.class));
     }
 
     @Test

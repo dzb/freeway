@@ -5,14 +5,13 @@ import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.Module2;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.ServiceLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fluent builder for {@link FreewayApp}, created via {@link FreewayApp#of(Module2...)}.
@@ -89,7 +88,7 @@ public final class AppBuilder {
     /** Build and start the application. */
     public AppRuntime start() {
         if (modules.isEmpty()) {
-            throw new IllegalStateException("At least one module is required");
+            throw new IllegalArgumentException("At least one module is required");
         }
         long startNanos = System.nanoTime();
 
@@ -102,16 +101,16 @@ public final class AppBuilder {
         LinkedHashMap<Class<?>, Module2> allModules = new LinkedHashMap<>();
         allModules.put(BootConfigModule.class, new BootConfigModule(config));
         for (Module2 module : modules) {
-            allModules.putIfAbsent(module.getClass(), module);
+            addModule(allModules, module);
         }
         if (autoDiscovery) {
             for (Module2 module : ServiceLoader.load(Module2.class, effectiveLoader)) {
-                allModules.putIfAbsent(module.getClass(), module);
+                addModule(allModules, module);
             }
         }
         List<Module2> moduleList = List.copyOf(allModules.values());
 
-        Container container = Freeway.create(moduleList.toArray(Module2[]::new));
+        Container container = Freeway.create(moduleList);
         AppRuntime app = new AppRuntimeDefault(container, config);
 
         try {
@@ -124,7 +123,6 @@ public final class AppBuilder {
             }
             throw ex;
         }
-
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
         LOG.info("Started freeway application in {} ms", elapsedMs);
 
@@ -138,6 +136,17 @@ public final class AppBuilder {
             }, "freeway-shutdown-hook"));
         }
         return app;
+    }
+
+    private static void addModule(
+        LinkedHashMap<Class<?>, Module2> allModules,
+        Module2 module
+    ) {
+        Module2 existing = allModules.putIfAbsent(module.getClass(), module);
+        if (existing == null) {
+            return;
+        }
+        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
     }
 
     private ClassLoader resolveClassLoader() {

@@ -6,7 +6,7 @@ import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import java.util.Objects;
 
-public final class BootConfigModule implements Module2{
+public final class BootConfigModule implements Module2 {
     private final AppConfig config;
 
     public BootConfigModule(AppConfig config) {

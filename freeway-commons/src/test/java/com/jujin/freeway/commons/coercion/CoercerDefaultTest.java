@@ -3,15 +3,23 @@ package com.jujin.freeway.commons.coercion;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class CoercerDefaultTest {
@@ -26,96 +34,100 @@ class CoercerDefaultTest {
         FAILURE
     }
 
-    // --- canCoerce tests ---
+    // --- supports tests ---
 
     @Test
-    void canCoerceBuiltinScalars() {
-        assertTrue(coercer.canCoerce(String.class, Integer.class));
-        assertTrue(coercer.canCoerce(String.class, int.class));
-        assertTrue(coercer.canCoerce(String.class, Long.class));
-        assertTrue(coercer.canCoerce(String.class, Double.class));
-        assertTrue(coercer.canCoerce(String.class, Boolean.class));
-        assertTrue(coercer.canCoerce(String.class, boolean.class));
-        assertTrue(coercer.canCoerce(String.class, Character.class));
-        assertTrue(coercer.canCoerce(String.class, char.class));
-        assertTrue(coercer.canCoerce(String.class, BigDecimal.class));
-        assertTrue(coercer.canCoerce(String.class, BigInteger.class));
-        assertTrue(coercer.canCoerce(Integer.class, String.class));
-        assertTrue(coercer.canCoerce(Integer.class, Long.class));
-        assertTrue(coercer.canCoerce(Integer.class, double.class));
-        assertTrue(coercer.canCoerce(Double.class, Integer.class));
-        assertTrue(coercer.canCoerce(BigDecimal.class, BigInteger.class));
+    void supportsBuiltinScalars() {
+        assertTrue(coercer.supports(String.class, Integer.class));
+        assertTrue(coercer.supports(String.class, int.class));
+        assertTrue(coercer.supports(String.class, Long.class));
+        assertTrue(coercer.supports(String.class, Double.class));
+        assertTrue(coercer.supports(String.class, Boolean.class));
+        assertTrue(coercer.supports(String.class, boolean.class));
+        assertTrue(coercer.supports(String.class, Character.class));
+        assertTrue(coercer.supports(String.class, char.class));
+        assertTrue(coercer.supports(String.class, BigDecimal.class));
+        assertTrue(coercer.supports(String.class, BigInteger.class));
+        assertTrue(coercer.supports(String.class, LocalDate.class));
+        assertTrue(coercer.supports(String.class, Instant.class));
+        assertTrue(coercer.supports(String.class, UUID.class));
+        assertTrue(coercer.supports(Integer.class, String.class));
+        assertTrue(coercer.supports(Integer.class, Long.class));
+        assertTrue(coercer.supports(Integer.class, double.class));
+        assertTrue(coercer.supports(Double.class, Integer.class));
+        assertTrue(coercer.supports(BigDecimal.class, BigInteger.class));
     }
 
     @Test
-    void canCoerceNullToAny() {
-        assertTrue(coercer.canCoerce(Void.class, String.class));
-        assertTrue(coercer.canCoerce(Void.class, int.class));
-        assertTrue(coercer.canCoerce(Void.class, Boolean.class));
+    void supportsNullToAny() {
+        assertTrue(coercer.supports(Void.class, String.class));
+        assertTrue(coercer.supports(Void.class, int.class));
+        assertTrue(coercer.supports(Void.class, Boolean.class));
     }
 
     @Test
-    void canCoerceIdentityOrSubtype() {
-        assertTrue(coercer.canCoerce(String.class, String.class));
-        assertTrue(coercer.canCoerce(Integer.class, Object.class));
-        assertTrue(coercer.canCoerce(Integer.class, Number.class));
-        assertTrue(coercer.canCoerce(Integer.class, Comparable.class));
+    void supportsIdentityOrSubtype() {
+        assertTrue(coercer.supports(String.class, String.class));
+        assertTrue(coercer.supports(Integer.class, Object.class));
+        assertTrue(coercer.supports(Integer.class, Number.class));
+        assertTrue(coercer.supports(Integer.class, Comparable.class));
     }
 
     @Test
-    void canCoerceEnum() {
-        assertTrue(coercer.canCoerce(String.class, Color.class));
-        assertTrue(coercer.canCoerce(String.class, Status.class));
+    void supportsEnum() {
+        assertTrue(coercer.supports(String.class, Color.class));
+        assertTrue(coercer.supports(String.class, Status.class));
     }
 
     @Test
     void cannotCoerceUnsupported() {
-        assertFalse(coercer.canCoerce(Integer.class, LocalDate.class));
-        assertFalse(coercer.canCoerce(Color.class, LocalDate.class));
+        assertFalse(coercer.supports(Integer.class, java.nio.file.Path.class));
+        assertFalse(coercer.supports(Color.class, java.nio.file.Path.class));
     }
 
     @Test
-    void canCoerceWithCustomRule() {
+    void supportsWithCustomRule() {
         CoercerDefault c = new CoercerDefault()
             .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
 
-        assertTrue(c.canCoerce(String.class, Duration.class));
-        assertFalse(c.canCoerce(Integer.class, Duration.class));
+        assertTrue(c.supports(String.class, Duration.class));
+        // Duration is a built-in scalar target — any source can coerce to it
+        assertTrue(c.supports(Integer.class, Duration.class));
     }
 
     @Test
-    void canCoerceWithCompatibleSourceType() {
+    void supportsWithCompatibleSourceType() {
         // CharSequence -> Duration 规则，String（子类）也应通过
         CoercerDefault c = new CoercerDefault()
             .register(new CoerceRule<>(CharSequence.class, Duration.class,
                 s -> Duration.parse(s.toString())));
 
-        assertTrue(c.canCoerce(String.class, Duration.class));
-        assertTrue(c.canCoerce(StringBuilder.class, Duration.class));
-        assertTrue(c.canCoerce(CharSequence.class, Duration.class));
+        assertTrue(c.supports(String.class, Duration.class));
+        assertTrue(c.supports(StringBuilder.class, Duration.class));
+        assertTrue(c.supports(CharSequence.class, Duration.class));
     }
 
     @Test
-    void canCoerceRejectsNullParams() {
-        assertThrows(NullPointerException.class, () -> coercer.canCoerce(null, String.class));
-        assertThrows(NullPointerException.class, () -> coercer.canCoerce(String.class, null));
+    void supportsRejectsNullParams() {
+        assertThrows(NullPointerException.class, () -> coercer.supports(null, String.class));
+        assertThrows(NullPointerException.class, () -> coercer.supports(String.class, null));
     }
 
-    // --- conversions tests ---
+    // --- supported tests ---
 
     @Test
-    void conversionsIncludesCustomRules() {
+    void supportedIncludesCustomRules() {
         CoercerDefault c = new CoercerDefault()
             .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
 
-        Map<Class<?>, Set<Class<?>>> result = c.conversions();
+        Map<Class<?>, Set<Class<?>>> result = c.supported();
         assertTrue(result.containsKey(Duration.class));
         assertTrue(result.get(Duration.class).contains(String.class));
     }
 
     @Test
-    void conversionsIncludesBuiltins() {
-        Map<Class<?>, Set<Class<?>>> result = coercer.conversions();
+    void supportedIncludesBuiltins() {
+        Map<Class<?>, Set<Class<?>>> result = coercer.supported();
 
         // 所有内置标量目标类型都应出现
         assertTrue(result.containsKey(String.class));
@@ -130,16 +142,17 @@ class CoercerDefaultTest {
     }
 
     @Test
-    void conversionsEmptyWhenNoCustomRules() {
-        // 没有自定义规则时，conversions 不包含非内置类型
-        Map<Class<?>, Set<Class<?>>> result = coercer.conversions();
-        assertFalse(result.containsKey(Duration.class));
+    void supportedIncludesBuiltinDuration() {
+        // Duration is now a built-in scalar target
+        Map<Class<?>, Set<Class<?>>> result = coercer.supported();
+        assertTrue(result.containsKey(Duration.class));
+        assertTrue(result.get(Duration.class).contains(Object.class));
     }
 
     @Test
-    void conversionsIsUnmodifiable() {
+    void supportedIsUnmodifiable() {
         assertThrows(UnsupportedOperationException.class, () ->
-            coercer.conversions().put(Integer.class, Set.of()));
+            coercer.supported().put(Integer.class, Set.of()));
     }
 
     // --- existing coercion tests ---
@@ -159,6 +172,84 @@ class CoercerDefaultTest {
     }
 
     @Test
+    void coercesTemporalAndUuidScalars() {
+        assertEquals(LocalDate.of(2026, 6, 18), coercer.coerce("2026-06-18", LocalDate.class));
+        assertEquals(Instant.parse("2026-06-18T01:02:03Z"), coercer.coerce("2026-06-18T01:02:03Z", Instant.class));
+        assertEquals(
+            UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
+            coercer.coerce("550e8400-e29b-41d4-a716-446655440000", UUID.class)
+        );
+    }
+
+    @Test
+    void coercesAllTemporalTypes() {
+        assertEquals(LocalTime.of(14, 30), coercer.coerce("14:30", LocalTime.class));
+        assertEquals(LocalDateTime.of(2026, 6, 18, 14, 30),
+            coercer.coerce("2026-06-18T14:30", LocalDateTime.class));
+        assertEquals(OffsetTime.parse("14:30+08:00"),
+            coercer.coerce("14:30+08:00", OffsetTime.class));
+        assertEquals(OffsetDateTime.parse("2026-06-18T14:30+08:00"),
+            coercer.coerce("2026-06-18T14:30+08:00", OffsetDateTime.class));
+        assertEquals(ZonedDateTime.parse("2026-06-18T14:30+08:00[Asia/Shanghai]"),
+            coercer.coerce("2026-06-18T14:30+08:00[Asia/Shanghai]", ZonedDateTime.class));
+    }
+
+    @Test
+    void coercesDurationWithAllSuffixes() {
+        assertEquals(Duration.ofMillis(500), coercer.coerce("500ms", Duration.class));
+        assertEquals(Duration.ofSeconds(10), coercer.coerce("10s", Duration.class));
+        assertEquals(Duration.ofMinutes(5), coercer.coerce("5m", Duration.class));
+        assertEquals(Duration.ofHours(2), coercer.coerce("2h", Duration.class));
+        assertEquals(Duration.ofMillis(1000), coercer.coerce("1000", Duration.class));
+    }
+
+    @Test
+    void coercesBigDecimalAndBigIntegerFromString() {
+        assertEquals(new BigDecimal("12.34"), coercer.coerce("12.34", BigDecimal.class));
+        assertEquals(new BigInteger("42"), coercer.coerce("42", BigInteger.class));
+    }
+
+    @Test
+    void coercesNumberToNumberAllPairs() {
+        // int → all
+        assertEquals(Long.valueOf(12), coercer.coerce(12, Long.class));
+        assertEquals(Double.valueOf(12.0), coercer.coerce(12, Double.class));
+        assertEquals(Float.valueOf(12f), coercer.coerce(12, Float.class));
+        assertEquals(Short.valueOf((short) 12), coercer.coerce(12, Short.class));
+        assertEquals(Byte.valueOf((byte) 12), coercer.coerce(12, Byte.class));
+        // long → all
+        assertEquals(Integer.valueOf(12), coercer.coerce(12L, Integer.class));
+        assertEquals(Double.valueOf(12.0), coercer.coerce(12L, Double.class));
+        // double → all
+        assertEquals(Integer.valueOf(12), coercer.coerce(12.0, Integer.class));
+        assertEquals(Long.valueOf(12L), coercer.coerce(12.0, Long.class));
+    }
+
+    @Test
+    void coercesEnumFromNumberByOrdinal() {
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce(0, Color.class));
+    }
+
+    @Test
+    void coercesInstanceDirectly() {
+        LocalDate date = LocalDate.of(2026, 6, 18);
+        assertSame(date, coercer.coerce(date, LocalDate.class));
+        assertSame(date, coercer.coerce(date, Object.class));
+        assertSame(date, coercer.coerce(date, Comparable.class));
+    }
+
+    @Test
+    void coercesInvalidTemporalThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("not-a-date", LocalDate.class));
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("garbage", Instant.class));
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("not-a-uuid", UUID.class));
+    }
+
+    @Test
     void defaultsNullPrimitiveAndKeepsNullReferenceTypes() {
         assertEquals(0, coercer.coerce(null, int.class));
         assertEquals(false, coercer.coerce(null, boolean.class));
@@ -172,7 +263,7 @@ class CoercerDefaultTest {
         assertEquals(Status.SUCCESS, coercer.coerce("Success", Status.class));
         assertEquals(Status.FAILURE, coercer.coerce("failure", Status.class));
         assertEquals(Status.FAILURE, coercer.coerce("FAILURE", Status.class));
-        assertThrows(IllegalStateException.class, () ->
+        assertThrows(IllegalArgumentException.class, () ->
             coercer.coerce("unknown", Status.class));
     }
 
@@ -208,7 +299,8 @@ class CoercerDefaultTest {
         assertFalse(coercer.coerce("no", Boolean.class));
         assertFalse(coercer.coerce("off", Boolean.class));
         assertFalse(coercer.coerce("0", Boolean.class));
-        assertFalse(coercer.coerce("garbage", Boolean.class));
+        assertThrows(IllegalArgumentException.class, () ->
+            coercer.coerce("garbage", Boolean.class));
     }
 
     @Test
@@ -235,7 +327,7 @@ class CoercerDefaultTest {
 
     @Test
     void rejectsInvalidNumericString() {
-        assertThrows(IllegalStateException.class, () ->
+        assertThrows(IllegalArgumentException.class, () ->
             coercer.coerce("not-a-number", Integer.class));
     }
 

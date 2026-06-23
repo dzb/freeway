@@ -1,7 +1,7 @@
 package com.jujin.freeway.db.schema;
 
 /**
- * 单个列的定义（内部使用）。
+ * Single column definition (internal use).
  */
 record ColumnDef(String name, String sqlType, boolean nullable, boolean primaryKey, boolean generated) {
 
@@ -14,7 +14,7 @@ record ColumnDef(String name, String sqlType, boolean nullable, boolean primaryK
         }
     }
 
-    /** 转为 CREATE TABLE 中的列定义片段，例如 {@code "name VARCHAR(255) NOT NULL"}。 */
+    /** Renders the column definition for CREATE TABLE, e.g. {@code "name VARCHAR(255) NOT NULL"}. */
     String toSql(Dialect dialect) {
         StringBuilder sb = new StringBuilder();
         sb.append(dialect.quoteName(name)).append(' ').append(sqlType);
@@ -27,8 +27,18 @@ record ColumnDef(String name, String sqlType, boolean nullable, boolean primaryK
         return sb.toString();
     }
 
-    /** 转为 ALTER TABLE ADD COLUMN 片段。 */
+    /** Renders the column definition for ALTER TABLE ADD COLUMN. */
     String toAlterSql(Dialect dialect) {
         return "ADD COLUMN " + toSql(dialect);
+    }
+
+    /** Same as {@link #toAlterSql} but without the generated clause. */
+    String toAlterSqlWithoutGenerated(Dialect dialect) {
+        StringBuilder sb = new StringBuilder("ADD COLUMN ");
+        sb.append(dialect.quoteName(name)).append(' ').append(sqlType);
+        if (!nullable) {
+            sb.append(" NOT NULL");
+        }
+        return sb.toString();
     }
 }

@@ -3,11 +3,14 @@ package com.jujin.freeway.commons.json;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 final class JsonCoercions {
     private static final CoercerDefault DEFAULT_COERCER = new CoercerDefault();
@@ -91,7 +94,7 @@ final class JsonCoercions {
     }
 
     private static Object coerceParameterized(Object value, ParameterizedType type, Coercer coercer, TypeContext context) {
-        Class<?> rawType = rawClass(type.getRawType());
+        Class<?> rawType = Types.rawClass(type.getRawType());
         Object plain = normalize(value);
         if (plain == null) {
             return CoercerDefault.defaultValue(rawType);
@@ -160,10 +163,7 @@ final class JsonCoercions {
     }
 
     private static Object coerceToMap(JsonObject object, Class<?> targetType, Type keyType, Type valueType, Coercer coercer, TypeContext context) {
-        Object target = newMutableInstance(targetType, LinkedHashMap.class);
-        Map<Object, Object> mutable = target instanceof Map<?, ?> map
-            ? castMap(map)
-            : new LinkedHashMap<>();
+        Map<Object, Object> mutable = newMapInstance(targetType, keyType);
         object.forEach((key, value) ->
             mutable.put(
                 coerce(key, keyType, coercer, context),
@@ -174,10 +174,7 @@ final class JsonCoercions {
     }
 
     private static Object coerceToCollection(JsonArray array, Class<?> targetType, Type elementType, Coercer coercer, TypeContext context) {
-        Object target = newMutableInstance(targetType, ArrayList.class);
-        Collection<Object> mutable = target instanceof Collection<?> collection
-            ? castCollection(collection)
-            : new ArrayList<>();
+        Collection<Object> mutable = newCollectionInstance(targetType, elementType);
         for (int i = 0; i < array.size(); i++) {
             mutable.add(coerce(array.get(i), elementType, coercer, context));
         }
@@ -193,7 +190,7 @@ final class JsonCoercions {
             throw new IllegalArgumentException("Unsupported JSON target type: " + arrayType.getTypeName());
         }
         Type componentType = context.resolve(arrayType.getGenericComponentType());
-        Class<?> componentClass = rawClass(componentType);
+        Class<?> componentClass = Types.rawClass(componentType);
         Object result = Array.newInstance(componentClass, array.size());
         for (int i = 0; i < array.size(); i++) {
             Array.set(result, i, coerce(array.get(i), componentType, coercer, context));
@@ -201,25 +198,103 @@ final class JsonCoercions {
         return result;
     }
 
-    private static Object newMutableInstance(Class<?> targetType, Class<?> fallbackType) {
+    private static Map<Object, Object> newMapInstance(Class<?> targetType, Type keyType) {
+        if (targetType == EnumMap.class) {
+            return newEnumMap(keyType);
+        }
         if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
-            return fallbackType == null ? null : instantiate(fallbackType);
+            if (
+                SortedMap.class.isAssignableFrom(targetType) ||
+                NavigableMap.class.isAssignableFrom(targetType)
+            ) {
+                return new TreeMap<>();
+            }
+            if (ConcurrentNavigableMap.class.isAssignableFrom(targetType)) {
+                return new ConcurrentSkipListMap<>();
+            }
+            if (ConcurrentMap.class.isAssignableFrom(targetType)) {
+                return new ConcurrentHashMap<>();
+            }
+            return new LinkedHashMap<>();
         }
         Object instance = instantiate(targetType);
-        if (instance != null) {
-            return instance;
+        if (instance instanceof Map<?, ?> map) {
+            return castMap(map);
         }
-        return fallbackType == null ? null : instantiate(fallbackType);
+        throw new IllegalArgumentException(
+            "Cannot instantiate map type: " + targetType.getName()
+        );
+    }
+
+    private static Collection<Object> newCollectionInstance(
+        Class<?> targetType,
+        Type elementType
+    ) {
+        if (targetType == EnumSet.class) {
+            return newEnumSet(elementType);
+        }
+        if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
+            if (
+                SortedSet.class.isAssignableFrom(targetType) ||
+                NavigableSet.class.isAssignableFrom(targetType)
+            ) {
+                return new TreeSet<>();
+            }
+            if (
+                Deque.class.isAssignableFrom(targetType) ||
+                Queue.class.isAssignableFrom(targetType)
+            ) {
+                return new ArrayDeque<>();
+            }
+            if (Set.class.isAssignableFrom(targetType)) {
+                return new LinkedHashSet<>();
+            }
+            return new ArrayList<>();
+        }
+        Object instance = instantiate(targetType);
+        if (instance instanceof Collection<?> collection) {
+            return castCollection(collection);
+        }
+        throw new IllegalArgumentException(
+            "Cannot instantiate collection type: " + targetType.getName()
+        );
+    }
+
+    private static Map<Object, Object> newEnumMap(Type keyType) {
+        Class<?> enumType = Types.rawClass(keyType);
+        if (!enumType.isEnum()) {
+            throw new IllegalArgumentException(
+                "EnumMap requires an enum key type: " + keyType.getTypeName()
+            );
+        }
+        @SuppressWarnings("unchecked")
+        Class<? extends Enum> rawEnum = (Class<? extends Enum>) enumType.asSubclass(Enum.class);
+        return castMap(new EnumMap<>(rawEnum));
+    }
+
+    private static Collection<Object> newEnumSet(Type elementType) {
+        Class<?> enumType = Types.rawClass(elementType);
+        if (!enumType.isEnum()) {
+            throw new IllegalArgumentException(
+                "EnumSet requires an enum element type: " + elementType.getTypeName()
+            );
+        }
+        @SuppressWarnings("unchecked")
+        Class<? extends Enum> rawEnum = (Class<? extends Enum>) enumType.asSubclass(Enum.class);
+        return castCollection(EnumSet.noneOf(rawEnum));
     }
 
     private static Object instantiate(Class<?> targetType) {
         try {
-            var lookup = java.lang.invoke.MethodHandles.privateLookupIn(targetType, java.lang.invoke.MethodHandles.lookup());
+            var lookup = MethodHandles.privateLookupIn(
+                targetType,
+                MethodHandles.lookup()
+            );
             var constructorHandle = lookup.unreflectConstructor(targetType.getDeclaredConstructor());
             return constructorHandle.invoke();
         } catch (ReflectiveOperationException ex) {
             return null;
-        } catch (Throwable ex) {
+        } catch (Error e) { throw e; } catch (Throwable ex) {
             return null;
         }
     }
@@ -248,19 +323,6 @@ final class JsonCoercions {
         return bounds.length > 0 ? bounds[0] : Object.class;
     }
 
-    private static Class<?> rawClass(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return clazz;
-        }
-        if (type instanceof ParameterizedType parameterizedType && parameterizedType.getRawType() instanceof Class<?> rawType) {
-            return rawType;
-        }
-        if (type instanceof GenericArrayType arrayType) {
-            return Array.newInstance(rawClass(arrayType.getGenericComponentType()), 0).getClass();
-        }
-        throw new IllegalArgumentException("Unsupported raw type: " + type.getTypeName());
-    }
-
     private static final class TypeContext {
         private static final TypeContext EMPTY = new TypeContext(Map.of());
         private final Map<TypeVariable<?>, Type> bindings;
@@ -274,7 +336,7 @@ final class JsonCoercions {
         }
 
         TypeContext child(ParameterizedType type) {
-            Class<?> rawType = rawClass(type.getRawType());
+            Class<?> rawType = Types.rawClass(type.getRawType());
             TypeVariable<?>[] variables = rawType.getTypeParameters();
             Type[] arguments = type.getActualTypeArguments();
             Map<TypeVariable<?>, Type> next = new LinkedHashMap<>(bindings);
@@ -307,7 +369,7 @@ final class JsonCoercions {
                 if (!changed) {
                     return parameterizedType;
                 }
-                return new ResolvedParameterizedType(resolvedOwner, rawClass(parameterizedType.getRawType()), resolvedArguments);
+                return new ResolvedParameterizedType(resolvedOwner, Types.rawClass(parameterizedType.getRawType()), resolvedArguments);
             }
             if (type instanceof GenericArrayType arrayType) {
                 Type resolvedComponent = resolve(arrayType.getGenericComponentType());
