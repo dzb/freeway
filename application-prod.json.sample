@@ -1,7 +1,6 @@
 {
 	"freeway": {
 		"web": {
-			"engine": "robaho",
 			"server": {
 				"host": "0.0.0.0",
 				"shutdown-grace": "30s"
@@ -21,7 +20,6 @@
 			"username": "",
 			"password": "",
 			"query-timeout": "15s",
-			"pool": "hikari",
 			"pool.max-size": "20",
 			"pool.min-idle": "4",
 			"pool.connection-timeout": "30s",

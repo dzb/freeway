@@ -59,7 +59,7 @@ freeway.db.username=
 freeway.db.password=
 
 # Production pool sizing
-freeway.db.pool=hikari
+# Pool engine: HikariCP (add HikariPoolModule to launcher), selected via module inclusion
 freeway.db.pool.max-size=20
 freeway.db.pool.min-idle=4
 freeway.db.pool.connection-timeout=30s

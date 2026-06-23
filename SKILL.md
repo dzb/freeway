@@ -767,7 +767,11 @@ PoolConfig config = PoolConfig.defaults(url, user, pass);
 //         maxLifetime(30min), maxIdleTime(10min), cleanInterval(2min)
 ```
 
-IoC 下通过 `freeway.db.pool` 选择：`builtin`（默认）或 `hikari`。
+IoC 下通过模块包含（`.primary()` 机制）选择连接池：
+- 默认：`PoolDefault`（内置，`DbModule` 绑定，无 `.primary()`）
+- HikariCP：添加 `HikariPoolModule`，容器通过 `.primary()` 自动选择
+
+与 HTTP 引擎切换使用相同的 `.primary()` 模式，无需配置键。
 
 ### 数据库方言
 

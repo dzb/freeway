@@ -96,8 +96,8 @@
 #  Database / Connection Pool
 # ================================
 
-# Pool engine: builtin | hikari
-# freeway.db.pool=builtin
+# Pool engine selected via module inclusion (.primary() mechanism).
+# Default: built-in pool (PoolDefault). For HikariCP: add HikariPoolModule to launcher.
 # freeway.db.pool.max-size=10
 # freeway.db.pool.min-idle=2
 # freeway.db.pool.connection-timeout=10s

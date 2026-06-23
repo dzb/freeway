@@ -14,7 +14,7 @@ Zero classpath scanning. Compose-first API. No magic.
 | `└ engine adapters` | Undertow — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
 | `└ connection pool` | HikariCP adapter — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
-| `├ MQ adapter` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+| `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have zero external dependencies. Extension modules with third-party
 library integrations live in **[freeway-ext](https://github.com/dzb/freeway-ext)**.
@@ -74,6 +74,31 @@ Or compose inline without boot:
 Container container = Freeway.create(
     binder -> binder.bind(Greeter.class).to(GreeterImpl.class)
 );
+```
+
+### Web App
+
+```java
+public final class App implements Module2 {
+    @Override
+    public void bind(Binder b) {
+        b.install(new HttpModule());
+
+        b.contribute(Route.class)
+            .add(Route.get("/", ctx -> ctx.send(200, "Hello Freeway")))
+            .add(Route.get("/users/:id", ctx ->
+                ctx.sendJson(200, Map.of("id", ctx.pathVar("id"), "name", "Alice"))));
+    }
+
+    public static void main(String[] args) {
+        FreewayApp.run(args, new App());
+    }
+}
+```
+
+```bash
+curl http://localhost:8080/           # Hello Freeway
+curl http://localhost:8080/users/42   # {"id":"42","name":"Alice"}
 ```
 
 ## Build
