@@ -5,6 +5,41 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-06-23
+
+### Fixed
+
+- **4KB response crash** — `FreewayHttpContext` had a fixed 4096-byte buffer; bodies larger than 4KB crashed the handler. Response now streams directly to raw socket output.
+- **Keep-alive path variable leak** — `pathVariables` not cleared on context reset, causing cross-request variable leakage between keep-alive requests on the same connection.
+- **Daemon acceptor thread** — `acceptor.setDaemon(true)` caused the JVM to exit immediately after `main()` returned, because the acceptor and all virtual request-handling threads were daemon. Acceptor is now a non-daemon thread, matching the behavior of JDK HttpServer, Tomcat, Undertow, and Netty.
+
+### Changed
+
+- **`HttpConfigKeys` / `DbConfigKeys`** — config key constants extracted from `HttpModule`/`WebServer`/`HealthFilter` and `DbModule`/`PoolConfig`. All raw string literals (`"freeway.web.health.path"`, `"freeway.db.url"`, etc.) replaced with constant references.
+- **Deferred binding registration** — bindings flushed after each module's `bind()` completes instead of immediately in `BinderImpl.bind()`. Default ids are now unique (`type@N` counter suffix), avoiding false cross-module collisions.
+- **Built-in engine id** — renamed to `"builtin"`, consistent with `PoolDefault` id pattern.
+- **HTTP config helpers consolidated** — 4 manual helpers (`stringConfig`, `boolConfig`, `intConfig`, `durationConfig`) replaced with single generic `config()` that delegates to `SymbolSource` + `Coercer`.
+- **DB config validation** — `PoolConfig` `require*` methods consolidated (4→2), dead `PREFIX` removed.
+- **`HttpContext` cleanup** — removed dead status reason code table (`REASON_BYTES`, `buildReasonBytes`, `responseClass`, `responseReasons`, `reasonBytes`).
+
+### Performance
+
+- Request line parsing: `String.split(" ", 3)` → manual `indexOf` scanning
+- Path segment parsing: `String.split("/")` → manual segment scanner
+- 3 `StringBuilder` pools as `HttpParser` instance fields (zero per-request allocation)
+- `LinkedHashMap` in `RouteIndex.matchTrie()` deferred until a path variable actually matches
+- `toUpperCase()` → `switch` on raw HTTP version string
+- Filter chain pre-built in `WebServer` constructor (eliminates 2 capturing lambdas per request)
+- Drain buffer reused as instance field
+- Redundant `.trim()` on parsed header keys/values dropped
+
+### Removed
+
+- **`freeway-benchmark`** — migrated to [freeway-ext](https://github.com/dzb/freeway-ext). All 31 source files, benchmark scenarios, and CLI tooling removed from core repository.
+- **GitHub Actions auto-deploy** — `publish-release.yml` and `publish-snapshot.yml` deleted. Deploys now done manually via `mvn deploy`.
+- **`Http11Connection` dead code** — `lastActivityTime`, `ActivityTrackingInputStream`, `ActivityTrackingOutputStream` removed.
+- **`PoolConfig.PREFIX`** — unused constant removed. `require*` validation methods consolidated.
+
 ## [1.2.0] — 2026-06-22
 
 ### Added
