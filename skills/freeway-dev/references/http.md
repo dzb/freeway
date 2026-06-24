@@ -29,7 +29,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 ```java
 binder.contribute(Route.class)
     .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
-    .add(Route.get("/users/:id", ctx -> ctx.sendJson(200, ctx.pathVar("id"))));
+    .add(Route.get("/users/{id}", ctx -> ctx.sendJson(200, ctx.pathVar("id"))));
 ```
 
 ```java

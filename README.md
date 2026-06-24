@@ -86,7 +86,7 @@ public final class App implements Module2 {
 
         b.contribute(Route.class)
             .add(Route.get("/", ctx -> ctx.send(200, "Hello Freeway")))
-            .add(Route.get("/users/:id", ctx ->
+            .add(Route.get("/users/{id}", ctx ->
                 ctx.sendJson(200, Map.of("id", ctx.pathVar("id"), "name", "Alice"))));
     }
 

@@ -500,7 +500,7 @@ The HTTP package stays flat under `com.jujin.freeway.http`. Public contracts and
 // Module contribution
 binder.contribute(Route.class)
     .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
-    .add(Route.get("/users/:id", ctx -> {
+    .add(Route.get("/users/{id}", ctx -> {
         String id = ctx.pathVar("id");
         ctx.sendJson(200, userService.findById(id));
     }))
@@ -514,7 +514,7 @@ binder.contribute(Route.class)
 binder.contribute(RouteGroup.class)
     .add(RouteGroup.of("/api/v1",
         Route.get("/users", ctx -> ctx.sendJson(200, users())),
-        Route.get("/users/:id", ctx -> ctx.sendJson(200, user(ctx.pathVar("id"))))
+        Route.get("/users/{id}", ctx -> ctx.sendJson(200, user(ctx.pathVar("id"))))
     ));
 ```
 
