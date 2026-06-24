@@ -1,6 +1,6 @@
 package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway.commons.defer.Defer;
+import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseStats;

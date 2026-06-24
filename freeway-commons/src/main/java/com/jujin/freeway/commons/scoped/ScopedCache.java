@@ -140,9 +140,8 @@ public final class ScopedCache {
             if (closed) {
                 throw new IllegalStateException("Session is closed");
             }
-            Object existing = cache.get(key);
-            if (existing != null) {
-                return existing;
+            if (cache.containsKey(key)) {
+                return cache.get(key);
             }
             Object created = factory.get();
             cache.put(key, created);

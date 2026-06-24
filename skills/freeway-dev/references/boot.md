@@ -4,8 +4,8 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Entrypoints
 
-- `FreewayApp.run(String[] args, Module2...)`
-- `FreewayApp.of(Module2...)`
+- `FreewayApp.run(String[] args, Module2...)` - accepts command-line args and module instances
+- `FreewayApp.of(Module2...)` - builder for composing module instances
 - `AppBuilder.add(...)`
 - `AppBuilder.args(...)`
 - `AppBuilder.config(...)`

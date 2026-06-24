@@ -16,13 +16,13 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Configuration Keys
 
-- `freeway.web.server.host`
-- `freeway.web.server.port`
-- `freeway.web.server.backlog`
-- `freeway.web.server.shutdown-grace`
-- `freeway.web.cors.*`
-- `freeway.web.health.enabled`
-- `freeway.web.health.path`
+- `freeway.http.server.host`
+- `freeway.http.server.port`
+- `freeway.http.server.backlog`
+- `freeway.http.server.shutdown-grace`
+- `freeway.http.cors.*`
+- `freeway.http.health.enabled`
+- `freeway.http.health.path`
 
 ## Canonical Snippets
 

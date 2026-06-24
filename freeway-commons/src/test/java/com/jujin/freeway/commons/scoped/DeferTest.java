@@ -1,4 +1,4 @@
-package com.jujin.freeway.commons.defer;
+package com.jujin.freeway.commons.scoped;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;

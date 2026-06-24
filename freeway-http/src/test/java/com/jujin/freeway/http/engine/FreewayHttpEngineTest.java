@@ -41,6 +41,8 @@ class FreewayHttpEngineTest {
         }
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(HttpConfigKeys.SERVER_HOST);
+        System.clearProperty("freeway.web.server.port");
+        System.clearProperty("freeway.web.server.host");
     }
 
     @Test
@@ -48,6 +50,27 @@ class FreewayHttpEngineTest {
         int port = freePort();
         System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+
+        app = FreewayApp.run(new String[0], new PingModule());
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        HttpClient client = HttpClient.newHttpClient();
+        var response = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + port + "/ping"))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString()
+        );
+        assertEquals(200, response.statusCode());
+        assertEquals("pong", response.body());
+    }
+
+    @Test
+    void servesRoutesWithLegacyWebKeys() throws Exception {
+        int port = freePort();
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(WebServer.class).isRunning());

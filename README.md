@@ -6,7 +6,7 @@ Zero classpath scanning. Compose-first API. No magic.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
-| `freeway-commons` | Shared utilities: JSON, coercion, Defer, ScopedCache, logging |
+| `freeway-commons` | Shared utilities: JSON, coercion, scoped primitives, logging |
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP layer: routing, filters, static, multipart, websocket |
@@ -120,8 +120,7 @@ Shared utilities usable independently of the framework:
 
 - JSON — `JsonCodec` for object↔JSON mapping, `JsonUtils` for parsing/serialization.
 - Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
-- Defer — scope-bound deferred execution. Actions buffered inside a scope drain on commit, discard on rollback. Backed by `ScopedValue`.
-- ScopedCache — scope-bound value cache. Keys are lazily created and reused within a scope, cleaned up on exit via registered close handlers.
+- Scoped primitives — `Defer` buffers commit-time side effects; `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit. Use `Defer` for success-bound side effects and `ScopedCache` for repeated per-scope values.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
 - Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
 
@@ -145,7 +144,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `FreewayApp.run(args, Module2...)` - accepts command-line args and Module2 instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
+- `FreewayApp.run(args, Module2...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.

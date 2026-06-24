@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、Module2、binder.install、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、module、Module2、FreewayApp、binder.install、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway Development Skill
@@ -9,7 +9,7 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 
 ## Use This Skill For
 
-- `Freeway`, `FreewayApp`, `Module2`, `Binder`, `Binding`, `Container`
+- `Freeway`, `module`, `FreewayApp`, `Module2`, `Binder`, `Binding`, `Container`
 - `HttpModule`, `WebServerBuilder`, `Route`, `HttpFilter`, `HealthCheck`
 - `DbModule`, `DatabaseBuilder`, `Orm`, `Schema`, `MigrationRunner`
 - `EventBus`, `RuntimeHook`, `Defer`, `ScopedCache`, `Scoping`
@@ -25,7 +25,7 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 
 ## Core Shape
 
-- `freeway-commons` - shared JSON, coercion, defer, scoped cache, bean, validation, logging
+- `freeway-commons` - shared JSON, coercion, scoped primitives (`Defer` for commit-time deferral, `ScopedCache` for scope-lifetime caching), bean, validation, logging
 - `freeway-ioc` - container, binding DSL, scopes, injection, contributions, AOP, event bus
 - `freeway-boot` - app bootstrap, config cascade, profiles, runtime lifecycle
 - `freeway-http` - routing, filters, static resources, multipart, SSE, WebSocket
@@ -34,9 +34,9 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 
 ## Canonical Entrypoints
 
-- `Freeway.create(Module2...)` - container only
-- `FreewayApp.run(String[] args, Module2...)` - full application startup
-- `FreewayApp.of(Module2...)` - builder for advanced startup control
+- `Freeway.create(Module2...)` - container only; modules are the unit of composition
+- `FreewayApp.run(String[] args, Module2...)` - full application startup; accepts module instances
+- `FreewayApp.of(Module2...)` - builder for advanced startup control; compose modules explicitly
 - `DatabaseBuilder` - standalone database construction without IoC
 - `WebServerBuilder.builder()` - standalone HTTP server construction without IoC
 

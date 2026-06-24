@@ -84,7 +84,10 @@ public abstract class HttpContext {
     }
 
     /** Returns an unmodifiable map of all request headers. */
-    public Map<String, List<String>> headers() { return null; }
+    public abstract Map<String, List<String>> headers();
+
+    /** Returns the current response header value for the given name, or null. */
+    protected abstract String responseHeader(String name);
 
     /** Returns the request context for this request. */
     public abstract RequestContext requestContext();
@@ -265,6 +268,9 @@ public abstract class HttpContext {
      */
     public HttpContext output(String text) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
+        if (blankToNull(responseHeader("Content-Type")) == null) {
+            headerSet("Content-Type", "text/plain; charset=utf-8");
+        }
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -277,7 +283,9 @@ public abstract class HttpContext {
      */
     public HttpContext outputJson(Object value) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
-        headerSet("Content-Type", "application/json; charset=utf-8");
+        if (blankToNull(responseHeader("Content-Type")) == null) {
+            headerSet("Content-Type", "application/json; charset=utf-8");
+        }
         output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -290,11 +298,7 @@ public abstract class HttpContext {
      */
     public HttpContext send(int status, String text) throws IOException {
         status(status);
-        if (allowsResponseBody()) {
-            headerSet("Content-Type", "text/plain; charset=utf-8");
-            return output(text);
-        }
-        return output(new byte[0]);
+        return output(text);
     }
 
     /**

@@ -114,6 +114,13 @@ public final class StubHttpContext extends HttpContext {
     }
 
     @Override
+    public Map<String, List<String>> headers() {
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        requestHeaders.forEach((k, v) -> copy.put(k, List.copyOf(v)));
+        return Collections.unmodifiableMap(copy);
+    }
+
+    @Override
     public String header(String name) {
         List<String> values = requestHeaders.get(name);
         return values != null && !values.isEmpty() ? values.get(0) : null;
@@ -125,6 +132,7 @@ public final class StubHttpContext extends HttpContext {
         return v != null ? List.copyOf(v) : List.of();
     }
 
+    @Override
     public String responseHeader(String name) {
         return responseHeaders.get(name);
     }

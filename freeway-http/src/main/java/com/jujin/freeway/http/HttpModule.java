@@ -36,15 +36,24 @@ public final class HttpModule implements Module2 {
 
         // CorsFilter — bridge ioC config to plain constructor
         binder.bind(CorsFilter.class).to(container -> {
-            boolean enabled = config(container, HttpConfigKeys.CORS_ENABLED, true);
-            String origins = config(container, HttpConfigKeys.CORS_ALLOWED_ORIGINS, "*");
-            String methods = config(container, HttpConfigKeys.CORS_ALLOWED_METHODS,
+            var symbols = container.get(SymbolSource.class);
+            var coercer = container.get(Coercer.class);
+            boolean enabled = config(symbols, coercer,
+                HttpConfigKeys.CORS_ENABLED, HttpConfigKeys.LEGACY_PREFIX + ".cors.enabled", true);
+            String origins = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOWED_ORIGINS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-origins", "*");
+            String methods = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOWED_METHODS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-methods",
                 "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-            String headers = config(container, HttpConfigKeys.CORS_ALLOWED_HEADERS,
+            String headers = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOWED_HEADERS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-headers",
                 "Content-Type, Authorization");
-            String exposed = config(container, HttpConfigKeys.CORS_EXPOSED_HEADERS, "");
-            String maxAge = config(container, HttpConfigKeys.CORS_MAX_AGE, "3600");
-            boolean credentials = config(container, HttpConfigKeys.CORS_ALLOW_CREDENTIALS, false);
+            String exposed = config(symbols, coercer,
+                HttpConfigKeys.CORS_EXPOSED_HEADERS, HttpConfigKeys.LEGACY_PREFIX + ".cors.exposed-headers", "");
+            String maxAge = config(symbols, coercer,
+                HttpConfigKeys.CORS_MAX_AGE, HttpConfigKeys.LEGACY_PREFIX + ".cors.max-age", "3600");
+            boolean credentials = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOW_CREDENTIALS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allow-credentials", false);
             return new CorsFilter(enabled, origins, methods, headers,
                 exposed.isBlank() ? null : exposed, maxAge, credentials);
         });
@@ -63,12 +72,18 @@ public final class HttpModule implements Module2 {
         // WebServer — bridge IoC capabilities to plain constructor
         binder.bind(WebServer.class).to(container -> {
             HttpEngine engine = container.get(HttpEngine.class);
+            var symbols = container.get(SymbolSource.class);
+            var coercer = container.get(Coercer.class);
 
-            String host = config(container, HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-            int port = config(container, HttpConfigKeys.SERVER_PORT, 8080);
-            int backlog = config(container, HttpConfigKeys.SERVER_BACKLOG, 0);
-            Duration shutdownGrace = config(container,
-                HttpConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.ofSeconds(2));
+            String host = config(symbols, coercer,
+                HttpConfigKeys.SERVER_HOST, HttpConfigKeys.LEGACY_PREFIX + ".server.host", "127.0.0.1");
+            int port = config(symbols, coercer,
+                HttpConfigKeys.SERVER_PORT, HttpConfigKeys.LEGACY_PREFIX + ".server.port", 8080);
+            int backlog = config(symbols, coercer,
+                HttpConfigKeys.SERVER_BACKLOG, HttpConfigKeys.LEGACY_PREFIX + ".server.backlog", 0);
+            Duration shutdownGrace = config(symbols, coercer,
+                HttpConfigKeys.SERVER_SHUTDOWN_GRACE, HttpConfigKeys.LEGACY_PREFIX + ".server.shutdown-grace",
+                Duration.ofSeconds(2));
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
@@ -105,8 +120,12 @@ public final class HttpModule implements Module2 {
 
         binder.bind(HealthCheck.class).to(HealthCheck.Default.class);
         binder.bind(HealthFilter.class).to(container -> {
-            boolean enabled = config(container, HttpConfigKeys.HEALTH_ENABLED, true);
-            String path = config(container, HttpConfigKeys.HEALTH_PATH, "/healthz");
+            var symbols = container.get(SymbolSource.class);
+            var coercer = container.get(Coercer.class);
+            boolean enabled = config(symbols, coercer,
+                HttpConfigKeys.HEALTH_ENABLED, HttpConfigKeys.LEGACY_PREFIX + ".health.enabled", true);
+            String path = config(symbols, coercer,
+                HttpConfigKeys.HEALTH_PATH, HttpConfigKeys.LEGACY_PREFIX + ".health.path", "/healthz");
             HealthCheck check = container.get(HealthCheck.class);
             return new HealthFilter(enabled, path, check);
         });
@@ -136,11 +155,14 @@ public final class HttpModule implements Module2 {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T> T config(Container container, String key, T defaultValue) {
-        String raw = container.get(SymbolSource.class).resolve(key, null);
+    private static <T> T config(SymbolSource symbols, Coercer coercer, String key, String legacyKey, T defaultValue) {
+        String raw = symbols.resolve(key, null);
+        if (raw == null && legacyKey != null) {
+            raw = symbols.resolve(legacyKey, null);
+        }
         if (raw == null) {
             return defaultValue;
         }
-        return container.get(Coercer.class).coerce(raw, (Class<T>) defaultValue.getClass());
+        return coercer.coerce(raw, (Class<T>) defaultValue.getClass());
     }
 }

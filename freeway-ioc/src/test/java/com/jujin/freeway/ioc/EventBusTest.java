@@ -2,7 +2,7 @@ package com.jujin.freeway.ioc;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.commons.defer.Defer;
+import com.jujin.freeway.commons.scoped.Defer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -170,6 +170,25 @@ class EventBusTest {
     }
 
     @Test
+    void subscriberExceptionDoesNotTriggerDeadEventForClassPublish() {
+        List<DeadEvent> deads = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, e -> {
+                        throw new RuntimeException("boom");
+                    }));
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add));
+            }
+        );
+
+        new EventBus(container).publish(new PostCreatedEvent(new Post("x")));
+
+        assertTrue(deads.isEmpty());
+    }
+
+    @Test
     void closeClearsRuntimeSubscribers() {
         List<String> log = new ArrayList<>();
         Container container = Freeway.create();
@@ -248,6 +267,25 @@ class EventBusTest {
         bus.publish("topic", "x");
 
         assertTrue(log.isEmpty());
+    }
+
+    @Test
+    void subscriberExceptionDoesNotTriggerDeadEventForTopicPublish() {
+        List<DeadEvent> deads = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of("topic", p -> {
+                        throw new RuntimeException("boom");
+                    }));
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add));
+            }
+        );
+
+        new EventBus(container).publish("topic", "payload");
+
+        assertTrue(deads.isEmpty());
     }
 
     // ==================== async ====================

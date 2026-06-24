@@ -5,9 +5,9 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 ## Stable API
 
 - `Container` - `get(Class)`, `get(Class, String)`, `extension(Class)`, `close()`
-- `Binder` - `bind(Class)`, `contribute(Class)`, `install(Module2)`
+- `Binder` - `bind(Class)`, `contribute(Class)`, `install(Module2)`; `Module2` is the module entry-point type
 - `Binding<T>` - `to(Class)`, `to(instance)`, `to(provider)`, `id(String)`, `primary()`, `scope(Scope)`, `advise(...)`
-- `Module2` - `bind(Binder)`
+- `Module2` - module entry-point type: `bind(Binder)`
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
 - `Scoping` - `within(...)`
 - `Extension<V>` - ordered contributions for a given entry type

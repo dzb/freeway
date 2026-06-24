@@ -1,4 +1,4 @@
-package com.jujin.freeway.commons.defer;
+package com.jujin.freeway.commons.scoped;
 
 import java.util.LinkedHashSet;
 import java.util.Objects;

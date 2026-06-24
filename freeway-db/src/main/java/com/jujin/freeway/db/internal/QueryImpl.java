@@ -490,7 +490,7 @@ final class QueryImpl implements Query {
         private StreamResources(ResultSet rs, ExecuteContext ctx) {
             this.rs = rs;
             this.ctx = ctx;
-            this.cleanable = STREAM_CLEANER.register(this, this::closeResources);
+            this.cleanable = STREAM_CLEANER.register(this, new StreamCleanup(rs, ctx));
         }
 
         private ResultSet rs() {
@@ -509,12 +509,26 @@ final class QueryImpl implements Query {
             closed = true;
             cleanable.clean();
         }
+    }
 
-        private void closeResources() {
+    private static final class StreamCleanup implements Runnable {
+
+        private final ResultSet rs;
+        private final ExecuteContext ctx;
+
+        private StreamCleanup(ResultSet rs, ExecuteContext ctx) {
+            this.rs = rs;
+            this.ctx = ctx;
+        }
+
+        @Override
+        public void run() {
             try {
                 rs.close();
-            } catch (SQLException ignored) {}
-            ctx.close();
+            } catch (SQLException ignored) {
+            } finally {
+                ctx.close();
+            }
         }
     }
 

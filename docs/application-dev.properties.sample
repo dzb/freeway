@@ -8,8 +8,12 @@
 #  Logging
 # ================================
 
+# Logging is controlled via JVM system properties or env vars,
+# not via application config files.
 # Color output for local terminal
-freeway.log.color=always
+# JVM: -Dfreeway.log.color=always
+# Env: FREEWAY_LOG_COLOR=always
+# freeway.log.color=always
 
 # Compact console format (default — explicit for clarity)
 # freeway.log.format=
@@ -21,28 +25,28 @@ freeway.log.color=always
 # Engine selected via module inclusion (.primary() mechanism):
 #   default → FreewayHttpEngine; add UndertowModule for Undertow
 
-freeway.web.server.host=127.0.0.1
-freeway.web.server.port=8080
+freeway.http.server.host=127.0.0.1
+freeway.http.server.port=8080
 
 # Quick shutdown for fast restart cycles
-freeway.web.server.shutdown-grace=2s
+freeway.http.server.shutdown-grace=2s
 
 # ================================
 #  HTTP / Health
 # ================================
 
-freeway.web.health.enabled=true
-freeway.web.health.path=/healthz
+freeway.http.health.enabled=true
+freeway.http.health.path=/healthz
 
 # ================================
 #  HTTP / CORS
 # ================================
 
-freeway.web.cors.enabled=true
-freeway.web.cors.allowed-origins=*
-freeway.web.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
-freeway.web.cors.allowed-headers=Content-Type, Authorization
-freeway.web.cors.allow-credentials=true
+freeway.http.cors.enabled=true
+freeway.http.cors.allowed-origins=*
+freeway.http.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
+freeway.http.cors.allowed-headers=Content-Type, Authorization
+freeway.http.cors.allow-credentials=true
 
 
 # ================================

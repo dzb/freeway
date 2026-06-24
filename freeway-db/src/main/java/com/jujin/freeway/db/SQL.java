@@ -9,23 +9,24 @@ import java.util.function.Consumer;
 /**
  * Immutable chainable SQL builder.
  * <p>
- * Fully compatible with {@link Database#sql(String, Object...)} — pass {@link #sql()} and {@link #args()}
- * directly. Supports {@code ?} positional parameters and {@code :name} / {@code $name} named parameters.
+ * Fully compatible with {@link Database#query(String, Object...)} and {@link Database#execute(String, Object...)} —
+ * pass {@link #sql()} and {@link #args()} directly. Supports {@code ?} positional parameters and
+ * {@code :name} / {@code $name} named parameters.
  * <p>
  * Examples:
  * <pre>{@code
  * // raw text block (Java 25+)
- * db.sql(SQL.select("*").from("users").where("status = ?", 1));
+ * db.query(SQL.select("*").from("users").where("status = ?", 1));
  *
  * // dynamic conditions
  * SQL q = SQL.select("*").from("users");
  * if (name != null)  q = q.where("name LIKE ?", name);
  * if (status != 0)   q = q.where("status = ?", status);
- * db.sql(q.sql(), q.args()).list(User.class);
+ * db.query(q.sql(), q.args()).list(User.class);
  *
  * // named parameter style
  * SQL q = SQL.select("*").from("users").where("name = :name", name);
- * db.sql(q.sql(), q.args()).list(User.class);
+ * db.query(q.sql(), q.args()).list(User.class);
  *
  * // UPDATE
  * SQL.update("users").set("name = ?", name).set("status = ?", status).where("id = ?", id);
@@ -403,7 +404,10 @@ public final class SQL {
         return withClause + sb;
     }
 
-    /** Returns the arguments ordered by {@code ?} position. Pass directly to {@link Database#sql(String, Object...)}. */
+    /**
+     * Returns the arguments ordered by {@code ?} position.
+     * Pass directly to {@link Database#query(String, Object...)} or {@link Database#execute(String, Object...)}.
+     */
     public Object[] args() {
         Object[] cteArgs = cteArgs();
         if (insertTable != null) {

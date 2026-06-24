@@ -35,7 +35,7 @@ mvn test -Dtest=CoercerDefaultTest    # single test class
 ## Module Dependency Graph
 
 ```
-freeway-commons          shared utilities: JSON, coercion, Defer, ScopedCache, beans, validation
+freeway-commons          shared utilities: JSON, coercion, scoped primitives, beans, validation
 freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, extensions
 freeway-boot             launcher, config cascade, profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
@@ -61,174 +61,23 @@ freeway-boot        freeway-http        freeway-db
 
 ## Module — The Fundamental Building Block
 
-`Module2` is the central organizing concept in Freeway. Every application and library expresses its composition through modules. A module is a single unit that declares: *what services I provide, what I need from others, and what I contribute to the system.* The name `Module2` avoids a naming conflict with `java.lang.Module` (JDK 9+); conceptually it is simply Freeway's Module.
+Module is the central organizing concept in Freeway. A module declares services, contributions, and composition. `Module2` is only the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway talks about modules.
 
-```java
-@FunctionalInterface
-public interface Module2 {
-    void bind(Binder binder);
-}
-```
+The module contract is simple:
 
-A module does three things in its `bind()` method:
+- `bind()` declares services and contributions
+- `bind()` does not start work
+- initialization happens when services resolve or runtime hooks fire
+- modules compose explicitly at startup
 
-1. **Bind services** — register implementations, set scopes, configure injection
-2. **Contribute extensions** — add routes, event subscribers, runtime hooks, coercion rules
-3. **Compose with other modules** — passed together to the launcher, sharing a unified binding space
+Typical module shapes:
 
-### The Module Contract
+- application modules wire application services and framework modules together
+- library modules keep the public API free of IoC imports and expose one integration module
+- framework modules register infrastructure defaults and runtime hooks
+- config-driven modules select one implementation from a set of bindings
 
-Modules are **self-contained** and **declarative**. They don't start work during `bind()` — they only declare what should exist. Actual initialization happens when the container resolves services or when `RuntimeHook.start()` fires. This separation is what makes Freeway testable: you can create a container with a subset of modules and verify bindings without starting servers or opening connections.
-
-### Application Module
-
-Every application starts with a primary module:
-
-```java
-public class AppModule implements Module2 {
-    public void bind(Binder b) {
-        // Bind application services
-        b.bind(UserService.class).to(UserServiceImpl.class);
-        b.bind(OrderService.class).to(OrderServiceImpl.class);
-
-        // Install framework modules (chainable on Binder)
-        b.install(new HttpModule())
-         .install(new DbModule());
-
-        // Contribute routes
-        b.contribute(Route.class)
-            .add(Route.get("/users", ctx -> ctx.sendJson(200, users())))
-            .add(Route.post("/orders", (ctx, OrderRequest body) -> {
-                orderService.place(body);
-                ctx.sendJson(201, Map.of("status", "ok"));
-            }, OrderRequest.class));
-
-        // Contribute lifecycle hooks
-        b.contribute(RuntimeHook.class)
-            .add("cache.warmup", new RuntimeHook() {
-                public void start(Container c) { c.get(Cache.class).warmup(); }
-                public void stop(Container c) { c.get(Cache.class).close(); }
-            }).before("freeway.http.server");
-    }
-}
-
-// Bootstrap
-AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
-```
-
-### Module Composition
-
-Modules compose by passing all of them to the launcher. The container loads them all into a shared space — bindings and extensions merge across module boundaries:
-
-```java
-// Compose framework + application modules
-FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new DbModule());
-// or via Freeway.create()
-Freeway.create(new AppModule(), new HttpModule(), new DbModule());
-```
-
-Extensions from every module merge into shared contribution lists. `before()`/`after()` ordering works across module boundaries — a security filter contributed by one module can declare it runs before all routes regardless of which module contributed them. This is the key to modular, composable applications: each module contributes its piece, and the container resolves the whole.
-
-### Library Module — The DbModule Pattern
-
-Freeway modules follow a unique design: **the module integrates the library into the IoC container, but the library itself has zero dependency on IoC.** This is the pattern used by `freeway-db`, `freeway-mq-kafka`, and `freeway-db-hikari`:
-
-```
-freeway-db (the library)
-  ├─ Database, Orm, Pool, SQL, Row, Schema — all work standalone
-  └─ DbModule — the IoC integration point
-```
-
-**Standalone usage (no IoC, no Container):**
-
-```java
-PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test", "sa", "");
-Database db = new DatabaseBuilder().config(config).build();
-Orm orm = Orm.of(db);
-orm.insert(new Post("Hello", "World"));
-```
-
-**IoC usage (with Container):**
-
-```java
-FreewayApp.run(new String[0], new AppModule(), new DbModule());
-// Database, Orm, Coercer are now injectable
-@Inject Database db;
-```
-
-`DbModule.bind()` does the integration work: it reads `PoolConfig` from the container's config cascade, creates a `Database`, binds it as a singleton, registers it in `DatabaseHub`, and wires the `RuntimeHook` for connection pool lifecycle. But the library types (`Database`, `Orm`, `Pool`) never import anything from `freeway-ioc`. This means:
-
-- The library can be used in non-Freeway projects.
-- The library can be tested without a container.
-- The library can be versioned independently.
-- The integration surface is a single, auditable class (`DbModule`).
-
-### Writing a Library Module
-
-Follow this pattern for your own libraries:
-
-```
-my-library/
-├── src/main/java/com/example/mylib/
-│   ├── MyService.java           # public API — no IoC imports
-│   ├── MyServiceConfig.java     # configuration record
-│   └── MyLibModule.java         # IoC integration — implements Module2
-```
-
-```java
-// The library types — zero IoC dependency
-public class MyService {
-    public MyService(MyServiceConfig config) { ... }
-    public void doWork() { ... }
-}
-
-public record MyServiceConfig(String url, int timeout) {
-    public static MyServiceConfig from(Container c) {
-        return new MyServiceConfig(
-            c.get(Coercer.class).coerce(
-                c.get(AppConfig.class).get("myservice.url"), String.class),
-            c.get(Coercer.class).coerce(
-                c.get(AppConfig.class).get("myservice.timeout"), int.class)
-        );
-    }
-}
-
-// The Module — the only file that imports freeway-ioc
-public class MyLibModule implements Module2 {
-    public void bind(Binder b) {
-        b.bind(MyServiceConfig.class).to(c -> MyServiceConfig.from(c));
-        b.bind(MyService.class).to(c -> new MyService(c.get(MyServiceConfig.class)));
-    }
-}
-```
-
-### Config-Driven Module Selection
-
-Modules can read config to decide what to bind. The dialect selection uses this pattern:
-
-```java
-// freeway.db.dialect=mysql  → container.get(Dialect.class, "mysql")
-// freeway.db.dialect=       → auto-detect from JDBC URL → PostgresDialect (primary)
-b.bind(Dialect.class).to(PostgresDialect.class).id("postgresql").primary();
-b.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
-```
-
-### Framework Modules
-
-| Module | Purpose |
-|--------|---------|
-| `HttpModule` | Registers `WebServer`, `RouteIndex`, `WebSocketIndex`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`. Contributes `RuntimeHook` with id `"freeway.http.server"` and default exception mappers (`BodyTooLargeException` → 413, `ValidationException` → 400). |
-| `DbModule` | Reads `PoolConfig` from config, creates `Database` and `Orm`, binds `Pool` (built-in `PoolDefault`; override via extension module `.primary()`), registers `DatabaseHub`. |
-| `HikariPoolModule` | Binds `HikariPool` as a `Pool` implementation with `id("hikari").primary()`. → [freeway-ext](https://github.com/dzb/freeway-ext) |
-| `KafkaModule` | Creates `KafkaConfig`, binds `KafkaEventBridge` and `KafkaSubscriber`, registers `RuntimeHook` for Kafka lifecycle. → [freeway-ext](https://github.com/dzb/freeway-ext) |
-
-### Module Best Practices
-
-- **One module per library.** Don't split a library's IoC integration across multiple modules.
-- **Don't start work in `bind()`.** The `bind()` method declares; `RuntimeHook.start()` activates.
-- **Read config at bind time, not at class load time.** Use `@Value` / `@Symbol` or read `AppConfig` through the container.
-- **Use stable ids for RuntimeHooks.** Other modules may need to order relative to yours (e.g., `"freeway.http.server"`).
-- **Library types should not import IoC types.** Keep the library usable without a container.
+For the full module patterns, see [docs/reference/module.md](reference/module.md).
 
 ---
 
@@ -239,10 +88,10 @@ b.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
 | Type | Purpose |
 |------|---------|
 | `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `close()` |
-| `Module2` | A module entry point: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
+| `Module2` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
-| `Freeway` | Container bootstrap: `Freeway.create(Module2...)` |
+| `Freeway` | Container bootstrap for composing modules: `Freeway.create(Module2...)` |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
 | `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
@@ -578,7 +427,7 @@ AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
 AppRuntime runtime = FreewayApp.run(new String[0], new AppModule(), new HttpModule());
 ```
 
-`FreewayApp.run()` accepts command-line args and `Module2` instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
+`FreewayApp.run()` accepts command-line args and module instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
 For more control, use `AppBuilder`:
 
@@ -736,8 +585,8 @@ Config:
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `freeway.web.health.enabled` | `true` | Enable/disable the health endpoint |
-| `freeway.web.health.path` | `/healthz` | Path for the health check endpoint |
+| `freeway.http.health.enabled` | `true` | Enable/disable the health endpoint |
+| `freeway.http.health.path` | `/healthz` | Path for the health check endpoint |
 
 The health endpoint responds before routing and static files, ensuring it always returns quickly regardless of registered routes.
 
@@ -1312,253 +1161,18 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Commons Utilities
 
-### JSON
+Commons contains the shared runtime primitives used across Freeway: JSON, coercion, validation, `Defer`, `ScopedCache`, and logging support.
 
-```java
-// Parse
-JsonObject obj = JsonUtils.parseObject("{\"name\":\"Alice\"}");
-JsonArray arr = JsonUtils.parseArray("[1, 2, 3]");
+- JSON parsing, building, and serialization live in `JsonUtils` and `JsonCodec`
+- coercion lives in `Coercer` and `CoerceRule`
+- validation lives in `BeanValidator`
+- scoped primitives are described in [docs/reference/commons.md](reference/commons.md)
 
-// Build
-JsonObject o = JsonUtils.object()
-    .put("name", "Alice")
-    .object("address").put("city", "NYC");
+For more detail:
 
-// Serialize
-String json = JsonUtils.stringify(obj);
-String pretty = JsonUtils.stringifyPretty(obj);
-
-// Codec (injectable)
-@Inject JsonCodec codec;
-String json = codec.toJson(user);
-User u = codec.fromJson(json, User.class);
-```
-
-### Coercion
-
-```java
-// Built-in: String → primitives, enums, UUID, dates, collections, maps
-Coercer coercer = container.get(Coercer.class);
-int port = coercer.coerce("8080", int.class);
-
-// Custom rule
-binder.contribute(CoerceRule.class).add(new CoerceRule<>(
-    String.class, MyType.class, value -> MyType.parse(value)
-));
-```
-
-### Validation
-
-```java
-public class CreateUserRequest {
-    @NotBlank
-    private String name;
-
-    @NotNull @Size(min = 1, max = 150)
-    private Integer age;
-
-    @Valid
-    private Address address;
-}
-
-ValidationResult result = BeanValidator.validate(request);
-if (result.hasErrors()) {
-    result.getErrors().forEach(e ->
-        log.warn("{}: {}", e.field(), e.message()));
-}
-```
-
-Annotations: `@NotNull`, `@NotBlank`, `@Size(min, max)`, `@Min`, `@Max`, `@Valid` (recursive).
-
-### Defer — Scope-bound Deferred Execution
-
-*"Run this side effect, but only after the current boundary commits. If it rolls back, forget it."*
-
-Under the hood it's a `ScopedValue<List<Runnable>>`: inside a scope, `Defer.defer()` appends to the list; outside, it runs immediately. On success, the scope drains the list; on failure, it discards it. The calling code doesn't need to know whether a scope is active.
-
-**Mental model — the "commit tray":** You drop slips of paper into the tray during a unit of work. When the work succeeds, someone picks up the tray and processes every slip in order. If the work fails, the tray is emptied — nothing happened.
-
-**Basic usage:**
-
-```java
-// Inside a Defer scope
-Defer.within(() -> {
-    db.execute("UPDATE ...");
-    Defer.defer(() -> cache.invalidate("key"));   // runs after commit
-    Defer.defer("index", () -> rebuildIndex());    // ordered
-        .after("cache");
-});
-// cache invalidated → index rebuilt
-
-// Outside scope — runs immediately
-Defer.defer(() -> log.info("done"));
-
-// Deferred value (computed at commit time)
-Supplier<Snapshot> snap = Defer.supply(() -> buildSnapshot());
-```
-
-**Scenario 1 — DB transaction + EventBus (framework-built-in, zero user code):**
-
-The most common case — you don't write any Defer code. The framework handles it:
-
-```java
-db.transaction(() -> {
-    db.execute("INSERT INTO posts ...");         // ① SQL
-    bus.publish(new PostCreatedEvent(post));     // ② looks immediate, actually deferred
-    db.execute("UPDATE counts ...");             // ③ more SQL
-});
-// ④ commit succeeds → bus fires PostCreatedEvent
-//    or rollback → event never fires
-```
-
-`DatabaseImpl.transaction()` opens a `Defer` scope. `EventBus.publish()` checks `Defer.isActive()` — yes → defers. The user gets correct commit/rollback semantics without any wiring.
-
-**Scenario 2 — DB transaction + custom cache invalidation:**
-
-```java
-db.transaction(() -> {
-    db.execute("UPDATE posts SET title = ? WHERE id = ?", title, id);
-    Defer.defer(() -> cache.invalidate("posts:" + id));
-    // cache only invalidated if the UPDATE actually commits
-});
-```
-
-**Scenario 3 — HTTP request lifecycle:**
-
-Request-scoped side effects that should fire only after the response is written successfully:
-
-```java
-Defer.within(scope -> {
-    // ... handle request, run filters, render response ...
-    Defer.defer(() -> metrics.record(method, path, duration));
-    Defer.defer(() -> accessLog.write(entry));
-
-    if (response.status() >= 400) {
-        scope.rollback();  // error response — don't record as success
-        return;
-    }
-});
-// metrics / accessLog only fire for successful responses
-```
-
-**Scenario 4 — Kafka consumer offset commit boundary:**
-
-Side effects that must wait until the offset is confirmed:
-
-```java
-Defer.within(() -> {
-    for (var record : records) {
-        process(record);
-        Defer.defer(() -> bus.publish(new RecordProcessed(record)));
-    }
-    consumer.commitSync();  // offset confirmed
-});
-// events fire only after offset commit succeeds
-```
-
-**Scenario 5 — Batch processing with all-or-nothing semantics:**
-
-```java
-Defer.within(() -> {
-    for (var row : rows) db.execute("INSERT INTO ledger ...", row);
-    Defer.defer("index", () -> searchIndex.rebuild()).after("stats");
-    Defer.defer("stats", () -> stats.refresh());
-    Defer.defer("notify", () -> bus.publish(new BatchDone()));
-});
-// index/stats/notify run only if all inserts commit, and in order: stats → index → notify
-```
-
-**Scenario 6 — Deferred value (audit snapshot):**
-
-A value computed from committed state:
-
-```java
-var snap = Defer.supply(() -> snapshotDao.build());
-
-db.transaction(() -> {
-    orderService.place(order);
-    // snapshotDao.build() hasn't run yet — defers until commit
-});
-
-// After transaction commits, snapshot reflects consistent state
-AuditSnapshot s = snap.get();
-```
-
-**Framework scopes (built-in):**
-
-The framework opens `Defer` scopes at these natural boundaries — user code inside them can call `Defer.defer()` without any setup:
-
-| Boundary | Opened by | Commit = | Rollback = |
-|----------|----------|----------|------------|
-| DB transaction | `DatabaseImpl.transaction()` | `raw.commit()` succeeds | Work throws → `raw.rollback()` |
-| HTTP request | `WebServer` request handler | Request completes (even on error — errors are handled internally) | Only if filter chain throws unrecoverably |
-| Kafka record | `KafkaSubscriber` poll loop | Record deserializes and publishes successfully | Deserialization or publish fails |
-
-**When NOT to use:**
-
-- **Must fire regardless of success/failure** — `Defer.defer()` inside a scope only fires on success. Use regular code + try/finally for cleanup that always runs.
-- **Fire-and-forget across threads** — the `ScopedValue` binding stays on the current thread. Dispatching to another thread loses the scope.
-- **Long-running async work** — deferred actions run inline during scope drain. If you need async-after-commit, combine `defer()` with an executor inside the deferred action: `Defer.defer(() -> executor.submit(heavyTask))`.
-
-**Key API:**
-
-| Method | Purpose |
-|--------|---------|
-| `Defer.within(Runnable)` | Scope — drain on success, discard on failure |
-| `Defer.within(Consumer<DeferScope>)` | Scope with `DeferScope.rollback()` for manual discard |
-| `Defer.defer(Runnable)` | Unnamed action — run immediately or defer |
-| `Defer.defer(String id, Runnable)` | Named action — returns `DeferAction` for `.before()` / `.after()` |
-| `Defer.supply(Callable<T>)` | Deferred value — returns `Supplier<T>`, computes at commit |
-| `Defer.isActive()` | True inside a `within(...)` block |
-
-### ScopedCache — Scope-bound Value Cache
-
-*"Cached within a scope, cleaned up on exit."*
-
-`ScopedCache` is the dual of `Defer`: instead of buffering actions for commit-time execution, it caches key-value pairs for the lifetime of a scope and cleans them up on exit. Both use `ScopedValue` for implicit context propagation.
-
-**Mental model:** A "scope-lifetime cache" — you look up a value by key inside a scope; the first lookup creates it, subsequent lookups return the same instance. When the scope exits (normally or exceptionally), all cached values are passed through registered cleanup handlers.
-
-**API:**
-
-| Method | Purpose |
-|--------|---------|
-| `ScopedCache.within(Supplier<T>)` | Scope — caches values, cleans up on exit |
-| `ScopedCache.within(Function<Session, T>)` | Scope with `Session` handle for manual close |
-| `ScopedCache.get(Object key, Supplier<V>)` | Get or create in current scope; no caching outside scope |
-| `ScopedCache.onClose(Consumer<Object>)` | Register a global cleanup callback (applied per-value on exit) |
-| `ScopedCache.isActive()` | True inside a `within(...)` block |
-| `ScopedCache.currentSession()` | Current `Session`, or null if outside scope |
-
-**IoC integration.** IoC registers its lifecycle callback once via `ScopedCache.onClose()` — this runs `@PreDestroy` and `AutoCloseable.close()` on every thread-scoped service instance when its scope exits:
-
-```java
-// ContainerImpl static initializer
-ScopedCache.onClose(v -> {
-    Lifecycle.invokePreDestroy(v);
-    if (v instanceof AutoCloseable c) c.close();
-});
-```
-
-`ServiceRuntime` resolves thread-scoped services through `ScopedCache.get()`:
-
-```java
-// ServiceRuntime.realizeThreadScoped()
-ServiceKey key = new ServiceKey(binding.type(), binding.id());
-return ScopedCache.get(key, binding::directInstance);
-```
-
-**Standalone usage.** `ScopedCache` can be used independently of IoC for any scoped resource management:
-
-```java
-ScopedCache.onClose(v -> { if (v instanceof AutoCloseable c) c.close(); });
-
-ScopedCache.within(() -> {
-    Connection conn = ScopedCache.get("db", () -> dataSource.getConnection());
-    // same key → same connection reused within scope
-});
-// connection auto-closed on exit
-```
+- [docs/reference/commons.md](reference/commons.md)
+- [Defer summary](freeway-defer-summary.md)
+- [DB usage guide](freeway-db-how-to-use.md)
 
 ---
 
@@ -1606,7 +1220,10 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 - **`AppRuntime`** is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks.
 - Service ids are **plain strings** and are normalized internally by `ServiceIds`. There is no public `ServiceId` type.
 - Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
-- **`Defer` and `ScopedCache`** are parallel `ScopedValue`-based primitives in commons. `Defer` buffers actions for commit-time drain; `ScopedCache` caches key-value pairs with lifecycle cleanup on scope exit. IoC's thread scope is built on `ScopedCache`.
+- **`Defer` and `ScopedCache`** are the two scope-bound primitives in Commons. `Defer` buffers actions until the enclosing unit of work commits; `ScopedCache` memoizes values for the lifetime of a scope and closes them on exit. IoC's thread scope is built on `ScopedCache`.
+- **Decision rule:** if the work should happen only after success, use `Defer`; if a value should be created once per scope and reused until cleanup, use `ScopedCache`.
+- **`Defer` triggers:** DB transaction commit, HTTP request completion, batch/job success boundaries, ordered post-commit side effects such as invalidate → rebuild → notify.
+- **`ScopedCache` triggers:** request-scoped lookup tables, per-scope connections or handles, repeated resolution of thread-scoped services, values that need one cleanup action when the scope exits.
 - Thread-scoped services use **`Scoping.within()`** to enter an execution boundary; the scope auto-closes when the work lambda completes. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads.
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `WebServer`.
 - **`LoggerSource`** is the built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery; it only activates when no external SLF4J provider is detected.

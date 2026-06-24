@@ -94,7 +94,7 @@ public final class JULConsoleFormatter extends Formatter {
 
     @Override
     public String formatMessage(LogRecord record) {
-        return format(record);
+        return super.formatMessage(record);
     }
 
     // ── throwable ────────────────────────────────────────────────────

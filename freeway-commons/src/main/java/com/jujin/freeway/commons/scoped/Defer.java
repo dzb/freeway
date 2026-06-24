@@ -1,4 +1,4 @@
-package com.jujin.freeway.commons.defer;
+package com.jujin.freeway.commons.scoped;
 
 import java.util.Objects;
 import java.util.concurrent.Callable;

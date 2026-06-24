@@ -1,6 +1,6 @@
 {
 	"freeway": {
-		"web": {
+		"http": {
 			"server": {
 				"host": "0.0.0.0",
 				"shutdown-grace": "30s"

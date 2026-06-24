@@ -11,8 +11,12 @@
 #  Logging
 # ================================
 
+# Logging is controlled via JVM system properties or env vars,
+# not via application config files.
 # Disable color for log aggregators
-freeway.log.color=never
+# JVM: -Dfreeway.log.color=never
+# Env: FREEWAY_LOG_COLOR=never
+# freeway.log.color=never
 
 
 # ================================
@@ -22,31 +26,31 @@ freeway.log.color=never
 #   default → FreewayHttpEngine; add UndertowModule for Undertow
 
 # Bind to all interfaces — fronted by reverse proxy / load balancer
-freeway.web.server.host=0.0.0.0
+freeway.http.server.host=0.0.0.0
 
-# Port set via env: FREEWAY_WEB_SERVER_PORT=8080
-# freeway.web.server.port=8080
+# Port set via env: FREEWAY_HTTP_SERVER_PORT=8080
+# freeway.http.server.port=8080
 
 # Longer grace for in-flight requests during rolling deploys
-freeway.web.server.shutdown-grace=30s
+freeway.http.server.shutdown-grace=30s
 
 # ================================
 #  HTTP / Health
 # ================================
 
-freeway.web.health.enabled=true
-freeway.web.health.path=/healthz
+freeway.http.health.enabled=true
+freeway.http.health.path=/healthz
 
 # ================================
 #  HTTP / CORS
 # ================================
 
-freeway.web.cors.enabled=true
+freeway.http.cors.enabled=true
 
 # Explicit origin list — no wildcards in production
-freeway.web.cors.allowed-origins=
+freeway.http.cors.allowed-origins=
 
-freeway.web.cors.allow-credentials=false
+freeway.http.cors.allow-credentials=false
 
 
 # ================================

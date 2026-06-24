@@ -2,12 +2,13 @@ package com.jujin.freeway.http;
 
 /**
  * Configuration keys for the HTTP module.
- * All keys share the {@code freeway.web} namespace.
+ * All keys share the {@code freeway.http} namespace.
  */
 public final class HttpConfigKeys {
     private HttpConfigKeys() {}
 
-    static final String PREFIX = "freeway.web";
+    static final String PREFIX = "freeway.http";
+    static final String LEGACY_PREFIX = "freeway.web";
 
     // ── Server ────────────────────────────────────────────────
 

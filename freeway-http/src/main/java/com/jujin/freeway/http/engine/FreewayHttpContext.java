@@ -90,6 +90,13 @@ public final class FreewayHttpContext extends HttpContext {
     }
 
     @Override
+    public Map<String, List<String>> headers() {
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        requestHeaders.forEach((key, value) -> copy.put(key, List.copyOf(value)));
+        return Collections.unmodifiableMap(copy);
+    }
+
+    @Override
     public String header(String name) {
         List<String> values = requestHeaders.get(name);
         if (values != null && !values.isEmpty()) return values.getFirst();
@@ -101,6 +108,11 @@ public final class FreewayHttpContext extends HttpContext {
             }
         }
         return null;
+    }
+
+    @Override
+    protected String responseHeader(String name) {
+        return responseHeaders.get(name);
     }
 
     @Override
