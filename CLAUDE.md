@@ -37,7 +37,7 @@ adapters have been removed.
 ## Architecture Boundaries
 
 - **`Container`** — IoC boundary only: `get(Class)`, `get(Class, String)`, `close()`. Created via `Freeway.create(Module2...)`.
-- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `FreewayApp.run(args, Module2...)`.
+- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `FreewayApp.run(new String[0], Module2...)`.
 - **`ServiceId`** is intentionally not a public type — service ids are plain strings, normalized internally by `ServiceIds`.
 - **`Defer` / `ScopedCache`** — commons-level `ScopedValue` primitives. `Defer` buffers actions for commit-time drain; `ScopedCache` caches key-value pairs with lifecycle cleanup on scope exit. IoC's thread scope is built on `ScopedCache`.
 - **Scopes** declared only via `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`. Thread scope is entered through `Scoping.within()`.
@@ -85,7 +85,10 @@ Primary resolution uses `binding.primary()` on the binding DSL, not an annotatio
 5. `application.json`
 6. `application.properties`
 
-Activate profiles: `--freeway.profile=dev`
+CLI keys without a dot (e.g. `--profile=dev`) auto-receive the `freeway.`
+prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
+Dotted keys (`--app.name=foo`) pass through unchanged.
+Activate profiles: `--profile=dev`
 
 ## Commit Rules
 

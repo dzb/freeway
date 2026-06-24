@@ -49,7 +49,7 @@ Freeway 2 keeps its core concepts and public API intentionally small:
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the web server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider with ANSI-colored single-line console output (auto-detected via TTY). Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider with ANSI-colored single-line console output (auto-detected from the attached console). Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
 - Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 ## Quick Start
@@ -62,7 +62,7 @@ public final class AppModule implements Module2 {
     }
 }
 
-AppRuntime runtime = FreewayApp.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(new String[] {"--freeway.profile=dev"}, new AppModule());
 Greeter greeter = runtime.get(Greeter.class);
 System.out.println(greeter.greet("World"));
 runtime.close();
@@ -184,10 +184,10 @@ Switch engines by adding the extension module — the container selects it via `
 
 ```java
 // FreewayHttpEngine (default)
-FreewayApp.run(args, new AppModule(), new HttpModule());
+FreewayApp.run(new String[0], new AppModule(), new HttpModule());
 
 // Undertow — just add the module
-FreewayApp.run(args, new AppModule(), new HttpModule(), new UndertowModule());
+FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowModule());
 ```
 
 ### DB (`freeway-db`)

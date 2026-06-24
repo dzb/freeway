@@ -19,10 +19,10 @@ import java.util.logging.LogRecord;
  * 2026-06-18 12:34:56.790  WARNING  [worker]  c.j.f.http.WebServer  -  Slow request
  * }</pre>
  *
- * <p>Colors are enabled when the JVM has a TTY ({@link System#console()}
- * is non-null) and disabled otherwise — piping or redirecting to a file
- * automatically produces clean output. Override with
- * {@code -Dfreeway.log.color=always|never}.
+ * <p>Colors are enabled when the JVM has an attached console
+ * ({@link System#console()} is non-null) and disabled otherwise —
+ * piping or redirecting to a file automatically produces clean output.
+ * Override with {@code -Dfreeway.log.color=always|never}.
  *
  * <p>Opt out entirely with {@code -Dfreeway.log.format=simple} to keep
  * JUL's default {@link java.util.logging.SimpleFormatter}.
@@ -128,10 +128,9 @@ public final class JULConsoleFormatter extends Formatter {
     /**
      * Detects whether ANSI colors should be emitted.
      *
-     * <p>{@link System#console()} alone is too conservative — it returns
-     * null in IDEs, some terminals, and when stdin is not a TTY even though
-     * stdout still supports ANSI. The {@code TERM} fallback covers those
-     * cases.
+     * <p>This uses the JVM console as the only automatic signal. That keeps
+     * the check cheap and avoids heuristics that can enable color in redirected
+     * output or other non-interactive environments.
      */
     private static boolean detectColor() {
         // https://no-color.org
@@ -144,17 +143,7 @@ public final class JULConsoleFormatter extends Formatter {
         if ("always".equalsIgnoreCase(override)) return true;
         if ("never".equalsIgnoreCase(override)) return false;
 
-        // explicit "dumb" terminal → no color
-        String term = System.getenv("TERM");
-        if (term != null && term.contains("dumb")) return false;
-
-        // Java says we have a console
-        if (System.console() != null) return true;
-
-        // TERM is set to a known color-capable value (covers IDEs, tmux, etc.)
-        if (term != null && !term.isBlank()) return true;
-
-        return false;
+        return System.console() != null;
     }
 
     private static boolean isTruthy(String value) {
