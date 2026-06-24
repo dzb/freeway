@@ -1,24 +1,20 @@
 # Freeway 2
 
-**A brand-new, modern, lightweight Java application framework built on JDK 25+.**
+**A modern, lightweight Java application framework for JDK 25+.**
 
-Zero classpath scanning. Compose-first API. No magic.
+Compose-first. Zero classpath scanning. Minimal dependencies.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
 | `freeway-commons` | Shared utilities: JSON, coercion, scoped primitives, logging |
 | `freeway-ioc` | IoC container: bind, inject, coerce, advise, event-bus    |
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
-| `freeway-http` | HTTP layer: routing, filters, static, multipart, websocket |
-| `├ built-in` | FreewayHttpEngine, high-performance, HTTP/2 + WebSocket       |
-| `└ engine adapters` | Undertow — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
-| `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations  |
-| `└ connection pool` | HikariCP adapter — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+| `freeway-http` | HTTP layer: routing, filters, static, multipart, WebSocket |
+| `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations |
 | `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
-Core modules have zero external dependencies. Extension modules with third-party
-library integrations live in **[freeway-ext](https://github.com/dzb/freeway-ext)**.
-Pick only the adapters you need.
+Core modules have zero external dependencies. Third-party adapters live in
+**[freeway-ext](https://github.com/dzb/freeway-ext)**. Pick only what you need.
 
 ## Philosophy
 
@@ -34,23 +30,26 @@ Freeway.create(
 
 This gives you:
 
-- Fast startup - no bytecode scanning, no reflection-heavy discovery.
-- Total control - every binding is explicit, every dependency is visible.
-- Small footprint - core modules keep external dependencies out of the way.
+- Fast startup - no bytecode scanning.
+- Total control - every binding is explicit.
+- Small footprint - core modules stay dependency-light.
 
 ## Core Design
 
-Freeway 2 keeps its core concepts and public API intentionally small:
+Freeway 2 keeps its core concepts intentionally small:
 
-- `Container` is the service composition and lookup boundary: `get(Class)`, `get(Class, String)`, `close()`.
-- `AppRuntime` sits above `Container` and owns runtime state, startup, shutdown, profiles, config, and runtime hooks.
+- `Freeway` builds a container; `FreewayApp` builds a runtime.
+- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `close()`.
+- `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
 - Service ids are plain strings: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is no public `ServiceId` type.
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
-- `HttpModule` contributes the web server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
+- `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
 - `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider with ANSI-colored single-line console output (auto-detected from the attached console). Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
 - Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
+
+See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/commons.md](docs/reference/commons.md) for deeper module notes.
 
 ## Quick Start
 
@@ -120,7 +119,7 @@ Shared utilities usable independently of the framework:
 
 - JSON — `JsonCodec` for object↔JSON mapping, `JsonUtils` for parsing/serialization.
 - Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
-- Scoped primitives — `Defer` buffers commit-time side effects; `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit. Use `Defer` for success-bound side effects and `ScopedCache` for repeated per-scope values.
+- Scoped primitives — `Defer` buffers commit-time side effects; `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
 - Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
 
@@ -166,7 +165,7 @@ Lifecycle events are published on the EventBus: `AppStartedEvent` after start, `
 
 ### HTTP (`freeway-http`)
 
-The HTTP layer is deliberately thin:
+The HTTP layer stays deliberately thin:
 
 - Routing - explicit `Route` and `RouteGroup` contributions.
 - Route index - trie-based path matching with path variables, regex constraints, and wildcards.
@@ -177,7 +176,7 @@ The HTTP layer is deliberately thin:
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
-- Pluggable engines — `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow adapter available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
+- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow adapter available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
 
 Switch engines by adding the extension module — the container selects it via `.primary()`:
 
@@ -235,7 +234,7 @@ Configuration flows in a layered cascade, from lowest to highest priority:
 2. `application.json`
 3. `application-{profile}.properties`
 4. `application-{profile}.json`
-5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
+5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url`, `FREEWAY_HTTP_SERVER_PORT` → `freeway.http.server.port` (prefix stripped, `_` → `.`, `freeway.` prepended)
 6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles with:
