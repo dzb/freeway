@@ -38,6 +38,7 @@ This gives you:
 
 Freeway 2 keeps its core concepts intentionally small:
 
+- `Module` is the unit of application composition and responsibility partitioning. `Module2` is the Java type name used by Freeway.
 - `Freeway` builds a container; `FreewayApp` builds a runtime.
 - `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `close()`.
 - `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
