@@ -95,3 +95,8 @@ Activate profiles: `--profile=dev`
 - Never include `Co-Authored-By`, AI tool names, or any form of AI attribution in commit messages.
 - Commit messages describe the change itself, never the process or tooling used.
 - All commits appear under the user's name only.
+
+## Further Reading
+
+- [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) — comprehensive guide: modules, HTTP, DB, config, boot
+- [docs/](docs/) — config samples, DB usage, Defer summary
