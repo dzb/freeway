@@ -28,7 +28,7 @@ freeway-commons         zero deps
  └─ freeway-db          depends on commons (ioc optional)
 ```
 
-Core modules are in this repository and have zero external dependencies.
+Core modules have no external dependencies beyond SLF4J.
 Engine adapters, connection pools, and MQ bridges with third-party
 library integrations live in [freeway-ext](https://github.com/dzb/freeway-ext).
 Only Undertow remains as an external HTTP engine; Robaho and Jetty
