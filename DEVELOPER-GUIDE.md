@@ -8,7 +8,9 @@ Freeway is a lightweight, modern Java application framework for JDK 25+. Compose
 // A minimal HTTP application
 public class App {
     public static void main(String[] args) {
-        AppRuntime runtime = FreewayApp.run(args, new AppModule());
+        try (AppRuntime runtime = FreewayApp.run(args, new AppModule())) {
+            // use runtime
+        }
     }
 
     public static final class AppModule implements Module2 {
@@ -111,7 +113,7 @@ public class AppModule implements Module2 {
 }
 
 // Bootstrap
-AppRuntime runtime = FreewayApp.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
 ```
 
 ### Module Composition
@@ -120,7 +122,7 @@ Modules compose by passing all of them to the launcher. The container loads them
 
 ```java
 // Compose framework + application modules
-FreewayApp.run(args, new AppModule(), new HttpModule(), new DbModule());
+FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new DbModule());
 // or via Freeway.create()
 Freeway.create(new AppModule(), new HttpModule(), new DbModule());
 ```
@@ -149,7 +151,7 @@ orm.insert(new Post("Hello", "World"));
 **IoC usage (with Container):**
 
 ```java
-FreewayApp.run(args, new AppModule(), new DbModule());
+FreewayApp.run(new String[0], new AppModule(), new DbModule());
 // Database, Orm, Coercer are now injectable
 @Inject Database db;
 ```
@@ -258,7 +260,7 @@ MyService svc = c.get(MyService.class);
 c.close();
 
 // Full application (config, profiles, hooks, lifecycle)
-AppRuntime runtime = FreewayApp.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
 Container c = runtime.container();
 ```
 
@@ -564,16 +566,16 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 `freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 
-Console output is single-line with ANSI colors (auto-detected via TTY). Colors are disabled when output is piped or redirected to a file. Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
+Console output is single-line with ANSI colors (auto-detected from the attached console). Colors are disabled when output is piped, redirected to a file, or `NO_COLOR` is set. Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
 
 ---
 
 ## Boot
 
 ```java
-AppRuntime runtime = FreewayApp.run(args, new AppModule());
+AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
 // or with explicit module instances
-AppRuntime runtime = FreewayApp.run(args, new AppModule(), new HttpModule());
+AppRuntime runtime = FreewayApp.run(new String[0], new AppModule(), new HttpModule());
 ```
 
 `FreewayApp.run()` accepts command-line args and `Module2` instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
@@ -623,7 +625,10 @@ Lowest to highest priority:
 5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
 6. CLI arguments (`--key=value`, `-Dkey=value`)
 
-Activate profiles: `--freeway.profile=dev` or `-Dfreeway.profile=dev`.
+CLI keys without a dot (e.g. `--profile=dev`) auto-receive the `freeway.`
+prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
+Dotted keys (`--app.name=foo`) pass through unchanged.
+Activate profiles: `--profile=dev` or `--freeway.profile=dev`.
 
 ---
 
@@ -638,7 +643,7 @@ The HTTP package stays flat under `com.jujin.freeway.http`. Public contracts and
 | Body | `BodyHandler`, `RequestContext`, `RequestContextDefault`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
-| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`, `StaticResources`, `ExceptionMapper` |
+| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`, `StaticResourceMount`, `ExceptionMapper` |
 
 ### Routes
 
@@ -740,11 +745,11 @@ The health endpoint responds before routing and static files, ensuring it always
 
 ```java
 binder.contribute(StaticResourceMount.class)
-    .add(StaticResources.classpath("/", "/public"))     // from classpath
-    .add(StaticResources.directory("/uploads", Path.of("/var/uploads")));  // from filesystem
+    .add(StaticResourceMount.classpath("/", "/public"))     // from classpath
+    .add(StaticResourceMount.directory("/uploads", Path.of("/var/uploads")));  // from filesystem
 
 // Options
-StaticResources.classpath("/assets", "/static")
+StaticResourceMount.classpath("/assets", "/static")
     .cacheMaxAgeSeconds(3600)
     .immutable(true)            // sets Cache-Control: immutable
     .fallthrough(true);         // pass to next handler on 404
@@ -816,10 +821,10 @@ Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationEx
 
 ```java
 // Default — FreewayHttpEngine
-FreewayApp.run(args, new AppModule(), new HttpModule());
+FreewayApp.run(new String[0], new AppModule(), new HttpModule());
 
 // Undertow — just add the module, container picks it via .primary()
-FreewayApp.run(args, new AppModule(), new HttpModule(), new UndertowModule());
+FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowModule());
 ```
 
 **How it works:**
@@ -869,7 +874,7 @@ Orm orm = Orm.of(db);
 ### IoC Usage
 
 ```java
-FreewayApp.run(args, new AppModule(), new DbModule());
+FreewayApp.run(new String[0], new AppModule(), new DbModule());
 // Database and Orm are now injectable
 ```
 
@@ -1046,10 +1051,10 @@ Database db = new DatabaseBuilder().config(config).pool(pool).build();
 
 ```java
 // Default — PoolDefault
-FreewayApp.run(args, new AppModule(), new DbModule());
+FreewayApp.run(new String[0], new AppModule(), new DbModule());
 
 // HikariCP — add the module, container selects it via .primary()
-FreewayApp.run(args, new AppModule(), new DbModule(), new HikariPoolModule());
+FreewayApp.run(new String[0], new AppModule(), new DbModule(), new HikariPoolModule());
 ```
 
 No config keys needed — just add or remove the extension module.
@@ -1271,7 +1276,7 @@ Database audit = hub.get("audit");
 Distributed pub/sub via EventBus. Add `KafkaModule` to enable:
 
 ```java
-FreewayApp.run(args, new AppModule(), new KafkaModule());
+FreewayApp.run(new String[0], new AppModule(), new KafkaModule());
 ```
 
 Config in `application.properties`:

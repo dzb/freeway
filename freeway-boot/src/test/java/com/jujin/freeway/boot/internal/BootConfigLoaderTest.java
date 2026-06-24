@@ -39,6 +39,39 @@ class BootConfigLoaderTest {
     }
 
     @Test
+    void autoPrefixesSimpleCliKeysWithFreewayNamespace() {
+        Map<String, String> args = BootConfigLoader.parseArgs(
+            "--profile=dev",
+            "--verbose",
+            "--app.name=Overridden",
+            "--server.port=7070",
+            "-Dlog.color=always"
+        );
+
+        // Simple keys (no dot) get the freeway. prefix
+        assertEquals("dev", args.get("freeway.profile"));
+        assertEquals("true", args.get("freeway.verbose"));
+
+        // Dotted keys are preserved as-is
+        assertEquals("Overridden", args.get("app.name"));
+        assertEquals("7070", args.get("server.port"));
+        assertEquals("always", args.get("log.color"));
+
+        // No unprefixed simple keys leak through
+        assertEquals(5, args.size());
+    }
+
+    @Test
+    void explicitFreewayPrefixStillWorks() {
+        Map<String, String> args = BootConfigLoader.parseArgs(
+            "--freeway.profile=dev"
+        );
+
+        assertEquals("dev", args.get("freeway.profile"));
+        assertEquals(1, args.size());
+    }
+
+    @Test
     void rejectsOversizedPropertiesResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
             BootConfigLoader.loadLayers(new OversizedPropertiesLoader()));

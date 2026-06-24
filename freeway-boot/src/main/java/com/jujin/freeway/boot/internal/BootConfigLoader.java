@@ -127,7 +127,21 @@ public final class BootConfigLoader implements ConfigLoader {
         return baseName + "-" + profile + "." + suffix;
     }
 
-    private static Map<String, String> parseArgs(String... args) {
+    /**
+     * Parses CLI arguments into a key-value map. Supports three styles:
+     * <ul>
+     *   <li>{@code --key=value}, {@code --key value}, {@code --key} (boolean)</li>
+     *   <li>{@code -Dkey=value} (property-style)</li>
+     *   <li>{@code -X value} (short flag, two chars including the dash)</li>
+     * </ul>
+     *
+     * <p>Keys without a dot are treated as convenience shortcuts for Freeway
+     * framework config and automatically receive the {@code freeway.} prefix.
+     * Dotted keys (like {@code server.port} or {@code freeway.profile}) are
+     * preserved as-is, allowing application-level config to pass through
+     * unchanged.
+     */
+    static Map<String, String> parseArgs(String... args) {
         List<String> list = args == null ? List.of() : List.of(args);
         Map<String, String> values = new LinkedHashMap<>();
         for (int i = 0; i < list.size(); i++) {
@@ -136,17 +150,17 @@ public final class BootConfigLoader implements ConfigLoader {
                 String raw = arg.substring(2);
                 int eq = raw.indexOf('=');
                 if (eq > 0) {
-                    values.put(raw.substring(0, eq), raw.substring(eq + 1));
+                    values.put(applyFreewayPrefix(raw.substring(0, eq)), raw.substring(eq + 1));
                 } else if (i + 1 < list.size() && !list.get(i + 1).startsWith("-")) {
-                    values.put(raw, list.get(++i));
+                    values.put(applyFreewayPrefix(raw), list.get(++i));
                 } else {
-                    values.put(raw, "true");
+                    values.put(applyFreewayPrefix(raw), "true");
                 }
             } else if (arg.startsWith("-D")) {
                 String raw = arg.substring(2);
                 int eq = raw.indexOf('=');
                 if (eq > 0) {
-                    values.put(raw.substring(0, eq), raw.substring(eq + 1));
+                    values.put(applyFreewayPrefix(raw.substring(0, eq)), raw.substring(eq + 1));
                 }
             } else if (arg.startsWith("-") && arg.length() == 2) {
                 String key = arg.substring(1);
@@ -156,6 +170,15 @@ public final class BootConfigLoader implements ConfigLoader {
             }
         }
         return values;
+    }
+
+    /**
+     * If {@code key} contains no dot separator it is treated as a convenience
+     * shortcut for a Freeway framework property and gets the {@code freeway.}
+     * namespace prefix. Dotted keys are returned unchanged.
+     */
+    private static String applyFreewayPrefix(String key) {
+        return key.indexOf('.') < 0 ? "freeway." + key : key;
     }
 
     private static List<String> parseProfiles(String value) {
