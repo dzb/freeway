@@ -512,6 +512,8 @@ private RequestContext ctx;    // 这是 proxy，不是实际实例
 
 ### 路由
 
+路径变量支持两种语法：`:name`（简洁，Express 风格）和 `{name}`。需要正则约束时用 `{name:regex}`，如 `{id:\\d+}` 仅匹配数字。两种可混用。
+
 ```java
 binder.contribute(Route.class)
     .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
