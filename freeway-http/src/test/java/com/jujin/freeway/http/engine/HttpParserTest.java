@@ -105,6 +105,40 @@ class HttpParserTest {
         assertTrue(req.isUpgradeRequest());
     }
 
+    // ── Connection header token list ──────────────────────────────
+
+    @Test
+    void connectionTokenListKeepAliveAndUpgrade() throws IOException {
+        String raw = "GET /ws HTTP/1.1\r\n"
+            + "Host: localhost\r\n"
+            + "Upgrade: websocket\r\n"
+            + "Connection: keep-alive, Upgrade\r\n"
+            + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+            + "Sec-WebSocket-Version: 13\r\n"
+            + "\r\n";
+        var parser = new HttpParser(new ByteArrayInputStream(
+            raw.getBytes(StandardCharsets.ISO_8859_1)));
+        var req = parser.parse();
+
+        assertNotNull(req);
+        assertTrue(req.keepAlive());
+        assertTrue(req.isUpgradeRequest());
+    }
+
+    @Test
+    void connectionTokenListClose() throws IOException {
+        String raw = "GET /test HTTP/1.1\r\n"
+            + "Host: localhost\r\n"
+            + "Connection: keep-alive, close\r\n"
+            + "\r\n";
+        var parser = new HttpParser(new ByteArrayInputStream(
+            raw.getBytes(StandardCharsets.ISO_8859_1)));
+        var req = parser.parse();
+
+        assertNotNull(req);
+        assertFalse(req.keepAlive()); // "close" takes precedence
+    }
+
     @Test
     void headerValueWithLeadingTabAfterColon() throws IOException {
         String raw = "GET /test HTTP/1.1\r\n"

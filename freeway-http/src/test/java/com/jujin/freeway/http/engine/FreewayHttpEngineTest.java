@@ -304,6 +304,33 @@ class FreewayHttpEngineTest {
         }
     }
 
+    // ── HEAD response Content-Length (RFC 7231 §4.3.2) ────────────
+
+    @Test
+    void headResponseReportsCorrectContentLength() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .route(Route.get("/data", ctx ->
+                ctx.send(200, "Hello World")))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/data"))
+                    .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
+                    .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertTrue(resp.headers().firstValue("Content-Length").isPresent());
+            int cl = Integer.parseInt(resp.headers().firstValue("Content-Length").get());
+            assertEquals(11, cl); // "Hello World".length
+            assertEquals("", resp.body()); // no body for HEAD
+        } finally {
+            server.stop();
+        }
+    }
+
     // ── X-Request-Id propagation ──────────────────────────────────
 
     @Test

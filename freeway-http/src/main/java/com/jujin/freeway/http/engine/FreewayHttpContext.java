@@ -173,7 +173,8 @@ public final class FreewayHttpContext extends HttpContext {
 
         boolean headRequest = "HEAD".equalsIgnoreCase(method);
         boolean bodyAllowed = allowsResponseBody();
-        int length = bodyAllowed && !headRequest ? data.length : 0;
+        // HEAD response must report the same Content-Length as GET (RFC 7231 §4.3.2)
+        int length = bodyAllowed ? data.length : 0;
 
         // Status line: "HTTP/1.1 {code} {reason}\r\n"
         rawOut.write(HTTP11);

@@ -98,7 +98,15 @@ public final class HttpParser {
                 }
                 case "connection" -> {
                     String v = entry.getValue().getFirst();
-                    if (v != null) { keepAlive = "keep-alive".equalsIgnoreCase(v); if ("close".equalsIgnoreCase(v)) keepAlive = false; if (containsIgnoreCase(v, "upgrade")) upgradeRequest = true; }
+                    if (v != null) {
+                        // RFC 7230 §6.1: Connection = #token → comma-separated list
+                        for (String token : v.split(",")) {
+                            token = token.trim();
+                            if ("keep-alive".equalsIgnoreCase(token)) keepAlive = true;
+                            if ("close".equalsIgnoreCase(token)) keepAlive = false;
+                            if ("upgrade".equalsIgnoreCase(token)) upgradeRequest = true;
+                        }
+                    }
                 }
                 case "upgrade" -> {
                     String v = entry.getValue().getFirst();
