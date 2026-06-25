@@ -100,7 +100,7 @@ public final class HttpSession implements Runnable {
                 }
 
                 // Direct Map.get for WS upgrade check — avoids stream
-                var upgradeHeader = req.headers().get("Upgrade");
+                var upgradeHeader = req.headers().get("upgrade");
                 if (req.isUpgradeRequest() && upgradeHeader != null
                         && !upgradeHeader.isEmpty()
                         && "websocket".equalsIgnoreCase(upgradeHeader.getFirst())) {
@@ -109,7 +109,7 @@ public final class HttpSession implements Runnable {
                 }
 
                 // Direct Map.get for X-Request-Id
-                var reqIdHeader = req.headers().get("X-Request-Id");
+                var reqIdHeader = req.headers().get("x-request-id");
                 String correlationId = reqIdHeader != null && !reqIdHeader.isEmpty()
                     ? reqIdHeader.getFirst() : null;
                 RequestContext requestContext = HttpContext.createRequestContext(correlationId);
