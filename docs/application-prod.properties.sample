@@ -52,6 +52,18 @@ freeway.http.cors.allowed-origins=
 
 freeway.http.cors.allow-credentials=false
 
+# ================================
+#  HTTP / HTTPS (TLS)
+# ================================
+
+# Enable HTTPS in production — set key-store and password via env vars.
+# FREEWAY_HTTP_SSL_KEY_STORE=/etc/ssl/keystore.p12
+# FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD=***
+freeway.http.ssl.enabled=true
+# freeway.http.ssl.key-store=
+# freeway.http.ssl.key-store-password=
+# freeway.http.ssl.key-store-type=PKCS12
+# freeway.http.ssl.http2=true
 
 # ================================
 #  Database — PostgreSQL

@@ -13,6 +13,13 @@
 				"enabled": "true",
 				"allowed-origins": "",
 				"allow-credentials": "false"
+			},
+			"ssl": {
+				"enabled": "true",
+				"key-store": "",
+				"key-store-password": "",
+				"key-store-type": "PKCS12",
+				"http2": "true"
 			}
 		},
 		"db": {

@@ -19,6 +19,13 @@
 				"exposed-headers": "",
 				"max-age": "3600",
 				"allow-credentials": "false"
+			},
+			"ssl": {
+				"enabled": "false",
+				"key-store": "",
+				"key-store-password": "",
+				"key-store-type": "PKCS12",
+				"http2": "true"
 			}
 		},
 		"db": {

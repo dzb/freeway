@@ -79,6 +79,19 @@
 
 
 # ================================
+#  HTTP / HTTPS (TLS)
+# ================================
+
+# Enable HTTPS — requires key-store and password. When enabled the
+# existing HTTP port (default 8080) upgrades to TLS.
+# freeway.http.ssl.enabled=false
+# freeway.http.ssl.key-store=
+# freeway.http.ssl.key-store-password=
+# freeway.http.ssl.key-store-type=PKCS12
+# freeway.http.ssl.http2=true    # HTTP/2 over TLS via ALPN
+
+
+# ================================
 #  Database / Connection (required)
 # ================================
 
