@@ -83,6 +83,55 @@ class RouteIndexTest {
         );
     }
 
+    // ── Colon syntax (:name) ─────────────────────────────────────
+
+    @Test
+    void colonSyntaxMatchesPathParameter() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/api/quote/:code", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+
+        RouteIndex.RouteMatch match = registry.match("GET", "/api/quote/600519");
+        assertNotNull(match);
+        assertEquals("600519", match.pathVariables().get("code"));
+    }
+
+    @Test
+    void colonSyntaxMixedWithBraces() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/api/quote/:code/kline", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+
+        RouteIndex.RouteMatch match = registry.match("GET", "/api/quote/688017/kline");
+        assertNotNull(match);
+        assertEquals("688017", match.pathVariables().get("code"));
+    }
+
+    @Test
+    void colonSyntaxMultipleParams() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/users/:userId/posts/:postId", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+
+        RouteIndex.RouteMatch match = registry.match("GET", "/users/42/posts/99");
+        assertNotNull(match);
+        assertEquals("42", match.pathVariables().get("userId"));
+        assertEquals("99", match.pathVariables().get("postId"));
+    }
+
+    @Test
+    void colonSyntaxNoMatchWithoutSegment() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/api/quote/:code", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+
+        assertNull(registry.match("GET", "/api/quote/"));
+    }
+
     @Test
     void rejectsEncodedTraversalInWebSocketRouteRegistration() {
         assertThrows(IllegalArgumentException.class, () ->
