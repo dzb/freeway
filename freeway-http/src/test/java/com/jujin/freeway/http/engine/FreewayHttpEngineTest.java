@@ -3,6 +3,7 @@ package com.jujin.freeway.http.engine;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.WebServerBuilder;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketGroup;
@@ -300,6 +301,79 @@ class FreewayHttpEngineTest {
                     }
                 })
             ));
+        }
+    }
+
+    // ── HEAD response Content-Length (RFC 7231 §4.3.2) ────────────
+
+    @Test
+    void headResponseReportsCorrectContentLength() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .route(Route.get("/data", ctx ->
+                ctx.send(200, "Hello World")))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/data"))
+                    .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
+                    .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertTrue(resp.headers().firstValue("Content-Length").isPresent());
+            int cl = Integer.parseInt(resp.headers().firstValue("Content-Length").get());
+            assertEquals(11, cl); // "Hello World".length
+            assertEquals("", resp.body()); // no body for HEAD
+        } finally {
+            server.stop();
+        }
+    }
+
+    // ── X-Request-Id propagation ──────────────────────────────────
+
+    @Test
+    void propagatesClientXRequestId() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .route(Route.get("/whoami", ctx ->
+                ctx.send(200, ctx.requestContext().correlationId())))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                    .header("X-Request-Id", "client-supplied-id")
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals("client-supplied-id", resp.body());
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void propagatesLowercaseXRequestId() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .route(Route.get("/whoami", ctx ->
+                ctx.send(200, ctx.requestContext().correlationId())))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                    .header("x-request-id", "lowercase-client-id")
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals("lowercase-client-id", resp.body());
+        } finally {
+            server.stop();
         }
     }
 }

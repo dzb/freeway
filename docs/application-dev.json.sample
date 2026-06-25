@@ -16,6 +16,13 @@
 				"allowed-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
 				"allowed-headers": "Content-Type, Authorization",
 				"allow-credentials": "true"
+			},
+			"ssl": {
+				"enabled": "false",
+				"key-store": "dev-keystore.p12",
+				"key-store-password": "changeit",
+				"key-store-type": "PKCS12",
+				"http2": "true"
 			}
 		},
 		"db": {

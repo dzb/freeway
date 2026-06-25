@@ -78,7 +78,7 @@ public final class RouteIndex {
         // Populate exact cache for routes without path variables
         boolean hasVariables = false;
         for (String seg : segments) {
-            if (seg.startsWith("{") && seg.endsWith("}")) { hasVariables = true; break; }
+            if ((seg.startsWith("{") && seg.endsWith("}")) || seg.startsWith(":")) { hasVariables = true; break; }
         }
         if (!hasVariables) {
             exactCache.put(key + ":" + path, handler);
@@ -126,6 +126,8 @@ public final class RouteIndex {
                     name = inner;
                 }
                 current = current.getOrCreateParam(name, regex, isWildcard);
+            } else if (seg.startsWith(":") && seg.length() > 1) {
+                current = current.getOrCreateParam(seg.substring(1), null, false);
             } else {
                 current = current.getOrCreateLiteral(seg);
             }

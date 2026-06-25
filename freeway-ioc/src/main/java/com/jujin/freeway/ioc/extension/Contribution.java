@@ -4,7 +4,7 @@ package com.jujin.freeway.ioc.extension;
  * Ordering handle returned by {@link Contributions#add(String, Object)}.
  *
  * <p>Declares ordering constraints relative to other named contributions.
- * Unrecognised target ids are silently ignored.
+ * Unrecognised target ids fail resolution when ordering is evaluated.
  */
 public interface Contribution {
 

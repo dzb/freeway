@@ -114,7 +114,14 @@ public final class MethodHandleUtils {
             MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(method.getDeclaringClass(), LOOKUP);
             return lookup.unreflect(method).asFixedArity();
         } catch (IllegalAccessException ex) {
-            throw new RuntimeException("Cannot access method: " + method, ex);
+            // Module system blocked privateLookupIn (e.g. javax.sql.DataSource
+            // from java.sql module). Fall back to setAccessible + reflection.
+            method.setAccessible(true);
+            try {
+                return LOOKUP.unreflect(method).asFixedArity();
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException("Cannot access method: " + method, e);
+            }
         }
     }
 

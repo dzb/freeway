@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **CLI convenience prefix** — CLI args with simple keys (no dot) automatically receive the `freeway.` prefix. `--profile=dev` is equivalent to `--freeway.profile=dev`. Dotted keys (`--app.name=foo`) pass through unchanged.
+- **CLI convenience prefix** — CLI args without a dot (e.g. `--profile=dev`) auto-receive the `freeway.` prefix. Dotted keys pass through unchanged.
+- **HTTPS auto-configuration** — `HttpModule` now reads `freeway.http.ssl.*` config keys and automatically creates an HTTPS engine with TLS 1.3 when `ssl.enabled=true`. Supports PKCS12/JKS keystores and HTTP/2 over TLS via ALPN. `WebServerBuilder` gains `.sslContext()` convenience method.
+- **Jetty engine adapter** restored in `freeway-ext`. Jetty 12 provides HTTP/1.1, HTTP/2, and WebSocket with full TLS support. Uses the `.primary()` binding pattern — add `JettyWebEngineModule` to switch.
+
+### Changed
+
+- **Response serialization optimizations** — Status code digits and Content-Length digits pre-computed as `byte[]` caches, eliminating per-request `String.valueOf()` + `.getBytes()` allocations. Common error response bodies (404, 500) and health check body pre-computed, avoiding repeated String-to-byte conversion on hot paths.
+- **Header key normalization** — HTTP/1.1 parser now normalizes header keys to all lowercase per RFC 7230, fixing X-Request-Id correlation ID propagation across case variations.
+- **Header value OWS tolerance** — Trailing whitespace stripped from header values per RFC 7230 §3.2.6, fixing parsing of `Content-Length: 4 `, `Connection: keep-alive `, etc.
+- **HEAD response Content-Length** — HEAD responses now report the same Content-Length as GET would (RFC 7231 §4.3.2), fixing cache validation.
+- **Connection header token-list** — Parsed as comma-separated token list per RFC 7230 §6.1, fixing `Connection: keep-alive, Upgrade` handling.
+- **Documentation restructured** — `DEVELOPER-GUIDE.md`, config samples, and `freeway-*` summaries moved to `docs/` directory. SKILL.md consolidated as concise English index with Chinese reference. `Contribution.java` Javadoc corrected (unknown ids fail, not silently ignored).
+
+### Fixed
+
+- Response header injection hardening — `headerSet()` validates no `\r`/`\n` in values.
 
 ## [1.2.1] — 2026-06-23
 

@@ -21,11 +21,21 @@ import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
 import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class HttpModule implements Module2 {
+    private static final Logger LOG = LoggerFactory.getLogger(HttpModule.class);
     public static final String SERVER_HOOK = "freeway.http.server";
 
     @Override
@@ -58,11 +68,41 @@ public final class HttpModule implements Module2 {
                 exposed.isBlank() ? null : exposed, maxAge, credentials);
         });
 
-        // Engines — concrete bindings
+        // Engines — concrete bindings, HTTPS when SSL is enabled
         binder.bind(FreewayHttpEngine.class).to(container -> {
             var json = container.get(JsonCodec.class);
             var coercer = container.get(Coercer.class);
-            return new FreewayHttpEngine(json, coercer);
+            var symbols = container.get(SymbolSource.class);
+
+            boolean sslEnabled = config(symbols, coercer,
+                HttpConfigKeys.SSL_ENABLED, null, false);
+            if (!sslEnabled) {
+                LOG.debug("SSL disabled, using plain HTTP engine");
+                return new FreewayHttpEngine(json, coercer);
+            }
+
+            String ksPath = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE, null, null);
+            String ksPwd = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE_PASSWORD, null, null);
+            if (ksPath == null || ksPwd == null) {
+                LOG.error("SSL enabled ({} = true) but {} and {} are not configured",
+                    HttpConfigKeys.SSL_ENABLED,
+                    HttpConfigKeys.SSL_KEY_STORE,
+                    HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
+                throw new IllegalStateException(
+                    "SSL is enabled but " + HttpConfigKeys.SSL_KEY_STORE
+                    + " and " + HttpConfigKeys.SSL_KEY_STORE_PASSWORD
+                    + " are required");
+            }
+            String ksType = config(symbols, coercer,
+                HttpConfigKeys.SSL_KEY_STORE_TYPE, null, "PKCS12");
+            boolean http2 = config(symbols, coercer,
+                HttpConfigKeys.SSL_HTTP2, null, true);
+
+            LOG.info("Initializing HTTPS engine from keystore {} (type={}, http2={})",
+                ksPath, ksType, http2);
+            SSLContext sslContext = buildSslContext(ksPath, ksPwd, ksType);
+            LOG.info("HTTPS engine initialized — TLS 1.3 via JDK default SSLContext");
+            return new FreewayHttpEngine(json, coercer, sslContext, http2);
         });
 
         // HttpEngine — bind to FreewayHttpEngine
@@ -152,6 +192,26 @@ public final class HttpModule implements Module2 {
             }
             return false;
         });
+    }
+
+    private static SSLContext buildSslContext(String path, String password, String type) {
+        try {
+            KeyStore ks = KeyStore.getInstance(type);
+            try (InputStream in = Files.newInputStream(Path.of(path))) {
+                ks.load(in, password.toCharArray());
+            }
+            KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+                KeyManagerFactory.getDefaultAlgorithm());
+            kmf.init(ks, password.toCharArray());
+            SSLContext ctx = SSLContext.getInstance("TLS");
+            ctx.init(kmf.getKeyManagers(), null, null);
+            return ctx;
+        } catch (Exception e) {
+            LOG.error("Failed to initialize SSL context from keystore: {} (type={}) — {}",
+                path, type, e.getMessage(), e);
+            throw new IllegalStateException(
+                "Failed to initialize SSL context from keystore: " + path, e);
+        }
     }
 
     @SuppressWarnings("unchecked")

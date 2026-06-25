@@ -57,6 +57,8 @@ public final class PathPattern {
                     }
                     paramNames[i] = inner;
                 }
+            } else if (seg.startsWith(":") && seg.length() > 1) {
+                paramNames[i] = seg.substring(1);
             } else {
                 segments[i] = seg;
             }

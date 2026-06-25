@@ -3,6 +3,7 @@ package com.jujin.freeway.http.filter;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Filter that intercepts the health endpoint before routing.
@@ -17,6 +18,9 @@ public final class HealthFilter implements HttpFilter {
     private final boolean enabled;
     private final String healthPath;
     private final HealthCheck healthCheck;
+    // Pre-computed response body for the default health check
+    private static final byte[] DEFAULT_RESPONSE =
+        "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
 
     /** Default: enabled, /healthz path, default health check. */
     public static final HealthFilter DEFAULT = new HealthFilter(
@@ -28,10 +32,20 @@ public final class HealthFilter implements HttpFilter {
         this.healthCheck = healthCheck;
     }
 
+    /** Returns false when health checks are disabled — this filter is then a no-op pass-through. */
+    public boolean isActive() {
+        return enabled;
+    }
+
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
         if (enabled && "GET".equalsIgnoreCase(ctx.method()) && healthPath.equals(ctx.path())) {
-            ctx.sendJson(200, healthCheck.check());
+            if (healthCheck instanceof HealthCheck.Default) {
+                ctx.status(200).headerSet("Content-Type", "application/json; charset=utf-8")
+                    .output(DEFAULT_RESPONSE);
+            } else {
+                ctx.sendJson(200, healthCheck.check());
+            }
             return;
         }
         next.handle(ctx);

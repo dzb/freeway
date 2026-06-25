@@ -48,6 +48,14 @@ freeway.http.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
 freeway.http.cors.allowed-headers=Content-Type, Authorization
 freeway.http.cors.allow-credentials=true
 
+# ================================
+#  HTTP / HTTPS (TLS) — optional for local dev
+# ================================
+# freeway.http.ssl.enabled=false
+# freeway.http.ssl.key-store=dev-keystore.p12
+# freeway.http.ssl.key-store-password=changeit
+# freeway.http.ssl.key-store-type=PKCS12
+# freeway.http.ssl.http2=true
 
 # ================================
 #  Database — H2 in-memory
