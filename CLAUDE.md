@@ -31,8 +31,8 @@ freeway-commons         zero deps
 Core modules have no external dependencies beyond SLF4J.
 Engine adapters, connection pools, and MQ bridges with third-party
 library integrations live in [freeway-ext](https://github.com/dzb/freeway-ext).
-Only Undertow remains as an external HTTP engine; Robaho and Jetty
-adapters have been removed.
+External HTTP engines available in freeway-ext: Undertow and Jetty;
+Robaho adapter has been removed.
 
 ## Architecture Boundaries
 

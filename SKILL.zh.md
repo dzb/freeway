@@ -15,14 +15,14 @@ freeway-ioc         IoC 容器：绑定、注入、作用域、AOP、事件总�
 freeway-boot        launcher、配置级联、profiles、运行时生命周期
 freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipart、SSE
   ├ 内置引擎          FreewayHttpEngine（HTTP/1.1 + HTTP/2 + WebSocket + HTTPS）
-  └ 外部引擎          Undertow → 见 freeway-ext
+  └ 外部引擎          Undertow / Jetty → 见 freeway-ext
 freeway-db          JDBC：ORM、连接池、事务、SQL 构建器、迁移
   └ 外部连接池        HikariCP → 见 freeway-ext
 
-第三方库适配器（freeway-http-undertow,
+第三方库适配器（freeway-http-jetty, freeway-http-undertow,
 freeway-db-hikari, freeway-mq-kafka）已拆分到独立仓库
 [freeway-ext](https://github.com/dzb/freeway-ext)。
-Robaho 和 Jetty 引擎适配器已移除。核心模块 SLF4J 以外零外部依赖。
+Robaho 引擎适配器已移除。核心模块 SLF4J 以外零外部依赖。
 ```
 
 ## 启动应用
