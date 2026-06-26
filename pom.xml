@@ -95,6 +95,11 @@
                 <artifactId>freeway-starter-db</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-flow</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Third-party -->
             <dependency>
@@ -199,5 +204,6 @@
         <module>freeway-boot</module>
         <module>freeway-http</module>
         <module>freeway-db</module>
+        <module>freeway-flow</module>
     </modules>
 </project>
