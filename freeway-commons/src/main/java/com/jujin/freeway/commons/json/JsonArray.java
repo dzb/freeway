@@ -1,5 +1,6 @@
 package com.jujin.freeway.commons.json;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,6 +47,10 @@ public final class JsonArray {
 
     public Double getDouble(int index) {
         return JsonAccessors.doubleValue(get(index));
+    }
+
+    public BigDecimal getBigDecimal(int index) {
+        return JsonAccessors.bigDecimal(get(index));
     }
 
     public Boolean getBoolean(int index) {

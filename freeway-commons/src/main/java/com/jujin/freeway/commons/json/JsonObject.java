@@ -1,5 +1,6 @@
 package com.jujin.freeway.commons.json;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -48,6 +49,10 @@ public final class JsonObject {
 
     public Double getDouble(String key) {
         return JsonAccessors.doubleValue(get(key));
+    }
+
+    public BigDecimal getBigDecimal(String key) {
+        return JsonAccessors.bigDecimal(get(key));
     }
 
     public Boolean getBoolean(String key) {
