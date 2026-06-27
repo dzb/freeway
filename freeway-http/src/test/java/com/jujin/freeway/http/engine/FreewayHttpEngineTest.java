@@ -4,7 +4,9 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketGroup;
 import com.jujin.freeway.http.websocket.WebSocketListener;
@@ -12,6 +14,7 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.annotation.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -375,5 +378,49 @@ class FreewayHttpEngineTest {
         } finally {
             server.stop();
         }
+    }
+
+    // ── Handler class injection ─────────────────────────────────
+
+    static class GreetingService {
+        String greet(String name) { return "Hello, " + name + "!"; }
+    }
+
+    static class GreetHandler implements RouteHandler {
+        private final GreetingService service;
+
+        @Inject
+        GreetHandler(GreetingService service) {
+            this.service = service;
+        }
+
+        @Override
+        public void handle(HttpContext ctx) throws Exception {
+            String name = ctx.pathVar("name");
+            ctx.send(200, service.greet(name));
+        }
+    }
+
+    @Test
+    void servesRouteWithInjectedHandlerClass() throws Exception {
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+
+        app = FreewayApp.run(new String[0], binder -> {
+            binder.bind(GreetingService.class).to(GreetingService.class);
+            binder.contribute(Route.class).add(
+                Route.get("/greet/{name}", GreetHandler.class));
+        });
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> resp = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + port + "/greet/Alice"))
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp.statusCode());
+        assertEquals("Hello, Alice!", resp.body());
     }
 }
