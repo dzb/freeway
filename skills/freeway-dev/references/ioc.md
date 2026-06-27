@@ -40,6 +40,22 @@ binder.contribute(RuntimeHook.class)
     }).before("freeway.http.server");
 ```
 
+## Config Injection: @Symbol vs @Value
+
+Freeway uses two annotations with distinct semantics:
+
+- **`@Symbol("key")`** — strict, for **required** config. Missing key = startup failure.
+  Use for mandatory settings: database URLs, server ports, credentials.
+
+- **`@Value("${key:default}")`** — relaxed, for **optional** config with a default.
+  Use for settings with sensible fallbacks: timeouts, feature flags, cosmetic names.
+
+```java
+@Symbol("db.url") String dbUrl;                    // required
+@Value("${app.timeout:30}") int timeout;            // optional, default 30
+@Value("${app.name:freeway}") String appName;       // optional, default "freeway"
+```
+
 ## Important Behavior
 
 - `@Inject`, `@Named`, `@Symbol`, `@Value` are the main injection annotations.

@@ -248,12 +248,31 @@ public record ServerConfig(
 ) {}
 ```
 
-| Annotation | Behavior |
-|------------|----------|
-| `@Symbol("key")` | Strict lookup; missing key fails |
-| `@Value("${key:default}")` | Expression expansion with optional default |
+`@Symbol` and `@Value` serve two distinct purposes:
 
-Both paths use the container type coercion mechanism.
+- **`@Symbol("key")`** — for **required** configuration. The key *must* exist;
+  if absent the container refuses to start. Use this for mandatory settings
+  like server ports, database URLs, or credentials — values without which
+  the application cannot function.
+
+- **`@Value("${key:default}")`** — for **optional** configuration. The
+  expression is expanded from the config cascade; if the key is missing the
+  default value after the colon is used. Use this for settings with sensible
+  fallbacks like timeouts, feature flags, or cosmetic names.
+
+```java
+// Required — startup fails if absent
+@Symbol("db.url") String dbUrl;
+
+// Optional — defaults to 30 if app.timeout is not set
+@Value("${app.timeout:30}") int timeout;
+
+// Expression expansion — any config key can be interpolated
+@Value("${app.name:freeway}") String appName;
+```
+
+Both paths use the container's type coercion mechanism, so values are
+automatically converted to the target type (`int`, `boolean`, `Duration`, etc.).
 
 ### Extensions
 
