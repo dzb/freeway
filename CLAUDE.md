@@ -11,6 +11,9 @@ mvn test                          # all core modules
 mvn -pl freeway-ioc -am test      # single module + dependencies
 mvn -pl freeway-http -am test
 mvn -pl freeway-db -am test
+mvn -pl freeway-flow -am test
+mvn -pl freeway-benchmark -am compile  # benchmark compilation
+mvn test -Dtest=CoercerDefaultTest  # single test class
 ```
 
 Extension modules are in [freeway-ext](https://github.com/dzb/freeway-ext).
@@ -24,7 +27,8 @@ JUnit 5.12, SLF4J 2.0.17.
 freeway-commons         zero deps
  ├─ freeway-ioc         depends on commons
  │   ├─ freeway-boot    depends on ioc
- │   └─ freeway-http    depends on ioc (+ commons transitive)
+ │   ├─ freeway-http    depends on ioc (+ commons transitive)
+ │   └─ freeway-flow    depends on ioc + commons (no extra deps)
  └─ freeway-db          depends on commons (ioc optional)
 ```
 
@@ -44,8 +48,15 @@ Robaho adapter has been removed.
 - **`RuntimeHook`** — module-level start/stop extension. Contributed through `Contribution<RuntimeHook>`, ordered with `before/after`. `HttpModule` contributes the server hook with stable id `"freeway.http.server"`.
 - **`LoggerSource`** — built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery; activates only when no external SLF4J provider is detected. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 - **`.primary()` pattern** — used for engine, pool, and dialect selection. Default implementation bound without `.primary()`; extension modules bind their alternative with `.primary()`. Container resolves the primary binding automatically — no config keys needed. Same pattern across HTTP engine (`FreewayHttpEngine` vs `UndertowEngine`), connection pool (`PoolDefault` vs `HikariPool`), and DB dialect (`PostgresDialect` vs custom).
-- **HTTP** — `FreewayHttpEngine` is the built-in engine (virtual threads, synchronous I/O, HTTP/1.1 + HTTP/2 h2c/h2 + WebSocket + HTTPS). `WebServer` has explicit `start()`/`stop()`. In boot, the `HttpModule` runtime hook handles this. In tests using `Container` directly, start/stop the server explicitly. HttpParser's `bodyStream()` provides the request body stream including any bytes buffered past the header boundary. Route path variables use `:name` or `{name}` syntax; `{name:regex}` for regex constraints.
+- **HTTP** — Built-in engine architecture:
+  - **Engine layer** (`engine/`): `FreewayHttpEngine` — virtual threads, synchronous socket I/O, HTTP/1.1 + HTTP/2 h2c/h2 + WebSocket + HTTPS. Sub-packages: `engine/http11/` (Http11Connection, HttpParser), `engine/http20/` (Http2Connection, frame serialization, HPACK), `engine/ws/` (WebSocket frame protocol). All engine classes are implementation details — only `FreewayHttpEngine` is public.
+  - **Orchestration layer** (`WebServer`): filter chain (CorsFilter → HealthFilter → custom filters → route dispatch), event publishing via `Consumer<Object>`, server lifecycle. `RequestPipeline` record bundles filter config for cleaner constructors.
+  - **Integration layer** (`HttpModule`): bridges `Consumer<Object>` → EventBus, registers `FreewayHttpEngine` as default.
+  - `JdkHttpEngine` / `JdkHttpContext` have been removed — the built-in engine is now the only default.
+  - Route path variables use `:name` or `{name}` syntax; `{name:regex}` for regex constraints.
+  - HttpParser uses a reusable 4KB bulk-read buffer per connection; `HttpContextImpl` (now `FreewayHttpContext`) writes responses into a reusable byte buffer for a single socket write.
 - **DB** — `Database` is the entry point. Named params (`:name`/`$name`), programmatic transactions, built-in pooling, dialect auto-detection from JDBC URL, `DatabaseHub` for multi-datasource. Schema (annotation-driven DDL) and Migration (versioned SQL) provide complementary DB evolution.
+- **Flow** — Lightweight graph orchestration engine ported from solon-flow. 7 node types (START/END/ACTIVITY/EXCLUSIVE/INCLUSIVE/PARALLEL/LOOP). JSON-based graph definitions via `Graph.fromText(json)`. Self-written expression evaluator (`ExprEvaluator`, ~280-line recursive descent parser) and event bus (`FlowEventBus`). Supports PlantUML export, execution tracing with pause/resume, subgraph calls (`#graphId`), and interceptor chains. Task resolution: `@bean` / `#graph` / `$meta`. Zero extra dependencies beyond commons + ioc.
 
 ## Naming Rules
 

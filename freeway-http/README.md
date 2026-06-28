@@ -6,63 +6,98 @@ and SSE support. No external dependencies beyond the JDK.
 
 ## Engine
 
-`FreewayHttpEngine` is the default engine bound by `HttpModule`. When an
-alternative engine is available on the classpath and bound with `.primary()`
-(e.g. `UndertowEngine`), the container resolves it automatically — no
-config keys needed.
+`FreewayHttpEngine` is the default engine. It is constructed directly with
+a `JsonCodec` and `Coercer` — no IoC container required for standalone use.
 
 | Feature | Status |
 |---|---|
-| HTTP/1.1 | Built-in |
-| HTTP/2 (h2c/h2) | Built-in |
-| WebSocket | Built-in |
-| HTTPS | Built-in |
-| SSE | Built-in |
-| Static files | Built-in |
-| Multipart | Built-in |
-| CORS filter | Built-in |
-| Health check | Built-in |
+| HTTP/1.1 | ✅ Built-in |
+| HTTP/2 (h2c/h2) | ✅ Built-in |
+| WebSocket | ✅ Built-in |
+| HTTPS | ✅ Built-in |
+| SSE | ✅ Built-in |
+| Static files | ✅ Built-in |
+| Multipart | ✅ Built-in |
+| CORS filter | ✅ Built-in |
+| Health check | ✅ Built-in |
+
+## Architecture
+
+Three-layer design:
+
+```
+engine/              — socket I/O, protocol parsing, connection lifecycle
+  http11/            — Http11Connection, HttpParser
+  http20/            — Http2Connection, frame/HPACK/stream management
+  ws/                — WebSocket frame read/write protocol
+WebServer            — filter chain, routing, event publishing (Consumer<Object>)
+HttpModule           — IoC bridge: registers FreewayHttpEngine, wires EventBus
+```
+
+### Standalone use (no IoC)
+
+```java
+var server = WebServer.builder()
+    .config(new HttpServerConfig("0.0.0.0", 8080, 0, Duration.ofSeconds(2)))
+    .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+    .build();
+server.start();
+```
+
+### With IoC (FreewayApp)
+
+```java
+FreewayApp.run(args, new HttpModule(), binder -> {
+    binder.contribute(Route.class).add(Route.get("/ping", ...));
+});
+```
+
+## Package structure
+
+| Package | Visibility | Contents |
+|---|---|---|
+| `http/` | public API | WebServer, HttpContext, HttpEngine, RouteIndex, filter interfaces |
+| `http/engine/` | implementation | `FreewayHttpEngine` (public), shared I/O (BufferedIn/Out, ChunkedIn, FixedLengthIn), WS frame protocol |
+| `http/engine/http11/` | package | Http11Connection, HttpParser |
+| `http/engine/http20/` | package | Http2Connection, 29 HTTP/2 frame/HPACK/stream files |
+| `http/engine/ws/` | package | WebSocketFrame, WebSocketSessionImpl, WsUtil, opcode/close enums |
+
+## Performance
+
+See `freeway-benchmark` module for reproducible benchmarks. Run:
+
+```bash
+mvn -pl freeway-benchmark exec:java \
+  -Dexec.mainClass=...BenchmarkRunner \
+  -Dbench.engine=freeway -Dbench.mode=keepalive
+```
+
+### Baseline (2026-06, keep-alive, 2 conns, 2000 reqs, independent JVM)
+
+| Engine | rps | p50 | vs robaho |
+|---|---|---|---|
+| FreewayHttpEngine | 8,342 | 177μs | +6.8% |
+| robaho-native | 7,814 | 238μs | baseline |
+| jdk-native | 6,888 | 269μs | -13.4% |
 
 ## Attribution
 
 The HTTP/2 and WebSocket implementations were ported from
 [robaho-httpserver](https://github.com/robaho/httpserver), a clean-room
-Java HTTP server written by Robert Harder.
+Java HTTP server written by Robert Harder. See the file-level copyright
+headers for individual ported components.
 
-The ported components include:
+### Corrections and Enhancements
 
-- **HTTP/2** — frame serialization (`frame/`), HPACK header compression
-  (`hpack/`), connection and stream management, settings negotiation,
-  flow control, and error handling.
-- **WebSocket** — frame encoding/decoding, opcode and close-code
-  enumeration, upgrade handshake, ping/pong, and session lifecycle.
+**HTTP/2**: Replaced callback-based I/O with VT blocking model, fixed HPACK
+dynamic table eviction (RFC 7541 §4.3), corrected CONTINUATION/stream state
+transitions, added proper RST_STREAM and GOAWAY propagation, fixed settings
+ACK handshake, replaced custom concurrent primitives with `java.util.concurrent`.
 
-## Corrections and Enhancements
+**WebSocket**: Fixed masking key handling (RFC 6455 §5.3), corrected fragmented
+message reassembly, fixed close frame echo handshake, added UTF-8 validation,
+replaced busy-wait with blocking I/O.
 
-The following changes were made to the ported code:
-
-### HTTP/2
-- Replaced callback-based I/O with virtual-thread synchronous model
-- Fixed HPACK dynamic table eviction to conform to RFC 7541 §4.3
-- Corrected CONTINUATION frame handling for headers exceeding the max
-  frame size
-- Fixed stream state transitions for half-closed (remote) streams
-- Added proper `RST_STREAM` and `GOAWAY` error propagation
-- Fixed settings acknowledgment handshake during connection preface
-- Corrected priority tree weight normalization
-- Replaced custom concurrency with `java.util.concurrent` primitives
-
-### WebSocket
-- Fixed masking key handling for client-to-server frames per RFC 6455 §5.3
-- Corrected fragmented message reassembly across frame boundaries
-- Fixed close frame handshake — both endpoints now properly echo close
-  frames before terminating
-- Added message size limits to prevent memory exhaustion
-- Fixed UTF-8 validation for text frames per RFC 6455 §8.1
-- Replaced busy-wait loops with `CountDownLatch` / blocking I/O
-
-### General
-- All I/O migrated from NIO selectors to virtual-thread blocking calls
-- Removed Robaho's `Logger` abstraction in favor of SLF4J
-- Unified error handling through Freeway's `ExceptionMapper` pipeline
-- Integrated with Freeway's request/response lifecycle and filter chain
+**General**: All I/O migrated from NIO selectors to virtual-thread blocking I/O,
+removed Robaho's Logger in favor of SLF4J, unified error handling through
+ExceptionMapper pipeline, integrated with Freeway's request/response lifecycle.

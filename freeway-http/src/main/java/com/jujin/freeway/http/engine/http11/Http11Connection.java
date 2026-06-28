@@ -9,12 +9,16 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Wraps a connected {@code Socket} with buffered I/O streams.
  * Each connection is owned by a single virtual thread — no synchronization needed.
  */
 public final class Http11Connection {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Http11Connection.class);
 
     private final Socket socket;
     private final InputStream bufferedIn;
@@ -53,10 +57,10 @@ public final class Http11Connection {
     public void close() {
         if (closed) return;
         closed = true;
-        try { bufferedOut.flush(); } catch (IOException ignored) {}
-        try { bufferedIn.close(); } catch (IOException ignored) {}
-        try { bufferedOut.close(); } catch (IOException ignored) {}
-        try { socket.close(); } catch (IOException ignored) {}
+        try { bufferedOut.flush(); } catch (Exception e) { LOG.trace("Flush error during close", e); }
+        try { bufferedIn.close(); } catch (Exception e) { LOG.trace("Input close error", e); }
+        try { bufferedOut.close(); } catch (Exception e) { LOG.trace("Output close error", e); }
+        try { socket.close(); } catch (Exception e) { LOG.trace("Socket close error", e); }
     }
 
 }

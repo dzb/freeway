@@ -502,16 +502,22 @@ Activate profiles: `--profile=dev` or `--freeway.profile=dev`.
 
 ## HTTP
 
-The HTTP package stays flat under `com.jujin.freeway.http`. Public contracts and small built-ins share the same package; transport internals stay package-private where possible.
+Three-layer architecture: **engine layer** handles transport (socket I/O, protocol parsing), **orchestration layer** (`WebServer`) wires filters and routing, **integration layer** (`HttpModule`) bridges to IoC.
 
 | Category | Main Types |
 |----------|------------|
 | Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `WebServer`, `JsonCodec` |
+| Engine (shared) | `FreewayHttpEngine`, `FreewayHttpContext`, `HttpSession`, `ServerHandle`, `BufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
+| Engine (HTTP/1.1) | `Http11Connection`, `HttpParser` in `engine/http11/` |
+| Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http20/` |
+| Engine (WebSocket) | `WebSocketFrame`, `WebSocketSessionImpl`, `WsUtil` etc in `engine/ws/` |
 | Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathPattern` |
 | Body | `BodyHandler`, `RequestContext`, `RequestContextDefault`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
 | Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`, `StaticResourceMount`, `ExceptionMapper` |
+
+Engine internals (`engine/` and sub-packages) are implementation details — `FreewayHttpEngine` is the only public class. `JdkHttpEngine`/`JdkHttpContext` have been removed; the built-in engine is the sole default.
 
 ### Routes
 
@@ -680,11 +686,16 @@ Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationEx
 
 ### Engine Selection
 
-`HttpModule` bundles `FreewayHttpEngine` as the default (high-performance, built-in HTTP/2 + WebSocket). Extension modules bind their engine with `.primary()` — when multiple `HttpEngine` bindings exist, the container resolves the primary one automatically:
+`HttpModule` registers `FreewayHttpEngine` as the only default engine (high-performance, built-in HTTP/2 + WebSocket + HTTPS). Extension modules bind their engine with `.primary()`:
 
 | Engine | Module | Features |
 |--------|--------|----------|
-| `FreewayHttpEngine` | Built-in in `HttpModule` | High-performance, HTTP/2 + WebSocket (default) |
+| `FreewayHttpEngine` | Built-in in `HttpModule` (default) | VT-based, HTTP/1.1 + h2c/h2 + WebSocket + HTTPS |
+| `UndertowEngine` | `freeway-http-undertow` (ext) | XNIO-based alternative |
+
+`JdkHttpEngine` has been removed — the built-in engine is now the sole default.
+
+For performance comparisons, see `freeway-benchmark` module (JMH microbenchmarks + HTTP/WS smoke benchmarks).
 | `UndertowEngine` | `freeway-http-undertow` | HTTP + WebSocket, production-grade |
 
 ```java

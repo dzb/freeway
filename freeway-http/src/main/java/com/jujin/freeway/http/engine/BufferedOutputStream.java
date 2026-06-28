@@ -49,8 +49,8 @@ public final class BufferedOutputStream extends OutputStream {
 
     @Override
     public void close() throws IOException {
-        buf = null;
         flush();
+        buf = null;
         out.close();
     }
 
