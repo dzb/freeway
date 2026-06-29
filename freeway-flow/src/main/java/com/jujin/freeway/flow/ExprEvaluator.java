@@ -1,8 +1,8 @@
 package com.jujin.freeway.flow;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 极简条件表达式求值器（零外部依赖，递归下降解析）
@@ -25,7 +25,14 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ExprEvaluator {
 
-    private static final ConcurrentHashMap<String, AstNode> CACHE = new ConcurrentHashMap<>();
+    private static final int CACHE_MAX = 512;
+
+    private static final Map<String, AstNode> CACHE = new LinkedHashMap<>(CACHE_MAX, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, AstNode> eldest) {
+            return size() > CACHE_MAX;
+        }
+    };
 
     private ExprEvaluator() {}
 
@@ -34,7 +41,17 @@ public final class ExprEvaluator {
      */
     public static boolean evalCondition(String expr, Map<String, Object> context) {
         if (expr == null || expr.isBlank()) return true;
-        AstNode node = CACHE.computeIfAbsent(expr.trim(), Compiler::compile);
+        String key = expr.trim();
+        AstNode node;
+        synchronized (CACHE) {
+            node = CACHE.get(key);
+        }
+        if (node == null) {
+            node = Compiler.compile(key);
+            synchronized (CACHE) {
+                CACHE.put(key, node);
+            }
+        }
         Object val = node.eval(context);
         return val instanceof Boolean b ? b : val != null;
     }
