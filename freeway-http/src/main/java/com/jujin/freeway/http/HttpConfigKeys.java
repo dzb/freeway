@@ -2,12 +2,13 @@ package com.jujin.freeway.http;
 
 /**
  * Configuration keys for the HTTP module.
- * All keys share the {@code freeway.web} namespace.
+ * All keys share the {@code freeway.http} namespace.
  */
 public final class HttpConfigKeys {
     private HttpConfigKeys() {}
 
-    static final String PREFIX = "freeway.web";
+    static final String PREFIX = "freeway.http";
+    static final String LEGACY_PREFIX = "freeway.web";
 
     // ── Server ────────────────────────────────────────────────
 
@@ -30,4 +31,17 @@ public final class HttpConfigKeys {
 
     public static final String HEALTH_ENABLED = PREFIX + ".health.enabled";
     public static final String HEALTH_PATH    = PREFIX + ".health.path";
+
+    // ── SSL / HTTPS ─────────────────────────────────────────────
+
+    /** Set to true to enable HTTPS. Requires key-store and key-store-password. */
+    public static final String SSL_ENABLED             = PREFIX + ".ssl.enabled";
+    /** Path to the keystore file (PKCS12 or JKS). */
+    public static final String SSL_KEY_STORE           = PREFIX + ".ssl.key-store";
+    /** Password for the keystore file. */
+    public static final String SSL_KEY_STORE_PASSWORD  = PREFIX + ".ssl.key-store-password";
+    /** Keystore type: PKCS12 (default) or JKS. */
+    public static final String SSL_KEY_STORE_TYPE      = PREFIX + ".ssl.key-store-type";
+    /** Enable HTTP/2 over TLS via ALPN negotiation (default true). */
+    public static final String SSL_HTTP2               = PREFIX + ".ssl.http2";
 }

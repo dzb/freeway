@@ -6,7 +6,7 @@
 
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-parent</artifactId>
-    <version>1.2.2-SNAPSHOT</version>
+    <version>1.2.2</version>
     <packaging>pom</packaging>
 
     <name>Freeway Framework</name>
@@ -95,6 +95,11 @@
                 <artifactId>freeway-starter-db</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-flow</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Third-party -->
             <dependency>
@@ -137,7 +142,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
             </plugin>
-            <!-- Maven Central publishing -->
+            <!-- Maven Central publishing: source and javadoc JARs -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
@@ -199,5 +204,6 @@
         <module>freeway-boot</module>
         <module>freeway-http</module>
         <module>freeway-db</module>
+        <module>freeway-flow</module>
     </modules>
 </project>

@@ -11,7 +11,6 @@ import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
-import com.jujin.freeway.ioc.annotation.Named;
 import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -177,7 +176,7 @@ final class InjectResolver {
     }
 
     private static boolean hasInjectionAnnotation(AnnotationLookup lookup) {
-        return lookup.annotation(Inject.class) != null || lookup.annotation(Named.class) != null;
+        return lookup.annotation(Inject.class) != null;
     }
 
     private static boolean hasConfiguredValueAnnotation(AnnotationLookup lookup) {
@@ -185,14 +184,7 @@ final class InjectResolver {
     }
 
     private String resolveId(AnnotationLookup lookup) {
-        String injectId = normalizedId(lookup.annotation(Inject.class));
-        String namedId = normalizedId(lookup.annotation(Named.class));
-        if (injectId != null && namedId != null && !injectId.equals(namedId)) {
-            throw new IllegalArgumentException(
-                "Conflicting service ids on " + lookup + ": " + injectId + " vs " + namedId
-            );
-        }
-        return namedId != null ? namedId : injectId;
+        return normalizedId(lookup.annotation(Inject.class));
     }
 
     private Object resolveConfiguredValue(AnnotationLookup lookup, Class<?> targetType) {
@@ -260,8 +252,6 @@ final class InjectResolver {
         String value;
         if (annotation instanceof Inject inject) {
             value = inject.value();
-        } else if (annotation instanceof Named named) {
-            value = named.value();
         } else {
             return null;
         }

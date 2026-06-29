@@ -1,0 +1,52 @@
+{
+	"freeway": {
+		"http": {
+			"server": {
+				"host": "127.0.0.1",
+				"port": "8080",
+				"backlog": "0",
+				"shutdown-grace": "2s"
+			},
+			"health": {
+				"enabled": "true",
+				"path": "/healthz"
+			},
+			"cors": {
+				"enabled": "true",
+				"allowed-origins": "*",
+				"allowed-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+				"allowed-headers": "Content-Type, Authorization",
+				"exposed-headers": "",
+				"max-age": "3600",
+				"allow-credentials": "false"
+			},
+			"ssl": {
+				"enabled": "false",
+				"key-store": "",
+				"key-store-password": "",
+				"key-store-type": "PKCS12",
+				"http2": "true"
+			}
+		},
+		"db": {
+			"url": "jdbc:postgresql://localhost:5432/mydb",
+			"username": "postgres",
+			"password": "",
+			"dialect": "",
+			"query-timeout": "15s",
+			"pool.max-size": "10",
+			"pool.min-idle": "2",
+			"pool.connection-timeout": "10s",
+			"pool.max-lifetime": "30m",
+			"pool.max-idle-time": "10m",
+			"pool.clean-interval": "2m",
+			"pool.health-check-query": "",
+			"pool.health-check-timeout": "5s",
+			"schema.auto": "true",
+			"schema.groups": "",
+			"migration.enabled": "true",
+			"migration.path": "db/migration/",
+			"migration.table": "_migrations"
+		}
+	}
+}

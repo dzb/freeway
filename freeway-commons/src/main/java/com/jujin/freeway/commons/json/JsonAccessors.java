@@ -1,5 +1,7 @@
 package com.jujin.freeway.commons.json;
 
+import java.math.BigDecimal;
+
 final class JsonAccessors {
     private JsonAccessors() {
     }
@@ -62,6 +64,23 @@ final class JsonAccessors {
 
     static JsonObject object(Object value) {
         return value instanceof JsonObject object ? object : null;
+    }
+
+    static BigDecimal bigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+        if (value instanceof Number) {
+            return new BigDecimal(value.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Cannot parse '" + value + "' as BigDecimal");
+        }
     }
 
     static JsonArray array(Object value) {

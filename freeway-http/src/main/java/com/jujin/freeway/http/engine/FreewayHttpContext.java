@@ -90,6 +90,13 @@ public final class FreewayHttpContext extends HttpContext {
     }
 
     @Override
+    public Map<String, List<String>> headers() {
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        requestHeaders.forEach((key, value) -> copy.put(key, List.copyOf(value)));
+        return Collections.unmodifiableMap(copy);
+    }
+
+    @Override
     public String header(String name) {
         List<String> values = requestHeaders.get(name);
         if (values != null && !values.isEmpty()) return values.getFirst();
@@ -101,6 +108,11 @@ public final class FreewayHttpContext extends HttpContext {
             }
         }
         return null;
+    }
+
+    @Override
+    protected String responseHeader(String name) {
+        return responseHeaders.get(name);
     }
 
     @Override
@@ -161,11 +173,12 @@ public final class FreewayHttpContext extends HttpContext {
 
         boolean headRequest = "HEAD".equalsIgnoreCase(method);
         boolean bodyAllowed = allowsResponseBody();
-        int length = bodyAllowed && !headRequest ? data.length : 0;
+        // HEAD response must report the same Content-Length as GET (RFC 7231 §4.3.2)
+        int length = bodyAllowed ? data.length : 0;
 
         // Status line: "HTTP/1.1 {code} {reason}\r\n"
         rawOut.write(HTTP11);
-        rawOut.write(String.valueOf(responseStatus).getBytes(StandardCharsets.ISO_8859_1));
+        rawOut.write(statusCodeBytes(responseStatus));
         rawOut.write(SPACE);
         rawOut.write(reasonBytes(responseStatus));
         rawOut.write(CRLF);
@@ -181,7 +194,7 @@ public final class FreewayHttpContext extends HttpContext {
         // Content-Length
         if (bodyAllowed && !responseHeaders.containsKey("Content-Length")) {
             rawOut.write(CL_PREFIX);
-            rawOut.write(String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1));
+            rawOut.write(contentLengthBytes(length));
             rawOut.write(CRLF);
         }
         // Connection
@@ -291,6 +304,42 @@ public final class FreewayHttpContext extends HttpContext {
             if (b != null) return b;
         }
         return new byte[0];
+    }
+
+    // Pre-encoded status code digits indexed by status code (0-599)
+    private static final byte[][] STATUS_CODE_BYTES = new byte[600][];
+    static {
+        for (int i = 0; i < STATUS_CODE_BYTES.length; i++) {
+            STATUS_CODE_BYTES[i] = String.valueOf(i).getBytes(StandardCharsets.ISO_8859_1);
+        }
+    }
+
+    private static byte[] statusCodeBytes(int status) {
+        if (status >= 0 && status < STATUS_CODE_BYTES.length) {
+            return STATUS_CODE_BYTES[status];
+        }
+        return String.valueOf(status).getBytes(StandardCharsets.ISO_8859_1);
+    }
+
+    // Pre-encoded Content-Length digits for common small body sizes (0-Ki)
+    // Lazily expanded: the first request with a given length populates the slot
+    private static final byte[][] CL_BYTES = new byte[4096][];
+    static {
+        // eagerly fill the most common lengths
+        for (int i = 0; i < 256; i++) {
+            CL_BYTES[i] = String.valueOf(i).getBytes(StandardCharsets.ISO_8859_1);
+        }
+    }
+
+    private static byte[] contentLengthBytes(int length) {
+        if (length >= 0 && length < CL_BYTES.length) {
+            byte[] b = CL_BYTES[length];
+            if (b != null) return b;
+            b = String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
+            CL_BYTES[length] = b;
+            return b;
+        }
+        return String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
     }
 
     /**

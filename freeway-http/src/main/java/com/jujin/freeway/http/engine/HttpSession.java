@@ -33,6 +33,8 @@ import org.slf4j.LoggerFactory;
 public final class HttpSession implements Runnable {
 
     private static final Logger LOG = LoggerFactory.getLogger(HttpSession.class);
+    private static final byte[] INTERNAL_ERROR_BODY =
+        "Internal Server Error".getBytes(StandardCharsets.UTF_8);
 
     private final Socket rawSocket;
     private final HttpRequestHandler handler;
@@ -98,7 +100,7 @@ public final class HttpSession implements Runnable {
                 }
 
                 // Direct Map.get for WS upgrade check — avoids stream
-                var upgradeHeader = req.headers().get("Upgrade");
+                var upgradeHeader = req.headers().get("upgrade");
                 if (req.isUpgradeRequest() && upgradeHeader != null
                         && !upgradeHeader.isEmpty()
                         && "websocket".equalsIgnoreCase(upgradeHeader.getFirst())) {
@@ -107,7 +109,7 @@ public final class HttpSession implements Runnable {
                 }
 
                 // Direct Map.get for X-Request-Id
-                var reqIdHeader = req.headers().get("X-Request-Id");
+                var reqIdHeader = req.headers().get("x-request-id");
                 String correlationId = reqIdHeader != null && !reqIdHeader.isEmpty()
                     ? reqIdHeader.getFirst() : null;
                 RequestContext requestContext = HttpContext.createRequestContext(correlationId);
@@ -123,7 +125,7 @@ public final class HttpSession implements Runnable {
                 catch (Exception e) {
                     LOG.debug("Handler exception for {} {}", req.method(), req.path(), e);
                     if (!ctx.isResponded()) {
-                        try { ctx.send(500, "Internal Server Error"); }
+                        try { ctx.status(500).headerSet("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY); }
                         catch (IOException ignored) {}
                     }
                 }

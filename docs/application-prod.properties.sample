@@ -1,0 +1,110 @@
+##################################################################
+#  Freeway — Production Profile
+#  Copy to src/main/resources/application-prod.properties
+#  Activate: --freeway.profile=prod
+#
+#  Sensitive values (password, API keys) MUST be set via
+#  environment variables, NOT in this file.
+##################################################################
+
+# ================================
+#  Logging
+# ================================
+
+# Logging is controlled via JVM system properties or env vars,
+# not via application config files.
+# Disable color for log aggregators
+# JVM: -Dfreeway.log.color=never
+# Env: FREEWAY_LOG_COLOR=never
+# freeway.log.color=never
+
+
+# ================================
+#  HTTP / Web Server
+# ================================
+# Engine selected via module inclusion (.primary() mechanism):
+#   default → FreewayHttpEngine; add UndertowModule for Undertow
+
+# Bind to all interfaces — fronted by reverse proxy / load balancer
+freeway.http.server.host=0.0.0.0
+
+# Port set via env: FREEWAY_HTTP_SERVER_PORT=8080
+# freeway.http.server.port=8080
+
+# Longer grace for in-flight requests during rolling deploys
+freeway.http.server.shutdown-grace=30s
+
+# ================================
+#  HTTP / Health
+# ================================
+
+freeway.http.health.enabled=true
+freeway.http.health.path=/healthz
+
+# ================================
+#  HTTP / CORS
+# ================================
+
+freeway.http.cors.enabled=true
+
+# Explicit origin list — no wildcards in production
+freeway.http.cors.allowed-origins=
+
+freeway.http.cors.allow-credentials=false
+
+# ================================
+#  HTTP / HTTPS (TLS)
+# ================================
+
+# Enable HTTPS in production — set key-store and password via env vars.
+# FREEWAY_HTTP_SSL_KEY_STORE=/etc/ssl/keystore.p12
+# FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD=***
+freeway.http.ssl.enabled=true
+# freeway.http.ssl.key-store=
+# freeway.http.ssl.key-store-password=
+# freeway.http.ssl.key-store-type=PKCS12
+# freeway.http.ssl.http2=true
+
+# ================================
+#  Database — PostgreSQL
+# ================================
+
+# Override via env: FREEWAY_DB_URL, FREEWAY_DB_USERNAME, FREEWAY_DB_PASSWORD
+freeway.db.url=jdbc:postgresql://localhost:5432/mydb
+freeway.db.username=
+freeway.db.password=
+
+# Production pool sizing
+# Pool engine: HikariCP (add HikariPoolModule to launcher), selected via module inclusion
+freeway.db.pool.max-size=20
+freeway.db.pool.min-idle=4
+freeway.db.pool.connection-timeout=30s
+freeway.db.pool.max-lifetime=30m
+freeway.db.pool.max-idle-time=10m
+
+# Validate connections before use
+freeway.db.pool.health-check-query=SELECT 1
+freeway.db.pool.health-check-timeout=5s
+
+freeway.db.query-timeout=15s
+
+
+# ================================
+#  Database / Schema & Migration
+# ================================
+
+# Auto-DDL OFF — all schema changes via reviewed migration files
+freeway.db.schema.auto=false
+
+# Migration runner ON — applies versioned SQL from db/migration/
+freeway.db.migration.enabled=true
+
+
+# ================================
+#  Kafka — production messaging
+# ================================
+
+# Override via env: FREEWAY_KAFKA_BOOTSTRAP_SERVERS, FREEWAY_KAFKA_TOPICS
+# freeway.kafka.bootstrap-servers=
+# freeway.kafka.group-id=my-app
+# freeway.kafka.topics=

@@ -127,8 +127,16 @@ class FreewayAppTest {
     }
 
     @Test
-    void ofRequiresAtLeastOneModule() {
-        assertThrows(IllegalArgumentException.class, () -> FreewayApp.of().start());
+    void autoDiscoveryCanStartWithoutExplicitModules() {
+        AppRuntime app = FreewayApp.of().start();
+        try {
+            assertEquals(AppState.RUNNING, app.state());
+            AutoMarker marker = app.container().get(AutoMarker.class);
+            assertEquals("auto", marker.value());
+        } finally {
+            app.close();
+        }
+        assertEquals(AppState.STOPPED, app.state());
     }
 
     @Test

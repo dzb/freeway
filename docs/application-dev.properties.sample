@@ -1,0 +1,91 @@
+##################################################################
+#  Freeway — Development Profile
+#  Copy to src/main/resources/application-dev.properties
+#  Activate: --freeway.profile=dev
+##################################################################
+
+# ================================
+#  Logging
+# ================================
+
+# Logging is controlled via JVM system properties or env vars,
+# not via application config files.
+# Color output for local terminal
+# JVM: -Dfreeway.log.color=always
+# Env: FREEWAY_LOG_COLOR=always
+# freeway.log.color=always
+
+# Compact console format (default — explicit for clarity)
+# freeway.log.format=
+
+
+# ================================
+#  HTTP / Web Server
+# ================================
+# Engine selected via module inclusion (.primary() mechanism):
+#   default → FreewayHttpEngine; add UndertowModule for Undertow
+
+freeway.http.server.host=127.0.0.1
+freeway.http.server.port=8080
+
+# Quick shutdown for fast restart cycles
+freeway.http.server.shutdown-grace=2s
+
+# ================================
+#  HTTP / Health
+# ================================
+
+freeway.http.health.enabled=true
+freeway.http.health.path=/healthz
+
+# ================================
+#  HTTP / CORS
+# ================================
+
+freeway.http.cors.enabled=true
+freeway.http.cors.allowed-origins=*
+freeway.http.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
+freeway.http.cors.allowed-headers=Content-Type, Authorization
+freeway.http.cors.allow-credentials=true
+
+# ================================
+#  HTTP / HTTPS (TLS) — optional for local dev
+# ================================
+# freeway.http.ssl.enabled=false
+# freeway.http.ssl.key-store=dev-keystore.p12
+# freeway.http.ssl.key-store-password=changeit
+# freeway.http.ssl.key-store-type=PKCS12
+# freeway.http.ssl.http2=true
+
+# ================================
+#  Database — H2 in-memory
+# ================================
+
+freeway.db.url=jdbc:h2:mem:devdb;DB_CLOSE_DELAY=-1
+freeway.db.username=sa
+freeway.db.password=
+
+# Light pool — single developer
+# Pool engine: default built-in (PoolDefault), selected via module inclusion
+freeway.db.pool.max-size=4
+freeway.db.pool.min-idle=1
+freeway.db.query-timeout=30s
+
+
+# ================================
+#  Database / Schema & Migration
+# ================================
+
+# Auto-DDL from @Table entities — zero-friction iteration
+freeway.db.schema.auto=true
+freeway.db.migration.enabled=true
+
+
+# ================================
+#  Kafka — local development
+# ================================
+
+# Uncomment if you need Kafka locally
+# freeway.kafka.bootstrap-servers=localhost:9092
+# freeway.kafka.group-id=freeway-dev
+# freeway.kafka.topics=

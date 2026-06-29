@@ -5,6 +5,7 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
+import javax.net.ssl.SSLContext;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
 import com.jujin.freeway.http.filter.HealthFilter;
@@ -125,6 +126,13 @@ public final class WebServerBuilder {
 
     public WebServerBuilder coercer(Coercer coercer) {
         this.coercer = Objects.requireNonNull(coercer, "coercer");
+        return this;
+    }
+
+    /** Enables HTTPS on the server with the given SSL context and optional HTTP/2. */
+    public WebServerBuilder sslContext(SSLContext sslContext, boolean http2OverSsl) {
+        this.engine = new FreewayHttpEngine(jsonCodec, coercer,
+            Objects.requireNonNull(sslContext, "sslContext"), http2OverSsl);
         return this;
     }
 

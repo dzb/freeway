@@ -98,7 +98,15 @@ public final class HttpParser {
                 }
                 case "connection" -> {
                     String v = entry.getValue().getFirst();
-                    if (v != null) { keepAlive = "keep-alive".equalsIgnoreCase(v); if ("close".equalsIgnoreCase(v)) keepAlive = false; if (containsIgnoreCase(v, "upgrade")) upgradeRequest = true; }
+                    if (v != null) {
+                        // RFC 7230 §6.1: Connection = #token → comma-separated list
+                        for (String token : v.split(",")) {
+                            token = token.trim();
+                            if ("keep-alive".equalsIgnoreCase(token)) keepAlive = true;
+                            if ("close".equalsIgnoreCase(token)) keepAlive = false;
+                            if ("upgrade".equalsIgnoreCase(token)) upgradeRequest = true;
+                        }
+                    }
                 }
                 case "upgrade" -> {
                     String v = entry.getValue().getFirst();
@@ -181,11 +189,9 @@ public final class HttpParser {
                     } else {
                         afterColon = false;
                         if (current == key) {
-                            // Fast ASCII case normalization: first char upper, rest lower
+                            // Normalize header keys to lowercase per RFC 7230 §3.2
                             char ch = (char) c;
-                            key.append(key.isEmpty()
-                                ? (ch >= 'a' && ch <= 'z' ? (char)(ch - 32) : ch)
-                                : (ch >= 'A' && ch <= 'Z' ? (char)(ch + 32) : ch));
+                            key.append(ch >= 'A' && ch <= 'Z' ? (char)(ch + 32) : ch);
                         } else {
                             current.append((char) c);
                         }
@@ -197,12 +203,17 @@ public final class HttpParser {
     }
 
     private void addHeader(Map<String, List<String>> headers) {
-        // Keys are already normalized by the parser — no trim needed.
-        // Values may have trailing whitespace only if the header line ended with
-        // CRLF immediately after the value (no trailing space). .trim() is defensive
-        // overhead; the parser skips leading whitespace after colon.
+        // Strip trailing OWS per RFC 7230 §3.2.6 — clients and intermediaries
+        // may append spaces/tabs before CRLF (e.g. "Content-Length: 4 ").
+        int end = headerValBuf.length();
+        while (end > 0 && (headerValBuf.charAt(end - 1) == ' ' || headerValBuf.charAt(end - 1) == '\t')) {
+            end--;
+        }
+        String value = end == headerValBuf.length()
+            ? headerValBuf.toString()
+            : headerValBuf.substring(0, end);
         headers.computeIfAbsent(headerKeyBuf.toString(), k -> new ArrayList<>(4))
-               .add(headerValBuf.toString());
+               .add(value);
         headerKeyBuf.setLength(0);
         headerValBuf.setLength(0);
     }

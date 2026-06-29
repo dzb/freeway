@@ -21,11 +21,21 @@ import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
 import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class HttpModule implements Module2 {
+    private static final Logger LOG = LoggerFactory.getLogger(HttpModule.class);
     public static final String SERVER_HOOK = "freeway.http.server";
 
     @Override
@@ -36,24 +46,63 @@ public final class HttpModule implements Module2 {
 
         // CorsFilter — bridge ioC config to plain constructor
         binder.bind(CorsFilter.class).to(container -> {
-            boolean enabled = config(container, HttpConfigKeys.CORS_ENABLED, true);
-            String origins = config(container, HttpConfigKeys.CORS_ALLOWED_ORIGINS, "*");
-            String methods = config(container, HttpConfigKeys.CORS_ALLOWED_METHODS,
+            var symbols = container.get(SymbolSource.class);
+            var coercer = container.get(Coercer.class);
+            boolean enabled = config(symbols, coercer,
+                HttpConfigKeys.CORS_ENABLED, HttpConfigKeys.LEGACY_PREFIX + ".cors.enabled", true);
+            String origins = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOWED_ORIGINS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-origins", "*");
+            String methods = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOWED_METHODS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-methods",
                 "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-            String headers = config(container, HttpConfigKeys.CORS_ALLOWED_HEADERS,
+            String headers = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOWED_HEADERS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-headers",
                 "Content-Type, Authorization");
-            String exposed = config(container, HttpConfigKeys.CORS_EXPOSED_HEADERS, "");
-            String maxAge = config(container, HttpConfigKeys.CORS_MAX_AGE, "3600");
-            boolean credentials = config(container, HttpConfigKeys.CORS_ALLOW_CREDENTIALS, false);
+            String exposed = config(symbols, coercer,
+                HttpConfigKeys.CORS_EXPOSED_HEADERS, HttpConfigKeys.LEGACY_PREFIX + ".cors.exposed-headers", "");
+            String maxAge = config(symbols, coercer,
+                HttpConfigKeys.CORS_MAX_AGE, HttpConfigKeys.LEGACY_PREFIX + ".cors.max-age", "3600");
+            boolean credentials = config(symbols, coercer,
+                HttpConfigKeys.CORS_ALLOW_CREDENTIALS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allow-credentials", false);
             return new CorsFilter(enabled, origins, methods, headers,
                 exposed.isBlank() ? null : exposed, maxAge, credentials);
         });
 
-        // Engines — concrete bindings
+        // Engines — concrete bindings, HTTPS when SSL is enabled
         binder.bind(FreewayHttpEngine.class).to(container -> {
             var json = container.get(JsonCodec.class);
             var coercer = container.get(Coercer.class);
-            return new FreewayHttpEngine(json, coercer);
+            var symbols = container.get(SymbolSource.class);
+
+            boolean sslEnabled = config(symbols, coercer,
+                HttpConfigKeys.SSL_ENABLED, null, false);
+            if (!sslEnabled) {
+                LOG.debug("SSL disabled, using plain HTTP engine");
+                return new FreewayHttpEngine(json, coercer);
+            }
+
+            String ksPath = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE, null, null);
+            String ksPwd = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE_PASSWORD, null, null);
+            if (ksPath == null || ksPwd == null) {
+                LOG.error("SSL enabled ({} = true) but {} and {} are not configured",
+                    HttpConfigKeys.SSL_ENABLED,
+                    HttpConfigKeys.SSL_KEY_STORE,
+                    HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
+                throw new IllegalStateException(
+                    "SSL is enabled but " + HttpConfigKeys.SSL_KEY_STORE
+                    + " and " + HttpConfigKeys.SSL_KEY_STORE_PASSWORD
+                    + " are required");
+            }
+            String ksType = config(symbols, coercer,
+                HttpConfigKeys.SSL_KEY_STORE_TYPE, null, "PKCS12");
+            boolean http2 = config(symbols, coercer,
+                HttpConfigKeys.SSL_HTTP2, null, true);
+
+            LOG.info("Initializing HTTPS engine from keystore {} (type={}, http2={})",
+                ksPath, ksType, http2);
+            SSLContext sslContext = buildSslContext(ksPath, ksPwd, ksType);
+            LOG.info("HTTPS engine initialized — TLS 1.3 via JDK default SSLContext");
+            return new FreewayHttpEngine(json, coercer, sslContext, http2);
         });
 
         // HttpEngine — bind to FreewayHttpEngine
@@ -63,12 +112,18 @@ public final class HttpModule implements Module2 {
         // WebServer — bridge IoC capabilities to plain constructor
         binder.bind(WebServer.class).to(container -> {
             HttpEngine engine = container.get(HttpEngine.class);
+            var symbols = container.get(SymbolSource.class);
+            var coercer = container.get(Coercer.class);
 
-            String host = config(container, HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-            int port = config(container, HttpConfigKeys.SERVER_PORT, 8080);
-            int backlog = config(container, HttpConfigKeys.SERVER_BACKLOG, 0);
-            Duration shutdownGrace = config(container,
-                HttpConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.ofSeconds(2));
+            String host = config(symbols, coercer,
+                HttpConfigKeys.SERVER_HOST, HttpConfigKeys.LEGACY_PREFIX + ".server.host", "127.0.0.1");
+            int port = config(symbols, coercer,
+                HttpConfigKeys.SERVER_PORT, HttpConfigKeys.LEGACY_PREFIX + ".server.port", 8080);
+            int backlog = config(symbols, coercer,
+                HttpConfigKeys.SERVER_BACKLOG, HttpConfigKeys.LEGACY_PREFIX + ".server.backlog", 0);
+            Duration shutdownGrace = config(symbols, coercer,
+                HttpConfigKeys.SERVER_SHUTDOWN_GRACE, HttpConfigKeys.LEGACY_PREFIX + ".server.shutdown-grace",
+                Duration.ofSeconds(2));
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
@@ -105,8 +160,12 @@ public final class HttpModule implements Module2 {
 
         binder.bind(HealthCheck.class).to(HealthCheck.Default.class);
         binder.bind(HealthFilter.class).to(container -> {
-            boolean enabled = config(container, HttpConfigKeys.HEALTH_ENABLED, true);
-            String path = config(container, HttpConfigKeys.HEALTH_PATH, "/healthz");
+            var symbols = container.get(SymbolSource.class);
+            var coercer = container.get(Coercer.class);
+            boolean enabled = config(symbols, coercer,
+                HttpConfigKeys.HEALTH_ENABLED, HttpConfigKeys.LEGACY_PREFIX + ".health.enabled", true);
+            String path = config(symbols, coercer,
+                HttpConfigKeys.HEALTH_PATH, HttpConfigKeys.LEGACY_PREFIX + ".health.path", "/healthz");
             HealthCheck check = container.get(HealthCheck.class);
             return new HealthFilter(enabled, path, check);
         });
@@ -135,12 +194,35 @@ public final class HttpModule implements Module2 {
         });
     }
 
+    private static SSLContext buildSslContext(String path, String password, String type) {
+        try {
+            KeyStore ks = KeyStore.getInstance(type);
+            try (InputStream in = Files.newInputStream(Path.of(path))) {
+                ks.load(in, password.toCharArray());
+            }
+            KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+                KeyManagerFactory.getDefaultAlgorithm());
+            kmf.init(ks, password.toCharArray());
+            SSLContext ctx = SSLContext.getInstance("TLS");
+            ctx.init(kmf.getKeyManagers(), null, null);
+            return ctx;
+        } catch (Exception e) {
+            LOG.error("Failed to initialize SSL context from keystore: {} (type={}) — {}",
+                path, type, e.getMessage(), e);
+            throw new IllegalStateException(
+                "Failed to initialize SSL context from keystore: " + path, e);
+        }
+    }
+
     @SuppressWarnings("unchecked")
-    private static <T> T config(Container container, String key, T defaultValue) {
-        String raw = container.get(SymbolSource.class).resolve(key, null);
+    private static <T> T config(SymbolSource symbols, Coercer coercer, String key, String legacyKey, T defaultValue) {
+        String raw = symbols.resolve(key, null);
+        if (raw == null && legacyKey != null) {
+            raw = symbols.resolve(legacyKey, null);
+        }
         if (raw == null) {
             return defaultValue;
         }
-        return container.get(Coercer.class).coerce(raw, (Class<T>) defaultValue.getClass());
+        return coercer.coerce(raw, (Class<T>) defaultValue.getClass());
     }
 }

@@ -15,6 +15,7 @@ import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,6 +26,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class WebServer implements AutoCloseable {
+
+    // Pre-computed error response bodies (UTF-8)
+    private static final byte[] NOT_FOUND_BODY = "Not Found".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] INTERNAL_ERROR_BODY = "Internal Server Error".getBytes(StandardCharsets.UTF_8);
 
     private static final Logger LOG = LoggerFactory.getLogger(WebServer.class);
     static final Consumer<Object> NOOP_SINK = event -> {};
@@ -68,23 +73,42 @@ public final class WebServer implements AutoCloseable {
         // Skip event computation when sink is the noop sentinel
         this.publishEvents = this.eventSink != NOOP_SINK;
 
-        // Pre-build chains to avoid per-request lambda allocation
-        RouteHandler corsChain = ctx -> healthFilter.doFilter(ctx, this.filterChain);
-        RouteHandler timedChain = ctx -> {
-            try {
-                corsFilter.doFilter(ctx, corsChain);
-            } catch (Exception ex) {
-                WebServer.this.handleException(ctx, ex);
-                if (publishEvents)
+        // Build filter chain — skip wrapping when filters are inactive (no-ops),
+        // saving a virtual call + condition check per filter per request.
+        RouteHandler chain = this.filterChain;
+        if (healthFilter.isActive()) {
+            RouteHandler next = chain;
+            chain = ctx -> healthFilter.doFilter(ctx, next);
+        }
+        if (corsFilter.isActive()) {
+            RouteHandler next = chain;
+            chain = ctx -> corsFilter.doFilter(ctx, next);
+        }
+        RouteHandler inner = chain;
+
+        RouteHandler timedChain;
+        if (publishEvents) {
+            timedChain = ctx -> {
+                try {
+                    inner.handle(ctx);
+                } catch (Exception ex) {
+                    WebServer.this.handleException(ctx, ex);
                     publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
-            }
-            if (publishEvents) {
+                }
                 long elapsed = Duration.between(
                     ctx.requestContext().startTime(), Instant.now()).toMillis();
                 publish(new HttpRequestEvent(
                     ctx.method(), ctx.path(), ctx.status(), elapsed));
-            }
-        };
+            };
+        } else {
+            timedChain = ctx -> {
+                try {
+                    inner.handle(ctx);
+                } catch (Exception ex) {
+                    WebServer.this.handleException(ctx, ex);
+                }
+            };
+        }
 
         this.requestHandler = new HttpRequestHandler() {
             @Override
@@ -261,7 +285,7 @@ public final class WebServer implements AutoCloseable {
             request.path()
         );
         if (match == null) {
-            request.send(404, "Not Found");
+            request.status(404).headerSet("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
             return;
         }
         request.pathVars(match.pathVariables());
@@ -290,7 +314,7 @@ public final class WebServer implements AutoCloseable {
         );
         try {
             ctx.status(HttpStatus.INTERNAL_ERROR);
-            ctx.send(500, "Internal Server Error");
+            ctx.status(500).headerSet("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY);
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
         }

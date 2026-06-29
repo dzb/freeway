@@ -87,9 +87,6 @@ public final class AppBuilder {
 
     /** Build and start the application. */
     public AppRuntime start() {
-        if (modules.isEmpty()) {
-            throw new IllegalArgumentException("At least one module is required");
-        }
         long startNanos = System.nanoTime();
 
         ClassLoader effectiveLoader = resolveClassLoader();
@@ -112,10 +109,38 @@ public final class AppBuilder {
 
         Container container = Freeway.create(moduleList);
         AppRuntime app = new AppRuntimeDefault(container, config);
+        Thread shutdownThread = null;
+
+        if (shutdownHook) {
+            shutdownThread = new Thread(() -> {
+                try {
+                    app.close();
+                } catch (Exception ex) {
+                    LOG.warn("Error during shutdown", ex);
+                }
+            }, "freeway-shutdown-hook");
+            try {
+                Runtime.getRuntime().addShutdownHook(shutdownThread);
+            } catch (RuntimeException ex) {
+                try {
+                    app.close();
+                } catch (RuntimeException closeFailure) {
+                    ex.addSuppressed(closeFailure);
+                }
+                throw ex;
+            }
+        }
 
         try {
             app.start();
         } catch (RuntimeException ex) {
+            if (shutdownThread != null) {
+                try {
+                    Runtime.getRuntime().removeShutdownHook(shutdownThread);
+                } catch (RuntimeException ignored) {
+                    // JVM is shutting down or hook removal is no longer possible.
+                }
+            }
             try {
                 app.close();
             } catch (RuntimeException closeFailure) {
@@ -125,16 +150,6 @@ public final class AppBuilder {
         }
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
         LOG.info("Started freeway application in {} ms", elapsedMs);
-
-        if (shutdownHook) {
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                try {
-                    app.close();
-                } catch (Exception ex) {
-                    LOG.warn("Error during shutdown", ex);
-                }
-            }, "freeway-shutdown-hook"));
-        }
         return app;
     }
 

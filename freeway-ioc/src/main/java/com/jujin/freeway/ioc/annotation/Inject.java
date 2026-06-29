@@ -8,16 +8,10 @@ import java.lang.annotation.Target;
 /**
  * Marks a field or constructor parameter for container injection.
  * <p>
- * Functionally equivalent to {@link Named @Named}; the two can be used
- * interchangeably. When both {@code @Inject("foo")} and
- * {@code @Named("bar")} are present on the same target their values must
- * match, otherwise an exception is thrown.
- * <p>
- * Examples:
+ * A value attribute qualifies the injection by binding id:
  * <pre>{@code
- *   @Inject("paypal") PaymentGateway gateway;
- *   // equivalent to
- *   @Named("paypal") PaymentGateway gateway;
+ *   @Inject("paypal") PaymentGateway gateway;  // named binding
+ *   @Inject           Logger log;              // unqualified
  * }</pre>
  */
 @Retention(RetentionPolicy.RUNTIME)

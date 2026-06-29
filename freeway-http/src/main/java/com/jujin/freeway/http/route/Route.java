@@ -9,25 +9,59 @@ import com.jujin.freeway.http.ValidationException;
 public record Route(
     String method,
     String path,
-    RouteHandler handler
+    RouteHandler handler,
+    Class<? extends RouteHandler> handlerType
 ) {
     public Route {
         method = normalizeMethod(method);
         Objects.requireNonNull(path, "path");
-        Objects.requireNonNull(handler, "handler");
         PathPattern.validateRegistrationPath(path);
+        if (handler == null && handlerType == null) {
+            throw new IllegalArgumentException(
+                "Either a handler instance or a handler class must be provided");
+        }
+        if (handler != null && handlerType != null) {
+            throw new IllegalArgumentException(
+                "Provide either a handler instance or a handler class, not both");
+        }
+    }
+
+    /** Backward-compatible constructor: handler instance only. */
+    public Route(String method, String path, RouteHandler handler) {
+        this(method, path, handler, null);
     }
 
     public static Route of(String method, String path, RouteHandler handler) {
-        return new Route(method, path, handler);
+        return new Route(method, path, handler, null);
+    }
+
+    /** Creates a route from a handler class — the container resolves the instance. */
+    public static Route of(String method, String path, Class<? extends RouteHandler> handlerType) {
+        return new Route(method, path, null, handlerType);
+    }
+
+    /** Internal: creates a route with both fields set explicitly. */
+    static Route of(String method, String path, RouteHandler handler,
+                    Class<? extends RouteHandler> handlerType) {
+        return new Route(method, path, handler, handlerType);
     }
 
     public static Route get(String path, RouteHandler handler) {
         return of("GET", path, handler);
     }
 
+    /** Creates a GET route from a handler class — the container resolves the instance. */
+    public static Route get(String path, Class<? extends RouteHandler> handlerType) {
+        return of("GET", path, handlerType);
+    }
+
     public static Route post(String path, RouteHandler handler) {
         return of("POST", path, handler);
+    }
+
+    /** Creates a POST route from a handler class — the container resolves the instance. */
+    public static Route post(String path, Class<? extends RouteHandler> handlerType) {
+        return of("POST", path, handlerType);
     }
 
     /**
@@ -44,6 +78,11 @@ public record Route(
         return of("PUT", path, handler);
     }
 
+    /** Creates a PUT route from a handler class — the container resolves the instance. */
+    public static Route put(String path, Class<? extends RouteHandler> handlerType) {
+        return of("PUT", path, handlerType);
+    }
+
     /**
      * Creates a PUT route that automatically deserializes and validates the request body.
      * @see #post(String, Class, BodyHandler)
@@ -56,8 +95,18 @@ public record Route(
         return of("DELETE", path, handler);
     }
 
+    /** Creates a DELETE route from a handler class — the container resolves the instance. */
+    public static Route delete(String path, Class<? extends RouteHandler> handlerType) {
+        return of("DELETE", path, handlerType);
+    }
+
     public static Route patch(String path, RouteHandler handler) {
         return of("PATCH", path, handler);
+    }
+
+    /** Creates a PATCH route from a handler class — the container resolves the instance. */
+    public static Route patch(String path, Class<? extends RouteHandler> handlerType) {
+        return of("PATCH", path, handlerType);
     }
 
     /**
@@ -89,8 +138,18 @@ public record Route(
         return of("HEAD", path, handler);
     }
 
+    /** Creates a HEAD route from a handler class — the container resolves the instance. */
+    public static Route head(String path, Class<? extends RouteHandler> handlerType) {
+        return of("HEAD", path, handlerType);
+    }
+
     public static Route options(String path, RouteHandler handler) {
         return of("OPTIONS", path, handler);
+    }
+
+    /** Creates an OPTIONS route from a handler class — the container resolves the instance. */
+    public static Route options(String path, Class<? extends RouteHandler> handlerType) {
+        return of("OPTIONS", path, handlerType);
     }
 
     private static String normalizeMethod(String method) {

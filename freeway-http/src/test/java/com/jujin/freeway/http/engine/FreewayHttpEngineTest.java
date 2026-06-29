@@ -3,7 +3,10 @@ package com.jujin.freeway.http.engine;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.WebServer;
+import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketGroup;
 import com.jujin.freeway.http.websocket.WebSocketListener;
@@ -11,6 +14,7 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.annotation.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,6 +45,8 @@ class FreewayHttpEngineTest {
         }
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(HttpConfigKeys.SERVER_HOST);
+        System.clearProperty("freeway.web.server.port");
+        System.clearProperty("freeway.web.server.host");
     }
 
     @Test
@@ -48,6 +54,27 @@ class FreewayHttpEngineTest {
         int port = freePort();
         System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
         System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+
+        app = FreewayApp.run(new String[0], new PingModule());
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        HttpClient client = HttpClient.newHttpClient();
+        var response = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + port + "/ping"))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString()
+        );
+        assertEquals(200, response.statusCode());
+        assertEquals("pong", response.body());
+    }
+
+    @Test
+    void servesRoutesWithLegacyWebKeys() throws Exception {
+        int port = freePort();
+        System.setProperty("freeway.web.server.host", "127.0.0.1");
+        System.setProperty("freeway.web.server.port", String.valueOf(port));
 
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(WebServer.class).isRunning());
@@ -278,5 +305,122 @@ class FreewayHttpEngineTest {
                 })
             ));
         }
+    }
+
+    // ── HEAD response Content-Length (RFC 7231 §4.3.2) ────────────
+
+    @Test
+    void headResponseReportsCorrectContentLength() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .route(Route.get("/data", ctx ->
+                ctx.send(200, "Hello World")))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/data"))
+                    .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
+                    .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertTrue(resp.headers().firstValue("Content-Length").isPresent());
+            int cl = Integer.parseInt(resp.headers().firstValue("Content-Length").get());
+            assertEquals(11, cl); // "Hello World".length
+            assertEquals("", resp.body()); // no body for HEAD
+        } finally {
+            server.stop();
+        }
+    }
+
+    // ── X-Request-Id propagation ──────────────────────────────────
+
+    @Test
+    void propagatesClientXRequestId() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .route(Route.get("/whoami", ctx ->
+                ctx.send(200, ctx.requestContext().correlationId())))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                    .header("X-Request-Id", "client-supplied-id")
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals("client-supplied-id", resp.body());
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void propagatesLowercaseXRequestId() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .route(Route.get("/whoami", ctx ->
+                ctx.send(200, ctx.requestContext().correlationId())))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                    .header("x-request-id", "lowercase-client-id")
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals("lowercase-client-id", resp.body());
+        } finally {
+            server.stop();
+        }
+    }
+
+    // ── Handler class injection ─────────────────────────────────
+
+    static class GreetingService {
+        String greet(String name) { return "Hello, " + name + "!"; }
+    }
+
+    static class GreetHandler implements RouteHandler {
+        private final GreetingService service;
+
+        @Inject
+        GreetHandler(GreetingService service) {
+            this.service = service;
+        }
+
+        @Override
+        public void handle(HttpContext ctx) throws Exception {
+            String name = ctx.pathVar("name");
+            ctx.send(200, service.greet(name));
+        }
+    }
+
+    @Test
+    void servesRouteWithInjectedHandlerClass() throws Exception {
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+
+        app = FreewayApp.run(new String[0], binder -> {
+            binder.bind(GreetingService.class).to(GreetingService.class);
+            binder.contribute(Route.class).add(
+                Route.get("/greet/{name}", GreetHandler.class));
+        });
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> resp = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + port + "/greet/Alice"))
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp.statusCode());
+        assertEquals("Hello, Alice!", resp.body());
     }
 }

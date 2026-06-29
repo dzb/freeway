@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -67,6 +68,23 @@ class ScopedCacheTest {
             Object b = ScopedCache.get("b", count::incrementAndGet);
             assertNotSame(a, b);
             assertEquals(2, count.get());
+            return null;
+        });
+    }
+
+    @Test
+    void getInsideScopeCachesNullValues() {
+        AtomicInteger count = new AtomicInteger();
+        ScopedCache.within(() -> {
+            assertNull(ScopedCache.get("k", () -> {
+                count.incrementAndGet();
+                return null;
+            }));
+            assertNull(ScopedCache.get("k", () -> {
+                count.incrementAndGet();
+                return null;
+            }));
+            assertEquals(1, count.get());
             return null;
         });
     }

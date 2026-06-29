@@ -5,6 +5,27 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **CLI convenience prefix** — CLI args without a dot (e.g. `--profile=dev`) auto-receive the `freeway.` prefix. Dotted keys pass through unchanged.
+- **HTTPS auto-configuration** — `HttpModule` now reads `freeway.http.ssl.*` config keys and automatically creates an HTTPS engine with TLS 1.3 when `ssl.enabled=true`. Supports PKCS12/JKS keystores and HTTP/2 over TLS via ALPN. `WebServerBuilder` gains `.sslContext()` convenience method.
+- **Jetty engine adapter** restored in `freeway-ext`. Jetty 12 provides HTTP/1.1, HTTP/2, and WebSocket with full TLS support. Uses the `.primary()` binding pattern — add `JettyWebEngineModule` to switch.
+
+### Changed
+
+- **Response serialization optimizations** — Status code digits and Content-Length digits pre-computed as `byte[]` caches, eliminating per-request `String.valueOf()` + `.getBytes()` allocations. Common error response bodies (404, 500) and health check body pre-computed, avoiding repeated String-to-byte conversion on hot paths.
+- **Header key normalization** — HTTP/1.1 parser now normalizes header keys to all lowercase per RFC 7230, fixing X-Request-Id correlation ID propagation across case variations.
+- **Header value OWS tolerance** — Trailing whitespace stripped from header values per RFC 7230 §3.2.6, fixing parsing of `Content-Length: 4 `, `Connection: keep-alive `, etc.
+- **HEAD response Content-Length** — HEAD responses now report the same Content-Length as GET would (RFC 7231 §4.3.2), fixing cache validation.
+- **Connection header token-list** — Parsed as comma-separated token list per RFC 7230 §6.1, fixing `Connection: keep-alive, Upgrade` handling.
+- **Documentation restructured** — `DEVELOPER-GUIDE.md`, config samples, and `freeway-*` summaries moved to `docs/` directory. SKILL.md consolidated as concise English index with Chinese reference. `Contribution.java` Javadoc corrected (unknown ids fail, not silently ignored).
+
+### Fixed
+
+- Response header injection hardening — `headerSet()` validates no `\r`/`\n` in values.
+
 ## [1.2.1] — 2026-06-23
 
 ### Fixed
@@ -44,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`JULConsoleFormatter`** — ANSI-colored single-line JUL console output with TTY auto-detection. Colors disabled automatically when output is piped. Override with `-Dfreeway.log.color=always|never`. Opt out entirely with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
+- **`JULConsoleFormatter`** — ANSI-colored single-line JUL console output, auto-detected from the attached console. Colors are disabled when output is piped, redirected, or `NO_COLOR` is set. Override with `-Dfreeway.log.color=always|never`. Opt out entirely with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
 - **`HttpParser.bodyStream()`** — returns an `InputStream` for reading the request body that includes any bytes already buffered past the header boundary, followed by the remaining raw socket input. Eliminates the need for manual `ChunkedInputStream`/`FixedLengthInputStream` wrapping in `HttpSession`.
 - **Named virtual threads** — HTTP connection handler threads now named `http-<remote-address>` for easier debugging and monitoring of per-connection activity.
 - **`MySqlDialect`** — built-in MySQL/MariaDB dialect with backtick quoting, `AUTO_INCREMENT`, `VARCHAR(36)` UUID, `DATETIME(6)` Instant, `LONGBLOB` binary.
@@ -119,8 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`UndertowWebEngine` exception handling** — removed double `RuntimeException` wrapping of handler errors.
 - **`HttpSession.createBodyStream()`** — removed private helper; body stream creation moved to `HttpParser.bodyStream()`, which properly handles bytes already buffered past the header boundary.
 - **Engine selection** — switched from config-key-based (`freeway.web.engine`) to `.primary()`-based IoC resolution. `HttpModule` binds `FreewayHttpEngine` without `.primary()`; extension modules (e.g. `UndertowModule`) bind with `.primary()`. No config key needed — just add or remove the extension module.
-- **DEVELOPER-GUIDE.md** — updated engine switching section with `.primary()` mechanism explanation, code examples, and corrected module tree (removed robaho/jetty references).
-- **SKILL.md** — updated module tree and added HTTP engine switching section in Chinese, matching DEVELOPER-GUIDE.md.
+- **docs/DEVELOPER-GUIDE.md** — updated engine switching section with `.primary()` mechanism explanation, code examples, and corrected module tree (removed robaho/jetty references).
+- **SKILL.md** — updated module tree and added HTTP engine switching section in Chinese, matching docs/DEVELOPER-GUIDE.md.
 - **Enhanced test coverage** — HTTP module 30→62 tests (`FilterChain`, `ExceptionMapper`, `StaticResourceConditional`, `ClasspathResourceSource`, `HealthFilter`, engine fallback, static fallthrough). DB: `RowTest`, `PooledConnectionDefaultTest`.
 
 ### Removed
@@ -146,7 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **ScopedCache** — scoped value cache primitive built on top of JDK 25 `ScopedValue`. Provides a key-value cache that lives within a scope boundary and is automatically discarded on scope exit. Prunes the IoC scope layer by replacing heavier scope machinery with a lightweight cache primitive. (`78e448f`)
 - **Module2** — `@FunctionalInterface` for module definitions. Adds `binder.install()` to compose modules declaratively. Enables multiple `FreewayApp` instances per JVM. (`2eadd5f`)
-- Comprehensive **DEVELOPER-GUIDE.md** — dual-purpose documentation for humans and AI assistants, with a dedicated Module section. (`fd0f67c`, `20114cb`)
+- Comprehensive **docs/DEVELOPER-GUIDE.md** — dual-purpose documentation for humans and AI assistants, with a dedicated Module section. (`fd0f67c`, `20114cb`)
 
 ### Changed
 
@@ -163,7 +184,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Defer** — scope-bound deferred execution mechanism (`com.jujin.freeway.commons.defer`). Actions buffered inside a scope drain on commit, discard on rollback. Powers transaction-aware `EventBus.publish()`, per-HTTP-request scopes, and per-Kafka-record scopes with zero user wiring. (`5b1aba8`)
+- **Defer** — scope-bound deferred execution mechanism. Actions buffered inside a scope drain on commit, discard on rollback. Powers transaction-aware `EventBus.publish()`, per-HTTP-request scopes, and per-Kafka-record scopes with zero user wiring. `ScopedCache` is the companion scope-lifetime cache. (`5b1aba8`)
 - **EventBus** — in-process publish-subscribe event bus with string topics, `DeadEvent` diagnostics, O(1) subscriber indexing, and `publishAsync`. (`50605d5`, `58728ce`, `694425f`, `e55d14a`)
 - **freeway-mq-kafka** — distributed EventBus extension via Kafka, enabling cross-process pub/sub with the same EventBus API. (`cd8e2ea`, `fc38a63`)
 - **freeway-db-hikari** — HikariCP connection pool adapter. (`288c7ed`)

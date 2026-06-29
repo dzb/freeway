@@ -3,6 +3,7 @@ package com.jujin.freeway.http;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -46,5 +47,33 @@ class HttpContextTest {
         assertEquals(304, notModified.status());
         assertEquals("", notModified.responseBody());
         assertNull(notModified.responseHeader("Content-Type"));
+    }
+
+    @Test
+    void outputStringDefaultsContentTypeWhenAbsent() throws IOException {
+        StubHttpContext ctx = new StubHttpContext();
+
+        ctx.output("hello");
+
+        assertEquals("hello", ctx.responseBody());
+        assertEquals("text/plain; charset=utf-8", ctx.responseHeader("Content-Type"));
+    }
+
+    @Test
+    void outputJsonDefaultsContentTypeWhenAbsent() throws IOException {
+        StubHttpContext ctx = new StubHttpContext();
+
+        ctx.outputJson(Map.of("ok", true));
+
+        assertEquals("application/json; charset=utf-8", ctx.responseHeader("Content-Type"));
+    }
+
+    @Test
+    void requestHeadersAreExposedAsMap() {
+        StubHttpContext ctx = new StubHttpContext()
+            .requestHeader("X-Test", "a")
+            .requestHeader("X-Test", "b");
+
+        assertEquals(Map.of("X-Test", List.of("a", "b")), ctx.headers());
     }
 }

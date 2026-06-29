@@ -2,7 +2,6 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.Named;
 import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 import com.jujin.freeway.commons.coercion.Coercer;
@@ -553,7 +552,7 @@ class FreewayTest {
     }
 
     public static final class NamedCheckoutService {
-        @Named("paypal")
+        @Inject("paypal")
         private PaymentGateway gateway;
 
         String gatewayName() {
@@ -592,8 +591,7 @@ class FreewayTest {
     }
 
     public static final class NamedLoggerHolder {
-        @Named("audit")
-        @Inject
+        @Inject("audit")
         private Logger logger;
 
         String loggerName() {

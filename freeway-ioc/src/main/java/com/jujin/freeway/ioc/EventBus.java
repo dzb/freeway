@@ -1,6 +1,6 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.commons.defer.Defer;
+import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
 import java.util.ArrayList;
@@ -70,13 +70,17 @@ public final class EventBus implements AutoCloseable {
 
     private <E> void dispatchEvent(E event) {
         Class<?> eventType = event.getClass();
-        boolean consumed = false;
+        List<Consumer<Object>> moduleHandlers = classSubscribers(eventType);
+        List<Subscription<?>> runtimeHandlers = runtimeSubs.getOrDefault(
+            eventType,
+            List.of()
+        );
+        boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
 
-        for (Consumer<Object> handler : classSubscribers(eventType)) {
+        for (Consumer<Object> handler : moduleHandlers) {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
                 handler.accept(event);
-                consumed = true;
             } catch (Exception ex) {
                 LOG.warn(
                     "Event subscriber failed for {}",
@@ -86,14 +90,10 @@ public final class EventBus implements AutoCloseable {
             }
         }
 
-        for (Subscription<?> sub : runtimeSubs.getOrDefault(
-            eventType,
-            List.of()
-        )) {
+        for (Subscription<?> sub : runtimeHandlers) {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
                 sub.dispatch(event);
-                consumed = true;
             } catch (Exception ex) {
                 LOG.warn(
                     "Runtime event subscriber failed for {}",
@@ -103,7 +103,7 @@ public final class EventBus implements AutoCloseable {
             }
         }
 
-        if (!consumed && !(event instanceof DeadEvent)) {
+        if (!hasSubscribers && !(event instanceof DeadEvent)) {
             publish(new DeadEvent(this, event));
         }
 
@@ -131,24 +131,24 @@ public final class EventBus implements AutoCloseable {
 
     private void dispatchTopic(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
-        boolean consumed = false;
+        List<Consumer<Object>> moduleHandlers = topicSubscribers(topic);
+        List<Subscription<?>> runtimeHandlers = runtimeTopicSubs.getOrDefault(
+            topic,
+            List.of()
+        );
+        boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
 
-        for (Consumer<Object> handler : topicSubscribers(topic)) {
+        for (Consumer<Object> handler : moduleHandlers) {
             try {
                 handler.accept(payload);
-                consumed = true;
             } catch (Exception ex) {
                 LOG.warn("Event subscriber failed for topic '{}'", topic, ex);
             }
         }
 
-        for (Subscription<?> sub : runtimeTopicSubs.getOrDefault(
-            topic,
-            List.of()
-        )) {
+        for (Subscription<?> sub : runtimeHandlers) {
             try {
                 sub.dispatch(payload);
-                consumed = true;
             } catch (Exception ex) {
                 LOG.warn(
                     "Runtime event subscriber failed for topic '{}'",
@@ -158,7 +158,7 @@ public final class EventBus implements AutoCloseable {
             }
         }
 
-        if (!consumed) {
+        if (!hasSubscribers) {
             publish(new DeadEvent(this, payload));
         }
 

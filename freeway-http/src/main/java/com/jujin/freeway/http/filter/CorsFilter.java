@@ -52,6 +52,11 @@ public final class CorsFilter implements HttpFilter {
         this.allowCredentials = allowCredentials;
     }
 
+    /** Returns false when CORS is disabled — this filter is then a no-op pass-through. */
+    public boolean isActive() {
+        return enabled;
+    }
+
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
         if (!enabled) {

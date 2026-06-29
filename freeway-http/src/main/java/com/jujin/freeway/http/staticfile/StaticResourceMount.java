@@ -29,6 +29,7 @@ public final class StaticResourceMount {
     private static final long DEFAULT_CACHE_MAX_AGE_SECONDS = 86_400L;
     private static final long MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024L; // 50MB
     private static final DateTimeFormatter HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
+    private static final byte[] NOT_FOUND_BODY = "Not Found".getBytes(StandardCharsets.UTF_8);
 
     private final String mountPath;
     private final ResourceSource source;
@@ -130,7 +131,7 @@ public final class StaticResourceMount {
         if (fallthrough) {
             return false;
         }
-        ctx.send(404, "Not Found");
+        ctx.status(404).headerSet("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
         return true;
     }
 

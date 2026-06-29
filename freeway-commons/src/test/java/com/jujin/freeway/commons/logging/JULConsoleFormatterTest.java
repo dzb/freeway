@@ -1,6 +1,7 @@
 package com.jujin.freeway.commons.logging;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.logging.Level;
@@ -42,6 +43,15 @@ class JULConsoleFormatterTest {
 
         String output = formatter.format(record);
         assertTrue(output.endsWith("\n"));
+    }
+
+    @Test
+    void formatMessageReturnsMessageOnly() {
+        JULConsoleFormatter formatter = new JULConsoleFormatter(false);
+        LogRecord record = new LogRecord(Level.INFO, "Hello {0}");
+        record.setParameters(new Object[] { "world" });
+
+        assertEquals("Hello world", formatter.formatMessage(record));
     }
 
     @Test

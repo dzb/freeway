@@ -2,6 +2,8 @@ package com.jujin.freeway.commons.json;
 
 import java.io.InputStream;
 import java.lang.reflect.Type;
+import java.util.Map;
+
 import com.jujin.freeway.commons.coercion.Coercer;
 
 public final class JsonUtils {
