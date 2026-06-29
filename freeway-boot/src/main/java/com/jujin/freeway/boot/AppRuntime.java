@@ -23,11 +23,6 @@ public interface AppRuntime extends AutoCloseable {
         return container().get(type, id);
     }
 
-    /** Enable strict close mode: shutdown exceptions are printed to stderr
-     *  in addition to SLF4J, ensuring they are visible even during JVM shutdown. */
-    default void setStrictClose(boolean strict) {
-    }
-
     @Override
     void close();
 }
