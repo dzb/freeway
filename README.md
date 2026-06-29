@@ -2,7 +2,7 @@
 
 **A modern, lightweight Java application framework for JDK 25+.**
 
-Compose-first. Zero classpath scanning. Minimal dependencies.
+Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API only.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
@@ -32,7 +32,7 @@ This gives you:
 
 - Fast startup - no bytecode scanning.
 - Total control - every binding is explicit.
-- Small footprint - core modules stay dependency-light.
+- Small footprint - core modules have zero external dependencies (SLF4J API only).
 
 ## Core Design
 
