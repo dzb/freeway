@@ -3,6 +3,7 @@ package com.jujin.freeway.flow;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * 极简条件表达式求值器（零外部依赖，递归下降解析）
@@ -33,6 +34,7 @@ public final class ExprEvaluator {
             return size() > CACHE_MAX;
         }
     };
+    private static final ReentrantReadWriteLock CACHE_LOCK = new ReentrantReadWriteLock();
 
     private ExprEvaluator() {}
 
@@ -43,13 +45,19 @@ public final class ExprEvaluator {
         if (expr == null || expr.isBlank()) return true;
         String key = expr.trim();
         AstNode node;
-        synchronized (CACHE) {
+        CACHE_LOCK.readLock().lock();
+        try {
             node = CACHE.get(key);
+        } finally {
+            CACHE_LOCK.readLock().unlock();
         }
         if (node == null) {
             node = Compiler.compile(key);
-            synchronized (CACHE) {
+            CACHE_LOCK.writeLock().lock();
+            try {
                 CACHE.put(key, node);
+            } finally {
+                CACHE_LOCK.writeLock().unlock();
             }
         }
         Object val = node.eval(context);
