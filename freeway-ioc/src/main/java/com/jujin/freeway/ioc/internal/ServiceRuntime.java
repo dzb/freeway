@@ -7,9 +7,13 @@ import java.util.Map;
 import java.util.Set;
 
 final class ServiceRuntime {
+    private static final int STRIPE_BITS = 6; // 64 stripes
+    private static final int STRIPE_MASK = (1 << STRIPE_BITS) - 1;
+
     private final ProxyFactory proxyFactory;
     private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
+    private final Object[] lockStripes = new Object[1 << STRIPE_BITS];
     private final ThreadLocal<Set<ServiceKey>> realizeStack =
         ThreadLocal.withInitial(HashSet::new);
 
@@ -21,6 +25,7 @@ final class ServiceRuntime {
         this.proxyFactory = proxyFactory;
         this.serviceCache = serviceCache;
         this.targetCache = targetCache;
+        for (int i = 0; i < lockStripes.length; i++) lockStripes[i] = new Object();
     }
 
     <T> T get(BindingImpl<T> binding) {
@@ -72,7 +77,15 @@ final class ServiceRuntime {
             throw new IllegalStateException("Circular dependency detected: " + key);
         }
         try {
-            return (T) targetCache.computeIfAbsent(key, k -> binding.directInstance());
+            Object lock = lockStripes[key.hashCode() & STRIPE_MASK];
+            synchronized (lock) {
+                Object cached = targetCache.get(key);
+                if (cached == null) {
+                    cached = binding.directInstance();
+                    targetCache.put(key, cached);
+                }
+                return binding.type().cast(cached);
+            }
         } finally {
             stack.remove(key);
         }
