@@ -15,6 +15,12 @@ final class AppRuntimeDefault implements AppRuntime {
     private final Container container;
     private final AppConfig config;
     private volatile AppState state = AppState.CREATED;
+    private volatile boolean strictClose;
+
+    @Override
+    public void setStrictClose(boolean strict) {
+        this.strictClose = strict;
+    }
 
     AppRuntimeDefault(Container container, AppConfig config) {
         this.container = Objects.requireNonNull(container, "container");
@@ -95,6 +101,10 @@ final class AppRuntimeDefault implements AppRuntime {
         }
         if (failure != null) {
             state = AppState.FAILED;
+            if (strictClose) {
+                System.err.println("Application close failed");
+                failure.printStackTrace(System.err);
+            }
             throw failure;
         }
         state = AppState.STOPPED;
