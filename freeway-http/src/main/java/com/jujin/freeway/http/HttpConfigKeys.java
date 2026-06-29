@@ -32,6 +32,11 @@ public final class HttpConfigKeys {
     public static final String HEALTH_ENABLED = PREFIX + ".health.enabled";
     public static final String HEALTH_PATH    = PREFIX + ".health.path";
 
+    // ── Body ────────────────────────────────────────────────────
+
+    /** Max request body size in bytes (default 10MB). */
+    public static final String MAX_BODY_SIZE = PREFIX + ".max-body-size";
+
     // ── SSL / HTTPS ─────────────────────────────────────────────
 
     /** Set to true to enable HTTPS. Requires key-store and key-store-password. */

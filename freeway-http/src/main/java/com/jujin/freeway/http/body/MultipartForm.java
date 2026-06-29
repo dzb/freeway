@@ -40,13 +40,18 @@ public final class MultipartForm {
 
     public static MultipartForm parse(String contentType, byte[] body)
         throws IOException {
+        return parse(contentType, body, 10 * 1024 * 1024L); // 10MB default per part
+    }
+
+    public static MultipartForm parse(String contentType, byte[] body, long maxPartSize)
+        throws IOException {
         String boundary = boundaryFromContentType(contentType);
         if (boundary == null) {
             throw new IOException(
                 "Expected multipart/form-data but got " + contentType
             );
         }
-        return new MultipartForm(parseParts(boundary, body));
+        return new MultipartForm(parseParts(boundary, body, maxPartSize));
     }
 
     public List<Part> parts() {
@@ -85,7 +90,7 @@ public final class MultipartForm {
         return parts.isEmpty();
     }
 
-    private static List<Part> parseParts(String boundary, byte[] body)
+    private static List<Part> parseParts(String boundary, byte[] body, long maxPartSize)
         throws IOException {
         String raw = new String(body, RAW);
         String boundaryMarker = "--" + boundary;
@@ -97,34 +102,25 @@ public final class MultipartForm {
         cursor += boundaryMarker.length();
         cursor = skipLineBreak(raw, cursor);
         while (cursor >= 0 && cursor < raw.length()) {
-            if (raw.startsWith("--", cursor)) {
-                break;
-            }
+            if (raw.startsWith("--", cursor)) break;
             Separator headersSeparator = findHeadersSeparator(raw, cursor);
             if (headersSeparator == null) {
                 throw new IOException("Invalid multipart section");
             }
-            String headerBlock = raw.substring(
-                cursor,
-                headersSeparator.index()
-            );
+            String headerBlock = raw.substring(cursor, headersSeparator.index());
             int contentStart = headersSeparator.nextIndex();
-            BoundaryHit nextBoundary = findNextBoundary(
-                raw,
-                contentStart,
-                boundaryMarker
-            );
+            BoundaryHit nextBoundary = findNextBoundary(raw, contentStart, boundaryMarker);
             if (nextBoundary == null) {
-                throw new IOException(
-                    "Multipart section without closing boundary"
-                );
+                throw new IOException("Multipart section without closing boundary");
+            }
+            long partSize = (long) nextBoundary.index() - contentStart;
+            if (partSize > maxPartSize) {
+                throw new IOException("Multipart part exceeds size limit of " + maxPartSize + " bytes");
             }
             String content = raw.substring(contentStart, nextBoundary.index());
             parts.add(parsePart(headerBlock, content));
             cursor = nextBoundary.nextIndex() + boundaryMarker.length();
-            if (raw.startsWith("--", cursor)) {
-                break;
-            }
+            if (raw.startsWith("--", cursor)) break;
             cursor = skipLineBreak(raw, cursor);
         }
         return parts;

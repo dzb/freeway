@@ -2,8 +2,9 @@ package com.jujin.freeway.http;
 
 import java.time.Duration;
 
-public record HttpServerConfig(String host, int port, int backlog, int socketBufferSize, Duration shutdownGrace) {
+public record HttpServerConfig(String host, int port, int backlog, int socketBufferSize, Duration shutdownGrace, long maxBodySize) {
     public static final int DEFAULT_SOCKET_BUFFER_SIZE = 1024;
+    public static final long DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024L; // 10MB
 
     public HttpServerConfig {
         host = host == null || host.isBlank() ? "127.0.0.1" : host;
@@ -20,9 +21,10 @@ public record HttpServerConfig(String host, int port, int backlog, int socketBuf
             throw new IllegalArgumentException(
                 "shutdownGrace must be non-negative: " + shutdownGrace);
         }
+        if (maxBodySize <= 0) maxBodySize = DEFAULT_MAX_BODY_SIZE;
     }
 
     public HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {
-        this(host, port, backlog, DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace);
+        this(host, port, backlog, DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace, DEFAULT_MAX_BODY_SIZE);
     }
 }

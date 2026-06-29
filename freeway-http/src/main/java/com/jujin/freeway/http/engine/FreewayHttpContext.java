@@ -39,6 +39,11 @@ public final class FreewayHttpContext extends HttpContext {
         super(jsonCodec, coercer);
     }
 
+    /** Sets the maximum request body size. Called after reset() or construction. */
+    public void setMaxBodySize(long maxBodySize) {
+        this.maxBodySize = maxBodySize;
+    }
+
     /** Reuse this context for a new request. */
     void reset(String method, String path, String rawQuery,
                Map<String, List<String>> requestHeaders,

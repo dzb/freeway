@@ -42,16 +42,18 @@ public final class HttpSession implements Runnable {
     private final Coercer coercer;
     private final FreewayHttpEngine engine;
     private final int socketBufferSize;
+    private final long maxBodySize;
 
     public HttpSession(Socket socket, HttpRequestHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
-            int socketBufferSize) {
+            int socketBufferSize, long maxBodySize) {
         this.rawSocket = socket;
         this.handler = handler;
         this.jsonCodec = jsonCodec;
         this.coercer = coercer;
         this.engine = engine;
         this.socketBufferSize = socketBufferSize;
+        this.maxBodySize = maxBodySize;
     }
 
     @Override
@@ -88,6 +90,7 @@ public final class HttpSession implements Runnable {
             // HTTP/1.1 loop — reuse parser + context across requests
             var parser = new HttpParser(in);
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
+            ctx.setMaxBodySize(maxBodySize);
 
             while (!connection.closed) {
                 parser.reset(in);
@@ -197,6 +200,7 @@ public final class HttpSession implements Runnable {
             var rc = HttpContext.createRequestContext(
                 headerValue(reqHeaders, "x-request-id"));
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
+            ctx.setMaxBodySize(maxBodySize);
             ctx.reset(method, path, null, headers, in, -1, false, out, rc, false, false);
             ctx.headerSet("X-Request-Id", rc.correlationId());
             handler.handle(ctx);
