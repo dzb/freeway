@@ -49,9 +49,9 @@ public final class ExprEvaluator {
         @Override public Object eval(Map<String, Object> ctx) { return value; }
     }
 
-    private record Ident(String name) implements AstNode {
+    private record Ident(String name, String[] parts) implements AstNode {
+        private Ident { if (parts == null) parts = name.split("\\."); }
         @Override public Object eval(Map<String, Object> ctx) {
-            String[] parts = name.split("\\.");
             Object cur = ctx;
             for (String p : parts) {
                 if (cur instanceof Map<?, ?> m) {
@@ -189,7 +189,7 @@ public final class ExprEvaluator {
                     case "false" -> new Literal(false);
                     case "null" -> new Literal(null);
                     case "not" -> new UnaryOp("not", unaryExpr());
-                    default -> new Ident(id);
+                    default -> new Ident(id, null);
                 };
             }
             throw new FlowException("Unexpected character '" + c + "' at position " + pos + " in '" + expr + "'");
