@@ -11,6 +11,7 @@ Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP layer: routing, filters, static, multipart, WebSocket |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations |
+| `freeway-flow` | Graph-based workflow/flow engine — 7 node types, JSON-defined graphs |
 | `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have zero external dependencies. Third-party adapters live in
