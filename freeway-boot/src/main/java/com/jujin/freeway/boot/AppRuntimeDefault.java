@@ -62,52 +62,46 @@ final class AppRuntimeDefault implements AppRuntime {
 
     @Override
     public synchronized void close() {
-        if (state == AppState.STOPPED) {
-            return;
-        }
-        AppState previous = state;
+        if (state == AppState.STOPPED) return;
+        var previous = state;
         state = AppState.STOPPING;
+        RuntimeException failure = null;
         try {
             LOG.info("Application stopping");
-            publish(new AppStoppingEvent(container));
+            try {
+                publish(new AppStoppingEvent(container));
+            } catch (Exception ex) {
+                failure = accumulate(failure, "Failed to publish AppStoppingEvent", ex);
+                LOG.warn("Failed to publish AppStoppingEvent", ex);
+            }
         } catch (RuntimeException ex) {
-            // Logging or event bus may be unavailable during JVM shutdown.
-            // Suppress silently — the shutdown itself is what matters.
+            failure = accumulate(failure, "Failed to log stopping", ex);
         }
-
-        RuntimeException failure = null;
-        if (
-            previous == AppState.RUNNING ||
-            previous == AppState.STARTING ||
-            previous == AppState.FAILED
-        ) {
+        if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
             try {
                 container.get(HookLifecycle.class).stop();
             } catch (RuntimeException ex) {
-                failure = ex;
+                failure = accumulate(failure, "Error during hook shutdown", ex);
                 LOG.error("Error during hook shutdown", ex);
             }
         }
         try {
             container.close();
         } catch (RuntimeException ex) {
-            if (failure == null) {
-                failure = ex;
-            } else {
-                failure.addSuppressed(ex);
-            }
+            failure = accumulate(failure, "Error closing container", ex);
             LOG.error("Error closing container", ex);
+        }
+        try {
+            LOG.info("Application stopped");
+        } catch (RuntimeException ex) {
+            failure = accumulate(failure, "Failed to log stopped", ex);
+            LOG.warn("Failed to log stopped", ex);
         }
         if (failure != null) {
             state = AppState.FAILED;
             throw failure;
         }
         state = AppState.STOPPED;
-        try {
-            LOG.info("Application stopped");
-        } catch (RuntimeException ex) {
-            // JUL may be closed during JVM shutdown
-        }
     }
 
     private void publish(Object event) {
@@ -120,5 +114,13 @@ final class AppRuntimeDefault implements AppRuntime {
                 ex
             );
         }
+    }
+
+    private static RuntimeException accumulate(
+        RuntimeException failure, String message, Exception ex
+    ) {
+        if (failure == null) return new RuntimeException(message, ex);
+        failure.addSuppressed(ex);
+        return failure;
     }
 }
