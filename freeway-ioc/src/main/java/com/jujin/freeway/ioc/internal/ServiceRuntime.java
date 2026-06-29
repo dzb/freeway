@@ -61,28 +61,18 @@ final class ServiceRuntime {
         return realize(binding);
     }
 
+    @SuppressWarnings("unchecked")
     <T> T realize(BindingImpl<T> binding) {
         if (binding.scope() == Scope.THREAD) {
             return realizeThreadScoped(binding);
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
-        Object cached = targetCache.get(key);
-        if (cached != null) {
-            return binding.type().cast(cached);
-        }
         Set<ServiceKey> stack = realizeStack.get();
         if (!stack.add(key)) {
             throw new IllegalStateException("Circular dependency detected: " + key);
         }
         try {
-            synchronized (targetCache) {
-                cached = targetCache.get(key);
-                if (cached == null) {
-                    cached = binding.directInstance();
-                    targetCache.put(key, cached);
-                }
-                return binding.type().cast(cached);
-            }
+            return (T) targetCache.computeIfAbsent(key, k -> binding.directInstance());
         } finally {
             stack.remove(key);
         }
