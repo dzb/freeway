@@ -2,6 +2,7 @@ package com.jujin.freeway.flow;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 极简条件表达式求值器（零外部依赖，递归下降解析）
@@ -18,358 +19,305 @@ import java.util.Map;
  * IDENT       → [a-zA-Z_][a-zA-Z0-9_.]*  (支持 data.name 路径访问)
  * </pre>
  *
+ * 表达式在首次使用时编译为 AST（抽象语法树），后续相同表达式直接求值，避免重复解析。
+ *
  * @author noear (solon-flow), adapted for freeway
- * @since 3.1
  */
-public class ExprEvaluator {
+public final class ExprEvaluator {
 
-    private final String expr;
-    private final Map<String, Object> context;
-    private int pos;
-    private final int len;
+    private static final ConcurrentHashMap<String, AstNode> CACHE = new ConcurrentHashMap<>();
 
-    public ExprEvaluator(String expr, Map<String, Object> context) {
-        this.expr = (expr != null) ? expr.trim() : "";
-        this.context = context;
-        this.pos = 0;
-        this.len = this.expr.length();
-    }
+    private ExprEvaluator() {}
 
     /**
      * 求值条件表达式，返回布尔值
      */
     public static boolean evalCondition(String expr, Map<String, Object> context) {
-        if (expr == null || expr.isEmpty()) {
-            return true;
-        }
-        Object val = new ExprEvaluator(expr, context).parse();
-        if (val == null) {
-            return false;
-        }
-        if (val instanceof Boolean) {
-            return (Boolean) val;
-        }
-        return true;
+        if (expr == null || expr.isBlank()) return true;
+        AstNode node = CACHE.computeIfAbsent(expr.trim(), Compiler::compile);
+        Object val = node.eval(context);
+        return val instanceof Boolean b ? b : val != null;
     }
 
-    /// --- parser ---
+    // ======================== AST 节点类型 ========================
 
-    private Object parse() {
-        Object result = orExpr();
-        skipSpaces();
-        if (pos < len) {
-            throw new FlowException("Unexpected token at position " + pos + ": '" + expr.charAt(pos) + "' in '" + expr + "'");
-        }
-        return result;
+    private interface AstNode {
+        Object eval(Map<String, Object> ctx);
     }
 
-    private Object orExpr() {
-        Object left = andExpr();
-        skipSpaces();
-        while (match("||") || matchIgnoreCase("or")) {
-            Object right = andExpr();
-            left = toBool(left) || toBool(right);
-            skipSpaces();
-        }
-        return left;
+    private record Literal(Object value) implements AstNode {
+        @Override public Object eval(Map<String, Object> ctx) { return value; }
     }
 
-    private Object andExpr() {
-        Object left = cmpExpr();
-        skipSpaces();
-        while (match("&&") || matchIgnoreCase("and")) {
-            Object right = cmpExpr();
-            left = toBool(left) && toBool(right);
-            skipSpaces();
-        }
-        return left;
-    }
-
-    private Object cmpExpr() {
-        Object left = addExpr();
-        skipSpaces();
-        if (match("==")) {
-            Object right = addExpr();
-            return eq(left, right);
-        } else if (match("!=")) {
-            Object right = addExpr();
-            return !eq(left, right);
-        } else if (match(">=")) {
-            Object right = addExpr();
-            return compare(left, right) >= 0;
-        } else if (match("<=")) {
-            Object right = addExpr();
-            return compare(left, right) <= 0;
-        } else if (match(">")) {
-            Object right = addExpr();
-            return compare(left, right) > 0;
-        } else if (match("<")) {
-            Object right = addExpr();
-            return compare(left, right) < 0;
-        }
-        return left;
-    }
-
-    private Object addExpr() {
-        Object left = unaryExpr();
-        skipSpaces();
-        while (match("+") || match("-")) {
-            boolean isMinus = expr.charAt(pos - 1) == '-';
-            Object right = unaryExpr();
-            if (left instanceof Number && right instanceof Number) {
-                double l = ((Number) left).doubleValue();
-                double r = ((Number) right).doubleValue();
-                left = isMinus ? (l - r) : (l + r);
-            } else if (isMinus) {
-                throw new FlowException("Cannot subtract non-numeric values: " + left + " - " + right);
-            } else {
-                // string concat
-                left = String.valueOf(left) + String.valueOf(right);
-            }
-            skipSpaces();
-        }
-        return left;
-    }
-
-    private Object unaryExpr() {
-        skipSpaces();
-        if (match("!")) {
-            Object v = unaryExpr();
-            return !toBool(v);
-        }
-        return primary();
-    }
-
-    private Object primary() {
-        skipSpaces();
-        if (pos >= len) {
-            throw new FlowException("Unexpected end of expression: '" + expr + "'");
-        }
-
-        char c = expr.charAt(pos);
-
-        // 数字
-        if (c == '-' || c == '+' || (c >= '0' && c <= '9')) {
-            return number();
-        }
-
-        // 字符串
-        if (c == '\'' || c == '"') {
-            return string();
-        }
-
-        // 括号
-        if (c == '(') {
-            pos++;
-            Object val = orExpr();
-            skipSpaces();
-            if (pos < len && expr.charAt(pos) == ')') {
-                pos++;
-            } else {
-                throw new FlowException("Missing closing ')' at position " + pos + " in '" + expr + "'");
-            }
-            return val;
-        }
-
-        // 标识符或关键字
-        if (isIdentStart(c)) {
-            String ident = ident();
-            return switch (ident) {
-                case "true" -> Boolean.TRUE;
-                case "false" -> Boolean.FALSE;
-                case "null" -> null;
-                case "not" -> !toBool(unaryExpr());
-                default -> resolveIdent(ident);
-            };
-        }
-
-        throw new FlowException("Unexpected character '" + c + "' at position " + pos + " in '" + expr + "'");
-    }
-
-    /// --- helpers ---
-
-    private Number number() {
-        int start = pos;
-        if (pos < len && (expr.charAt(pos) == '-' || expr.charAt(pos) == '+')) {
-            pos++;
-        }
-        boolean isDecimal = false;
-        while (pos < len) {
-            char c = expr.charAt(pos);
-            if (c >= '0' && c <= '9') {
-                pos++;
-            } else if (c == '.' && !isDecimal) {
-                isDecimal = true;
-                pos++;
-            } else {
-                break;
-            }
-        }
-        String numStr = expr.substring(start, pos);
-        try {
-            if (isDecimal) {
-                return Double.parseDouble(numStr);
-            } else {
-                long v = Long.parseLong(numStr);
-                if (v >= Integer.MIN_VALUE && v <= Integer.MAX_VALUE) {
-                    return (int) v;
-                }
-                return v;
-            }
-        } catch (NumberFormatException e) {
-            throw new FlowException("Invalid number: '" + numStr + "' in '" + expr + "'", e);
-        }
-    }
-
-    private String string() {
-        char quote = expr.charAt(pos);
-        pos++; // skip opening quote
-        StringBuilder sb = new StringBuilder();
-        while (pos < len) {
-            char c = expr.charAt(pos);
-            if (c == '\\') {
-                pos++;
-                if (pos < len) {
-                    switch (expr.charAt(pos)) {
-                        case 'n' -> sb.append('\n');
-                        case 't' -> sb.append('\t');
-                        case '\\' -> sb.append('\\');
-                        case '"' -> sb.append('"');
-                        case '\'' -> sb.append('\'');
-                        default -> sb.append(expr.charAt(pos));
+    private record Ident(String name) implements AstNode {
+        @Override public Object eval(Map<String, Object> ctx) {
+            String[] parts = name.split("\\.");
+            Object cur = ctx;
+            for (String p : parts) {
+                if (cur instanceof Map<?, ?> m) {
+                    cur = m.get(p);
+                } else if (cur instanceof List<?> list) {
+                    try {
+                        cur = list.get(Integer.parseInt(p));
+                    } catch (NumberFormatException e) {
+                        return null;
                     }
-                    pos++;
-                }
-            } else if (c == quote) {
-                pos++;
-                return sb.toString();
-            } else {
-                sb.append(c);
-                pos++;
-            }
-        }
-        throw new FlowException("Unterminated string starting at position in '" + expr + "'");
-    }
-
-    private String ident() {
-        int start = pos;
-        while (pos < len) {
-            char c = expr.charAt(pos);
-            if (isIdentPart(c)) {
-                pos++;
-            } else {
-                break;
-            }
-        }
-        return expr.substring(start, pos);
-    }
-
-    /**
-     * 从上下文解析标识符（支持点号路径访问）
-     */
-    private Object resolveIdent(String ident) {
-        String[] parts = ident.split("\\.");
-        Object current = context;
-        for (String part : parts) {
-            if (current instanceof Map) {
-                current = ((Map<?, ?>) current).get(part);
-            } else if (current instanceof List) {
-                try {
-                    int idx = Integer.parseInt(part);
-                    current = ((List<?>) current).get(idx);
-                } catch (NumberFormatException e) {
+                } else {
                     return null;
                 }
-            } else {
-                return null;
+                if (cur == null) return null;
             }
-            if (current == null) {
-                return null;
-            }
-        }
-        return current;
-    }
-
-    /// --- token matching ---
-
-    private void skipSpaces() {
-        while (pos < len && Character.isWhitespace(expr.charAt(pos))) {
-            pos++;
+            return cur;
         }
     }
 
-    private boolean match(String token) {
-        skipSpaces();
-        if (expr.startsWith(token, pos)) {
-            // 确保不是标识符的一部分
-            int end = pos + token.length();
-            if (end <= len &&
-                    (end == len || !isIdentPart(expr.charAt(end)) || !isIdentStart(token.charAt(0)))) {
-                pos = end;
-                return true;
-            }
+    private record BinaryOp(AstNode left, String op, AstNode right) implements AstNode {
+        @Override public Object eval(Map<String, Object> ctx) {
+            Object l = left.eval(ctx), r = right.eval(ctx);
+            return switch (op) {
+                case "||", "or" -> toBool(l) || toBool(r);
+                case "&&", "and" -> toBool(l) && toBool(r);
+                case "==" -> eq(l, r);
+                case "!=" -> !eq(l, r);
+                case ">=" -> cmp(l, r) >= 0;
+                case "<=" -> cmp(l, r) <= 0;
+                case ">" -> cmp(l, r) > 0;
+                case "<" -> cmp(l, r) < 0;
+                case "+" -> add(l, r);
+                case "-" -> sub(l, r);
+                default -> throw new FlowException("Unknown operator: " + op);
+            };
         }
-        return false;
     }
 
-    private boolean matchIgnoreCase(String token) {
-        skipSpaces();
-        if (pos + token.length() <= len) {
-            String sub = expr.substring(pos, pos + token.length());
-            if (sub.equalsIgnoreCase(token)) {
+    private record UnaryOp(String op, AstNode child) implements AstNode {
+        @Override public Object eval(Map<String, Object> ctx) {
+            return switch (op) {
+                case "!" -> !toBool(child.eval(ctx));
+                case "not" -> !toBool(child.eval(ctx));
+                default -> throw new FlowException("Unknown unary operator: " + op);
+            };
+        }
+    }
+
+    // ======================== 编译（解析 → AST，只执行一次） ========================
+
+    private static final class Compiler {
+        private final String expr;
+        private int pos;
+        private final int len;
+
+        static AstNode compile(String expr) {
+            Compiler c = new Compiler(expr);
+            AstNode node = c.orExpr();
+            c.skipSpaces();
+            if (c.pos < c.len) {
+                throw new FlowException("Unexpected token at position " + c.pos + ": '" + c.expr.charAt(c.pos) + "' in '" + c.expr + "'");
+            }
+            return node;
+        }
+
+        private Compiler(String expr) {
+            this.expr = expr;
+            this.pos = 0;
+            this.len = expr.length();
+        }
+
+        private AstNode orExpr() {
+            AstNode left = andExpr();
+            skipSpaces();
+            while (match("||") || matchIgnoreCase("or")) {
+                AstNode right = andExpr();
+                left = new BinaryOp(left, "||", right);
+                skipSpaces();
+            }
+            return left;
+        }
+
+        private AstNode andExpr() {
+            AstNode left = cmpExpr();
+            skipSpaces();
+            while (match("&&") || matchIgnoreCase("and")) {
+                AstNode right = cmpExpr();
+                left = new BinaryOp(left, "&&", right);
+                skipSpaces();
+            }
+            return left;
+        }
+
+        private AstNode cmpExpr() {
+            AstNode left = addExpr();
+            skipSpaces();
+            if (match("==")) return new BinaryOp(left, "==", addExpr());
+            if (match("!=")) return new BinaryOp(left, "!=", addExpr());
+            if (match(">=")) return new BinaryOp(left, ">=", addExpr());
+            if (match("<=")) return new BinaryOp(left, "<=", addExpr());
+            if (match(">"))  return new BinaryOp(left, ">", addExpr());
+            if (match("<"))  return new BinaryOp(left, "<", addExpr());
+            return left;
+        }
+
+        private AstNode addExpr() {
+            AstNode left = unaryExpr();
+            skipSpaces();
+            while (match("+") || match("-")) {
+                String op = expr.charAt(pos - 1) == '-' ? "-" : "+";
+                AstNode right = unaryExpr();
+                left = new BinaryOp(left, op, right);
+                skipSpaces();
+            }
+            return left;
+        }
+
+        private AstNode unaryExpr() {
+            skipSpaces();
+            if (match("!")) return new UnaryOp("!", unaryExpr());
+            return primary();
+        }
+
+        private AstNode primary() {
+            skipSpaces();
+            if (pos >= len) throw new FlowException("Unexpected end of expression: '" + expr + "'");
+            char c = expr.charAt(pos);
+            if (c == '-' || c == '+' || (c >= '0' && c <= '9')) return new Literal(number());
+            if (c == '\'' || c == '"') return new Literal(string());
+            if (c == '(') { pos++; var val = orExpr(); skipSpaces(); require(')'); return val; }
+            if (isIdentStart(c)) {
+                String id = ident();
+                return switch (id) {
+                    case "true" -> new Literal(true);
+                    case "false" -> new Literal(false);
+                    case "null" -> new Literal(null);
+                    case "not" -> new UnaryOp("not", unaryExpr());
+                    default -> new Ident(id);
+                };
+            }
+            throw new FlowException("Unexpected character '" + c + "' at position " + pos + " in '" + expr + "'");
+        }
+
+        private void require(char expected) {
+            skipSpaces();
+            if (pos < len && expr.charAt(pos) == expected) { pos++; }
+            else throw new FlowException("Missing '" + expected + "' at position " + pos + " in '" + expr + "'");
+        }
+
+        private Number number() {
+            int start = pos;
+            if (pos < len && (expr.charAt(pos) == '-' || expr.charAt(pos) == '+')) pos++;
+            boolean isDecimal = false;
+            while (pos < len) {
+                char c = expr.charAt(pos);
+                if (c >= '0' && c <= '9') pos++;
+                else if (c == '.' && !isDecimal) { isDecimal = true; pos++; }
+                else break;
+            }
+            String numStr = expr.substring(start, pos);
+            try {
+                if (isDecimal) return Double.parseDouble(numStr);
+                long v = Long.parseLong(numStr);
+                return (v >= Integer.MIN_VALUE && v <= Integer.MAX_VALUE) ? (int) v : v;
+            } catch (NumberFormatException e) {
+                throw new FlowException("Invalid number: '" + numStr + "' in '" + expr + "'", e);
+            }
+        }
+
+        private String string() {
+            char quote = expr.charAt(pos++);
+            StringBuilder sb = new StringBuilder();
+            while (pos < len) {
+                char c = expr.charAt(pos);
+                if (c == '\\') {
+                    pos++;
+                    if (pos < len) sb.append(switch (expr.charAt(pos)) {
+                        case 'n' -> '\n'; case 't' -> '\t'; case '\\' -> '\\';
+                        case '"' -> '"'; case '\'' -> '\''; default -> expr.charAt(pos);
+                    });
+                    pos++;
+                } else if (c == quote) { pos++; return sb.toString(); }
+                else { sb.append(c); pos++; }
+            }
+            throw new FlowException("Unterminated string in '" + expr + "'");
+        }
+
+        private String ident() {
+            int start = pos;
+            while (pos < len && isIdentPart(expr.charAt(pos))) pos++;
+            return expr.substring(start, pos);
+        }
+
+        private void skipSpaces() {
+            while (pos < len && Character.isWhitespace(expr.charAt(pos))) pos++;
+        }
+
+        private boolean match(String token) {
+            skipSpaces();
+            if (expr.startsWith(token, pos)) {
                 int end = pos + token.length();
-                if (end == len || !isIdentPart(expr.charAt(end))) {
-                    pos = end;
-                    return true;
+                // 算子可能紧跟标识符（如 "!active"），此时不做 ident part 检查
+                if (end == len || !isIdentStart(token.charAt(0)) || !isIdentPart(expr.charAt(end))) {
+                    pos = end; return true;
                 }
             }
+            return false;
         }
-        return false;
+
+        private boolean matchIgnoreCase(String token) {
+            skipSpaces();
+            if (pos + token.length() <= len) {
+                if (expr.substring(pos, pos + token.length()).equalsIgnoreCase(token)) {
+                    int end = pos + token.length();
+                    if (end == len || !isIdentPart(expr.charAt(end))) { pos = end; return true; }
+                }
+            }
+            return false;
+        }
+
+        private static boolean isIdentStart(char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$';
+        }
+
+        private static boolean isIdentPart(char c) {
+            return isIdentStart(c) || (c >= '0' && c <= '9') || c == '.';
+        }
     }
 
-    /// --- comparison / coercion ---
+    // ======================== 工具方法 ========================
 
-    @SuppressWarnings("unchecked")
-    private static int compare(Object a, Object b) {
-        if (a == null && b == null) return 0;
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static int cmp(Object a, Object b) {
+        if (a == b) return 0;
         if (a == null) return -1;
         if (b == null) return 1;
-
-        if (a instanceof Number && b instanceof Number) {
-            return Double.compare(((Number) a).doubleValue(), ((Number) b).doubleValue());
-        }
-        if (a instanceof Comparable && b instanceof Comparable) {
-            try {
-                return ((Comparable) a).compareTo(b);
-            } catch (Exception e) {
-                // fall through
-            }
+        if (a instanceof Number an && b instanceof Number bn)
+            return Double.compare(an.doubleValue(), bn.doubleValue());
+        if (a instanceof Comparable ca && b instanceof Comparable cb) {
+            try { return ca.compareTo(b); } catch (Exception ignored) {}
         }
         return String.valueOf(a).compareTo(String.valueOf(b));
     }
 
     private static boolean eq(Object a, Object b) {
-        if (a == null && b == null) return true;
+        if (a == b) return true;
         if (a == null || b == null) return false;
-        if (a instanceof Number && b instanceof Number) {
-            return ((Number) a).doubleValue() == ((Number) b).doubleValue();
-        }
+        if (a instanceof Number an && b instanceof Number bn) return an.doubleValue() == bn.doubleValue();
         return a.equals(b);
     }
 
     private static boolean toBool(Object v) {
         if (v == null) return false;
-        if (v instanceof Boolean) return (Boolean) v;
-        if (v instanceof Number) return ((Number) v).doubleValue() != 0;
-        if (v instanceof String) return !((String) v).isEmpty();
+        if (v instanceof Boolean b) return b;
+        if (v instanceof Number n) return n.doubleValue() != 0;
+        if (v instanceof String s) return !s.isEmpty();
         return true;
     }
 
-    private static boolean isIdentStart(char c) {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$';
+    private static Object add(Object l, Object r) {
+        if (l instanceof Number ln && r instanceof Number rn) return ln.doubleValue() + rn.doubleValue();
+        return String.valueOf(l) + String.valueOf(r);
     }
 
-    private static boolean isIdentPart(char c) {
-        return isIdentStart(c) || (c >= '0' && c <= '9') || c == '.';
+    private static Object sub(Object l, Object r) {
+        if (l instanceof Number ln && r instanceof Number rn) return ln.doubleValue() - rn.doubleValue();
+        throw new FlowException("Cannot subtract non-numeric values: " + l + " - " + r);
     }
 }
