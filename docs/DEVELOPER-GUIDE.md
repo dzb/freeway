@@ -43,6 +43,7 @@ freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SS
   └ engine adapters       Undertow → see freeway-ext
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
   └ connection pool       HikariCP adapter → see freeway-ext
+freeway-flow             Graph workflow engine — 7 node types, JSON graphs, tracing
 freeway-mq-kafka         Kafka adapter for EventBus → see freeway-ext
 ```
 
@@ -1185,6 +1186,65 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 ```
 
 **Receiving:** `KafkaSubscriber` polls Kafka and publishes to local EventBus. Messages carry an `X-Event-Type` header for automatic type deserialization.
+
+---
+
+## Flow (`freeway-flow`)
+
+Lightweight graph-based workflow/flow engine ported from solon-flow. Zero external dependencies beyond commons + ioc.
+
+**7 node types:**
+
+| Node | Purpose |
+|------|---------|
+| `START` | Graph entry point |
+| `END` | Graph termination |
+| `ACTIVITY` | Executes a task |
+| `EXCLUSIVE` | Exclusive gateway — single path |
+| `INCLUSIVE` | Inclusive gateway — multiple paths |
+| `PARALLEL` | Parallel fork |
+| `LOOP` | Loop until condition |
+
+**Graph definition — JSON:**
+
+```java
+Graph graph = Graph.fromText("""
+{
+    "nodes": [
+        {"id": "start", "type": "START", "next": "approve"},
+        {"id": "approve", "type": "ACTIVITY", "task": "submitOrder", "next": "end"},
+        {"id": "end", "type": "END"}
+    ]
+}
+""");
+```
+
+**Task resolution** — tasks are resolved via three strategies:
+
+| Strategy | Syntax | Example |
+|----------|--------|---------|
+| Bean | `@bean` | `@orderService` — resolved from IoC container |
+| Sub-graph | `#graph` | `#approvalFlow` — calls a named sub-graph |
+| Metadata | `$meta` | `${app.name}` — resolved via config cascade |
+
+**Execution:**
+
+```java
+FlowEngine engine = container.get(FlowEngine.class);
+FlowResult result = engine.execute(graphId);
+result.trace().forEach(t -> System.out.println(t)); // execution trace
+```
+
+**Key types:**
+
+| Type | Purpose |
+|------|---------|
+| `Graph` | Graph definition — nodes, edges, conditions |
+| `FlowEngine` | Graph executor — execute, pause, resume |
+| `FlowEventBus` | Node lifecycle events (enter, exit, error) |
+| `ExprEvaluator` | Self-written recursive descent expression evaluator (~280 lines) |
+
+Supports PlantUML export, execution tracing with pause/resume, subgraph calls, and interceptor chains.
 
 ---
 
