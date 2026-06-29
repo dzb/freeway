@@ -66,16 +66,12 @@ final class AppRuntimeDefault implements AppRuntime {
         var previous = state;
         state = AppState.STOPPING;
         RuntimeException failure = null;
+        LOG.info("Application stopping");
         try {
-            LOG.info("Application stopping");
-            try {
-                publish(new AppStoppingEvent(container));
-            } catch (Exception ex) {
-                failure = accumulate(failure, "Failed to publish AppStoppingEvent", ex);
-                LOG.warn("Failed to publish AppStoppingEvent", ex);
-            }
-        } catch (RuntimeException ex) {
-            failure = accumulate(failure, "Failed to log stopping", ex);
+            container.get(EventBus.class).publish(new AppStoppingEvent(container));
+        } catch (Exception ex) {
+            failure = accumulate(failure, "Failed to publish AppStoppingEvent", ex);
+            LOG.warn("Failed to publish AppStoppingEvent", ex);
         }
         if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
             try {
