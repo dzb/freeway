@@ -212,7 +212,6 @@ Supported annotations in `com.jujin.freeway.ioc.annotation`:
 | Annotation | Purpose |
 |------------|---------|
 | `@Inject` | Field, constructor, or parameter injection |
-| `@Named("id")` | Qualify by binding id |
 | `@Symbol("key")` | Strict config lookup — missing key fails |
 | `@Value("${key:default}")` | Config expression with optional default |
 

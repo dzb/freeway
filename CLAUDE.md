@@ -68,10 +68,9 @@ Robaho adapter has been removed.
 
 ## Injection Annotations
 
-All in `com.jujin.freeway.ioc.annotation`: `@Inject`, `@Named`, `@Symbol`, `@Value`, `@PostConstruct`, `@PreDestroy`.
+All in `com.jujin.freeway.ioc.annotation`: `@Inject`, `@Symbol`, `@Value`, `@PostConstruct`, `@PreDestroy`.
 
 - `@Inject` — field/constructor/parameter injection; `@Inject("id")` for qualified injection.
-- `@Named("id")` — alias for `@Inject("id")`, qualifier by binding id.
 - `@Symbol("key")` — strict config lookup, missing key fails.
 - `@Value("${key:default}")` — expression expansion with optional default.
 - `@PostConstruct` — lifecycle callback after injection is complete.
