@@ -22,6 +22,10 @@ import java.util.List;
  */
 public final class Freeway {
 
+    static {
+        com.jujin.freeway.commons.logging.LogBootstrap.ensureProvider();
+    }
+
     private Freeway() {}
 
     public static Container create(Module2... modules) {

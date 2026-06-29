@@ -28,6 +28,10 @@ import com.jujin.freeway.ioc.Module2;
  */
 public final class FreewayApp {
 
+    static {
+        com.jujin.freeway.commons.logging.LogBootstrap.ensureProvider();
+    }
+
     private FreewayApp() {
     }
 
