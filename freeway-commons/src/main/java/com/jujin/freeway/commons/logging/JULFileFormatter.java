@@ -58,7 +58,7 @@ public final class JULFileFormatter extends Formatter {
 
         // thread
         out.append(' ');
-        out.append('[').append(Thread.currentThread().getName()).append(']');
+        out.append(formatThread());
 
         // logger — full name
         out.append(' ');
@@ -129,6 +129,19 @@ public final class JULFileFormatter extends Formatter {
             renderSuppressed(nested, pw, headerPrefix + "  ", framePrefix + "  ");
         }
     }
+    /**
+     * Formats the current thread name for log output.
+     * Falls back to {@code #threadId} for unnamed virtual threads.
+     */
+    private static String formatThread() {
+        Thread t = Thread.currentThread();
+        String name = t.getName();
+        if (name != null && !name.isBlank()) {
+            return '[' + name + ']';
+        }
+        return "[#" + t.threadId() + ']';
+    }
+
     private static String padRight(String s, int n) {
         if (s.length() >= n) return s;
         return s + " ".repeat(n - s.length());

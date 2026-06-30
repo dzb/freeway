@@ -73,7 +73,7 @@ public final class JULConsoleFormatter extends Formatter {
 
         // thread
         out.append(' ');
-        out.append(dim('[' + Thread.currentThread().getName() + ']'));
+        out.append(dim(formatThread()));
 
         // logger — abbreviated package, full class name
         out.append(' ');
@@ -216,6 +216,19 @@ public final class JULConsoleFormatter extends Formatter {
             if (i < parts.length - 1) sb.append('.');
         }
         return sb.toString();
+    }
+
+    /**
+     * Formats the current thread name for log output.
+     * Falls back to {@code #threadId} for unnamed virtual threads.
+     */
+    private static String formatThread() {
+        Thread t = Thread.currentThread();
+        String name = t.getName();
+        if (name != null && !name.isBlank()) {
+            return '[' + name + ']';
+        }
+        return "[#" + t.threadId() + ']';
     }
 
     private static String padRight(String s, int n) {
