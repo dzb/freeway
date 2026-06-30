@@ -135,9 +135,7 @@ public class FlowDriverDefault implements FlowDriver {
     }
 
     protected boolean tryAsTypedTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
-        Object engine = exchanger.engine();
-        if (!(engine instanceof FlowEngineImpl impl)) return false;
-        Map<Class<?>, TaskComponent> typed = impl.typedTasks();
+        Map<Class<?>, TaskComponent> typed = exchanger.engine().typedTasks();
         if (typed.isEmpty()) return false;
 
         String desc = task.getDescription();

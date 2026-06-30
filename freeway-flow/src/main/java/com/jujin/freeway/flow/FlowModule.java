@@ -31,19 +31,11 @@ public class FlowModule implements Module2 {
                 .scope(Scope.SINGLETON);
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private void registerTypedTasks(FlowEngine engine, Container container) {
-        try {
-            Extension ext = container.get(
-                    Extension.class, TaskComponent.class.getName());
-            for (Object entry : ext.all()) {
-                if (entry instanceof TaskComponent handler) {
-                    container.inject(handler); // @Inject 字段注入
-                    engine.register(handler.getClass(), handler);
-                }
-            }
-        } catch (Exception ignored) {
-            // no typed tasks contributed
+        var ext = container.extension(TaskComponent.class);
+        for (var handler : ext.all()) {
+            container.inject(handler);
+            engine.register(handler.getClass(), handler);
         }
     }
 

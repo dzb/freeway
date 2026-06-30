@@ -396,4 +396,59 @@ class FlowEngineTest {
         // a 先注册，b 后注册（同 index=0），按添加顺序：a → b
         assertEquals(List.of("A:before", "B:before", "B:after", "A:after"), order);
     }
+
+    // ──── typed task 注册 ────
+
+    public record Greeter(String greeting) {}
+
+    public static final class InjectedTask implements TaskComponent {
+        @com.jujin.freeway.ioc.annotation.Inject
+        private Greeter greeter;
+
+        @Override
+        public void run(FlowContext context, Node node) throws Throwable {
+            context.put("result", greeter.greeting());
+        }
+    }
+
+    @Test
+    void containerInjectWiresFields() {
+        var container = com.jujin.freeway.ioc.Freeway.create(
+                binder -> binder.bind(Greeter.class).to(new Greeter("Hello, Flow!")));
+
+        var task = new InjectedTask();
+        container.inject(task);
+
+        assertNotNull(task.greeter);
+        assertEquals("Hello, Flow!", task.greeter.greeting());
+    }
+
+    @Test
+    void contributedTypedTaskIsInjectedAndExecuted() {
+        var container = com.jujin.freeway.ioc.Freeway.create(
+                binder -> {
+                    binder.bind(Greeter.class).to(new Greeter("Hi!"));
+                    binder.contribute(TaskComponent.class).add(new InjectedTask());
+                });
+
+        var driver = new FlowDriverDefault(null, null);
+        var engine = new FlowEngineImpl(driver);
+        for (var handler : container.extension(TaskComponent.class).all()) {
+            container.inject(handler);
+            engine.register(handler.getClass(), handler);
+        }
+
+        engine.load(Graph.create("test", spec -> {
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a")
+                .task(InjectedTask.class.getName())
+                .linkAdd("e");
+            spec.addEnd("e");
+        }));
+
+        var ctx = FlowContext.of();
+        engine.eval("test", ctx);
+
+        assertEquals("Hi!", ctx.getAs("result"));
+    }
 }

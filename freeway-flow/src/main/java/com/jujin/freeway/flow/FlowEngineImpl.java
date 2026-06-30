@@ -59,8 +59,8 @@ public class FlowEngineImpl implements FlowEngine {
         if (taskType != null && handler != null) typedTasks.put(taskType, handler);
     }
 
-    /** Returns typed task handlers registered via {@link #register(Class, TaskComponent)}. */
-    Map<Class<?>, TaskComponent> typedTasks() {
+    @Override
+    public Map<Class<?>, TaskComponent> typedTasks() {
         return typedTasks;
     }
 

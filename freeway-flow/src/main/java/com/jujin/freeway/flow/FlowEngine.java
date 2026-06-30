@@ -1,6 +1,7 @@
 package com.jujin.freeway.flow;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -97,6 +98,9 @@ public interface FlowEngine {
         FlowDriver driver = getDriver(graph);
         eval(graph, new FlowExchanger(graph, this, driver, context, steps, new AtomicInteger(0)), null);
     }
+
+    /** Returns typed task handlers registered via {@link #register(Class, TaskComponent)}. */
+    Map<Class<?>, TaskComponent> typedTasks();
 
     // --- internal ---
 
