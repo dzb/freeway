@@ -79,23 +79,23 @@ final class BinderImpl implements Binder {
      * them to the real Contribution once the instance is created.
      */
     private static final class DeferredContribution implements Contribution {
-        private String[] beforeIds;
-        private String[] afterIds;
+        private final List<String> beforeIds = new ArrayList<>();
+        private final List<String> afterIds = new ArrayList<>();
 
         void apply(Contribution target) {
-            if (beforeIds != null) target.before(beforeIds);
-            if (afterIds != null) target.after(afterIds);
+            if (!beforeIds.isEmpty()) target.before(beforeIds.toArray(new String[0]));
+            if (!afterIds.isEmpty()) target.after(afterIds.toArray(new String[0]));
         }
 
         @Override
         public Contribution before(String... ids) {
-            this.beforeIds = ids;
+            for (var id : ids) beforeIds.add(Objects.requireNonNull(id, "id").trim());
             return this;
         }
 
         @Override
         public Contribution after(String... ids) {
-            this.afterIds = ids;
+            for (var id : ids) afterIds.add(Objects.requireNonNull(id, "id").trim());
             return this;
         }
     }
