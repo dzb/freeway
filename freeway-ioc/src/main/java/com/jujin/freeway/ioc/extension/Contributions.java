@@ -24,13 +24,15 @@ public interface Contributions<T> {
     void add(T value);
 
     /**
-     * Adds an unnamed contribution by implementation class. The container
-     * instantiates the class, injects dependencies, and invokes
-     * {@code @PostConstruct} — but does not track the instance.
+     * Adds a contribution by implementation class. The container instantiates
+     * the class, injects dependencies, and invokes {@code @PostConstruct}.
+     * An id is auto-generated from the class simple name via camel-to-snake
+     * conversion, enabling {@code before/after} ordering.
      *
      * @param implClass the implementation class
+     * @return a Contribution handle for declaring before/after constraints
      */
-    default void add(Class<? extends T> implClass) {
+    default Contribution add(Class<? extends T> implClass) {
         throw new UnsupportedOperationException(
             "add(Class) requires a Container-based Contributions implementation");
     }

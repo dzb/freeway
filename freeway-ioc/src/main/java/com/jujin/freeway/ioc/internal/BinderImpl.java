@@ -54,12 +54,15 @@ final class BinderImpl implements Binder {
             }
 
             @Override
-            public void add(Class<? extends V> implClass) {
-                var captureExt = ext;
+            public Contribution add(Class<? extends V> implClass) {
+                String id = com.jujin.freeway.commons.util.Strings.camelToSnake(
+                    implClass.getSimpleName());
+                var deferred = new DeferredContribution();
                 pendingCreates.add(() -> {
                     V instance = container.instantiate(implClass);
-                    captureExt.add(null, instance);
+                    deferred.apply(ext.add(id, instance));
                 });
+                return deferred;
             }
         };
     }
@@ -70,4 +73,31 @@ final class BinderImpl implements Binder {
         container.installModule(module, this);
         return this;
     }
+
+    /**
+     * A Contribution handle that stores ordering constraints and applies
+     * them to the real Contribution once the instance is created.
+     */
+    private static final class DeferredContribution implements Contribution {
+        private String[] beforeIds;
+        private String[] afterIds;
+
+        void apply(Contribution target) {
+            if (beforeIds != null) target.before(beforeIds);
+            if (afterIds != null) target.after(afterIds);
+        }
+
+        @Override
+        public Contribution before(String... ids) {
+            this.beforeIds = ids;
+            return this;
+        }
+
+        @Override
+        public Contribution after(String... ids) {
+            this.afterIds = ids;
+            return this;
+        }
+    }
+
 }
