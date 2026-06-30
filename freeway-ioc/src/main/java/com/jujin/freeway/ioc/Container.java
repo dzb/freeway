@@ -52,13 +52,6 @@ public interface Container extends AutoCloseable {
     <T> Extension<T> extension(Class<T> entryType);
 
     /**
-     * Inject fields and invoke {@code @PostConstruct} on an existing instance.
-     * Useful when an object is created outside the container (e.g. via {@code new})
-     * but needs container-managed dependencies.
-     */
-    void inject(Object instance);
-
-    /**
      * Creates a fully-injected instance of the given type without registering it
      * in the container. The instance receives constructor injection, field
      * injection, and {@code @PostConstruct} — but is not cached, not managed,

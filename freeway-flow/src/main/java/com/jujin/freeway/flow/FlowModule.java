@@ -34,7 +34,6 @@ public class FlowModule implements Module2 {
     private void registerTypedTasks(FlowEngine engine, Container container) {
         var ext = container.extension(TaskComponent.class);
         for (var handler : ext.all()) {
-            container.inject(handler);
             engine.register(handler.getClass(), handler);
         }
     }

@@ -167,13 +167,6 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
-    public void inject(Object instance) {
-        if (instance == null) return;
-        injectFields(instance);
-        Lifecycle.invokePostConstruct(instance);
-    }
-
-    @Override
     public <T> T instantiate(Class<T> type) {
         return instanceFactory.instantiate(type);
     }
