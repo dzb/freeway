@@ -38,11 +38,25 @@ public class FlowModule implements Module2 {
                     Extension.class, TaskComponent.class.getName());
             for (Object entry : ext.all()) {
                 if (entry instanceof TaskComponent handler) {
-                    engine.register(handler.getClass(), handler);
+                    // 优先从容器获取（触发 @Inject 注入），否则直接用原始实例
+                    TaskComponent resolved = resolveTaskComponent(container, handler);
+                    engine.register(resolved.getClass(), resolved);
                 }
             }
         } catch (Exception ignored) {
             // no typed tasks contributed
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TaskComponent resolveTaskComponent(Container container, TaskComponent handler) {
+        try {
+            // If the handler class is registered as a service, get the
+            // container-managed instance which triggers @Inject injection.
+            return container.get((Class<TaskComponent>) handler.getClass());
+        } catch (Exception e) {
+            // Not registered — use the raw contributed instance.
+            return handler;
         }
     }
 
