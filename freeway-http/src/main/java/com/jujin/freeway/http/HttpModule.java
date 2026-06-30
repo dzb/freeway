@@ -11,7 +11,9 @@ import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.filter.RequestTimingFilter;
+import com.jujin.freeway.http.route.LazyHandler;
 import com.jujin.freeway.http.route.RouteIndex;
+import java.util.ArrayList;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.ioc.Binder;
@@ -40,7 +42,14 @@ public final class HttpModule implements Module2 {
 
     @Override
     public void bind(Binder binder) {
-        binder.bind(RouteIndex.class).to(RouteIndex.class);
+        binder.bind(RouteIndex.class).to(container -> {
+            var routes = new ArrayList<>(container.extension(Route.class).all());
+            for (var r : routes) {
+                if (r.handler() instanceof LazyHandler lh) lh.resolve(container);
+            }
+            return new RouteIndex(routes,
+                container.extension(RouteGroup.class).all());
+        });
         binder.bind(WebSocketIndex.class).to(WebSocketIndex.class);
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
 
