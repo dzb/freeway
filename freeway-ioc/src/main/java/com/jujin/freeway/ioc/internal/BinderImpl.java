@@ -14,6 +14,8 @@ import java.util.Objects;
 final class BinderImpl implements Binder {
     private final ContainerImpl container;
     private final List<BindingImpl<?>> pending = new ArrayList<>();
+    /** Classes registered via {@link Contributions#create} — instantiated after pending bindings flush. */
+    private final List<Runnable> pendingCreates = new ArrayList<>();
 
     BinderImpl(ContainerImpl container) {
         this.container = Objects.requireNonNull(container, "container");
@@ -31,6 +33,10 @@ final class BinderImpl implements Binder {
             container.register(binding);
         }
         pending.clear();
+        for (var action : pendingCreates) {
+            action.run();
+        }
+        pendingCreates.clear();
     }
 
     @Override
@@ -45,6 +51,15 @@ final class BinderImpl implements Binder {
             @Override
             public Contribution add(String id, V value) {
                 return ext.add(id, value);
+            }
+
+            @Override
+            public void create(Class<? extends V> implClass) {
+                var captureExt = ext;
+                pendingCreates.add(() -> {
+                    V instance = container.instantiate(implClass);
+                    captureExt.add(null, instance);
+                });
             }
         };
     }
