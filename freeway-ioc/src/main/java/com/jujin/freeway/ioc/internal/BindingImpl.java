@@ -124,7 +124,7 @@ final class BindingImpl<T> implements Binding<T> {
 
     private T instantiateDefault() {
         if (!type.isInterface() && !Modifier.isAbstract(type.getModifiers())) {
-            return container.instantiate(type);
+            return container.create(type);
         }
         throw new IllegalStateException("No implementation configured for " + type.getName());
     }

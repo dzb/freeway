@@ -59,7 +59,7 @@ final class BinderImpl implements Binder {
                     implClass.getSimpleName());
                 var deferred = new DeferredContribution();
                 pendingCreates.add(() -> {
-                    V instance = container.instantiate(implClass);
+                    V instance = container.create(implClass);
                     deferred.apply(ext.add(id, instance));
                 });
                 return deferred;

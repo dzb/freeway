@@ -57,11 +57,11 @@ public interface Container extends AutoCloseable {
      * injection, and {@code @PostConstruct} — but is not cached, not managed,
      * and will not be returned by future {@code get()} calls.
      *
-     * @param type the implementation class to instantiate
+     * @param type the implementation class to create
      * @param <T>  the instance type
      * @return a new, injected instance (caller owns the lifecycle)
      */
-    <T> T instantiate(Class<T> type);
+    <T> T create(Class<T> type);
 
     @Override
     void close();

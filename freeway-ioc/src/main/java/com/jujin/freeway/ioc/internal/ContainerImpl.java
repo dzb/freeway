@@ -167,7 +167,7 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
-    public <T> T instantiate(Class<T> type) {
+    public <T> T create(Class<T> type) {
         return instanceFactory.instantiate(type);
     }
 
