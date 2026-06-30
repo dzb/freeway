@@ -102,7 +102,7 @@ class FreewayTest {
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
-        CheckoutService service = container.get(CheckoutService.class);
+        CheckoutService service = container.create(CheckoutService.class);
 
         assertEquals("stripe", service.gatewayName());
         assertEquals("stripe", container.get(PaymentGateway.class).name());
@@ -140,7 +140,7 @@ class FreewayTest {
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
-        NamedCheckoutService service = container.get(NamedCheckoutService.class);
+        NamedCheckoutService service = container.create(NamedCheckoutService.class);
 
         assertEquals("paypal", service.gatewayName());
     }
@@ -152,7 +152,7 @@ class FreewayTest {
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
-        InjectNamedCheckoutService service = container.get(InjectNamedCheckoutService.class);
+        InjectNamedCheckoutService service = container.create(InjectNamedCheckoutService.class);
 
         assertEquals("paypal", service.gatewayName());
     }

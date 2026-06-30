@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -83,6 +84,7 @@ public final class ContainerImpl implements Container {
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
         registerBuiltin(Scoping.class, scoping, "Scoping");
+        registerBuiltin(EventBus.class, new EventBus(this), "EventBus");
         loadAll(modules);
         LOG.info("Loaded {} module(s): {}", loadedModules.size(),
             loadedModules.stream().map(m -> m.getClass().getSimpleName()).toList());
@@ -216,6 +218,7 @@ public final class ContainerImpl implements Container {
     }
 
     synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {
+        bindingIndex.updateId(binding, previousId, newId);
     }
 
     /** Constructor injection only — no field injection, no @PostConstruct. */

@@ -59,7 +59,10 @@ public final class JULConsoleFormatter extends Formatter {
 
     @Override
     public String format(LogRecord record) {
-        StringBuilder out = new StringBuilder();
+        int msgLen = record.getMessage() != null ? record.getMessage().length() : 0;
+        String loggerName = record.getLoggerName();
+        int loggerLen = loggerName != null ? loggerName.length() : 0;
+        StringBuilder out = new StringBuilder(80 + msgLen + loggerLen);
 
         // timestamp
         out.append(dim(TIMESTAMP.format(Instant.ofEpochMilli(record.getMillis()))));
@@ -74,7 +77,6 @@ public final class JULConsoleFormatter extends Formatter {
 
         // logger — abbreviated package, full class name
         out.append(' ');
-        String loggerName = record.getLoggerName();
         out.append(color(loggerName != null ? abbreviate(loggerName) : "", useColor ? CYAN : null));
 
         // message
@@ -117,10 +119,32 @@ public final class JULConsoleFormatter extends Formatter {
             for (StackTraceElement frame : current.getStackTrace()) {
                 pw.println(color(EX_INDENT + "    at " + frame.toString(), useColor ? DIM : null));
             }
+            for (Throwable suppressed : current.getSuppressed()) {
+                renderSuppressed(suppressed, pw, EX_INDENT + "  Suppressed: ",
+                        EX_INDENT + "      at ");
+            }
             current = current.getCause();
         }
         pw.flush();
         return sw.toString().stripTrailing();
+    }
+
+    private void renderSuppressed(Throwable t, PrintWriter pw,
+                                   String headerPrefix, String framePrefix) {
+        pw.println(color(headerPrefix + t, useColor ? RED : null));
+        for (StackTraceElement frame : t.getStackTrace()) {
+            pw.println(color(framePrefix + frame, useColor ? DIM : null));
+        }
+        for (Throwable cause = t.getCause(); cause != null; cause = cause.getCause()) {
+            pw.println(color(headerPrefix.replace("Suppressed:", "Caused by:")
+                    + cause, useColor ? RED : null));
+            for (StackTraceElement frame : cause.getStackTrace()) {
+                pw.println(color(framePrefix + frame, useColor ? DIM : null));
+            }
+        }
+        for (Throwable nested : t.getSuppressed()) {
+            renderSuppressed(nested, pw, headerPrefix + "  ", framePrefix + "  ");
+        }
     }
 
     // ── color detection ──────────────────────────────────────────────

@@ -1,11 +1,17 @@
 package com.jujin.freeway.commons.logging;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.logging.FileHandler;
 import java.util.logging.Handler;
-import java.util.logging.LogManager;
+import java.util.logging.Level;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,14 +23,16 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class LogBootstrapTest {
 
+    @BeforeAll
+    static void setUp() {
+        LogBootstrap.ensureProvider();
+    }
+
     @Test
     void ensureProviderIsIdempotent() {
-        // First call installs the provider (if not already there)
         LogBootstrap.ensureProvider();
-        // Second call should be a no-op
         LogBootstrap.ensureProvider();
 
-        // Verify SLF4J works
         Logger log = LoggerFactory.getLogger(LogBootstrapTest.class);
         assertNotNull(log);
         log.info("LogBootstrap idempotency check passed");
@@ -50,23 +58,19 @@ class LogBootstrapTest {
 
     @Test
     void classpathConfigAutoLoadsLoggingProperties() {
-        // JUL's LogManager.updateConfiguration reads from an InputStream.
-        // The loadClasspathConfig method uses getResourceAsStream("logging.properties").
-        // We test the method's behavior when NO such file exists (should not throw).
-        //
-        // The actual auto-load is tested indirectly: if a logging.properties at
-        // classpath root exists, JUL handlers would reflect its settings.
-        // Here we verify the no-config-path is handled gracefully.
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        assertNotNull(root);
 
-        // Reset JUL to default state for this test
-        LogManager.getLogManager().reset();
+        // logging.properties sets .level=INFO for the root logger
+        assertEquals(Level.INFO, root.getLevel(),
+            "Root logger level should be INFO per logging.properties");
 
-        // No logging.properties on classpath — should not throw
-        assertDoesNotThrow(() -> {
-            // Simulate what installFormatters does — this always works
-            java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
-            assertNotNull(root);
-        });
+        // installFormatters() sets JULConsoleFormatter on ConsoleHandler
+        Handler[] handlers = root.getHandlers();
+        if (handlers.length > 0 && handlers[0].getFormatter() != null) {
+            assertInstanceOf(JULConsoleFormatter.class, handlers[0].getFormatter(),
+                "Console handler should use JULConsoleFormatter");
+        }
     }
 
     @Test
@@ -79,39 +83,12 @@ class LogBootstrapTest {
         assertNotNull(log1);
         assertNotNull(log2);
         assertNotNull(log3);
-        // Same name returns same adapter instance
         assertSame(log1, log2);
-        // Different name returns different adapter
         assertNotSame(log1, log3);
     }
 
     @Test
-    void bootstrapSetsUpJULFormatter() {
-        // After LogBootstrap, the JUL root logger's console handler
-        // should have the custom JULConsoleFormatter installed.
-        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
-        assertNotNull(root);
-
-        // The formatter was installed in installFormatters()
-        Handler[] handlers = root.getHandlers();
-        if (handlers.length > 0) {
-            // When running in Maven Surefire, there may be no console handler.
-            // If present, it should use JULConsoleFormatter.
-            boolean hasCustomFormatter = false;
-            for (Handler h : handlers) {
-                if (h.getFormatter() instanceof JULConsoleFormatter) {
-                    hasCustomFormatter = true;
-                    break;
-                }
-            }
-            // At least one handler (if any) uses our formatter
-            // This is informational — in CI there may be no handlers
-        }
-    }
-
-    @Test
     void loggingAfterBootstrapDoesNotThrow() {
-        // A smoke test: log at various levels
         Logger log = LoggerFactory.getLogger("smoke.test");
         log.trace("trace message");
         log.debug("debug message");
@@ -119,7 +96,34 @@ class LogBootstrapTest {
         log.warn("warn message");
         log.error("error message", new RuntimeException("test exception"));
 
-        // If we reach here without exception, the bootstrap works
         assertTrue(true);
+    }
+
+    @Test
+    void fileHandlerUsesJULFileFormatter(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("app.log");
+
+        java.util.logging.Logger julLogger = java.util.logging.Logger.getLogger("file.test");
+        FileHandler fileHandler = new FileHandler(logFile.toString());
+        fileHandler.setFormatter(new JULFileFormatter());
+        fileHandler.setLevel(Level.INFO);
+        julLogger.setLevel(Level.INFO);
+        julLogger.setUseParentHandlers(false);
+        julLogger.addHandler(fileHandler);
+
+        Logger log = LoggerFactory.getLogger("file.test");
+        log.info("line one");
+        log.warn("line two");
+        log.error("line three", new RuntimeException("test"));
+
+        fileHandler.flush();
+        fileHandler.close();
+
+        String content = Files.readString(logFile);
+        assertTrue(content.contains("line one"), "File should contain info message: " + content);
+        assertTrue(content.contains("line two"), "File should contain warn message: " + content);
+        assertTrue(content.contains("line three"), "File should contain error message: " + content);
+        assertTrue(content.contains("RuntimeException"),
+            "File should contain exception class name: " + content);
     }
 }

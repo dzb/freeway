@@ -7,6 +7,7 @@ import org.slf4j.spi.MDCAdapter;
 import org.slf4j.spi.SLF4JServiceProvider;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.logging.FileHandler;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
@@ -66,28 +67,36 @@ public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
     }
 
     private static void installFormatters() {
-        String format = System.getProperty("freeway.log.format",
-                System.getenv("FREEWAY_LOG_FORMAT"));
-
-        // "simple" — keep JUL native SimpleFormatter
-        if (format != null && "simple".equalsIgnoreCase(format.strip())) {
-            return;
+        String format = formatOverride();
+        if (format != null) {
+            String trimmed = format.strip();
+            if ("simple".equalsIgnoreCase(trimmed)) {
+                return; // user wants JUL native SimpleFormatter
+            }
+            if (!trimmed.isBlank()) {
+                Logger.getLogger("com.jujin.freeway.commons.logging")
+                        .warning("Unknown freeway.log.format '" + trimmed
+                                + "' — ignoring");
+            }
         }
 
-        if (format != null && !format.isBlank()) {
-            Logger.getLogger("com.jujin.freeway.commons.logging")
-                    .warning("Unknown freeway.log.format '" + format.strip()
-                            + "' — ignoring");
-        }
-
+        JULConsoleFormatter consoleFmt = new JULConsoleFormatter();
+        JULFileFormatter fileFmt = new JULFileFormatter();
         Logger root = Logger.getLogger("");
-        if (root == null) {
-            return;
-        }
+        if (root == null) return;
 
-        JULConsoleFormatter formatter = new JULConsoleFormatter();
         for (Handler h : root.getHandlers()) {
-            h.setFormatter(formatter);
+            if (h instanceof FileHandler || h instanceof JULFileHandler) {
+                h.setFormatter(fileFmt);
+            } else {
+                h.setFormatter(consoleFmt);
+            }
         }
+    }
+
+    private static String formatOverride() {
+        String v = System.getProperty("freeway.log.format");
+        if (v != null) return v;
+        return System.getenv("FREEWAY_LOG_FORMAT");
     }
 }

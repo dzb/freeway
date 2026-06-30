@@ -38,18 +38,19 @@ public final class LogBootstrap {
             if (installed) {
                 return;
             }
-            installed = true;
         }
 
         // If ServiceLoader can find ANY SLF4JServiceProvider, an external
         // provider (Logback, Log4j, etc.) is on the classpath — yield to it.
         ServiceLoader<SLF4JServiceProvider> loader = ServiceLoader.load(SLF4JServiceProvider.class);
         if (loader.iterator().hasNext()) {
+            installed = true;
             return;
         }
 
         // No external provider — install JUL fallback.
         installJULFallback();
+        installed = true;
     }
 
     private static void installJULFallback() {
@@ -65,16 +66,20 @@ public final class LogBootstrap {
             java.lang.reflect.Field providerField = lf.getDeclaredField("PROVIDER");
             providerField.setAccessible(true);
 
-            if (state == 2) { // SUCCESSFUL_INITIALIZATION — SLF4J already bound
-                // Replace the substitute/NOP provider with JUL.
+            // SLF4J 2.x INITIALIZATION_STATE values:
+            //   0 = UNINITIALIZED, 1 = ONGOING, 2 = FAILED,
+            //   3 = SUCCESSFUL,     4 = NOP_FALLBACK
+            if (state == 3) { // SUCCESSFUL_INITIALIZATION — already bound
                 SLF4JServiceProvider existing = (SLF4JServiceProvider) providerField.get(null);
                 if (existing != null && !existing.getClass().getName().contains("JUL")) {
                     providerField.set(null, jul);
                 }
+            } else if (state == 1) { // ONGOING_INITIALIZATION — another thread is binding
+                return;
             } else {
-                // SLF4J not yet initialized — install preemptively.
+                // UNINITIALIZED(0), FAILED(2), NOP_FALLBACK(4) — install JUL
                 providerField.set(null, jul);
-                stateField.set(null, 2);
+                stateField.set(null, 3); // SUCCESSFUL_INITIALIZATION
             }
         } catch (Exception e) {
             System.err.println("[Freeway] Failed to install JUL logging fallback: "

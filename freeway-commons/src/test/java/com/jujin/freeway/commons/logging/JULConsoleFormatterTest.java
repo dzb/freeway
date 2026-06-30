@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import org.junit.jupiter.api.Test;
@@ -143,5 +144,29 @@ class JULConsoleFormatterTest {
         assertTrue(output.contains("  Caused by: "));
         assertTrue(output.contains("IllegalStateException"));
         assertTrue(output.contains("inner"));
+    }
+
+    @Test
+    void formatThrowableWithSuppressedExceptionAndCause() {
+        JULConsoleFormatter formatter = new JULConsoleFormatter(false);
+        RuntimeException rootCause = new RuntimeException("root cause");
+        IOException supressed = new IOException("close failed", rootCause);
+        RuntimeException outer = new RuntimeException("outer");
+        outer.addSuppressed(supressed);
+
+        LogRecord record = new LogRecord(Level.SEVERE, "Suppressed test");
+        record.setLoggerName("test.Suppressed");
+        record.setThrown(outer);
+
+        String output = formatter.format(record);
+        // Suppressed exception should appear
+        assertTrue(output.contains("Suppressed:"), "Should render suppressed: " + output);
+        assertTrue(output.contains("close failed"),
+                "Should render suppressed message: " + output);
+        // The suppressed exception's CAUSE should also appear
+        assertTrue(output.contains("Caused by:"),
+                "Suppressed's cause chain should be rendered: " + output);
+        assertTrue(output.contains("root cause"),
+                "Suppressed's root cause should appear: " + output);
     }
 }

@@ -22,7 +22,7 @@ public final class LazyHandler implements RouteHandler {
             synchronized (this) {
                 h = resolved;
                 if (h == null) {
-                    resolved = h = container.get(handlerType);
+                    resolved = h = container.create(handlerType);
                 }
             }
         }
