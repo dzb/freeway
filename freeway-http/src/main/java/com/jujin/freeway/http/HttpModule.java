@@ -12,6 +12,8 @@ import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.filter.RequestTimingFilter;
 import com.jujin.freeway.http.route.LazyHandler;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteGroup;
 import com.jujin.freeway.http.route.RouteIndex;
 import java.util.ArrayList;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
@@ -19,7 +21,7 @@ import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
@@ -36,7 +38,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class HttpModule implements Module2 {
+public final class HttpModule implements ModuleEx {
     private static final Logger LOG = LoggerFactory.getLogger(HttpModule.class);
     public static final String SERVER_HOOK = "freeway.http.server";
 

@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、Module2、binder.install、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、binder.install、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway 开发技能
@@ -47,10 +47,10 @@ AppRuntime app = FreewayApp.of(new MyModule())
 
 ## 编写模块
 
-所有模块实现 `@FunctionalInterface Module2`：
+所有模块实现 `@FunctionalInterface ModuleEx`：
 
 ```java
-public class AppModule implements Module2 {
+public class AppModule implements ModuleEx {
     public void bind(Binder b) {
         // 绑定服务
         b.bind(UserService.class).to(UserServiceImpl.class);
@@ -84,10 +84,10 @@ public class AppModule implements Module2 {
 | 类型 | 用途 |
 |------|------|
 | `Container` | 服务查找：`get(Class)`, `get(Class, id)`, `extension()` |
-| `Binder` | 绑定与贡献 DSL，在 `Module2.bind()` 中接收 |
+| `Binder` | 绑定与贡献 DSL，在 `ModuleEx.bind()` 中接收 |
 | `Binding<T>` | 绑定配置链：`to()` → `scope()` → `id()` → `primary()` → `advise()` |
-| `Module2` | `@FunctionalInterface`，模块入口：`void bind(Binder)` |
-| `Freeway` | 容器启动：`Freeway.create(Module2...)` |
+| `ModuleEx` | `@FunctionalInterface`，模块入口：`void bind(Binder)` |
+| `Freeway` | 容器启动：`Freeway.create(ModuleEx...)` |
 | `Scoping` | `Scoping.within()` 进入 Thread 作用域 |
 | `Scope` | 枚举：`SINGLETON`、`THREAD`、`PROTOTYPE` |
 | `Extension<V>` | 运行时访问贡献列表：`extension(Class).all()` |
@@ -795,7 +795,7 @@ Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 **IoC 集成 — 通过 SchemaEntity 贡献实体类：**
 
 ```java
-public class AppModule implements Module2 {
+public class AppModule implements ModuleEx {
     public void bind(Binder b) {
         b.install(new DbModule());
 

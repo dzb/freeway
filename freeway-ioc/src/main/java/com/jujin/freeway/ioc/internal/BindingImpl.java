@@ -69,7 +69,7 @@ final class BindingImpl<T> implements Binding<T> {
         Class<? extends T> actual = Objects.requireNonNull(implementation, "implementation");
         setProvider(ignored -> {
             try {
-                return container.construct(actual);
+                return container.constructInstance(actual);
             } catch (Error e) { throw e; } catch (Throwable ex) {
                 throw new RuntimeException("Unable to construct " + actual.getName(), ex);
             }

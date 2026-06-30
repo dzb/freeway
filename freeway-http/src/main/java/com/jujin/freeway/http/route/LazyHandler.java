@@ -8,15 +8,15 @@ import com.jujin.freeway.ioc.Container;
  * instance is obtained from the container on the first invocation
  * and cached for subsequent calls.
  */
-final class LazyHandler implements RouteHandler {
+public final class LazyHandler implements RouteHandler {
     private final Class<? extends RouteHandler> handlerType;
     private volatile RouteHandler resolved;
 
-    LazyHandler(Class<? extends RouteHandler> handlerType) {
+    public LazyHandler(Class<? extends RouteHandler> handlerType) {
         this.handlerType = handlerType;
     }
 
-    RouteHandler resolve(Container container) {
+    public RouteHandler resolve(Container container) {
         RouteHandler h = resolved;
         if (h == null) {
             synchronized (this) {

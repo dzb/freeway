@@ -12,7 +12,7 @@ package com.jujin.freeway.ioc;
  *
  * <p>Example:
  * <pre>{@code
- * public class AppModule implements Module2 {
+ * public class AppModule implements ModuleEx {
  *     public void bind(Binder b) {
  *         b.bind(UserService.class).to(UserServiceImpl.class);
  *         b.install(new HttpModule());
@@ -22,6 +22,6 @@ package com.jujin.freeway.ioc;
  * }</pre>
  */
 @FunctionalInterface
-public interface Module2 {
+public interface ModuleEx {
     void bind(Binder binder);
 }

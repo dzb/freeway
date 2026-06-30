@@ -1,7 +1,7 @@
 package com.jujin.freeway.ioc;
 
 /**
- * Service lookup container. Created by {@link Freeway#create(Module2...)}.
+ * Service lookup container. Created by {@link Freeway#create(ModuleEx...)}.
  *
  * <p>Services are bound via {@link Binder#bind(Class)} in modules and resolved
  * by type (and optionally by id) at runtime.

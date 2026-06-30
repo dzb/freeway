@@ -39,9 +39,9 @@ This gives you:
 
 Freeway 2 keeps its core concepts intentionally small:
 
-- `Module` is the unit of application composition and responsibility partitioning. `Module2` is the Java type name used by Freeway.
+- `Module` is the unit of application composition and responsibility partitioning. `ModuleEx` is the Java type name used by Freeway.
 - `Freeway` builds a container; `FreewayApp` builds a runtime.
-- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `close()`.
+- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()`. `create()` injects without caching.
 - `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
 - Service ids are plain strings: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is no public `ServiceId` type.
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
@@ -56,7 +56,7 @@ See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/com
 ## Quick Start
 
 ```java
-public final class AppModule implements Module2 {
+public final class AppModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
         binder.bind(Greeter.class).to(GreeterImpl.class);
@@ -80,7 +80,7 @@ Container container = Freeway.create(
 ### Web App
 
 ```java
-public final class App implements Module2 {
+public final class App implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.install(new HttpModule());
@@ -133,7 +133,7 @@ The IoC module provides the framework core:
 - Named services - `.id("primary")`.
 - Primary resolution - `.primary()` for the default binding when no id is supplied.
 - Scopes - `SINGLETON`, `PROTOTYPE`, `THREAD`.
-- Injection - constructor and field injection with `@Inject`, `@Named`, `@Symbol`, `@Value`.
+- Injection - constructor and field injection with `@Inject`, `@Symbol`, `@Value`.
 - Value expansion - `${...}` placeholder expansion for external configuration.
 - Type coercion - scalar and domain-specific conversions through contributed coercion rules.
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
@@ -145,7 +145,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `FreewayApp.run(args, Module2...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
+- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.

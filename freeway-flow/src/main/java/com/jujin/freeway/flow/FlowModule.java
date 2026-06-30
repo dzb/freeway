@@ -3,7 +3,7 @@ package com.jujin.freeway.flow;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.extension.Extension;
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scope;
 
 /**
@@ -15,7 +15,7 @@ import com.jujin.freeway.ioc.Scope;
  * container.get(FlowEngine.class).eval(graph, context);
  * }</pre>
  */
-public class FlowModule implements Module2 {
+public class FlowModule implements ModuleEx {
 
     @Override
     public void bind(Binder binder) {

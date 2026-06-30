@@ -40,8 +40,8 @@ Robaho adapter has been removed.
 
 ## Architecture Boundaries
 
-- **`Container`** — IoC boundary only: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()`. Created via `Freeway.create(Module2...)`.
-- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `FreewayApp.run(new String[0], Module2...)`.
+- **`Container`** — IoC boundary only: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()`. `create()` is a factory method — full injection without caching. Created via `Freeway.create(ModuleEx...)`.
+- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `FreewayApp.run(new String[0], ModuleEx...)`.
 - **`ServiceId`** is intentionally not a public type — service ids are plain strings, normalized internally by `ServiceIds`.
 - **`Defer` / `ScopedCache`** — commons-level `ScopedValue` primitives. `Defer` buffers actions for commit-time drain; `ScopedCache` caches key-value pairs with lifecycle cleanup on scope exit. IoC's thread scope is built on `ScopedCache`.
 - **Scopes** declared only via `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`. Thread scope is entered through `Scoping.within()`.

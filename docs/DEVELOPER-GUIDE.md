@@ -13,7 +13,7 @@ public class App {
         }
     }
 
-    public static final class AppModule implements Module2 {
+    public static final class AppModule implements ModuleEx {
         public void bind(Binder b) {
             b.contribute(Route.class).add(Route.get("/", ctx ->
                 ctx.send(200, "Hello Freeway")));
@@ -62,7 +62,7 @@ freeway-boot        freeway-http        freeway-db
 
 ## Module — The Fundamental Building Block
 
-Module is the central organizing concept in Freeway. A module declares services, contributions, and composition. `Module2` is only the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway talks about modules.
+Module is the central organizing concept in Freeway. A module declares services, contributions, and composition. `ModuleEx` is only the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway talks about modules.
 
 The module contract is simple:
 
@@ -88,11 +88,11 @@ For the full module patterns, see [docs/reference/module.md](reference/module.md
 
 | Type | Purpose |
 |------|---------|
-| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `close()` |
-| `Module2` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
+| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()` |
+| `ModuleEx` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
-| `Freeway` | Container bootstrap for composing modules: `Freeway.create(Module2...)` |
+| `Freeway` | Container bootstrap for composing modules: `Freeway.create(ModuleEx...)` |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
 | `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
@@ -463,7 +463,7 @@ AppRuntime app = FreewayApp.of(new MyModule())
 
 | Type | Purpose |
 |------|---------|
-| `FreewayApp` | Application entry point: `run(args, Module2...)`, `of(Module2...)` |
+| `FreewayApp` | Application entry point: `run(args, ModuleEx...)`, `of(ModuleEx...)` |
 | `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
 | `AppRuntime` | Runtime API: container, config, state, start, close, `get(Class)`, `get(Class, String)` |
 | `AppState` | `CREATED` → `STARTING` → `RUNNING` → `STOPPING` → `STOPPED` (or `FAILED`) |
@@ -1050,7 +1050,7 @@ Schema.ensure(db, User.class, Post.class);
 **IoC integration** — contribute entity classes via `SchemaEntity`:
 
 ```java
-public class AppModule implements Module2 {
+public class AppModule implements ModuleEx {
     public void bind(Binder b) {
         b.install(new HttpModule())
          .install(new DbModule());

@@ -13,7 +13,7 @@ import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -291,7 +291,7 @@ class FreewayHttpEngineTest {
         }
     }
 
-    static final class PingModule implements Module2 {
+    static final class PingModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));

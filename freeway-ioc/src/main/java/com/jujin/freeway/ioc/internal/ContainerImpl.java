@@ -1,7 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanParameter;
-import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
@@ -10,7 +9,7 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.LoggerSource;
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -56,10 +55,10 @@ public final class ContainerImpl implements Container {
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
     private final Set<Class<?>> moduleTypes = new HashSet<>();
-    private final List<Module2> loadedModules = new ArrayList<>();
+    private final List<ModuleEx> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 
-    public ContainerImpl(Collection<? extends Module2> modules) {
+    public ContainerImpl(Collection<? extends ModuleEx> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
         this.loggerSource = new LoggerSource() {
@@ -118,7 +117,7 @@ public final class ContainerImpl implements Container {
         register(binding);
     }
 
-    void installModule(Module2 module, Binder binder) {
+    void installModule(ModuleEx module, Binder binder) {
         Class<?> moduleType = module.getClass();
         if (moduleTypes.add(moduleType)) {
             LOG.debug("Installing module: {}", moduleType.getSimpleName());
@@ -130,9 +129,9 @@ public final class ContainerImpl implements Container {
         LOG.debug("Ignoring duplicate module: {}", moduleType.getSimpleName());
     }
 
-    private void loadAll(Collection<? extends Module2> modules) {
+    private void loadAll(Collection<? extends ModuleEx> modules) {
         BinderImpl binder = new BinderImpl(this);
-        for (Module2 module : modules == null ? List.<Module2>of() : List.copyOf(modules)) {
+        for (ModuleEx module : modules == null ? List.<ModuleEx>of() : List.copyOf(modules)) {
             installModule(module, binder);
         }
     }
@@ -191,7 +190,9 @@ public final class ContainerImpl implements Container {
         }
         BindingImpl<T> binding = bindingIndex.findUnique(type);
         if (binding == null) {
-            return resolveUnbound(type);
+            throw new IllegalArgumentException(
+                "No service registered for type " + type.getName()
+            );
         }
         return serviceRuntime.get(binding);
     }
@@ -215,24 +216,10 @@ public final class ContainerImpl implements Container {
     }
 
     synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {
-        bindingIndex.updateId(binding, previousId, newId);
     }
 
-    private <T> T resolveUnbound(Class<T> type) {
-        if (type == String.class) {
-            throw noServiceRegistered(type);
-        }
-        if (Types.isConcrete(type)) {
-            return instantiate(type);
-        }
-        throw noServiceRegistered(type);
-    }
-
-    private static IllegalArgumentException noServiceRegistered(Class<?> type) {
-        return new IllegalArgumentException("No service registered for type " + type.getName());
-    }
-
-    <T> T construct(Class<T> type) throws Throwable {
+    /** Constructor injection only — no field injection, no @PostConstruct. */
+    <T> T constructInstance(Class<T> type) throws Throwable {
         return instanceFactory.construct(type);
     }
 

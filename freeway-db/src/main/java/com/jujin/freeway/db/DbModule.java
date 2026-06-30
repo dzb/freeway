@@ -15,7 +15,7 @@ import com.jujin.freeway.db.schema.SqliteDialect;
 import com.jujin.freeway.db.schema.SchemaEntity;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.time.Duration;
@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  *   <li>RuntimeHook that runs Schema auto-DDL and migrations before the HTTP server starts</li>
  * </ul>
  */
-public final class DbModule implements Module2 {
+public final class DbModule implements ModuleEx {
 
     private static final Logger LOG = LoggerFactory.getLogger(DbModule.class);
 

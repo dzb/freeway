@@ -165,10 +165,10 @@ class FreewayTest {
         assertEquals(LoggerFieldHolder.class.getName(), loggerSource.get(LoggerFieldHolder.class).getName());
         assertTrue(loggerSource.get(LoggerFieldHolder.class).isInfoEnabled());
 
-        LoggerFieldHolder fieldHolder = container.get(LoggerFieldHolder.class);
+        LoggerFieldHolder fieldHolder = container.create(LoggerFieldHolder.class);
         assertEquals(LoggerFieldHolder.class.getName(), fieldHolder.loggerName());
 
-        LoggerCtorHolder ctorHolder = container.get(LoggerCtorHolder.class);
+        LoggerCtorHolder ctorHolder = container.create(LoggerCtorHolder.class);
         assertEquals(LoggerCtorHolder.class.getName(), ctorHolder.loggerName());
     }
 
@@ -176,7 +176,7 @@ class FreewayTest {
     void loggerInjectionCanUseExplicitName() {
         Container container = Freeway.create();
 
-        NamedLoggerHolder holder = container.get(NamedLoggerHolder.class);
+        NamedLoggerHolder holder = container.create(NamedLoggerHolder.class);
 
         assertEquals("audit", holder.loggerName());
     }
@@ -199,7 +199,7 @@ class FreewayTest {
         System.setProperty(NAME_KEY, "freeway");
 
         Container container = Freeway.create();
-        ConfiguredService service = container.get(ConfiguredService.class);
+        ConfiguredService service = container.create(ConfiguredService.class);
 
         assertEquals(8081, service.port());
         assertEquals("freeway", service.name());
@@ -212,7 +212,7 @@ class FreewayTest {
         System.setProperty(NAME_KEY, "field-app");
 
         Container container = Freeway.create();
-        FieldConfiguredService service = container.get(FieldConfiguredService.class);
+        FieldConfiguredService service = container.create(FieldConfiguredService.class);
 
         assertEquals(9090, service.port());
         assertEquals("field-app", service.name());
@@ -243,7 +243,7 @@ class FreewayTest {
             ))
         );
 
-        EndpointHolder holder = container.get(EndpointHolder.class);
+        EndpointHolder holder = container.create(EndpointHolder.class);
 
         assertEquals(new Endpoint("localhost", 8088), holder.endpoint());
     }
@@ -260,7 +260,7 @@ class FreewayTest {
             ))
         );
 
-        TimeoutHolder holder = container.get(TimeoutHolder.class);
+        TimeoutHolder holder = container.create(TimeoutHolder.class);
 
         assertEquals(new Timeout(2500), holder.timeout());
     }
@@ -271,7 +271,7 @@ class FreewayTest {
             binder.contribute(SymbolProvider.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway" : null)
         );
 
-        AppNameHolder holder = container.get(AppNameHolder.class);
+        AppNameHolder holder = container.create(AppNameHolder.class);
 
         assertEquals("freeway", holder.name());
     }
@@ -361,7 +361,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
-        AppConfig config = container.get(AppConfig.class);
+        AppConfig config = container.create(AppConfig.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
     }
@@ -373,7 +373,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
-        ParameterAppConfig config = container.get(ParameterAppConfig.class);
+        ParameterAppConfig config = container.create(ParameterAppConfig.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
     }
@@ -394,7 +394,7 @@ class FreewayTest {
                 .before("web")
         );
 
-        AppConfig config = container.get(AppConfig.class);
+        AppConfig config = container.create(AppConfig.class);
 
         assertEquals(List.of("core", "db", "metrics", "web"), config.featureNames());
     }
@@ -420,7 +420,7 @@ class FreewayTest {
                 .after("first")
         );
 
-        Throwable ex = assertThrows(Throwable.class, () -> container.get(AppConfig.class));
+        Throwable ex = assertThrows(Throwable.class, () -> container.create(AppConfig.class));
 
         Throwable root = ex;
         while (root.getCause() != null) root = root.getCause();
@@ -439,7 +439,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("timing", new AppFlag("timing", false)))
         );
 
-        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
+        MixedExtensionCatalog catalog = container.create(MixedExtensionCatalog.class);
 
         assertEquals(List.of("core", "web"), catalog.featureNames());
         assertEquals(Map.of("debug", new AppFlag("debug", true), "timing", new AppFlag("timing", false)), catalog.flags());
@@ -453,7 +453,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("   ", new AppFlag("blank-key", true)))
         );
 
-        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
+        MixedExtensionCatalog catalog = container.create(MixedExtensionCatalog.class);
 
         assertEquals(Map.of("debug", new AppFlag("debug", true), "   ", new AppFlag("blank-key", true)), catalog.flags());
     }
@@ -465,7 +465,7 @@ class FreewayTest {
             binder -> binder.contribute(EnumAppFlagEntry.class).add(new EnumAppFlagEntry(FlagKey.TIMING, new AppFlag("timing", false)))
         );
 
-        EnumKeyExtensionCatalog catalog = container.get(EnumKeyExtensionCatalog.class);
+        EnumKeyExtensionCatalog catalog = container.create(EnumKeyExtensionCatalog.class);
 
         assertEquals(
             Map.of(
@@ -482,7 +482,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
-        ListFeatureCatalog catalog = container.get(ListFeatureCatalog.class);
+        ListFeatureCatalog catalog = container.create(ListFeatureCatalog.class);
         assertEquals(List.of("core", "web"), catalog.featureNames());
     }
 
@@ -492,7 +492,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
-        FieldListFeatureCatalog catalog = container.get(FieldListFeatureCatalog.class);
+        FieldListFeatureCatalog catalog = container.create(FieldListFeatureCatalog.class);
         assertEquals(List.of("core", "web"), catalog.featureNames());
     }
 
@@ -1018,7 +1018,7 @@ class FreewayTest {
     void rejectsUnknownSymbol() {
         Container container = Freeway.create();
         RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> container.get(UnknownSymbolService.class));
+            () -> container.create(UnknownSymbolService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
     }
 
@@ -1026,7 +1026,7 @@ class FreewayTest {
     void rejectsUnclosedSymbolExpression() {
         Container container = Freeway.create();
         RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> container.get(UnclosedSymbolService.class));
+            () -> container.create(UnclosedSymbolService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
     }
 
@@ -1035,7 +1035,7 @@ class FreewayTest {
         Container container = Freeway.create(binder ->
             binder.bind(PaymentGateway.class).to(StripeGateway.class));
         RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> container.get(ConflictingAnnotationsService.class));
+            () -> container.create(ConflictingAnnotationsService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
     }
 
