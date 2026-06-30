@@ -54,7 +54,7 @@ final class BinderImpl implements Binder {
             }
 
             @Override
-            public void create(Class<? extends V> implClass) {
+            public void add(Class<? extends V> implClass) {
                 var captureExt = ext;
                 pendingCreates.add(() -> {
                     V instance = container.instantiate(implClass);

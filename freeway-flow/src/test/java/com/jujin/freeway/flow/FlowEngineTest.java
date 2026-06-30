@@ -428,7 +428,7 @@ class FlowEngineTest {
         var container = com.jujin.freeway.ioc.Freeway.create(
                 binder -> {
                     binder.bind(Greeter.class).to(new Greeter("Hi!"));
-                    binder.contribute(TaskComponent.class).create(InjectedTask.class);
+                    binder.contribute(TaskComponent.class).add(InjectedTask.class);
                 });
 
         var driver = new FlowDriverDefault(null, null);

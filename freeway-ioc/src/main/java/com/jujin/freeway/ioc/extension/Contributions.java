@@ -24,16 +24,15 @@ public interface Contributions<T> {
     void add(T value);
 
     /**
-     * Creates and adds an unnamed contribution from its implementation class.
-     * The container instantiates the class, injects dependencies, and
-     * invokes {@code @PostConstruct} — but does not track the instance.
-     * The caller owns the lifecycle.
+     * Adds an unnamed contribution by implementation class. The container
+     * instantiates the class, injects dependencies, and invokes
+     * {@code @PostConstruct} — but does not track the instance.
      *
      * @param implClass the implementation class
      */
-    default void create(Class<? extends T> implClass) {
+    default void add(Class<? extends T> implClass) {
         throw new UnsupportedOperationException(
-            "create() requires a Container-based Contributions implementation");
+            "add(Class) requires a Container-based Contributions implementation");
     }
 
     /**
