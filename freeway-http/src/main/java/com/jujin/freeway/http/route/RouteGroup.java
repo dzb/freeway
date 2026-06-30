@@ -23,8 +23,8 @@ public record RouteGroup(String prefix, List<Route> routes) {
     public List<Route> expand() {
         List<Route> expanded = new ArrayList<>(routes.size());
         for (Route route : routes) {
-            expanded.add(Route.of(route.method(), PathJoiner.join(prefix, route.path()),
-                route.handler(), route.handlerType()));
+            expanded.add(new Route(route.method(), PathJoiner.join(prefix, route.path()),
+                route.handler()));
         }
         return List.copyOf(expanded);
     }

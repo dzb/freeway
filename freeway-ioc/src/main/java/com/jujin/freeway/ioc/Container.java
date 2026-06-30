@@ -58,6 +58,18 @@ public interface Container extends AutoCloseable {
      */
     void inject(Object instance);
 
+    /**
+     * Creates a fully-injected instance of the given type without registering it
+     * in the container. The instance receives constructor injection, field
+     * injection, and {@code @PostConstruct} — but is not cached, not managed,
+     * and will not be returned by future {@code get()} calls.
+     *
+     * @param type the implementation class to instantiate
+     * @param <T>  the instance type
+     * @return a new, injected instance (caller owns the lifecycle)
+     */
+    <T> T instantiate(Class<T> type);
+
     @Override
     void close();
 }

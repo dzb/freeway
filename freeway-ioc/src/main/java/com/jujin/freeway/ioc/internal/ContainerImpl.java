@@ -174,6 +174,11 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
+    public <T> T instantiate(Class<T> type) {
+        return instanceFactory.instantiate(type);
+    }
+
+    @Override
     public void close() {
         LOG.debug("Container closing");
         closed = true;
@@ -232,10 +237,6 @@ public final class ContainerImpl implements Container {
 
     private static IllegalArgumentException noServiceRegistered(Class<?> type) {
         return new IllegalArgumentException("No service registered for type " + type.getName());
-    }
-
-    <T> T instantiate(Class<T> type) {
-        return instanceFactory.instantiate(type);
     }
 
     <T> T construct(Class<T> type) throws Throwable {

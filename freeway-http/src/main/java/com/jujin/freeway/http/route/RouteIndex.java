@@ -30,44 +30,36 @@ public final class RouteIndex {
     private final Map<String, RouteHandler> exactCache = new ConcurrentHashMap<>();
 
     /**
-     * Constructs the index without a container. Handler-class routes are
-     * rejected because they require container resolution.
-     */
-    public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
-        this(routes, groups, null);
-    }
-
-    /**
-     * Constructs the index with a container. If a route was registered via
-     * a handler class ({@link Route#handlerType()}), the handler instance
-     * is resolved from the container at construction time.
+     * Constructs the index. If a container is provided, {@link LazyHandler}
+     * routes are eagerly resolved; otherwise they are resolved on first match.
      */
     @Inject
     public RouteIndex(List<Route> routes, List<RouteGroup> groups, Container container) {
+        this(routes, groups, container, true);
+    }
+
+    /**
+     * Constructs the index with optional runtime lazy resolution.
+     */
+    public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
+        this(routes, groups, null, false);
+    }
+
+    private RouteIndex(List<Route> routes, List<RouteGroup> groups,
+                       Container container, boolean lazyResolve) {
         // Phase 1: collect all routes
         List<Route> all = new ArrayList<>();
-        for (Route route : routes == null ? List.<Route>of() : routes) {
-            all.add(route);
-        }
-        for (RouteGroup group : groups == null
-            ? List.<RouteGroup>of()
-            : groups) {
-            for (Route route : group.expand()) {
-                all.add(route);
+        if (routes != null) all.addAll(routes);
+        if (groups != null) {
+            for (RouteGroup group : groups) {
+                all.addAll(group.expand());
             }
         }
-        // Phase 2: resolve handler classes and insert into trie + exact cache
+        // Phase 2: resolve lazy handlers and insert into trie + exact cache
         for (Route route : all) {
             RouteHandler handler = route.handler();
-            if (route.handlerType() != null) {
-                if (container == null) {
-                    throw new IllegalStateException(
-                        "Route '" + route.method() + " " + route.path()
-                        + "' uses a handler class (" + route.handlerType().getName()
-                        + ") which requires a container. "
-                        + "Use FreewayApp or HttpModule instead of WebServerBuilder.");
-                }
-                handler = container.get(route.handlerType());
+            if (lazyResolve && handler instanceof LazyHandler lh) {
+                handler = lh.resolve(container);
             }
             addRoute(route.method(), route.path(), handler);
         }
