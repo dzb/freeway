@@ -1312,4 +1312,30 @@ class FreewayTest {
             return features.stream().map(AppFeature::name).toList();
         }
     }
+
+    // ──── add(Class) ────
+
+    interface Labeled { String label(); }
+
+    public static final class CoreBean implements Labeled {
+        @Override public String label() { return "core"; }
+    }
+
+    public static final class WebBean implements Labeled {
+        @Override public String label() { return "web"; }
+    }
+
+    @Test
+    void classContributionCreatesAndOrders() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(Labeled.class)
+                .add(WebBean.class).after("core_bean"),
+            binder -> binder.contribute(Labeled.class)
+                .add(CoreBean.class)
+        );
+
+        List<String> labels = container.extension(Labeled.class).all()
+            .stream().map(Labeled::label).toList();
+        assertEquals(List.of("core", "web"), labels);
+    }
 }
