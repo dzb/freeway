@@ -167,6 +167,13 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
+    public void inject(Object instance) {
+        if (instance == null) return;
+        injectFields(instance);
+        Lifecycle.invokePostConstruct(instance);
+    }
+
+    @Override
     public void close() {
         LOG.debug("Container closing");
         closed = true;
