@@ -37,6 +37,9 @@ public interface FlowEngine {
 
     void unregister(String name);
 
+    /** Register a typed task handler, resolved by class name at runtime. */
+    void register(Class<?> taskType, TaskComponent handler);
+
     // --- interceptor ---
 
     void addInterceptor(FlowInterceptor interceptor, int index);

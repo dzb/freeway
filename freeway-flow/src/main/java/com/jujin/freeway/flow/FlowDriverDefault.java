@@ -106,6 +106,9 @@ public class FlowDriverDefault implements FlowDriver {
                 return;
             }
 
+            // 类型化 task（从 engine 的 typedTasks 查找）
+            if (tryAsTypedTask(exchanger, task)) return;
+
             // #graphId 子图调用
             if (isGraph(task.getDescription())) {
                 tryAsGraphTask(exchanger, task, task.getDescription());
@@ -124,12 +127,27 @@ public class FlowDriverDefault implements FlowDriver {
                 return;
             }
 
-            // 其他：表达式/脚本（精简版不支持任意脚本，仅打印警告）
             throw new FlowException("Unsupported task description: '" + task.getDescription()
                     + "'. Supported: @beanName, #graphId, $metaKey");
         } finally {
             exchanger.context().exchanger(exchanger);
         }
+    }
+
+    protected boolean tryAsTypedTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+        Object engine = exchanger.engine();
+        if (!(engine instanceof FlowEngineImpl impl)) return false;
+        Map<Class<?>, TaskComponent> typed = impl.typedTasks();
+        if (typed.isEmpty()) return false;
+
+        String desc = task.getDescription();
+        for (var entry : typed.entrySet()) {
+            if (desc.equals(entry.getKey().getName()) || desc.equals(entry.getKey().getSimpleName())) {
+                entry.getValue().run(exchanger.context(), task.getNode());
+                return true;
+            }
+        }
+        return false;
     }
 
     protected void tryAsGraphTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {

@@ -1,6 +1,8 @@
 package com.jujin.freeway.flow;
 
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.Module2;
 import com.jujin.freeway.ioc.Scope;
 
@@ -23,18 +25,31 @@ public class FlowModule implements Module2 {
                     engine.register(new FlowDriverDefault(
                             new IocContainerAdapter(container),
                             null));
+                    registerTypedTasks(engine, container);
                     return engine;
                 })
                 .scope(Scope.SINGLETON);
     }
 
-    /**
-     * 将 freeway IoC Container 适配为 flow 的 FlowContainer 接口
-     */
-    static class IocContainerAdapter implements FlowContainer {
-        private final com.jujin.freeway.ioc.Container fwContainer;
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void registerTypedTasks(FlowEngine engine, Container container) {
+        try {
+            Extension ext = container.get(
+                    Extension.class, TaskComponent.class.getName());
+            for (Object entry : ext.all()) {
+                if (entry instanceof TaskComponent handler) {
+                    engine.register(handler.getClass(), handler);
+                }
+            }
+        } catch (Exception ignored) {
+            // no typed tasks contributed
+        }
+    }
 
-        IocContainerAdapter(com.jujin.freeway.ioc.Container fwContainer) {
+    static class IocContainerAdapter implements FlowContainer {
+        private final Container fwContainer;
+
+        IocContainerAdapter(Container fwContainer) {
             this.fwContainer = fwContainer;
         }
 
