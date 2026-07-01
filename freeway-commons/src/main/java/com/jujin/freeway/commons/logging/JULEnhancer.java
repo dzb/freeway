@@ -80,7 +80,19 @@ final class JULEnhancer {
 
     // ── file logging activation ─────────────────────────────────────
 
-    static void resetForTest() { configured = false; }
+    static synchronized void resetForTest() {
+        configured = false;
+        Logger root = Logger.getLogger("");
+        for (Handler handler : root.getHandlers()) {
+            if (handler instanceof JULFileHandler || handler instanceof FileHandler) {
+                root.removeHandler(handler);
+                try {
+                    handler.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
 
     private static void activateFileLogging() {
         String path = System.getProperty("freeway.log.file");

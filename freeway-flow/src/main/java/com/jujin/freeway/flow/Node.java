@@ -1,5 +1,8 @@
 package com.jujin.freeway.flow;
 
+import com.jujin.freeway.flow.v1.NodeSpec;
+import com.jujin.freeway.flow.v2.GraphBlueprint;
+
 import java.util.*;
 
 /**
@@ -25,6 +28,50 @@ public class Node {
     public Object attachment;
 
     public Node(Graph graph, NodeSpec spec, List<Link> links) {
+        this.graph = graph;
+        this.id = spec.getId();
+        this.title = spec.getTitle();
+        this.type = spec.getType();
+        this.when = new ConditionDesc(graph, spec.getWhen(), spec.getWhenComponent());
+        this.task = new TaskDesc(this, spec.getTask(), spec.getTaskComponent());
+
+        if (spec.getMeta() == null || spec.getMeta().isEmpty()) {
+            this.metas = Collections.emptyMap();
+        } else {
+            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.getMeta()));
+        }
+
+        if (links == null || links.isEmpty()) {
+            this.nextLinks = Collections.emptyList();
+        } else {
+            Collections.sort(links);
+            this.nextLinks = Collections.unmodifiableList(new ArrayList<>(links));
+        }
+    }
+
+    public Node(Graph graph, GraphBlueprint.NodeBlueprint spec, NodeType type, List<Link> links) {
+        this.graph = graph;
+        this.id = spec.getId();
+        this.title = spec.getTitle();
+        this.type = type;
+        this.when = new ConditionDesc(graph, spec.getWhen(), spec.getWhenComponent());
+        this.task = new TaskDesc(this, spec.getTask(), spec.getTaskComponent());
+
+        if (spec.getMeta() == null || spec.getMeta().isEmpty()) {
+            this.metas = Collections.emptyMap();
+        } else {
+            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.getMeta()));
+        }
+
+        if (links == null || links.isEmpty()) {
+            this.nextLinks = Collections.emptyList();
+        } else {
+            Collections.sort(links);
+            this.nextLinks = Collections.unmodifiableList(new ArrayList<>(links));
+        }
+    }
+
+    public Node(Graph graph, GraphBlueprint.NodeBlueprint spec, List<Link> links) {
         this.graph = graph;
         this.id = spec.getId();
         this.title = spec.getTitle();

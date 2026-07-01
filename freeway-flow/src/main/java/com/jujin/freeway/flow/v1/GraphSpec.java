@@ -1,14 +1,25 @@
-package com.jujin.freeway.flow;
+package com.jujin.freeway.flow.v1;
 
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.flow.Graph;
+import com.jujin.freeway.flow.NamedTaskComponent;
+import com.jujin.freeway.flow.NodeType;
 
 import java.util.*;
 import java.util.function.Consumer;
 
 /**
- * 图定义（Builder + JSON 解析）
+ * 图定义构建器与 JSON 解析入口。
+ *
+ * <p>迁移说明：
+ * <ul>
+ *   <li>保留 legacy {@code layout}/{@code nodes}、{@code when}/{@code condition}、{@code link} 多种字段形态，确保旧图可继续加载。</li>
+ *   <li>把序列化输出统一收敛到当前的 {@code layout} 结构，减少后续扩展时的格式分叉。</li>
+ *   <li>解析时仍允许缺省 start 节点推断起点，是为了保持旧定义的可运行性，而不是推荐的新建模方式。</li>
+ * </ul>
+ * 这样可以兼容存量图定义，同时逐步把新建模引导到显式结构上。</p>
  *
  * @author noear
  * @since 3.0

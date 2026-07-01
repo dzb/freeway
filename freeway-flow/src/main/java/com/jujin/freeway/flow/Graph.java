@@ -1,6 +1,10 @@
 package com.jujin.freeway.flow;
 
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.flow.v1.GraphSpec;
+import com.jujin.freeway.flow.v1.LinkSpec;
+import com.jujin.freeway.flow.v1.NodeSpec;
+import com.jujin.freeway.flow.v2.GraphBlueprint;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -21,7 +25,7 @@ public class Graph {
     private final List<Link> links;
     private Node start;
 
-    protected Graph(GraphSpec spec) {
+    public Graph(GraphSpec spec) {
         this.id = spec.getId();
         this.title = spec.getTitle();
         this.driver = spec.getDriver();
@@ -56,6 +60,47 @@ public class Graph {
         }
     }
 
+    public Graph(GraphBlueprint blueprint) {
+        this.id = blueprint.getId();
+        this.title = blueprint.getTitle();
+        this.driver = blueprint.getDriver();
+
+        String entryId = blueprint.getEntry();
+        if (entryId != null && !blueprint.getNodes().containsKey(entryId)) {
+            throw new IllegalStateException("Entry node not found: " + entryId);
+        }
+
+        Map<String, Node> nodeMap = new LinkedHashMap<>(blueprint.getNodes().size());
+        List<Link> linkAry = new ArrayList<>(blueprint.getLinks().size());
+        Map<String, List<GraphBlueprint.LinkBlueprint>> outgoing = new LinkedHashMap<>();
+        for (GraphBlueprint.LinkBlueprint link : blueprint.getLinks()) {
+            outgoing.computeIfAbsent(link.getFrom(), k -> new ArrayList<>()).add(link);
+        }
+
+        for (Map.Entry<String, GraphBlueprint.NodeBlueprint> kv : blueprint.getNodes().entrySet()) {
+            doAddNode(kv.getValue(), entryId, outgoing, nodeMap, linkAry);
+        }
+
+        this.nodes = Collections.unmodifiableMap(nodeMap);
+        this.links = Collections.unmodifiableList(linkAry);
+        this.metas = blueprint.getMeta().isEmpty()
+                ? Collections.emptyMap()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.getMeta()));
+
+        if (start == null) {
+            for (Node node : nodes.values()) {
+                if (node.getPrevLinks().isEmpty()) {
+                    start = node;
+                    break;
+                }
+            }
+        }
+
+        if (start == null) {
+            throw new IllegalStateException("No start node found, graph: " + blueprint.getId());
+        }
+    }
+
     private void doAddNode(NodeSpec nodeSpec, Map<String, Node> nodeMap, List<Link> linkAry) {
         List<Link> tmp = new ArrayList<>(nodeSpec.getLinks().size());
         for (LinkSpec linkSpec : nodeSpec.getLinks()) {
@@ -66,6 +111,27 @@ public class Graph {
         Node node = new Node(this, nodeSpec, tmp);
         nodeMap.put(node.getId(), node);
         if (nodeSpec.getType() == NodeType.START) {
+            start = node;
+        }
+    }
+
+    private void doAddNode(GraphBlueprint.NodeBlueprint nodeSpec, String entryId,
+                           Map<String, List<GraphBlueprint.LinkBlueprint>> outgoing,
+                           Map<String, Node> nodeMap, List<Link> linkAry) {
+        NodeType type = (entryId != null && entryId.equals(nodeSpec.getId()))
+                ? NodeType.START
+                : nodeSpec.getType();
+
+        List<GraphBlueprint.LinkBlueprint> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
+        List<Link> tmp = new ArrayList<>(nodeLinks.size());
+        for (GraphBlueprint.LinkBlueprint linkSpec : nodeLinks) {
+            tmp.add(new Link(this, nodeSpec.getId(), linkSpec));
+        }
+        linkAry.addAll(tmp);
+
+        Node node = new Node(this, nodeSpec, type, tmp);
+        nodeMap.put(node.getId(), node);
+        if (type == NodeType.START) {
             start = node;
         }
     }
@@ -306,6 +372,7 @@ public class Graph {
     }
 
     public static Graph fromText(String text) {
+        // Legacy graph text stays on the v1 parser.
         return GraphSpec.fromText(text).create();
     }
 

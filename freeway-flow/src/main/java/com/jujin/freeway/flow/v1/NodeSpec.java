@@ -1,7 +1,11 @@
-package com.jujin.freeway.flow;
+package com.jujin.freeway.flow.v1;
 
 import java.util.*;
 import java.util.function.Consumer;
+
+import com.jujin.freeway.flow.ConditionComponent;
+import com.jujin.freeway.flow.NodeType;
+import com.jujin.freeway.flow.TaskComponent;
 
 /**
  * 节点定义

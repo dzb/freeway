@@ -1,5 +1,7 @@
 package com.jujin.freeway.flow;
 
+import com.jujin.freeway.flow.v2.GraphBlueprint;
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -52,8 +54,15 @@ public interface FlowEngine {
     void removeInterceptor(FlowInterceptor interceptor);
 
     // --- graph management ---
+    // GraphBlueprint is the v2 authoring surface. These overloads keep the
+    // runtime API backward-compatible while letting callers load/eval blueprints
+    // directly during migration.
 
     void load(Graph graph);
+
+    default void load(GraphBlueprint blueprint) {
+        load(blueprint.create());
+    }
 
     void unload(String graphId);
 
@@ -97,6 +106,18 @@ public interface FlowEngine {
     default void eval(Graph graph, int steps, FlowContext context) throws FlowException {
         FlowDriver driver = getDriver(graph);
         eval(graph, new FlowExchanger(graph, this, driver, context, steps, new AtomicInteger(0)), null);
+    }
+
+    default void eval(GraphBlueprint blueprint) throws FlowException {
+        eval(blueprint, FlowContext.of());
+    }
+
+    default void eval(GraphBlueprint blueprint, FlowContext context) throws FlowException {
+        eval(blueprint, -1, context);
+    }
+
+    default void eval(GraphBlueprint blueprint, int steps, FlowContext context) throws FlowException {
+        eval(blueprint.create(), steps, context);
     }
 
     /** Returns typed task handlers registered via {@link #register(Class, TaskComponent)}. */

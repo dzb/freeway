@@ -1,5 +1,7 @@
 package com.jujin.freeway.flow;
 
+import com.jujin.freeway.flow.TaskComponent;
+
 /**
  * 命名的任务组件（用于硬编码构建图）
  *

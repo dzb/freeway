@@ -783,6 +783,15 @@ public final class SQL {
                 continue;
             }
 
+            // dollar-quoted string $$...$$ / $tag$...$tag$
+            if (c == '$' && i + 1 < len) {
+                int after = skipDollarQuote(fragment, i, sb);
+                if (after > i) {
+                    i = after;
+                    continue;
+                }
+            }
+
             // :name or $name named parameter
             if ((c == ':' || c == '$') && i + 1 < len && Names.isValidParamStart(fragment.charAt(i + 1))) {
                 int start = i + 1;
@@ -837,8 +846,45 @@ public final class SQL {
         matched.add(value);
     }
 
+    /**
+     * Skips a PostgreSQL dollar-quoted string ({@code $$...$$} or
+     * {@code $tag$...$tag$}), copying it verbatim to {@code sb}.
+     * Returns the index after the closing delimiter, or {@code start}
+     * if no valid dollar quote was found.
+     */
+    private static int skipDollarQuote(String sql, int start, StringBuilder sb) {
+        int len = sql.length();
+        int tagEnd = start + 1;
+        if (tagEnd >= len) return start;
 
+        char next = sql.charAt(tagEnd);
+        // Anonymous $$...$$
+        if (next == '$') {
+            sb.append("$$");
+            int bodyStart = start + 2;
+            int end = sql.indexOf("$$", bodyStart);
+            if (end < 0) return start;
+            sb.append(sql, bodyStart, end);
+            sb.append("$$");
+            return end + 2;
+        }
 
+        // Named $tag$...$tag$
+        if (!Character.isLetterOrDigit(next) && next != '_') return start;
+        while (tagEnd < len && (Character.isLetterOrDigit(sql.charAt(tagEnd)) || sql.charAt(tagEnd) == '_')) {
+            tagEnd++;
+        }
+        if (tagEnd >= len || sql.charAt(tagEnd) != '$') return start;
+
+        String tag = sql.substring(start, tagEnd + 1); // e.g. "$body$"
+        sb.append(tag);
+        int bodyStart = tagEnd + 1;
+        int end = sql.indexOf(tag, bodyStart);
+        if (end < 0) return start;
+        sb.append(sql, bodyStart, end);
+        sb.append(tag);
+        return end + tag.length();
+    }
 
     private static Object[] concat(Object[] a, Object[] b) {
         if (a.length == 0) return b;

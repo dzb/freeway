@@ -3,6 +3,13 @@ package com.jujin.freeway.db;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AutoIncrementTest {
@@ -145,6 +152,23 @@ class AutoIncrementTest {
     }
 
     @Test
+    void insertWithLeadingWithClauseRequestsGeneratedKeys() {
+        var flag = new int[1];
+        var db = builderWithProxyPool(flag).build();
+        try (db) {
+            ExecuteResult r = db.execute(
+                "with seed as (select 1) insert into t_auto (label) values (?)",
+                "cte-item"
+            );
+
+            assertEquals(1, r.rows());
+            assertTrue(r.hasKey(), "INSERT with leading WITH should still return generated keys");
+            assertEquals(99L, r.longKey());
+            assertEquals(Statement.RETURN_GENERATED_KEYS, flag[0]);
+        }
+    }
+
+    @Test
     void insertWithExplicitPrimaryKeyReturnsId() {
         var db = builder("auto_id_explicit").build();
         try (db) {
@@ -184,5 +208,124 @@ class AutoIncrementTest {
                 "jdbc:h2:mem:" + name + UUID.randomUUID().toString().replace('-', '_')
                     + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                 "sa", ""));
+    }
+
+    private static DatabaseBuilder builderWithProxyPool(int[] flag) {
+        return new DatabaseBuilder()
+            .config(PoolConfig.defaults("jdbc:h2:mem:proxy;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .pool(new Pool() {
+                private final PooledConnection connection = () -> proxyConnection(flag);
+
+                @Override
+                public PooledConnection borrow() {
+                    return connection;
+                }
+
+                @Override
+                public void release(PooledConnection conn) {
+                }
+
+                @Override
+                public DatabaseStats stats() {
+                    return new DatabaseStats(0, 0, 0, 0, 1, 0, 0, 0);
+                }
+
+                @Override
+                public void close() {
+                }
+            });
+    }
+
+    private static Connection proxyConnection(int[] flag) {
+        InvocationHandler handler = (proxy, method, args) -> {
+            return switch (method.getName()) {
+                case "prepareStatement" -> {
+                    flag[0] = (int) args[1];
+                    yield proxyStatement();
+                }
+                case "close" -> null;
+                case "isValid" -> Boolean.TRUE;
+                case "isClosed" -> Boolean.FALSE;
+                case "unwrap" -> throw new SQLException("Not a wrapper");
+                case "isWrapperFor" -> Boolean.FALSE;
+                case "setAutoCommit", "commit", "rollback", "setTransactionIsolation", "getTransactionIsolation" -> null;
+                case "getAutoCommit" -> Boolean.TRUE;
+                case "toString" -> "proxy-connection";
+                default -> throw new UnsupportedOperationException(method.getName());
+            };
+        };
+        return (Connection) Proxy.newProxyInstance(
+            Connection.class.getClassLoader(),
+            new Class<?>[] { Connection.class },
+            handler
+        );
+    }
+
+    private static PreparedStatement proxyStatement() {
+        InvocationHandler handler = (proxy, method, args) -> {
+            String name = method.getName();
+            if ("setQueryTimeout".equals(name) || "setObject".equals(name) || "close".equals(name)) {
+                return null;
+            }
+            if ("executeUpdate".equals(name)) {
+                return 1;
+            }
+            if ("getGeneratedKeys".equals(name)) {
+                return proxyResultSet();
+            }
+            if ("isClosed".equals(name)) {
+                return Boolean.FALSE;
+            }
+            if ("unwrap".equals(name)) {
+                throw new SQLException("Not a wrapper");
+            }
+            if ("isWrapperFor".equals(name)) {
+                return Boolean.FALSE;
+            }
+            if ("toString".equals(name)) {
+                return "proxy-statement";
+            }
+            throw new UnsupportedOperationException(name);
+        };
+        return (PreparedStatement) Proxy.newProxyInstance(
+            PreparedStatement.class.getClassLoader(),
+            new Class<?>[] { PreparedStatement.class },
+            handler
+        );
+    }
+
+    private static ResultSet proxyResultSet() {
+        boolean[] seen = new boolean[] { true };
+        InvocationHandler handler = (proxy, method, args) -> {
+            String name = method.getName();
+            if ("next".equals(name)) {
+                if (seen[0]) {
+                    seen[0] = false;
+                    return Boolean.TRUE;
+                }
+                return Boolean.FALSE;
+            }
+            if ("getObject".equals(name)) {
+                return 99L;
+            }
+            if ("close".equals(name)) {
+                return null;
+            }
+            if ("unwrap".equals(name)) {
+                throw new SQLException("Not a wrapper");
+            }
+            if ("isWrapperFor".equals(name)) {
+                return Boolean.FALSE;
+            }
+            if ("toString".equals(name)) {
+                return "proxy-resultset";
+            }
+            throw new UnsupportedOperationException(name);
+        };
+        return (ResultSet) Proxy.newProxyInstance(
+            ResultSet.class.getClassLoader(),
+            new Class<?>[] { ResultSet.class },
+            handler
+        );
     }
 }

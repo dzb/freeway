@@ -93,6 +93,19 @@ class NamedParamEdgeCaseTest {
     }
 
     @Test
+    void repeatedNamedParametersRejectDifferentValuesWhenFirstIsNull() {
+        String dbName = uniqueDb("named_multi_null");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (x bigint, y bigint)");
+
+            assertThrows(SqlException.class,
+                () -> db.execute("insert into t values (:x, :x)", null, 1L));
+            assertEquals(0L, db.query("select count(*) from t").one(Long.class).orElseThrow());
+        }
+    }
+
+    @Test
     void namedParameterRejectsMissingKeys() {
         String dbName = uniqueDb("named_missing");
         Database db = builder(dbName).build();

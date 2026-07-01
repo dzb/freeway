@@ -6,6 +6,9 @@ import java.util.concurrent.ExecutorService;
 /**
  * 默认流驱动器
  *
+ *  @author noear
+ *  @since 3.0
+ *
  * <p>任务描述符解析规则（与 solon-flow 一致）：
  * <ul>
  *   <li>内联 TaskComponent/ConditionComponent → 直接执行</li>
@@ -14,9 +17,6 @@ import java.util.concurrent.ExecutorService;
  *   <li>{@code $metaKey} → 从 Graph meta 取值</li>
  *   <li>其他 → 使用 ExprEvaluator 求值表达式</li>
  * </ul>
- *
- * @author noear
- * @since 3.0
  */
 public class FlowDriverDefault implements FlowDriver {
     private static final FlowDriverDefault INSTANCE = new FlowDriverDefault(null, null);
@@ -167,7 +167,6 @@ public class FlowDriverDefault implements FlowDriver {
         ((TaskComponent) component).run(exchanger.context(), task.getNode());
     }
 
-    @SuppressWarnings("unchecked")
     protected void tryAsMetaTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
         String metaName = description.substring(1);
         Object val = getDepthMeta(task.getNode().getGraph().getMetas(), metaName);

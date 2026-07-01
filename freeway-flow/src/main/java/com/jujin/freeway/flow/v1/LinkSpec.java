@@ -1,7 +1,9 @@
-package com.jujin.freeway.flow;
+package com.jujin.freeway.flow.v1;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import com.jujin.freeway.flow.ConditionComponent;
 
 /**
  * 连接定义

@@ -20,6 +20,9 @@ public class FlowTrace implements Serializable {
     public boolean isEnabled() { return enabled; }
     public void enable(boolean enabled) { this.enabled = enabled; }
 
+    public String getRootGraphId() { return rootGraphId; }
+    public void setRootGraphId(String rootGraphId) { this.rootGraphId = rootGraphId; }
+
     public Collection<NodeRecord> lastRecords() { return lastRecords.values(); }
 
     public void clear() {

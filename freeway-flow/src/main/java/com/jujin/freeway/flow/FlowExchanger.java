@@ -4,7 +4,15 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 流交换器，表示一个流在一次运行时的可交换数据和状态（对内，不支持序列化）
+ * 单次流交换器。
+ *
+ * <p>迁移说明：
+ * <ul>
+ *   <li>把子图调用共享的执行态、上下文和步数计数器集中到一个运行期对象里，避免散落到图结构本身。</li>
+ *   <li>{@code reverting}、{@code stopped}、{@code interrupted} 只表示当前执行过程中的控制信号，不写入图定义。</li>
+ *   <li>提供 {@code copy()} 以便在子图跳转时复用同一执行态，但切换到不同的 {@link Graph} 或 {@link FlowContext}。</li>
+ * </ul>
+ * 这样做是为了让执行态可控、可回放，也避免把运行时控制标志污染到模型层。</p>
  *
  * @author noear
  * @since 3.0

@@ -18,6 +18,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Spliterator;
 import java.util.Spliterators;
@@ -283,7 +284,17 @@ final class QueryImpl implements Query {
             );
         }
         for (int i = 0; i < p.names().size(); i++) {
-            namedParams.put(p.names().get(i), positionalParams[i]);
+            String name = p.names().get(i);
+            Object value = positionalParams[i];
+            if (namedParams.containsKey(name) && !Objects.equals(namedParams.get(name), value)) {
+                throw new SqlException(
+                    "Duplicate named parameter ':" + name +
+                    "' with different positional values in '" +
+                    originalSql + "'. Use .param(\"" + name +
+                    "\", value) for named parameters with repeated placeholders."
+                );
+            }
+            namedParams.put(name, value);
         }
         expandNamed();
     }
