@@ -31,6 +31,7 @@ public final class FreewayHttpContext extends HttpContext {
     private final Map<String, String> responseHeaders = new LinkedHashMap<>();
     private int responseStatus = 200;
     private boolean responded;
+    H2ResponseBridge h2Bridge; // non-null → HTTP/2 path
     private byte[] cachedBody;
     // Shared drain buffer — reused across drainUnreadBody calls
     private byte[] drainBuf;
@@ -78,9 +79,10 @@ public final class FreewayHttpContext extends HttpContext {
     public String path() { return path; }
 
     @Override
-    public String queryParam(String name) {
+    public java.util.Optional<String> queryParam(String name) {
         List<String> values = queryParams.get(name);
-        return values != null && !values.isEmpty() ? values.getFirst() : null;
+        return (values != null && !values.isEmpty())
+                ? java.util.Optional.of(values.getFirst()) : java.util.Optional.empty();
     }
 
     @Override
@@ -102,17 +104,17 @@ public final class FreewayHttpContext extends HttpContext {
     }
 
     @Override
-    public String header(String name) {
+    public java.util.Optional<String> header(String name) {
         List<String> values = requestHeaders.get(name);
-        if (values != null && !values.isEmpty()) return values.getFirst();
-        // fallback: case-insensitive lookup
+        if (values != null && !values.isEmpty())
+            return java.util.Optional.of(values.getFirst());
         for (var entry : requestHeaders.entrySet()) {
             if (entry.getKey().equalsIgnoreCase(name)
                 && !entry.getValue().isEmpty()) {
-                return entry.getValue().getFirst();
+                return java.util.Optional.of(entry.getValue().getFirst());
             }
         }
-        return null;
+        return java.util.Optional.empty();
     }
 
     @Override
@@ -157,8 +159,12 @@ public final class FreewayHttpContext extends HttpContext {
     @Override
     public HttpContext headerSet(String name, String value) {
         if (responded) return this;
+        validateHeaderName(name);
         validateHeaderValue(value);
         responseHeaders.put(name, value);
+        if (h2Bridge != null) {
+            h2Bridge.headers().put(name, java.util.List.of(value));
+        }
         return this;
     }
 
@@ -175,6 +181,16 @@ public final class FreewayHttpContext extends HttpContext {
     public HttpContext output(byte[] data) throws IOException {
         if (responded) return this;
         responded = true;
+
+        if (h2Bridge != null) {
+            h2Bridge.headers().putIfAbsent(":status",
+                    java.util.List.of(String.valueOf(responseStatus)));
+            if (data.length > 0) {
+                rawOut.write(data);
+                rawOut.flush();
+            }
+            return this;
+        }
 
         boolean headRequest = "HEAD".equalsIgnoreCase(method);
         boolean bodyAllowed = allowsResponseBody();
@@ -197,13 +213,13 @@ public final class FreewayHttpContext extends HttpContext {
         }
 
         // Content-Length
-        if (bodyAllowed && !responseHeaders.containsKey("Content-Length")) {
+        if (bodyAllowed && !hasHeaderIgnoreCase("Content-Length")) {
             rawOut.write(CL_PREFIX);
             rawOut.write(contentLengthBytes(length));
             rawOut.write(CRLF);
         }
         // Connection
-        if (!responseHeaders.containsKey("Connection")) {
+        if (!hasHeaderIgnoreCase("Connection")) {
             rawOut.write(keepAlive ? CONN_KA : CONN_CLOSE);
         }
 
@@ -334,6 +350,13 @@ public final class FreewayHttpContext extends HttpContext {
         for (int i = 0; i < 256; i++) {
             CL_BYTES[i] = String.valueOf(i).getBytes(StandardCharsets.ISO_8859_1);
         }
+    }
+
+    private boolean hasHeaderIgnoreCase(String name) {
+        for (String key : responseHeaders.keySet()) {
+            if (key.equalsIgnoreCase(name)) return true;
+        }
+        return false;
     }
 
     private static byte[] contentLengthBytes(int length) {

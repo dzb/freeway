@@ -186,11 +186,11 @@ public final class StaticResourceMount {
     }
 
     private boolean isNotModified(HttpContext ctx, StaticAsset asset) {
-        String ifNoneMatch = Strings.blankToNull(ctx.header("If-None-Match"));
+        String ifNoneMatch = Strings.blankToNull(ctx.header("If-None-Match").orElse(null));
         if (ifNoneMatch != null) {
             return etagMatches(ifNoneMatch, asset.etag());
         }
-        String ifModifiedSince = Strings.blankToNull(ctx.header("If-Modified-Since"));
+        String ifModifiedSince = Strings.blankToNull(ctx.header("If-Modified-Since").orElse(null));
         if (ifModifiedSince == null || asset.lastModifiedMillis() <= 0) {
             return false;
         }

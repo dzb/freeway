@@ -203,14 +203,14 @@ final class JsonCoercions {
             return newEnumMap(keyType);
         }
         if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
-            if (
-                SortedMap.class.isAssignableFrom(targetType) ||
-                NavigableMap.class.isAssignableFrom(targetType)
-            ) {
-                return new TreeMap<>();
-            }
             if (ConcurrentNavigableMap.class.isAssignableFrom(targetType)) {
                 return new ConcurrentSkipListMap<>();
+            }
+            if (
+                NavigableMap.class.isAssignableFrom(targetType) ||
+                SortedMap.class.isAssignableFrom(targetType)
+            ) {
+                return new TreeMap<>();
             }
             if (ConcurrentMap.class.isAssignableFrom(targetType)) {
                 return new ConcurrentHashMap<>();
@@ -234,9 +234,18 @@ final class JsonCoercions {
             return newEnumSet(elementType);
         }
         if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
+            if (TransferQueue.class.isAssignableFrom(targetType)) {
+                return new LinkedTransferQueue<>();
+            }
+            if (BlockingDeque.class.isAssignableFrom(targetType)) {
+                return new LinkedBlockingDeque<>();
+            }
+            if (BlockingQueue.class.isAssignableFrom(targetType)) {
+                return new LinkedBlockingQueue<>();
+            }
             if (
-                SortedSet.class.isAssignableFrom(targetType) ||
-                NavigableSet.class.isAssignableFrom(targetType)
+                NavigableSet.class.isAssignableFrom(targetType) ||
+                SortedSet.class.isAssignableFrom(targetType)
             ) {
                 return new TreeSet<>();
             }

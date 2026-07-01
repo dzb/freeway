@@ -16,6 +16,7 @@ import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteGroup;
 import com.jujin.freeway.http.route.RouteIndex;
 import java.util.ArrayList;
+import java.util.List;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.ioc.Binder;
@@ -49,8 +50,15 @@ public final class HttpModule implements ModuleEx {
             for (var r : routes) {
                 if (r.handler() instanceof LazyHandler lh) lh.resolve(container);
             }
-            return new RouteIndex(routes,
-                container.extension(RouteGroup.class).all());
+            // Resolve LazyHandlers from RouteGroup-expanded routes too
+            var allRoutes = new ArrayList<>(routes);
+            for (RouteGroup group : container.extension(RouteGroup.class).all()) {
+                for (Route expanded : group.expand()) {
+                    if (expanded.handler() instanceof LazyHandler lh) lh.resolve(container);
+                    allRoutes.add(expanded);
+                }
+            }
+            return new RouteIndex(allRoutes, List.of());
         });
         binder.bind(WebSocketIndex.class).to(WebSocketIndex.class);
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
@@ -234,6 +242,8 @@ public final class HttpModule implements ModuleEx {
         if (raw == null) {
             return defaultValue;
         }
-        return coercer.coerce(raw, (Class<T>) defaultValue.getClass());
+        Class<T> targetType = (Class<T>) (defaultValue != null
+            ? defaultValue.getClass() : String.class);
+        return coercer.coerce(raw, targetType);
     }
 }

@@ -29,6 +29,10 @@ public final class WebSocket {
         try {
             while (session.isOpen()) {
                 var frame = WebSocketFrame.read(in);
+                if (!frame.isMasked()) {
+                    session.close(1002, "Client frame must be masked");
+                    return;
+                }
                 switch (frame.opCode()) {
                     case Text -> {
                         try {

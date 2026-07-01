@@ -78,7 +78,7 @@ public final class SqlTypeMapping {
             if (property.hasAnnotation(Transient.class)) {
                 continue;
             }
-            Index idx = property.annotation(Index.class);
+            Index idx = property.annotation(Index.class).orElse(null);
             if (idx == null) {
                 continue;
             }
@@ -106,7 +106,7 @@ public final class SqlTypeMapping {
     }
 
     private static ColumnDef columnDef(BeanProperty property, Dialect dialect) {
-        Column col = property.annotation(Column.class);
+        Column col = property.annotation(Column.class).orElse(null);
         String colName = columnName(property, col);
         Class<?> javaType = Types.rawClass(property.type());
         boolean isNullable = nullable(property, col);
@@ -214,7 +214,7 @@ public final class SqlTypeMapping {
         Column col,
         String baseType
     ) {
-        Size size = property.annotation(Size.class);
+        Size size = property.annotation(Size.class).orElse(null);
         int colLen = col != null ? col.length() : 0;
 
         int len;

@@ -47,6 +47,7 @@ public final class HPackContext {
         int shift = 0;
         int x;
         do {
+            if (p >= b.length) throw new ArrayIndexOutOfBoundsException("Truncated HPACK integer");
             x = b[p] & 0xFF;
             value += (x & 0x7F) << shift;
             shift += 7;
@@ -96,18 +97,33 @@ public final class HPackContext {
      * Encodes a string (with Huffman flag support).
      */
     static byte[] encodeString(byte[] value) {
+        return encodeString(value, 7);
+    }
+
+    static byte[] encodeString(byte[] value, int prefixBits) {
+        int prefixMask = (1 << prefixBits) - 1;
         int length = value.length;
-        if (length < 128) {
+        if (length < prefixMask) {
             byte[] result = new byte[1 + length];
             result[0] = (byte) length;
             System.arraycopy(value, 0, result, 1, length);
             return result;
         }
-        // Long strings use two-byte length encoding
-        byte[] result = new byte[2 + length];
-        result[0] = (byte) (length | 0x80);
-        result[1] = (byte) (length >> 7);
-        System.arraycopy(value, 0, result, 2, length);
+        // HPACK integer encoding: prefix holds all 1s, remainder in continuation
+        int remaining = length - prefixMask;
+        int contBytes = 1;
+        while (remaining >= 128) { remaining >>= 7; contBytes++; }
+        byte[] result = new byte[1 + contBytes + length];
+        result[0] = (byte) prefixMask;
+        int pos = 1;
+        remaining = length - prefixMask;
+        do {
+            int b = remaining & 0x7F;
+            remaining >>= 7;
+            if (remaining > 0) b |= 0x80;
+            result[pos++] = (byte) b;
+        } while (remaining > 0);
+        System.arraycopy(value, 0, result, pos, length);
         return result;
     }
 
@@ -250,7 +266,7 @@ public final class HPackContext {
         // Write remaining header fields
         for (var entry : headers.entrySet()) {
             if (entry.getKey().startsWith(":")) continue;  // skip pseudo-headers
-            String key = Character.toLowerCase(entry.getKey().charAt(0)) + entry.getKey().substring(1);
+            String key = entry.getKey().toLowerCase(java.util.Locale.ROOT);
             for (String value : entry.getValue()) {
                 buffer.write(encodeLiteral(key, value));
             }

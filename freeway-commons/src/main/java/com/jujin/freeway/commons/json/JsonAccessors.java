@@ -1,6 +1,7 @@
 package com.jujin.freeway.commons.json;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 
 final class JsonAccessors {
     private JsonAccessors() {
@@ -15,6 +16,33 @@ final class JsonAccessors {
             return null;
         }
         if (value instanceof Number number) {
+            if (number instanceof BigInteger bi) {
+                if (bi.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0
+                        || bi.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0) {
+                    throw new IllegalArgumentException(
+                        "Number " + number + " is out of Integer range");
+                }
+                return bi.intValue();
+            }
+            if (number instanceof BigDecimal bd) {
+                if (bd.compareTo(BigDecimal.valueOf(Integer.MAX_VALUE)) > 0
+                        || bd.compareTo(BigDecimal.valueOf(Integer.MIN_VALUE)) < 0) {
+                    throw new IllegalArgumentException(
+                        "Number " + number + " is out of Integer range");
+                }
+                return bd.intValue();
+            }
+            if (number instanceof Double d && (d.isNaN() || d.isInfinite())) {
+                throw new IllegalArgumentException("Cannot convert " + number + " to Integer");
+            }
+            if (number instanceof Float f && (f.isNaN() || f.isInfinite())) {
+                throw new IllegalArgumentException("Cannot convert " + number + " to Integer");
+            }
+            long v = number.longValue();
+            if (v < Integer.MIN_VALUE || v > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException(
+                    "Number " + number + " is out of Integer range");
+            }
             return number.intValue();
         }
         try {
@@ -29,6 +57,30 @@ final class JsonAccessors {
             return null;
         }
         if (value instanceof Number number) {
+            if (number instanceof BigInteger) {
+                BigInteger bi = (BigInteger) number;
+                if (bi.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0
+                        || bi.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) {
+                    throw new IllegalArgumentException(
+                        "Number " + number + " is out of Long range");
+                }
+                return bi.longValue();
+            }
+            if (number instanceof BigDecimal) {
+                BigDecimal bd = (BigDecimal) number;
+                if (bd.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0
+                        || bd.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0) {
+                    throw new IllegalArgumentException(
+                        "Number " + number + " is out of Long range");
+                }
+                return bd.longValue();
+            }
+            if (number instanceof Double d && (d.isNaN() || d.isInfinite())) {
+                throw new IllegalArgumentException("Cannot convert " + number + " to Long");
+            }
+            if (number instanceof Float f && (f.isNaN() || f.isInfinite())) {
+                throw new IllegalArgumentException("Cannot convert " + number + " to Long");
+            }
             return number.longValue();
         }
         try {
@@ -43,7 +95,12 @@ final class JsonAccessors {
             return null;
         }
         if (value instanceof Number number) {
-            return number.doubleValue();
+            double d = number.doubleValue();
+            if (Double.isInfinite(d)) {
+                throw new IllegalArgumentException(
+                    "Number " + number + " is out of Double range");
+            }
+            return d;
         }
         try {
             return Double.parseDouble(String.valueOf(value));
@@ -59,7 +116,10 @@ final class JsonAccessors {
         if (value instanceof Boolean b) {
             return b;
         }
-        return Boolean.parseBoolean(String.valueOf(value));
+        String s = String.valueOf(value);
+        if ("true".equalsIgnoreCase(s)) return true;
+        if ("false".equalsIgnoreCase(s)) return false;
+        throw new IllegalArgumentException("Cannot parse '" + value + "' as Boolean");
     }
 
     static JsonObject object(Object value) {

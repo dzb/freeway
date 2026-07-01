@@ -396,7 +396,7 @@ class FreewayHttpEngineTest {
 
         @Override
         public void handle(HttpContext ctx) throws Exception {
-            String name = ctx.pathVar("name");
+            String name = ctx.pathVar("name").orElse(null);
             ctx.send(200, service.greet(name));
         }
     }

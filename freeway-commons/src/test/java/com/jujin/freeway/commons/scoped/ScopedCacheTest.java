@@ -279,4 +279,13 @@ class ScopedCacheTest {
 
         assertEquals(0, cleaned.get());
     }
+
+    @Test
+    void nullCacheValueDoesNotBreakOnClose() {
+        ScopedCache.onClose(v -> {});
+        ScopedCache.within(() -> {
+            ScopedCache.get("nullVal", () -> null);
+        });
+        // should not throw NPE
+    }
 }

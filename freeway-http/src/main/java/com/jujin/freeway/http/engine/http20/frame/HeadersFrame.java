@@ -32,7 +32,9 @@ public final class HeadersFrame extends BaseFrame {
             if (frame.dependentStreamId == header.streamId()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             pos += 5;
         }
-        frame.headerBlock = Arrays.copyOfRange(payload, pos, header.length() - frame.padLength);
+        int end = header.length() - frame.padLength;
+        if (end < pos) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+        frame.headerBlock = Arrays.copyOfRange(payload, pos, end);
         return frame;
     }
 

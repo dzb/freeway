@@ -202,10 +202,13 @@ public final class HttpSession implements Runnable {
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
             ctx.reset(method, path, null, headers, in, -1, false, out, rc, false, false);
+            ctx.h2Bridge = stream;
             ctx.headerSet("X-Request-Id", rc.correlationId());
             handler.handle(ctx);
+            stream.close();
         } catch (Exception e) {
             LOG.debug("HTTP/2 stream error", e);
+            try { stream.close(); } catch (Exception ignored) {}
         }
     }
 

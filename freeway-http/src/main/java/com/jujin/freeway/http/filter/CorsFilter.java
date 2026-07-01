@@ -64,7 +64,7 @@ public final class CorsFilter implements HttpFilter {
             return;
         }
 
-        String requestOrigin = ctx.header("Origin");
+        String requestOrigin = ctx.header("Origin").orElse(null);
         String acao = resolveAllowedOrigin(requestOrigin);
         if (acao != null) {
             ctx.headerSet("Access-Control-Allow-Origin", acao);
@@ -82,7 +82,7 @@ public final class CorsFilter implements HttpFilter {
         // Intercept only genuine CORS preflight (Origin + Access-Control-Request-Method).
         // Non-preflight OPTIONS pass through to route handlers.
         if ("OPTIONS".equalsIgnoreCase(ctx.method())
-                && ctx.header("Access-Control-Request-Method") != null) {
+                && ctx.header("Access-Control-Request-Method").isPresent()) {
             if (acao == null) {
                 LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
                 ctx.status(HttpStatus.FORBIDDEN).output(new byte[0]);

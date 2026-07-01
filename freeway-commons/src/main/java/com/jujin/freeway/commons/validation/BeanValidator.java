@@ -4,10 +4,13 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import java.lang.annotation.Annotation;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.lang.reflect.Array;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,7 +108,8 @@ public final class BeanValidator {
                             );
                         }
                     } else if (ann instanceof Min min) {
-                        if (value instanceof Number n && n.longValue() < min.value()) {
+                        if (value instanceof Number n
+                                && compareToMinMax(n).compareTo(BigDecimal.valueOf(min.value())) < 0) {
                             result.addError(
                                 fieldPath,
                                 min.message().replace("{value}", String.valueOf(min.value())),
@@ -113,7 +117,8 @@ public final class BeanValidator {
                             );
                         }
                     } else if (ann instanceof Max max) {
-                        if (value instanceof Number n && n.longValue() > max.value()) {
+                        if (value instanceof Number n
+                                && compareToMinMax(n).compareTo(BigDecimal.valueOf(max.value())) > 0) {
                             result.addError(
                                 fieldPath,
                                 max.message().replace("{value}", String.valueOf(max.value())),
@@ -124,7 +129,33 @@ public final class BeanValidator {
                 }
 
                 if (property.hasAnnotation(Valid.class) && value != null) {
-                    validateBean(value, fieldPath, result, context);
+                    if (value instanceof Collection<?> c) {
+                        int i = 0;
+                        for (Object element : c) {
+                            if (element != null) {
+                                validateBean(element, fieldPath + "[" + i + "]", result, context);
+                            }
+                            i++;
+                        }
+                    } else if (value instanceof Map<?, ?> m) {
+                        for (Map.Entry<?, ?> entry : m.entrySet()) {
+                            Object val = entry.getValue();
+                            if (val != null) {
+                                String key = String.valueOf(entry.getKey());
+                                validateBean(val, fieldPath + "." + key, result, context);
+                            }
+                        }
+                    } else if (value.getClass().isArray()) {
+                        int len = Array.getLength(value);
+                        for (int i = 0; i < len; i++) {
+                            Object element = Array.get(value, i);
+                            if (element != null) {
+                                validateBean(element, fieldPath + "[" + i + "]", result, context);
+                            }
+                        }
+                    } else {
+                        validateBean(value, fieldPath, result, context);
+                    }
                 }
             }
         } finally {
@@ -132,10 +163,17 @@ public final class BeanValidator {
         }
     }
 
+    private static BigDecimal compareToMinMax(Number n) {
+        if (n instanceof BigDecimal bd) return bd;
+        if (n instanceof java.math.BigInteger bi) return new BigDecimal(bi);
+        return new BigDecimal(n.toString());
+    }
+
     private static int lengthOf(Object value) {
         if (value == null) return 0;
         if (value instanceof CharSequence s) return s.length();
         if (value instanceof Collection<?> c) return c.size();
+        if (value instanceof Map<?,?> m) return m.size();
         if (value.getClass().isArray()) return Array.getLength(value);
         return 0;
     }

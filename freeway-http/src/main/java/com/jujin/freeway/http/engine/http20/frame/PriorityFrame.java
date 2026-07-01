@@ -28,5 +28,10 @@ public final class PriorityFrame extends BaseFrame {
 
     public void writeTo(OutputStream outputStream) throws IOException {
         header().writeTo(outputStream);
+        byte[] body = new byte[5];
+        int dep = streamDep | (excl ? 0x80000000 : 0);
+        BinUtils.writeInt(body, 0, dep, 4);
+        body[4] = (byte) (weight - 1);
+        outputStream.write(body);
     }
 }

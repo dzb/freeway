@@ -30,7 +30,9 @@ final class ServiceRuntime {
 
     <T> T get(BindingImpl<T> binding) {
         if (binding.scope() == Scope.PROTOTYPE) {
-            return binding.directInstance();
+            return binding.advices().isEmpty()
+                ? binding.directInstance()
+                : (T) createAdvised(binding);
         }
         if (binding.scope() == Scope.THREAD && !binding.isProxiable()) {
             requireAdviceSupported(binding);
@@ -98,7 +100,15 @@ final class ServiceRuntime {
             );
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
-        return binding.type().cast(ScopedCache.get(key, binding::directInstance));
+        Set<ServiceKey> stack = realizeStack.get();
+        if (!stack.add(key)) {
+            throw new IllegalStateException("Circular dependency detected: " + key);
+        }
+        try {
+            return binding.type().cast(ScopedCache.get(key, binding::directInstance));
+        } finally {
+            stack.remove(key);
+        }
     }
 
     private static void requireAdviceSupported(BindingImpl<?> binding) {

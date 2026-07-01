@@ -11,6 +11,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.logging.ErrorManager;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -64,12 +66,20 @@ public final class JULFileHandler extends StreamHandler {
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
+    /** Daemon thread for async GZIP compression so rotation never blocks logging. */
+    private static final ExecutorService COMPRESSOR = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "freeway-log-compressor");
+        t.setDaemon(true);
+        return t;
+    });
+
     private final Path basePath;
     private final long maxSize;
     private final int maxHistory;
     private final boolean compress;
 
     private LocalDate currentLocalDate;
+    private long nextMidnightMillis;
     private int currentIndex;
     private long bytesWritten;
 
@@ -100,13 +110,39 @@ public final class JULFileHandler extends StreamHandler {
         this.maxHistory = Math.max(1, maxHistory);
         this.compress = compress;
         this.currentLocalDate = LocalDate.now();
+        this.nextMidnightMillis = computeNextMidnight();
         this.currentIndex = 0;
         this.bytesWritten = 0;
 
         Files.createDirectories(basePath.getParent());
         setFormatter(new JULFileFormatter());
         setLevel(Level.ALL);
+        rotateStaleFileOnStartup();
         openCurrentFile();
+    }
+
+    /** If the log file exists and was last modified before today, archive it. */
+    private void rotateStaleFileOnStartup() {
+        if (!Files.exists(basePath) || fileSize(basePath) == 0) return;
+        try {
+            LocalDate fileDate = LocalDate.ofInstant(
+                    Files.getLastModifiedTime(basePath).toInstant(),
+                    java.time.ZoneId.systemDefault());
+            if (fileDate.isBefore(currentLocalDate)) {
+                Path archived = archivedPath(DATE_FMT.format(fileDate), 0);
+                Files.move(basePath, archived, StandardCopyOption.REPLACE_EXISTING);
+                if (compress) {
+                    COMPRESSOR.execute(() -> compressFile(archived));
+                }
+            }
+        } catch (IOException e) {
+            // best-effort — open the existing file if rotation fails
+        }
+    }
+
+    private static long fileSize(Path path) {
+        try { return Files.size(path); }
+        catch (IOException e) { return 0; }
     }
 
     // ── property helpers ─────────────────────────────────────────────
@@ -157,21 +193,11 @@ public final class JULFileHandler extends StreamHandler {
         bytesWritten += estimateSize(record);
     }
 
-    @Override
-    public synchronized void flush() {
-        super.flush();
-    }
-
-    @Override
-    public synchronized void close() throws SecurityException {
-        super.close();
-    }
-
     // ── rotation ────────────────────────────────────────────────────
 
     private boolean needsRotation() {
         if (bytesWritten >= maxSize) return true;
-        return !LocalDate.now().equals(currentLocalDate);
+        return System.currentTimeMillis() >= nextMidnightMillis;
     }
 
     private void rotate() throws IOException {
@@ -188,12 +214,11 @@ public final class JULFileHandler extends StreamHandler {
 
         // Archive the current file (best-effort)
         try {
-            Path currentFile = basePath.toAbsolutePath();
-            if (Files.exists(currentFile) && Files.size(currentFile) > 0) {
+            if (Files.exists(basePath) && Files.size(basePath) > 0) {
                 Path archived = archivedPath(DATE_FMT.format(currentLocalDate), currentIndex);
-                Files.move(currentFile, archived, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(basePath, archived, StandardCopyOption.REPLACE_EXISTING);
                 if (compress) {
-                    compressFile(archived);
+                    COMPRESSOR.execute(() -> compressFile(archived));
                 }
             }
         } catch (IOException e) {
@@ -204,6 +229,7 @@ public final class JULFileHandler extends StreamHandler {
         // Advance counters
         if (dayChanged) {
             currentLocalDate = today;
+            nextMidnightMillis = computeNextMidnight();
             currentIndex = 0;
         } else {
             currentIndex++;
@@ -229,7 +255,7 @@ public final class JULFileHandler extends StreamHandler {
         OutputStream out = new BufferedOutputStream(
                 new FileOutputStream(basePath.toFile(), true));
         setOutputStream(out);
-        bytesWritten = Files.exists(basePath) ? Files.size(basePath) : 0;
+        bytesWritten = fileSize(basePath);
     }
 
     private void closeOutputStream() {
@@ -286,6 +312,12 @@ public final class JULFileHandler extends StreamHandler {
 
     // ── helpers ─────────────────────────────────────────────────────
 
+    private static long computeNextMidnight() {
+        return java.time.ZonedDateTime.now()
+                .plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS)
+                .toInstant().toEpochMilli();
+    }
+
     private static String stripExtension(String fileName) {
         int dot = fileName.lastIndexOf('.');
         return dot > 0 ? fileName.substring(0, dot) : fileName;
@@ -295,7 +327,26 @@ public final class JULFileHandler extends StreamHandler {
         int msgLen = record.getMessage() != null ? record.getMessage().length() : 0;
         String loggerName = record.getLoggerName();
         int loggerLen = loggerName != null ? loggerName.length() : 0;
-        return 60 + msgLen + loggerLen;
+        long size = 60 + msgLen + loggerLen;
+        Throwable thrown = record.getThrown();
+        if (thrown != null) {
+            size += estimateThrowableSize(thrown);
+        }
+        return size;
+    }
+
+    private static long estimateThrowableSize(Throwable t) {
+        long size = 0;
+        for (Throwable current = t; current != null; current = current.getCause()) {
+            size += 80 + current.toString().length();
+            for (StackTraceElement frame : current.getStackTrace()) {
+                size += 60 + frame.toString().length();
+            }
+            for (Throwable suppressed : current.getSuppressed()) {
+                size += estimateThrowableSize(suppressed);
+            }
+        }
+        return size;
     }
 
     // Visible for testing

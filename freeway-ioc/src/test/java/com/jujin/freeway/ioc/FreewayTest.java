@@ -1,6 +1,7 @@
 package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.extension.Extension;
+import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.PostConstruct;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
@@ -13,6 +14,7 @@ import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -179,6 +182,187 @@ class FreewayTest {
         NamedLoggerHolder holder = container.create(NamedLoggerHolder.class);
 
         assertEquals("audit", holder.loggerName());
+    }
+
+    interface Marker {}
+
+    static class EndpointContributor implements Marker {
+        final Endpoint endpoint;
+
+        @Inject
+        EndpointContributor(@Value("${endpoint}") Endpoint endpoint) {
+            this.endpoint = endpoint;
+        }
+    }
+
+    static class PlainLoggerHolder {
+        Logger logger; // no @Inject — should stay null
+    }
+
+    @Test
+    void loggerFieldNotInjectedWithoutAnnotation() {
+        Container container = Freeway.create();
+        PlainLoggerHolder holder = container.create(PlainLoggerHolder.class);
+        assertNull((Object) holder.logger,
+                "Logger field without @Inject should not be injected");
+    }
+
+    @Test
+    void contributedClassSeesCoerceRuleFromSameModule() {
+        System.setProperty("endpoint", "192.168.1.1:443");
+        Container container = Freeway.create(binder -> {
+            binder.contribute(CoerceRule.class).add(new CoerceRule<>(
+                String.class, Endpoint.class,
+                v -> { String[] p = v.split(":", 2); return new Endpoint(p[0], Integer.parseInt(p[1])); }));
+            binder.contribute(Marker.class).add(EndpointContributor.class);
+        });
+
+        var marker = container.extension(Marker.class).all().stream()
+                .filter(m -> m instanceof EndpointContributor)
+                .map(m -> (EndpointContributor) m)
+                .findFirst().orElseThrow();
+
+        assertEquals(new Endpoint("192.168.1.1", 443), marker.endpoint);
+        System.clearProperty("endpoint");
+    }
+
+    @Test
+    void classContributionAutoIdsIncludePackageName() {
+        Container container = Freeway.create(binder -> {
+            // CoreBean auto-id = core_bean@<package>
+            binder.contribute(Labeled.class).add(CoreBean.class);
+            binder.contribute(Labeled.class).add(WebBean.class).after(
+                    "core_bean@" + CoreBean.class.getPackageName());
+        });
+        List<String> labels = container.extension(Labeled.class).all()
+                .stream().map(Labeled::label).toList();
+        assertEquals(List.of("core", "web"), labels,
+                "auto-ids with package suffix should allow ordering");
+    }
+
+    @Test
+    void lambdaModulesAreInstalledByIdentity() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> { log.add("a"); },
+            binder -> { log.add("b"); }
+        );
+        assertEquals(List.of("a", "b"), log,
+                "lambda modules should dedup by identity, not class");
+    }
+
+    @Test
+    void classContributionCanUseCoerceRuleFromSeparateModule() {
+        System.setProperty("endpoint", "10.0.0.1:8080");
+        Container container = Freeway.create(
+            // module A: registers coercion
+            binder -> binder.contribute(CoerceRule.class).add(new CoerceRule<>(
+                String.class, Endpoint.class,
+                v -> { String[] p = v.split(":", 2); return new Endpoint(p[0], Integer.parseInt(p[1])); })),
+            // module B: contributes a class that depends on that coercion
+            binder -> binder.contribute(Marker.class).add(EndpointContributor.class)
+        );
+
+        var marker = container.extension(Marker.class).all().stream()
+                .filter(m -> m instanceof EndpointContributor)
+                .map(m -> (EndpointContributor) m)
+                .findFirst().orElseThrow();
+
+        assertEquals(new Endpoint("10.0.0.1", 8080), marker.endpoint);
+        System.clearProperty("endpoint");
+    }
+
+    // ── regression: PROTOTYPE + advise ────────────────────────────
+
+    interface PrototypeGreeter {
+        String greet();
+    }
+
+    static class PrototypeGreeterImpl implements PrototypeGreeter {
+        @Override public String greet() { return "hello"; }
+    }
+
+    interface SingletonService {
+        String name();
+    }
+
+    static class SingletonServiceImpl implements SingletonService {
+        @Override public String name() { return "singleton"; }
+    }
+
+    static class ThreadScopedDep {}
+
+    static class ConsumerWithThreadDep {
+        final ThreadScopedDep dep;
+
+        @Inject
+        ConsumerWithThreadDep(ThreadScopedDep dep) { this.dep = dep; }
+    }
+
+    interface BaseService { String name(); }
+    interface ExtendedService extends BaseService {}
+
+    static class ExtendedServiceImpl implements ExtendedService {
+        final ThreadScopedDep dep;
+
+        @Inject
+        ExtendedServiceImpl(ThreadScopedDep dep) { this.dep = dep; }
+
+        @Override public String name() { return "extended"; }
+    }
+
+    @Test
+    void singletonThroughIndirectInterfaceRejectsThreadScopedDependency() {
+        // Bind ExtendedServiceImpl under BaseService — an indirect interface.
+        // ExtendedServiceImpl extends ExtendedService extends BaseService.
+        // findOwnerBinding must walk ExtendedService → BaseService to find the binding.
+        Container container = Freeway.create(binder -> {
+            binder.bind(BaseService.class).to(ExtendedServiceImpl.class).scope(Scope.SINGLETON);
+            binder.bind(ThreadScopedDep.class).to(ThreadScopedDep.class).scope(Scope.THREAD);
+        });
+
+        // trigger proxy realization via ScopedCache (thread scope)
+        assertThrows(RuntimeException.class, () ->
+            ScopedCache.within(() -> {
+                BaseService svc = container.get(BaseService.class);
+                svc.name(); // triggers proxy → realize → scope check
+            }));
+    }
+
+    @Test
+    void singletonThroughInterfaceRejectsThreadScopedDependency() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(SingletonService.class).to(SingletonServiceImpl.class).scope(Scope.SINGLETON);
+            binder.bind(ThreadScopedDep.class).to(ThreadScopedDep.class).scope(Scope.THREAD);
+        });
+
+        assertThrows(RuntimeException.class, () ->
+            container.create(ConsumerWithThreadDep.class),
+                "Singleton injected with thread-scoped dep should fail");
+    }
+
+    @Test
+    void prototypeBindingHonorsAdvice() {
+        List<String> calls = new ArrayList<>();
+        Container container = Freeway.create(binder ->
+            binder.bind(PrototypeGreeter.class)
+                  .to(PrototypeGreeterImpl.class)
+                  .scope(Scope.PROTOTYPE)
+                  .advise(advisor -> advisor.wrap(
+                      inv -> true,
+                      inv -> {
+                          calls.add("advised");
+                          return inv.proceed();
+                      })));
+
+        PrototypeGreeter g1 = container.get(PrototypeGreeter.class);
+        PrototypeGreeter g2 = container.get(PrototypeGreeter.class);
+        g1.greet();
+        g2.greet();
+
+        assertEquals(List.of("advised", "advised"), calls,
+                "advice should fire on every PROTOTYPE resolution");
+        assertNotSame(g1, g2, "PROTOTYPE should create new instance each time");
     }
 
     @Test
@@ -581,6 +765,7 @@ class FreewayTest {
     public static final class LoggerCtorHolder {
         private final Logger logger;
 
+        @com.jujin.freeway.ioc.annotation.Inject
         public LoggerCtorHolder(Logger logger) {
             this.logger = logger;
         }
@@ -1329,7 +1514,7 @@ class FreewayTest {
     void classContributionCreatesAndOrders() {
         Container container = Freeway.create(
             binder -> binder.contribute(Labeled.class)
-                .add(WebBean.class).after("core_bean"),
+                .add(WebBean.class).after("core_bean@" + CoreBean.class.getPackageName()),
             binder -> binder.contribute(Labeled.class)
                 .add(CoreBean.class)
         );

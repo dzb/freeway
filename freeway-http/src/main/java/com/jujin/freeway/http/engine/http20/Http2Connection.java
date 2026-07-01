@@ -167,7 +167,6 @@ public final class Http2Connection {
             switch (frame.header().type()) {
                 case SETTINGS -> {
                     if (frame.header().flags().contains(FrameFlag.ACK)) {
-                        maxConcurrentStreams = streams.size() + Integer.MAX_VALUE;
                         continue;
                     }
                     updateRemoteSettings((SettingsFrame) frame);
@@ -198,12 +197,14 @@ public final class Http2Connection {
                     if (streamId == 0) continue;
                 }
                 case DATA -> {
+                    if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     var dataFrame = (DataFrame) frame;
                     if (receiveWindow.addAndGet(-dataFrame.body.length) < connectionWindowSize / 10)
                         sendConnectionWindowUpdate();
                     if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }
                 case HEADERS -> {
+                    if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (streamId < lastSeenStreamId) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
 
@@ -290,6 +291,8 @@ public final class Http2Connection {
                     throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
                 for (var stream : streams.values())
                     stream.sendWindow.addAndGet(parameter.value - oldWindow);
+            } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_CONCURRENT_STREAMS) {
+                maxConcurrentStreams = (int) Math.min(parameter.value, Integer.MAX_VALUE);
             }
             remoteSettings.set(parameter);
         }

@@ -175,8 +175,8 @@ class JULFileFormatterTest {
         record.setParameters(new Object[]{"Alice"});
 
         String out = formatter.format(record);
-        assertTrue(out.contains("User {0} logged in"),
-                "Formatter should preserve raw message: " + out);
+        assertTrue(out.contains("User Alice logged in"),
+                "Formatter should expand JUL {0} parameters: " + out);
     }
 
     // ── regression: suppressed exception cause chain ───────────────
@@ -226,6 +226,40 @@ class JULFileFormatterTest {
     }
 
     // ── regression: ISO 8601 timestamp format ─────────────────────
+
+    @Test
+    void throwableCycleIsDetected() {
+        RuntimeException a = new RuntimeException("a");
+        RuntimeException b = new RuntimeException("b");
+        a.initCause(b);
+        b.initCause(a); // circular cause chain
+
+        LogRecord record = new LogRecord(Level.SEVERE, "cycle");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        record.setThrown(a);
+
+        String out = formatter.format(record);
+        assertTrue(out.contains("CIRCULAR"),
+                "Cycle should be detected and truncated: " + out);
+    }
+
+    @Test
+    void mutuallySuppressedIsDetected() {
+        RuntimeException a = new RuntimeException("a");
+        RuntimeException b = new RuntimeException("b");
+        a.addSuppressed(b);
+        b.addSuppressed(a); // mutual suppressed
+
+        LogRecord record = new LogRecord(Level.SEVERE, "mutual");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        record.setThrown(a);
+
+        String out = formatter.format(record);
+        assertTrue(out.contains("CIRCULAR"),
+                "Mutual suppressed should be detected: " + out);
+    }
 
     @Test
     void timestampUsesIso8601WithTimezone() {

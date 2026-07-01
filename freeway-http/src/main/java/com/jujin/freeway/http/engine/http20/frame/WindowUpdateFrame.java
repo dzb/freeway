@@ -21,7 +21,7 @@ public final class WindowUpdateFrame extends BaseFrame {
     public static WindowUpdateFrame parse(byte[] body, FrameHeader header) throws IOException {
         if (body.length != 4) throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR);
         var frame = new WindowUpdateFrame(header);
-        frame.windowSizeIncrement = BinUtils.readInt(body, 0);
+        frame.windowSizeIncrement = BinUtils.readInt(body, 0) & 0x7FFFFFFF;
         if (frame.windowSizeIncrement == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         return frame;
     }

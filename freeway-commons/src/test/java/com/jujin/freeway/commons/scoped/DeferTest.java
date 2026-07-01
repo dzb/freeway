@@ -271,6 +271,70 @@ class DeferTest {
     }
 
     @Test
+    void supplyGetInsideScopeDoesNotDoubleExecute() {
+        List<String> log = new ArrayList<>();
+
+        Defer.within(() -> {
+            Supplier<String> s = Defer.supply(() -> {
+                log.add("computed");
+                return "ok";
+            });
+            // get() inside scope computes immediately (not blocking)
+            assertEquals("ok", s.get());
+            assertEquals(List.of("computed"), log);
+        });
+        // drain should NOT re-execute since get() already computed it
+        assertEquals(List.of("computed"), log, "should only compute once, not twice");
+    }
+
+    @Test
+    void supplyGetInsideScopeCachesForDrain() {
+        List<String> log = new ArrayList<>();
+
+        Defer.within(() -> {
+            Supplier<String> s = Defer.supply(() -> {
+                log.add("computed");
+                return "ok";
+            });
+            // get() before commit — computes and caches
+            s.get();
+            // second get() returns cached
+            s.get();
+            assertEquals(1, log.size(), "get() should cache, not re-compute");
+        });
+        // drain — compute() should see computed==true and skip
+        assertEquals(1, log.size(), "drain should not re-run after get() resolved it");
+    }
+
+    @Test
+    void supplyFailureDoesNotDoubleExecute() {
+        List<String> log = new ArrayList<>();
+
+        Defer.within(() -> {
+            Supplier<String> s = Defer.supply(() -> {
+                log.add("run");
+                throw new RuntimeException("fail");
+            });
+            // get() throws — but should mark computed so drain doesn't retry
+            try { s.get(); } catch (RuntimeException ignored) {}
+            assertEquals(List.of("run"), log);
+        });
+        // drain should NOT re-execute since get() already attempted
+        assertEquals(List.of("run"), log, "should execute only once, not twice");
+    }
+
+    @Test
+    void missingDependenciesSkipConstraint() {
+        List<String> log = new ArrayList<>();
+        Defer.within(() -> {
+            Defer.defer("real", () -> log.add("real"));
+            Defer.defer("orphan", () -> log.add("orphan")).after("nonexistent");
+        });
+        // orphan should still run, not be stuck waiting for missing dependency
+        assertEquals(List.of("real", "orphan"), log);
+    }
+
+    @Test
     void namedSupplySupportsOrdering() {
         List<String> log = new ArrayList<>();
 

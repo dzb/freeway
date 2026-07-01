@@ -54,11 +54,11 @@ public final class JULFileFormatter extends Formatter {
 
         // level — left-aligned, fixed width
         out.append(' ');
-        out.append(padRight(record.getLevel().getName(), LEVEL_WIDTH));
+        out.append(LoggingSupport.padRight(record.getLevel().getName(), LEVEL_WIDTH));
 
         // thread
         out.append(' ');
-        out.append(formatThread());
+        out.append(LoggingSupport.formatThread());
 
         // logger — full name
         out.append(' ');
@@ -66,7 +66,7 @@ public final class JULFileFormatter extends Formatter {
 
         // message
         out.append(" - ");
-        out.append(record.getMessage() != null ? record.getMessage() : "");
+        out.append(super.formatMessage(record));
 
         // throwable
         if (record.getThrown() != null) {
@@ -83,7 +83,15 @@ public final class JULFileFormatter extends Formatter {
     private static String formatThrowable(Throwable thrown) {
         StringWriter sw = new StringWriter();
         PrintWriter pw = new PrintWriter(sw);
-        Throwable current = thrown;
+        formatThrowable(thrown, pw, java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>()));
+        pw.flush();
+        return sw.toString().stripTrailing();
+    }
+
+    private static void formatThrowable(Throwable t, PrintWriter pw,
+                                        java.util.Set<Throwable> visited) {
+        if (!visited.add(t)) return;
+        Throwable current = t;
         boolean root = true;
         while (current != null) {
             if (root) {
@@ -91,6 +99,12 @@ public final class JULFileFormatter extends Formatter {
                 pw.println(current);
                 root = false;
             } else {
+                if (!visited.add(current)) {
+                    pw.print("  [CIRCULAR: ");
+                    pw.print(current.getClass().getSimpleName());
+                    pw.println("]");
+                    break;
+                }
                 pw.print("  Caused by: ");
                 pw.println(current);
             }
@@ -99,24 +113,33 @@ public final class JULFileFormatter extends Formatter {
                 pw.println(frame);
             }
             for (Throwable suppressed : current.getSuppressed()) {
-                renderSuppressed(suppressed, pw, "    Suppressed: ", "          at ");
+                renderSuppressed(suppressed, pw, "    Suppressed: ",
+                        "          at ", visited);
             }
             current = current.getCause();
         }
-        pw.flush();
-        return sw.toString().stripTrailing();
     }
 
     private static void renderSuppressed(Throwable t, PrintWriter pw,
-                                         String headerPrefix, String framePrefix) {
+                                         String headerPrefix, String framePrefix,
+                                         java.util.Set<Throwable> visited) {
+        if (!visited.add(t)) {
+            pw.print(headerPrefix);
+            pw.println(t.getClass().getSimpleName() + " [CIRCULAR]");
+            return;
+        }
         pw.print(headerPrefix);
         pw.println(t);
         for (StackTraceElement frame : t.getStackTrace()) {
             pw.print(framePrefix);
             pw.println(frame);
         }
-        // Recurse into the suppressed exception's own cause chain
         for (Throwable cause = t.getCause(); cause != null; cause = cause.getCause()) {
+            if (!visited.add(cause)) {
+                pw.print(headerPrefix.replace("Suppressed:", "Caused by:"));
+                pw.println(cause.getClass().getSimpleName() + " [CIRCULAR]");
+                break;
+            }
             pw.print(headerPrefix.replace("Suppressed:", "Caused by:"));
             pw.println(cause);
             for (StackTraceElement frame : cause.getStackTrace()) {
@@ -124,26 +147,8 @@ public final class JULFileFormatter extends Formatter {
                 pw.println(frame);
             }
         }
-        // Recurse into nested suppressed exceptions
         for (Throwable nested : t.getSuppressed()) {
-            renderSuppressed(nested, pw, headerPrefix + "  ", framePrefix + "  ");
+            renderSuppressed(nested, pw, headerPrefix + "  ", framePrefix + "  ", visited);
         }
-    }
-    /**
-     * Formats the current thread name for log output.
-     * Falls back to {@code #threadId} for unnamed virtual threads.
-     */
-    private static String formatThread() {
-        Thread t = Thread.currentThread();
-        String name = t.getName();
-        if (name != null && !name.isBlank()) {
-            return '[' + name + ']';
-        }
-        return "[#" + t.threadId() + ']';
-    }
-
-    private static String padRight(String s, int n) {
-        if (s.length() >= n) return s;
-        return s + " ".repeat(n - s.length());
     }
 }

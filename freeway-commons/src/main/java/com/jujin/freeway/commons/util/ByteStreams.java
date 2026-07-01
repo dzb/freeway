@@ -70,6 +70,11 @@ public final class ByteStreams {
                 return read;
             }
 
+            @Override
+            public void close() throws IOException {
+                stream.close();
+            }
+
             private IOException tooLarge() {
                 return new IOException(
                     label +

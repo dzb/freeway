@@ -111,7 +111,7 @@ class JULFileHandlerTest {
     }
 
     @Test
-    void compressesRotatedFile(@TempDir Path tempDir) throws IOException {
+    void compressesRotatedFile(@TempDir Path tempDir) throws IOException, InterruptedException {
         Path logFile = tempDir.resolve("compress.log");
         JULFileHandler handler = new JULFileHandler(
                 logFile.toString(), 150, 30, true);
@@ -128,7 +128,13 @@ class JULFileHandlerTest {
 
         handler.close();
 
-        // Check for .gz files in the directory
+        // Compression is async — wait briefly for the daemon thread
+        for (int attempt = 0; attempt < 20; attempt++) {
+            boolean hasGz = Files.list(logFile.getParent())
+                    .anyMatch(p -> p.getFileName().toString().endsWith(".gz"));
+            if (hasGz) break;
+            Thread.sleep(50);
+        }
         boolean hasGz = Files.list(logFile.getParent())
                 .anyMatch(p -> p.getFileName().toString().endsWith(".gz"));
         assertTrue(hasGz, "Should have at least one .gz compressed file in "
@@ -199,6 +205,28 @@ class JULFileHandlerTest {
                 "SEVERE message should appear: " + content);
     }
 
+    @Test
+    void rotationTriggersReasonablyForExceptionLogs(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("exception-rotate.log");
+        JULFileHandler handler = new JULFileHandler(logFile.toString(), 200, 30, false);
+
+        LogRecord record = new LogRecord(Level.SEVERE, "error");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        record.setThrown(new RuntimeException("deep", new IllegalStateException("cause")));
+
+        // one record may overshoot; publish a few to ensure rotation eventually triggers
+        for (int i = 0; i < 10; i++) {
+            handler.publish(record);
+        }
+        handler.close();
+
+        // after multiple exception records, rotation should have triggered at least once
+        assertTrue(handler.currentIndex() > 0,
+                "Rotation should trigger after logging exception records, got index="
+                        + handler.currentIndex());
+    }
+
     // ── regression: REPLACE_EXISTING ───────────────────────────────
 
     @Test
@@ -233,7 +261,7 @@ class JULFileHandlerTest {
     // ── regression: compressed file validity ──────────────────────
 
     @Test
-    void compressedFileIsValidGzip(@TempDir Path tempDir) throws IOException {
+    void compressedFileIsValidGzip(@TempDir Path tempDir) throws IOException, InterruptedException {
         Path logFile = tempDir.resolve("gzip-valid.log");
         JULFileHandler handler = new JULFileHandler(
                 logFile.toString(), 150, 30, true);
@@ -248,10 +276,15 @@ class JULFileHandlerTest {
         }
         handler.close();
 
-        // Find the .gz file and verify it's a valid GZIP stream
-        Path gzFile = Files.list(logFile.getParent())
-                .filter(p -> p.getFileName().toString().endsWith(".gz"))
-                .findFirst().orElse(null);
+        // Compression is async — wait briefly
+        Path gzFile = null;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            gzFile = Files.list(logFile.getParent())
+                    .filter(p -> p.getFileName().toString().endsWith(".gz"))
+                    .findFirst().orElse(null);
+            if (gzFile != null) break;
+            Thread.sleep(50);
+        }
         assertNotNull(gzFile, "Should have a .gz file after compression");
         assertTrue(Files.size(gzFile) > 0, "GZIP file should not be empty");
 

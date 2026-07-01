@@ -56,7 +56,7 @@ final class BinderImpl implements Binder {
             @Override
             public Contribution add(Class<? extends V> implClass) {
                 String id = com.jujin.freeway.commons.util.Strings.camelToSnake(
-                    implClass.getSimpleName());
+                    implClass.getSimpleName()) + "@" + implClass.getPackageName();
                 var deferred = new DeferredContribution();
                 pendingCreates.add(() -> {
                     V instance = container.create(implClass);

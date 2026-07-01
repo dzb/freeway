@@ -282,7 +282,7 @@ public final class RowMapperResolver {
             for (int i = 0; i < n; i++) {
                 BeanProperty prop = properties.get(i);
                 this.names[i] = prop.name();
-                Column col = prop.annotation(Column.class);
+                Column col = prop.annotation(Column.class).orElse(null);
                 this.columnOverrides[i] =
                     (col != null && !col.value().isEmpty()) ? col.value() : null;
             }

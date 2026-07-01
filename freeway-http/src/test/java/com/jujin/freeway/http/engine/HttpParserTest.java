@@ -221,6 +221,55 @@ class HttpParserTest {
         assertNull(parser.parse());
     }
 
+    @Test
+    void rejectsDuplicateContentLength() {
+        byte[] raw = ("POST / HTTP/1.1\r\nContent-Length: 4\r\n"
+                + "Content-Length: 7\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+                "Duplicate Content-Length headers should be rejected");
+    }
+
+    @Test
+    void transferEncodingHandlesCommaSeparatedChunked() throws Exception {
+        byte[] raw = ("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
+                .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var req = parser.parse();
+        assertTrue(req.isChunked(), "Transfer-Encoding: chunked should set isChunked=true");
+    }
+
+    @Test
+    void transferEncodingRejectsUnknownCoding() {
+        byte[] raw = ("POST / HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n")
+                .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+                "Unknown Transfer-Encoding should be rejected");
+    }
+
+    @Test
+    void rejectsBothContentLengthAndChunked() throws Exception {
+        byte[] raw = ("POST / HTTP/1.1\r\nContent-Length: 4\r\n"
+                + "Transfer-Encoding: chunked\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse);
+    }
+
+    @Test
+    void parsesPipelinedRequests() throws Exception {
+        // Two requests back-to-back in one TCP segment
+        byte[] raw = ("GET /a HTTP/1.1\r\n\r\nGET /b HTTP/1.1\r\n\r\n")
+                .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+
+        var req1 = parser.parse();
+        assertEquals("/a", req1.path());
+        var req2 = parser.parse();
+        assertEquals("/b", req2.path(),
+                "pipelined second request should be parsed, not lost");
+    }
+
     private static String headerValue(HttpParser.ParsedRequest req, String name) {
         for (var e : req.headers().entrySet()) {
             if (e.getKey().equalsIgnoreCase(name)) {

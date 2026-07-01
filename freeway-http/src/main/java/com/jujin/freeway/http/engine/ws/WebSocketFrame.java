@@ -4,6 +4,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
@@ -42,6 +43,7 @@ public final class WebSocketFrame {
 
     OpCode opCode() { return opCode; }
     boolean isFin() { return fin; }
+    boolean isMasked() { return maskingKey != null; }
     byte[] payload() { return payload; }
 
     String payloadAsString() {
@@ -92,6 +94,10 @@ public final class WebSocketFrame {
     // --- write to wire ---
 
     void write(OutputStream out) throws IOException {
+        if (opCode.isControlFrame() && payload != null && payload.length > 125) {
+            throw new WebSocketException(CloseCode.ProtocolError,
+                "Control frame payload must not exceed 125 bytes");
+        }
         int header = fin ? 0x80 : 0;
         header |= opCode.value() & 0x0F;
         out.write(header);
@@ -225,9 +231,16 @@ public final class WebSocketFrame {
                 payload[i] ^= maskingKey[i % 4];
             }
         }
-        // pre-validate UTF-8 for text frames
+        // validate UTF-8 for text frames (strict — reject invalid sequences)
         if (opCode == OpCode.Text) {
-            payloadString = new String(payload, TEXT_CHARSET);
+            var decoder = java.nio.charset.StandardCharsets.UTF_8.newDecoder();
+            decoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
+            decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+            try {
+                payloadString = decoder.decode(java.nio.ByteBuffer.wrap(payload)).toString();
+            } catch (java.nio.charset.CharacterCodingException e) {
+                throw new WebSocketException(CloseCode.InvalidFramePayloadData, "Invalid UTF-8 in text frame");
+            }
         }
     }
 
@@ -235,6 +248,9 @@ public final class WebSocketFrame {
         if (payload.length >= 2) {
             int codeVal = (payload[0] & 0xFF) << 8 | (payload[1] & 0xFF);
             this.closeCode = CloseCode.find(codeVal);
+            if (this.closeCode == null) {
+                this.closeCode = CloseCode.ProtocolError; // RFC 6455 §7.4: invalid code
+            }
             this.closeReason = payload.length > 2
                 ? new String(payload, 2, payload.length - 2, TEXT_CHARSET)
                 : "";

@@ -28,7 +28,7 @@ import java.util.concurrent.locks.LockSupport;
  * HTTP/2 stream processor. Represents a single HTTP/2 request/response stream,
  * managing stream state, flow control, I/O adapters, and async request processing.
  */
-public final class Http2Stream {
+public final class Http2Stream implements com.jujin.freeway.http.engine.H2ResponseBridge {
     private static final Logger LOG = LoggerFactory.getLogger(Http2Stream.class);
     private static final FrameFlag.FlagSet END_STREAM = FrameFlag.FlagSet.of(FrameFlag.END_STREAM);
 
@@ -43,6 +43,9 @@ public final class Http2Stream {
     private final OutputStream outputStream;
     private final Http2Connection.StreamHandler handler;
     private final Map<String, List<String>> responseHeaders = new java.util.LinkedHashMap<>(16);
+
+    @Override
+    public Map<String, List<String>> headers() { return responseHeaders; }
     private final AtomicLong receiveWindow = new AtomicLong(65535);
     private final AtomicBoolean handlingRequest = new AtomicBoolean();
     private final AtomicBoolean headersSent = new AtomicBoolean();
@@ -75,6 +78,10 @@ public final class Http2Stream {
     public boolean isOpen() { return streamOpen; }
     public boolean isHalfClosed() { return halfClosed; }
 
+    public void sendReset() throws IOException {
+        connection.sendResetStream(Http2ErrorCode.INTERNAL_ERROR, streamId);
+    }
+
     public void close() {
         streamOpen = false;
         try { dataIn.close(); } catch (IOException ignored) {}
@@ -87,7 +94,12 @@ public final class Http2Stream {
         switch (frame.header().type()) {
             case HEADERS, CONTINUATION -> {
                 if (halfClosed) throw new Http2Exception(Http2ErrorCode.STREAM_CLOSED);
-                halfClosed = frame.header().flags().contains(FrameFlag.END_STREAM);
+                // END_STREAM on HEADERS means no body, but only if END_HEADERS
+                // is also set (header block complete). Otherwise CONTINUATION follows.
+                if (frame.header().flags().contains(FrameFlag.END_STREAM)
+                        && frame.header().flags().contains(FrameFlag.END_HEADERS)) {
+                    halfClosed = true;
+                }
                 startRequest(executor);
             }
             case DATA -> {

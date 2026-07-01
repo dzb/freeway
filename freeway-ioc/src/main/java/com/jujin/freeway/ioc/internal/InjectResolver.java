@@ -92,7 +92,8 @@ final class InjectResolver {
                 return container.coercer();
             }
         }
-        if (targetType == Logger.class) {
+        if (targetType == Logger.class
+                && (parameterMode || hasInjectionAnnotation(lookup))) {
             return resolveLogger(ownerType, lookup);
         }
         // Extension<Foo> / List<Foo> — resolved from contribution mechanism.
@@ -176,42 +177,50 @@ final class InjectResolver {
     }
 
     private static boolean hasInjectionAnnotation(AnnotationLookup lookup) {
-        return lookup.annotation(Inject.class) != null;
+        return lookup.annotation(Inject.class).isPresent();
     }
 
     private static boolean hasConfiguredValueAnnotation(AnnotationLookup lookup) {
-        return lookup.annotation(Symbol.class) != null || lookup.annotation(Value.class) != null;
+        return lookup.annotation(Symbol.class).isPresent()
+            || lookup.annotation(Value.class).isPresent();
     }
 
     private String resolveId(AnnotationLookup lookup) {
-        return normalizedId(lookup.annotation(Inject.class));
+        return normalizedId(lookup.annotation(Inject.class).orElse(null));
     }
 
     private Object resolveConfiguredValue(AnnotationLookup lookup, Class<?> targetType) {
-        Symbol symbol = lookup.annotation(Symbol.class);
-        if (symbol != null) {
-            return coerceConfiguredValue(targetType, container.symbolSource().resolve(symbol.value()), lookup);
+        var symbol = lookup.annotation(Symbol.class);
+        if (symbol.isPresent()) {
+            return coerceConfiguredValue(targetType,
+                container.symbolSource().resolve(symbol.get().value()), lookup);
         }
 
-        Value value = lookup.annotation(Value.class);
-        if (value != null) {
-            return coerceConfiguredValue(targetType, container.symbolSource().expand(value.value()), lookup);
+        var value = lookup.annotation(Value.class);
+        if (value.isPresent()) {
+            return coerceConfiguredValue(targetType,
+                container.symbolSource().expand(value.get().value()), lookup);
         }
 
         return null;
     }
 
     private Object coerceConfiguredValue(Class<?> targetType, Object rawValue, AnnotationLookup lookup) {
-        IntermediateType intermediateType = lookup.annotation(IntermediateType.class);
+        var intermediateType = lookup.annotation(IntermediateType.class);
         Object value = rawValue;
-        if (intermediateType != null) {
-            value = container.coercer().coerce(rawValue, intermediateType.value());
+        if (intermediateType.isPresent()) {
+            value = container.coercer().coerce(rawValue, intermediateType.get().value());
         }
         return container.coercer().coerce(value, targetType);
     }
 
     private static AnnotationLookup annotations(AnnotatedElement element) {
-        return element::getAnnotation;
+        return new AnnotationLookup() {
+            @SuppressWarnings("unchecked")
+            public <A extends Annotation> java.util.Optional<A> annotation(Class<A> type) {
+                return java.util.Optional.ofNullable(element.getAnnotation(type));
+            }
+        };
     }
 
     private static AnnotationLookup annotations(BeanProperty property) {
@@ -222,11 +231,38 @@ final class InjectResolver {
         return parameter::annotation;
     }
 
+    private BindingImpl<?> findOwnerBinding(Class<?> ownerType) {
+        BindingImpl<?> exact = container.bindingIndex().findUnique(ownerType);
+        if (exact != null) return exact;
+        // Check full interface hierarchy (direct + super-interfaces)
+        BindingImpl<?> b = findSingletonInterface(ownerType, new java.util.HashSet<>());
+        if (b != null) return b;
+        // Check superclass chain (stop before Object)
+        for (Class<?> sup = ownerType.getSuperclass();
+             sup != null && sup != Object.class;
+             sup = sup.getSuperclass()) {
+            b = container.bindingIndex().findUnique(sup);
+            if (b != null && b.scope() == Scope.SINGLETON) return b;
+        }
+        return null;
+    }
+
+    private BindingImpl<?> findSingletonInterface(Class<?> type, java.util.Set<Class<?>> visited) {
+        for (Class<?> iface : type.getInterfaces()) {
+            if (!visited.add(iface)) continue;
+            BindingImpl<?> b = container.bindingIndex().findUnique(iface);
+            if (b != null && b.scope() == Scope.SINGLETON) return b;
+            b = findSingletonInterface(iface, visited);
+            if (b != null) return b;
+        }
+        return null;
+    }
+
     private void validateScopeCompatibility(Class<?> ownerType, Class<?> targetType, Object service) {
         if (service == null) {
             return;
         }
-        BindingImpl<?> ownerBinding = container.bindingIndex().findUnique(ownerType);
+        BindingImpl<?> ownerBinding = findOwnerBinding(ownerType);
         if (ownerBinding == null || ownerBinding.scope() != Scope.SINGLETON) {
             return;
         }
@@ -263,6 +299,6 @@ final class InjectResolver {
     }
 
     private interface AnnotationLookup {
-        <A extends Annotation> A annotation(Class<A> type);
+        <A extends Annotation> java.util.Optional<A> annotation(Class<A> type);
     }
 }

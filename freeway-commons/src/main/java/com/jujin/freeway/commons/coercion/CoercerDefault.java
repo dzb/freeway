@@ -166,9 +166,32 @@ public final class CoercerDefault implements Coercer {
             // -- uuid --
             entry(UUID.class, v -> UUID.fromString(String.valueOf(v))),
 
+            // -- uri / url / path / locale --
+            entry(java.net.URI.class, v -> java.net.URI.create(String.valueOf(v))),
+            entry(java.net.URL.class, CoercerDefault::coerceToURL),
+            entry(java.nio.file.Path.class, v -> java.nio.file.Paths.get(String.valueOf(v))),
+            entry(java.util.Locale.class, v -> java.util.Locale.forLanguageTag(String.valueOf(v))),
+
+            // -- optional primitives --
+            entry(java.util.OptionalInt.class, v -> v == null
+                ? java.util.OptionalInt.empty()
+                : java.util.OptionalInt.of(((Number) v).intValue())),
+            entry(java.util.OptionalLong.class, v -> v == null
+                ? java.util.OptionalLong.empty()
+                : java.util.OptionalLong.of(((Number) v).longValue())),
+            entry(java.util.OptionalDouble.class, v -> v == null
+                ? java.util.OptionalDouble.empty()
+                : java.util.OptionalDouble.of(((Number) v).doubleValue())),
+            entry(java.util.Optional.class, v -> java.util.Optional.ofNullable(v)),
+
             // -- duration --
             entry(Duration.class, CoercerDefault::coerceToDuration)
         );
+
+    private static java.net.URL coerceToURL(Object value) {
+        try { return java.net.URI.create(String.valueOf(value)).toURL(); }
+        catch (Exception e) { throw new IllegalArgumentException("Cannot coerce to URL: " + value, e); }
+    }
 
     @SuppressWarnings("unchecked")
     private static <T> T coerceInternal(Object value, Class<T> targetType) {
@@ -290,6 +313,21 @@ public final class CoercerDefault implements Coercer {
         Number n,
         Class<?> targetType
     ) {
+        // Guard against NaN/Infinity for integral targets
+        if (n instanceof Double d && (d.isNaN() || d.isInfinite())) {
+            throw new IllegalArgumentException("Cannot coerce " + n + " to " + targetType.getSimpleName());
+        }
+        if (n instanceof Float f && (f.isNaN() || f.isInfinite())) {
+            throw new IllegalArgumentException("Cannot coerce " + n + " to " + targetType.getSimpleName());
+        }
+        // Guard against BigInteger/BigDecimal overflow for integral targets
+        if (targetType != Double.class && targetType != Float.class) {
+            if (n instanceof java.math.BigInteger bi) {
+                checkRange(bi, targetType);
+            } else if (n instanceof java.math.BigDecimal bd) {
+                checkRange(bd, targetType);
+            }
+        }
         if (targetType == Integer.class) return n.intValue();
         if (targetType == Long.class) return n.longValue();
         if (targetType == Short.class) return n.shortValue();
@@ -297,6 +335,27 @@ public final class CoercerDefault implements Coercer {
         if (targetType == Double.class) return n.doubleValue();
         if (targetType == Float.class) return n.floatValue();
         return null;
+    }
+
+    private static void checkRange(java.math.BigInteger bi, Class<?> targetType) {
+        if (targetType == Integer.class || targetType == int.class) {
+            if (bi.compareTo(java.math.BigInteger.valueOf(Integer.MAX_VALUE)) > 0
+                    || bi.compareTo(java.math.BigInteger.valueOf(Integer.MIN_VALUE)) < 0)
+                throw new IllegalArgumentException("Cannot coerce " + bi + " to Integer");
+        } else if (targetType == Short.class || targetType == short.class) {
+            if (bi.compareTo(java.math.BigInteger.valueOf(Short.MAX_VALUE)) > 0
+                    || bi.compareTo(java.math.BigInteger.valueOf(Short.MIN_VALUE)) < 0)
+                throw new IllegalArgumentException("Cannot coerce " + bi + " to Short");
+        } else if (targetType == Byte.class || targetType == byte.class) {
+            if (bi.compareTo(java.math.BigInteger.valueOf(Byte.MAX_VALUE)) > 0
+                    || bi.compareTo(java.math.BigInteger.valueOf(Byte.MIN_VALUE)) < 0)
+                throw new IllegalArgumentException("Cannot coerce " + bi + " to Byte");
+        }
+    }
+
+    private static void checkRange(java.math.BigDecimal bd, Class<?> targetType) {
+        java.math.BigInteger bi = bd.toBigInteger();
+        checkRange(bi, targetType);
     }
 
     private static Number coerceNumberFromString(
@@ -329,19 +388,19 @@ public final class CoercerDefault implements Coercer {
     }
 
     private static Number parseShort(String text) {
-        try {
-            return Short.parseShort(text);
-        } catch (NumberFormatException e) {
-            return new BigDecimal(text).shortValue();
+        long value = Long.parseLong(text);
+        if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("Cannot coerce '" + text + "' to Short: out of range");
         }
+        return (short) value;
     }
 
     private static Number parseByte(String text) {
-        try {
-            return Byte.parseByte(text);
-        } catch (NumberFormatException e) {
-            return new BigDecimal(text).byteValue();
+        long value = Long.parseLong(text);
+        if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
+            throw new IllegalArgumentException("Cannot coerce '" + text + "' to Byte: out of range");
         }
+        return (byte) value;
     }
 
     // ==================================================================

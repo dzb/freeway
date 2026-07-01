@@ -55,7 +55,7 @@ public final class ContainerImpl implements Container {
     private final InstanceFactory instanceFactory;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
-    private final Set<Class<?>> moduleTypes = new HashSet<>();
+    private final Set<ModuleEx> installedModules = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private final List<ModuleEx> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 
@@ -88,7 +88,6 @@ public final class ContainerImpl implements Container {
         loadAll(modules);
         LOG.info("Loaded {} module(s): {}", loadedModules.size(),
             loadedModules.stream().map(m -> m.getClass().getSimpleName()).toList());
-        wireBuiltinExtensions();
     }
 
     BindingIndex bindingIndex() {
@@ -110,6 +109,9 @@ public final class ContainerImpl implements Container {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Extension<T> extension(Class<T> entryType) {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
+        }
         return (Extension<T>) extensions.computeIfAbsent(entryType, k -> new Extension<>(k));
     }
 
@@ -120,15 +122,15 @@ public final class ContainerImpl implements Container {
     }
 
     void installModule(ModuleEx module, Binder binder) {
-        Class<?> moduleType = module.getClass();
-        if (moduleTypes.add(moduleType)) {
-            LOG.debug("Installing module: {}", moduleType.getSimpleName());
+        if (installedModules.add(module)) {
+            LOG.debug("Installing module: {}", module.getClass().getSimpleName());
             loadedModules.add(module);
             module.bind(binder);
+            wireBuiltinExtensions();
             ((BinderImpl) binder).flushPending();
             return;
         }
-        LOG.debug("Ignoring duplicate module: {}", moduleType.getSimpleName());
+        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
     }
 
     private void loadAll(Collection<? extends ModuleEx> modules) {
@@ -169,6 +171,9 @@ public final class ContainerImpl implements Container {
 
     @Override
     public <T> T create(Class<T> type) {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
+        }
         return instanceFactory.instantiate(type);
     }
 

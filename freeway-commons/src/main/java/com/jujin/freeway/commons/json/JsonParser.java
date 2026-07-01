@@ -270,6 +270,13 @@ final class JsonParser {
                 }
                 return value;
             } catch (NumberFormatException ex) {
+                if (!decimal) {
+                    try {
+                        return new java.math.BigInteger(text);
+                    } catch (NumberFormatException ignored) {
+                        // fall through to error
+                    }
+                }
                 throw error("Invalid number");
             }
         }

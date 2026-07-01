@@ -87,18 +87,25 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         return List.of();
     }
 
+    private void checkOpen() throws IOException {
+        if (!open) throw new IOException("WebSocket is closed");
+    }
+
     @Override
     public void sendText(String text) throws IOException {
+        checkOpen();
         WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Text, true, text));
     }
 
     @Override
     public void sendBinary(byte[] data) throws IOException {
+        checkOpen();
         WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Binary, true, data));
     }
 
     @Override
     public void ping(byte[] data) throws IOException {
+        checkOpen();
         WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Ping, true, data));
     }
 

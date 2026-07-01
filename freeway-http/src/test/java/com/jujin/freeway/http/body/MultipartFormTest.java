@@ -28,12 +28,32 @@ class MultipartFormTest {
 
         MultipartForm form = MultipartForm.parse("multipart/form-data; boundary=" + boundary, body);
 
-        assertEquals("avatar", form.value("title"));
+        assertEquals("avatar", form.value("title").orElse(null));
         assertEquals(1, form.parts("file").size());
         MultipartForm.Part file = form.file("file").orElseThrow();
         assertTrue(file.isFile());
         assertEquals("hello.txt", file.filename());
         assertEquals("hello world", file.text());
         assertEquals(11, file.size());
+    }
+
+    @Test
+    void parsesFilenameWithSemicolonInQuotedString() throws Exception {
+        String boundary = "boundary123";
+        byte[] body = (
+                "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"file\"; filename=\"a;b.txt\"\r\n"
+                + "Content-Type: text/plain\r\n"
+                + "\r\n"
+                + "data\r\n"
+                + "--" + boundary + "--\r\n"
+        ).getBytes(StandardCharsets.ISO_8859_1);
+
+        MultipartForm form = MultipartForm.parse(
+                "multipart/form-data; boundary=" + boundary, body);
+        MultipartForm.Part file = form.file("file").orElseThrow();
+
+        assertEquals("a;b.txt", file.filename(),
+                "semicolons inside quoted strings must not split tokens");
     }
 }

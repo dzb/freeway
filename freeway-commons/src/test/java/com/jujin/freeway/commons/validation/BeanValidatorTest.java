@@ -1,5 +1,6 @@
 package com.jujin.freeway.commons.validation;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -216,5 +217,89 @@ class BeanValidatorTest {
     void recordIsAnnotated() {
         assertTrue(BeanValidator.isAnnotated(LoginRecord.class));
         assertTrue(BeanValidator.isAnnotated(UserRecord.class));
+    }
+
+    // --- @Valid with containers ---
+
+    static class OrderItem {
+        @NotBlank String name;
+        @Min(1) int quantity;
+    }
+
+    static class Order {
+        @Valid List<OrderItem> items;
+    }
+
+    static class MapOrder {
+        @Valid java.util.Map<String, OrderItem> entries;
+    }
+
+    static class ArrayOrder {
+        @Valid OrderItem[] tags;
+    }
+
+    static class OrderWithNullItems {
+        @Valid List<OrderItem> items;
+    }
+
+    @Test
+    void validatesCollectionElements() {
+        Order order = new Order();
+        order.items = List.of(new OrderItem() {{ name = ""; quantity = 0; }});
+
+        var result = BeanValidator.validate(order);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().startsWith("items[0]")));
+    }
+
+    @Test
+    void validatesMapValues() {
+        MapOrder order = new MapOrder();
+        order.entries = java.util.Map.of("a", new OrderItem() {{ name = ""; quantity = 0; }});
+
+        var result = BeanValidator.validate(order);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().contains(".a")));
+    }
+
+    @Test
+    void validatesArrayElements() {
+        ArrayOrder order = new ArrayOrder();
+        order.tags = new OrderItem[]{new OrderItem() {{ name = ""; quantity = 0; }}};
+
+        var result = BeanValidator.validate(order);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().startsWith("tags[0]")));
+    }
+
+    static class MapSized {
+        @Size(min = 1, max = 3)
+        java.util.Map<String, String> entries;
+    }
+
+    @Test
+    void sizeValidatesMapSize() {
+        MapSized obj = new MapSized();
+        obj.entries = java.util.Map.of();
+
+        var result = BeanValidator.validate(obj);
+        assertTrue(result.hasErrors(),
+                "empty Map should fail @Size(min=1): " + result.getErrors());
+
+        obj.entries = java.util.Map.of("a", "1", "b", "2", "c", "3", "d", "4");
+        result = BeanValidator.validate(obj);
+        assertTrue(result.hasErrors(),
+                "4-entry Map should fail @Size(max=3): " + result.getErrors());
+    }
+
+    @Test
+    void skipsNullElementsInContainers() {
+        OrderWithNullItems order = new OrderWithNullItems();
+        order.items = new java.util.ArrayList<>();
+        order.items.add(null);
+        order.items.add(new OrderItem() {{ name = "ok"; quantity = 1; }});
+
+        var result = BeanValidator.validate(order);
+        assertFalse(result.hasErrors(), "null elements should be skipped: " + result.getErrors());
     }
 }

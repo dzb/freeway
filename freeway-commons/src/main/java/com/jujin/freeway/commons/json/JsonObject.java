@@ -2,6 +2,7 @@ package com.jujin.freeway.commons.json;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -80,7 +81,7 @@ public final class JsonObject {
     }
 
     public Set<String> keySet() {
-        return Set.copyOf(values.keySet());
+        return new LinkedHashSet<>(values.keySet());
     }
 
     public Map<String, Object> toMap() {

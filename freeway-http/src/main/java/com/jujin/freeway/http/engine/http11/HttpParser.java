@@ -43,7 +43,14 @@ public final class HttpParser {
     }
 
     public ParsedRequest parse() throws IOException {
-        pos = 0; end = 0;
+        // Preserve unread bytes from previous pipelined request
+        if (pos > 0 && pos < end) {
+            System.arraycopy(buf, pos, buf, 0, end - pos);
+            end -= pos;
+        } else {
+            end = 0;
+        }
+        pos = 0;
 
         String requestLine = readRequestLine();
         if (requestLine == null || requestLine.isEmpty()) return null;
@@ -84,17 +91,30 @@ public final class HttpParser {
 
         Map<String, List<String>> headers = parseHeaders();
         long contentLength = -1;
-        boolean isChunked = false, keepAlive = !isHttp10, upgradeRequest = false;
+        boolean isChunked = false, keepAlive = !isHttp10;
+        boolean connectionUpgrade = false, upgradeWebsocket = false;
 
         for (var entry : headers.entrySet()) {
             switch (entry.getKey().toLowerCase(Locale.ROOT)) {
                 case "content-length" -> {
+                    if (contentLength >= 0) throw new IOException("Duplicate Content-Length header");
                     String v = entry.getValue().getFirst();
+                    if (entry.getValue().size() > 1) throw new IOException("Duplicate Content-Length values");
                     if (v != null) { try { contentLength = Long.parseLong(v); } catch (NumberFormatException e) { throw new IOException("Invalid Content-Length: " + v); } }
                 }
                 case "transfer-encoding" -> {
-                    String v = entry.getValue().getFirst();
-                    isChunked = v != null && "chunked".equalsIgnoreCase(v);
+                    for (String v : entry.getValue()) {
+                        if (v != null) {
+                            for (String token : v.split(",")) {
+                                token = token.trim();
+                                if ("chunked".equalsIgnoreCase(token)) {
+                                    isChunked = true;
+                                } else if (!token.isEmpty()) {
+                                    throw new IOException("Unsupported Transfer-Encoding: " + token);
+                                }
+                            }
+                        }
+                    }
                 }
                 case "connection" -> {
                     String v = entry.getValue().getFirst();
@@ -104,19 +124,24 @@ public final class HttpParser {
                             token = token.trim();
                             if ("keep-alive".equalsIgnoreCase(token)) keepAlive = true;
                             if ("close".equalsIgnoreCase(token)) keepAlive = false;
-                            if ("upgrade".equalsIgnoreCase(token)) upgradeRequest = true;
+                            if ("upgrade".equalsIgnoreCase(token)) connectionUpgrade = true;
                         }
                     }
                 }
                 case "upgrade" -> {
                     String v = entry.getValue().getFirst();
-                    if (v != null && "websocket".equalsIgnoreCase(v)) upgradeRequest = true;
+                    if (v != null && "websocket".equalsIgnoreCase(v)) upgradeWebsocket = true;
                 }
             }
         }
 
+        if (contentLength >= 0 && isChunked) {
+            throw new IOException("Invalid request: both Content-Length and Transfer-Encoding: chunked");
+        }
+
         return new ParsedRequest(method, path, queryString, httpVersion, headers,
-            contentLength, isChunked, isHttp10, keepAlive, upgradeRequest, false);
+            contentLength, isChunked, isHttp10, keepAlive,
+            connectionUpgrade && upgradeWebsocket, false);
     }
 
     // --- bulk-read helpers ---

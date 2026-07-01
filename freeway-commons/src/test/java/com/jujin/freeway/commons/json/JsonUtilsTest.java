@@ -4,8 +4,10 @@ import java.io.ByteArrayInputStream;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.ArrayDeque;
 import java.util.EnumMap;
@@ -403,6 +405,146 @@ class JsonUtilsTest {
         TemporalEntry roundTrip = JsonUtils.coerce(JsonUtils.parseObject(json), TemporalEntry.class);
 
         assertEquals(entry, roundTrip);
+    }
+
+    @Test
+    void transferQueueReturnsLinkedTransferQueue() {
+        Type type = new TypeRef<java.util.concurrent.TransferQueue<String>>() {}.type();
+        @SuppressWarnings("unchecked")
+        java.util.concurrent.TransferQueue<String> queue =
+            (java.util.concurrent.TransferQueue<String>) JsonUtils.coerce(
+                JsonUtils.parse("[\"alpha\"]"), type, COERCER);
+        assertNotNull(queue);
+        assertTrue(queue instanceof java.util.concurrent.LinkedTransferQueue,
+            "TransferQueue should return LinkedTransferQueue, got: " + queue.getClass());
+    }
+
+    @Test
+    void integerAccessorRejectsOutOfRangeNumber() {
+        JsonObject obj = JsonUtils.object().put("x", 3_000_000_000L);
+        assertThrows(IllegalArgumentException.class, () -> obj.getInt("x"));
+    }
+
+    @Test
+    void longValueRejectsBigIntegerOutOfRange() {
+        BigInteger huge = new java.math.BigInteger("99999999999999999999");
+        JsonObject obj = JsonUtils.object().put("x", huge);
+        assertThrows(IllegalArgumentException.class, () -> obj.getLong("x"));
+    }
+
+    @Test
+    void nullMapKeyThrows() {
+        java.util.Map<Object, String> map = new java.util.HashMap<>();
+        map.put(null, "value");
+        assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(map));
+    }
+
+    @Test
+    void stringifyDuration() {
+        String json = JsonUtils.stringify(java.time.Duration.ofMinutes(5));
+        assertEquals("\"PT5M\"", json);
+    }
+
+    @Test
+    void stringifyDate() {
+        String json = JsonUtils.stringify(new java.util.Date(0));
+        assertEquals("\"1970-01-01T00:00:00Z\"", json);
+    }
+
+    @Test
+    void stringifyOptionalInt() {
+        String json = JsonUtils.stringify(java.util.OptionalInt.of(3));
+        assertEquals("3", json);
+    }
+
+    @Test
+    void stringifyHandlesURI() {
+        String json = JsonUtils.stringify(java.net.URI.create("https://example.com"));
+        assertEquals("\"https://example.com\"", json);
+    }
+
+    @Test
+    void longValueRejectsNaN() {
+        JsonObject obj = JsonUtils.object().put("x", Double.NaN);
+        assertThrows(IllegalArgumentException.class, () -> obj.getLong("x"));
+        JsonObject obj2 = JsonUtils.object().put("x", Double.POSITIVE_INFINITY);
+        assertThrows(IllegalArgumentException.class, () -> obj2.getLong("x"));
+    }
+
+    @Test
+    void integerRejectsNaN() {
+        JsonObject obj = JsonUtils.object().put("x", Double.NaN);
+        assertThrows(IllegalArgumentException.class, () -> obj.getInt("x"));
+    }
+
+    @Test
+    void stringifyHandlesCharSequence() {
+        String json = JsonUtils.stringify(new StringBuilder("hello"));
+        assertEquals("\"hello\"", json,
+                "StringBuilder should serialize as a string");
+    }
+
+    @Test
+    void parseNumberAcceptsBigInteger() {
+        Object result = JsonUtils.parse("9223372036854775808"); // > Long.MAX_VALUE
+        assertEquals(new java.math.BigInteger("9223372036854775808"), result);
+    }
+
+    @Test
+    void jsonObjectKeySetPreservesInsertionOrder() {
+        JsonObject obj = JsonUtils.parseObject("{\"c\":1,\"b\":2,\"a\":3}");
+        assertEquals(List.of("c", "b", "a"), List.copyOf(obj.keySet()));
+    }
+
+    @Test
+    void concurrentNavigableMapReturnsConcurrentSkipListMap() {
+        Type type = new TypeRef<java.util.concurrent.ConcurrentNavigableMap<Integer, String>>() {}.type();
+        @SuppressWarnings("unchecked")
+        java.util.concurrent.ConcurrentNavigableMap<Integer, String> map =
+            (java.util.concurrent.ConcurrentNavigableMap<Integer, String>) JsonUtils.coerce(
+                JsonUtils.parse("{\"1\":\"alpha\"}"), type, COERCER);
+        assertNotNull(map);
+        assertTrue(map instanceof java.util.concurrent.ConcurrentSkipListMap,
+            "ConcurrentNavigableMap should return ConcurrentSkipListMap, got: " + map.getClass());
+    }
+
+    @Test
+    void blockingQueueReturnsLinkedBlockingQueue() {
+        Type type = new TypeRef<java.util.concurrent.BlockingQueue<String>>() {}.type();
+        @SuppressWarnings("unchecked")
+        java.util.concurrent.BlockingQueue<String> queue =
+            (java.util.concurrent.BlockingQueue<String>) JsonUtils.coerce(
+                JsonUtils.parse("[\"alpha\"]"), type, COERCER);
+        assertNotNull(queue);
+        assertTrue(queue instanceof java.util.concurrent.LinkedBlockingQueue,
+            "BlockingQueue should return LinkedBlockingQueue, got: " + queue.getClass());
+    }
+
+    @Test
+    void blockingDequeReturnsLinkedBlockingDeque() {
+        Type type = new TypeRef<java.util.concurrent.BlockingDeque<String>>() {}.type();
+        @SuppressWarnings("unchecked")
+        java.util.concurrent.BlockingDeque<String> deque =
+            (java.util.concurrent.BlockingDeque<String>) JsonUtils.coerce(
+                JsonUtils.parse("[\"alpha\"]"), type, COERCER);
+        assertNotNull(deque);
+        assertTrue(deque instanceof java.util.concurrent.LinkedBlockingDeque,
+            "BlockingDeque should return LinkedBlockingDeque, got: " + deque.getClass());
+    }
+
+    @Test
+    void booleanCoercionRejectsNonBooleanInput() {
+        // CoercerDefault accepts "yes"/"on"/"1" by design (config coercion).
+        // JSON booleans only accept "true"/"false". Test through JSON path:
+        JsonObject obj = JsonUtils.parseObject("{\"flag\": true}");
+        assertEquals(Boolean.TRUE, obj.getBoolean("flag"));
+
+        obj = JsonUtils.parseObject("{\"flag\": false}");
+        assertEquals(Boolean.FALSE, obj.getBoolean("flag"));
+
+        // "yes" is not valid JSON boolean
+        JsonObject bad = JsonUtils.parseObject("{\"flag\": \"yes\"}");
+        assertThrows(IllegalArgumentException.class, () -> bad.getBoolean("flag"));
     }
 
     @SuppressWarnings("unchecked")

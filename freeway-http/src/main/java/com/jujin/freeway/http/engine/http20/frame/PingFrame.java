@@ -26,5 +26,8 @@ public final class PingFrame extends BaseFrame {
         return new PingFrame(header, body);
     }
 
-    public void writeTo(OutputStream outputStream) throws IOException { header().writeTo(outputStream); }
+    public void writeTo(OutputStream outputStream) throws IOException {
+        header().writeTo(outputStream);
+        outputStream.write(body);
+    }
 }

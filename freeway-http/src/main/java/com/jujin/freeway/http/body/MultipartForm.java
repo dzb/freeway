@@ -82,8 +82,8 @@ public final class MultipartForm {
             .toList();
     }
 
-    public String value(String name) {
-        return values(name).stream().findFirst().orElse(null);
+    public java.util.Optional<String> value(String name) {
+        return values(name).stream().findFirst();
     }
 
     public boolean isEmpty() {
@@ -147,7 +147,7 @@ public final class MultipartForm {
         }
         String name = null;
         String filename = null;
-        for (String token : disposition.split(";")) {
+        for (String token : splitSemicolons(disposition)) {
             String item = token.trim();
             int eq = item.indexOf('=');
             if (eq <= 0) {
@@ -198,16 +198,36 @@ public final class MultipartForm {
         String boundaryMarker
     ) {
         String crlfMarker = "\r\n" + boundaryMarker;
-        int index = raw.indexOf(crlfMarker, fromIndex);
-        if (index >= 0) {
-            return new BoundaryHit(index, index + 2);
+        int searchFrom = fromIndex;
+        while (true) {
+            int index = raw.indexOf(crlfMarker, searchFrom);
+            if (index < 0) break;
+            int after = index + crlfMarker.length();
+            if (isBoundaryTerminator(raw, after)) {
+                return new BoundaryHit(index, index + 2);
+            }
+            searchFrom = index + crlfMarker.length();
         }
         String lfMarker = "\n" + boundaryMarker;
-        index = raw.indexOf(lfMarker, fromIndex);
-        if (index >= 0) {
-            return new BoundaryHit(index, index + 1);
+        searchFrom = fromIndex;
+        while (true) {
+            int index = raw.indexOf(lfMarker, searchFrom);
+            if (index < 0) break;
+            int after = index + lfMarker.length();
+            if (isBoundaryTerminator(raw, after)) {
+                return new BoundaryHit(index, index + 1);
+            }
+            searchFrom = index + lfMarker.length();
         }
         return null;
+    }
+
+    /** True if position is at CRLF (next part) or "--" (final boundary). */
+    private static boolean isBoundaryTerminator(String raw, int pos) {
+        if (pos >= raw.length()) return false;
+        if (raw.startsWith("\r\n", pos)) return true;
+        if (raw.startsWith("--", pos)) return true;
+        return false;
     }
 
     private static Separator findHeadersSeparator(String raw, int fromIndex) {
@@ -236,6 +256,22 @@ public final class MultipartForm {
             return index + 1;
         }
         return index;
+    }
+
+    private static List<String> splitSemicolons(String input) {
+        List<String> tokens = new ArrayList<>();
+        boolean inQuote = false;
+        int start = 0;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '"') inQuote = !inQuote;
+            else if (c == ';' && !inQuote) {
+                tokens.add(input.substring(start, i));
+                start = i + 1;
+            }
+        }
+        tokens.add(input.substring(start));
+        return tokens;
     }
 
     private static String unquote(String value) {

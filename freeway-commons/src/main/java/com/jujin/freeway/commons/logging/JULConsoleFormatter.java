@@ -69,11 +69,11 @@ public final class JULConsoleFormatter extends Formatter {
 
         // level — left-aligned, padded to fixed width so all lines align
         out.append(' ');
-        out.append(colorLevel(padRight(record.getLevel().getName(), LEVEL_WIDTH), record.getLevel()));
+        out.append(colorLevel(LoggingSupport.padRight(record.getLevel().getName(), LEVEL_WIDTH), record.getLevel()));
 
         // thread
         out.append(' ');
-        out.append(dim(formatThread()));
+        out.append(dim(LoggingSupport.formatThread()));
 
         // logger — abbreviated package, full class name
         out.append(' ');
@@ -82,7 +82,7 @@ public final class JULConsoleFormatter extends Formatter {
         // message
         out.append(' ');
         out.append(dim("- "));
-        out.append(record.getMessage() != null ? record.getMessage() : "");
+        out.append(super.formatMessage(record));
 
         // throwable
         if (record.getThrown() != null) {
@@ -94,11 +94,6 @@ public final class JULConsoleFormatter extends Formatter {
         return out.toString();
     }
 
-    @Override
-    public String formatMessage(LogRecord record) {
-        return super.formatMessage(record);
-    }
-
     // ── throwable ────────────────────────────────────────────────────
 
     private static final String EX_INDENT = "  ";
@@ -106,13 +101,25 @@ public final class JULConsoleFormatter extends Formatter {
     private String formatThrowable(Throwable thrown) {
         StringWriter sw = new StringWriter();
         PrintWriter pw = new PrintWriter(sw);
-        Throwable current = thrown;
+        formatThrowable(thrown, pw, java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>()));
+        pw.flush();
+        return sw.toString().stripTrailing();
+    }
+
+    private void formatThrowable(Throwable t, PrintWriter pw,
+                                  java.util.Set<Throwable> visited) {
+        if (!visited.add(t)) return;
+        Throwable current = t;
         boolean root = true;
         while (current != null) {
             if (root) {
                 pw.println(color(EX_INDENT + current.toString(), useColor ? RED : null));
                 root = false;
             } else {
+                if (!visited.add(current)) {
+                    pw.println(color(EX_INDENT + "Caused by: " + current.getClass().getSimpleName() + " [CIRCULAR]", useColor ? RED : null));
+                    break;
+                }
                 pw.print(color(EX_INDENT + "Caused by: ", useColor ? RED : null));
                 pw.println(color(current.toString(), useColor ? RED : null));
             }
@@ -121,21 +128,28 @@ public final class JULConsoleFormatter extends Formatter {
             }
             for (Throwable suppressed : current.getSuppressed()) {
                 renderSuppressed(suppressed, pw, EX_INDENT + "  Suppressed: ",
-                        EX_INDENT + "      at ");
+                        EX_INDENT + "      at ", visited);
             }
             current = current.getCause();
         }
-        pw.flush();
-        return sw.toString().stripTrailing();
     }
 
     private void renderSuppressed(Throwable t, PrintWriter pw,
-                                   String headerPrefix, String framePrefix) {
+                                   String headerPrefix, String framePrefix,
+                                   java.util.Set<Throwable> visited) {
+        if (!visited.add(t)) {
+            pw.println(color(headerPrefix + t.getClass().getSimpleName() + " [CIRCULAR]", useColor ? RED : null));
+            return;
+        }
         pw.println(color(headerPrefix + t, useColor ? RED : null));
         for (StackTraceElement frame : t.getStackTrace()) {
             pw.println(color(framePrefix + frame, useColor ? DIM : null));
         }
         for (Throwable cause = t.getCause(); cause != null; cause = cause.getCause()) {
+            if (!visited.add(cause)) {
+                pw.println(color(headerPrefix.replace("Suppressed:", "Caused by:") + cause.getClass().getSimpleName() + " [CIRCULAR]", useColor ? RED : null));
+                break;
+            }
             pw.println(color(headerPrefix.replace("Suppressed:", "Caused by:")
                     + cause, useColor ? RED : null));
             for (StackTraceElement frame : cause.getStackTrace()) {
@@ -143,7 +157,7 @@ public final class JULConsoleFormatter extends Formatter {
             }
         }
         for (Throwable nested : t.getSuppressed()) {
-            renderSuppressed(nested, pw, headerPrefix + "  ", framePrefix + "  ");
+            renderSuppressed(nested, pw, headerPrefix + "  ", framePrefix + "  ", visited);
         }
     }
 
@@ -157,8 +171,9 @@ public final class JULConsoleFormatter extends Formatter {
      * output or other non-interactive environments.
      */
     private static boolean detectColor() {
-        // https://no-color.org
-        if (isTruthy(System.getenv("NO_COLOR")) || isTruthy(System.getProperty("NO_COLOR"))) {
+        // https://no-color.org — NO_COLOR disables color when SET (any value, including empty)
+        if (System.getenv().containsKey("NO_COLOR")
+                || System.getProperty("NO_COLOR") != null) {
             return false;
         }
         // explicit override
@@ -168,10 +183,6 @@ public final class JULConsoleFormatter extends Formatter {
         if ("never".equalsIgnoreCase(override)) return false;
 
         return System.console() != null;
-    }
-
-    private static boolean isTruthy(String value) {
-        return value != null && !value.isBlank();
     }
 
     // ── color helpers ────────────────────────────────────────────────
@@ -205,34 +216,26 @@ public final class JULConsoleFormatter extends Formatter {
 
     // ── utilities ────────────────────────────────────────────────────
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> ABBREV_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Abbreviate first 3 segments (groupId) to first letter, keep the rest intact. */
     private static String abbreviate(String fqn) {
-        String[] parts = fqn.split("\\.");
-        if (parts.length <= 3) return fqn;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 3; i++) sb.append(parts[i].charAt(0)).append('.');
-        for (int i = 3; i < parts.length; i++) {
-            sb.append(parts[i]);
-            if (i < parts.length - 1) sb.append('.');
-        }
-        return sb.toString();
+        return ABBREV_CACHE.computeIfAbsent(fqn, k -> {
+            String[] parts = k.split("\\.");
+            if (parts.length <= 3) return k;
+            StringBuilder sb = new StringBuilder(k.length());
+            for (int i = 0; i < 3; i++) {
+                String p = parts[i];
+                if (p.isEmpty()) return k; // consecutive dots → use full name
+                sb.append(p.charAt(0)).append('.');
+            }
+            for (int i = 3; i < parts.length; i++) {
+                sb.append(parts[i]);
+                if (i < parts.length - 1) sb.append('.');
+            }
+            return sb.toString();
+        });
     }
 
-    /**
-     * Formats the current thread name for log output.
-     * Falls back to {@code #threadId} for unnamed virtual threads.
-     */
-    private static String formatThread() {
-        Thread t = Thread.currentThread();
-        String name = t.getName();
-        if (name != null && !name.isBlank()) {
-            return '[' + name + ']';
-        }
-        return "[#" + t.threadId() + ']';
-    }
-
-    private static String padRight(String s, int n) {
-        if (s.length() >= n) return s;
-        return s + " ".repeat(n - s.length());
-    }
 }
