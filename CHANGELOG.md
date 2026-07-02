@@ -9,38 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`@Marker` mechanism** — annotation-based service disambiguation at the IoC layer. `@Marker(Builtin.class)` on modules propagates to all bindings; `bind().marker(Fast.class)` attaches markers to individual services; `container.get(type, markers)` resolves by marker intersection. Builtin, Primary, and custom markers all share the same `MarkerIndex`.
-- **`@FlowMarker`** — string-based marker annotation for `TaskComponent` resolution. Graph nodes reference tasks via `!markerName` syntax. `FlowMarkerIndex` resolves the best-matching handler with `containsAll` semantics — most markers wins. Replaces the typed-task registration mechanism.
-- **`GraphSpec2`** (v2 graph blueprint) — canonical DAG authoring surface with explicit `entry`, top-level `nodes` + `links` (edges separated from nodes), and `normalize()` validation. `Graph.fromText()` auto-detects v1/v2 JSON format so callers never need to choose.
-- **`GraphSpec2.normalize()`** — validates all link references resolve to real nodes; BFS reachability from entry; logs warnings for unreachable subgraphs. Applied automatically at `create()` time for both v1 (via internal conversion) and v2 paths.
-- **`H2ResponseBridge`** — decouples `FreewayHttpContext` from `Http2Stream`. Headers flow through the bridge as a shared map; the stream writes them as HTTP/2 HEADERS frames on first DATA write. Enables clean mock-based testing of H2 context behavior.
-- **CLI convenience prefix** — CLI args without a dot (e.g. `--profile=dev`) auto-receive the `freeway.` prefix. Dotted keys pass through unchanged.
-- **HTTPS auto-configuration** — `HttpModule` now reads `freeway.http.ssl.*` config keys and automatically creates an HTTPS engine with TLS 1.3 when `ssl.enabled=true`. Supports PKCS12/JKS keystores and HTTP/2 over TLS via ALPN. `WebServerBuilder` gains `.sslContext()` convenience method.
-- **Canonical contribution id** — `binder.contribute(Foo.class).add(FooImpl.class)` auto-generates the id as `snake_case_simple_name@package_name` (e.g. `email_sender@com.example.flow`), unique and readable without `Class.forName`.
+- **`GraphSpec2`** (v2 graph definition) — canonical DAG format with explicit `entry`, separated `nodes` + `links`, and `normalize()` validation (link references, BFS reachability). Designed as the primary authoring surface going forward.
+- **`@Marker` service disambiguation** — `@Marker(Builtin.class)` on modules, `bind().marker(Fast.class)` on individual bindings, `container.get(type, marker)` for resolution. `MarkerIndex` with `containsAll` semantics. Extends Flow with `@FlowMarker` for `!markerName` task resolution, replacing the removed typed-task mechanism.
+- **`H2ResponseBridge`** — decouples `FreewayHttpContext` response writing from `Http2Stream`, enabling mock testing of H2 response paths.
+- **JUL file logging** — `JULFileHandler` with time+size dual rotation, async GZIP compression; `JULFileFormatter` with ISO 8601 timestamps.
+- **`Contributions.add(Class)`** — auto-generates canonical id as `snake_name@package`, ordering via `before`/`after`.
 
 ### Changed
 
-- **Flow v1/v2 unified build path** — `GraphSpec.create()` internally converts to `GraphSpec2`, eliminating duplicate `Graph`/`Node`/`Link` constructors. `Graph.fromText()` auto-detects format. Runtime model has a single constructor path: `Graph(GraphSpec2)`.
-- **Renamed** — `GraphBlueprint` → `GraphSpec2`, `NodeBlueprint` → `NodeSpec2`, `LinkBlueprint` → `LinkSpec2`.
-- **Typed task registration removed** — `register(Class<?>, TaskComponent)` and `typedTasks()` removed from `FlowEngine`. All task resolution goes through `!markerName` (marker intersection) or `@beanName` (container binding id).
-- **`IocContainerAdapter` simplified** — reduced from multi-path iteration (FQN, canonical name, FlowMarker) to a single `container.get(TaskComponent.class, name)` call. Contributed handlers are auto-registered in the marker index via `engine.register(handler)`.
-- **Response serialization optimizations** — Status code digits and Content-Length digits pre-computed as `byte[]` caches, eliminating per-request `String.valueOf()` + `.getBytes()` allocations. Common error response bodies (404, 500) and health check body pre-computed.
-- **Header key normalization** — HTTP/1.1 parser now normalizes header keys to all lowercase per RFC 7230.
-- **Header value OWS tolerance** — Trailing whitespace stripped from header values per RFC 7230 §3.2.6.
-- **HEAD response Content-Length** — HEAD responses now report the same Content-Length as GET would (RFC 7231 §4.3.2).
-- **Connection header token-list** — Parsed as comma-separated token list per RFC 7230 §6.1.
-- **Five-module polish** — flow, ioc, http, db, commons: added strategic comments (lock striping, transaction+Defer interaction, pool shutdown phases, query parameter expansion), fixed typos (`prevSetp`→`prevStep`, `nextSetp`→`nextStep`), cleaned FQN references across 10+ files.
-- **Container lifecycle logging** — `close()` now logs module count at info level.
+- **Flow v1/v2 unified** — `GraphSpec.create()` internally converts to `GraphSpec2`, eliminating duplicate `Graph`/`Node`/`Link` constructors. Runtime always builds through `Graph(GraphSpec2)`. `Graph.fromText()` auto-detects format. Renamed `GraphBlueprint`→`GraphSpec2`.
+- **Typed-task removed** — task resolution consolidated under `!markerName` (marker intersection) and `@beanName` (container lookup). `FlowEngine.register(Class, TaskComponent)` / `typedTasks()` removed.
+- **`Container` API refined** — `instantiate()` renamed to `create()`; `inject()` removed from public API; `RouteIndex` no longer depends on `Container`.
+- **SLF4J bootstrap decoupled** — `JULEnhancer` activates JUL enhancements unconditionally; SLF4J bridge only installs when no external provider (Logback/Log4j) is detected. `LogBootstrap` simplified to `ensureProvider()`.
+- **`DbModule` config centralized** — config reading delegates to `SymbolSource` + `Coercer` pair, eliminating scattered `parseInt`/`parseBool` helpers.
 
 ### Fixed
 
-- Response header injection hardening — `headerSet()` validates no `\r`/`\n` in values.
-- **HTTP/2 frame fixes** — `DataFrame` PADDED off-by-one, `PingFrame.writeTo` body reference, `WindowUpdateFrame` 31-bit masking, HPACK integer bounds check, header name lowercase enforcement, dynamic table byte-size tracking.
-- **WebSocket fixes** — strict UTF-8 validation on text frames, close code reserved range rejection, close reason UTF-8 validation, 8-byte extended length for payloads >65535, fragmented message assembly with fragType tracking.
-- **HttpParser fixes** — duplicate `Content-Length` rejection, `Transfer-Encoding` comma+unknown rejection, pipeline buffer preservation, truncated request line/header EOF rejection, Upgrade requires both `Connection: Upgrade` AND `Upgrade: websocket`.
-- **Lifecycle fixes** — `Scope.close()` null value filter, `findOwnerBinding` walks full interface hierarchy recursively, module dedup uses `IdentityHashMap` instead of `HashSet<Class<?>>`.
-- **Logging fixes** — SLF4J state constant corrected (FAILED→SUCCESSFUL), `JULFileFormatter` ANSI codes stripped, GZIP compression on daemon thread, `formatOverride()` whitespace trimming restored.
-- **Coercion fixes** — NaN/Infinity guards in `JsonAccessors`, `BigInteger`/`BigDecimal` range checks in `CoercerDefault`, narrow overflow rejection, `@Min`/`@Max` BigDecimal comparison, `@Size` Map support.
+- **HTTP/1.1 parser hardening** — duplicate `Content-Length` rejection, `Transfer-Encoding` comma+unknown rejection, pipeline buffer preservation, truncated request/header rejection, `Upgrade` requires both `Connection: Upgrade` and `Upgrade: websocket`.
+- **HTTP/2 frame correctness** — `DataFrame` PADDED off-by-one, `PingFrame.writeTo` body, `WindowUpdateFrame` 31-bit masking, HPACK integer bounds/header lowercase/dynamic table tracking.
+- **WebSocket strict compliance** — UTF-8 validation on text frames, close code reserved range rejection, extended 8-byte length for >65535 payloads, fragmented message assembly.
+- **Coercion edge cases** — NaN/Infinity/BigInteger/BigDecimal guards, narrow overflow rejection, `@Min`/`@Max` BigDecimal comparison, `@Size` Map support, Optional/OptionalInt/OptionalLong/OptionalDouble coercion.
+- **IoC lifecycle** — `findOwnerBinding` walks full interface hierarchy; module dedup uses `IdentityHashMap`; PROTOTYPE+advise routes through `createAdvised()`; thread scope cycle detection.
+- **Logging** — SLF4J state constants corrected; GZIP on daemon thread; `formatOverride()` whitespace preserved.
+- **Multipart** — boundary terminator validation, semicolons in quoted strings.
+- **SSE** — `\r` handling, field injection prevention.
+
+### Removed
+
+- `FlowEngine.register(Class<?>, TaskComponent)` and `typedTasks()` — superseded by `@FlowMarker`.
+- `Container.inject()` public API.
+
+## [1.2.2] — 2026-06-28
+
+### Removed
+
+- `@Named` annotation — superseded by `@Inject("id")`.
 
 ## [1.2.1] — 2026-06-23
 
