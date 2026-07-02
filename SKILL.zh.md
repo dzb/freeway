@@ -20,10 +20,9 @@ freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipa
 freeway-db          JDBC：ORM、连接池、事务、SQL 构建器、迁移
   └ 外部连接池        HikariCP → 见 freeway-ext
 
-第三方库适配器（freeway-http-jetty, freeway-http-undertow,
-freeway-db-hikari, freeway-mq-kafka）已拆分到独立仓库
-[freeway-ext](https://github.com/dzb/freeway-ext)。
-Robaho 引擎适配器已移除。核心模块 SLF4J 以外零外部依赖。
+第三方库适配器（freeway-http-undertow, freeway-db-hikari, freeway-mq-kafka）
+在 [freeway-ext](https://github.com/dzb/freeway-ext) 独立维护。
+核心模块 SLF4J 以外零外部依赖。
 ```
 
 ## 启动应用
@@ -86,7 +85,7 @@ public class AppModule implements ModuleEx {
 |------|------|
 | `Container` | 服务查找：`get(Class)`, `get(Class, id)`, `get(Class, Annotation...)`, `extension()`, `create()` |
 | `Binder` | 绑定与贡献 DSL，在 `ModuleEx.bind()` 中接收 |
-| `Binding<T>` | 绑定配置链：`to()` → `scope()` → `id()` → `primary()` → `advise()` |
+| `Binding<T>` | 绑定配置链：`to()` → `scope()` → `id()` → `primary()` → `marker()` → `advise()` |
 | `ModuleEx` | `@FunctionalInterface`，模块入口：`void bind(Binder)` |
 | `Freeway` | 容器启动：`Freeway.create(ModuleEx...)` |
 | `Scoping` | `Scoping.within()` 进入 Thread 作用域 |
@@ -629,20 +628,13 @@ binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
 内置 `/healthz` 端点，可插拔：
 
 ```java
-// 默认：返回 {"status": "ok"}
+// 默认：HealthCheck.Default 返回 {"status": "ok"}
 // 自定义：绑定 HealthCheck 实现
-@FunctionalInterface
-public interface HealthCheck {
-    Object check();
-}
-
 binder.bind(HealthCheck.class).to(c -> () -> {
-    // 检查 DB、外部服务等
-    DataSource ds = c.get(DataSource.class);
-    try (var conn = ds.getConnection()) {
-        if (!conn.isValid(3)) return Map.of("status", "degraded", "db", "unreachable");
-    }
-    return Map.of("status", "ok", "db", "connected");
+    Database db = c.get(Database.class);
+    boolean ok = db.ping();
+    return Map.of("status", ok ? "ok" : "degraded",
+                  "db", ok ? "connected" : "unreachable");
 }).primary();
 ```
 
@@ -758,7 +750,7 @@ PoolConfig config = PoolConfig.defaults(url, user, pass);
 //         maxLifetime(30min), maxIdleTime(10min), cleanInterval(2min)
 ```
 
-IoC 下通过 `freeway.db.pool` 选择：`builtin`（默认）或 `hikari`。
+IoC 下通过 `.primary()` 模式选择：`PoolDefault`（默认）或引入 `HikariPoolModule` 切换。
 
 ### 数据库方言
 
