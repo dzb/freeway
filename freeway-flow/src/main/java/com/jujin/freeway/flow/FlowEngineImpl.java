@@ -89,7 +89,16 @@ public class FlowEngineImpl implements FlowEngine {
     // --- graph ---
 
     @Override
-    public void load(Graph graph) { graphMap.put(graph.getId(), graph); }
+    public void load(Graph graph) {
+        String id = Objects.requireNonNull(graph, "graph").getId();
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Graph id must not be blank");
+        }
+        if (graphMap.containsKey(id)) {
+            throw new IllegalArgumentException("Graph already loaded: " + id);
+        }
+        graphMap.put(id, graph);
+    }
 
     @Override
     public void unload(String graphId) { graphMap.remove(graphId); }

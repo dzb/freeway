@@ -54,6 +54,9 @@ public class GraphSpec2 {
     }
 
     public GraphSpec2(String id, String title, String driver) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Graph id must not be blank");
+        }
         this.id = id;
         this.title = title;
         this.driver = driver;
@@ -112,6 +115,10 @@ public class GraphSpec2 {
     }
 
     public NodeSpec2 addNode(String id, NodeType type) {
+        if (nodes.containsKey(id)) {
+            throw new IllegalArgumentException(
+                "Duplicate node id '" + id + "' in graph: " + this.id);
+        }
         NodeSpec2 node = new NodeSpec2(this, id, type);
         nodes.put(id, node);
         return node;
