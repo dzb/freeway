@@ -1,7 +1,6 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.v1.LinkSpec;
-import com.jujin.freeway.flow.v2.GraphBlueprint;
+import com.jujin.freeway.flow.v2.GraphSpec2;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -25,23 +24,7 @@ public class Link implements Comparable<Link> {
     private final ConditionDesc when;
     private Node prevNode, nextNode;
 
-    public Link(Graph graph, String prevId, LinkSpec spec) {
-        this.graph = graph;
-        this.prevId = prevId;
-
-        this.nextId = spec.getNextId();
-        this.title = spec.getTitle();
-        this.priority = spec.getPriority();
-        this.when = new ConditionDesc(graph, spec.getWhen(), spec.getWhenComponent());
-
-        if (spec.getMeta() == null) {
-            this.metas = Collections.emptyMap();
-        } else {
-            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.getMeta()));
-        }
-    }
-
-    public Link(Graph graph, String prevId, GraphBlueprint.LinkBlueprint spec) {
+    public Link(Graph graph, String prevId, GraphSpec2.LinkSpec2 spec) {
         this.graph = graph;
         this.prevId = prevId;
 

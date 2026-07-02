@@ -7,23 +7,21 @@ import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.migration.MigrationRunner;
-import com.jujin.freeway.db.schema.Dialect;
-import com.jujin.freeway.db.schema.MySqlDialect;
-import com.jujin.freeway.db.schema.PostgresDialect;
-import com.jujin.freeway.db.schema.Schema;
-import com.jujin.freeway.db.schema.SqliteDialect;
-import com.jujin.freeway.db.schema.SchemaEntity;
+import com.jujin.freeway.db.schema.*;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.annotation.Builtin;
+import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * IoC module that integrates {@code freeway-db} with the Freeway container.
@@ -39,6 +37,7 @@ import org.slf4j.LoggerFactory;
  *   <li>RuntimeHook that runs Schema auto-DDL and migrations before the HTTP server starts</li>
  * </ul>
  */
+@Marker(Builtin.class)
 public final class DbModule implements ModuleEx {
 
     private static final Logger LOG = LoggerFactory.getLogger(DbModule.class);

@@ -4,13 +4,14 @@ import com.jujin.freeway.ioc.Binding;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.advisor.Advisor;
-import java.util.ArrayList;
-import java.util.List;
+import com.jujin.freeway.ioc.annotation.Primary;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Modifier;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.Objects;
-import java.lang.reflect.Modifier;
 
 final class BindingImpl<T> implements Binding<T> {
     private static final AtomicInteger ID_COUNTER = new AtomicInteger();
@@ -23,6 +24,8 @@ final class BindingImpl<T> implements Binding<T> {
     private T instance;
     private boolean primary;
     private final List<AdviceEntry> advices = new ArrayList<>();
+    private final Set<Class<?>> markers = new HashSet<>();
+    private Class<?> sourceModule;
 
     BindingImpl(ContainerImpl container, Class<T> type) {
         this.container = Objects.requireNonNull(container, "container");
@@ -50,6 +53,28 @@ final class BindingImpl<T> implements Binding<T> {
         return type.isInterface() && scope != Scope.PROTOTYPE;
     }
 
+    Set<Class<?>> markers() {
+        return Collections.unmodifiableSet(markers);
+    }
+
+    Class<?> sourceModule() {
+        return sourceModule;
+    }
+
+    void setSourceModule(Class<?> moduleClass) {
+        this.sourceModule = moduleClass;
+    }
+
+    /**
+     * Adds markers directly (used by BinderImpl for module-level propagation).
+     */
+    void addMarkers(Set<Class<?>> additional) {
+        for (Class<?> m : additional) {
+            MarkerIndex.validateMarkerAnnotation(m);
+        }
+        this.markers.addAll(additional);
+    }
+
     List<AdviceEntry> advices() {
         return List.copyOf(advices);
     }
@@ -67,6 +92,7 @@ final class BindingImpl<T> implements Binding<T> {
     @Override
     public Binding<T> to(Class<? extends T> implementation) {
         Class<? extends T> actual = Objects.requireNonNull(implementation, "implementation");
+        addMarkers(MarkerIndex.extractClassMarkers(actual));
         setProvider(ignored -> {
             try {
                 return container.constructInstance(actual);
@@ -111,6 +137,16 @@ final class BindingImpl<T> implements Binding<T> {
     @Override
     public Binding<T> primary() {
         this.primary = true;
+        this.markers.add(Primary.class);
+        return this;
+    }
+
+    @Override
+    public Binding<T> marker(Class<? extends Annotation>... markerAnnotations) {
+        for (Class<? extends Annotation> m : markerAnnotations) {
+            MarkerIndex.validateMarkerAnnotation(m);
+            this.markers.add(m);
+        }
         return this;
     }
 

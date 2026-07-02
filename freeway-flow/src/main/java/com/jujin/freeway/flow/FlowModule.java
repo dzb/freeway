@@ -2,21 +2,26 @@ package com.jujin.freeway.flow;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scope;
+import com.jujin.freeway.ioc.annotation.Builtin;
+import com.jujin.freeway.ioc.annotation.Marker;
 
 /**
  * Flow 引擎的 Freeway IoC 适配模块。
  *
- * <p>迁移说明：
+ * <p>安装此模块后，容器内：
  * <ul>
- *   <li>把 FlowEngine 作为 Freeway 的显式绑定项注册到 {@link Container}，替代 Solon 风格的组件发现。</li>
- *   <li>通过 {@link IocContainerAdapter} 把 Freeway 容器映射到 flow 侧的组件解析接口。</li>
- *   <li>保留 {@link TaskComponent} 的类型化注册，方便把既有任务处理器直接挂到迁移后的引擎上。</li>
+ *   <li>{@link FlowEngine} 作为单例绑定，自动装配 {@link FlowDriverDefault}
+ *       和 {@link IocContainerAdapter}</li>
+ *   <li>通过 {@code binder.contribute(TaskComponent.class)} 贡献的
+ *       handler 自动注册到引擎的 {@link FlowMarkerIndex}，
+ *       可通过 {@code !markerName} 引用</li>
+ *   <li>{@code @beanName} 引用走 {@code container.get(TaskComponent.class, name)}
+ *       ——适用于显式绑定了 id 的场景</li>
  * </ul>
- * 这样改是为了让 flow-engine 作为移植模块在 Freeway 内可直接安装、可直接使用。</p>
  */
+@Marker(Builtin.class)
 public class FlowModule implements ModuleEx {
 
     @Override
@@ -27,17 +32,13 @@ public class FlowModule implements ModuleEx {
                     engine.register(new FlowDriverDefault(
                             new IocContainerAdapter(container),
                             null));
-                    registerTypedTasks(engine, container);
+                    // Register contributed TaskComponents in the marker index
+                    for (var handler : container.extension(TaskComponent.class).all()) {
+                        engine.register(handler);
+                    }
                     return engine;
                 })
                 .scope(Scope.SINGLETON);
-    }
-
-    private void registerTypedTasks(FlowEngine engine, Container container) {
-        var ext = container.extension(TaskComponent.class);
-        for (var handler : ext.all()) {
-            engine.register(handler.getClass(), handler);
-        }
     }
 
     static class IocContainerAdapter implements FlowContainer {
@@ -49,27 +50,11 @@ public class FlowModule implements ModuleEx {
 
         @Override
         public Object getComponent(String componentName) {
-            // try FQCN first
             try {
-                Class<?> clz = Class.forName(componentName);
-                return fwContainer.get(clz);
-            } catch (ClassNotFoundException e) {
-                // not a FQCN — fall through
-            }
-
-            // try by name/id through the container's extension registry
-            try {
-                var ext = fwContainer.extension(TaskComponent.class);
-                for (var handler : ext.all()) {
-                    if (componentName.equals(handler.getClass().getSimpleName())) {
-                        return handler;
-                    }
-                }
+                return fwContainer.get(TaskComponent.class, componentName);
             } catch (Exception ignored) {
-                // extension lookup is best-effort
+                return null;
             }
-
-            return null;
         }
     }
 }

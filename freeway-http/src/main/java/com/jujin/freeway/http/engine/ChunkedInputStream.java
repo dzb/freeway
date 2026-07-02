@@ -41,7 +41,7 @@ public final class ChunkedInputStream extends InputStream {
             remaining = readChunkHeader();
             if (remaining == 0) {
                 eof = true;
-                consumeCRLF();
+                consumeTrailers();
                 return -1;
             }
             needToReadHeader = false;
@@ -142,5 +142,27 @@ public final class ChunkedInputStream extends InputStream {
         if (c != CR) throw new IOException("Invalid chunk end: expected CR");
         c = (char) in.read();
         if (c != LF) throw new IOException("Invalid chunk end: expected LF");
+    }
+
+    /** Reads and discards optional trailer headers after the final chunk. */
+    private void consumeTrailers() throws IOException {
+        while (true) {
+            int cr = in.read();
+            if (cr == -1) return;
+            if (cr == CR) {
+                int lf = in.read();
+                if (lf == LF) return; // empty line → end of trailers
+                // trailer header — keep reading this line
+                // CR not followed by LF — put back or continue
+            }
+            // skip trailer line until CRLF
+            int prev = cr;
+            while (true) {
+                int c = in.read();
+                if (c == -1) return;
+                if (prev == CR && c == LF) break;
+                prev = c;
+            }
+        }
     }
 }

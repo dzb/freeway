@@ -4,9 +4,15 @@ import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
+/**
+ * Hand-written recursive-descent JSON parser — zero allocations from
+ * intermediate DOM nodes. Produces either a raw {@code Map/List/String/Number}
+ * or the lightweight {@link JsonObject}/{@link JsonArray} wrappers.
+ */
 final class JsonParser {
     /**
      * Maximum nesting depth for JSON objects and arrays.
@@ -272,7 +278,7 @@ final class JsonParser {
             } catch (NumberFormatException ex) {
                 if (!decimal) {
                     try {
-                        return new java.math.BigInteger(text);
+                        return new BigInteger(text);
                     } catch (NumberFormatException ignored) {
                         // fall through to error
                     }

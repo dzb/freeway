@@ -1,20 +1,12 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.commons.scoped.Defer;
-import com.jujin.freeway.db.BatchQuery;
-import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
-import com.jujin.freeway.db.ExecuteResult;
-import com.jujin.freeway.db.IsolationLevel;
-import com.jujin.freeway.db.Pool;
-import com.jujin.freeway.db.PoolConfig;
-import com.jujin.freeway.db.PooledConnection;
-import com.jujin.freeway.db.Query;
-import com.jujin.freeway.db.Transactional;
+import com.jujin.freeway.db.*;
 import com.jujin.freeway.db.util.SqlTextParser;
-import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.sql.SQLException;
 
 public final class DatabaseImpl implements Database {
 
@@ -77,6 +69,13 @@ public final class DatabaseImpl implements Database {
         transaction(null, work);
     }
 
+    /**
+     * Runs {@code work} inside a JDBC transaction.
+     *
+     * <p>The transaction wraps via {@link Defer#within} so events published
+     * during the work are buffered and only drained after commit — if the
+     * transaction rolls back, the events are discarded.
+     */
     @Override
     public void transaction(IsolationLevel isolation, Transactional work) {
         if (TX_CONN.isBound()) {

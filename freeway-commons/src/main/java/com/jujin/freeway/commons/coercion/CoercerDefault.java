@@ -2,6 +2,10 @@ package com.jujin.freeway.commons.coercion;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -167,29 +171,29 @@ public final class CoercerDefault implements Coercer {
             entry(UUID.class, v -> UUID.fromString(String.valueOf(v))),
 
             // -- uri / url / path / locale --
-            entry(java.net.URI.class, v -> java.net.URI.create(String.valueOf(v))),
-            entry(java.net.URL.class, CoercerDefault::coerceToURL),
-            entry(java.nio.file.Path.class, v -> java.nio.file.Paths.get(String.valueOf(v))),
-            entry(java.util.Locale.class, v -> java.util.Locale.forLanguageTag(String.valueOf(v))),
+            entry(URI.class, v -> URI.create(String.valueOf(v))),
+            entry(URL.class, CoercerDefault::coerceToURL),
+            entry(Path.class, v -> Paths.get(String.valueOf(v))),
+            entry(Locale.class, v -> Locale.forLanguageTag(String.valueOf(v))),
 
             // -- optional primitives --
-            entry(java.util.OptionalInt.class, v -> v == null
-                ? java.util.OptionalInt.empty()
-                : java.util.OptionalInt.of(((Number) v).intValue())),
-            entry(java.util.OptionalLong.class, v -> v == null
-                ? java.util.OptionalLong.empty()
-                : java.util.OptionalLong.of(((Number) v).longValue())),
-            entry(java.util.OptionalDouble.class, v -> v == null
-                ? java.util.OptionalDouble.empty()
-                : java.util.OptionalDouble.of(((Number) v).doubleValue())),
-            entry(java.util.Optional.class, v -> java.util.Optional.ofNullable(v)),
+            entry(OptionalInt.class, v -> v == null
+                ? OptionalInt.empty()
+                : OptionalInt.of(((Number) v).intValue())),
+            entry(OptionalLong.class, v -> v == null
+                ? OptionalLong.empty()
+                : OptionalLong.of(((Number) v).longValue())),
+            entry(OptionalDouble.class, v -> v == null
+                ? OptionalDouble.empty()
+                : OptionalDouble.of(((Number) v).doubleValue())),
+            entry(Optional.class, v -> Optional.ofNullable(v)),
 
             // -- duration --
             entry(Duration.class, CoercerDefault::coerceToDuration)
         );
 
-    private static java.net.URL coerceToURL(Object value) {
-        try { return java.net.URI.create(String.valueOf(value)).toURL(); }
+    private static URL coerceToURL(Object value) {
+        try { return URI.create(String.valueOf(value)).toURL(); }
         catch (Exception e) { throw new IllegalArgumentException("Cannot coerce to URL: " + value, e); }
     }
 
@@ -322,9 +326,9 @@ public final class CoercerDefault implements Coercer {
         }
         // Guard against BigInteger/BigDecimal overflow for integral targets
         if (targetType != Double.class && targetType != Float.class) {
-            if (n instanceof java.math.BigInteger bi) {
+            if (n instanceof BigInteger bi) {
                 checkRange(bi, targetType);
-            } else if (n instanceof java.math.BigDecimal bd) {
+            } else if (n instanceof BigDecimal bd) {
                 checkRange(bd, targetType);
             }
         }
@@ -337,24 +341,24 @@ public final class CoercerDefault implements Coercer {
         return null;
     }
 
-    private static void checkRange(java.math.BigInteger bi, Class<?> targetType) {
+    private static void checkRange(BigInteger bi, Class<?> targetType) {
         if (targetType == Integer.class || targetType == int.class) {
-            if (bi.compareTo(java.math.BigInteger.valueOf(Integer.MAX_VALUE)) > 0
-                    || bi.compareTo(java.math.BigInteger.valueOf(Integer.MIN_VALUE)) < 0)
+            if (bi.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0
+                    || bi.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0)
                 throw new IllegalArgumentException("Cannot coerce " + bi + " to Integer");
         } else if (targetType == Short.class || targetType == short.class) {
-            if (bi.compareTo(java.math.BigInteger.valueOf(Short.MAX_VALUE)) > 0
-                    || bi.compareTo(java.math.BigInteger.valueOf(Short.MIN_VALUE)) < 0)
+            if (bi.compareTo(BigInteger.valueOf(Short.MAX_VALUE)) > 0
+                    || bi.compareTo(BigInteger.valueOf(Short.MIN_VALUE)) < 0)
                 throw new IllegalArgumentException("Cannot coerce " + bi + " to Short");
         } else if (targetType == Byte.class || targetType == byte.class) {
-            if (bi.compareTo(java.math.BigInteger.valueOf(Byte.MAX_VALUE)) > 0
-                    || bi.compareTo(java.math.BigInteger.valueOf(Byte.MIN_VALUE)) < 0)
+            if (bi.compareTo(BigInteger.valueOf(Byte.MAX_VALUE)) > 0
+                    || bi.compareTo(BigInteger.valueOf(Byte.MIN_VALUE)) < 0)
                 throw new IllegalArgumentException("Cannot coerce " + bi + " to Byte");
         }
     }
 
-    private static void checkRange(java.math.BigDecimal bd, Class<?> targetType) {
-        java.math.BigInteger bi = bd.toBigInteger();
+    private static void checkRange(BigDecimal bd, Class<?> targetType) {
+        BigInteger bi = bd.toBigInteger();
         checkRange(bi, targetType);
     }
 

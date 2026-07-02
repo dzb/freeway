@@ -1,7 +1,6 @@
 package com.jujin.freeway.flow;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -22,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class FlowEngineImpl implements FlowEngine {
     protected final Map<String, Graph> graphMap;
     protected final Map<String, FlowDriver> driverMap;
-    protected final Map<Class<?>, TaskComponent> typedTasks = new ConcurrentHashMap<>();
+    protected final FlowMarkerIndex markerIndex = new FlowMarkerIndex();
     protected FlowDriver driverDef;
     protected final List<FlowOptions.RankedInterceptor> interceptorList;
 
@@ -63,13 +62,15 @@ public class FlowEngineImpl implements FlowEngine {
     }
 
     @Override
-    public void register(Class<?> taskType, TaskComponent handler) {
-        if (taskType != null && handler != null) typedTasks.put(taskType, handler);
+    public void register(TaskComponent handler) {
+        if (handler != null) {
+            markerIndex.register(handler);
+        }
     }
 
     @Override
-    public Map<Class<?>, TaskComponent> typedTasks() {
-        return typedTasks;
+    public FlowMarkerIndex markerIndex() {
+        return markerIndex;
     }
 
     // --- interceptor ---
@@ -213,7 +214,7 @@ public class FlowEngineImpl implements FlowEngine {
         }
 
         if (!exchanger.isReverting()) {
-            if (!exchanger.nextSetp(node)) {
+            if (!exchanger.nextStep(node)) {
                 exchanger.stop();
                 return;
             }

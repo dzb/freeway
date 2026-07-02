@@ -22,6 +22,7 @@ import java.util.List;
  */
 public final class Freeway {
 
+    // Ensure SLF4J is available before any container code runs a LoggerFactory.getLogger().
     static {
         com.jujin.freeway.commons.logging.LogBootstrap.ensureProvider();
     }

@@ -5,25 +5,18 @@ import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.scoped.ScopedCache;
-import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.*;
+import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.extension.Extension;
-import com.jujin.freeway.ioc.LoggerSource;
-import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.annotation.Annotation;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 public final class ContainerImpl implements Container {
 
@@ -44,6 +37,7 @@ public final class ContainerImpl implements Container {
 
     private volatile boolean closed;
     private final BindingIndex bindingIndex = new BindingIndex();
+    private final MarkerIndex markerIndex = new MarkerIndex();
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
     private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
     private final SymbolSourceDefault symbolSource;
@@ -118,6 +112,7 @@ public final class ContainerImpl implements Container {
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
         BindingImpl<T> binding = new BindingImpl<>(this, type);
         binding.id(id).to(instance);
+        binding.addMarkers(Set.of(Builtin.class));
         register(binding);
     }
 
@@ -125,9 +120,13 @@ public final class ContainerImpl implements Container {
         if (installedModules.add(module)) {
             LOG.debug("Installing module: {}", module.getClass().getSimpleName());
             loadedModules.add(module);
+            BinderImpl binderImpl = (BinderImpl) binder;
+            Class<?> previousModule = binderImpl.currentModule();
+            binderImpl.setCurrentModule(module.getClass());
             module.bind(binder);
+            binderImpl.restoreCurrentModule(previousModule);
             wireBuiltinExtensions();
-            ((BinderImpl) binder).flushPending();
+            binderImpl.flushPending();
             return;
         }
         LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
@@ -142,7 +141,9 @@ public final class ContainerImpl implements Container {
 
     /**
      * Wire built-in consumers that depend on contributed extension values.
-     * Called once after all modules have bound their contributions.
+     * Called after each module install so contributions are available to
+     * the next module's bind logic. Idempotent — repeated wiring of the
+     * same extensions is harmless (same providers registered).
      */
     @SuppressWarnings("rawtypes")
     private void wireBuiltinExtensions() {
@@ -179,7 +180,7 @@ public final class ContainerImpl implements Container {
 
     @Override
     public void close() {
-        LOG.debug("Container closing");
+        LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
         closed = true;
         RuntimeException failure = shutdown.close();
         extensions.clear();
@@ -187,7 +188,7 @@ public final class ContainerImpl implements Container {
             LOG.error("Container close failed", failure);
             throw failure;
         }
-        LOG.debug("Container closed");
+        LOG.info("Container closed — {} module(s) unloaded", loadedModules.size());
     }
 
     @Override
@@ -218,8 +219,33 @@ public final class ContainerImpl implements Container {
         return serviceRuntime.get(binding);
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T get(Class<T> type, Class<? extends Annotation>... markers) {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
+        }
+        if (markers == null || markers.length == 0) {
+            return get(type);
+        }
+        Set<Class<? extends Annotation>> markerSet = new HashSet<>(Arrays.asList(markers));
+        BindingImpl<T> binding = markerIndex.findByMarker(type, markerSet);
+        if (binding == null) {
+            throw new IllegalArgumentException(
+                    "No service registered for type " + type.getName()
+                            + " with markers " + Arrays.toString(markers)
+            );
+        }
+        return serviceRuntime.get(binding);
+    }
+
     <T> void register(BindingImpl<T> binding) {
         bindingIndex.register(binding);
+        markerIndex.register(binding);
+    }
+
+    MarkerIndex markerIndex() {
+        return markerIndex;
     }
 
     synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {

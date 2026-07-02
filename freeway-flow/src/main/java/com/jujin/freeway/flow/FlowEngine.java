@@ -1,9 +1,8 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.v2.GraphBlueprint;
+import com.jujin.freeway.flow.v2.GraphSpec2;
 
 import java.util.Collection;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -40,8 +39,10 @@ public interface FlowEngine {
 
     void unregister(String name);
 
-    /** Register a typed task handler, resolved by class name at runtime. */
-    void register(Class<?> taskType, TaskComponent handler);
+    /**
+     * Register a task handler in the marker index for {@code !markerName} resolution.
+     */
+    void register(TaskComponent handler);
 
     // --- interceptor ---
 
@@ -54,13 +55,13 @@ public interface FlowEngine {
     void removeInterceptor(FlowInterceptor interceptor);
 
     // --- graph management ---
-    // GraphBlueprint is the v2 authoring surface. These overloads keep the
+    // GraphSpec2 is the v2 authoring surface. These overloads keep the
     // runtime API backward-compatible while letting callers load/eval blueprints
     // directly during migration.
 
     void load(Graph graph);
 
-    default void load(GraphBlueprint blueprint) {
+    default void load(GraphSpec2 blueprint) {
         load(blueprint.create());
     }
 
@@ -108,20 +109,24 @@ public interface FlowEngine {
         eval(graph, new FlowExchanger(graph, this, driver, context, steps, new AtomicInteger(0)), null);
     }
 
-    default void eval(GraphBlueprint blueprint) throws FlowException {
+    default void eval(GraphSpec2 blueprint) throws FlowException {
         eval(blueprint, FlowContext.of());
     }
 
-    default void eval(GraphBlueprint blueprint, FlowContext context) throws FlowException {
+    default void eval(GraphSpec2 blueprint, FlowContext context) throws FlowException {
         eval(blueprint, -1, context);
     }
 
-    default void eval(GraphBlueprint blueprint, int steps, FlowContext context) throws FlowException {
+    default void eval(GraphSpec2 blueprint, int steps, FlowContext context) throws FlowException {
         eval(blueprint.create(), steps, context);
     }
 
-    /** Returns typed task handlers registered via {@link #register(Class, TaskComponent)}. */
-    Map<Class<?>, TaskComponent> typedTasks();
+    /**
+     * Returns the marker index for resolving tasks by {@code !markerName}
+     * references. Populated automatically when modules contribute
+     * {@link TaskComponent} instances annotated with {@link FlowMarker}.
+     */
+    FlowMarkerIndex markerIndex();
 
     // --- internal ---
 

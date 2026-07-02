@@ -1,12 +1,13 @@
 package com.jujin.freeway.http.engine;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.jujin.freeway.http.engine.http11.HttpParser;
+import org.junit.jupiter.api.Test;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class HttpParserTest {
 
@@ -254,6 +255,24 @@ class HttpParserTest {
                 + "Transfer-Encoding: chunked\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1);
         var parser = new HttpParser(new ByteArrayInputStream(raw));
         assertThrows(IOException.class, parser::parse);
+    }
+
+    @Test
+    void rejectsTruncatedHeaders() {
+        // "GET / HTTP/1.1\r\nHost: a" — no final CRLF → truncated headers
+        byte[] raw = "GET / HTTP/1.1\r\nHost: a".getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+                "Truncated headers should throw IOException");
+    }
+
+    @Test
+    void rejectsTruncatedRequestLine() {
+        // "GET / HTTP/1.1" with no CRLF → truncated
+        byte[] raw = "GET / HTTP/1.1".getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+                "Truncated request line should throw IOException");
     }
 
     @Test

@@ -5,6 +5,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 
+/**
+ * Stream I/O helpers: bounded stream wrapping and size-capped reads.
+ */
 public final class ByteStreams {
 
     private ByteStreams() {}

@@ -1,12 +1,10 @@
 package com.jujin.freeway.http.engine.ws;
 
 import com.jujin.freeway.http.websocket.WebSocketListener;
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.*;
 
 /**
  * WebSocket frame read loop. Reads frames from the input stream and
@@ -26,6 +24,10 @@ public final class WebSocket {
                          WebSocketSessionImpl session,
                          WebSocketListener listener) {
         session.markOpen();
+        var textBuf = new StringBuilder();
+        var binaryBuf = new ByteArrayOutputStream();
+        OpCode fragType = null;
+
         try {
             while (session.isOpen()) {
                 var frame = WebSocketFrame.read(in);
@@ -34,31 +36,53 @@ public final class WebSocket {
                     return;
                 }
                 switch (frame.opCode()) {
-                    case Text -> {
-                        try {
-                            listener.onText(frame.payloadAsString());
-                        } catch (Exception e) {
-                            LOG.trace("WebSocket onText error", e);
-                            listener.onError(e);
-                            session.close(1011, "Handler error");
+                    case Text, Binary -> {
+                        if (fragType != null) {
+                            session.close(1002, "Continuation expected");
                             return;
                         }
+                        if (frame.isFin()) {
+                            if (frame.opCode() == OpCode.Text) {
+                                try {
+                                    listener.onText(frame.payloadAsString());
+                                } catch (Exception e) {
+                                    LOG.trace("WebSocket onText error", e);
+                                    listener.onError(e);
+                                    session.close(1011, "Handler error");
+                                    return;
+                                }
+                            } else {
+                                try {
+                                    listener.onBinary(frame.payload());
+                                } catch (Exception e) {
+                                    LOG.trace("WebSocket onBinary error", e);
+                                    listener.onError(e);
+                                    session.close(1011, "Handler error");
+                                    return;
+                                }
+                            }
+                        } else {
+                            fragType = frame.opCode();
+                            appendData(frame, textBuf, binaryBuf, fragType);
+                        }
                     }
-                    case Binary -> {
-                        try {
-                            listener.onBinary(frame.payload());
-                        } catch (Exception e) {
-                            LOG.trace("WebSocket onBinary error", e);
-                            listener.onError(e);
-                            session.close(1011, "Handler error");
+                    case Continuation -> {
+                        if (fragType == null) {
+                            session.close(1002, "Unexpected continuation");
                             return;
+                        }
+                        appendData(frame, textBuf, binaryBuf, fragType);
+                        if (frame.isFin()) {
+                            deliverFragmented(fragType, textBuf, binaryBuf, listener);
+                            fragType = null;
+                            textBuf.setLength(0);
+                            binaryBuf.reset();
                         }
                     }
                     case Ping -> writeFrame(out,
                         new WebSocketFrame(OpCode.Pong, true, frame.payload()));
                     case Pong -> { /* no-op */ }
                     case Close -> {
-                        // Echo close frame back per RFC 6455
                         writeFrame(out, new WebSocketFrame(OpCode.Close, true,
                             frame.payload()));
                         String reason = frame.closeReason() != null
@@ -102,5 +126,31 @@ public final class WebSocket {
     static void writeFrameNoFlush(OutputStream out, WebSocketFrame frame)
         throws IOException {
         frame.writeWithoutFlush(out);
+    }
+
+    // -- fragmentation helpers --
+
+    private static void appendData(WebSocketFrame frame, StringBuilder textBuf,
+                                   ByteArrayOutputStream binaryBuf, OpCode fragType) {
+        OpCode type = frame.opCode() == OpCode.Continuation ? fragType : frame.opCode();
+        if (type == OpCode.Text) {
+            textBuf.append(frame.payloadAsString());
+        } else {
+            try {
+                binaryBuf.write(frame.payload());
+            } catch (IOException e) { /* ByteArrayOutputStream never throws */ }
+        }
+    }
+
+    private static void deliverFragmented(OpCode fragType, StringBuilder textBuf,
+                                          ByteArrayOutputStream binaryBuf,
+                                          WebSocketListener listener) {
+        try {
+            if (fragType == OpCode.Text) listener.onText(textBuf.toString());
+            else listener.onBinary(binaryBuf.toByteArray());
+        } catch (Exception e) {
+            LOG.trace("WebSocket handler error", e);
+            listener.onError(e);
+        }
     }
 }

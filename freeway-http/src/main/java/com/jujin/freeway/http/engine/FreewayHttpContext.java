@@ -5,15 +5,12 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.sse.SseEmitter;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * {@link HttpContext} implementation backed by a raw socket connection.
@@ -93,7 +90,9 @@ public final class FreewayHttpContext extends HttpContext {
 
     @Override
     public Map<String, List<String>> queryParams() {
-        return Collections.unmodifiableMap(queryParams);
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        queryParams.forEach((k, v) -> copy.put(k, List.copyOf(v)));
+        return Collections.unmodifiableMap(copy);
     }
 
     @Override
@@ -163,7 +162,7 @@ public final class FreewayHttpContext extends HttpContext {
         validateHeaderValue(value);
         responseHeaders.put(name, value);
         if (h2Bridge != null) {
-            h2Bridge.headers().put(name, java.util.List.of(value));
+            h2Bridge.headers().put(name, List.of(value));
         }
         return this;
     }
@@ -184,8 +183,9 @@ public final class FreewayHttpContext extends HttpContext {
 
         if (h2Bridge != null) {
             h2Bridge.headers().putIfAbsent(":status",
-                    java.util.List.of(String.valueOf(responseStatus)));
-            if (data.length > 0) {
+                    List.of(String.valueOf(responseStatus)));
+            boolean headRequest = "HEAD".equalsIgnoreCase(method);
+            if (!headRequest && allowsResponseBody() && data.length > 0) {
                 rawOut.write(data);
                 rawOut.flush();
             }
@@ -236,8 +236,15 @@ public final class FreewayHttpContext extends HttpContext {
 
     @Override
     public SseEmitter sse() throws IOException {
+        if (h2Bridge != null) {
+            h2Bridge.headers().put("content-type",
+                    List.of("text/event-stream; charset=utf-8"));
+            h2Bridge.headers().put("cache-control", List.of("no-cache"));
+            h2Bridge.headers().putIfAbsent(":status", List.of("200"));
+            responded = true;
+            return new SseEmitter(rawOut);
+        }
         setupSseHeaders();
-        // Write SSE headers directly (chunked transfer)
         writeLine("HTTP/1.1 200 OK");
         for (var entry : responseHeaders.entrySet()) {
             writeLine(entry.getKey() + ": " + entry.getValue());
@@ -249,7 +256,6 @@ public final class FreewayHttpContext extends HttpContext {
         writeLine("");
         rawOut.flush();
         responded = true;
-        // Wrap the output stream with HTTP chunked transfer encoding
         return new SseEmitter(new ChunkedOutputStream(rawOut));
     }
 

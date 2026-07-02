@@ -23,44 +23,46 @@ final class JULLogFormatterSupport {
     private static final ConcurrentHashMap<String, String> ABBREV_CACHE =
         new ConcurrentHashMap<>();
 
-    private JULLogFormatterSupport() {}
-
-    static String format(
-        Formatter formatter,
-        LogRecord record,
+    record FormatConfig(
         DateTimeFormatter timestamp,
         int levelWidth,
         boolean useColor,
         boolean abbreviateLogger
-    ) {
+    ) {}
+
+    private JULLogFormatterSupport() {}
+
+    static String format(Formatter formatter, LogRecord record, FormatConfig cfg) {
         int msgLen = record.getMessage() != null ? record.getMessage().length() : 0;
         String loggerName = record.getLoggerName();
         int loggerLen = loggerName != null ? loggerName.length() : 0;
         StringBuilder out = new StringBuilder(80 + msgLen + loggerLen);
 
-        out.append(dim(timestamp.format(Instant.ofEpochMilli(record.getMillis())), useColor));
+        boolean color = cfg.useColor();
+        out.append(dim(cfg.timestamp().format(Instant.ofEpochMilli(record.getMillis())), color));
 
         out.append(' ');
-        out.append(colorLevel(padRight(record.getLevel().getName(), levelWidth), record.getLevel(), useColor));
+        out.append(colorLevel(padRight(record.getLevel().getName(), cfg.levelWidth()),
+                record.getLevel(), color));
 
         out.append(' ');
-        out.append(dim(LoggingSupport.formatThread(), useColor));
+        out.append(dim(LoggingSupport.formatThread(), color));
 
         out.append(' ');
         out.append(color(
             loggerName != null
-                ? (abbreviateLogger ? abbreviate(loggerName) : loggerName)
+                ? (cfg.abbreviateLogger() ? abbreviate(loggerName) : loggerName)
                 : "",
-            useColor ? CYAN : null
+            color ? CYAN : null
         ));
 
         out.append(' ');
-        out.append(dim("- ", useColor));
+        out.append(dim("- ", color));
         out.append(formatter.formatMessage(record));
 
         if (record.getThrown() != null) {
             out.append('\n');
-            appendThrowable(out, record.getThrown(), useColor, newVisitedSet());
+            appendThrowable(out, record.getThrown(), color, newVisitedSet());
         }
 
         out.append('\n');

@@ -16,11 +16,10 @@ public final class DataFrame extends BaseFrame {
         int padLen = 0;
         if (header.flags().contains(FrameFlag.PADDED)) {
             padLen = body[index++] & 0xFF;
-            if (padLen >= body.length - index) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+            if (padLen > body.length - index) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         }
-        return padLen > 0
-            ? new DataFrame(header, Arrays.copyOfRange(body, index, body.length - padLen))
-            : new DataFrame(header, body);
+        return new DataFrame(header,
+                Arrays.copyOfRange(body, index, body.length - padLen));
     }
 
     public void writeTo(OutputStream outputStream) throws IOException { outputStream.write(body); }

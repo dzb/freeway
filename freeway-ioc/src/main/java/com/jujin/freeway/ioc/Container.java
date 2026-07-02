@@ -16,6 +16,7 @@ package com.jujin.freeway.ioc;
  * }</pre>
  */
 import com.jujin.freeway.ioc.extension.Extension;
+import java.lang.annotation.Annotation;
 
 public interface Container extends AutoCloseable {
 
@@ -40,6 +41,30 @@ public interface Container extends AutoCloseable {
      * @throws IllegalArgumentException if no binding matches
      */
     <T> T get(Class<T> type, String id);
+
+    /**
+     * Returns a service by type and marker annotations. The binding must
+     * carry all the specified marker annotations (containsAll semantics).
+     *
+     * <pre>{@code
+     *   // Define a marker annotation
+     *   &#64;Retention(RUNTIME) &#64;Target({TYPE, PARAMETER, FIELD})
+     *   public &#64;interface Fast {}
+     *
+     *   // Bind with marker
+     *   binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+     *
+     *   // Resolve by marker
+     *   Cache cache = container.get(Cache.class, Fast.class);
+     * }</pre>
+     *
+     * @param type    the service type
+     * @param markers marker annotation classes to match
+     * @param <T>     the service type
+     * @return the service instance
+     * @throws IllegalArgumentException if no binding or multiple bindings match
+     */
+    <T> T get(Class<T> type, Class<? extends Annotation>... markers);
 
     /**
      * Returns the extension point for the given entry type, providing access

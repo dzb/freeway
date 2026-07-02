@@ -12,32 +12,24 @@ public final class JULConsoleFormatter extends Formatter {
 
     private static final DateTimeFormatter TIMESTAMP =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
-    private static final int LEVEL_WIDTH = 7;
 
-    private final boolean useColor;
+    private final JULLogFormatterSupport.FormatConfig config;
 
     public JULConsoleFormatter() {
         this(detectColor());
     }
 
     JULConsoleFormatter(boolean useColor) {
-        this.useColor = useColor;
+        this.config = new JULLogFormatterSupport.FormatConfig(TIMESTAMP, 7, useColor, true);
     }
 
     public boolean useColor() {
-        return useColor;
+        return config.useColor();
     }
 
     @Override
     public String format(LogRecord record) {
-        return JULLogFormatterSupport.format(
-            this,
-            record,
-            TIMESTAMP,
-            LEVEL_WIDTH,
-            useColor,
-            true
-        );
+        return JULLogFormatterSupport.format(this, record, config);
     }
 
     /**

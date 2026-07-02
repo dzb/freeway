@@ -1,7 +1,11 @@
 package com.jujin.freeway.flow;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+
 /**
- * 任务描述（表达式参考：'@beanName' / '#graphId' / '$metaKey'）
+ * 任务描述（表达式参考：'@beanName' / '#graphId' / '$metaKey' / '!markerName'）
  *
  * @author noear
  * @since 3.0
@@ -34,6 +38,33 @@ public class TaskDesc {
 
     public boolean isEmpty() {
         return (description == null || description.isEmpty()) && component == null;
+    }
+
+    /**
+     * Returns true if this task description uses marker-based resolution
+     * (starts with {@code !}).
+     */
+    public boolean isMarkerRef() {
+        return description != null && description.startsWith("!");
+    }
+
+    /**
+     * Returns the set of marker names from the description.
+     * Markers are space-separated and each starts with {@code !}.
+     * Example: {@code "!channel:notification !priority:high"} →
+     * {@code {"channel:notification", "priority:high"}}
+     */
+    public Set<String> getMarkerNames() {
+        if (!isMarkerRef()) {
+            return Collections.emptySet();
+        }
+        Set<String> names = new HashSet<>();
+        for (String part : description.split("\\s+")) {
+            if (part.startsWith("!") && part.length() > 1) {
+                names.add(part.substring(1));
+            }
+        }
+        return Collections.unmodifiableSet(names);
     }
 
     @Override

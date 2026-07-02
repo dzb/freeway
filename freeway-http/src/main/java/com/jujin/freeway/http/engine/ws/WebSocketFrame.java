@@ -93,6 +93,17 @@ public final class WebSocketFrame {
 
     // --- write to wire ---
 
+    private static String decodeUtf8(byte[] data, int offset, int length) throws IOException {
+        var decoder = StandardCharsets.UTF_8.newDecoder();
+        decoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
+        decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+        try {
+            return decoder.decode(ByteBuffer.wrap(data, offset, length)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            throw new WebSocketException(CloseCode.InvalidFramePayloadData, "Invalid UTF-8");
+        }
+    }
+
     void write(OutputStream out) throws IOException {
         if (opCode.isControlFrame() && payload != null && payload.length > 125) {
             throw new WebSocketException(CloseCode.ProtocolError,
@@ -113,6 +124,10 @@ public final class WebSocketFrame {
             out.write(len);
         } else {
             out.write(masked ? 0xFF : 127);
+            out.write(0);
+            out.write(0);
+            out.write(0);
+            out.write(0);
             out.write(len >>> 24);
             out.write(len >>> 16);
             out.write(len >>> 8);
@@ -128,39 +143,6 @@ public final class WebSocketFrame {
             out.write(payload);
         }
         out.flush();
-    }
-
-    /** Writes frame without flushing — for high-frequency sends where BufferedOutputStream batching is preferred. */
-    void writeWithoutFlush(OutputStream out) throws IOException {
-        int header = fin ? 0x80 : 0;
-        header |= opCode.value() & 0x0F;
-        out.write(header);
-
-        int len = payload != null ? payload.length : 0;
-        boolean masked = maskingKey != null && maskingKey.length == 4;
-
-        if (len <= 125) {
-            out.write(masked ? 0x80 | (byte) len : (byte) len);
-        } else if (len <= 0xFFFF) {
-            out.write(masked ? 0xFE : 126);
-            out.write(len >>> 8);
-            out.write(len);
-        } else {
-            out.write(masked ? 0xFF : 127);
-            out.write(len >>> 24);
-            out.write(len >>> 16);
-            out.write(len >>> 8);
-            out.write(len);
-        }
-
-        if (masked) {
-            out.write(maskingKey);
-            for (int i = 0; i < len; i++) {
-                out.write(payload[i] ^ maskingKey[i % 4]);
-            }
-        } else {
-            out.write(payload);
-        }
     }
 
     // --- internal ---
@@ -220,6 +202,43 @@ public final class WebSocketFrame {
         this.payload = new byte[payloadLength];
     }
 
+    /** Writes frame without flushing — for high-frequency sends where BufferedOutputStream batching is preferred. */
+    void writeWithoutFlush(OutputStream out) throws IOException {
+        int header = fin ? 0x80 : 0;
+        header |= opCode.value() & 0x0F;
+        out.write(header);
+
+        int len = payload != null ? payload.length : 0;
+        boolean masked = maskingKey != null && maskingKey.length == 4;
+
+        if (len <= 125) {
+            out.write(masked ? 0x80 | (byte) len : (byte) len);
+        } else if (len <= 0xFFFF) {
+            out.write(masked ? 0xFE : 126);
+            out.write(len >>> 8);
+            out.write(len);
+        } else {
+            out.write(masked ? 0xFF : 127);
+            out.write(0);
+            out.write(0);
+            out.write(0);
+            out.write(0);
+            out.write(len >>> 24);
+            out.write(len >>> 16);
+            out.write(len >>> 8);
+            out.write(len);
+        }
+
+        if (masked) {
+            out.write(maskingKey);
+            for (int i = 0; i < len; i++) {
+                out.write(payload[i] ^ maskingKey[i % 4]);
+            }
+        } else {
+            out.write(payload);
+        }
+    }
+
     private void readPayload(InputStream in) throws IOException {
         int read = 0;
         int len = payload.length;
@@ -233,27 +252,20 @@ public final class WebSocketFrame {
         }
         // validate UTF-8 for text frames (strict — reject invalid sequences)
         if (opCode == OpCode.Text) {
-            var decoder = java.nio.charset.StandardCharsets.UTF_8.newDecoder();
-            decoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
-            decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
-            try {
-                payloadString = decoder.decode(java.nio.ByteBuffer.wrap(payload)).toString();
-            } catch (java.nio.charset.CharacterCodingException e) {
-                throw new WebSocketException(CloseCode.InvalidFramePayloadData, "Invalid UTF-8 in text frame");
-            }
+            payloadString = decodeUtf8(payload, 0, payload.length);
         }
     }
 
-    private void parseCloseFrame() {
+    private void parseCloseFrame() throws IOException {
         if (payload.length >= 2) {
             int codeVal = (payload[0] & 0xFF) << 8 | (payload[1] & 0xFF);
             this.closeCode = CloseCode.find(codeVal);
-            if (this.closeCode == null) {
-                this.closeCode = CloseCode.ProtocolError; // RFC 6455 §7.4: invalid code
+            // RFC 6455 §7.4.1: 1005/1006/1015 must not appear on wire
+            if (this.closeCode == null || this.closeCode.isReserved()) {
+                this.closeCode = CloseCode.ProtocolError;
             }
             this.closeReason = payload.length > 2
-                ? new String(payload, 2, payload.length - 2, TEXT_CHARSET)
-                : "";
+                    ? decodeUtf8(payload, 2, payload.length - 2) : "";
         }
     }
 

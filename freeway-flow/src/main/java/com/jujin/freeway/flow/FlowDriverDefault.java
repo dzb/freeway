@@ -106,8 +106,11 @@ public class FlowDriverDefault implements FlowDriver {
                 return;
             }
 
-            // 类型化 task（从 engine 的 typedTasks 查找）
-            if (tryAsTypedTask(exchanger, task)) return;
+            // !markerName 标记匹配
+            if (task.isMarkerRef()) {
+                tryAsMarkerTask(exchanger, task);
+                return;
+            }
 
             // #graphId 子图调用
             if (isGraph(task.getDescription())) {
@@ -128,24 +131,26 @@ public class FlowDriverDefault implements FlowDriver {
             }
 
             throw new FlowException("Unsupported task description: '" + task.getDescription()
-                    + "'. Supported: @beanName, #graphId, $metaKey");
+                    + "'. Supported: @beanName, #graphId, $metaKey, !markerName");
         } finally {
             exchanger.context().exchanger(exchanger);
         }
     }
 
-    protected boolean tryAsTypedTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
-        Map<Class<?>, TaskComponent> typed = exchanger.engine().typedTasks();
-        if (typed.isEmpty()) return false;
-
-        String desc = task.getDescription();
-        for (var entry : typed.entrySet()) {
-            if (desc.equals(entry.getKey().getName()) || desc.equals(entry.getKey().getSimpleName())) {
-                entry.getValue().run(exchanger.context(), task.getNode());
-                return true;
-            }
+    /**
+     * Resolves a task by marker intersection. Uses the engine's
+     * {@link FlowMarkerIndex} to find the best-matching
+     * {@link TaskComponent} for the required marker set.
+     */
+    protected void tryAsMarkerTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+        FlowMarkerIndex index = exchanger.engine().markerIndex();
+        TaskComponent handler = index.resolve(task.getMarkerNames());
+        if (handler == null) {
+            throw new FlowException(
+                    "No TaskComponent matches markers " + task.getMarkerNames()
+            );
         }
-        return false;
+        handler.run(exchanger.context(), task.getNode());
     }
 
     protected void tryAsGraphTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {

@@ -64,6 +64,75 @@ class FreewayHttpContextTest {
     }
 
     @Test
+    void h2SseIncludesContentType() throws Exception {
+        var out = new java.io.ByteArrayOutputStream();
+        var bridge = mockBridge();
+        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        ctx.h2Bridge = bridge;
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+
+        try (var emitter = ctx.sse()) {
+            emitter.send("ok");
+        }
+
+        assertTrue(bridge.headers().containsKey("content-type"),
+                "H2 SSE should set Content-Type: " + bridge.headers());
+        assertEquals(List.of("text/event-stream; charset=utf-8"),
+                bridge.headers().get("content-type"));
+        assertTrue(bridge.headers().containsKey("cache-control"),
+                "H2 SSE should set Cache-Control: " + bridge.headers());
+    }
+
+    @Test
+    void h2SseSkipsHttp1Framing() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var bridge = mockBridge();
+        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        ctx.h2Bridge = bridge;
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+
+        try (var emitter = ctx.sse()) {
+            emitter.send("ok");
+        }
+
+        String wire = out.toString();
+        assertFalse(wire.contains("HTTP/1.1"),
+                "H2 SSE must not write HTTP/1.1 status line: " + wire);
+        assertFalse(wire.contains("chunked"),
+                "H2 SSE must not write Transfer-encoding: " + wire);
+        assertTrue(wire.contains("data: ok"),
+                "H2 SSE should write event data directly: " + wire);
+    }
+
+    @Test
+    void h2OutputRespectsNoBodyStatus() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var bridge = mockBridge();
+        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        ctx.h2Bridge = bridge;
+        ctx.reset("POST", "/", null, Map.of(), null, -1, false, out, null, false, false);
+
+        ctx.status(204);
+        ctx.send(204, "should-not-appear");
+
+        String wire = out.toString();
+        assertEquals("", wire, "H2 204 should write no body, got: " + wire);
+    }
+
+    @Test
+    void queryParamsAreDeeplyUnmodifiable() {
+        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        ctx.reset("GET", "/path", "a=1&a=2", Map.of(), null, -1, false,
+                new java.io.ByteArrayOutputStream(), null, false, false);
+
+        var params = ctx.queryParams();
+        assertThrows(UnsupportedOperationException.class, () -> params.put("b", List.of()),
+                "Top-level map must be unmodifiable");
+        assertThrows(UnsupportedOperationException.class, () -> params.get("a").add("3"),
+                "Inner value list must be unmodifiable");
+    }
+
+    @Test
     void h2DefaultsToHttp1WhenNoBridge() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new FreewayHttpContext(CODEC, COERCER);

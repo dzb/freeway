@@ -4,11 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Parses HTTP/1.x request line and headers from a raw {@code InputStream}.
@@ -163,7 +159,10 @@ public final class HttpParser {
         boolean gotCR = false;
         while (true) {
             int c = nextByte();
-            if (c == -1) return reqLineBuf.isEmpty() ? null : reqLineBuf.toString().trim();
+            if (c == -1) {
+                if (reqLineBuf.isEmpty()) return null; // empty stream → clean
+                throw new IOException("EOF while reading HTTP request line");
+            }
             if (gotCR) {
                 if (c == LF) return reqLineBuf.isEmpty() ? "" : reqLineBuf.toString();
                 gotCR = false;
@@ -189,7 +188,10 @@ public final class HttpParser {
 
         while (true) {
             int c = nextByte();
-            if (c == -1) break;
+            if (c == -1) {
+                if (startOfLine) return headers; // clean EOF after complete headers
+                throw new IOException("EOF while reading HTTP headers");
+            }
             totalSize++;
             if (totalSize > MAX_HEADER_SIZE) throw new IOException("Headers too large");
 

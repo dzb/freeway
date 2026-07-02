@@ -4,10 +4,11 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.body.BodyTooLargeException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.jujin.freeway.http.body.MultipartForm;
 import com.jujin.freeway.http.sse.SseEmitter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,13 +17,7 @@ import java.lang.reflect.Type;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Abstract base class for HTTP request/response contexts. Subclasses bridge
@@ -389,9 +384,9 @@ public abstract class HttpContext {
     }
 
     /**
-     * HTTP chunked transfer encoding output stream wrapper.
-     * Writes each chunk as hex-length CRLF data CRLF,
-     * and sends the terminating chunk 0 CRLF CRLF on close.
+     * HTTP chunked transfer encoding output stream.
+     * Lives here so subclasses (HTTP/1.1, HTTP/2 bridge) share the same
+     * encoding without duplicating the chunk framing logic.
      */
     static final class ChunkedOutputStream extends OutputStream {
         private final OutputStream out;

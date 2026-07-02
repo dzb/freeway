@@ -1,40 +1,28 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.extension.Extension;
-import com.jujin.freeway.commons.scoped.ScopedCache;
-import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.PostConstruct;
-import com.jujin.freeway.ioc.annotation.PreDestroy;
-import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoerceRule;
-
-import com.jujin.freeway.ioc.annotation.IntermediateType;
-
-import com.jujin.freeway.ioc.annotation.Symbol;
-import com.jujin.freeway.ioc.annotation.Value;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.scoped.ScopedCache;
+import com.jujin.freeway.ioc.annotation.*;
+import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.lang.reflect.Proxy;
-import org.slf4j.Logger;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class FreewayTest {
     private static final String PORT_KEY = "freeway.test.port";
@@ -1522,5 +1510,112 @@ class FreewayTest {
         List<String> labels = container.extension(Labeled.class).all()
             .stream().map(Labeled::label).toList();
         assertEquals(List.of("core", "web"), labels);
+    }
+
+    // ──── Marker annotation tests ────
+
+    @Test
+    void markerAnnotationResolvesCorrectService() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+            binder.bind(Cache.class).to(SlowCache.class).marker(Slow.class);
+        });
+
+        // By-marker resolution via container.get(type, markers...)
+        Cache cache = container.get(Cache.class, Fast.class);
+        assertEquals("fast", cache.name());
+
+        // Injection point with @Fast marker
+        CacheConsumer consumer = container.create(CacheConsumer.class);
+        assertEquals("fast", consumer.cacheName());
+    }
+
+    @Test
+    void primaryAlsoAddsMarker() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(FastCache.class).primary();
+            binder.bind(Cache.class).to(SlowCache.class);
+        });
+
+        // .primary() should add @Primary as a marker, so get(type, Primary.class) works
+        Cache cache = container.get(Cache.class, Primary.class);
+        assertEquals("fast", cache.name());
+    }
+
+    @Test
+    void markerResolutionRejectsAmbiguousMatch() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+            binder.bind(Cache.class).to(SlowCache.class).marker(Fast.class); // same marker!
+        });
+
+        assertThrows(IllegalArgumentException.class, () ->
+                container.get(Cache.class, Fast.class));
+    }
+
+    @Test
+    void builtinMarkerPropagatesToCoreServices() {
+        Container container = Freeway.create();
+        // Core services registered via registerBuiltin() should carry @Builtin
+        var symbols = container.get(com.jujin.freeway.ioc.symbol.SymbolSource.class, Builtin.class);
+        assertNotNull(symbols);
+    }
+
+    @Test
+    void moduleLevelMarkerPropagatesToBindings() {
+        Container container = Freeway.create(new MarkerTestModule());
+
+        // The Cache binding should inherit @Builtin from the module
+        Cache cache = container.get(Cache.class, Builtin.class);
+        assertEquals("fast", cache.name());
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.TYPE, ElementType.PARAMETER, ElementType.FIELD})
+    @interface Fast {
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.TYPE, ElementType.PARAMETER, ElementType.FIELD})
+    @interface Slow {
+    }
+
+    interface Cache {
+        String name();
+    }
+
+    @Fast
+    static class FastCache implements Cache {
+        @Override
+        public String name() {
+            return "fast";
+        }
+    }
+
+    @Slow
+    static class SlowCache implements Cache {
+        @Override
+        public String name() {
+            return "slow";
+        }
+    }
+
+    static class CacheConsumer {
+        @Inject
+        @Fast
+        Cache cache;
+
+        String cacheName() {
+            return cache.name();
+        }
+    }
+
+    // Module-level marker propagation
+    @com.jujin.freeway.ioc.annotation.Marker(Builtin.class)
+    static class MarkerTestModule implements ModuleEx {
+        @Override
+        public void bind(Binder binder) {
+            binder.bind(Cache.class).to(FastCache.class);
+        }
     }
 }

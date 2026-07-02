@@ -3,16 +3,15 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.event.HttpRequestEvent;
 import com.jujin.freeway.http.event.HttpServerStartedEvent;
-import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ExceptionMapper;
-import com.jujin.freeway.http.filter.HealthFilter;
-import com.jujin.freeway.http.filter.HttpFilter;
-import com.jujin.freeway.http.filter.RequestTimingFilter;
+import com.jujin.freeway.http.filter.*;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -22,8 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class WebServer implements AutoCloseable {
 
@@ -124,7 +121,7 @@ public final class WebServer implements AutoCloseable {
             ) {
                 String allowed = corsFilter.resolveAllowedOrigin(origin);
                 if (allowed == null && origin != null && !origin.isBlank()) {
-                    LOG.warn(
+                    LOG.debug(
                         "WebSocket upgrade rejected: origin '{}' not allowed for {}",
                         origin,
                         path

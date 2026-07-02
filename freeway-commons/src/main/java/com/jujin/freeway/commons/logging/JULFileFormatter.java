@@ -10,19 +10,14 @@ import java.util.logging.LogRecord;
  */
 public final class JULFileFormatter extends Formatter {
 
-    private static final DateTimeFormatter TIMESTAMP =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").withZone(ZoneId.systemDefault());
-    private static final int LEVEL_WIDTH = 8;
+    private static final JULLogFormatterSupport.FormatConfig CONFIG =
+            new JULLogFormatterSupport.FormatConfig(
+                    DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
+                            .withZone(ZoneId.systemDefault()),
+                    8, false, false);
 
     @Override
     public String format(LogRecord record) {
-        return JULLogFormatterSupport.format(
-            this,
-            record,
-            TIMESTAMP,
-            LEVEL_WIDTH,
-            false,
-            false
-        );
+        return JULLogFormatterSupport.format(this, record, CONFIG);
     }
 }

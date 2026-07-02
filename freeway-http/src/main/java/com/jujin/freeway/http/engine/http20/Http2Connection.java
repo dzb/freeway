@@ -1,25 +1,11 @@
 package com.jujin.freeway.http.engine.http20;
-import com.jujin.freeway.http.engine.http20.frame.ContinuationFrame;
-import com.jujin.freeway.http.engine.http20.frame.DataFrame;
-import com.jujin.freeway.http.engine.http20.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http20.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http20.frame.FrameSerializer;
-import com.jujin.freeway.http.engine.http20.frame.FrameType;
-import com.jujin.freeway.http.engine.http20.frame.GoawayFrame;
-import com.jujin.freeway.http.engine.http20.frame.HeadersFrame;
-import com.jujin.freeway.http.engine.http20.frame.PingFrame;
-import com.jujin.freeway.http.engine.http20.frame.ResetStreamFrame;
-import com.jujin.freeway.http.engine.http20.frame.SettingIdentifier;
-import com.jujin.freeway.http.engine.http20.frame.SettingParameter;
-import com.jujin.freeway.http.engine.http20.frame.SettingsFrame;
-import com.jujin.freeway.http.engine.http20.frame.SettingsMap;
-import com.jujin.freeway.http.engine.http20.frame.WindowUpdateFrame;
+
+import com.jujin.freeway.http.engine.http20.frame.*;
 import com.jujin.freeway.http.engine.http20.hpack.HPackContext;
 import com.jujin.freeway.http.engine.http20.hpack.HeaderFields;
 import com.jujin.freeway.http.engine.http20.util.BinUtils;
 import com.jujin.freeway.http.engine.http20.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http20.util.Http2Exception;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,7 +50,8 @@ public final class Http2Connection {
     private final ExecutorService executor;
     private final StreamHandler handler;
     private final HPackContext hpack = new HPackContext();
-    private final ConcurrentHashMap<Integer, Http2Stream> streams = new ConcurrentHashMap<>();
+    final ConcurrentHashMap<Integer, Http2Stream> streams = new ConcurrentHashMap<>();
+    volatile int maxFrameSize = 16384;
     private final SettingsMap remoteSettings = new SettingsMap();
     private final SettingsMap localSettings = new SettingsMap();
 
@@ -154,11 +141,12 @@ public final class Http2Connection {
 
     private void processFrames() throws IOException {
         boolean inHeaders = false;
+        boolean headersEndStream = false;
         int openStreamId = 0;
         var headerBlockFragments = new ArrayList<byte[]>();
 
         while (!closed.get()) {
-            var frame = FrameSerializer.deserialize(inputStream);
+            var frame = FrameSerializer.deserialize(inputStream, maxFrameSize);
             int streamId = frame.header().streamId();
 
             if (streamId != 0 && streamId % 2 == 0)
@@ -194,7 +182,7 @@ public final class Http2Connection {
                 }
                 case NOT_IMPLEMENTED -> {
                     if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    if (streamId == 0) continue;
+                    continue; // RFC 7540 §5.5: ignore unknown/unimplemented frames
                 }
                 case DATA -> {
                     if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
@@ -217,6 +205,9 @@ public final class Http2Connection {
 
                     var headersFrame = (HeadersFrame) frame;
                     headerBlockFragments.add(headersFrame.headerBlock());
+                    if (headersFrame.header().flags().contains(FrameFlag.END_STREAM)) {
+                        headersEndStream = true;
+                    }
                     if (!headersFrame.header().flags().contains(FrameFlag.END_HEADERS)) {
                         inHeaders = true;
                         openStreamId = streamId;
@@ -236,6 +227,9 @@ public final class Http2Connection {
                     if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     continue;
+                }
+                case PUSH_PROMISE -> {
+                    throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }
                 case RST_STREAM -> {
                     var resetFrame = (ResetStreamFrame) frame;
@@ -269,6 +263,13 @@ public final class Http2Connection {
                 target = new Http2Stream(streamId, this, requestHeaders, handler);
                 streams.put(streamId, target);
                 lastSeenStreamId = streamId;
+                if (headersEndStream) {
+                    target.markHalfClosed();
+                    headersEndStream = false;
+                }
+                target.startRequest(executor);
+                // header block assembled — this frame consumed, skip dispatch
+                continue;
             } else if (target == null) {
                 if (streamId <= lastSeenStreamId) {
                     if (frame.header().type() == FrameType.WINDOW_UPDATE) continue;
@@ -293,6 +294,8 @@ public final class Http2Connection {
                     stream.sendWindow.addAndGet(parameter.value - oldWindow);
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_CONCURRENT_STREAMS) {
                 maxConcurrentStreams = (int) Math.min(parameter.value, Integer.MAX_VALUE);
+            } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_FRAME_SIZE) {
+                maxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
             }
             remoteSettings.set(parameter);
         }

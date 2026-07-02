@@ -2,28 +2,54 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Binding;
-import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
+import com.jujin.freeway.ioc.extension.Extension;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 final class BinderImpl implements Binder {
     private final ContainerImpl container;
     private final List<BindingImpl<?>> pending = new ArrayList<>();
     /** Classes registered via {@link Contributions#create} — instantiated after pending bindings flush. */
     private final List<Runnable> pendingCreates = new ArrayList<>();
+    private Class<?> currentModule;
 
     BinderImpl(ContainerImpl container) {
         this.container = Objects.requireNonNull(container, "container");
     }
 
+    /**
+     * Sets the module class currently being processed. Called by
+     * {@link ContainerImpl#installModule} before {@code module.bind()}.
+     */
+    void setCurrentModule(Class<?> moduleClass) {
+        this.currentModule = moduleClass;
+    }
+
+    void restoreCurrentModule(Class<?> previous) {
+        this.currentModule = previous;
+    }
+
+    Class<?> currentModule() {
+        return currentModule;
+    }
+
     @Override
     public <T> Binding<T> bind(Class<T> type) {
         BindingImpl<T> binding = new BindingImpl<>(container, type);
+        // Propagate module-level markers
+        if (currentModule != null) {
+            binding.setSourceModule(currentModule);
+            Set<Class<?>> moduleMarkers = MarkerIndex.extractModuleMarkers(currentModule);
+            if (!moduleMarkers.isEmpty()) {
+                binding.addMarkers(moduleMarkers);
+            }
+        }
         pending.add(binding);
         return binding;
     }
@@ -55,6 +81,8 @@ final class BinderImpl implements Binder {
 
             @Override
             public Contribution add(Class<? extends V> implClass) {
+                // Canonical id: snake_case_simple_name@package — unique and readable,
+                // no dependency on Class.forName.
                 String id = com.jujin.freeway.commons.util.Strings.camelToSnake(
                     implClass.getSimpleName()) + "@" + implClass.getPackageName();
                 var deferred = new DeferredContribution();

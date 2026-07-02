@@ -70,7 +70,7 @@ public class FlowExchanger {
     // --- sub-graph ---
 
     public void runGraph(Graph graph) {
-        prveSetp(); // 回退步数（子图调用不算步数）
+        prevStep(); // 回退步数（子图调用不算步数）
         engine.eval(graph, copy(graph), null);
 
         if (!isStopped()) {
@@ -95,11 +95,11 @@ public class FlowExchanger {
 
     public int getSteps() { return steps; }
 
-    public void prveSetp() {
+    public void prevStep() {
         if (steps >= 0) stepCount.decrementAndGet();
     }
 
-    public boolean nextSetp(Node node) {
+    public boolean nextStep(Node node) {
         if (steps < 0) return true;
         return stepCount.incrementAndGet() <= steps;
     }

@@ -3,17 +3,14 @@ package com.jujin.freeway.commons.validation;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import java.lang.annotation.Annotation;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.lang.reflect.Array;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.*;
 
 public final class BeanValidator {
 
@@ -165,7 +162,7 @@ public final class BeanValidator {
 
     private static BigDecimal compareToMinMax(Number n) {
         if (n instanceof BigDecimal bd) return bd;
-        if (n instanceof java.math.BigInteger bi) return new BigDecimal(bi);
+        if (n instanceof BigInteger bi) return new BigDecimal(bi);
         return new BigDecimal(n.toString());
     }
 
@@ -194,6 +191,9 @@ public final class BeanValidator {
         return false;
     }
 
+    /**
+     * Bootstrap classloader → JDK internal type (e.g. String, Integer).
+     */
     private static boolean isJdkType(Class<?> type) {
         return type.getClassLoader() == null;
     }

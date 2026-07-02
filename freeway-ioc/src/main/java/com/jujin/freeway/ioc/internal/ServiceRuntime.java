@@ -6,6 +6,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Manages service lifetime: caching, scope enforcement, proxy wrapping,
+ * and advice application. Uses lock striping (64 stripes) to reduce
+ * contention while preventing duplicate realization of the same binding.
+ */
 final class ServiceRuntime {
     private static final int STRIPE_BITS = 6; // 64 stripes
     private static final int STRIPE_MASK = (1 << STRIPE_BITS) - 1;

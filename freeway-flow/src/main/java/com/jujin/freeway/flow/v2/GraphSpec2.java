@@ -11,12 +11,16 @@ import com.jujin.freeway.flow.Node;
 import com.jujin.freeway.flow.NodeType;
 import com.jujin.freeway.flow.TaskComponent;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -27,136 +31,139 @@ import java.util.function.Consumer;
  * Legacy graphs stay on {@code com.jujin.freeway.flow.v1.GraphSpec}; v2 does
  * not accept legacy aliases.</p>
  */
-public class GraphBlueprint {
+public class GraphSpec2 {
     public static final int VERSION = 2;
+    private static final System.Logger LOG = System.getLogger(GraphSpec2.class.getName());
 
     private final String id;
     private String title;
     private String driver;
     private String entry;
     private final Map<String, Object> meta = new LinkedHashMap<>();
-    private final Map<String, NodeBlueprint> nodes = new LinkedHashMap<>();
-    private final List<LinkBlueprint> links = new ArrayList<>();
+    private final Map<String, NodeSpec2> nodes = new LinkedHashMap<>();
+    private final List<LinkSpec2> links = new ArrayList<>();
+    private boolean normalized;
+    private Set<String> bfsOrder;
 
-    public GraphBlueprint(String id) {
+    public GraphSpec2(String id) {
         this(id, null, null);
     }
 
-    public GraphBlueprint(String id, String title) {
+    public GraphSpec2(String id, String title) {
         this(id, title, null);
     }
 
-    public GraphBlueprint(String id, String title, String driver) {
+    public GraphSpec2(String id, String title, String driver) {
         this.id = id;
         this.title = title;
         this.driver = driver;
     }
 
-    public static GraphBlueprint create(String id, Consumer<GraphBlueprint> definition) {
-        GraphBlueprint blueprint = new GraphBlueprint(id);
+    public static GraphSpec2 create(String id, Consumer<GraphSpec2> definition) {
+        GraphSpec2 blueprint = new GraphSpec2(id);
         definition.accept(blueprint);
         return blueprint;
     }
 
-    public static GraphBlueprint create(String id, String title, Consumer<GraphBlueprint> definition) {
-        GraphBlueprint blueprint = new GraphBlueprint(id, title);
+    public static GraphSpec2 create(String id, String title, Consumer<GraphSpec2> definition) {
+        GraphSpec2 blueprint = new GraphSpec2(id, title);
         definition.accept(blueprint);
         return blueprint;
     }
 
-    public static GraphBlueprint create(String id, String title, String driver, Consumer<GraphBlueprint> definition) {
-        GraphBlueprint blueprint = new GraphBlueprint(id, title, driver);
+    public static GraphSpec2 create(String id, String title, String driver, Consumer<GraphSpec2> definition) {
+        GraphSpec2 blueprint = new GraphSpec2(id, title, driver);
         definition.accept(blueprint);
         return blueprint;
     }
 
-    public GraphBlueprint then(Consumer<GraphBlueprint> definition) {
+    public GraphSpec2 then(Consumer<GraphSpec2> definition) {
         definition.accept(this);
         return this;
     }
 
-    public GraphBlueprint title(String title) {
+    public GraphSpec2 title(String title) {
         this.title = title;
         return this;
     }
 
-    public GraphBlueprint driver(String driver) {
+    public GraphSpec2 driver(String driver) {
         this.driver = driver;
         return this;
     }
 
-    public GraphBlueprint entry(String entry) {
+    public GraphSpec2 entry(String entry) {
         this.entry = entry;
         return this;
     }
 
-    public GraphBlueprint metaPut(String key, Object value) {
+    public GraphSpec2 metaPut(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             meta.put(key, value);
         }
         return this;
     }
 
-    public GraphBlueprint meta(Map<String, Object> meta) {
+    public GraphSpec2 meta(Map<String, Object> meta) {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
         return this;
     }
 
-    public NodeBlueprint addNode(String id, NodeType type) {
-        NodeBlueprint node = new NodeBlueprint(this, id, type);
+    public NodeSpec2 addNode(String id, NodeType type) {
+        NodeSpec2 node = new NodeSpec2(this, id, type);
         nodes.put(id, node);
         return node;
     }
 
-    public NodeBlueprint addStart(String id) {
+    public NodeSpec2 addStart(String id) {
         if (entry == null) {
             entry = id;
         }
         return addNode(id, NodeType.START);
     }
 
-    public NodeBlueprint addEnd(String id) {
+    public NodeSpec2 addEnd(String id) {
         return addNode(id, NodeType.END);
     }
 
-    public NodeBlueprint addActivity(String id) {
+    public NodeSpec2 addActivity(String id) {
         return addNode(id, NodeType.ACTIVITY);
     }
 
-    public NodeBlueprint addActivity(NamedTaskComponent component) {
+    public NodeSpec2 addActivity(NamedTaskComponent component) {
         Objects.requireNonNull(component, "component");
-        NodeBlueprint node = addActivity(component.name());
+        NodeSpec2 node = addActivity(component.name());
         node.title(component.title());
         node.task(component);
         return node;
     }
 
-    public NodeBlueprint addInclusive(String id) {
+    public NodeSpec2 addInclusive(String id) {
         return addNode(id, NodeType.INCLUSIVE);
     }
 
-    public NodeBlueprint addExclusive(String id) {
+    public NodeSpec2 addExclusive(String id) {
         return addNode(id, NodeType.EXCLUSIVE);
     }
 
-    public NodeBlueprint addParallel(String id) {
+    public NodeSpec2 addParallel(String id) {
         return addNode(id, NodeType.PARALLEL);
     }
 
-    public NodeBlueprint addLoop(String id) {
+    public NodeSpec2 addLoop(String id) {
         return addNode(id, NodeType.LOOP);
     }
 
-    public NodeBlueprint getNode(String id) {
+    public NodeSpec2 getNode(String id) {
         return nodes.get(id);
     }
 
-    public LinkBlueprint link(String from, String to) {
-        LinkBlueprint link = new LinkBlueprint(from, to);
+    public LinkSpec2 link(String from, String to) {
+        LinkSpec2 link = new LinkSpec2(from, to);
         links.add(link);
-        NodeBlueprint source = nodes.get(from);
+        NodeSpec2 source = nodes.get(from);
         if (source != null) {
             source.links.add(link);
         }
@@ -164,12 +171,13 @@ public class GraphBlueprint {
     }
 
     public Graph create() {
+        normalize();
         return new Graph(this);
     }
 
     public Map<String, Object> toMap() {
         validateEntry();
-        GraphBlueprint normalized = normalize();
+        GraphSpec2 normalized = normalize();
         Map<String, Object> domRoot = new LinkedHashMap<>();
         domRoot.put("id", id);
         if (title != null && !title.isEmpty()) {
@@ -191,7 +199,7 @@ public class GraphBlueprint {
 
         List<Map<String, Object>> domNodes = new ArrayList<>();
         domRoot.put("nodes", domNodes);
-        for (NodeBlueprint node : normalized.nodesInCompileOrder()) {
+        for (NodeSpec2 node : normalized.nodesInCompileOrder()) {
             Map<String, Object> domNode = new LinkedHashMap<>();
             domNode.put("id", node.id);
             domNode.put("type", node.type.toString());
@@ -212,7 +220,7 @@ public class GraphBlueprint {
 
         List<Map<String, Object>> domLinks = new ArrayList<>();
         domRoot.put("links", domLinks);
-        for (LinkBlueprint link : normalized.links) {
+        for (LinkSpec2 link : normalized.links) {
             Map<String, Object> domLink = new LinkedHashMap<>();
             domLink.put("from", link.from);
             domLink.put("to", link.to);
@@ -238,7 +246,7 @@ public class GraphBlueprint {
         return JsonUtils.stringify(toMap());
     }
 
-    public static GraphBlueprint fromText(String text) {
+    public static GraphSpec2 fromText(String text) {
         JsonObject dom = JsonUtils.parseObject(text);
         Integer version = dom.containsKey("version") ? dom.getInt("version") : null;
         if (version != null && version == VERSION && dom.containsKey("nodes") && dom.containsKey("links")) {
@@ -248,8 +256,8 @@ public class GraphBlueprint {
         throw new IllegalArgumentException("Expected a v2 graph definition");
     }
 
-    public static GraphBlueprint fromDom(JsonObject dom) {
-        GraphBlueprint blueprint = new GraphBlueprint(
+    public static GraphSpec2 fromDom(JsonObject dom) {
+        GraphSpec2 blueprint = new GraphSpec2(
                 dom.getString("id"),
                 dom.getString("title"),
                 dom.getString("driver"));
@@ -272,7 +280,7 @@ public class GraphBlueprint {
 
             String nodeId = nodeDom.getString("id");
             NodeType nodeType = NodeType.nameOf(nodeDom.getString("type"));
-            NodeBlueprint node = blueprint.addNode(nodeId, nodeType);
+            NodeSpec2 node = blueprint.addNode(nodeId, nodeType);
             node.title(nodeDom.getString("title"));
             node.meta(toMap(nodeDom.getObject("meta")));
             node.when(nodeDom.getString("when"));
@@ -289,7 +297,7 @@ public class GraphBlueprint {
 
                 String from = linkDom.getString("from");
                 String to = linkDom.getString("to");
-                LinkBlueprint link = blueprint.link(from, to);
+                LinkSpec2 link = blueprint.link(from, to);
                 link.title(linkDom.getString("title"));
                 link.meta(toMap(linkDom.getObject("meta")));
                 link.when(linkDom.getString("when"));
@@ -303,8 +311,8 @@ public class GraphBlueprint {
         return blueprint;
     }
 
-    public static GraphBlueprint copy(Graph graph) {
-        GraphBlueprint blueprint = new GraphBlueprint(graph.getId(), graph.getTitle(), graph.getDriver());
+    public static GraphSpec2 copy(Graph graph) {
+        GraphSpec2 blueprint = new GraphSpec2(graph.getId(), graph.getTitle(), graph.getDriver());
 
         if (graph.getStart() != null) {
             blueprint.entry(graph.getStart().getId());
@@ -312,7 +320,7 @@ public class GraphBlueprint {
         blueprint.meta(graph.getMetas());
 
         for (Node node : graph.getNodes().values()) {
-            NodeBlueprint nodeBlueprint = blueprint.addNode(node.getId(), node.getType());
+            NodeSpec2 nodeBlueprint = blueprint.addNode(node.getId(), node.getType());
             nodeBlueprint.title(node.getTitle());
             nodeBlueprint.meta(node.getMetas());
             if (node.getWhen() != null) {
@@ -332,7 +340,7 @@ public class GraphBlueprint {
         }
 
         for (Link link : graph.getLinks()) {
-            LinkBlueprint linkBlueprint = blueprint.link(link.getPrevId(), link.getNextId());
+            LinkSpec2 linkBlueprint = blueprint.link(link.getPrevId(), link.getNextId());
             linkBlueprint.title(link.getTitle());
             linkBlueprint.meta(link.getMetas());
             if (link.getWhen() != null) {
@@ -372,26 +380,94 @@ public class GraphBlueprint {
         return Collections.unmodifiableMap(meta);
     }
 
-    public Map<String, NodeBlueprint> getNodes() {
+    public Map<String, NodeSpec2> getNodes() {
         return Collections.unmodifiableMap(nodes);
     }
 
-    public List<LinkBlueprint> getLinks() {
+    public List<LinkSpec2> getLinks() {
         return Collections.unmodifiableList(links);
     }
 
-    private GraphBlueprint normalize() {
+    /**
+     * Validate and prepare the blueprint for graph construction.
+     *
+     * <p>Checks that every link references real nodes, performs BFS from
+     * entry to determine reachable nodes, and warns about disconnected
+     * subgraphs. Idempotent — subsequent calls are no-ops.</p>
+     */
+    private GraphSpec2 normalize() {
+        if (normalized) {
+            return this;
+        }
+
+        // 1. Validate all link references resolve
+        for (LinkSpec2 link : links) {
+            if (!nodes.containsKey(link.from)) {
+                throw new IllegalStateException(
+                        "Link references unknown source node '" + link.from
+                        + "' -> '" + link.to + "' in graph: " + id);
+            }
+            if (!nodes.containsKey(link.to)) {
+                throw new IllegalStateException(
+                        "Link references unknown target node '" + link.from
+                        + "' -> '" + link.to + "' in graph: " + id);
+            }
+        }
+
+        // 2. BFS from entry to discover reachable nodes in traversal order
+        String resolvedEntry = resolveEntry();
+        bfsOrder = new LinkedHashSet<>();
+        if (resolvedEntry != null && nodes.containsKey(resolvedEntry)) {
+            Deque<String> queue = new ArrayDeque<>();
+            queue.addLast(resolvedEntry);
+            while (!queue.isEmpty()) {
+                String nodeId = queue.pollFirst();
+                if (!bfsOrder.add(nodeId)) {
+                    continue;
+                }
+                for (LinkSpec2 link : links) {
+                    if (link.from.equals(nodeId)) {
+                        queue.addLast(link.to);
+                    }
+                }
+            }
+        }
+
+        // 3. Warn about unreachable nodes (don't break — they may be
+        //    referenced by subgraph calls or future graph composition)
+        if (bfsOrder.size() < nodes.size()) {
+            for (String nodeId : nodes.keySet()) {
+                if (!bfsOrder.contains(nodeId)) {
+                    LOG.log(System.Logger.Level.WARNING,
+                            "Unreachable node '" + nodeId
+                            + "' (not reachable from entry '" + resolvedEntry
+                            + "') in graph: " + id);
+                }
+            }
+        }
+
+        normalized = true;
         return this;
     }
 
-    private List<NodeBlueprint> nodesInCompileOrder() {
-        List<NodeBlueprint> ordered = new ArrayList<>(nodes.values());
+    private List<NodeSpec2> nodesInCompileOrder() {
+        if (bfsOrder != null && !bfsOrder.isEmpty()) {
+            List<NodeSpec2> ordered = new ArrayList<>(bfsOrder.size());
+            for (String nodeId : bfsOrder) {
+                NodeSpec2 node = nodes.get(nodeId);
+                if (node != null) {
+                    ordered.add(node);
+                }
+            }
+            return ordered;
+        }
+        // Fallback: insertion order with entry first
+        List<NodeSpec2> ordered = new ArrayList<>(nodes.values());
         String resolvedEntry = resolveEntry();
         if (resolvedEntry != null) {
             for (int i = 0; i < ordered.size(); i++) {
                 if (resolvedEntry.equals(ordered.get(i).id)) {
-                    NodeBlueprint entryNode = ordered.remove(i);
-                    ordered.add(entryNode);
+                    ordered.add(0, ordered.remove(i));
                     break;
                 }
             }
@@ -404,11 +480,12 @@ public class GraphBlueprint {
             return entry;
         }
 
+        // Auto-detect: single START node wins
         String singleStart = null;
-        for (NodeBlueprint node : nodes.values()) {
+        for (NodeSpec2 node : nodes.values()) {
             if (node.type == NodeType.START) {
                 if (singleStart != null) {
-                    return null;
+                    return null; // ambiguous — user must set entry explicitly
                 }
                 singleStart = node.id;
             }
@@ -429,74 +506,74 @@ public class GraphBlueprint {
         return new LinkedHashMap<>(obj.toMap());
     }
 
-    public static final class NodeBlueprint {
-        private final GraphBlueprint owner;
+    public static final class NodeSpec2 {
+        private final GraphSpec2 owner;
         private final String id;
         private final NodeType type;
         private String title;
         private final Map<String, Object> meta = new LinkedHashMap<>();
-        private final List<LinkBlueprint> links = new ArrayList<>();
+        private final List<LinkSpec2> links = new ArrayList<>();
         private String when;
         private ConditionComponent whenComponent;
         private String task;
         private TaskComponent taskComponent;
 
-        private NodeBlueprint(GraphBlueprint owner, String id, NodeType type) {
+        private NodeSpec2(GraphSpec2 owner, String id, NodeType type) {
             this.owner = owner;
             this.id = id;
             this.type = type == null ? NodeType.ACTIVITY : type;
         }
 
-        public NodeBlueprint title(String title) {
+        public NodeSpec2 title(String title) {
             this.title = title;
             return this;
         }
 
-        public NodeBlueprint meta(Map<String, Object> meta) {
+        public NodeSpec2 meta(Map<String, Object> meta) {
             if (meta != null && !meta.isEmpty()) {
                 this.meta.putAll(meta);
             }
             return this;
         }
 
-        public NodeBlueprint metaPut(String key, Object value) {
+        public NodeSpec2 metaPut(String key, Object value) {
             if (key != null && !key.isEmpty()) {
                 this.meta.put(key, value);
             }
             return this;
         }
 
-        public NodeBlueprint when(String when) {
+        public NodeSpec2 when(String when) {
             this.when = when;
             this.whenComponent = null;
             return this;
         }
 
-        public NodeBlueprint when(ConditionComponent whenComponent) {
+        public NodeSpec2 when(ConditionComponent whenComponent) {
             this.whenComponent = whenComponent;
             this.when = null;
             return this;
         }
 
-        public NodeBlueprint task(String task) {
+        public NodeSpec2 task(String task) {
             this.task = task;
             this.taskComponent = null;
             return this;
         }
 
-        public NodeBlueprint task(TaskComponent taskComponent) {
+        public NodeSpec2 task(TaskComponent taskComponent) {
             this.taskComponent = taskComponent;
             this.task = null;
             return this;
         }
 
-        public NodeBlueprint linkAdd(String to) {
+        public NodeSpec2 linkAdd(String to) {
             owner.link(id, to);
             return this;
         }
 
-        public NodeBlueprint linkAdd(String to, Consumer<LinkBlueprint> configure) {
-            LinkBlueprint link = owner.link(id, to);
+        public NodeSpec2 linkAdd(String to, Consumer<LinkSpec2> configure) {
+            LinkSpec2 link = owner.link(id, to);
             if (configure != null) {
                 configure.accept(link);
             }
@@ -519,7 +596,7 @@ public class GraphBlueprint {
             return Collections.unmodifiableMap(meta);
         }
 
-        public List<LinkBlueprint> getLinks() {
+        public List<LinkSpec2> getLinks() {
             return Collections.unmodifiableList(links);
         }
 
@@ -540,7 +617,7 @@ public class GraphBlueprint {
         }
     }
 
-    public static final class LinkBlueprint {
+    public static final class LinkSpec2 {
         private final String from;
         private final String to;
         private String title;
@@ -549,43 +626,43 @@ public class GraphBlueprint {
         private ConditionComponent whenComponent;
         private int priority;
 
-        private LinkBlueprint(String from, String to) {
+        private LinkSpec2(String from, String to) {
             this.from = from;
             this.to = to;
         }
 
-        public LinkBlueprint title(String title) {
+        public LinkSpec2 title(String title) {
             this.title = title;
             return this;
         }
 
-        public LinkBlueprint meta(Map<String, Object> meta) {
+        public LinkSpec2 meta(Map<String, Object> meta) {
             if (meta != null && !meta.isEmpty()) {
                 this.meta.putAll(meta);
             }
             return this;
         }
 
-        public LinkBlueprint metaPut(String key, Object value) {
+        public LinkSpec2 metaPut(String key, Object value) {
             if (key != null && !key.isEmpty()) {
                 this.meta.put(key, value);
             }
             return this;
         }
 
-        public LinkBlueprint when(String when) {
+        public LinkSpec2 when(String when) {
             this.when = when;
             this.whenComponent = null;
             return this;
         }
 
-        public LinkBlueprint when(ConditionComponent whenComponent) {
+        public LinkSpec2 when(ConditionComponent whenComponent) {
             this.whenComponent = whenComponent;
             this.when = null;
             return this;
         }
 
-        public LinkBlueprint priority(int priority) {
+        public LinkSpec2 priority(int priority) {
             this.priority = priority;
             return this;
         }

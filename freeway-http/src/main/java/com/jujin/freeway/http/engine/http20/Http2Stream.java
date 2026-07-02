@@ -1,20 +1,16 @@
 package com.jujin.freeway.http.engine.http20;
-import com.jujin.freeway.http.engine.http20.frame.BaseFrame;
-import com.jujin.freeway.http.engine.http20.frame.DataFrame;
-import com.jujin.freeway.http.engine.http20.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http20.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http20.frame.FrameType;
-import com.jujin.freeway.http.engine.http20.frame.SettingIdentifier;
-import com.jujin.freeway.http.engine.http20.frame.WindowUpdateFrame;
+
+import com.jujin.freeway.http.engine.H2ResponseBridge;
+import com.jujin.freeway.http.engine.http20.frame.*;
 import com.jujin.freeway.http.engine.http20.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http20.util.Http2Exception;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -28,7 +24,7 @@ import java.util.concurrent.locks.LockSupport;
  * HTTP/2 stream processor. Represents a single HTTP/2 request/response stream,
  * managing stream state, flow control, I/O adapters, and async request processing.
  */
-public final class Http2Stream implements com.jujin.freeway.http.engine.H2ResponseBridge {
+public final class Http2Stream implements H2ResponseBridge {
     private static final Logger LOG = LoggerFactory.getLogger(Http2Stream.class);
     private static final FrameFlag.FlagSet END_STREAM = FrameFlag.FlagSet.of(FrameFlag.END_STREAM);
 
@@ -36,13 +32,12 @@ public final class Http2Stream implements com.jujin.freeway.http.engine.H2Respon
     public final AtomicLong sendWindow = new AtomicLong(65535);
     private final int streamId;
     private final int initialWindowSize;
-    private final int maxFrameSize;
     private final Http2Connection connection;
     private final Map<String, List<String>> requestHeaders;
     private final DataIn dataIn;
     private final OutputStream outputStream;
     private final Http2Connection.StreamHandler handler;
-    private final Map<String, List<String>> responseHeaders = new java.util.LinkedHashMap<>(16);
+    private final Map<String, List<String>> responseHeaders = new LinkedHashMap<>(16);
 
     @Override
     public Map<String, List<String>> headers() { return responseHeaders; }
@@ -69,8 +64,7 @@ public final class Http2Stream implements com.jujin.freeway.http.engine.H2Respon
         initialWindowSize = localWindow != null ? (int) localWindow.value : 65535;
         if (localWindow != null) receiveWindow.set((int) localWindow.value);
 
-        var maxFrameSetting = connection.remoteSettings().get(SettingIdentifier.SETTINGS_MAX_FRAME_SIZE);
-        maxFrameSize = maxFrameSetting != null ? (int) maxFrameSetting.value : 16384;
+        // maxFrameSize is read dynamically from connection to follow settings changes
 
         this.outputStream = new Http2OutputStream(streamId);
     }
@@ -82,8 +76,13 @@ public final class Http2Stream implements com.jujin.freeway.http.engine.H2Respon
         connection.sendResetStream(Http2ErrorCode.INTERNAL_ERROR, streamId);
     }
 
+    void markHalfClosed() {
+        halfClosed = true;
+    }
+
     public void close() {
         streamOpen = false;
+        connection.streams.remove(streamId);
         try { dataIn.close(); } catch (IOException ignored) {}
         try { outputStream.close(); } catch (IOException ignored) {}
         var t = thread;
@@ -135,7 +134,7 @@ public final class Http2Stream implements com.jujin.freeway.http.engine.H2Respon
         }
     }
 
-    private void startRequest(ExecutorService executor) throws IOException {
+    void startRequest(ExecutorService executor) throws IOException {
         if (!handlingRequest.compareAndSet(false, true))
             throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         connection.requestsInProgress.incrementAndGet();
@@ -169,7 +168,7 @@ public final class Http2Stream implements com.jujin.freeway.http.engine.H2Respon
             if (streamOutputClosed) throw new IOException("output closed");
 
             while (length > 0) {
-                int chunkSize = (int) Math.min(Math.min(length, maxFrameSize),
+                int chunkSize = (int) Math.min(Math.min(length, connection.maxFrameSize),
                     Math.min(connection.sendWindow.get(), sendWindow.get()));
                 if (chunkSize <= 0) {
                     connection.lock();

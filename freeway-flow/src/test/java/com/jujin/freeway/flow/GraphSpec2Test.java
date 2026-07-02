@@ -1,17 +1,17 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.v2.GraphBlueprint;
+import com.jujin.freeway.flow.v2.GraphSpec2;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class GraphBlueprintTest {
+class GraphSpec2Test {
 
     @Test
     void testBlueprintBuildsAndRuns() {
-        GraphBlueprint blueprint = GraphBlueprint.create("blueprint_v2", bp -> {
+        GraphSpec2 blueprint = GraphSpec2.create("blueprint_v2", bp -> {
             bp.entry("start");
             bp.metaPut("kind", "demo");
             bp.addStart("start").linkAdd("task");
@@ -59,12 +59,12 @@ class GraphBlueprintTest {
         assertNotNull(graph.getNode("a"));
         assertNotNull(graph.getNode("e"));
 
-        assertThrows(IllegalArgumentException.class, () -> GraphBlueprint.fromText(legacyJson));
+        assertThrows(IllegalArgumentException.class, () -> GraphSpec2.fromText(legacyJson));
     }
 
     @Test
     void testV2JsonCanLoadThroughGraphApi() {
-        GraphBlueprint blueprint = GraphBlueprint.create("v2_graph", bp -> {
+        GraphSpec2 blueprint = GraphSpec2.create("v2_graph", bp -> {
             bp.entry("start");
             bp.addStart("start").linkAdd("task");
             bp.addActivity("task").task("@counter").linkAdd("end");
@@ -72,7 +72,7 @@ class GraphBlueprintTest {
         });
 
         String json = blueprint.toJson();
-        GraphBlueprint parsed = GraphBlueprint.fromText(json);
+        GraphSpec2 parsed = GraphSpec2.fromText(json);
         assertEquals(2, parsed.getVersion());
         assertEquals("start", parsed.getEntry());
         assertEquals(3, parsed.getNodes().size());
@@ -85,7 +85,7 @@ class GraphBlueprintTest {
 
     @Test
     void testBlueprintPromotesEntryNodeInRuntimeGraph() {
-        GraphBlueprint blueprint = GraphBlueprint.create("entry_promote", bp -> {
+        GraphSpec2 blueprint = GraphSpec2.create("entry_promote", bp -> {
             bp.entry("task");
             bp.metaPut("kind", "demo");
             bp.title("entry promote");
@@ -124,7 +124,7 @@ class GraphBlueprintTest {
                 }
                 """;
 
-        GraphBlueprint blueprint = GraphBlueprint.fromText(json);
+        GraphSpec2 blueprint = GraphSpec2.fromText(json);
         assertEquals("compat", blueprint.getId());
         assertEquals("start", blueprint.getEntry());
         assertEquals("score > 0", blueprint.getNode("task").getWhen());
@@ -149,7 +149,7 @@ class GraphBlueprintTest {
             spec.addEnd("e");
         });
 
-        GraphBlueprint blueprint = GraphBlueprint.copy(graph);
+        GraphSpec2 blueprint = GraphSpec2.copy(graph);
         assertEquals("s", blueprint.getEntry());
         assertEquals(2, blueprint.getLinks().size());
         assertTrue(blueprint.getLinks().stream().anyMatch(link ->
@@ -162,7 +162,7 @@ class GraphBlueprintTest {
 
     @Test
     void testBlueprintRejectsMissingEntryNode() {
-        GraphBlueprint blueprint = GraphBlueprint.create("broken", bp -> {
+        GraphSpec2 blueprint = GraphSpec2.create("broken", bp -> {
             bp.entry("missing");
             bp.addStart("start").linkAdd("end");
             bp.addEnd("end");
@@ -174,7 +174,7 @@ class GraphBlueprintTest {
 
     @Test
     void testEngineCanLoadBlueprintDirectly() {
-        GraphBlueprint blueprint = GraphBlueprint.create("engine_blueprint", bp -> {
+        GraphSpec2 blueprint = GraphSpec2.create("engine_blueprint", bp -> {
             bp.entry("start");
             bp.addStart("start").linkAdd("task");
             bp.addActivity("task").task("@counter").linkAdd("end");
