@@ -1,6 +1,6 @@
 # freeway-flow
 
-轻量级图编排引擎，移植自 [solon-flow](https://github.com/opensolon/solon-flow)。
+轻量级图编排引擎。**v1** 定义格式（`GraphSpec`）移植自 [solon-flow](https://github.com/opensolon/solon-flow)；**v2** 格式（`GraphSpec2`）为 Freeway 原生设计——显式 entry、节点/边分离、编译时校验。
 
 ## 源项目信息
 
@@ -8,9 +8,11 @@
 |---|---|
 | **源项目** | [opensolon/solon-flow](https://github.com/opensolon/solon-flow) |
 | **原始作者** | noear (西东) |
-| **移植基线版本** | solon-flow 4.0.2 |
+| **移植版本** | solon-flow 4.0.2（对应 freeway-flow v1 格式） |
 | **源项目许可** | Apache License 2.0 |
 | **源项目活跃期** | 2025-03 ~ 至今 |
+
+> **注意**：以下移植变更是针对 v1 (`GraphSpec`) 而言的。v2 (`GraphSpec2`) 与此无关——它是 Freeway 原生设计。
 
 ## 移植变更
 
@@ -58,44 +60,42 @@ solon-flow 核心引擎对外部库有较多依赖，移植过程对每一处做
 
 **零新增三方依赖。**
 
-## 快速开始
+## 快速开始（v2 格式，推荐）
 
 ```java
-// 1. 定义图（JSON）
+// 1. 定义图（v2 JSON — 显式entry + 分离的nodes/links）
 String json = """
 {
-  "id": "demo",
-  "layout": [
-    { "id": "s",  "type": "start",   "link": "gw" },
-    { "id": "gw", "type": "exclusive",
-      "link": [
-        { "nextId": "high", "when": "score > 80" },
-        { "nextId": "low",  "when": "score <= 80" }
-      ]
-    },
-    { "id": "high", "type": "activity", "task": "@highHandler", "link": "e" },
-    { "id": "low",  "type": "activity", "task": "@lowHandler",  "link": "e" },
+  "id": "demo", "entry": "s",
+  "nodes": [
+    { "id": "s",  "type": "start" },
+    { "id": "gw", "type": "exclusive" },
+    { "id": "high", "type": "activity", "task": "!handler:high" },
+    { "id": "low",  "type": "activity", "task": "!handler:low" },
     { "id": "e",    "type": "end" }
+  ],
+  "links": [
+    { "from": "s",    "to": "gw" },
+    { "from": "gw",   "to": "high", "when": "score > 80" },
+    { "from": "gw",   "to": "low",  "when": "score <= 80" },
+    { "from": "high", "to": "e" },
+    { "from": "low",  "to": "e" }
   ]
 }""";
 
 // 2. 构建引擎
-FlowEngine engine = FlowEngine.newInstance(
-    SimpleFlowDriver.builder()
-        .container(name -> {
-            if ("highHandler".equals(name)) return (TaskComponent) (ctx, node) -> System.out.println("高分");
-            if ("lowHandler".equals(name))  return (TaskComponent) (ctx, node) -> System.out.println("低分");
-            return null;
-        })
-        .build()
-);
+FlowEngine engine = FlowEngine.newInstance();
+engine.register((TaskComponent) (ctx, node) -> System.out.println("高分"));
+engine.register((TaskComponent) (ctx, node) -> System.out.println("低分"));
 
 // 3. 执行
-Graph graph = Graph.fromText(json);
+Graph graph = Graph.fromText(json);  // 自动检测 v1/v2 格式
 FlowContext ctx = FlowContext.of();
 ctx.put("score", 95);
 engine.eval(graph, ctx);  // 输出: 高分
 ```
+
+v1 (`layout`) 格式仍兼容——`Graph.fromText()` 自动检测并转换为统一运行时。
 
 ## 版权声明
 

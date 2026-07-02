@@ -1,8 +1,8 @@
-# freeway-flow 新图设计
+# freeway-flow v2 图设计（Freeway 原生）
 
-> 目标：定义一套适合 Freeway 的 canonical graph 格式。
+> 目标：定义一套适合 Freeway 的 canonical graph 格式。v2 为 Freeway 原生设计，不来自 solon-flow。
 >
-> 约束：旧图继续可读，新图只走一套字段和一套运行模型，不再依赖兼容别名。
+> 约束：旧图（v1，移植自 solon-flow）继续可读，v2 只走一套字段和一套运行模型。
 
 ## 1. 设计目标
 

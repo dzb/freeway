@@ -2,7 +2,9 @@
 
 > 说明对象：`freeway-flow`
 >
-> 背景：该模块由 `solon-flow` 移植到 Freeway 架构下。本文记录移植后的实际改动、兼容策略，以及今天补充的说明性注释。
+> 背景：该模块的 **v1 定义格式 (`GraphSpec`)** 由 `solon-flow` 移植到 Freeway 架构下。本文记录移植后的实际改动和兼容策略。
+>
+> **v2 格式 (`GraphSpec2`)** 为 Freeway 原生设计，不来自 solon-flow——见 [graph-v2.md](graph-v2.md)。
 
 ## 1. 迁移目标
 
