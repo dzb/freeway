@@ -11,7 +11,7 @@ Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP layer: routing, filters, static, multipart, WebSocket |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations |
-| `freeway-flow` | Graph-based workflow/flow engine — 7 node types, JSON-defined graphs |
+| `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
 | `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have zero external dependencies. Third-party adapters live in
@@ -39,16 +39,16 @@ This gives you:
 
 Freeway 2 keeps its core concepts intentionally small:
 
-- `Module` is the unit of application composition and responsibility partitioning. `ModuleEx` is the Java type name used by Freeway.
+- `Module` is the unit of application composition and responsibility partitioning. `ModuleEx` is the Java type name used by Freeway. Modules carry `@Marker` annotations to tag all their bindings (e.g. `@Marker(Builtin.class)`).
 - `Freeway` builds a container; `FreewayApp` builds a runtime.
-- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()`. `create()` injects without caching.
+- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` injects without caching.
 - `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
 - Service ids are plain strings: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is no public `ServiceId` type.
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider with ANSI-colored single-line console output (auto-detected from the attached console). Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and optional file logging with time+size rotation and GZIP compression. File logging activates via `-Dfreeway.log.file=auto` or explicit path.
 - Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/commons.md](docs/reference/commons.md) for deeper module notes.

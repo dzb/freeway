@@ -88,7 +88,7 @@ For the full module patterns, see [docs/reference/module.md](reference/module.md
 
 | Type | Purpose |
 |------|---------|
-| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()` |
+| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()` |
 | `ModuleEx` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
@@ -167,9 +167,30 @@ Greeter g = container.get(Greeter.class);
 // by type + id
 PaymentGateway pg = container.get(PaymentGateway.class, "stripe");
 
+// by type + marker annotations (containsAll semantics)
+Cache cache = container.get(Cache.class, Fast.class);
+
 // Container also available as a service
 Container c = container.get(Container.class);
 ```
+
+### Markers
+
+Marker annotations enable type-safe service disambiguation:
+
+```java
+// Define a marker annotation
+@Retention(RUNTIME) @Target({TYPE, PARAMETER, FIELD})
+public @interface Fast {}
+
+// Bind with marker
+binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+
+// Module-level markers propagate to all bindings
+@Marker(Builtin.class)
+public class AppModule implements ModuleEx { ... }
+```
+
 
 ### Scopes
 
@@ -1191,7 +1212,7 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Flow (`freeway-flow`)
 
-Lightweight graph-based workflow/flow engine ported from solon-flow. Zero external dependencies beyond commons + ioc.
+Lightweight graph-based workflow engine ported from solon-flow. Zero external dependencies beyond commons + ioc. Supports two DAG definition formats with a unified runtime.
 
 **7 node types:**
 
@@ -1205,42 +1226,65 @@ Lightweight graph-based workflow/flow engine ported from solon-flow. Zero extern
 | `PARALLEL` | Parallel fork |
 | `LOOP` | Loop until condition |
 
-**Graph definition — JSON:**
+**Graph definition — v2 format (recommended):**
 
 ```java
+// Programmatic
+GraphSpec2 bp = GraphSpec2.create("orderFlow", spec -> {
+    spec.entry("start");
+    spec.addStart("start").linkAdd("approve");
+    spec.addActivity("approve").task("!channel:order").linkAdd("end");
+    spec.addEnd("end");
+});
+Graph graph = bp.create();
+
+// JSON — Graph.fromText() auto-detects format
 Graph graph = Graph.fromText("""
 {
+    "id": "orderFlow", "version": 2, "entry": "start",
     "nodes": [
-        {"id": "start", "type": "START", "next": "approve"},
-        {"id": "approve", "type": "ACTIVITY", "task": "submitOrder", "next": "end"},
-        {"id": "end", "type": "END"}
+        {"id": "start", "type": "start"},
+        {"id": "approve", "type": "activity", "task": "!channel:order"},
+        {"id": "end", "type": "end"}
+    ],
+    "links": [
+        {"from": "start", "to": "approve"},
+        {"from": "approve", "to": "end"}
     ]
 }
 """);
 ```
 
-**Task resolution** — tasks are resolved via three strategies:
+v1 `layout`-format JSON is still supported — `Graph.fromText()` auto-detects and internally converts to the unified runtime path. `GraphSpec2.normalize()` validates link references and BFS reachability at `create()` time.
+
+**Task resolution:**
 
 | Strategy | Syntax | Example |
 |----------|--------|---------|
-| Bean | `@bean` | `@orderService` — resolved from IoC container |
+| Marker | `!name` | `!channel:order !priority:high` — resolved by `FlowMarkerIndex` intersection |
+| Bean | `@bean` | `@orderService` — resolved from IoC container by binding id |
 | Sub-graph | `#graph` | `#approvalFlow` — calls a named sub-graph |
-| Metadata | `$meta` | `${app.name}` — resolved via config cascade |
+| Metadata | `$meta` | `$app.name` — resolved from graph meta |
+
+`@FlowMarker("channel:order")` on a `TaskComponent` implementation auto-registers it in the marker index. When multiple handlers match, the one with the most markers wins.
 
 **Execution:**
 
 ```java
 FlowEngine engine = container.get(FlowEngine.class);
-FlowResult result = engine.execute(graphId);
-result.trace().forEach(t -> System.out.println(t)); // execution trace
+engine.load(graph);
+engine.eval("orderFlow", FlowContext.of());
 ```
 
 **Key types:**
 
 | Type | Purpose |
 |------|---------|
-| `Graph` | Graph definition — nodes, edges, conditions |
-| `FlowEngine` | Graph executor — execute, pause, resume |
+| `Graph` | Immutable runtime model — built from v1 or v2 definitions |
+| `GraphSpec2` | v2 DAG authoring surface with explicit `entry` and separated `nodes`/`links` |
+| `FlowEngine` | Graph executor: load, eval, pause, resume |
+| `@FlowMarker` | String-based marker annotation for `TaskComponent` resolution |
+| `FlowMarkerIndex` | Reverse index from marker names to handlers with `containsAll` matching |
 | `FlowEventBus` | Node lifecycle events (enter, exit, error) |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~280 lines) |
 
