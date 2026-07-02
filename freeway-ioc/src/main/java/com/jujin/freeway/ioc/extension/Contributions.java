@@ -17,11 +17,13 @@ public interface Contributions<T> {
 
     /**
      * Adds an unnamed contribution. Contributions are ordered by insertion
-     * order and cannot use {@code before/after}.
+     * order and cannot use {@code before/after}. Returns {@code this} for
+     * chaining additional contributions.
      *
      * @param value the contribution value
+     * @return this Contributions, for chaining
      */
-    void add(T value);
+    Contributions<T> add(T value);
 
     /**
      * Adds a contribution by implementation class. The container instantiates

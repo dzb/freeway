@@ -70,8 +70,9 @@ final class BinderImpl implements Binder {
         Extension<V> ext = container.extension(entryType);
         return new Contributions<>() {
             @Override
-            public void add(V value) {
+            public Contributions<V> add(V value) {
                 ext.add(null, value);
+                return this;
             }
 
             @Override
