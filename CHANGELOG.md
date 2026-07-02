@@ -9,22 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`@Marker` mechanism** — annotation-based service disambiguation at the IoC layer. `@Marker(Builtin.class)` on modules propagates to all bindings; `bind().marker(Fast.class)` attaches markers to individual services; `container.get(type, markers)` resolves by marker intersection. Builtin, Primary, and custom markers all share the same `MarkerIndex`.
+- **`@FlowMarker`** — string-based marker annotation for `TaskComponent` resolution. Graph nodes reference tasks via `!markerName` syntax. `FlowMarkerIndex` resolves the best-matching handler with `containsAll` semantics — most markers wins. Replaces the typed-task registration mechanism.
+- **`GraphSpec2`** (v2 graph blueprint) — canonical DAG authoring surface with explicit `entry`, top-level `nodes` + `links` (edges separated from nodes), and `normalize()` validation. `Graph.fromText()` auto-detects v1/v2 JSON format so callers never need to choose.
+- **`GraphSpec2.normalize()`** — validates all link references resolve to real nodes; BFS reachability from entry; logs warnings for unreachable subgraphs. Applied automatically at `create()` time for both v1 (via internal conversion) and v2 paths.
+- **`H2ResponseBridge`** — decouples `FreewayHttpContext` from `Http2Stream`. Headers flow through the bridge as a shared map; the stream writes them as HTTP/2 HEADERS frames on first DATA write. Enables clean mock-based testing of H2 context behavior.
 - **CLI convenience prefix** — CLI args without a dot (e.g. `--profile=dev`) auto-receive the `freeway.` prefix. Dotted keys pass through unchanged.
 - **HTTPS auto-configuration** — `HttpModule` now reads `freeway.http.ssl.*` config keys and automatically creates an HTTPS engine with TLS 1.3 when `ssl.enabled=true`. Supports PKCS12/JKS keystores and HTTP/2 over TLS via ALPN. `WebServerBuilder` gains `.sslContext()` convenience method.
-- **Jetty engine adapter** restored in `freeway-ext`. Jetty 12 provides HTTP/1.1, HTTP/2, and WebSocket with full TLS support. Uses the `.primary()` binding pattern — add `JettyWebEngineModule` to switch.
+- **Canonical contribution id** — `binder.contribute(Foo.class).add(FooImpl.class)` auto-generates the id as `snake_case_simple_name@package_name` (e.g. `email_sender@com.example.flow`), unique and readable without `Class.forName`.
 
 ### Changed
 
-- **Response serialization optimizations** — Status code digits and Content-Length digits pre-computed as `byte[]` caches, eliminating per-request `String.valueOf()` + `.getBytes()` allocations. Common error response bodies (404, 500) and health check body pre-computed, avoiding repeated String-to-byte conversion on hot paths.
-- **Header key normalization** — HTTP/1.1 parser now normalizes header keys to all lowercase per RFC 7230, fixing X-Request-Id correlation ID propagation across case variations.
-- **Header value OWS tolerance** — Trailing whitespace stripped from header values per RFC 7230 §3.2.6, fixing parsing of `Content-Length: 4 `, `Connection: keep-alive `, etc.
-- **HEAD response Content-Length** — HEAD responses now report the same Content-Length as GET would (RFC 7231 §4.3.2), fixing cache validation.
-- **Connection header token-list** — Parsed as comma-separated token list per RFC 7230 §6.1, fixing `Connection: keep-alive, Upgrade` handling.
-- **Documentation restructured** — `DEVELOPER-GUIDE.md`, config samples, and `freeway-*` summaries moved to `docs/` directory. SKILL.md consolidated as concise English index with Chinese reference. `Contribution.java` Javadoc corrected (unknown ids fail, not silently ignored).
+- **Flow v1/v2 unified build path** — `GraphSpec.create()` internally converts to `GraphSpec2`, eliminating duplicate `Graph`/`Node`/`Link` constructors. `Graph.fromText()` auto-detects format. Runtime model has a single constructor path: `Graph(GraphSpec2)`.
+- **Renamed** — `GraphBlueprint` → `GraphSpec2`, `NodeBlueprint` → `NodeSpec2`, `LinkBlueprint` → `LinkSpec2`.
+- **Typed task registration removed** — `register(Class<?>, TaskComponent)` and `typedTasks()` removed from `FlowEngine`. All task resolution goes through `!markerName` (marker intersection) or `@beanName` (container binding id).
+- **`IocContainerAdapter` simplified** — reduced from multi-path iteration (FQN, canonical name, FlowMarker) to a single `container.get(TaskComponent.class, name)` call. Contributed handlers are auto-registered in the marker index via `engine.register(handler)`.
+- **Response serialization optimizations** — Status code digits and Content-Length digits pre-computed as `byte[]` caches, eliminating per-request `String.valueOf()` + `.getBytes()` allocations. Common error response bodies (404, 500) and health check body pre-computed.
+- **Header key normalization** — HTTP/1.1 parser now normalizes header keys to all lowercase per RFC 7230.
+- **Header value OWS tolerance** — Trailing whitespace stripped from header values per RFC 7230 §3.2.6.
+- **HEAD response Content-Length** — HEAD responses now report the same Content-Length as GET would (RFC 7231 §4.3.2).
+- **Connection header token-list** — Parsed as comma-separated token list per RFC 7230 §6.1.
+- **Five-module polish** — flow, ioc, http, db, commons: added strategic comments (lock striping, transaction+Defer interaction, pool shutdown phases, query parameter expansion), fixed typos (`prevSetp`→`prevStep`, `nextSetp`→`nextStep`), cleaned FQN references across 10+ files.
+- **Container lifecycle logging** — `close()` now logs module count at info level.
 
 ### Fixed
 
 - Response header injection hardening — `headerSet()` validates no `\r`/`\n` in values.
+- **HTTP/2 frame fixes** — `DataFrame` PADDED off-by-one, `PingFrame.writeTo` body reference, `WindowUpdateFrame` 31-bit masking, HPACK integer bounds check, header name lowercase enforcement, dynamic table byte-size tracking.
+- **WebSocket fixes** — strict UTF-8 validation on text frames, close code reserved range rejection, close reason UTF-8 validation, 8-byte extended length for payloads >65535, fragmented message assembly with fragType tracking.
+- **HttpParser fixes** — duplicate `Content-Length` rejection, `Transfer-Encoding` comma+unknown rejection, pipeline buffer preservation, truncated request line/header EOF rejection, Upgrade requires both `Connection: Upgrade` AND `Upgrade: websocket`.
+- **Lifecycle fixes** — `Scope.close()` null value filter, `findOwnerBinding` walks full interface hierarchy recursively, module dedup uses `IdentityHashMap` instead of `HashSet<Class<?>>`.
+- **Logging fixes** — SLF4J state constant corrected (FAILED→SUCCESSFUL), `JULFileFormatter` ANSI codes stripped, GZIP compression on daemon thread, `formatOverride()` whitespace trimming restored.
+- **Coercion fixes** — NaN/Infinity guards in `JsonAccessors`, `BigInteger`/`BigDecimal` range checks in `CoercerDefault`, narrow overflow rejection, `@Min`/`@Max` BigDecimal comparison, `@Size` Map support.
 
 ## [1.2.1] — 2026-06-23
 
