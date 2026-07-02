@@ -26,8 +26,9 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 ## Core Shape
 
 - `freeway-commons` - shared JSON, coercion, scoped primitives (`Defer` for commit-time deferral, `ScopedCache` for scope-lifetime caching), bean, validation, logging
-- `freeway-ioc` - container, binding DSL, scopes, injection, contributions, AOP, event bus
+- `freeway-ioc` - container, binding DSL, scopes, injection, markers, contributions, AOP, event bus
 - `freeway-boot` - app bootstrap, config cascade, profiles, runtime lifecycle
+- `freeway-flow` - graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution
 - `freeway-http` - routing, filters, static resources, multipart, SSE, WebSocket
 - `freeway-db` - JDBC access, transactions, pools, migrations, schema
 - external adapters live in `freeway-ext`

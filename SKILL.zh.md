@@ -13,6 +13,7 @@ description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway�
 freeway-commons     JSON、类型转换、Defer、ScopedCache、Bean 内省、验证
 freeway-ioc         IoC 容器：绑定、注入、作用域、AOP、事件总线、扩展
 freeway-boot        launcher、配置级联、profiles、运行时生命周期
+freeway-flow        图编排引擎 — 7 节点类型、v2 DAG 格式、@FlowMarker
 freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipart、SSE
   ├ 内置引擎          FreewayHttpEngine（HTTP/1.1 + HTTP/2 + WebSocket + HTTPS）
   └ 外部引擎          Undertow / Jetty → 见 freeway-ext
@@ -83,7 +84,7 @@ public class AppModule implements ModuleEx {
 
 | 类型 | 用途 |
 |------|------|
-| `Container` | 服务查找：`get(Class)`, `get(Class, id)`, `extension()` |
+| `Container` | 服务查找：`get(Class)`, `get(Class, id)`, `get(Class, Annotation...)`, `extension()`, `create()` |
 | `Binder` | 绑定与贡献 DSL，在 `ModuleEx.bind()` 中接收 |
 | `Binding<T>` | 绑定配置链：`to()` → `scope()` → `id()` → `primary()` → `advise()` |
 | `ModuleEx` | `@FunctionalInterface`，模块入口：`void bind(Binder)` |
@@ -149,6 +150,7 @@ Freeway.create(binder -> {
 | `.to(c -> ...)` | Provider 工厂 | 每次解析按作用域策略调用 |
 | `.id("name")` | 命名标识 | 同一类型 + id 唯一 |
 | `.primary()` | 设置为主绑定 | 无 id 注入时默认使用 primary |
+| `.marker(Annotation...)` | 添加标记注解 | `binder.bind(Cache.class).to(FastCache.class).marker(Fast.class)` |
 | `.scope(Scope)` | 作用域 | `SINGLETON`(默认) / `THREAD` / `PROTOTYPE` |
 | `.advise(Consumer<Advisor>)` | AOP 织入 | 仅接口→类绑定 |
 
@@ -159,11 +161,25 @@ Freeway.create(binder -> {
 Greeter g = c.get(Greeter.class);
 // 按类型 + id
 PaymentGateway pg = c.get(PaymentGateway.class, "stripe");
+// 按类型 + 标记注解（containsAll 语义）
+Cache cache = c.get(Cache.class, Fast.class);
 // Container 本身也可注入
 Container self = c.get(Container.class);
 // 运行时访问贡献扩展列表
 Extension<Route> ext = c.extension(Route.class);
 List<Route> allRoutes = ext.all();
+```
+
+### 标记注解（Marker）
+
+模块级标记会传播到所有绑定：
+
+```java
+@Marker(Builtin.class)
+public class AppModule implements ModuleEx { ... }
+
+// 单绑定时加标记
+binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
 ```
 
 ### 注入注解
@@ -174,7 +190,6 @@ List<Route> allRoutes = ext.all();
 |------|------|------|
 | `@Inject` | 构造器/字段/参数注入 | `@Inject private Logger log;` |
 | `@Inject("id")` | 按绑定 id 注入 | `@Inject("audit") Logger audit;` |
-| `@Named("id")` | 按 id 限定（同 `@Inject("id")`） | `@Named("stripe") PaymentGateway pg;` |
 | `@Symbol("key")` | 严格配置查找，key 不存在抛异常 | `@Symbol("server.port") int port;` |
 | `@Value("${key:default}")` | 配置表达式，可带默认值 | `@Value("${app.timeout:30}") int timeout;` |
 | `@PostConstruct` | 初始化回调 | `void init() { ... }` |
@@ -852,6 +867,63 @@ freeway.db.schema.auto=true          freeway.db.schema.auto=false
 ```
 
 **Schema 适合开发迭代**（零摩擦），**Migration 适合生产上线**（可审计、可精确控制）。同一套实体类和 SQL 文件，切换只需一个配置键。
+
+## Flow — 图编排引擎
+
+基于 solon-flow 移植的轻量级图编排引擎，7 种节点类型：`START`、`END`、`ACTIVITY`、`EXCLUSIVE`、`INCLUSIVE`、`PARALLEL`、`LOOP`。
+
+### 图定义 — v2 格式（推荐）
+
+```java
+// 编程式
+GraphSpec2 bp = GraphSpec2.create("orderFlow", spec -> {
+    spec.entry("start");
+    spec.addStart("start").linkAdd("approve");
+    spec.addActivity("approve").task("!channel:order").linkAdd("end");
+    spec.addEnd("end");
+});
+Graph graph = bp.create();          // normalize() 自动校验 link 引用 + 可达性
+
+// JSON — fromText() 自动检测 v1/v2 格式
+Graph graph = Graph.fromText("""
+{
+    "id": "orderFlow", "version": 2, "entry": "start",
+    "nodes": [
+        {"id": "start", "type": "start"},
+        {"id": "approve", "type": "activity", "task": "!channel:order"},
+        {"id": "end", "type": "end"}
+    ],
+    "links": [
+        {"from": "start", "to": "approve"},
+        {"from": "approve", "to": "end"}
+    ]
+}
+""");
+```
+
+### 任务解析
+
+| 策略 | 语法 | 说明 |
+|------|------|------|
+| Marker | `!name` | `!channel:order !priority:high` — FlowMarkerIndex 交集匹配，最具体者胜出 |
+| Bean | `@bean` | `@orderService` — 容器按 binding id 查找 |
+| 子图 | `#graph` | `#approvalFlow` — 调用命名子图 |
+| 元数据 | `$meta` | `$app.name` — 从图 meta 取值 |
+
+`@FlowMarker("channel:order")` 注解在 `TaskComponent` 实现类上，自动注册到 marker index。
+
+### 执行
+
+```java
+FlowEngine engine = container.get(FlowEngine.class);
+engine.load(graph);
+engine.eval("orderFlow", FlowContext.of());
+
+// 通过 IoC — FlowModule 自动注册贡献的 TaskComponent
+FreewayApp.run(args, new AppModule(), new FlowModule());
+```
+
+支持 PlantUML 导出、执行追踪（暂停/恢复）、子图调用、拦截器链。零外部依赖。
 
 ## Commons 工具
 
