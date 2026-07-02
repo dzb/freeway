@@ -435,26 +435,29 @@ public class GraphSpec2 {
             }
         }
 
-        // 2. Validate entry — v2 requires exactly one entry point
+        // 2. Validate entry — v2 requires exactly one entry point.
+        //    The entry node may be typed as ACTIVITY etc. in the blueprint
+        //    and only promoted to START at Graph construction time.
         String resolvedEntry = resolveEntry();
-        if (resolvedEntry == null) {
-            List<String> starts = nodes.values().stream()
-                .filter(n -> n.type == NodeType.START)
-                .map(n -> n.id)
-                .toList();
-            if (starts.isEmpty()) {
-                throw new IllegalStateException(
-                    "No entry node found in graph: " + id
-                    + ". Set 'entry' or add a START node."
-                );
-            }
-            if (starts.size() > 1) {
-                throw new IllegalStateException(
-                    "Multiple START nodes (" + starts
-                    + ") without explicit 'entry' in graph: " + id
-                    + ". Set 'entry' to disambiguate."
-                );
-            }
+        List<String> starts = nodes.values().stream()
+            .filter(n -> n.type == NodeType.START || n.id.equals(resolvedEntry))
+            .map(n -> n.id)
+            .distinct()
+            .toList();
+        if (starts.isEmpty()) {
+            throw new IllegalStateException(
+                "No entry node found in graph: " + id
+                + ". Set 'entry' or add a START node."
+            );
+        }
+        if (starts.size() > 1) {
+            String detail = entry != null
+                ? "Explicit entry is '" + entry + "', but multiple START nodes exist: " + starts
+                : "Multiple START nodes (" + starts + ") without explicit 'entry'";
+            throw new IllegalStateException(
+                detail + " in graph: " + id
+                + ". Use 'entry' to specify which START is the graph entry point."
+            );
         }
 
         // 3. BFS from entry to discover reachable nodes in traversal order

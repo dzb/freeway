@@ -67,13 +67,15 @@ public class Graph {
 
     public static Graph fromText(String text) {
         JsonObject dom = JsonUtils.parseObject(text);
-        // v2 is declared by the version field — if present, route strictly.
-        // Missing nodes/links will produce clear errors from GraphSpec2 itself.
+        // Route to v2 when either version==2 is declared, or the structural
+        // signature (top-level nodes + links) is present. v1 layout format
+        // never has a top-level "links" array.
         Integer version = dom.getInt("version");
-        if (version != null && version == GraphSpec2.VERSION) {
+        boolean isV2 = (version != null && version == GraphSpec2.VERSION)
+            || (dom.containsKey("nodes") && dom.containsKey("links"));
+        if (isV2) {
             return GraphSpec2.fromDom(dom).create();
         }
-        // Falls back to v1 (layout format), which internally converts to blueprint.
         return GraphSpec.fromDom(dom).create();
     }
 
@@ -329,13 +331,6 @@ public class Graph {
         Node node = new Node(this, nodeSpec, type, tmp);
         nodeMap.put(node.getId(), node);
         if (type == NodeType.START) {
-            if (start != null && !node.getId().equals(start.getId())) {
-                throw new IllegalStateException(
-                    "Multiple START nodes detected ("
-                    + start.getId() + " and " + node.getId()
-                    + "). Set 'entry' to disambiguate."
-                );
-            }
             start = node;
         }
     }
