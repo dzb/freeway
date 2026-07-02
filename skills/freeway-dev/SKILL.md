@@ -54,5 +54,6 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 - [Boot reference](references/boot.md)
 - [HTTP reference](references/http.md)
 - [DB reference](references/db.md)
+- [Flow reference](references/flow.md)
 - [Commons reference](references/commons.md)
 - [Gotchas](references/gotchas.md)

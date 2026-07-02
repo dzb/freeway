@@ -36,7 +36,6 @@ FreewayApp.run(new String[0], new AppModule(), new DbModule());
 - `freeway.db.url`
 - `freeway.db.username`
 - `freeway.db.password`
-- `freeway.db.pool.*`
 - `freeway.db.dialect`
 - `freeway.db.schema.auto`
 - `freeway.db.schema.groups`
