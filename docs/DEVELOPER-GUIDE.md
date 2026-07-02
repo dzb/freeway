@@ -40,7 +40,7 @@ freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, 
 freeway-boot             launcher, config cascade, profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
   └ built-in              FreewayHttpEngine (HTTP/1.1 + HTTP/2 + WebSocket + HTTPS)
-  └ engine adapters       Undertow → see freeway-ext
+  └ engine adapters       Undertow, Jetty → see freeway-ext
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
   └ connection pool       HikariCP adapter → see freeway-ext
 freeway-flow             Graph workflow engine — 7 node types, JSON graphs, tracing
@@ -712,12 +712,8 @@ Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationEx
 | Engine | Module | Features |
 |--------|--------|----------|
 | `FreewayHttpEngine` | Built-in in `HttpModule` (default) | VT-based, HTTP/1.1 + h2c/h2 + WebSocket + HTTPS |
-| `UndertowEngine` | `freeway-http-undertow` (ext) | XNIO-based alternative |
-
-`JdkHttpEngine` has been removed — the built-in engine is now the sole default.
-
-For performance comparisons, see `freeway-benchmark` module (JMH microbenchmarks + HTTP/WS smoke benchmarks).
-| `UndertowEngine` | `freeway-http-undertow` | HTTP + WebSocket, production-grade |
+| `UndertowEngine` | `freeway-http-undertow` (ext) | XNIO-based, production-grade |
+| `JettyEngine` | `freeway-http-jetty` (ext) | Jetty 12, HTTP/1.1 + HTTP/2 + WebSocket + TLS |
 
 ```java
 // Default — FreewayHttpEngine

@@ -20,8 +20,9 @@ freeway-http        HTTP/WebSocket：路由、过滤器、静态文件、multipa
 freeway-db          JDBC：ORM、连接池、事务、SQL 构建器、迁移
   └ 外部连接池        HikariCP → 见 freeway-ext
 
-第三方库适配器（freeway-http-undertow, freeway-db-hikari, freeway-mq-kafka）
-在 [freeway-ext](https://github.com/dzb/freeway-ext) 独立维护。
+第三方库适配器（freeway-http-undertow, freeway-http-jetty,
+freeway-db-hikari, freeway-mq-kafka）在
+[freeway-ext](https://github.com/dzb/freeway-ext) 独立维护。
 核心模块 SLF4J 以外零外部依赖。
 ```
 

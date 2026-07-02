@@ -178,7 +178,7 @@ The HTTP layer stays deliberately thin:
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
-- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow adapter available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
+- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow and Jetty adapters available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
 
 Switch engines by adding the extension module — the container selects it via `.primary()`:
 
@@ -215,6 +215,7 @@ Third-party integrations are available in the **[freeway-ext](https://github.com
 | Module | Description |
 |--------|-------------|
 | `freeway-http-undertow` | Undertow web server adapter (HTTP + WebSocket) |
+| `freeway-http-jetty` | Jetty 12 web server adapter (HTTP/1.1, HTTP/2, WebSocket, TLS) |
 | `freeway-db-hikari` | HikariCP connection pool adapter |
 | `freeway-mq-kafka` | Kafka EventBus bridge for distributed pub/sub |
 
