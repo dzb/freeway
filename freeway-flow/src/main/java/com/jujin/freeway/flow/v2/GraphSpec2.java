@@ -279,7 +279,20 @@ public class GraphSpec2 {
             }
 
             String nodeId = nodeDom.getString("id");
-            NodeType nodeType = NodeType.nameOf(nodeDom.getString("type"));
+            if (nodeId == null || nodeId.isBlank()) {
+                throw new IllegalArgumentException(
+                    "Node at index " + i + " is missing required 'id' field");
+            }
+            String typeStr = nodeDom.getString("type");
+            if (typeStr == null || typeStr.isBlank()) {
+                throw new IllegalArgumentException(
+                    "Node '" + nodeId + "' is missing required 'type' field");
+            }
+            NodeType nodeType = NodeType.nameOf(typeStr);
+            if (nodeType == NodeType.ACTIVITY && !"activity".equalsIgnoreCase(typeStr)) {
+                throw new IllegalArgumentException(
+                    "Unknown node type '" + typeStr + "' for node '" + nodeId + "'");
+            }
             NodeSpec2 node = blueprint.addNode(nodeId, nodeType);
             node.title(nodeDom.getString("title"));
             node.meta(toMap(nodeDom.getObject("meta")));
@@ -296,7 +309,15 @@ public class GraphSpec2 {
                 }
 
                 String from = linkDom.getString("from");
+                if (from == null || from.isBlank()) {
+                    throw new IllegalArgumentException(
+                        "Link at index " + i + " is missing required 'from' field");
+                }
                 String to = linkDom.getString("to");
+                if (to == null || to.isBlank()) {
+                    throw new IllegalArgumentException(
+                        "Link at index " + i + " is missing required 'to' field");
+                }
                 LinkSpec2 link = blueprint.link(from, to);
                 link.title(linkDom.getString("title"));
                 link.meta(toMap(linkDom.getObject("meta")));
@@ -414,8 +435,29 @@ public class GraphSpec2 {
             }
         }
 
-        // 2. BFS from entry to discover reachable nodes in traversal order
+        // 2. Validate entry — v2 requires exactly one entry point
         String resolvedEntry = resolveEntry();
+        if (resolvedEntry == null) {
+            List<String> starts = nodes.values().stream()
+                .filter(n -> n.type == NodeType.START)
+                .map(n -> n.id)
+                .toList();
+            if (starts.isEmpty()) {
+                throw new IllegalStateException(
+                    "No entry node found in graph: " + id
+                    + ". Set 'entry' or add a START node."
+                );
+            }
+            if (starts.size() > 1) {
+                throw new IllegalStateException(
+                    "Multiple START nodes (" + starts
+                    + ") without explicit 'entry' in graph: " + id
+                    + ". Set 'entry' to disambiguate."
+                );
+            }
+        }
+
+        // 3. BFS from entry to discover reachable nodes in traversal order
         bfsOrder = new LinkedHashSet<>();
         if (resolvedEntry != null && nodes.containsKey(resolvedEntry)) {
             Deque<String> queue = new ArrayDeque<>();

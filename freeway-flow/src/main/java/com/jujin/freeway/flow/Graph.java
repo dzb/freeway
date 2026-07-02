@@ -67,10 +67,10 @@ public class Graph {
 
     public static Graph fromText(String text) {
         JsonObject dom = JsonUtils.parseObject(text);
-        // Auto-detect v2 format: version==2 with top-level nodes + links.
+        // v2 is declared by the version field — if present, route strictly.
+        // Missing nodes/links will produce clear errors from GraphSpec2 itself.
         Integer version = dom.getInt("version");
-        if (version != null && version == GraphSpec2.VERSION
-                && dom.containsKey("nodes") && dom.containsKey("links")) {
+        if (version != null && version == GraphSpec2.VERSION) {
             return GraphSpec2.fromDom(dom).create();
         }
         // Falls back to v1 (layout format), which internally converts to blueprint.
@@ -329,6 +329,13 @@ public class Graph {
         Node node = new Node(this, nodeSpec, type, tmp);
         nodeMap.put(node.getId(), node);
         if (type == NodeType.START) {
+            if (start != null && !node.getId().equals(start.getId())) {
+                throw new IllegalStateException(
+                    "Multiple START nodes detected ("
+                    + start.getId() + " and " + node.getId()
+                    + "). Set 'entry' to disambiguate."
+                );
+            }
             start = node;
         }
     }
