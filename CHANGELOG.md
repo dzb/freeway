@@ -41,9 +41,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.2] — 2026-06-28
 
-### Removed
+### Added
 
-- `@Named` annotation — superseded by `@Inject("id")`.
+- **`freeway-flow`** — lightweight graph orchestration engine (port of solon-flow). 7 node types, JSON-based definitions, PlantUML export, execution tracing, subgraph calls, interceptor chains. Zero extra dependencies.
+- **HTTPS auto-configuration** — `HttpModule` reads `freeway.http.ssl.*` config keys; creates TLS 1.3 engine when `ssl.enabled=true`. Supports PKCS12/JKS keystores and HTTP/2 over TLS via ALPN.
+- **Express-style `:name` path variables** — routes support both `:name` and `{name}` syntax.
+- **`JsonObject.getBigDecimal()` / `JsonArray.getBigDecimal()`** — convenience accessors.
+- **Handler class injection for routes** — `Route.handlerType` enables IoC-injected handlers without manual `container.create()`.
+- **CLI auto-prefix** — args without a dot (e.g. `--profile=dev`) auto-receive `freeway.` prefix.
+
+### Changed
+
+- **Response serialization** — status code and Content-Length digits pre-computed as `byte[]`, eliminating per-request allocations. Error response bodies (404, 500) pre-computed.
+- **`@Named` removed** — superseded by `@Inject("id")`.
+- **Documentation restructured** — `DEVELOPER-GUIDE.md`, config samples, and module summaries moved to `docs/` directory.
+
+### Fixed
+
+- **Header key normalization** — HTTP/1.1 parser normalizes header keys to lowercase per RFC 7230.
+- **Header value OWS tolerance** — trailing whitespace stripped per RFC 7230 §3.2.6.
+- **HEAD Content-Length** — HEAD responses report same Content-Length as GET (RFC 7231 §4.3.2).
+- **Connection header token-list** — parsed as comma-separated per RFC 7230 §6.1.
+- **BufferedOutputStream close ordering** — resolved ordering issue in HTTP response flush.
+- **`setAccessible` fallback** — when module system blocks `privateLookupIn`, falls back to `setAccessible`.
+- Response header injection hardening — `headerSet()` validates no `\r`/`\n` in values.
 
 ## [1.2.1] — 2026-06-23
 
