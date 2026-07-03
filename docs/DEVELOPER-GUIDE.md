@@ -1280,10 +1280,25 @@ engine.eval("orderFlow", FlowContext.of());
 | `Graph` | Immutable runtime model — built from v1 or v2 definitions |
 | `GraphSpec2` | v2 DAG authoring surface with explicit `entry` and separated `nodes`/`links` |
 | `FlowEngine` | Graph executor: load, eval, pause, resume |
+| `FlowDriver` | Pluggable task executor — contributed via `binder.contribute(FlowDriver.class)` |
+| `FlowDriverDefault` | Built-in driver: resolves `@beanName` via IoC container, `!markerName` via `FlowMarkerIndex` |
 | `@FlowMarker` | String-based marker annotation for `TaskComponent` resolution |
 | `FlowMarkerIndex` | Reverse index from marker names to handlers with `containsAll` matching |
 | `FlowEventBus` | Node lifecycle events (enter, exit, error) |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~280 lines) |
+
+**Driver:** Graphs select their driver via the `"driver"` field (null/"" → `"default"`). `FlowModule` contributes `FlowDriverDefault` with id `"default"`. Register a custom driver by contributing to the same extension point:
+
+```java
+binder.contribute(FlowDriver.class)
+    .add("custom", new MyCustomDriver());
+
+// Or use add(Class) for auto-instantiation via container.create()
+binder.contribute(FlowDriver.class)
+    .add(MyCustomDriver.class);
+```
+
+Graph definition: `{ "driver": "custom", ... }`
 
 Supports PlantUML export, execution tracing with pause/resume, subgraph calls, and interceptor chains.
 

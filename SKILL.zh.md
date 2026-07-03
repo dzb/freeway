@@ -908,6 +908,19 @@ Graph graph = Graph.fromText("""
 
 `@FlowMarker("channel:order")` 注解在 `TaskComponent` 实现类上，自动注册到 marker index。
 
+### Driver（驱动器）
+
+图通过 `"driver"` 字段选择驱动器（null/"" → `"default"`）。`FlowModule` 以 id `"default"` 贡献 `FlowDriverDefault`。自定义驱动器通过相同的扩展点贡献：
+
+```java
+// 自定义驱动器
+binder.contribute(FlowDriver.class)
+    .add("custom", new MyCustomDriver())
+    .add(MyOtherDriver.class);  // add(Class) → container.create() 自动注入
+```
+
+图定义中指定：`{ "driver": "custom", ... }`
+
 ### 执行
 
 ```java
@@ -915,7 +928,7 @@ FlowEngine engine = container.get(FlowEngine.class);
 engine.load(graph);
 engine.eval("orderFlow", FlowContext.of());
 
-// 通过 IoC — FlowModule 自动注册贡献的 TaskComponent
+// 通过 IoC — FlowModule 自动注册贡献的 TaskComponent 和 FlowDriver
 FreewayApp.run(args, new AppModule(), new FlowModule());
 ```
 

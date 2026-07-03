@@ -5,7 +5,9 @@
 - `Graph` — immutable runtime model
 - `GraphSpec2` — v2 DAG authoring surface (explicit entry, separated nodes+links)
 - `FlowEngine` — `load()`, `eval()`, `register(TaskComponent)`, `markerIndex()`
-- `FlowModule` — IoC integration; auto-registers contributed `TaskComponent` instances
+- `FlowDriver` — contributed extension point; graph `"driver"` field selects by id (null/"" → `"default"`)
+- `FlowDriverDefault` — built-in driver contributed by `FlowModule` as id `"default"`
+- `FlowModule` — IoC integration; contributes `FlowDriverDefault`, auto-registers contributed `TaskComponent` instances, builds driver map from `Extension<FlowDriver>.asMap()`
 - `@FlowMarker("name")` — repeatable, marks a `TaskComponent` for `!markerName` resolution
 - `FlowMarkerIndex` — reverse index from marker names to handlers; `containsAll` matching, most markers wins
 
@@ -21,6 +23,16 @@ Nodes use prefix syntax to specify what to execute. Each prefix has distinct res
 | `$` | Meta | Reads graph metadata into execution context — no component resolution |
 
 ## Canonical Snippets
+
+```java
+// Custom driver registration
+binder.contribute(FlowDriver.class)
+    .add("custom", new MyCustomDriver())
+    .add(MyOtherDriver.class);   // container.create() auto-instantiation
+
+// Graph with custom driver
+// { "driver": "custom", ... }
+```
 
 ```java
 // v2 format (recommended)
