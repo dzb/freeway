@@ -1,8 +1,8 @@
 # Freeway 2
 
-**A modern, lightweight Java application framework for JDK 25+.**
+**A modern, full-featured, high-performance Java application framework for JDK 25+. Zero dependencies — SLF4J API only.**
 
-Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API only.
+Lightweight. Compose-first. Zero classpath scanning. IoC, HTTP, DB, Flow — everything in one coherent design.
 
 Freeway exists to show that a Java framework can be concise without being shallow,
 complete without being bloated. It is an exercise in engineering aesthetics —
