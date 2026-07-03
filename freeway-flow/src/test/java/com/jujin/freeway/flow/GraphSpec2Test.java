@@ -201,4 +201,77 @@ class GraphSpec2Test {
         engine.eval("engine_blueprint", FlowContext.of());
         assertEquals(1, counter.get());
     }
+
+    @Test
+    void testToMapDrainsPendingLinks() {
+        GraphSpec2 bp = GraphSpec2.create("map_test", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@counter").linkAdd("e");
+            spec.addEnd("e");
+        });
+        Map<String, Object> map = bp.toMap();
+        assertNotNull(map.get("id"));
+        @SuppressWarnings("unchecked")
+        var links = (java.util.List<?>) map.get("links");
+        assertEquals(2, links.size());
+    }
+
+    @Test
+    void testThenChainAddsMoreNodes() {
+        GraphSpec2 bp = GraphSpec2.create("then_test", spec ->
+            spec.entry("s").addStart("s")
+        ).then(spec -> {
+            spec.addActivity("a").task("@counter");
+            spec.link("s", "a");
+            spec.link("a", "e");
+            spec.addEnd("e");
+        });
+        Graph g = bp.create();
+        assertEquals(3, g.getNodes().size());
+    }
+
+    @Test
+    void testNullLinkAddThrows() {
+        GraphSpec2 bp = GraphSpec2.create("null_link", spec -> {});
+        var node = bp.addActivity("a");
+        assertThrows(NullPointerException.class, () -> node.linkAdd(null));
+    }
+
+    @Test
+    void testNullLinkThrows() {
+        GraphSpec2 bp = GraphSpec2.create("null_link", spec -> {});
+        assertThrows(NullPointerException.class, () -> bp.link("a", null));
+        assertThrows(NullPointerException.class, () -> bp.link(null, "b"));
+    }
+
+    @Test
+    void testCyclicGraphCreatesNormally() {
+        // a → b → a forms a cycle; both nodes are reachable from entry 'a'.
+        // c is unreachable — normalize() logs a warning, create() succeeds.
+        GraphSpec2 bp = GraphSpec2.create("cycle", spec -> {
+            spec.entry("a");
+            spec.addActivity("a").task("@t1").linkAdd("b");
+            spec.addActivity("b").task("@t2").linkAdd("a");
+            spec.addActivity("c").task("@t3").linkAdd("end");
+            spec.addEnd("end");
+        });
+        Graph g = bp.create();
+        assertEquals("cycle", g.getId());
+        assertNotNull(g.getNode("a"));
+        assertNotNull(g.getNode("b"));
+        assertNotNull(g.getNode("c")); // created even though unreachable
+        assertEquals(4, g.getNodes().size());
+    }
+
+    @Test
+    void testToJsonAfterPartialBuild() {
+        GraphSpec2 bp = GraphSpec2.create("partial", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@counter");
+        });
+        String json = bp.toJson();
+        assertTrue(json.contains("\"version\":2"));
+    }
 }

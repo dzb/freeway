@@ -39,7 +39,8 @@ public class FlowEngineImpl implements FlowEngine {
         if (driver == null) {
             throw new IllegalArgumentException(
                 "No driver found for: '" + lookup + "'. " +
-                "Contribute drivers via binder.contribute(FlowDriver.class).add(id, driver)");
+                "Register drivers via newInstance(Map.of(\"id\", driver)) or " +
+                "binder.contribute(FlowDriver.class).add(id, driver)");
         }
         return driver;
     }

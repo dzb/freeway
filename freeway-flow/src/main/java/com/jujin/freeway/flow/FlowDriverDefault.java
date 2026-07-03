@@ -209,7 +209,17 @@ public class FlowDriverDefault implements FlowDriver {
 
     // --- helpers ---
 
+    /**
+     * Returns the FlowContainer for {@code @beanName} resolution.
+     * Throws a clear error when no container was configured (standalone usage).
+     */
     protected FlowContainer getContainer() {
+        if (container == null) {
+            throw new IllegalStateException(
+                "No FlowContainer configured — @beanName task/condition resolution requires one. " +
+                "Use FlowDriverDefault.builder().container(...) to supply one, " +
+                "or install FlowModule for IoC-based resolution.");
+        }
         return container;
     }
 

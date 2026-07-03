@@ -749,4 +749,81 @@ class FlowEngineTest {
         engine.load(g);
         engine.eval("g", FlowContext.of());
     }
+
+    // ── null container guard + standalone error ──────────────────
+
+    @Test
+    void nullContainerThrowsClearErrorForBeanName() {
+        // FlowDriverDefault.getInstance() has container=null
+        FlowEngine engine = FlowEngine.newInstance(); // uses getInstance()
+        Graph g = GraphSpec2.create("g", spec -> {
+            spec.entry("s"); spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@counter").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+
+        FlowException ex = assertThrows(FlowException.class,
+            () -> engine.eval("g", FlowContext.of()));
+        assertTrue(ex.getCause().getMessage().contains("No FlowContainer configured"));
+    }
+
+    @Test
+    void standaloneDriverErrorMessageIsGeneric() {
+        FlowEngine engine = FlowEngine.newInstance(Map.of("a", new FlowDriverDefault(null, null)));
+        Graph g = graphWithDriver("nonexistent");
+        engine.load(g);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> engine.eval("g", FlowContext.of()));
+        assertTrue(ex.getMessage().contains("No driver found"));
+        assertTrue(ex.getMessage().contains("newInstance"));
+    }
+
+    // ── node types via v2 ─────────────────────────────────────────
+
+    @Test
+    void inclusiveGatewayViaV2() {
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec2.create("inc", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("gw");
+            spec.addInclusive("gw").task("@dummy")
+                .linkAdd("a").linkAdd("b");
+            spec.addActivity("a").task("@dummy").linkAdd("e");
+            spec.addActivity("b").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        engine.eval("inc", FlowContext.of());
+        assertTrue(executed.contains("gw"));
+        assertTrue(executed.contains("a"));
+        assertTrue(executed.contains("b"));
+    }
+
+    @Test
+    void exclusiveGatewayDefaultPathViaV2() {
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec2.create("ex", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("gw");
+            // two links: one conditional (won't match), one default
+            spec.addExclusive("gw").task("@dummy")
+                .linkAdd("false_path", link -> link.when("false == true"))
+                .linkAdd("default_path");
+            spec.addActivity("false_path").task("@dummy").linkAdd("e");
+            spec.addActivity("default_path").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        engine.eval("ex", FlowContext.of());
+        assertTrue(executed.contains("gw"));
+        assertTrue(executed.contains("default_path"));
+        assertFalse(executed.contains("false_path"));
+    }
 }

@@ -168,6 +168,8 @@ public class GraphSpec2 {
     }
 
     public LinkSpec2 link(String from, String to) {
+        Objects.requireNonNull(from, "from must not be null");
+        Objects.requireNonNull(to, "to must not be null");
         LinkSpec2 link = new LinkSpec2(from, to);
         links.add(link);
         return link;

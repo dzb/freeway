@@ -6,6 +6,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -50,7 +51,11 @@ public class FlowModule implements ModuleEx {
                     driverMap.put("default", new FlowDriverDefault(
                         container.get(FlowContainer.class), null));
                     // Custom drivers from contribute
-                    driverMap.putAll(container.extension(FlowDriver.class).asMap());
+                    var contributed = container.extension(FlowDriver.class).asMap();
+                    if (contributed.containsKey("default")) {
+                        LOG.warn("Contributed driver with id 'default' overrides the built-in FlowDriverDefault");
+                    }
+                    driverMap.putAll(contributed);
 
                     FlowEngine engine = FlowEngine.newInstance(driverMap);
                     for (var handler : container.extension(TaskComponent.class).all()) {
@@ -72,9 +77,12 @@ public class FlowModule implements ModuleEx {
         public Object getComponent(String componentName) {
             try {
                 return fwContainer.get(TaskComponent.class, componentName);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                LOG.debug("Failed to resolve @beanName '{}'", componentName, e);
                 return null;
             }
         }
     }
+
+    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(FlowModule.class);
 }

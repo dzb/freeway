@@ -88,4 +88,9 @@ public final class LinkSpec2 {
     public int getPriority() {
         return priority;
     }
+
+    @Override
+    public String toString() {
+        return from + " -> " + to + (title != null ? " (" + title + ")" : "");
+    }
 }

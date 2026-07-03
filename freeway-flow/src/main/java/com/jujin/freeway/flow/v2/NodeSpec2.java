@@ -84,16 +84,14 @@ public final class NodeSpec2 {
      * The link is instantiated later by {@link GraphSpec2#create()}.
      */
     public NodeSpec2 linkAdd(String to) {
-        pendingLinks.add(new PendingLink(to, null));
+        pendingLinks.add(new PendingLink(
+            java.util.Objects.requireNonNull(to, "to must not be null"), null));
         return this;
     }
 
-    /**
-     * Stores a pending link from this node to {@code to} with configuration.
-     * The link is instantiated later by {@link GraphSpec2#create()}.
-     */
     public NodeSpec2 linkAdd(String to, Consumer<LinkSpec2> configure) {
-        pendingLinks.add(new PendingLink(to, configure));
+        pendingLinks.add(new PendingLink(
+            java.util.Objects.requireNonNull(to, "to must not be null"), configure));
         return this;
     }
 
