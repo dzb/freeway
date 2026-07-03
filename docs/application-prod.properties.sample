@@ -18,6 +18,13 @@
 # Env: FREEWAY_LOG_COLOR=never
 # freeway.log.color=never
 
+# File logging — production should always write to file
+# JVM: -Dfreeway.log.file=/var/log/myapp/app.log
+# Rotates at 100 MB, keeps 30 days, GZIP compressed by default
+# freeway.log.file.max-size=104857600
+# freeway.log.file.max-history=30
+# freeway.log.file.compress=true
+
 
 # ================================
 #  HTTP / Web Server

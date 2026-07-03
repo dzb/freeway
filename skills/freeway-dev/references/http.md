@@ -51,16 +51,9 @@ binder.contribute(StaticResourceMount.class)
     .add(StaticResourceMount.directory("/uploads", Path.of("/var/uploads")));
 ```
 
-```java
-binder.contribute(RuntimeHook.class)
-    .add("freeway.http.server", new RuntimeHook() {
-        public void start(Container c) { c.get(WebServer.class).start(); }
-        public void stop(Container c) { c.get(WebServer.class).stop(); }
-    });
-```
-
 ## Notes
 
+- `HttpModule` automatically contributes a `RuntimeHook` that starts and stops the server — no manual hook registration needed.
 - `HealthCheck` is in `com.jujin.freeway.http.filter`.
 - Standalone HTTP uses `WebServerBuilder.builder()`.
-- Built-in engine selection is driven by normal binding resolution; `HttpModule` provides the default engine binding.
+- Engine selection: `HttpModule` binds `FreewayHttpEngine` (default); add an extension module (Undertow/Jetty) to override via `.primary()`.

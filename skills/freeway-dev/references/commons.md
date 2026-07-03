@@ -10,6 +10,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `Defer`
 - `ScopedCache`
 - `BeanValidator`
+- `@NotNull`, `@NotBlank`, `@Size`, `@Min`, `@Max`, `@Valid`
 - `Coercer`
 - `CoerceRule`
 - `LoggerSource`
@@ -29,10 +30,10 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Logging
 
-- Console colors are enabled only when the JVM has an attached console.
-- `NO_COLOR` disables colors.
-- `freeway.log.color=always|never` overrides detection.
-- `freeway.log.format=simple` keeps JUL's default formatter.
+- Console colors auto-detected from attached console; disabled when piped or `NO_COLOR` is set.
+- `freeway.log.color=always|never` overrides detection. `freeway.log.format=simple` keeps JUL's default formatter.
+- File logging: `freeway.log.file=auto` enables time+size dual rotation with GZIP compression via `JULFileHandler`. Custom path: `freeway.log.file=/var/log/app.log`.
+- `logging.properties` on the classpath is auto-loaded when the JUL provider activates.
 
 ## Canonical Snippets
 

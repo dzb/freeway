@@ -41,6 +41,17 @@
 #   Env: FREEWAY_LOG_COLOR=always
 # freeway.log.color=
 
+# File logging — JULFileHandler with time+size dual rotation + GZIP compression.
+#   Set to "auto" to derive path from app.name (defaults to logs/freeway.log).
+#   Or set an explicit path. Omit to disable file logging (console only).
+#   All freeway.log.file.* keys are JVM system properties (-D), not config map.
+#   JVM: -Dfreeway.log.file=auto
+#   Env: FREEWAY_LOG_FILE=auto
+# freeway.log.file=
+# freeway.log.file.max-size=104857600   # 100 MB, bytes
+# freeway.log.file.max-history=30       # days
+# freeway.log.file.compress=true        # GZIP
+
 
 # ================================
 #  HTTP / Web Server

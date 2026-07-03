@@ -18,6 +18,10 @@
 # Compact console format (default — explicit for clarity)
 # freeway.log.format=
 
+# File logging for local development
+# JVM: -Dfreeway.log.file=auto
+# → writes to logs/freeway.log with rotation + GZIP
+
 
 # ================================
 #  HTTP / Web Server

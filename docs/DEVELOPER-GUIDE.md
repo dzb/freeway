@@ -330,7 +330,7 @@ Rules:
 - `add(value)` preserves insertion order.
 - `add(id, value)` enables `before/after` constraints for topological ordering.
 - `add(Class)` auto-instantiates the contributed class from the container and generates a canonical id as `snake_name@package` (e.g. `email_sender@com.example.flow`). Supports `before`/`after` ordering on the returned `Contribution`.
-- Duplicate ids fail immediately. Missing order targets are ignored. Cycles fail at resolution time.
+- Duplicate ids fail immediately. Unknown order targets throw `IllegalArgumentException` at resolution time. Cycles fail at resolution time.
 - Constructor parameters are auto-resolved; fields require `@Inject`.
 
 ### EventBus
