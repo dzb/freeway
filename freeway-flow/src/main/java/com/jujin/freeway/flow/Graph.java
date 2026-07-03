@@ -4,6 +4,8 @@ import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.flow.v1.GraphSpec;
 import com.jujin.freeway.flow.v2.GraphSpec2;
+import com.jujin.freeway.flow.v2.LinkSpec2;
+import com.jujin.freeway.flow.v2.NodeSpec2;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -36,12 +38,12 @@ public class Graph {
 
         Map<String, Node> nodeMap = new LinkedHashMap<>(blueprint.getNodes().size());
         List<Link> linkAry = new ArrayList<>(blueprint.getLinks().size());
-        Map<String, List<GraphSpec2.LinkSpec2>> outgoing = new LinkedHashMap<>();
-        for (GraphSpec2.LinkSpec2 link : blueprint.getLinks()) {
+        Map<String, List<LinkSpec2>> outgoing = new LinkedHashMap<>();
+        for (LinkSpec2 link : blueprint.getLinks()) {
             outgoing.computeIfAbsent(link.getFrom(), k -> new ArrayList<>()).add(link);
         }
 
-        for (Map.Entry<String, GraphSpec2.NodeSpec2> kv : blueprint.getNodes().entrySet()) {
+        for (Map.Entry<String, NodeSpec2> kv : blueprint.getNodes().entrySet()) {
             doAddNode(kv.getValue(), entryId, outgoing, nodeMap, linkAry);
         }
 
@@ -314,16 +316,16 @@ public class Graph {
         return spec.create();
     }
 
-    private void doAddNode(GraphSpec2.NodeSpec2 nodeSpec, String entryId,
-                           Map<String, List<GraphSpec2.LinkSpec2>> outgoing,
+    private void doAddNode(NodeSpec2 nodeSpec, String entryId,
+                           Map<String, List<LinkSpec2>> outgoing,
                            Map<String, Node> nodeMap, List<Link> linkAry) {
         NodeType type = (entryId != null && entryId.equals(nodeSpec.getId()))
                 ? NodeType.START
                 : nodeSpec.getType();
 
-        List<GraphSpec2.LinkSpec2> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
+        List<LinkSpec2> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
         List<Link> tmp = new ArrayList<>(nodeLinks.size());
-        for (GraphSpec2.LinkSpec2 linkSpec : nodeLinks) {
+        for (LinkSpec2 linkSpec : nodeLinks) {
             tmp.add(new Link(this, nodeSpec.getId(), linkSpec));
         }
         linkAry.addAll(tmp);

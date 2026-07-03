@@ -7,6 +7,8 @@ import com.jujin.freeway.flow.Graph;
 import com.jujin.freeway.flow.NamedTaskComponent;
 import com.jujin.freeway.flow.NodeType;
 import com.jujin.freeway.flow.v2.GraphSpec2;
+import com.jujin.freeway.flow.v2.LinkSpec2;
+import com.jujin.freeway.flow.v2.NodeSpec2;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -65,7 +67,7 @@ public class GraphSpec {
 
         // nodes
         for (NodeSpec ns : nodes.values()) {
-            GraphSpec2.NodeSpec2 nb = bp.addNode(ns.getId(), ns.getType());
+            NodeSpec2 nb = bp.addNode(ns.getId(), ns.getType());
             nb.title(ns.getTitle());
             nb.meta(ns.getMeta());
             if (ns.getTask() != null) nb.task(ns.getTask());
@@ -77,7 +79,7 @@ public class GraphSpec {
         // links — convert per-node LinkSpec → top-level LinkSpec2
         for (NodeSpec ns : nodes.values()) {
             for (LinkSpec ls : ns.getLinks()) {
-                GraphSpec2.LinkSpec2 lb = bp.link(ns.getId(), ls.getNextId());
+                LinkSpec2 lb = bp.link(ns.getId(), ls.getNextId());
                 lb.title(ls.getTitle());
                 lb.meta(ls.getMeta());
                 if (ls.getWhen() != null) lb.when(ls.getWhen());

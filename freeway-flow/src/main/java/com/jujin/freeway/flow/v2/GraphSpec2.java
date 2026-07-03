@@ -119,7 +119,7 @@ public class GraphSpec2 {
             throw new IllegalArgumentException(
                 "Duplicate node id '" + id + "' in graph: " + this.id);
         }
-        NodeSpec2 node = new NodeSpec2(this, id, type);
+        NodeSpec2 node = new NodeSpec2(id, type);
         nodes.put(id, node);
         return node;
     }
@@ -170,19 +170,29 @@ public class GraphSpec2 {
     public LinkSpec2 link(String from, String to) {
         LinkSpec2 link = new LinkSpec2(from, to);
         links.add(link);
-        NodeSpec2 source = nodes.get(from);
-        if (source != null) {
-            source.links.add(link);
-        }
         return link;
     }
 
     public Graph create() {
+        drainNodeLinks();
         normalize();
         return new Graph(this);
     }
 
+    /** Flushes pending links from all nodes into top-level links list. */
+    private void drainNodeLinks() {
+        for (NodeSpec2 node : nodes.values()) {
+            for (var pending : node.drainPendingLinks()) {
+                LinkSpec2 link = link(node.getId(), pending.to());
+                if (pending.configure() != null) {
+                    pending.configure().accept(link);
+                }
+            }
+        }
+    }
+
     public Map<String, Object> toMap() {
+        drainNodeLinks();
         validateEntry();
         GraphSpec2 normalized = normalize();
         Map<String, Object> domRoot = new LinkedHashMap<>();
@@ -558,193 +568,4 @@ public class GraphSpec2 {
         return new LinkedHashMap<>(obj.toMap());
     }
 
-    public static final class NodeSpec2 {
-        private final GraphSpec2 owner;
-        private final String id;
-        private final NodeType type;
-        private String title;
-        private final Map<String, Object> meta = new LinkedHashMap<>();
-        private final List<LinkSpec2> links = new ArrayList<>();
-        private String when;
-        private ConditionComponent whenComponent;
-        private String task;
-        private TaskComponent taskComponent;
-
-        private NodeSpec2(GraphSpec2 owner, String id, NodeType type) {
-            this.owner = owner;
-            this.id = id;
-            this.type = type == null ? NodeType.ACTIVITY : type;
-        }
-
-        public NodeSpec2 title(String title) {
-            this.title = title;
-            return this;
-        }
-
-        public NodeSpec2 meta(Map<String, Object> meta) {
-            if (meta != null && !meta.isEmpty()) {
-                this.meta.putAll(meta);
-            }
-            return this;
-        }
-
-        public NodeSpec2 metaPut(String key, Object value) {
-            if (key != null && !key.isEmpty()) {
-                this.meta.put(key, value);
-            }
-            return this;
-        }
-
-        public NodeSpec2 when(String when) {
-            this.when = when;
-            this.whenComponent = null;
-            return this;
-        }
-
-        public NodeSpec2 when(ConditionComponent whenComponent) {
-            this.whenComponent = whenComponent;
-            this.when = null;
-            return this;
-        }
-
-        public NodeSpec2 task(String task) {
-            this.task = task;
-            this.taskComponent = null;
-            return this;
-        }
-
-        public NodeSpec2 task(TaskComponent taskComponent) {
-            this.taskComponent = taskComponent;
-            this.task = null;
-            return this;
-        }
-
-        public NodeSpec2 linkAdd(String to) {
-            owner.link(id, to);
-            return this;
-        }
-
-        public NodeSpec2 linkAdd(String to, Consumer<LinkSpec2> configure) {
-            LinkSpec2 link = owner.link(id, to);
-            if (configure != null) {
-                configure.accept(link);
-            }
-            return this;
-        }
-
-        public String getId() {
-            return id;
-        }
-
-        public NodeType getType() {
-            return type;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public Map<String, Object> getMeta() {
-            return Collections.unmodifiableMap(meta);
-        }
-
-        public List<LinkSpec2> getLinks() {
-            return Collections.unmodifiableList(links);
-        }
-
-        public String getWhen() {
-            return when;
-        }
-
-        public ConditionComponent getWhenComponent() {
-            return whenComponent;
-        }
-
-        public String getTask() {
-            return task;
-        }
-
-        public TaskComponent getTaskComponent() {
-            return taskComponent;
-        }
-    }
-
-    public static final class LinkSpec2 {
-        private final String from;
-        private final String to;
-        private String title;
-        private final Map<String, Object> meta = new LinkedHashMap<>();
-        private String when;
-        private ConditionComponent whenComponent;
-        private int priority;
-
-        private LinkSpec2(String from, String to) {
-            this.from = from;
-            this.to = to;
-        }
-
-        public LinkSpec2 title(String title) {
-            this.title = title;
-            return this;
-        }
-
-        public LinkSpec2 meta(Map<String, Object> meta) {
-            if (meta != null && !meta.isEmpty()) {
-                this.meta.putAll(meta);
-            }
-            return this;
-        }
-
-        public LinkSpec2 metaPut(String key, Object value) {
-            if (key != null && !key.isEmpty()) {
-                this.meta.put(key, value);
-            }
-            return this;
-        }
-
-        public LinkSpec2 when(String when) {
-            this.when = when;
-            this.whenComponent = null;
-            return this;
-        }
-
-        public LinkSpec2 when(ConditionComponent whenComponent) {
-            this.whenComponent = whenComponent;
-            this.when = null;
-            return this;
-        }
-
-        public LinkSpec2 priority(int priority) {
-            this.priority = priority;
-            return this;
-        }
-
-        public String getFrom() {
-            return from;
-        }
-
-        public String getTo() {
-            return to;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public Map<String, Object> getMeta() {
-            return Collections.unmodifiableMap(meta);
-        }
-
-        public String getWhen() {
-            return when;
-        }
-
-        public ConditionComponent getWhenComponent() {
-            return whenComponent;
-        }
-
-        public int getPriority() {
-            return priority;
-        }
-    }
 }
