@@ -67,6 +67,8 @@ Freeway uses two annotations with distinct semantics:
 
 ## Contribution Ordering
 
-- Named contributions can be ordered with `before()` / `after()`.
+- `add(value)` — unnamed, insertion order.
+- `add(id, value)` — named, supports `before()` / `after()` topological ordering.
+- `add(Class)` — auto-instantiates from the container, generates a canonical id as `snake_name@package`. Returns `Contribution` for `before`/`after` chaining.
 - Unknown ids are not ignored. They fail resolution when ordering is evaluated.
 - Cycles fail resolution.

@@ -240,7 +240,7 @@ Freeway-db is **independently usable** outside of the IoC container — only `fr
 A lightweight graph workflow engine for orchestrating multi-step processes:
 
 - **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. V2 format (`nodes`+`links`) is the native dialect; v1 (solon-flow compatible) is auto-converted on load.
-- **Task resolution** — four lookup strategies in one syntax: `@beanName` (IoC service), `#graphId` (subgraph call), `$metaKey` (graph metadata), `!markerName` (FlowMarker match via `containsAll` semantics, most specific wins).
+- **Task resolution** — nodes specify what to execute via a prefix syntax. `!markerName` matches a `TaskComponent` by `@FlowMarker` intersection (most specific wins). `@beanName` looks up a `TaskComponent` from the IoC container. `#graphId` calls another loaded graph as a subflow. `$metaKey` reads graph metadata into the execution context. Conditions also support `@beanName` (resolving to `ConditionComponent`) in addition to inline expressions.
 - **Validation at build time** — `normalize()` checks link references, entry node uniqueness, and reachability before execution.
 - **Tracing** — pause/resume execution with step-by-step trace records.
 - **PlantUML export** — visualize any graph definition as a PlantUML diagram.

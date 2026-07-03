@@ -329,6 +329,7 @@ The entry type itself (e.g., `Route.class`) is the extension point identifier. C
 Rules:
 - `add(value)` preserves insertion order.
 - `add(id, value)` enables `before/after` constraints for topological ordering.
+- `add(Class)` auto-instantiates the contributed class from the container and generates a canonical id as `snake_name@package` (e.g. `email_sender@com.example.flow`). Supports `before`/`after` ordering on the returned `Contribution`.
 - Duplicate ids fail immediately. Missing order targets are ignored. Cycles fail at resolution time.
 - Constructor parameters are auto-resolved; fields require `@Inject`.
 
@@ -1054,8 +1055,8 @@ Freeway provides two complementary mechanisms for database evolution: **Schema**
 `Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns.
 
 ```java
-// Standalone usage
-Schema.ensure(db, User.class, Post.class);
+/// Standalone usage
+Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
 // AutoMigrate strategy
 // Table missing    → CREATE TABLE IF NOT EXISTS
@@ -1208,7 +1209,7 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Flow (`freeway-flow`)
 
-Lightweight graph-based workflow engine ported from solon-flow. Zero external dependencies beyond commons + ioc. Supports two DAG definition formats with a unified runtime.
+Lightweight graph-based workflow engine. v1 format is a port of solon-flow for compatibility; v2 (`GraphSpec2` with `nodes`+`links`) is the native Freeway format. Zero external dependencies beyond commons + ioc. Supports two DAG definition formats with a unified runtime.
 
 **7 node types:**
 
@@ -1253,16 +1254,16 @@ Graph graph = Graph.fromText("""
 
 v1 `layout`-format JSON is still supported — `Graph.fromText()` auto-detects and internally converts to the unified runtime path. `GraphSpec2.normalize()` validates link references and BFS reachability at `create()` time.
 
-**Task resolution:**
+**Task resolution** — nodes use prefix syntax to specify what to execute. Each prefix has different resolution logic:
 
-| Strategy | Syntax | Example |
-|----------|--------|---------|
-| Marker | `!name` | `!channel:order !priority:high` — resolved by `FlowMarkerIndex` intersection |
-| Bean | `@bean` | `@orderService` — resolved from IoC container by binding id |
-| Sub-graph | `#graph` | `#approvalFlow` — calls a named sub-graph |
-| Metadata | `$meta` | `$app.name` — resolved from graph meta |
+| Prefix | Syntax | Resolves to |
+|--------|--------|-------------|
+| `!` (marker) | `!channel:order !priority:high` | `TaskComponent` by `@FlowMarker` intersection — most markers wins |
+| `@` (bean) | `@orderService` | `TaskComponent` from IoC by binding id. Also works for conditions — `@validator` resolves to `ConditionComponent` |
+| `#` (sub-graph) | `#approvalFlow` | Another loaded graph, executed as a nested subflow |
+| `$` (meta) | `$app.name` | Reads graph metadata into execution context — no component is resolved |
 
-`@FlowMarker("channel:order")` on a `TaskComponent` implementation auto-registers it in the marker index. When multiple handlers match, the one with the most markers wins.
+`@FlowMarker("channel:order")` on a `TaskComponent` implementation auto-registers it in the marker index.
 
 **Execution:**
 

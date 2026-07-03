@@ -11,12 +11,14 @@
 
 ## Task Resolution
 
-| Syntax | Strategy |
-|--------|----------|
-| `!marker` | Marker intersection via `FlowMarkerIndex` |
-| `@bean` | Container lookup via binding id |
-| `#graph` | Sub-graph call |
-| `$meta` | Graph meta value |
+Nodes use prefix syntax to specify what to execute. Each prefix has distinct resolution logic:
+
+| Prefix | Strategy | Resolves to |
+|--------|----------|-------------|
+| `!` | Marker | `TaskComponent` by `@FlowMarker` intersection — most markers wins |
+| `@` | Bean | `TaskComponent` from IoC by binding id. Also usable in conditions to resolve `ConditionComponent` |
+| `#` | Sub-graph | Another loaded graph, executed as a nested subflow |
+| `$` | Meta | Reads graph metadata into execution context — no component resolution |
 
 ## Canonical Snippets
 
