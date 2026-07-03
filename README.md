@@ -1,5 +1,10 @@
 # Freeway 2
 
+[![Maven Central](https://img.shields.io/maven-central/v/com.jujin8.freeway/freeway-parent?label=Maven%20Central&color=blue)](https://central.sonatype.com/artifact/com.jujin8.freeway/freeway-parent)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![JDK](https://img.shields.io/badge/JDK-25%2B-orange)](https://jdk.java.net/25/)
+[![Dependencies](https://img.shields.io/badge/deps-0-brightgreen)]()
+
 **A modern, full-featured, high-performance Java application framework for JDK 25+. Zero dependencies — SLF4J API only.**
 
 Lightweight. Compose-first. Zero classpath scanning. IoC, HTTP, DB, Flow — everything in one coherent design.
