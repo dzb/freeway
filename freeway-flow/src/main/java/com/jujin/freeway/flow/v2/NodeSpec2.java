@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
  * {@link GraphSpec2} during {@code create()}.
  */
 public final class NodeSpec2 {
+    private final GraphSpec2 owner;
     final String id;
     final NodeType type;
     String title;
@@ -31,13 +33,21 @@ public final class NodeSpec2 {
     String task;
     TaskComponent taskComponent;
 
-    NodeSpec2(String id, NodeType type) {
+    NodeSpec2(GraphSpec2 owner, String id, NodeType type) {
+        this.owner = owner;
         this.id = id;
         this.type = type == null ? NodeType.ACTIVITY : type;
     }
 
+    private void touch() {
+        if (owner != null) {
+            owner.invalidate();
+        }
+    }
+
     public NodeSpec2 title(String title) {
         this.title = title;
+        touch();
         return this;
     }
 
@@ -45,6 +55,7 @@ public final class NodeSpec2 {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
+        touch();
         return this;
     }
 
@@ -52,30 +63,35 @@ public final class NodeSpec2 {
         if (key != null && !key.isEmpty()) {
             this.meta.put(key, value);
         }
+        touch();
         return this;
     }
 
     public NodeSpec2 when(String when) {
         this.when = when;
         this.whenComponent = null;
+        touch();
         return this;
     }
 
     public NodeSpec2 when(ConditionComponent whenComponent) {
         this.whenComponent = whenComponent;
         this.when = null;
+        touch();
         return this;
     }
 
     public NodeSpec2 task(String task) {
         this.task = task;
         this.taskComponent = null;
+        touch();
         return this;
     }
 
     public NodeSpec2 task(TaskComponent taskComponent) {
         this.taskComponent = taskComponent;
         this.task = null;
+        touch();
         return this;
     }
 
@@ -85,13 +101,15 @@ public final class NodeSpec2 {
      */
     public NodeSpec2 linkAdd(String to) {
         pendingLinks.add(new PendingLink(
-            java.util.Objects.requireNonNull(to, "to must not be null"), null));
+            Objects.requireNonNull(to, "to must not be null"), null));
+        touch();
         return this;
     }
 
     public NodeSpec2 linkAdd(String to, Consumer<LinkSpec2> configure) {
         pendingLinks.add(new PendingLink(
-            java.util.Objects.requireNonNull(to, "to must not be null"), configure));
+            Objects.requireNonNull(to, "to must not be null"), configure));
+        touch();
         return this;
     }
 

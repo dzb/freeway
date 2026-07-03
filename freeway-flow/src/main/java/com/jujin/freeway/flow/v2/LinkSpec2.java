@@ -12,6 +12,7 @@ import java.util.Map;
  * <p>Links are created via {@link GraphSpec2#link(String, String)}.
  */
 public final class LinkSpec2 {
+    private final GraphSpec2 owner;
     final String from;
     final String to;
     String title;
@@ -20,13 +21,21 @@ public final class LinkSpec2 {
     ConditionComponent whenComponent;
     int priority;
 
-    LinkSpec2(String from, String to) {
+    LinkSpec2(GraphSpec2 owner, String from, String to) {
+        this.owner = owner;
         this.from = from;
         this.to = to;
     }
 
+    private void touch() {
+        if (owner != null) {
+            owner.invalidate();
+        }
+    }
+
     public LinkSpec2 title(String title) {
         this.title = title;
+        touch();
         return this;
     }
 
@@ -34,6 +43,7 @@ public final class LinkSpec2 {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
+        touch();
         return this;
     }
 
@@ -41,23 +51,27 @@ public final class LinkSpec2 {
         if (key != null && !key.isEmpty()) {
             this.meta.put(key, value);
         }
+        touch();
         return this;
     }
 
     public LinkSpec2 when(String when) {
         this.when = when;
         this.whenComponent = null;
+        touch();
         return this;
     }
 
     public LinkSpec2 when(ConditionComponent whenComponent) {
         this.whenComponent = whenComponent;
         this.when = null;
+        touch();
         return this;
     }
 
     public LinkSpec2 priority(int priority) {
         this.priority = priority;
+        touch();
         return this;
     }
 

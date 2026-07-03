@@ -42,7 +42,6 @@ public class GraphSpec2 {
     private final Map<String, Object> meta = new LinkedHashMap<>();
     private final Map<String, NodeSpec2> nodes = new LinkedHashMap<>();
     private final List<LinkSpec2> links = new ArrayList<>();
-    private boolean normalized;
     private Set<String> bfsOrder;
 
     public GraphSpec2(String id) {
@@ -82,21 +81,29 @@ public class GraphSpec2 {
 
     public GraphSpec2 then(Consumer<GraphSpec2> definition) {
         definition.accept(this);
+        invalidate();
         return this;
+    }
+
+    void invalidate() {
+        this.bfsOrder = null;
     }
 
     public GraphSpec2 title(String title) {
         this.title = title;
+        invalidate();
         return this;
     }
 
     public GraphSpec2 driver(String driver) {
         this.driver = driver;
+        invalidate();
         return this;
     }
 
     public GraphSpec2 entry(String entry) {
         this.entry = entry;
+        invalidate();
         return this;
     }
 
@@ -104,6 +111,7 @@ public class GraphSpec2 {
         if (key != null && !key.isEmpty()) {
             meta.put(key, value);
         }
+        invalidate();
         return this;
     }
 
@@ -111,6 +119,7 @@ public class GraphSpec2 {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
+        invalidate();
         return this;
     }
 
@@ -119,16 +128,18 @@ public class GraphSpec2 {
             throw new IllegalArgumentException(
                 "Duplicate node id '" + id + "' in graph: " + this.id);
         }
-        NodeSpec2 node = new NodeSpec2(id, type);
+        NodeSpec2 node = new NodeSpec2(this, id, type);
         nodes.put(id, node);
+        invalidate();
         return node;
     }
 
     public NodeSpec2 addStart(String id) {
+        NodeSpec2 node = addNode(id, NodeType.START);
         if (entry == null) {
             entry = id;
         }
-        return addNode(id, NodeType.START);
+        return node;
     }
 
     public NodeSpec2 addEnd(String id) {
@@ -170,8 +181,9 @@ public class GraphSpec2 {
     public LinkSpec2 link(String from, String to) {
         Objects.requireNonNull(from, "from must not be null");
         Objects.requireNonNull(to, "to must not be null");
-        LinkSpec2 link = new LinkSpec2(from, to);
+        LinkSpec2 link = new LinkSpec2(this, from, to);
         links.add(link);
+        invalidate();
         return link;
     }
 
@@ -436,9 +448,6 @@ public class GraphSpec2 {
      * subgraphs. Idempotent — subsequent calls are no-ops.</p>
      */
     private GraphSpec2 normalize() {
-        if (normalized) {
-            return this;
-        }
 
         // 1. Validate all link references resolve
         for (LinkSpec2 link : links) {
@@ -455,8 +464,8 @@ public class GraphSpec2 {
         }
 
         // 2. Validate entry — v2 requires exactly one entry point.
-        //    The entry node may be typed as ACTIVITY etc. in the blueprint
-        //    and only promoted to START at Graph construction time.
+        //    The entry node keeps its original type in the runtime graph;
+        //    execution starts from that node regardless of type.
         String resolvedEntry = resolveEntry();
         List<String> starts = nodes.values().stream()
             .filter(n -> n.type == NodeType.START || n.id.equals(resolvedEntry))
@@ -510,31 +519,21 @@ public class GraphSpec2 {
             }
         }
 
-        normalized = true;
         return this;
     }
 
     private List<NodeSpec2> nodesInCompileOrder() {
+        // Reachable first (BFS order), then unreachable (insertion order) — never
+        // silently drop nodes; toMap()/toJson() must round-trip faithfully.
+        List<NodeSpec2> ordered = new ArrayList<>(nodes.size());
         if (bfsOrder != null && !bfsOrder.isEmpty()) {
-            List<NodeSpec2> ordered = new ArrayList<>(bfsOrder.size());
             for (String nodeId : bfsOrder) {
                 NodeSpec2 node = nodes.get(nodeId);
-                if (node != null) {
-                    ordered.add(node);
-                }
+                if (node != null) ordered.add(node);
             }
-            return ordered;
         }
-        // Fallback: insertion order with entry first
-        List<NodeSpec2> ordered = new ArrayList<>(nodes.values());
-        String resolvedEntry = resolveEntry();
-        if (resolvedEntry != null) {
-            for (int i = 0; i < ordered.size(); i++) {
-                if (resolvedEntry.equals(ordered.get(i).id)) {
-                    ordered.add(0, ordered.remove(i));
-                    break;
-                }
-            }
+        for (NodeSpec2 node : nodes.values()) {
+            if (!ordered.contains(node)) ordered.add(node);
         }
         return ordered;
     }

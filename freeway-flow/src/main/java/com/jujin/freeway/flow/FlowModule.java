@@ -77,7 +77,7 @@ public class FlowModule implements ModuleEx {
         public Object getComponent(String componentName) {
             try {
                 return fwContainer.get(TaskComponent.class, componentName);
-            } catch (Exception e) {
+            } catch (IllegalArgumentException e) {
                 LOG.debug("Failed to resolve @beanName '{}'", componentName, e);
                 return null;
             }

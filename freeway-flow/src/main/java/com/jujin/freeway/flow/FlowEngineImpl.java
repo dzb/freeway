@@ -34,7 +34,7 @@ public class FlowEngineImpl implements FlowEngine {
     public FlowDriver getDriver(Graph graph) {
         Objects.requireNonNull(graph, "graph is null");
         String driverName = graph.getDriver();
-        final String lookup = (driverName == null || driverName.isEmpty()) ? "default" : driverName;
+        final String lookup = (driverName == null || driverName.isBlank()) ? "default" : driverName;
         FlowDriver driver = drivers.get(lookup);
         if (driver == null) {
             throw new IllegalArgumentException(
@@ -100,13 +100,17 @@ public class FlowEngineImpl implements FlowEngine {
         Node lastNode = exchanger.context().trace().lastNode(graph);
         FlowExchanger bak = exchanger.context().exchanger();
 
-        if (options == null) options = new FlowOptions();
-        options.interceptorAdd(interceptorList);
+        // Defensive copy — never mutate the caller's FlowOptions instance
+        FlowOptions opts = new FlowOptions();
+        if (options != null) {
+            opts.interceptorAdd(options.getInterceptorList());
+        }
+        opts.interceptorAdd(interceptorList);
 
         try {
             exchanger.context().exchanger(exchanger);
             exchanger.context().stopped(false);
-            new FlowInvocation(exchanger, options, lastNode, this::evalDo).invoke();
+            new FlowInvocation(exchanger, opts, lastNode, this::evalDo).invoke();
         } finally {
             exchanger.context().exchanger(bak);
         }
@@ -158,6 +162,8 @@ public class FlowEngineImpl implements FlowEngine {
             return exchanger.driver().handleCondition(exchanger, condition);
         } catch (FlowException e) {
             throw e;
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            throw e; // configuration errors — preserve original type
         } catch (Throwable e) {
             throw new FlowException("The condition handle failed: " + condition.getGraph().getId() + " / " + condition.getDescription(), e);
         }
@@ -173,6 +179,8 @@ public class FlowEngineImpl implements FlowEngine {
                 exchanger.driver().handleTask(exchanger, node.getTask());
             } catch (FlowException e) {
                 throw e;
+            } catch (IllegalStateException | IllegalArgumentException e) {
+                throw e; // configuration errors — preserve original type
             } catch (Throwable e) {
                 throw new FlowException("The task handle failed: " + node.getGraph().getId() + " / " + node.getId(), e);
             }

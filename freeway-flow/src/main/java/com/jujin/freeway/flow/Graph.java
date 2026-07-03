@@ -319,10 +319,6 @@ public class Graph {
     private void doAddNode(NodeSpec2 nodeSpec, String entryId,
                            Map<String, List<LinkSpec2>> outgoing,
                            Map<String, Node> nodeMap, List<Link> linkAry) {
-        NodeType type = (entryId != null && entryId.equals(nodeSpec.getId()))
-                ? NodeType.START
-                : nodeSpec.getType();
-
         List<LinkSpec2> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
         List<Link> tmp = new ArrayList<>(nodeLinks.size());
         for (LinkSpec2 linkSpec : nodeLinks) {
@@ -330,9 +326,9 @@ public class Graph {
         }
         linkAry.addAll(tmp);
 
-        Node node = new Node(this, nodeSpec, type, tmp);
+        Node node = new Node(this, nodeSpec, nodeSpec.getType(), tmp);
         nodeMap.put(node.getId(), node);
-        if (type == NodeType.START) {
+        if (entryId != null && entryId.equals(nodeSpec.getId())) {
             start = node;
         }
     }

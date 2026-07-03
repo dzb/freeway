@@ -3,6 +3,7 @@ package com.jujin.freeway.flow;
 import com.jujin.freeway.flow.v2.GraphSpec2;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -105,7 +106,7 @@ class GraphSpec2Test {
         assertEquals("default", graph.getDriver());
         assertEquals("demo", graph.getMeta("kind"));
         assertEquals("task", graph.getStart().getId());
-        assertEquals(NodeType.START, graph.getNode("task").getType());
+        assertEquals(NodeType.ACTIVITY, graph.getNode("task").getType());
         assertEquals("@counter", graph.getNode("task").getTask().getDescription());
         assertEquals(7, graph.getNode("task").getNextLinks().get(0).getPriority());
     }
@@ -213,8 +214,50 @@ class GraphSpec2Test {
         Map<String, Object> map = bp.toMap();
         assertNotNull(map.get("id"));
         @SuppressWarnings("unchecked")
-        var links = (java.util.List<?>) map.get("links");
+        var links = (List<?>) map.get("links");
         assertEquals(2, links.size());
+    }
+
+    @Test
+    void testToMapPreservesUnreachableNodes() {
+        GraphSpec2 bp = GraphSpec2.create("round_trip", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").linkAdd("e");
+            spec.addActivity("x");
+            spec.addEnd("e");
+        });
+
+        Map<String, Object> map = bp.toMap();
+        @SuppressWarnings("unchecked")
+        var nodes = (List<Map<String, Object>>) map.get("nodes");
+
+        assertEquals(4, nodes.size());
+        assertTrue(nodes.stream().anyMatch(node -> "x".equals(node.get("id"))),
+            "unreachable nodes must still be serialized");
+    }
+
+    @Test
+    void testNodeMutationInvalidatesCompileOrder() {
+        GraphSpec2 bp = GraphSpec2.create("mutation_order", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").linkAdd("e");
+            spec.addActivity("x");
+            spec.addEnd("e");
+        });
+
+        bp.toMap(); // prime cached normalization/BFS order
+        bp.getNode("s").linkAdd("x");
+
+        Map<String, Object> map = bp.toMap();
+        @SuppressWarnings("unchecked")
+        var nodes = (List<Map<String, Object>>) map.get("nodes");
+
+        assertEquals(
+            List.of("s", "a", "x", "e"),
+            nodes.stream().map(node -> (String) node.get("id")).toList()
+        );
     }
 
     @Test

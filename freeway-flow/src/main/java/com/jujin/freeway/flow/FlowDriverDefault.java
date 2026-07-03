@@ -37,11 +37,14 @@ public class FlowDriverDefault implements FlowDriver {
         return new Builder();
     }
 
+    /** Fluent builder for standalone {@link FlowDriverDefault} instances. */
     public static class Builder {
         private FlowContainer container;
         private ExecutorService executor;
 
+        /** Sets the {@link FlowContainer} for {@code @beanName} resolution. */
         public Builder container(FlowContainer container) { this.container = container; return this; }
+        /** Sets a custom executor for {@code PARALLEL} node fan-out. */
         public Builder executor(ExecutorService executor) { this.executor = executor; return this; }
         public FlowDriverDefault build() { return new FlowDriverDefault(container, executor); }
     }

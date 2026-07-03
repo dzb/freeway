@@ -25,15 +25,20 @@ public class FlowExchanger {
     private final int steps;
     private final AtomicInteger stepCount;
 
-    private final Temporary temporary = new Temporary();
+    private final Temporary temporary;
     private volatile boolean interrupted = false;
     private volatile boolean stopped = false;
     private volatile boolean reverting = true;
 
     public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount) {
+        this(graph, engine, driver, context, steps, stepCount, new Temporary());
+    }
+
+    private FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount, Temporary temporary) {
         Objects.requireNonNull(engine, "engine");
         Objects.requireNonNull(driver, "driver");
         Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(temporary, "temporary");
 
         this.graph = graph;
         this.engine = engine;
@@ -41,14 +46,15 @@ public class FlowExchanger {
         this.context = context;
         this.steps = steps;
         this.stepCount = stepCount;
+        this.temporary = temporary;
     }
 
     public FlowExchanger copy(Graph graphNew) {
-        return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount);
+        return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, temporary);
     }
 
     public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount);
+        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, temporary);
     }
 
     public Graph graph() { return graph; }
@@ -71,7 +77,10 @@ public class FlowExchanger {
 
     public void runGraph(Graph graph) {
         prevStep(); // 回退步数（子图调用不算步数）
-        engine.eval(graph, copy(graph), null);
+        // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
+        FlowExchanger subEx = new FlowExchanger(graph, engine,
+            engine.getDriver(graph), context, steps, stepCount, temporary);
+        engine.eval(graph, subEx, null);
 
         if (!isStopped()) {
             if (!context.trace().isEnd(graph.getId())) {
