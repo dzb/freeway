@@ -19,6 +19,7 @@ final class BindingImpl<T> implements Binding<T> {
     private final ContainerImpl container;
     private final Class<T> type;
     private String id;
+    private boolean explicitId;
     private Scope scope = Scope.SINGLETON;
     private Function<Container, ? extends T> provider;
     private T instance;
@@ -130,8 +131,13 @@ final class BindingImpl<T> implements Binding<T> {
     public Binding<T> id(String id) {
         String previous = this.id;
         this.id = ServiceIds.normalize(id);
+        this.explicitId = true;
         container.updateId(this, previous, this.id);
         return this;
+    }
+
+    boolean hasExplicitId() {
+        return explicitId;
     }
 
     @Override
