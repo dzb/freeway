@@ -11,8 +11,10 @@ import java.util.Map;
 import java.util.Set;
 
 public final class HeaderFields {
-    private static final Set<String> PROHIBITED = Set.of("connection");
-    private static final Set<String> REQUIRED = Set.of(":path", ":method", ":scheme");
+    private static final Set<String> PROHIBITED = Set.of(
+        "connection", "transfer-encoding", "keep-alive",
+        "proxy-connection", "upgrade");
+    private static final Set<String> REQUIRED = Set.of(":path", ":method", ":scheme", ":authority");
     private static final Set<String> PSEUDO = Set.of(":authority", ":method", ":path", ":scheme");
     private final List<Http2HeaderField> fields = new ArrayList<>();
     private final Map<String, Http2HeaderField> pseudo = new HashMap<>(8);

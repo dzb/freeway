@@ -26,8 +26,12 @@ import java.util.Map;
  * </ul>
  */
 public final class HPackContext {
-    /** Dynamic table (max 1024 entries). */
-    private final List<Http2HeaderField> dynamicTable = new ArrayList<>(1024);
+    /**
+     * Dynamic table (HPACK max table size in bytes, default 4096).
+     */
+    private final List<Http2HeaderField> dynamicTable = new ArrayList<>(256);
+    private long dynamicTableByteSize;
+    private long maxDynamicTableSize = 4096;
 
     /**
      * Reads a variable-length integer.
@@ -47,6 +51,7 @@ public final class HPackContext {
         int shift = 0;
         int x;
         do {
+            if (p >= b.length) throw new ArrayIndexOutOfBoundsException("Truncated HPACK integer");
             x = b[p] & 0xFF;
             value += (x & 0x7F) << shift;
             shift += 7;
@@ -96,18 +101,33 @@ public final class HPackContext {
      * Encodes a string (with Huffman flag support).
      */
     static byte[] encodeString(byte[] value) {
+        return encodeString(value, 7);
+    }
+
+    static byte[] encodeString(byte[] value, int prefixBits) {
+        int prefixMask = (1 << prefixBits) - 1;
         int length = value.length;
-        if (length < 128) {
+        if (length < prefixMask) {
             byte[] result = new byte[1 + length];
             result[0] = (byte) length;
             System.arraycopy(value, 0, result, 1, length);
             return result;
         }
-        // Long strings use two-byte length encoding
-        byte[] result = new byte[2 + length];
-        result[0] = (byte) (length | 0x80);
-        result[1] = (byte) (length >> 7);
-        System.arraycopy(value, 0, result, 2, length);
+        // HPACK integer encoding: prefix holds all 1s, remainder in continuation
+        int remaining = length - prefixMask;
+        int contBytes = 1;
+        while (remaining >= 128) { remaining >>= 7; contBytes++; }
+        byte[] result = new byte[1 + contBytes + length];
+        result[0] = (byte) prefixMask;
+        int pos = 1;
+        remaining = length - prefixMask;
+        do {
+            int b = remaining & 0x7F;
+            remaining >>= 7;
+            if (remaining > 0) b |= 0x80;
+            result[pos++] = (byte) b;
+        } while (remaining > 0);
+        System.arraycopy(value, 0, result, pos, length);
         return result;
     }
 
@@ -118,6 +138,51 @@ public final class HPackContext {
         if (index > 0 && index <= 61) return StaticHeaderTable.get(index);
         int dynamicIndex = index - 62;
         return dynamicIndex >= 0 && dynamicIndex < dynamicTable.size() ? dynamicTable.get(dynamicIndex) : null;
+    }
+
+    private static long headerFieldSize(Http2HeaderField f) {
+        return (f.name != null ? f.name.length() : 0)
+                + (f.value != null ? f.value.length() : 0) + 32;
+    }
+
+    /**
+     * Decodes an indexed header field.
+     */
+    private int decodeIndexed(byte[] block, int pos, Http2HeaderField field) throws IOException {
+        var result = readInt(block, pos, 7);
+        var indexedField = get(result.value);
+        if (indexedField == null) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
+        field.name = indexedField.name;
+        field.normalizedName = indexedField.normalizedName;
+        field.value = indexedField.value;
+        return result.position;
+    }
+
+    /**
+     * Decodes an incremental-indexed literal header.
+     */
+    private int decodeIncremental(byte[] block, int pos, Http2HeaderField field) throws IOException {
+        var result = readInt(block, pos, 6);
+        pos = decodeName(block, result.position, result.value, field);
+        return decodeValue(block, pos, field);
+    }
+
+    /**
+     * Decodes a without-indexing literal header.
+     */
+    private int decodeWithoutIndexing(byte[] block, int pos, Http2HeaderField field) throws IOException {
+        var result = readInt(block, pos, 4);
+        pos = decodeName(block, result.position, result.value, field);
+        return decodeValue(block, pos, field);
+    }
+
+    /**
+     * Decodes a never-indexed literal header.
+     */
+    private int decodeNeverIndexed(byte[] block, int pos, Http2HeaderField field) throws IOException {
+        var result = readInt(block, pos, 4);
+        pos = decodeName(block, result.position, result.value, field);
+        return decodeValue(block, pos, field);
     }
 
     /**
@@ -140,6 +205,7 @@ public final class HPackContext {
                 // Incremental-indexed literal header
                 pos = decodeIncremental(block, pos, field);
                 dynamicTable.addFirst(field);
+                dynamicTableByteSize += headerFieldSize(field);
             } else if ((firstByte & 0xF0) == 0) {
                 // Without-indexing literal header
                 pos = decodeWithoutIndexing(block, pos, field);
@@ -159,44 +225,20 @@ public final class HPackContext {
         return fields;
     }
 
-    /** Decodes an indexed header field. */
-    private int decodeIndexed(byte[] block, int pos, Http2HeaderField field) throws IOException {
-        var result = readInt(block, pos, 7);
-        var indexedField = get(result.value);
-        if (indexedField == null) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
-        field.name = indexedField.name;
-        field.normalizedName = indexedField.normalizedName;
-        field.value = indexedField.value;
-        return result.position;
-    }
-
-    /** Decodes an incremental-indexed literal header. */
-    private int decodeIncremental(byte[] block, int pos, Http2HeaderField field) throws IOException {
-        var result = readInt(block, pos, 6);
-        pos = decodeName(block, result.position, result.value, field);
-        return decodeValue(block, pos, field);
-    }
-
-    /** Decodes a without-indexing literal header. */
-    private int decodeWithoutIndexing(byte[] block, int pos, Http2HeaderField field) throws IOException {
-        var result = readInt(block, pos, 4);
-        pos = decodeName(block, result.position, result.value, field);
-        return decodeValue(block, pos, field);
-    }
-
-    /** Decodes a never-indexed literal header. */
-    private int decodeNeverIndexed(byte[] block, int pos, Http2HeaderField field) throws IOException {
-        var result = readInt(block, pos, 4);
-        pos = decodeName(block, result.position, result.value, field);
-        return decodeValue(block, pos, field);
-    }
-
     /** Decodes a dynamic table size update. */
     private int decodeDynamicTableSize(byte[] block, int pos) throws IOException {
         var result = readInt(block, pos, 5);
         if (result.value > 4096) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
-        while (dynamicTable.size() > result.value) dynamicTable.removeLast();
+        maxDynamicTableSize = result.value;
+        trimDynamicTable();
         return result.position;
+    }
+
+    private void trimDynamicTable() {
+        while (dynamicTableByteSize > maxDynamicTableSize && !dynamicTable.isEmpty()) {
+            var removed = dynamicTable.removeLast();
+            dynamicTableByteSize -= headerFieldSize(removed);
+        }
     }
 
     /**
@@ -208,6 +250,7 @@ public final class HPackContext {
             boolean huffmanEncoded = (block[pos] & 0x80) != 0;
             int length = block[pos] & 0x7F;
             pos++;
+            if (pos + length > block.length) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
             String name = huffmanEncoded ? Huffman.decode(block, pos, length) : new String(block, pos, length);
             if (!name.equals(name.toLowerCase())) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             field.name = name;
@@ -228,6 +271,7 @@ public final class HPackContext {
     private int decodeValue(byte[] block, int pos, Http2HeaderField field) throws IOException {
         boolean huffmanEncoded = (block[pos] & 0x80) != 0;
         var result = readInt(block, pos, 7);
+        if (result.position + result.value > block.length) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
         field.value = huffmanEncoded ? Huffman.decode(block, result.position, result.value) : new String(block, result.position, result.value);
         return result.position + result.value;
     }
@@ -250,7 +294,7 @@ public final class HPackContext {
         // Write remaining header fields
         for (var entry : headers.entrySet()) {
             if (entry.getKey().startsWith(":")) continue;  // skip pseudo-headers
-            String key = Character.toLowerCase(entry.getKey().charAt(0)) + entry.getKey().substring(1);
+            String key = entry.getKey().toLowerCase(java.util.Locale.ROOT);
             for (String value : entry.getValue()) {
                 buffer.write(encodeLiteral(key, value));
             }

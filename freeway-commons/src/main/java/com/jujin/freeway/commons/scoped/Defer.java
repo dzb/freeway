@@ -174,6 +174,7 @@ public final class Defer {
         }
 
         void compute() {
+            if (computed) return; // get() already resolved it
             try {
                 value = callable.call();
                 computed = true;
@@ -191,10 +192,11 @@ public final class Defer {
             try {
                 T v = callable.call();
                 value = v;
-                computed = true;
                 return v;
             } catch (Exception e) {
                 throw new RuntimeException("Defer.supply failed", e);
+            } finally {
+                computed = true; // drain must not re-execute after get() attempted
             }
         }
     }

@@ -3,6 +3,7 @@ package com.jujin.freeway.commons.bean;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
+import java.util.Optional;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -71,13 +72,13 @@ public final class BeanConstructor {
      * @param <A>  the annotation type
      * @return the annotation, or null if not present
      */
-    public <A extends Annotation> A annotation(Class<A> type) {
+    public <A extends Annotation> Optional<A> annotation(Class<A> type) {
         for (Annotation annotation : annotations) {
             if (type.isInstance(annotation)) {
-                return type.cast(annotation);
+                return Optional.of(type.cast(annotation));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     /**
@@ -87,7 +88,7 @@ public final class BeanConstructor {
      * @return true if the annotation is present
      */
     public boolean hasAnnotation(Class<? extends Annotation> type) {
-        return annotation(type) != null;
+        return annotation(type).isPresent();
     }
 
     /**

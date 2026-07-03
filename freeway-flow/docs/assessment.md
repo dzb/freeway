@@ -67,7 +67,7 @@ solon-flow 核心引擎（solon-flow 模块）的外部依赖：
 
 - JDK 25+，使用 ScopedValue、Record、Virtual Thread
 - **core 模块零外部依赖**（freeway-commons 仅依赖 slf4j）
-- compose-first，显式 Module2 注册，无 classpath 扫描
+- compose-first，显式 ModuleEx 注册，无 classpath 扫描
 
 ### 可用的内置能力
 
@@ -79,7 +79,7 @@ solon-flow 核心引擎（solon-flow 模块）的外部依赖：
 | Bean 内省 | freeway-commons `BeanIntrospector` | 反射工具 |
 | AOP | freeway-ioc `Advisor`/`MethodAdvice` | 方法级拦截（不能替代 FlowInterceptor） |
 | EventBus | freeway-ioc `EventBus` | 应用级 pub/sub（对 FlowContext 过重） |
-| Module 系统 | freeway-ioc `Module2` | 模块注册入口 |
+| Module 系统 | freeway-ioc `ModuleEx` | 模块注册入口 |
 
 ### 缺失的能力
 

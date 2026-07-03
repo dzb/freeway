@@ -1,5 +1,7 @@
 package com.jujin.freeway.flow;
 
+import com.jujin.freeway.flow.v2.GraphSpec2;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,11 +24,11 @@ public class Link implements Comparable<Link> {
     private final ConditionDesc when;
     private Node prevNode, nextNode;
 
-    public Link(Graph graph, String prevId, LinkSpec spec) {
+    public Link(Graph graph, String prevId, GraphSpec2.LinkSpec2 spec) {
         this.graph = graph;
         this.prevId = prevId;
 
-        this.nextId = spec.getNextId();
+        this.nextId = spec.getTo();
         this.title = spec.getTitle();
         this.priority = spec.getPriority();
         this.when = new ConditionDesc(graph, spec.getWhen(), spec.getWhenComponent());
@@ -54,6 +56,7 @@ public class Link implements Comparable<Link> {
     public ConditionDesc getWhen() { return when; }
     public String getPrevId() { return prevId; }
     public String getNextId() { return nextId; }
+    public int getPriority() { return priority; }
 
     public Node getPrevNode() {
         if (prevNode == null) {

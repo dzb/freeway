@@ -11,7 +11,7 @@ Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API
 | `freeway-boot` | Application launcher, config, profiles, runtime lifecycle |
 | `freeway-http` | HTTP layer: routing, filters, static, multipart, WebSocket |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations |
-| `freeway-flow` | Graph-based workflow/flow engine — 7 node types, JSON-defined graphs |
+| `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
 | `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have zero external dependencies. Third-party adapters live in
@@ -39,16 +39,16 @@ This gives you:
 
 Freeway 2 keeps its core concepts intentionally small:
 
-- `Module` is the unit of application composition and responsibility partitioning. `Module2` is the Java type name used by Freeway.
+- `Module` is the unit of application composition and responsibility partitioning. `ModuleEx` is the Java type name used by Freeway. Modules carry `@Marker` annotations to tag all their bindings (e.g. `@Marker(Builtin.class)`).
 - `Freeway` builds a container; `FreewayApp` builds a runtime.
-- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `close()`.
+- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` injects without caching.
 - `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
 - Service ids are plain strings: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is no public `ServiceId` type.
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J provider with ANSI-colored single-line console output (auto-detected from the attached console). Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and optional file logging with time+size rotation and GZIP compression. File logging activates via `-Dfreeway.log.file=auto` or explicit path.
 - Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/commons.md](docs/reference/commons.md) for deeper module notes.
@@ -56,7 +56,7 @@ See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/com
 ## Quick Start
 
 ```java
-public final class AppModule implements Module2 {
+public final class AppModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
         binder.bind(Greeter.class).to(GreeterImpl.class);
@@ -80,7 +80,7 @@ Container container = Freeway.create(
 ### Web App
 
 ```java
-public final class App implements Module2 {
+public final class App implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.install(new HttpModule());
@@ -133,7 +133,7 @@ The IoC module provides the framework core:
 - Named services - `.id("primary")`.
 - Primary resolution - `.primary()` for the default binding when no id is supplied.
 - Scopes - `SINGLETON`, `PROTOTYPE`, `THREAD`.
-- Injection - constructor and field injection with `@Inject`, `@Named`, `@Symbol`, `@Value`.
+- Injection - constructor and field injection with `@Inject`, `@Symbol`, `@Value`.
 - Value expansion - `${...}` placeholder expansion for external configuration.
 - Type coercion - scalar and domain-specific conversions through contributed coercion rules.
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
@@ -145,7 +145,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `FreewayApp.run(args, Module2...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
+- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.
@@ -178,7 +178,7 @@ The HTTP layer stays deliberately thin:
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
-- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow adapter available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
+- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow and Jetty adapters available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
 
 Switch engines by adding the extension module — the container selects it via `.primary()`:
 
@@ -215,6 +215,7 @@ Third-party integrations are available in the **[freeway-ext](https://github.com
 | Module | Description |
 |--------|-------------|
 | `freeway-http-undertow` | Undertow web server adapter (HTTP + WebSocket) |
+| `freeway-http-jetty` | Jetty 12 web server adapter (HTTP/1.1, HTTP/2, WebSocket, TLS) |
 | `freeway-db-hikari` | HikariCP connection pool adapter |
 | `freeway-mq-kafka` | Kafka EventBus bridge for distributed pub/sub |
 

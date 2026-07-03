@@ -396,4 +396,156 @@ class FlowEngineTest {
         // a 先注册，b 后注册（同 index=0），按添加顺序：a → b
         assertEquals(List.of("A:before", "B:before", "B:after", "A:after"), order);
     }
+
+    // ──── typed task 注册 ────
+
+    public record Greeter(String greeting) {}
+
+    @FlowMarker("test:injected")
+    public static final class InjectedTask implements TaskComponent {
+        @com.jujin.freeway.ioc.annotation.Inject
+        private Greeter greeter;
+
+        @Override
+        public void run(FlowContext context, Node node) throws Throwable {
+            context.put("result", greeter.greeting());
+        }
+    }
+
+    @Test
+    void containerInjectWiresFields() {
+        var container = com.jujin.freeway.ioc.Freeway.create(
+                binder -> binder.bind(Greeter.class).to(new Greeter("Hello, Flow!")));
+
+        var task = container.create(InjectedTask.class);
+
+        assertNotNull(task.greeter);
+        assertEquals("Hello, Flow!", task.greeter.greeting());
+    }
+
+    @Test
+    void contributedTaskIsInjectedAndDiscovered() {
+        var container = com.jujin.freeway.ioc.Freeway.create(
+                binder -> {
+                    binder.bind(Greeter.class).to(new Greeter("Hi!"));
+                    binder.contribute(TaskComponent.class).add(InjectedTask.class);
+                });
+
+        var driver = new FlowDriverDefault(null, null);
+        var engine = new FlowEngineImpl(driver);
+        for (var handler : container.extension(TaskComponent.class).all()) {
+            engine.register(handler);
+        }
+
+        engine.load(Graph.create("test", spec -> {
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a")
+                .task("!test:injected")
+                .linkAdd("e");
+            spec.addEnd("e");
+        }));
+
+        var ctx = FlowContext.of();
+        engine.eval("test", ctx);
+
+        assertEquals("Hi!", ctx.getAs("result"));
+    }
+
+    // ──── Flow marker resolution tests ────
+
+    @FlowMarker("channel:email")
+    @FlowMarker("priority:high")
+    static class EmailTask implements TaskComponent {
+        @Override
+        public void run(FlowContext context, Node node) {
+            context.put("handler", "email");
+        }
+    }
+
+    @FlowMarker("channel:sms")
+    @FlowMarker("priority:high")
+    static class SmsTask implements TaskComponent {
+        @Override
+        public void run(FlowContext context, Node node) {
+            context.put("handler", "sms");
+        }
+    }
+
+    @FlowMarker("channel:email")
+    @FlowMarker("priority:low")
+    static class BatchEmailTask implements TaskComponent {
+        @Override
+        public void run(FlowContext context, Node node) {
+            context.put("handler", "batch-email");
+        }
+    }
+
+    @Test
+    void markerResolvesMostSpecificHandler() {
+        Graph graph = Graph.create("marker_flow", spec -> {
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a")
+                .task("!channel:email !priority:high")
+                .linkAdd("e");
+            spec.addEnd("e");
+        });
+
+        FlowEngine engine = FlowEngine.newInstance();
+        // Register handlers — they get auto-indexed in markerIndex
+        engine.register(new EmailTask());
+        engine.register(new SmsTask());
+        engine.register(new BatchEmailTask());
+        engine.load(graph);
+
+        FlowContext ctx = FlowContext.of();
+        engine.eval(graph, ctx);
+
+        assertEquals("email", ctx.getAs("handler"),
+            "Should resolve to most specific: EmailTask (2 markers > BatchEmailTask's 2 but email+high matches)");
+    }
+
+    @Test
+    void markerFailsWhenNoHandlerMatches() {
+        Graph graph = Graph.create("no_match", spec -> {
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a")
+                .task("!channel:push")
+                .linkAdd("e");
+            spec.addEnd("e");
+        });
+
+        FlowEngine engine = FlowEngine.newInstance();
+        engine.register(new EmailTask());
+        engine.load(graph);
+
+        assertThrows(FlowException.class, () ->
+            engine.eval(graph, FlowContext.of()));
+    }
+
+    @Test
+    void markerResolutionViaDriver() {
+        Graph graph = Graph.create("driver_marker", spec -> {
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a")
+                .task("!channel:sms !priority:high")
+                .linkAdd("e");
+            spec.addEnd("e");
+        });
+
+        FlowEngine engine = FlowEngine.newInstance();
+        engine.register(new SmsTask());
+        engine.register(new EmailTask());
+        engine.load(graph);
+
+        FlowContext ctx = FlowContext.of();
+        engine.eval(graph, ctx);
+
+        assertEquals("sms", ctx.getAs("handler"));
+    }
+
+    @Test
+    void flowMarkerIndexExtractsAnnotations() {
+        java.util.Set<String> markers = FlowMarkerIndex.extractFlowMarkers(EmailTask.class);
+        assertEquals(java.util.Set.of("channel:email", "priority:high"), markers);
+    }
 }

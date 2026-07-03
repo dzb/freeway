@@ -75,7 +75,7 @@ freeway-flow/
     │   │   └── FlowException.java        流异常
     │   │
     │   └── [Freeway 集成]
-    │       └── FlowModule.java           Module2 入口
+    │       └── FlowModule.java           ModuleEx 入口
     │
     └── test/java/com/jujin/freeway/flow/
         └── FlowEngineTest.java           12 个测试用例
@@ -189,7 +189,7 @@ freeway-flow/
 ### 第 9 步：Freeway 集成
 
 **FlowModule.java**：
-- 实现 `Module2`，注册 `FlowEngine` 为单例
+- 实现 `ModuleEx`，注册 `FlowEngine` 为单例
 - 内置 `IocContainerAdapter`：将 freeway `Container` 适配为 flow `Container`
 - 全限定名处理 `Container` 命名冲突
 

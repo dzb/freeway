@@ -2,9 +2,9 @@ package com.jujin.freeway.http.engine;
 
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.http.HttpConfigKeys;
+import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
-import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
@@ -13,7 +13,7 @@ import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -129,6 +129,34 @@ class FreewayHttpEngineTest {
 
         socket.sendClose(WebSocket.NORMAL_CLOSURE, "bye").join();
         assertEquals("bye", closed.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void websocketRejectsInvalidKey() throws Exception {
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        app = FreewayApp.run(new String[0], new PingModule());
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        try (var sock = new java.net.Socket("127.0.0.1", port)) {
+            var out = sock.getOutputStream();
+            // Send upgrade with invalid key (not base64 of 16 bytes)
+            out.write("GET /api/ws/lobby HTTP/1.1\r\n".getBytes());
+            out.write("Host: 127.0.0.1\r\n".getBytes());
+            out.write("Upgrade: websocket\r\n".getBytes());
+            out.write("Connection: Upgrade\r\n".getBytes());
+            out.write("Sec-WebSocket-Key: abc\r\n".getBytes());
+            out.write("Sec-WebSocket-Version: 13\r\n".getBytes());
+            out.write("\r\n".getBytes());
+            out.flush();
+
+            // Read response status line
+            var in = new java.io.BufferedReader(new java.io.InputStreamReader(sock.getInputStream()));
+            String line = in.readLine();
+            assertNotNull(line);
+            assertTrue(line.contains("400"), "Invalid key should get 400, got: " + line);
+        }
     }
 
     @Test
@@ -291,7 +319,7 @@ class FreewayHttpEngineTest {
         }
     }
 
-    static final class PingModule implements Module2 {
+    static final class PingModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.contribute(Route.class).add(Route.get("/ping", ctx -> ctx.send(200, "pong")));
@@ -396,7 +424,7 @@ class FreewayHttpEngineTest {
 
         @Override
         public void handle(HttpContext ctx) throws Exception {
-            String name = ctx.pathVar("name");
+            String name = ctx.pathVar("name").orElse(null);
             ctx.send(200, service.greet(name));
         }
     }
@@ -422,5 +450,40 @@ class FreewayHttpEngineTest {
             HttpResponse.BodyHandlers.ofString());
         assertEquals(200, resp.statusCode());
         assertEquals("Hello, Alice!", resp.body());
+    }
+
+    // ── H2 integration ──────────────────────────────────────────────
+
+    @Test
+    void http2HandlerExceptionReturnsErrorNot200() throws Exception {
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+
+        app = FreewayApp.run(new String[0], binder ->
+                binder.contribute(Route.class).add(
+                        Route.get("/h2-error", ctx -> {
+                            throw new RuntimeException("forced error");
+                        })
+                ));
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        // JDK HttpClient with version(HTTP_2) attempts h2c upgrade on cleartext.
+        // If server supports h2c → 101 → H2 frames → handler error → RST_STREAM.
+        // If server doesn't support h2c → HTTP/1.1 fallback → handler error → 500.
+        // Either way: handler exception must NOT return 200.
+        HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_2)
+                .build();
+        try {
+            HttpResponse<String> resp = client.send(
+                    HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/h2-error"))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertNotEquals(200, resp.statusCode(),
+                    "Handler exception must not return 200 on any protocol, got " + resp.statusCode());
+        } catch (IOException e) {
+            // Acceptable: H2 RST_STREAM → connection RST
+        }
     }
 }

@@ -13,14 +13,13 @@ public final class DataFrame extends BaseFrame {
 
     public static BaseFrame parse(byte[] body, FrameHeader header) throws IOException {
         int index = 0;
-        int padding = 0;
+        int padLen = 0;
         if (header.flags().contains(FrameFlag.PADDED)) {
-            padding = (body[index] & 0xFF) + 1;
-            if (padding > body.length) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+            padLen = body[index++] & 0xFF;
+            if (padLen > body.length - index) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         }
-        return padding > 0
-            ? new DataFrame(header, Arrays.copyOfRange(body, index, body.length - padding))
-            : new DataFrame(header, body);
+        return new DataFrame(header,
+                Arrays.copyOfRange(body, index, body.length - padLen));
     }
 
     public void writeTo(OutputStream outputStream) throws IOException { outputStream.write(body); }

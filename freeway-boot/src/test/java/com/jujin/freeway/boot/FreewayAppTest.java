@@ -215,7 +215,7 @@ class FreewayAppTest {
         }
     }
 
-    public static final class TestBootApp implements Module2 {
+    public static final class TestBootApp implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.bind(Greeter.class).to(GreeterImpl.class);
@@ -223,14 +223,14 @@ class FreewayAppTest {
         }
     }
 
-    public static final class InstancePrimaryModule implements Module2 {
+    public static final class InstancePrimaryModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.bind(PrimaryMarker.class).to(new PrimaryMarker("instance"));
         }
     }
 
-    public static final class HookOrderedModule implements Module2 {
+    public static final class HookOrderedModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.contribute(RuntimeHook.class).add("second", new RuntimeHook() {
@@ -248,7 +248,7 @@ class FreewayAppTest {
         }
     }
 
-    public static final class HookFailureModule implements Module2 {
+    public static final class HookFailureModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
@@ -267,7 +267,7 @@ class FreewayAppTest {
         }
     }
 
-    public static final class HookCycleModule implements Module2 {
+    public static final class HookCycleModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
             binder.contribute(RuntimeHook.class).add("first", new RuntimeHook() {

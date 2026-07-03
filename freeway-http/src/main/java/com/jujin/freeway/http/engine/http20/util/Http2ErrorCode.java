@@ -24,6 +24,6 @@ public enum Http2ErrorCode {
 
     public static Http2ErrorCode fromValue(int v) {
         for (var e : values()) if (e.value == v) return e;
-        return NO_ERROR;
+        return INTERNAL_ERROR; // RFC 7540 §7: unknown error codes treated as INTERNAL_ERROR
     }
 }

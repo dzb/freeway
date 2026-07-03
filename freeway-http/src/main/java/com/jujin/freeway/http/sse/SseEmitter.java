@@ -48,10 +48,13 @@ public class SseEmitter implements AutoCloseable {
         String data = event.data();
         int start = 0;
         for (int i = 0; i < data.length(); i++) {
-            if (data.charAt(i) == '\n') {
+            char c = data.charAt(i);
+            if (c == '\n' || c == '\r') {
                 write("data: ");
                 write(data.substring(start, i));
                 write("\n");
+                // skip \n after \r (CRLF)
+                if (c == '\r' && i + 1 < data.length() && data.charAt(i + 1) == '\n') i++;
                 start = i + 1;
             }
         }

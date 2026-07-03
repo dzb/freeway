@@ -40,13 +40,13 @@ Robaho adapter has been removed.
 
 ## Architecture Boundaries
 
-- **`Container`** — IoC boundary only: `get(Class)`, `get(Class, String)`, `close()`. Created via `Freeway.create(Module2...)`.
-- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `FreewayApp.run(new String[0], Module2...)`.
+- **`Container`** — IoC boundary only: `get(Class)`, `get(Class, String)`, `extension(Class)`, `create(Class)`, `close()`. `create()` is a factory method — full injection without caching. Created via `Freeway.create(ModuleEx...)`.
+- **`AppRuntime`** — Application boundary above Container. Owns config, profiles, startup/shutdown, runtime hooks. Created via `FreewayApp.run(new String[0], ModuleEx...)`.
 - **`ServiceId`** is intentionally not a public type — service ids are plain strings, normalized internally by `ServiceIds`.
 - **`Defer` / `ScopedCache`** — commons-level `ScopedValue` primitives. `Defer` buffers actions for commit-time drain; `ScopedCache` caches key-value pairs with lifecycle cleanup on scope exit. IoC's thread scope is built on `ScopedCache`.
 - **Scopes** declared only via `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`. Thread scope is entered through `Scoping.within()`.
 - **`RuntimeHook`** — module-level start/stop extension. Contributed through `Contribution<RuntimeHook>`, ordered with `before/after`. `HttpModule` contributes the server hook with stable id `"freeway.http.server"`.
-- **`LoggerSource`** — built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery; activates only when no external SLF4J provider is detected. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
+- **`LoggerSource`** — built-in logger service. Commons provides a JUL-backed SLF4J provider as a fallback via `LogBootstrap`; activates only when no external SLF4J provider (Logback, Log4j) is detected on the classpath. The JUL provider auto-loads `logging.properties` from the classpath root. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 - **`.primary()` pattern** — used for engine, pool, and dialect selection. Default implementation bound without `.primary()`; extension modules bind their alternative with `.primary()`. Container resolves the primary binding automatically — no config keys needed. Same pattern across HTTP engine (`FreewayHttpEngine` vs `UndertowEngine`), connection pool (`PoolDefault` vs `HikariPool`), and DB dialect (`PostgresDialect` vs custom).
 - **HTTP** — Built-in engine architecture:
   - **Engine layer** (`engine/`): `FreewayHttpEngine` — virtual threads, synchronous socket I/O, HTTP/1.1 + HTTP/2 h2c/h2 + WebSocket + HTTPS. Sub-packages: `engine/http11/` (Http11Connection, HttpParser), `engine/http20/` (Http2Connection, frame serialization, HPACK), `engine/ws/` (WebSocket frame protocol). All engine classes are implementation details — only `FreewayHttpEngine` is public.

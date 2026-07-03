@@ -4,10 +4,10 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Stable API
 
-- `Container` - `get(Class)`, `get(Class, String)`, `extension(Class)`, `close()`
-- `Binder` - `bind(Class)`, `contribute(Class)`, `install(Module2)`; `Module2` is the module entry-point type
-- `Binding<T>` - `to(Class)`, `to(instance)`, `to(provider)`, `id(String)`, `primary()`, `scope(Scope)`, `advise(...)`
-- `Module2` - module entry-point type: `bind(Binder)`
+- `Container` - `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`
+- `Binder` - `bind(Class)`, `contribute(Class)`, `install(ModuleEx)`; `ModuleEx` is the module entry-point type
+- `Binding<T>` - `to(Class)`, `to(instance)`, `to(provider)`, `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`
+- `ModuleEx` - module entry-point type: `bind(Binder)`
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
 - `Scoping` - `within(...)`
 - `Extension<V>` - ordered contributions for a given entry type
@@ -58,7 +58,7 @@ Freeway uses two annotations with distinct semantics:
 
 ## Important Behavior
 
-- `@Inject`, `@Named`, `@Symbol`, `@Value` are the main injection annotations.
+- `@Inject`, `@Symbol`, `@Value` are the main injection annotations.
 - `List<Foo>` and `Extension<Foo>` can be resolved through injection.
 - Singleton services should not directly inject thread-scoped concrete classes.
 - AOP only applies to interface-to-class bindings.

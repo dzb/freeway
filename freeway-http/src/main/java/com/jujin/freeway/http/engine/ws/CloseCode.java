@@ -20,6 +20,11 @@ public enum CloseCode {
 
     int value() { return code; }
 
+    /** RFC 6455 §7.4.1: 1005/1006/1015 must never appear on the wire. */
+    boolean isReserved() {
+        return this == NoStatusRcvd || this == AbnormalClosure || this == TLSHandshake;
+    }
+
     static CloseCode find(int value) {
         for (var c : values()) {
             if (c.code == value) return c;

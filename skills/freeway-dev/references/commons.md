@@ -45,6 +45,6 @@ Defer.within(() -> {
 });
 
 ScopedCache.within(() -> {
-    Connection conn = ScopedCache.get("db", () -> dataSource.getConnection());
+    Connection conn = ScopedCache.get("tx", () -> pool.borrow().connection());
 });
 ```

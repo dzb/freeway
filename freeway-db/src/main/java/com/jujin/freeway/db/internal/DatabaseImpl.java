@@ -1,20 +1,12 @@
 package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.commons.scoped.Defer;
-import com.jujin.freeway.db.BatchQuery;
-import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseStats;
-import com.jujin.freeway.db.ExecuteResult;
-import com.jujin.freeway.db.IsolationLevel;
-import com.jujin.freeway.db.Pool;
-import com.jujin.freeway.db.PoolConfig;
-import com.jujin.freeway.db.PooledConnection;
-import com.jujin.freeway.db.Query;
-import com.jujin.freeway.db.Transactional;
-import com.jujin.freeway.db.util.Names;
-import java.sql.SQLException;
+import com.jujin.freeway.db.*;
+import com.jujin.freeway.db.util.SqlTextParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.sql.SQLException;
 
 public final class DatabaseImpl implements Database {
 
@@ -77,6 +69,13 @@ public final class DatabaseImpl implements Database {
         transaction(null, work);
     }
 
+    /**
+     * Runs {@code work} inside a JDBC transaction.
+     *
+     * <p>The transaction wraps via {@link Defer#within} so events published
+     * during the work are buffered and only drained after commit — if the
+     * transaction rolls back, the events are discarded.
+     */
     @Override
     public void transaction(IsolationLevel isolation, Transactional work) {
         if (TX_CONN.isBound()) {
@@ -139,21 +138,21 @@ public final class DatabaseImpl implements Database {
                 raw.setAutoCommit(true);
             }
         } catch (SQLException e) {
-            LOG.trace("Error restoring connection state", e);
+            LOG.warn("Failed to restore connection state — closing physical connection", e);
+            closePhysical(conn);
+        }
+    }
+
+    private static void closePhysical(PooledConnection conn) {
+        try {
+            conn.connection().close();
+        } catch (SQLException ignored) {
+            // physical close is best-effort
         }
     }
 
     static boolean startsWithInsert(String sql) {
-        if (sql == null) {
-            return false;
-        }
-        int index = skipIgnorableSqlPrefix(sql);
-        int end = index + "insert".length();
-        return (
-            end <= sql.length() &&
-            sql.regionMatches(true, index, "insert", 0, "insert".length()) &&
-            (end == sql.length() || !Names.isValidParamChar(sql.charAt(end)))
-        );
+        return SqlTextParser.hasTopLevelInsert(sql);
     }
 
     @Override
@@ -190,50 +189,6 @@ public final class DatabaseImpl implements Database {
 
     Pool pool() {
         return pool;
-    }
-
-    private static int skipIgnorableSqlPrefix(String sql) {
-        int index = 0;
-        while (index < sql.length()) {
-            char c = sql.charAt(index);
-            if (Character.isWhitespace(c)) {
-                index++;
-                continue;
-            }
-            if (
-                c == '-' &&
-                index + 1 < sql.length() &&
-                sql.charAt(index + 1) == '-'
-            ) {
-                index += 2;
-                while (index < sql.length() && sql.charAt(index) != '\n') {
-                    index++;
-                }
-                continue;
-            }
-            if (
-                c == '/' &&
-                index + 1 < sql.length() &&
-                sql.charAt(index + 1) == '*'
-            ) {
-                index += 2;
-                while (index < sql.length()) {
-                    char bc = sql.charAt(index);
-                    index++;
-                    if (
-                        bc == '*' &&
-                        index < sql.length() &&
-                        sql.charAt(index) == '/'
-                    ) {
-                        index++;
-                        break;
-                    }
-                }
-                continue;
-            }
-            return index;
-        }
-        return index;
     }
 
 }

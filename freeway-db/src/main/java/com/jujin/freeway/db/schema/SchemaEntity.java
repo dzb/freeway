@@ -6,7 +6,7 @@ import java.util.Objects;
  * Registers a named group of entity classes for auto-schema management.
  * <p>
  * Contribute via {@code binder.contribute(SchemaEntity.class).add(...)}
- * inside a {@code Module2.bind()}. {@code DbModule} collects all
+ * inside a {@code ModuleEx.bind()}. {@code DbModule} collects all
  * contributed groups and executes {@link Schema#ensure}
  * at startup (before migration SQL files), logged by group name.
  *

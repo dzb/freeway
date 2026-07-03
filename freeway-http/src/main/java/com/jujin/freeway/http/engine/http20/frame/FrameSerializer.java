@@ -8,20 +8,19 @@ import java.io.InputStream;
 
 public final class FrameSerializer {
     /** HTTP/2 max frame size (16KB default, RFC 7540 Section 4.2). */
-    private static final int MAX_FRAME_SIZE = 16384;
+    private static final int DEFAULT_MAX_FRAME_SIZE = 16384;
 
     private FrameSerializer() {}
 
-    /**
-     * Reads a 9-byte frame header from the input stream, validates the frame
-     * size against the max allowed, reads the frame body, and dispatches to
-     * the appropriate frame-type parser.
-     */
     public static BaseFrame deserialize(InputStream inputStream) throws IOException {
+        return deserialize(inputStream, DEFAULT_MAX_FRAME_SIZE);
+    }
+
+    public static BaseFrame deserialize(InputStream inputStream, int maxFrameSize) throws IOException {
         byte[] headerBuffer = new byte[9];
         readFully(inputStream, headerBuffer);
         var header = FrameHeader.parse(headerBuffer);
-        if (header.length() > MAX_FRAME_SIZE)
+        if (header.length() > maxFrameSize)
             throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR);
         byte[] body = new byte[header.length()];
         readFully(inputStream, body);

@@ -6,6 +6,9 @@ import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.MultipartForm;
 import com.jujin.freeway.http.sse.SseEmitter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,13 +17,7 @@ import java.lang.reflect.Type;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Abstract base class for HTTP request/response contexts. Subclasses bridge
@@ -28,6 +25,7 @@ import java.util.Objects;
  * while providing a uniform API for reading requests and writing responses.
  */
 public abstract class HttpContext {
+    private static final Logger LOG = LoggerFactory.getLogger(HttpContext.class);
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
     protected volatile long maxBodySize = 10_485_760L;
@@ -46,8 +44,8 @@ public abstract class HttpContext {
     /** Returns the raw request path. */
     public abstract String path();
 
-    /** Returns the first query parameter value for the given name, or null. */
-    public abstract String queryParam(String name);
+    /** Returns the first query parameter value for the given name, or empty. */
+    public abstract java.util.Optional<String> queryParam(String name);
 
     /** Returns all query parameter values for the given name. */
     public abstract List<String> queryParams(String name);
@@ -57,17 +55,17 @@ public abstract class HttpContext {
 
     /**
      * Returns the value of a single query parameter coerced to the
-     * given type, or null if absent.
+     * given type, or empty if absent.
      */
-    public <T> T queryParam(String name, Class<T> type) {
-        return coerceText(queryParam(name), type);
+    public <T> java.util.Optional<T> queryParam(String name, Class<T> type) {
+        return queryParam(name).map(v -> coerceText(v, type));
     }
 
     /**
-     * Returns the first request header value for the given name, or null.
+     * Returns the first request header value for the given name, or empty.
      * Header names are case-insensitive.
      */
-    public abstract String header(String name);
+    public abstract java.util.Optional<String> header(String name);
 
     /**
      * Returns all request header values for the given name.
@@ -77,10 +75,10 @@ public abstract class HttpContext {
 
     /**
      * Returns the value of a single request header coerced to the
-     * given type, or null if absent.
+     * given type, or empty if absent.
      */
-    public <T> T header(String name, Class<T> type) {
-        return coerceText(header(name), type);
+    public <T> java.util.Optional<T> header(String name, Class<T> type) {
+        return header(name).map(v -> coerceText(v, type));
     }
 
     /** Returns an unmodifiable map of all request headers. */
@@ -93,25 +91,26 @@ public abstract class HttpContext {
     public abstract RequestContext requestContext();
 
     /** Returns true if the request has a multipart/form-data content type. */
-    public boolean isMultipart() { return multipart() != null; }
+    public boolean isMultipart() { return multipart().isPresent(); }
 
     /**
-     * Parses and returns the multipart form data, or null if the request
+     * Parses and returns the multipart form data, or empty if the request
      * is not a multipart upload.
      */
-    public MultipartForm multipart() {
-        String ct = header("Content-Type");
-        if (ct == null) return null;
-        try {
-            return MultipartForm.parse(ct, body());
-        } catch (IOException e) {
-            return null;
-        }
+    public java.util.Optional<MultipartForm> multipart() {
+        return header("Content-Type").flatMap(ct -> {
+            try {
+                return java.util.Optional.of(MultipartForm.parse(ct, body()));
+            } catch (IOException e) {
+                LOG.debug("Failed to parse multipart body", e);
+                return java.util.Optional.empty();
+            }
+        });
     }
 
-    /** Returns a path parameter value by name. */
-    public String pathVar(String name) {
-        return pathVariables.get(name);
+    /** Returns a path parameter value by name, or empty. */
+    public java.util.Optional<String> pathVar(String name) {
+        return java.util.Optional.ofNullable(pathVariables.get(name));
     }
 
     /** Returns an unmodifiable map of all path parameter values. */
@@ -128,23 +127,22 @@ public abstract class HttpContext {
     /**
      * Returns the value of a path parameter coerced to the given type.
      */
-    public <T> T pathVar(String name, Class<T> type) {
-        return coerceText(pathVar(name), type);
+    public <T> java.util.Optional<T> pathVar(String name, Class<T> type) {
+        return pathVar(name).map(v -> coerceText(v, type));
     }
 
     /**
      * Returns a request parameter (from query string first, then path).
      */
-    public String param(String name) {
-        var value = queryParam(name);
-        return value != null ? value : pathVar(name);
+    public java.util.Optional<String> param(String name) {
+        return queryParam(name).or(() -> pathVar(name));
     }
 
     /**
      * Returns a request parameter coerced to the given type.
      */
-    public <T> T param(String name, Class<T> type) {
-        return coerceText(param(name), type);
+    public <T> java.util.Optional<T> param(String name, Class<T> type) {
+        return param(name).map(v -> coerceText(v, type));
     }
 
     // == Body ==
@@ -227,6 +225,16 @@ public abstract class HttpContext {
      *
      * @throws IllegalArgumentException if the value contains CR or LF
      */
+    protected static void validateHeaderName(String name) {
+        if (name == null) throw new IllegalArgumentException("Header name must not be null");
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c == '\r' || c == '\n' || c == ':') {
+                throw new IllegalArgumentException("Invalid header name: " + name);
+            }
+        }
+    }
+
     protected static void validateHeaderValue(String value) {
         if (value != null) {
             for (int i = 0; i < value.length(); i++) {
@@ -353,7 +361,7 @@ public abstract class HttpContext {
 
     /** Returns the charset from the Content-Type header, defaulting to UTF-8. */
     private Charset charsetFromContentType() {
-        String ct = header("Content-Type");
+        String ct = header("Content-Type").orElse(null);
         if (ct == null) return StandardCharsets.UTF_8;
         int idx = ct.toLowerCase(Locale.ROOT).indexOf("charset=");
         if (idx < 0) return StandardCharsets.UTF_8;
@@ -364,7 +372,7 @@ public abstract class HttpContext {
     }
 
     private void checkJsonContentType() {
-        String ct = header("Content-Type");
+        String ct = header("Content-Type").orElse(null);
         if (ct == null || !ct.toLowerCase(Locale.ROOT).contains("application/json")) {
             throw new IllegalStateException("Expected application/json Content-Type");
         }
@@ -376,9 +384,9 @@ public abstract class HttpContext {
     }
 
     /**
-     * HTTP chunked transfer encoding output stream wrapper.
-     * Writes each chunk as hex-length CRLF data CRLF,
-     * and sends the terminating chunk 0 CRLF CRLF on close.
+     * HTTP chunked transfer encoding output stream.
+     * Lives here so subclasses (HTTP/1.1, HTTP/2 bridge) share the same
+     * encoding without duplicating the chunk framing logic.
      */
     static final class ChunkedOutputStream extends OutputStream {
         private final OutputStream out;

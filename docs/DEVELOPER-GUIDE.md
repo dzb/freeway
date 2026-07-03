@@ -13,7 +13,7 @@ public class App {
         }
     }
 
-    public static final class AppModule implements Module2 {
+    public static final class AppModule implements ModuleEx {
         public void bind(Binder b) {
             b.contribute(Route.class).add(Route.get("/", ctx ->
                 ctx.send(200, "Hello Freeway")));
@@ -40,7 +40,7 @@ freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, 
 freeway-boot             launcher, config cascade, profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
   └ built-in              FreewayHttpEngine (HTTP/1.1 + HTTP/2 + WebSocket + HTTPS)
-  └ engine adapters       Undertow → see freeway-ext
+  └ engine adapters       Undertow, Jetty → see freeway-ext
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
   └ connection pool       HikariCP adapter → see freeway-ext
 freeway-flow             Graph workflow engine — 7 node types, JSON graphs, tracing
@@ -62,7 +62,7 @@ freeway-boot        freeway-http        freeway-db
 
 ## Module — The Fundamental Building Block
 
-Module is the central organizing concept in Freeway. A module declares services, contributions, and composition. `Module2` is only the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway talks about modules.
+Module is the central organizing concept in Freeway. A module declares services, contributions, and composition. `ModuleEx` is only the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway talks about modules.
 
 The module contract is simple:
 
@@ -88,11 +88,11 @@ For the full module patterns, see [docs/reference/module.md](reference/module.md
 
 | Type | Purpose |
 |------|---------|
-| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `close()` |
-| `Module2` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
+| `Container` | Service lookup: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()` |
+| `ModuleEx` | Module entry-point type: `bind(Binder)`. Named to avoid `java.lang.Module` conflict |
 | `Binder` | Binding and contribution DSL |
 | `Binding` | Service binding configuration: target, id, primary, scope, advisor |
-| `Freeway` | Container bootstrap for composing modules: `Freeway.create(Module2...)` |
+| `Freeway` | Container bootstrap for composing modules: `Freeway.create(ModuleEx...)` |
 | `RuntimeHook` | Start/stop lifecycle extension consumed by `AppRuntime` |
 | `Scoping` | Executes work inside a `Scope.THREAD` boundary via `within()` |
 | `LoggerSource` | Owner-aware logger factory service |
@@ -167,9 +167,30 @@ Greeter g = container.get(Greeter.class);
 // by type + id
 PaymentGateway pg = container.get(PaymentGateway.class, "stripe");
 
+// by type + marker annotations (containsAll semantics)
+Cache cache = container.get(Cache.class, Fast.class);
+
 // Container also available as a service
 Container c = container.get(Container.class);
 ```
+
+### Markers
+
+Marker annotations enable type-safe service disambiguation:
+
+```java
+// Define a marker annotation
+@Retention(RUNTIME) @Target({TYPE, PARAMETER, FIELD})
+public @interface Fast {}
+
+// Bind with marker
+binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+
+// Module-level markers propagate to all bindings
+@Marker(Builtin.class)
+public class AppModule implements ModuleEx { ... }
+```
+
 
 ### Scopes
 
@@ -463,7 +484,7 @@ AppRuntime app = FreewayApp.of(new MyModule())
 
 | Type | Purpose |
 |------|---------|
-| `FreewayApp` | Application entry point: `run(args, Module2...)`, `of(Module2...)` |
+| `FreewayApp` | Application entry point: `run(args, ModuleEx...)`, `of(ModuleEx...)` |
 | `AppBuilder` | Fluent builder for advanced control: `autoDiscovery`, `shutdownHook`, `classLoader`, `config` |
 | `AppRuntime` | Runtime API: container, config, state, start, close, `get(Class)`, `get(Class, String)` |
 | `AppState` | `CREATED` → `STARTING` → `RUNNING` → `STOPPING` → `STOPPED` (or `FAILED`) |
@@ -691,12 +712,8 @@ Built-in mappers in `HttpModule`: `BodyTooLargeException` → 413, `ValidationEx
 | Engine | Module | Features |
 |--------|--------|----------|
 | `FreewayHttpEngine` | Built-in in `HttpModule` (default) | VT-based, HTTP/1.1 + h2c/h2 + WebSocket + HTTPS |
-| `UndertowEngine` | `freeway-http-undertow` (ext) | XNIO-based alternative |
-
-`JdkHttpEngine` has been removed — the built-in engine is now the sole default.
-
-For performance comparisons, see `freeway-benchmark` module (JMH microbenchmarks + HTTP/WS smoke benchmarks).
-| `UndertowEngine` | `freeway-http-undertow` | HTTP + WebSocket, production-grade |
+| `UndertowEngine` | `freeway-http-undertow` (ext) | XNIO-based, production-grade |
+| `JettyEngine` | `freeway-http-jetty` (ext) | Jetty 12, HTTP/1.1 + HTTP/2 + WebSocket + TLS |
 
 ```java
 // Default — FreewayHttpEngine
@@ -1050,7 +1067,7 @@ Schema.ensure(db, User.class, Post.class);
 **IoC integration** — contribute entity classes via `SchemaEntity`:
 
 ```java
-public class AppModule implements Module2 {
+public class AppModule implements ModuleEx {
     public void bind(Binder b) {
         b.install(new HttpModule())
          .install(new DbModule());
@@ -1191,7 +1208,7 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Flow (`freeway-flow`)
 
-Lightweight graph-based workflow/flow engine ported from solon-flow. Zero external dependencies beyond commons + ioc.
+Lightweight graph-based workflow engine ported from solon-flow. Zero external dependencies beyond commons + ioc. Supports two DAG definition formats with a unified runtime.
 
 **7 node types:**
 
@@ -1205,42 +1222,65 @@ Lightweight graph-based workflow/flow engine ported from solon-flow. Zero extern
 | `PARALLEL` | Parallel fork |
 | `LOOP` | Loop until condition |
 
-**Graph definition — JSON:**
+**Graph definition — v2 format (recommended):**
 
 ```java
+// Programmatic
+GraphSpec2 bp = GraphSpec2.create("orderFlow", spec -> {
+    spec.entry("start");
+    spec.addStart("start").linkAdd("approve");
+    spec.addActivity("approve").task("!channel:order").linkAdd("end");
+    spec.addEnd("end");
+});
+Graph graph = bp.create();
+
+// JSON — Graph.fromText() auto-detects format
 Graph graph = Graph.fromText("""
 {
+    "id": "orderFlow", "version": 2, "entry": "start",
     "nodes": [
-        {"id": "start", "type": "START", "next": "approve"},
-        {"id": "approve", "type": "ACTIVITY", "task": "submitOrder", "next": "end"},
-        {"id": "end", "type": "END"}
+        {"id": "start", "type": "start"},
+        {"id": "approve", "type": "activity", "task": "!channel:order"},
+        {"id": "end", "type": "end"}
+    ],
+    "links": [
+        {"from": "start", "to": "approve"},
+        {"from": "approve", "to": "end"}
     ]
 }
 """);
 ```
 
-**Task resolution** — tasks are resolved via three strategies:
+v1 `layout`-format JSON is still supported — `Graph.fromText()` auto-detects and internally converts to the unified runtime path. `GraphSpec2.normalize()` validates link references and BFS reachability at `create()` time.
+
+**Task resolution:**
 
 | Strategy | Syntax | Example |
 |----------|--------|---------|
-| Bean | `@bean` | `@orderService` — resolved from IoC container |
+| Marker | `!name` | `!channel:order !priority:high` — resolved by `FlowMarkerIndex` intersection |
+| Bean | `@bean` | `@orderService` — resolved from IoC container by binding id |
 | Sub-graph | `#graph` | `#approvalFlow` — calls a named sub-graph |
-| Metadata | `$meta` | `${app.name}` — resolved via config cascade |
+| Metadata | `$meta` | `$app.name` — resolved from graph meta |
+
+`@FlowMarker("channel:order")` on a `TaskComponent` implementation auto-registers it in the marker index. When multiple handlers match, the one with the most markers wins.
 
 **Execution:**
 
 ```java
 FlowEngine engine = container.get(FlowEngine.class);
-FlowResult result = engine.execute(graphId);
-result.trace().forEach(t -> System.out.println(t)); // execution trace
+engine.load(graph);
+engine.eval("orderFlow", FlowContext.of());
 ```
 
 **Key types:**
 
 | Type | Purpose |
 |------|---------|
-| `Graph` | Graph definition — nodes, edges, conditions |
-| `FlowEngine` | Graph executor — execute, pause, resume |
+| `Graph` | Immutable runtime model — built from v1 or v2 definitions |
+| `GraphSpec2` | v2 DAG authoring surface with explicit `entry` and separated `nodes`/`links` |
+| `FlowEngine` | Graph executor: load, eval, pause, resume |
+| `@FlowMarker` | String-based marker annotation for `TaskComponent` resolution |
+| `FlowMarkerIndex` | Reverse index from marker names to handlers with `containsAll` matching |
 | `FlowEventBus` | Node lifecycle events (enter, exit, error) |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~280 lines) |
 

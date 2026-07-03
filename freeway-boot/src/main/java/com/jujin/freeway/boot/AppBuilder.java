@@ -4,7 +4,7 @@ import com.jujin.freeway.boot.internal.BootConfigLoader;
 import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Fluent builder for {@link FreewayApp}, created via {@link FreewayApp#of(Module2...)}.
+ * Fluent builder for {@link FreewayApp}, created via {@link FreewayApp#of(ModuleEx...)}.
  *
  * <pre>{@code
  * AppRuntime app = FreewayApp.of(new MyModule())
@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
 public final class AppBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(AppBuilder.class);
 
-    private final List<Module2> modules = new ArrayList<>();
+    private final List<ModuleEx> modules = new ArrayList<>();
     private String[] args = new String[0];
     private ConfigLoader configLoader;
     private boolean autoDiscovery = true;
@@ -39,9 +39,9 @@ public final class AppBuilder {
     }
 
     /** Add one or more modules to the application. */
-    public AppBuilder add(Module2... modules) {
+    public AppBuilder add(ModuleEx... modules) {
         Objects.requireNonNull(modules, "modules");
-        for (Module2 m : modules) {
+        for (ModuleEx m : modules) {
             Objects.requireNonNull(m, "module");
             this.modules.add(m);
         }
@@ -95,17 +95,17 @@ public final class AppBuilder {
             : new BootConfigLoader();
         AppConfig config = effectiveConfigLoader.load(effectiveLoader, args);
 
-        LinkedHashMap<Class<?>, Module2> allModules = new LinkedHashMap<>();
+        LinkedHashMap<Class<?>, ModuleEx> allModules = new LinkedHashMap<>();
         allModules.put(BootConfigModule.class, new BootConfigModule(config));
-        for (Module2 module : modules) {
+        for (ModuleEx module : modules) {
             addModule(allModules, module);
         }
         if (autoDiscovery) {
-            for (Module2 module : ServiceLoader.load(Module2.class, effectiveLoader)) {
+            for (ModuleEx module : ServiceLoader.load(ModuleEx.class, effectiveLoader)) {
                 addModule(allModules, module);
             }
         }
-        List<Module2> moduleList = List.copyOf(allModules.values());
+        List<ModuleEx> moduleList = List.copyOf(allModules.values());
 
         Container container = Freeway.create(moduleList);
         AppRuntime app = new AppRuntimeDefault(container, config);
@@ -154,10 +154,10 @@ public final class AppBuilder {
     }
 
     private static void addModule(
-        LinkedHashMap<Class<?>, Module2> allModules,
-        Module2 module
+        LinkedHashMap<Class<?>, ModuleEx> allModules,
+        ModuleEx module
     ) {
-        Module2 existing = allModules.putIfAbsent(module.getClass(), module);
+        ModuleEx existing = allModules.putIfAbsent(module.getClass(), module);
         if (existing == null) {
             return;
         }

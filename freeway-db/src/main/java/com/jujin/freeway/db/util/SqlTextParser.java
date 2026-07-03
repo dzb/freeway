@@ -174,6 +174,64 @@ public final class SqlTextParser {
         return false;
     }
 
+    public static boolean hasTopLevelInsert(String sql) {
+        if (sql == null) {
+            return false;
+        }
+        int len = sql.length();
+        int i = 0;
+        int depth = 0;
+        while (i < len) {
+            char c = sql.charAt(i);
+            if (c == '\'') {
+                i = skipQuoted(sql, i, '\'');
+                continue;
+            }
+            if (c == '"') {
+                i = skipQuoted(sql, i, '"');
+                continue;
+            }
+            if (c == '-' && i + 1 < len && sql.charAt(i + 1) == '-') {
+                i = skipLineComment(sql, i);
+                continue;
+            }
+            if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
+                i = skipBlockComment(sql, i);
+                continue;
+            }
+            if (c == '$') {
+                int after = skipDollarQuote(sql, i);
+                if (after > i) {
+                    i = after;
+                    continue;
+                }
+            }
+            if (c == '(') {
+                depth++;
+                i++;
+                continue;
+            }
+            if (c == ')' && depth > 0) {
+                depth--;
+                i++;
+                continue;
+            }
+            if (depth == 0 && Character.isLetter(c)) {
+                int start = i;
+                i++;
+                while (i < len && (Character.isLetterOrDigit(sql.charAt(i)) || sql.charAt(i) == '_')) {
+                    i++;
+                }
+                if (i - start == 6 && sql.regionMatches(true, start, "insert", 0, 6)) {
+                    return true;
+                }
+                continue;
+            }
+            i++;
+        }
+        return false;
+    }
+
     public static List<String> splitStatements(String sql) {
         if (sql.isEmpty()) {
             return List.of();

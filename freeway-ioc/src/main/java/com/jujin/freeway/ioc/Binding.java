@@ -1,6 +1,7 @@
 package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.advisor.Advisor;
+import java.lang.annotation.Annotation;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -54,6 +55,22 @@ public interface Binding<T> {
      * @throws IllegalArgumentException if multiple primary bindings exist
      */
     Binding<T> primary();
+
+    /**
+     * Attaches marker annotations to this binding. Markers enable
+     * type-safe service disambiguation at injection points.
+     *
+     * <pre>{@code
+     *   binder.bind(Cache.class).to(FastCache.class)
+     *       .marker(Fast.class);
+     *
+     *   // At injection point:
+     *   &#64;Inject &#64;Fast Cache cache;
+     * }</pre>
+     *
+     * @param markers marker annotation classes (must have &#64;Retention(RUNTIME))
+     */
+    Binding<T> marker(Class<? extends Annotation>... markers);
 
     /**
      * Registers AOP advice for this service. Only works for interface-to-class

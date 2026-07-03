@@ -18,17 +18,22 @@ import java.util.List;
  * }</pre>
  *
  * @see Container
- * @see Module2
+ * @see ModuleEx
  */
 public final class Freeway {
 
+    // Ensure SLF4J is available before any container code runs a LoggerFactory.getLogger().
+    static {
+        com.jujin.freeway.commons.logging.LogBootstrap.ensureProvider();
+    }
+
     private Freeway() {}
 
-    public static Container create(Module2... modules) {
+    public static Container create(ModuleEx... modules) {
         return create(modules == null ? List.of() : Arrays.asList(modules));
     }
 
-    public static Container create(Collection<? extends Module2> modules) {
+    public static Container create(Collection<? extends ModuleEx> modules) {
         return new ContainerImpl(modules == null ? List.of() : modules);
     }
 }

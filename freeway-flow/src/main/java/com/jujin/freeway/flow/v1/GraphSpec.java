@@ -1,14 +1,26 @@
-package com.jujin.freeway.flow;
+package com.jujin.freeway.flow.v1;
 
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.flow.Graph;
+import com.jujin.freeway.flow.NamedTaskComponent;
+import com.jujin.freeway.flow.NodeType;
+import com.jujin.freeway.flow.v2.GraphSpec2;
 
 import java.util.*;
 import java.util.function.Consumer;
 
 /**
- * 图定义（Builder + JSON 解析）
+ * 图定义构建器与 JSON 解析入口。
+ *
+ * <p>迁移说明：
+ * <ul>
+ *   <li>保留 legacy {@code layout}/{@code nodes}、{@code when}/{@code condition}、{@code link} 多种字段形态，确保旧图可继续加载。</li>
+ *   <li>把序列化输出统一收敛到当前的 {@code layout} 结构，减少后续扩展时的格式分叉。</li>
+ *   <li>解析时仍允许缺省 start 节点推断起点，是为了保持旧定义的可运行性，而不是推荐的新建模方式。</li>
+ * </ul>
+ * 这样可以兼容存量图定义，同时逐步把新建模引导到显式结构上。</p>
  *
  * @author noear
  * @since 3.0
@@ -40,7 +52,41 @@ public class GraphSpec {
     }
 
     public Graph create() {
-        return new Graph(this);
+        return toBlueprint().create();
+    }
+
+    /**
+     * Convert v1 spec to the canonical v2 blueprint, so the runtime always
+     * builds through a single {@link Graph#Graph(GraphSpec2)} path.
+     */
+    GraphSpec2 toBlueprint() {
+        GraphSpec2 bp = new GraphSpec2(id, title, driver);
+        bp.meta(meta);
+
+        // nodes
+        for (NodeSpec ns : nodes.values()) {
+            GraphSpec2.NodeSpec2 nb = bp.addNode(ns.getId(), ns.getType());
+            nb.title(ns.getTitle());
+            nb.meta(ns.getMeta());
+            if (ns.getTask() != null) nb.task(ns.getTask());
+            if (ns.getTaskComponent() != null) nb.task(ns.getTaskComponent());
+            if (ns.getWhen() != null) nb.when(ns.getWhen());
+            if (ns.getWhenComponent() != null) nb.when(ns.getWhenComponent());
+        }
+
+        // links — convert per-node LinkSpec → top-level LinkSpec2
+        for (NodeSpec ns : nodes.values()) {
+            for (LinkSpec ls : ns.getLinks()) {
+                GraphSpec2.LinkSpec2 lb = bp.link(ns.getId(), ls.getNextId());
+                lb.title(ls.getTitle());
+                lb.meta(ls.getMeta());
+                if (ls.getWhen() != null) lb.when(ls.getWhen());
+                if (ls.getWhenComponent() != null) lb.when(ls.getWhenComponent());
+                lb.priority(ls.getPriority());
+            }
+        }
+
+        return bp;
     }
 
     public NodeSpec removeNode(String nodeId) {

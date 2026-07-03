@@ -38,6 +38,9 @@ final class JsonNormalizer {
         if (value instanceof JsonObject || value instanceof JsonArray || value instanceof String || value instanceof Number || value instanceof Boolean) {
             return value;
         }
+        if (value instanceof CharSequence cs) {
+            return cs.toString();
+        }
         if (value instanceof Character character) {
             return String.valueOf(character);
         }
@@ -52,6 +55,25 @@ final class JsonNormalizer {
         if (value instanceof ZonedDateTime zdt) return zdt.toString();
         if (value instanceof Instant i)    return i.toString();
         if (value instanceof UUID u)       return u.toString();
+        if (value instanceof java.nio.file.Path p) return p.toString();
+        if (value instanceof java.util.Optional<?> opt) {
+            return opt.isPresent() ? normalize(opt.get(), context, depth + 1) : null;
+        }
+        if (value instanceof java.util.OptionalInt oi) {
+            return oi.isPresent() ? oi.getAsInt() : null;
+        }
+        if (value instanceof java.util.OptionalLong ol) {
+            return ol.isPresent() ? ol.getAsLong() : null;
+        }
+        if (value instanceof java.util.OptionalDouble od) {
+            return od.isPresent() ? od.getAsDouble() : null;
+        }
+        if (value instanceof java.net.URI u)    return u.toString();
+        if (value instanceof java.net.URL u)    return u.toString();
+        if (value instanceof java.util.Locale l) return l.toLanguageTag();
+        if (value instanceof java.time.Duration d) return d.toString();
+        if (value instanceof java.util.Date d)    return d.toInstant().toString();
+        if (value instanceof java.io.File f)     return f.getPath();
         if (value instanceof Map<?, ?> map) {
             return normalizeMap(map, context, depth);
         }
@@ -144,7 +166,12 @@ final class JsonNormalizer {
         try {
             JsonObject result = JsonUtils.object();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
-                result.put(String.valueOf(entry.getKey()), normalize(entry.getValue(), context, depth + 1));
+                Object key = entry.getKey();
+                if (key == null) {
+                    throw new IllegalArgumentException(
+                        "Cannot serialize a Map with null keys to JSON");
+                }
+                result.put(String.valueOf(key), normalize(entry.getValue(), context, depth + 1));
             }
             return result;
         } finally {

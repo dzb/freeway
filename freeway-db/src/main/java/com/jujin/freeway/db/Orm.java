@@ -162,7 +162,7 @@ public final class Orm {
         Map<String, Object> setClauses = new LinkedHashMap<>();
         for (BeanProperty prop : plan.properties()) {
             if (isOrmTransient(prop) || isGenerated(prop) || isId(prop)) continue;
-            String col = SqlTypeMapping.columnName(prop, prop.annotation(Column.class));
+            String col = SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null));
             setClauses.put(col, prop.read(entity));
         }
 
@@ -221,7 +221,7 @@ public final class Orm {
         List<String> cols = new ArrayList<>();
         for (BeanProperty prop : plan.properties()) {
             if (isOrmTransient(prop)) continue;
-            cols.add(SqlTypeMapping.columnName(prop, prop.annotation(Column.class)));
+            cols.add(SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null)));
         }
         return String.join(", ", cols);
     }
@@ -230,7 +230,7 @@ public final class Orm {
         List<String> clauses = new ArrayList<>();
         for (BeanProperty prop : plan.properties()) {
             if (isId(prop)) {
-                clauses.add(SqlTypeMapping.columnName(prop, prop.annotation(Column.class)) + " = ?");
+                clauses.add(SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null)) + " = ?");
             }
         }
         if (clauses.isEmpty()) {
@@ -280,7 +280,7 @@ public final class Orm {
                 generated = prop;
                 continue;
             }
-            String col = SqlTypeMapping.columnName(prop, prop.annotation(Column.class));
+            String col = SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null));
             names.add(col);
             properties.add(prop);
         }

@@ -95,9 +95,10 @@ public final class StubHttpContext extends HttpContext {
     }
 
     @Override
-    public String queryParam(String name) {
+    public java.util.Optional<String> queryParam(String name) {
         List<String> values = queryParams.get(name);
-        return values != null && !values.isEmpty() ? values.get(0) : null;
+        return (values != null && !values.isEmpty())
+                ? java.util.Optional.of(values.get(0)) : java.util.Optional.empty();
     }
 
     @Override
@@ -121,9 +122,10 @@ public final class StubHttpContext extends HttpContext {
     }
 
     @Override
-    public String header(String name) {
+    public java.util.Optional<String> header(String name) {
         List<String> values = requestHeaders.get(name);
-        return values != null && !values.isEmpty() ? values.get(0) : null;
+        return (values != null && !values.isEmpty())
+                ? java.util.Optional.of(values.get(0)) : java.util.Optional.empty();
     }
 
     @Override
@@ -160,7 +162,7 @@ public final class StubHttpContext extends HttpContext {
     @Override
     public RequestContext requestContext() {
         if (requestContext == null) {
-            requestContext = HttpContext.createRequestContext(header("X-Request-Id"));
+            requestContext = HttpContext.createRequestContext(header("X-Request-Id").orElse(null));
         }
         return requestContext;
     }

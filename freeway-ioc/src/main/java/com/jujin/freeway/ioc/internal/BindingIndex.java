@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +36,18 @@ final class BindingIndex {
             binding.type(), k -> new ArrayList<>());
         typeBindings.add(binding);
         if (typeBindings.size() > 1) {
-            LOG.warn("Multiple bindings registered for type {} — " +
-                "injection by type requires one .primary() or injection by id",
-                binding.type().getName());
+            String ids = typeBindings.stream()
+                .map(BindingImpl::id)
+                .collect(Collectors.joining(", "));
+            boolean anyExplicit = typeBindings.stream().anyMatch(BindingImpl::hasExplicitId);
+            if (anyExplicit) {
+                LOG.info("Multiple bindings registered for type {}: [{}]",
+                    binding.type().getName(), ids);
+            } else {
+                LOG.warn("Multiple bindings registered for type {}: [{}] — " +
+                    "injection by type requires one .primary() or injection by id",
+                    binding.type().getName(), ids);
+            }
         }
     }
 

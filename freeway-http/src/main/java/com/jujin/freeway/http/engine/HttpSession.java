@@ -1,4 +1,10 @@
 package com.jujin.freeway.http.engine;
+
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.engine.http11.Http11Connection;
 import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http20.Http2Connection;
@@ -6,13 +12,11 @@ import com.jujin.freeway.http.engine.http20.Http2Stream;
 import com.jujin.freeway.http.engine.ws.WebSocket;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
 import com.jujin.freeway.http.engine.ws.WsUtil;
-
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpRequestHandler;
-import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLSocket;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -22,9 +26,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import javax.net.ssl.SSLSocket;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Per-connection handler. Handles plain HTTP, HTTPS with ALPN, WebSocket upgrade,
@@ -42,16 +43,19 @@ public final class HttpSession implements Runnable {
     private final Coercer coercer;
     private final FreewayHttpEngine engine;
     private final int socketBufferSize;
+    private final long maxBodySize;
+    private java.util.concurrent.ExecutorService h2Executor;
 
     public HttpSession(Socket socket, HttpRequestHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
-            int socketBufferSize) {
+            int socketBufferSize, long maxBodySize) {
         this.rawSocket = socket;
         this.handler = handler;
         this.jsonCodec = jsonCodec;
         this.coercer = coercer;
         this.engine = engine;
         this.socketBufferSize = socketBufferSize;
+        this.maxBodySize = maxBodySize;
     }
 
     @Override
@@ -88,6 +92,7 @@ public final class HttpSession implements Runnable {
             // HTTP/1.1 loop — reuse parser + context across requests
             var parser = new HttpParser(in);
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
+            ctx.setMaxBodySize(maxBodySize);
 
             while (!connection.closed) {
                 parser.reset(in);
@@ -160,9 +165,9 @@ public final class HttpSession implements Runnable {
                     throw new IOException("Invalid HTTP/2 preface");
             }
 
-            var executor = Executors.newVirtualThreadPerTaskExecutor();
+            this.h2Executor = Executors.newVirtualThreadPerTaskExecutor();
             var h2conn = new Http2Connection(connection.socket(), in,
-                connection.outputStream(), executor,
+                    connection.outputStream(), h2Executor,
                 (stream, streamIn, streamOut, reqHeaders) ->
                     handleHttp2Stream(stream, streamIn, streamOut, reqHeaders));
 
@@ -175,6 +180,10 @@ public final class HttpSession implements Runnable {
         } catch (IOException e) {
             LOG.trace("HTTP/2 error: {}", e.getMessage());
         } finally {
+            if (h2Executor != null) {
+                h2Executor.close();
+                h2Executor = null;
+            }
             connection.close();
         }
     }
@@ -184,10 +193,19 @@ public final class HttpSession implements Runnable {
                                     Map<String, List<String>> reqHeaders) {
         try {
             String method = headerValue(reqHeaders, ":method");
-            String path = headerValue(reqHeaders, ":path");
+            String fullPath = headerValue(reqHeaders, ":path");
             String authority = headerValue(reqHeaders, ":authority");
-            if (method == null || path == null)
+            if (method == null || fullPath == null)
                 throw new IOException("Missing pseudo-headers");
+
+            // Split query string from :path (HTTP/2 includes it)
+            String path = fullPath;
+            String rawQuery = null;
+            int q = fullPath.indexOf('?');
+            if (q >= 0) {
+                path = fullPath.substring(0, q);
+                rawQuery = fullPath.substring(q + 1);
+            }
 
             var headers = new LinkedHashMap<>(reqHeaders);
             headers.remove(":method"); headers.remove(":path");
@@ -197,11 +215,19 @@ public final class HttpSession implements Runnable {
             var rc = HttpContext.createRequestContext(
                 headerValue(reqHeaders, "x-request-id"));
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
-            ctx.reset(method, path, null, headers, in, -1, false, out, rc, false, false);
+            ctx.setMaxBodySize(maxBodySize);
+            ctx.reset(method, path, rawQuery, headers, in, -1, false, out, rc, false, false);
+            ctx.h2Bridge = stream;
             ctx.headerSet("X-Request-Id", rc.correlationId());
             handler.handle(ctx);
+            stream.close();
         } catch (Exception e) {
             LOG.debug("HTTP/2 stream error", e);
+            try {
+                stream.sendReset();
+            } catch (Exception ignored) {
+            }
+            stream.close();
         }
     }
 
@@ -210,16 +236,26 @@ public final class HttpSession implements Runnable {
     private void handleWebSocketUpgrade(Http11Connection connection,
                                         HttpParser.ParsedRequest req) {
         try {
-            String origin = headerValueReq(req, "Origin");
+            String origin = headerValue(req.headers(), "Origin");
             WebSocketMatch match = handler.websocket(req.method(), req.path(), origin);
             if (match == null) {
                 sendUpgradeError(connection.outputStream(), 403, "Forbidden");
                 return;
             }
-            String wsKey = headerValueReq(req, "Sec-WebSocket-Key");
-            String wsVersion = headerValueReq(req, "Sec-WebSocket-Version");
+            String wsKey = headerValue(req.headers(), "Sec-WebSocket-Key");
+            String wsVersion = headerValue(req.headers(), "Sec-WebSocket-Version");
             if (wsKey == null || !"13".equals(wsVersion)) {
                 sendUpgradeError(connection.outputStream(), 400, "Bad Request");
+                return;
+            }
+            // RFC 6455 §4.2.1: key must be base64 of 16-byte nonce
+            try {
+                if (java.util.Base64.getDecoder().decode(wsKey).length != 16) {
+                    sendUpgradeError(connection.outputStream(), 400, "Invalid Sec-WebSocket-Key");
+                    return;
+                }
+            } catch (IllegalArgumentException e) {
+                sendUpgradeError(connection.outputStream(), 400, "Invalid Sec-WebSocket-Key");
                 return;
             }
             String acceptKey;
@@ -234,9 +270,13 @@ public final class HttpSession implements Runnable {
             writeLine(out, "Upgrade: websocket");
             writeLine(out, "Connection: Upgrade");
             writeLine(out, "Sec-WebSocket-Accept: " + acceptKey);
-            String protocol = headerValueReq(req, "Sec-WebSocket-Protocol");
-            if (protocol != null)
-                writeLine(out, "Sec-WebSocket-Protocol: " + protocol.split(",")[0].trim());
+            String protocol = headerValue(req.headers(), "Sec-WebSocket-Protocol");
+            if (protocol != null) {
+                String selected = protocol.split(",")[0].trim();
+                if (!selected.isEmpty()) {
+                    writeLine(out, "Sec-WebSocket-Protocol: " + selected);
+                }
+            }
             writeLine(out, "");
             out.flush();
 
@@ -268,13 +308,6 @@ public final class HttpSession implements Runnable {
     private static void writeLine(OutputStream out, String line) throws IOException {
         out.write(line.getBytes(StandardCharsets.ISO_8859_1));
         out.write('\r'); out.write('\n');
-    }
-
-    private static String headerValueReq(HttpParser.ParsedRequest req, String name) {
-        for (var e : req.headers().entrySet())
-            if (e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty())
-                return e.getValue().getFirst();
-        return null;
     }
 
     private static String headerValue(Map<String, List<String>> h, String n) {

@@ -6,6 +6,9 @@ import java.util.concurrent.ExecutorService;
 /**
  * 默认流驱动器
  *
+ *  @author noear
+ *  @since 3.0
+ *
  * <p>任务描述符解析规则（与 solon-flow 一致）：
  * <ul>
  *   <li>内联 TaskComponent/ConditionComponent → 直接执行</li>
@@ -14,9 +17,6 @@ import java.util.concurrent.ExecutorService;
  *   <li>{@code $metaKey} → 从 Graph meta 取值</li>
  *   <li>其他 → 使用 ExprEvaluator 求值表达式</li>
  * </ul>
- *
- * @author noear
- * @since 3.0
  */
 public class FlowDriverDefault implements FlowDriver {
     private static final FlowDriverDefault INSTANCE = new FlowDriverDefault(null, null);
@@ -106,6 +106,12 @@ public class FlowDriverDefault implements FlowDriver {
                 return;
             }
 
+            // !markerName 标记匹配
+            if (task.isMarkerRef()) {
+                tryAsMarkerTask(exchanger, task);
+                return;
+            }
+
             // #graphId 子图调用
             if (isGraph(task.getDescription())) {
                 tryAsGraphTask(exchanger, task, task.getDescription());
@@ -124,12 +130,27 @@ public class FlowDriverDefault implements FlowDriver {
                 return;
             }
 
-            // 其他：表达式/脚本（精简版不支持任意脚本，仅打印警告）
             throw new FlowException("Unsupported task description: '" + task.getDescription()
-                    + "'. Supported: @beanName, #graphId, $metaKey");
+                    + "'. Supported: @beanName, #graphId, $metaKey, !markerName");
         } finally {
             exchanger.context().exchanger(exchanger);
         }
+    }
+
+    /**
+     * Resolves a task by marker intersection. Uses the engine's
+     * {@link FlowMarkerIndex} to find the best-matching
+     * {@link TaskComponent} for the required marker set.
+     */
+    protected void tryAsMarkerTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
+        FlowMarkerIndex index = exchanger.engine().markerIndex();
+        TaskComponent handler = index.resolve(task.getMarkerNames());
+        if (handler == null) {
+            throw new FlowException(
+                    "No TaskComponent matches markers " + task.getMarkerNames()
+            );
+        }
+        handler.run(exchanger.context(), task.getNode());
     }
 
     protected void tryAsGraphTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
@@ -151,7 +172,6 @@ public class FlowDriverDefault implements FlowDriver {
         ((TaskComponent) component).run(exchanger.context(), task.getNode());
     }
 
-    @SuppressWarnings("unchecked")
     protected void tryAsMetaTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
         String metaName = description.substring(1);
         Object val = getDepthMeta(task.getNode().getGraph().getMetas(), metaName);

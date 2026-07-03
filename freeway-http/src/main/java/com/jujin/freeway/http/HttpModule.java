@@ -5,42 +5,54 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
-import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ExceptionMapper;
-import com.jujin.freeway.http.filter.HealthCheck;
-import com.jujin.freeway.http.filter.HealthFilter;
-import com.jujin.freeway.http.filter.HttpFilter;
-import com.jujin.freeway.http.filter.RequestTimingFilter;
+import com.jujin.freeway.http.filter.*;
+import com.jujin.freeway.http.route.LazyHandler;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteGroup;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
-import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBus;
-import com.jujin.freeway.ioc.Module2;
-import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.*;
+import com.jujin.freeway.ioc.annotation.Builtin;
+import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-public final class HttpModule implements Module2 {
+@Marker(Builtin.class)
+public final class HttpModule implements ModuleEx {
     private static final Logger LOG = LoggerFactory.getLogger(HttpModule.class);
     public static final String SERVER_HOOK = "freeway.http.server";
 
     @Override
     public void bind(Binder binder) {
-        binder.bind(RouteIndex.class).to(RouteIndex.class);
+        binder.bind(RouteIndex.class).to(container -> {
+            var routes = new ArrayList<>(container.extension(Route.class).all());
+            for (var r : routes) {
+                if (r.handler() instanceof LazyHandler lh) lh.resolve(container);
+            }
+            // Resolve LazyHandlers from RouteGroup-expanded routes too
+            var allRoutes = new ArrayList<>(routes);
+            for (RouteGroup group : container.extension(RouteGroup.class).all()) {
+                for (Route expanded : group.expand()) {
+                    if (expanded.handler() instanceof LazyHandler lh) lh.resolve(container);
+                    allRoutes.add(expanded);
+                }
+            }
+            return new RouteIndex(allRoutes, List.of());
+        });
         binder.bind(WebSocketIndex.class).to(WebSocketIndex.class);
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
 
@@ -223,6 +235,8 @@ public final class HttpModule implements Module2 {
         if (raw == null) {
             return defaultValue;
         }
-        return coercer.coerce(raw, (Class<T>) defaultValue.getClass());
+        Class<T> targetType = (Class<T>) (defaultValue != null
+            ? defaultValue.getClass() : String.class);
+        return coercer.coerce(raw, targetType);
     }
 }

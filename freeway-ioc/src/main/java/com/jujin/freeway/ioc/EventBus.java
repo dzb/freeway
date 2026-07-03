@@ -3,19 +3,12 @@ package com.jujin.freeway.ioc;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 public final class EventBus implements AutoCloseable {
 
@@ -296,6 +289,11 @@ public final class EventBus implements AutoCloseable {
         return topic != null ? topic.value() : eventType.getSimpleName();
     }
 
+    /**
+     * Events that can signal the publisher to stop processing subsequent
+     * subscribers. Published by subscriber in a multi-handler chain to
+     * short-circuit remaining handlers.
+     */
     public interface Stoppable {
         void stop();
         boolean isStopped();

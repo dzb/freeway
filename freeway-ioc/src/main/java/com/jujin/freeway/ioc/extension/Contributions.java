@@ -14,14 +14,30 @@ package com.jujin.freeway.ioc.extension;
  * @param <T> the entry type (extension point type)
  */
 public interface Contributions<T> {
-    
+
     /**
      * Adds an unnamed contribution. Contributions are ordered by insertion
-     * order and cannot use {@code before/after}.
+     * order and cannot use {@code before/after}. Returns {@code this} for
+     * chaining additional contributions.
      *
      * @param value the contribution value
+     * @return this Contributions, for chaining
      */
-    void add(T value);
+    Contributions<T> add(T value);
+
+    /**
+     * Adds a contribution by implementation class. The container instantiates
+     * the class, injects dependencies, and invokes {@code @PostConstruct}.
+     * An id is auto-generated from the class simple name via camel-to-snake
+     * conversion, enabling {@code before/after} ordering.
+     *
+     * @param implClass the implementation class
+     * @return a Contribution handle for declaring before/after constraints
+     */
+    default Contribution add(Class<? extends T> implClass) {
+        throw new UnsupportedOperationException(
+            "add(Class) requires a Container-based Contributions implementation");
+    }
 
     /**
      * Adds a named contribution with ordering support. Duplicate ids are

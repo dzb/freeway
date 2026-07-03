@@ -9,21 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **CLI convenience prefix** — CLI args without a dot (e.g. `--profile=dev`) auto-receive the `freeway.` prefix. Dotted keys pass through unchanged.
-- **HTTPS auto-configuration** — `HttpModule` now reads `freeway.http.ssl.*` config keys and automatically creates an HTTPS engine with TLS 1.3 when `ssl.enabled=true`. Supports PKCS12/JKS keystores and HTTP/2 over TLS via ALPN. `WebServerBuilder` gains `.sslContext()` convenience method.
-- **Jetty engine adapter** restored in `freeway-ext`. Jetty 12 provides HTTP/1.1, HTTP/2, and WebSocket with full TLS support. Uses the `.primary()` binding pattern — add `JettyWebEngineModule` to switch.
+- **`GraphSpec2`** (v2 graph definition) — canonical DAG format with explicit `entry`, separated `nodes` + `links`, and `normalize()` validation (link references, BFS reachability). Designed as the primary authoring surface going forward.
+- **`@Marker` service disambiguation** — `@Marker(Builtin.class)` on modules, `bind().marker(Fast.class)` on individual bindings, `container.get(type, marker)` for resolution. `MarkerIndex` with `containsAll` semantics. Extends Flow with `@FlowMarker` for `!markerName` task resolution, replacing the removed typed-task mechanism.
+- **`H2ResponseBridge`** — decouples `FreewayHttpContext` response writing from `Http2Stream`, enabling mock testing of H2 response paths.
+- **JUL file logging** — `JULFileHandler` with time+size dual rotation, async GZIP compression; `JULFileFormatter` with ISO 8601 timestamps.
+- **`Contributions.add(Class)`** — auto-generates canonical id as `snake_name@package`, ordering via `before`/`after`.
 
 ### Changed
 
-- **Response serialization optimizations** — Status code digits and Content-Length digits pre-computed as `byte[]` caches, eliminating per-request `String.valueOf()` + `.getBytes()` allocations. Common error response bodies (404, 500) and health check body pre-computed, avoiding repeated String-to-byte conversion on hot paths.
-- **Header key normalization** — HTTP/1.1 parser now normalizes header keys to all lowercase per RFC 7230, fixing X-Request-Id correlation ID propagation across case variations.
-- **Header value OWS tolerance** — Trailing whitespace stripped from header values per RFC 7230 §3.2.6, fixing parsing of `Content-Length: 4 `, `Connection: keep-alive `, etc.
-- **HEAD response Content-Length** — HEAD responses now report the same Content-Length as GET would (RFC 7231 §4.3.2), fixing cache validation.
-- **Connection header token-list** — Parsed as comma-separated token list per RFC 7230 §6.1, fixing `Connection: keep-alive, Upgrade` handling.
-- **Documentation restructured** — `DEVELOPER-GUIDE.md`, config samples, and `freeway-*` summaries moved to `docs/` directory. SKILL.md consolidated as concise English index with Chinese reference. `Contribution.java` Javadoc corrected (unknown ids fail, not silently ignored).
+- **Flow v1/v2 unified** — `GraphSpec.create()` internally converts to `GraphSpec2`, eliminating duplicate `Graph`/`Node`/`Link` constructors. Runtime always builds through `Graph(GraphSpec2)`. `Graph.fromText()` auto-detects format. Renamed `GraphBlueprint`→`GraphSpec2`.
+- **Typed-task removed** — task resolution consolidated under `!markerName` (marker intersection) and `@beanName` (container lookup). `FlowEngine.register(Class, TaskComponent)` / `typedTasks()` removed.
+- **`Container` API refined** — `instantiate()` renamed to `create()`; `inject()` removed from public API; `RouteIndex` no longer depends on `Container`.
+- **SLF4J bootstrap decoupled** — `JULEnhancer` activates JUL enhancements unconditionally; SLF4J bridge only installs when no external provider (Logback/Log4j) is detected. `LogBootstrap` simplified to `ensureProvider()`.
+- **`DbModule` config centralized** — config reading delegates to `SymbolSource` + `Coercer` pair, eliminating scattered `parseInt`/`parseBool` helpers.
 
 ### Fixed
 
+- **HTTP/1.1 parser hardening** — duplicate `Content-Length` rejection, `Transfer-Encoding` comma+unknown rejection, pipeline buffer preservation, truncated request/header rejection, `Upgrade` requires both `Connection: Upgrade` and `Upgrade: websocket`.
+- **HTTP/2 frame correctness** — `DataFrame` PADDED off-by-one, `PingFrame.writeTo` body, `WindowUpdateFrame` 31-bit masking, HPACK integer bounds/header lowercase/dynamic table tracking.
+- **WebSocket strict compliance** — UTF-8 validation on text frames, close code reserved range rejection, extended 8-byte length for >65535 payloads, fragmented message assembly.
+- **Coercion edge cases** — NaN/Infinity/BigInteger/BigDecimal guards, narrow overflow rejection, `@Min`/`@Max` BigDecimal comparison, `@Size` Map support, Optional/OptionalInt/OptionalLong/OptionalDouble coercion.
+- **IoC lifecycle** — `findOwnerBinding` walks full interface hierarchy; module dedup uses `IdentityHashMap`; PROTOTYPE+advise routes through `createAdvised()`; thread scope cycle detection.
+- **Logging** — SLF4J state constants corrected; GZIP on daemon thread; `formatOverride()` whitespace preserved.
+- **Multipart** — boundary terminator validation, semicolons in quoted strings.
+- **SSE** — `\r` handling, field injection prevention.
+
+### Removed
+
+- `FlowEngine.register(Class<?>, TaskComponent)` and `typedTasks()` — superseded by `@FlowMarker`.
+- `Container.inject()` public API.
+
+## [1.2.2] — 2026-06-28
+
+### Added
+
+- **`freeway-flow`** — lightweight graph orchestration engine (port of solon-flow). 7 node types, JSON-based definitions, PlantUML export, execution tracing, subgraph calls, interceptor chains. Zero extra dependencies.
+- **HTTPS auto-configuration** — `HttpModule` reads `freeway.http.ssl.*` config keys; creates TLS 1.3 engine when `ssl.enabled=true`. Supports PKCS12/JKS keystores and HTTP/2 over TLS via ALPN.
+- **Express-style `:name` path variables** — routes support both `:name` and `{name}` syntax.
+- **`JsonObject.getBigDecimal()` / `JsonArray.getBigDecimal()`** — convenience accessors.
+- **Handler class injection for routes** — `Route.handlerType` enables IoC-injected handlers without manual `container.create()`.
+- **CLI auto-prefix** — args without a dot (e.g. `--profile=dev`) auto-receive `freeway.` prefix.
+
+### Changed
+
+- **Response serialization** — status code and Content-Length digits pre-computed as `byte[]`, eliminating per-request allocations. Error response bodies (404, 500) pre-computed.
+- **`@Named` removed** — superseded by `@Inject("id")`.
+- **Documentation restructured** — `DEVELOPER-GUIDE.md`, config samples, and module summaries moved to `docs/` directory.
+
+### Fixed
+
+- **Header key normalization** — HTTP/1.1 parser normalizes header keys to lowercase per RFC 7230.
+- **Header value OWS tolerance** — trailing whitespace stripped per RFC 7230 §3.2.6.
+- **HEAD Content-Length** — HEAD responses report same Content-Length as GET (RFC 7231 §4.3.2).
+- **Connection header token-list** — parsed as comma-separated per RFC 7230 §6.1.
+- **BufferedOutputStream close ordering** — resolved ordering issue in HTTP response flush.
+- **`setAccessible` fallback** — when module system blocks `privateLookupIn`, falls back to `setAccessible`.
 - Response header injection hardening — `headerSet()` validates no `\r`/`\n` in values.
 
 ## [1.2.1] — 2026-06-23
@@ -166,7 +206,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **ScopedCache** — scoped value cache primitive built on top of JDK 25 `ScopedValue`. Provides a key-value cache that lives within a scope boundary and is automatically discarded on scope exit. Prunes the IoC scope layer by replacing heavier scope machinery with a lightweight cache primitive. (`78e448f`)
-- **Module2** — `@FunctionalInterface` for module definitions. Adds `binder.install()` to compose modules declaratively. Enables multiple `FreewayApp` instances per JVM. (`2eadd5f`)
+- **ModuleEx** — `@FunctionalInterface` for module definitions. Adds `binder.install()` to compose modules declaratively. Enables multiple `FreewayApp` instances per JVM. (`2eadd5f`)
 - Comprehensive **docs/DEVELOPER-GUIDE.md** — dual-purpose documentation for humans and AI assistants, with a dedicated Module section. (`fd0f67c`, `20114cb`)
 
 ### Changed

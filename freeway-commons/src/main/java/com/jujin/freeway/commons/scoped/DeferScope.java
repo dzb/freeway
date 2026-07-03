@@ -61,14 +61,24 @@ public final class DeferScope {
      */
     static List<Runnable> sort(List<DeferAction> actions) {
         // Collect all ids referenced by before/after constraints
+        Set<String> existingIds = new LinkedHashSet<>();
+        for (DeferAction a : actions) {
+            if (a.id() != null) existingIds.add(a.id());
+        }
         Set<String> constrainedIds = new LinkedHashSet<>();
         for (DeferAction a : actions) {
-            if (a.id() != null && (!a.before().isEmpty() || !a.after().isEmpty())) {
-                constrainedIds.add(a.id());
+            if (a.id() == null) continue;
+            boolean hasRealConstraint = false;
+            for (String other : a.before()) {
+                if (existingIds.contains(other)) { hasRealConstraint = true; break; }
             }
-        }
-        for (DeferAction a : actions) {
-            if (a.id() != null) {
+            if (!hasRealConstraint) {
+                for (String other : a.after()) {
+                    if (existingIds.contains(other)) { hasRealConstraint = true; break; }
+                }
+            }
+            if (hasRealConstraint) {
+                constrainedIds.add(a.id());
                 for (String other : a.before()) constrainedIds.add(other);
                 for (String other : a.after()) constrainedIds.add(other);
             }

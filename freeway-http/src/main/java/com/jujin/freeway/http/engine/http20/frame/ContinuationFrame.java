@@ -21,5 +21,6 @@ public final class ContinuationFrame extends BaseFrame {
 
     public void writeTo(OutputStream outputStream) throws IOException {
         header().writeTo(outputStream);
+        outputStream.write(headerBlock);
     }
 }

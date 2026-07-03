@@ -1,32 +1,24 @@
 package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.util.Strings;
+import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.db.Row;
 import com.jujin.freeway.db.RowMapper;
 import com.jujin.freeway.db.RowMapping;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.schema.Column;
 import com.jujin.freeway.db.schema.SqlTypeMapping;
+
 import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Locale;
 
 public final class RowMapperResolver {
 
@@ -130,6 +122,11 @@ public final class RowMapperResolver {
         return createBean(type, plan);
     }
 
+    /**
+     * Wraps the resolved mapper with a {@code type.cast()} call for type
+     * safety. Primitives skip wrapping because {@code int.cast()} doesn't
+     * exist — the raw mapper's return type (Integer etc.) is boxed already.
+     */
     private RowMapper<?> createCached(Class<?> type) {
         RowMapper<?> resolved = create(type);
         if (type.isPrimitive()) {
@@ -282,7 +279,7 @@ public final class RowMapperResolver {
             for (int i = 0; i < n; i++) {
                 BeanProperty prop = properties.get(i);
                 this.names[i] = prop.name();
-                Column col = prop.annotation(Column.class);
+                Column col = prop.annotation(Column.class).orElse(null);
                 this.columnOverrides[i] =
                     (col != null && !col.value().isEmpty()) ? col.value() : null;
             }

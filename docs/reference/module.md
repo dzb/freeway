@@ -1,6 +1,6 @@
 # Module Reference
 
-Module is the unit of composition in Freeway. `Module2` is the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway code talks about modules.
+Module is the unit of composition in Freeway. `ModuleEx` is the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway code talks about modules.
 
 ## What A Module Does
 
@@ -15,7 +15,7 @@ Module is the unit of composition in Freeway. `Module2` is the Java type name us
 ### Application module
 
 ```java
-public final class AppModule implements Module2 {
+public final class AppModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.bind(UserService.class).to(UserServiceImpl.class);
@@ -64,13 +64,13 @@ FreewayApp.run(new HttpModule(), new DbModule(), new AppModule());
 
 Modules can be discovered automatically through the Java `ServiceLoader` SPI.
 When a library places its module class name in
-`META-INF/services/com.jujin.freeway.ioc.Module2`, it is picked up at startup
+`META-INF/services/com.jujin.freeway.ioc.ModuleEx`, it is picked up at startup
 without the caller explicitly listing it.
 
 For example, `freeway-db` ships with:
 
 ```
-# META-INF/services/com.jujin.freeway.ioc.Module2
+# META-INF/services/com.jujin.freeway.ioc.ModuleEx
 com.jujin.freeway.db.DbModule
 ```
 

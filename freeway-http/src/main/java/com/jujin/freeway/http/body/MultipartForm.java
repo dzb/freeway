@@ -40,13 +40,18 @@ public final class MultipartForm {
 
     public static MultipartForm parse(String contentType, byte[] body)
         throws IOException {
+        return parse(contentType, body, 10 * 1024 * 1024L); // 10MB default per part
+    }
+
+    public static MultipartForm parse(String contentType, byte[] body, long maxPartSize)
+        throws IOException {
         String boundary = boundaryFromContentType(contentType);
         if (boundary == null) {
             throw new IOException(
                 "Expected multipart/form-data but got " + contentType
             );
         }
-        return new MultipartForm(parseParts(boundary, body));
+        return new MultipartForm(parseParts(boundary, body, maxPartSize));
     }
 
     public List<Part> parts() {
@@ -77,15 +82,15 @@ public final class MultipartForm {
             .toList();
     }
 
-    public String value(String name) {
-        return values(name).stream().findFirst().orElse(null);
+    public java.util.Optional<String> value(String name) {
+        return values(name).stream().findFirst();
     }
 
     public boolean isEmpty() {
         return parts.isEmpty();
     }
 
-    private static List<Part> parseParts(String boundary, byte[] body)
+    private static List<Part> parseParts(String boundary, byte[] body, long maxPartSize)
         throws IOException {
         String raw = new String(body, RAW);
         String boundaryMarker = "--" + boundary;
@@ -97,34 +102,25 @@ public final class MultipartForm {
         cursor += boundaryMarker.length();
         cursor = skipLineBreak(raw, cursor);
         while (cursor >= 0 && cursor < raw.length()) {
-            if (raw.startsWith("--", cursor)) {
-                break;
-            }
+            if (raw.startsWith("--", cursor)) break;
             Separator headersSeparator = findHeadersSeparator(raw, cursor);
             if (headersSeparator == null) {
                 throw new IOException("Invalid multipart section");
             }
-            String headerBlock = raw.substring(
-                cursor,
-                headersSeparator.index()
-            );
+            String headerBlock = raw.substring(cursor, headersSeparator.index());
             int contentStart = headersSeparator.nextIndex();
-            BoundaryHit nextBoundary = findNextBoundary(
-                raw,
-                contentStart,
-                boundaryMarker
-            );
+            BoundaryHit nextBoundary = findNextBoundary(raw, contentStart, boundaryMarker);
             if (nextBoundary == null) {
-                throw new IOException(
-                    "Multipart section without closing boundary"
-                );
+                throw new IOException("Multipart section without closing boundary");
+            }
+            long partSize = (long) nextBoundary.index() - contentStart;
+            if (partSize > maxPartSize) {
+                throw new IOException("Multipart part exceeds size limit of " + maxPartSize + " bytes");
             }
             String content = raw.substring(contentStart, nextBoundary.index());
             parts.add(parsePart(headerBlock, content));
             cursor = nextBoundary.nextIndex() + boundaryMarker.length();
-            if (raw.startsWith("--", cursor)) {
-                break;
-            }
+            if (raw.startsWith("--", cursor)) break;
             cursor = skipLineBreak(raw, cursor);
         }
         return parts;
@@ -151,7 +147,7 @@ public final class MultipartForm {
         }
         String name = null;
         String filename = null;
-        for (String token : disposition.split(";")) {
+        for (String token : splitSemicolons(disposition)) {
             String item = token.trim();
             int eq = item.indexOf('=');
             if (eq <= 0) {
@@ -202,16 +198,36 @@ public final class MultipartForm {
         String boundaryMarker
     ) {
         String crlfMarker = "\r\n" + boundaryMarker;
-        int index = raw.indexOf(crlfMarker, fromIndex);
-        if (index >= 0) {
-            return new BoundaryHit(index, index + 2);
+        int searchFrom = fromIndex;
+        while (true) {
+            int index = raw.indexOf(crlfMarker, searchFrom);
+            if (index < 0) break;
+            int after = index + crlfMarker.length();
+            if (isBoundaryTerminator(raw, after)) {
+                return new BoundaryHit(index, index + 2);
+            }
+            searchFrom = index + crlfMarker.length();
         }
         String lfMarker = "\n" + boundaryMarker;
-        index = raw.indexOf(lfMarker, fromIndex);
-        if (index >= 0) {
-            return new BoundaryHit(index, index + 1);
+        searchFrom = fromIndex;
+        while (true) {
+            int index = raw.indexOf(lfMarker, searchFrom);
+            if (index < 0) break;
+            int after = index + lfMarker.length();
+            if (isBoundaryTerminator(raw, after)) {
+                return new BoundaryHit(index, index + 1);
+            }
+            searchFrom = index + lfMarker.length();
         }
         return null;
+    }
+
+    /** True if position is at CRLF (next part) or "--" (final boundary). */
+    private static boolean isBoundaryTerminator(String raw, int pos) {
+        if (pos >= raw.length()) return false;
+        if (raw.startsWith("\r\n", pos)) return true;
+        if (raw.startsWith("--", pos)) return true;
+        return false;
     }
 
     private static Separator findHeadersSeparator(String raw, int fromIndex) {
@@ -240,6 +256,22 @@ public final class MultipartForm {
             return index + 1;
         }
         return index;
+    }
+
+    private static List<String> splitSemicolons(String input) {
+        List<String> tokens = new ArrayList<>();
+        boolean inQuote = false;
+        int start = 0;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '"') inQuote = !inQuote;
+            else if (c == ';' && !inQuote) {
+                tokens.add(input.substring(start, i));
+                start = i + 1;
+            }
+        }
+        tokens.add(input.substring(start));
+        return tokens;
     }
 
     private static String unquote(String value) {

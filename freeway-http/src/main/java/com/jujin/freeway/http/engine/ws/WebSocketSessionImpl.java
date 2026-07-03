@@ -2,16 +2,13 @@ package com.jujin.freeway.http.engine.ws;
 
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.websocket.WebSocketSession;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public final class WebSocketSessionImpl implements WebSocketSession {
 
@@ -62,7 +59,10 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     @Override
     public Map<String, List<String>> queryParams() {
-        return Collections.unmodifiableMap(ensureQueryParams());
+        Map<String, List<String>> m = ensureQueryParams();
+        Map<String, List<String>> copy = new java.util.LinkedHashMap<>();
+        m.forEach((k, v) -> copy.put(k, List.copyOf(v)));
+        return Collections.unmodifiableMap(copy);
     }
 
     @Override
@@ -87,18 +87,25 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         return List.of();
     }
 
+    private void checkOpen() throws IOException {
+        if (!open) throw new IOException("WebSocket is closed");
+    }
+
     @Override
     public void sendText(String text) throws IOException {
+        checkOpen();
         WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Text, true, text));
     }
 
     @Override
     public void sendBinary(byte[] data) throws IOException {
+        checkOpen();
         WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Binary, true, data));
     }
 
     @Override
     public void ping(byte[] data) throws IOException {
+        checkOpen();
         WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Ping, true, data));
     }
 
@@ -109,6 +116,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     @Override
     public void sendTextBatch(List<String> texts) throws IOException {
+        checkOpen();
         for (String text : texts) {
             WebSocket.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
         }

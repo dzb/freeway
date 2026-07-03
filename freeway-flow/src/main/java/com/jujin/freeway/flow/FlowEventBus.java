@@ -7,18 +7,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * 流执行级事件总线（topic 主题式 pub/sub，对标 solon-flow 的 DamiBus 用法）
+ * 流执行级事件总线。
  *
- * <p>零外部依赖，内嵌于 FlowContext，作用域限定在单次流执行内。</p>
- *
- * <pre>{@code
- * FlowEventBus bus = context.eventBus();
- * Subscription sub = bus.subscribe("order.created", event -> {
- *     System.out.println("收到: " + event);
- * });
- * bus.publish("order.created", someData);
- * bus.unsubscribe(sub);
- * }</pre>
+ * <p>迁移说明：
+ * <ul>
+ *   <li>从 Solon 的全局 DamiBus 语义迁移为绑定在 {@link FlowContext} 上的本地 pub/sub。</li>
+ *   <li>订阅回调异常只隔离在当前订阅者，不向外扩散，也不影响同 topic 的其他订阅者。</li>
+ *   <li>保留 topic 级发布/退订能力，目的是支持同一次 flow 执行中的通知、回放和调试。</li>
+ * </ul>
+ * 这样可以避免引入全局消息面，同时保持原有流内事件模型。</p>
  *
  * @since 1.2.2
  */

@@ -1,29 +1,22 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanParameter;
-import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.scoped.ScopedCache;
-import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.*;
+import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.extension.Extension;
-import com.jujin.freeway.ioc.LoggerSource;
-import com.jujin.freeway.ioc.Module2;
-import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.annotation.Annotation;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 public final class ContainerImpl implements Container {
 
@@ -44,6 +37,7 @@ public final class ContainerImpl implements Container {
 
     private volatile boolean closed;
     private final BindingIndex bindingIndex = new BindingIndex();
+    private final MarkerIndex markerIndex = new MarkerIndex();
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
     private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
     private final SymbolSourceDefault symbolSource;
@@ -55,11 +49,11 @@ public final class ContainerImpl implements Container {
     private final InstanceFactory instanceFactory;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
-    private final Set<Class<?>> moduleTypes = new HashSet<>();
-    private final List<Module2> loadedModules = new ArrayList<>();
+    private final Set<ModuleEx> installedModules = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    private final List<ModuleEx> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 
-    public ContainerImpl(Collection<? extends Module2> modules) {
+    public ContainerImpl(Collection<? extends ModuleEx> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
         this.loggerSource = new LoggerSource() {
@@ -84,10 +78,10 @@ public final class ContainerImpl implements Container {
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
         registerBuiltin(Scoping.class, scoping, "Scoping");
+        registerBuiltin(EventBus.class, new EventBus(this), "EventBus");
         loadAll(modules);
         LOG.info("Loaded {} module(s): {}", loadedModules.size(),
             loadedModules.stream().map(m -> m.getClass().getSimpleName()).toList());
-        wireBuiltinExtensions();
     }
 
     BindingIndex bindingIndex() {
@@ -109,37 +103,47 @@ public final class ContainerImpl implements Container {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Extension<T> extension(Class<T> entryType) {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
+        }
         return (Extension<T>) extensions.computeIfAbsent(entryType, k -> new Extension<>(k));
     }
 
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
         BindingImpl<T> binding = new BindingImpl<>(this, type);
         binding.id(id).to(instance);
+        binding.addMarkers(Set.of(Builtin.class));
         register(binding);
     }
 
-    void installModule(Module2 module, Binder binder) {
-        Class<?> moduleType = module.getClass();
-        if (moduleTypes.add(moduleType)) {
-            LOG.debug("Installing module: {}", moduleType.getSimpleName());
+    void installModule(ModuleEx module, Binder binder) {
+        if (installedModules.add(module)) {
+            LOG.debug("Installing module: {}", module.getClass().getSimpleName());
             loadedModules.add(module);
+            BinderImpl binderImpl = (BinderImpl) binder;
+            Class<?> previousModule = binderImpl.currentModule();
+            binderImpl.setCurrentModule(module.getClass());
             module.bind(binder);
-            ((BinderImpl) binder).flushPending();
+            binderImpl.restoreCurrentModule(previousModule);
+            wireBuiltinExtensions();
+            binderImpl.flushPending();
             return;
         }
-        LOG.debug("Ignoring duplicate module: {}", moduleType.getSimpleName());
+        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
     }
 
-    private void loadAll(Collection<? extends Module2> modules) {
+    private void loadAll(Collection<? extends ModuleEx> modules) {
         BinderImpl binder = new BinderImpl(this);
-        for (Module2 module : modules == null ? List.<Module2>of() : List.copyOf(modules)) {
+        for (ModuleEx module : modules == null ? List.<ModuleEx>of() : List.copyOf(modules)) {
             installModule(module, binder);
         }
     }
 
     /**
      * Wire built-in consumers that depend on contributed extension values.
-     * Called once after all modules have bound their contributions.
+     * Called after each module install so contributions are available to
+     * the next module's bind logic. Idempotent — repeated wiring of the
+     * same extensions is harmless (same providers registered).
      */
     @SuppressWarnings("rawtypes")
     private void wireBuiltinExtensions() {
@@ -167,8 +171,16 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
+    public <T> T create(Class<T> type) {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
+        }
+        return instanceFactory.instantiate(type);
+    }
+
+    @Override
     public void close() {
-        LOG.debug("Container closing");
+        LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
         closed = true;
         RuntimeException failure = shutdown.close();
         extensions.clear();
@@ -176,7 +188,7 @@ public final class ContainerImpl implements Container {
             LOG.error("Container close failed", failure);
             throw failure;
         }
-        LOG.debug("Container closed");
+        LOG.info("Container closed — {} module(s) unloaded", loadedModules.size());
     }
 
     @Override
@@ -186,7 +198,9 @@ public final class ContainerImpl implements Container {
         }
         BindingImpl<T> binding = bindingIndex.findUnique(type);
         if (binding == null) {
-            return resolveUnbound(type);
+            throw new IllegalArgumentException(
+                "No service registered for type " + type.getName()
+            );
         }
         return serviceRuntime.get(binding);
     }
@@ -205,33 +219,41 @@ public final class ContainerImpl implements Container {
         return serviceRuntime.get(binding);
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T get(Class<T> type, Class<? extends Annotation>... markers) {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
+        }
+        if (markers == null || markers.length == 0) {
+            return get(type);
+        }
+        Set<Class<? extends Annotation>> markerSet = new HashSet<>(Arrays.asList(markers));
+        BindingImpl<T> binding = markerIndex.findByMarker(type, markerSet);
+        if (binding == null) {
+            throw new IllegalArgumentException(
+                    "No service registered for type " + type.getName()
+                            + " with markers " + Arrays.toString(markers)
+            );
+        }
+        return serviceRuntime.get(binding);
+    }
+
     <T> void register(BindingImpl<T> binding) {
         bindingIndex.register(binding);
+        markerIndex.register(binding);
+    }
+
+    MarkerIndex markerIndex() {
+        return markerIndex;
     }
 
     synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {
         bindingIndex.updateId(binding, previousId, newId);
     }
 
-    private <T> T resolveUnbound(Class<T> type) {
-        if (type == String.class) {
-            throw noServiceRegistered(type);
-        }
-        if (Types.isConcrete(type)) {
-            return instantiate(type);
-        }
-        throw noServiceRegistered(type);
-    }
-
-    private static IllegalArgumentException noServiceRegistered(Class<?> type) {
-        return new IllegalArgumentException("No service registered for type " + type.getName());
-    }
-
-    <T> T instantiate(Class<T> type) {
-        return instanceFactory.instantiate(type);
-    }
-
-    <T> T construct(Class<T> type) throws Throwable {
+    /** Constructor injection only — no field injection, no @PostConstruct. */
+    <T> T constructInstance(Class<T> type) throws Throwable {
         return instanceFactory.construct(type);
     }
 

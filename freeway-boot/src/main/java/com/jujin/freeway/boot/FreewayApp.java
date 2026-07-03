@@ -1,6 +1,6 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.ioc.Module2;
+import com.jujin.freeway.ioc.ModuleEx;
 
 /**
  * Entry point for building and starting a Freeway application.
@@ -28,6 +28,10 @@ import com.jujin.freeway.ioc.Module2;
  */
 public final class FreewayApp {
 
+    static {
+        com.jujin.freeway.commons.logging.LogBootstrap.ensureProvider();
+    }
+
     private FreewayApp() {
     }
 
@@ -36,7 +40,7 @@ public final class FreewayApp {
      * Config is loaded from the default cascade, ServiceLoader modules
      * are discovered, and a JVM shutdown hook is registered.
      */
-    public static AppRuntime run(Module2... modules) {
+    public static AppRuntime run(ModuleEx... modules) {
         return run(new String[0], modules);
     }
 
@@ -44,14 +48,14 @@ public final class FreewayApp {
      * Start an application with the given modules and command-line arguments.
      * Config is loaded from the default cascade, ServiceLoader modules
      * are discovered, and a JVM shutdown hook is registered.
-     * Use {@link #of(Module2...)} for more control.
+     * Use {@link #of(ModuleEx...)} for more control.
      */
-    public static AppRuntime run(String[] args, Module2... modules) {
+    public static AppRuntime run(String[] args, ModuleEx... modules) {
         return of(modules).args(args).start();
     }
 
     /** Create an {@link AppBuilder} pre-populated with the given modules. */
-    public static AppBuilder of(Module2... modules) {
+    public static AppBuilder of(ModuleEx... modules) {
         AppBuilder b = new AppBuilder();
         if (modules != null) {
             b.add(modules);

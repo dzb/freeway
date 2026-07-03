@@ -2,6 +2,7 @@ package com.jujin.freeway.commons.bean;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.util.Optional;
 
 /**
  * Describes a single property of a bean or record: its name, type,
@@ -31,19 +32,19 @@ public interface BeanProperty {
      * Looks up an annotation by type on this property.
      *
      * @param type the annotation type
-     * @return the annotation, or null if not present
+     * @return the annotation, or {@link Optional#empty()} if not present
      */
-    default <A extends Annotation> A annotation(Class<A> type) {
+    default <A extends Annotation> Optional<A> annotation(Class<A> type) {
         for (Annotation annotation : annotations()) {
             if (type.isInstance(annotation)) {
-                return type.cast(annotation);
+                return Optional.of(type.cast(annotation));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     /** Returns true if this property has the given annotation. */
     default boolean hasAnnotation(Class<? extends Annotation> type) {
-        return annotation(type) != null;
+        return annotation(type).isPresent();
     }
 }

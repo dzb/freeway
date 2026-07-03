@@ -5,15 +5,12 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.sse.SseEmitter;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * {@link HttpContext} implementation backed by a raw socket connection.
@@ -31,12 +28,18 @@ public final class FreewayHttpContext extends HttpContext {
     private final Map<String, String> responseHeaders = new LinkedHashMap<>();
     private int responseStatus = 200;
     private boolean responded;
+    H2ResponseBridge h2Bridge; // non-null → HTTP/2 path
     private byte[] cachedBody;
     // Shared drain buffer — reused across drainUnreadBody calls
     private byte[] drainBuf;
 
     public FreewayHttpContext(JsonCodec jsonCodec, Coercer coercer) {
         super(jsonCodec, coercer);
+    }
+
+    /** Sets the maximum request body size. Called after reset() or construction. */
+    public void setMaxBodySize(long maxBodySize) {
+        this.maxBodySize = maxBodySize;
     }
 
     /** Reuse this context for a new request. */
@@ -73,9 +76,10 @@ public final class FreewayHttpContext extends HttpContext {
     public String path() { return path; }
 
     @Override
-    public String queryParam(String name) {
+    public java.util.Optional<String> queryParam(String name) {
         List<String> values = queryParams.get(name);
-        return values != null && !values.isEmpty() ? values.getFirst() : null;
+        return (values != null && !values.isEmpty())
+                ? java.util.Optional.of(values.getFirst()) : java.util.Optional.empty();
     }
 
     @Override
@@ -86,7 +90,9 @@ public final class FreewayHttpContext extends HttpContext {
 
     @Override
     public Map<String, List<String>> queryParams() {
-        return Collections.unmodifiableMap(queryParams);
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        queryParams.forEach((k, v) -> copy.put(k, List.copyOf(v)));
+        return Collections.unmodifiableMap(copy);
     }
 
     @Override
@@ -97,17 +103,17 @@ public final class FreewayHttpContext extends HttpContext {
     }
 
     @Override
-    public String header(String name) {
+    public java.util.Optional<String> header(String name) {
         List<String> values = requestHeaders.get(name);
-        if (values != null && !values.isEmpty()) return values.getFirst();
-        // fallback: case-insensitive lookup
+        if (values != null && !values.isEmpty())
+            return java.util.Optional.of(values.getFirst());
         for (var entry : requestHeaders.entrySet()) {
             if (entry.getKey().equalsIgnoreCase(name)
                 && !entry.getValue().isEmpty()) {
-                return entry.getValue().getFirst();
+                return java.util.Optional.of(entry.getValue().getFirst());
             }
         }
-        return null;
+        return java.util.Optional.empty();
     }
 
     @Override
@@ -152,8 +158,12 @@ public final class FreewayHttpContext extends HttpContext {
     @Override
     public HttpContext headerSet(String name, String value) {
         if (responded) return this;
+        validateHeaderName(name);
         validateHeaderValue(value);
         responseHeaders.put(name, value);
+        if (h2Bridge != null) {
+            h2Bridge.headers().put(name, List.of(value));
+        }
         return this;
     }
 
@@ -170,6 +180,17 @@ public final class FreewayHttpContext extends HttpContext {
     public HttpContext output(byte[] data) throws IOException {
         if (responded) return this;
         responded = true;
+
+        if (h2Bridge != null) {
+            h2Bridge.headers().putIfAbsent(":status",
+                    List.of(String.valueOf(responseStatus)));
+            boolean headRequest = "HEAD".equalsIgnoreCase(method);
+            if (!headRequest && allowsResponseBody() && data.length > 0) {
+                rawOut.write(data);
+                rawOut.flush();
+            }
+            return this;
+        }
 
         boolean headRequest = "HEAD".equalsIgnoreCase(method);
         boolean bodyAllowed = allowsResponseBody();
@@ -192,13 +213,13 @@ public final class FreewayHttpContext extends HttpContext {
         }
 
         // Content-Length
-        if (bodyAllowed && !responseHeaders.containsKey("Content-Length")) {
+        if (bodyAllowed && !hasHeaderIgnoreCase("Content-Length")) {
             rawOut.write(CL_PREFIX);
             rawOut.write(contentLengthBytes(length));
             rawOut.write(CRLF);
         }
         // Connection
-        if (!responseHeaders.containsKey("Connection")) {
+        if (!hasHeaderIgnoreCase("Connection")) {
             rawOut.write(keepAlive ? CONN_KA : CONN_CLOSE);
         }
 
@@ -215,8 +236,15 @@ public final class FreewayHttpContext extends HttpContext {
 
     @Override
     public SseEmitter sse() throws IOException {
+        if (h2Bridge != null) {
+            h2Bridge.headers().put("content-type",
+                    List.of("text/event-stream; charset=utf-8"));
+            h2Bridge.headers().put("cache-control", List.of("no-cache"));
+            h2Bridge.headers().putIfAbsent(":status", List.of("200"));
+            responded = true;
+            return new SseEmitter(rawOut);
+        }
         setupSseHeaders();
-        // Write SSE headers directly (chunked transfer)
         writeLine("HTTP/1.1 200 OK");
         for (var entry : responseHeaders.entrySet()) {
             writeLine(entry.getKey() + ": " + entry.getValue());
@@ -228,7 +256,6 @@ public final class FreewayHttpContext extends HttpContext {
         writeLine("");
         rawOut.flush();
         responded = true;
-        // Wrap the output stream with HTTP chunked transfer encoding
         return new SseEmitter(new ChunkedOutputStream(rawOut));
     }
 
@@ -329,6 +356,13 @@ public final class FreewayHttpContext extends HttpContext {
         for (int i = 0; i < 256; i++) {
             CL_BYTES[i] = String.valueOf(i).getBytes(StandardCharsets.ISO_8859_1);
         }
+    }
+
+    private boolean hasHeaderIgnoreCase(String name) {
+        for (String key : responseHeaders.keySet()) {
+            if (key.equalsIgnoreCase(name)) return true;
+        }
+        return false;
     }
 
     private static byte[] contentLengthBytes(int length) {

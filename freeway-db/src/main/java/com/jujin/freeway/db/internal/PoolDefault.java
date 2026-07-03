@@ -1,11 +1,9 @@
 package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.db.DatabaseStats;
-import com.jujin.freeway.db.Pool;
-import com.jujin.freeway.db.PoolConfig;
-import com.jujin.freeway.db.SqlException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -19,8 +17,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class PoolDefault implements Pool {
 
@@ -140,6 +136,13 @@ public final class PoolDefault implements Pool {
         );
     }
 
+    /**
+     * Shuts down the pool in four phases:
+     * 1. Stop the cleaner thread
+     * 2. Close all idle connections immediately
+     * 3. Wait (up to connectionTimeout) for active connections to return
+     * 4. Force-close any remaining active connections
+     */
     @Override
     public void close() {
         closed = true;
@@ -192,6 +195,11 @@ public final class PoolDefault implements Pool {
         }
     }
 
+    /**
+     * Pre-creates minIdle connections. Each acquire/release pair ensures
+     * we don't overshoot maxSize — even during warmup the semaphore is
+     * the single source of truth for pool capacity.
+     */
     private void warmUp() {
         int warmed = 0;
         try {

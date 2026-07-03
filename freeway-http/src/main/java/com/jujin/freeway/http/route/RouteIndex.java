@@ -1,7 +1,6 @@
 package com.jujin.freeway.http.route;
 
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.annotation.Inject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -29,47 +28,18 @@ public final class RouteIndex {
     // Fast path: exact match cache for routes without path variables
     private final Map<String, RouteHandler> exactCache = new ConcurrentHashMap<>();
 
-    /**
-     * Constructs the index without a container. Handler-class routes are
-     * rejected because they require container resolution.
-     */
     public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
-        this(routes, groups, null);
-    }
-
-    /**
-     * Constructs the index with a container. If a route was registered via
-     * a handler class ({@link Route#handlerType()}), the handler instance
-     * is resolved from the container at construction time.
-     */
-    @Inject
-    public RouteIndex(List<Route> routes, List<RouteGroup> groups, Container container) {
         // Phase 1: collect all routes
         List<Route> all = new ArrayList<>();
-        for (Route route : routes == null ? List.<Route>of() : routes) {
-            all.add(route);
-        }
-        for (RouteGroup group : groups == null
-            ? List.<RouteGroup>of()
-            : groups) {
-            for (Route route : group.expand()) {
-                all.add(route);
+        if (routes != null) all.addAll(routes);
+        if (groups != null) {
+            for (RouteGroup group : groups) {
+                all.addAll(group.expand());
             }
         }
-        // Phase 2: resolve handler classes and insert into trie + exact cache
+        // Phase 2: insert into trie + exact cache
         for (Route route : all) {
-            RouteHandler handler = route.handler();
-            if (route.handlerType() != null) {
-                if (container == null) {
-                    throw new IllegalStateException(
-                        "Route '" + route.method() + " " + route.path()
-                        + "' uses a handler class (" + route.handlerType().getName()
-                        + ") which requires a container. "
-                        + "Use FreewayApp or HttpModule instead of WebServerBuilder.");
-                }
-                handler = container.get(route.handlerType());
-            }
-            addRoute(route.method(), route.path(), handler);
+            addRoute(route.method(), route.path(), route.handler());
         }
         // Phase 3: freeze all tries (no further structural changes)
         for (TrieNode root : methodRoots.values()) {

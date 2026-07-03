@@ -5,9 +5,15 @@ import org.slf4j.IMarkerFactory;
 import org.slf4j.helpers.BasicMarkerFactory;
 import org.slf4j.spi.MDCAdapter;
 import org.slf4j.spi.SLF4JServiceProvider;
-import java.util.logging.Handler;
-import java.util.logging.Logger;
 
+/**
+ * SLF4J service provider backed by {@code java.util.logging}.
+ * Installed by {@link LogBootstrap} when no external SLF4J provider
+ * (Logback, Log4j) is detected.
+ *
+ * <p>JUL enhancement (formatters, file logging) is handled separately
+ * by {@link JULEnhancer} — it activates regardless of SLF4J provider.
+ */
 public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
     private ILoggerFactory loggerFactory;
     private IMarkerFactory markerFactory;
@@ -38,32 +44,5 @@ public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
         loggerFactory = new JULLoggerFactory();
         markerFactory = new BasicMarkerFactory();
         mdcAdapter = new JULMDCAdapter();
-        installFormatters();
-    }
-
-    private static void installFormatters() {
-        String format = System.getProperty("freeway.log.format",
-                System.getenv("FREEWAY_LOG_FORMAT"));
-
-        // "simple" — keep JUL native SimpleFormatter
-        if (format != null && "simple".equalsIgnoreCase(format.strip())) {
-            return;
-        }
-
-        if (format != null && !format.isBlank()) {
-            Logger.getLogger("com.jujin.freeway.commons.logging")
-                    .warning("Unknown freeway.log.format '" + format.strip()
-                            + "' — ignoring");
-        }
-
-        Logger root = Logger.getLogger("");
-        if (root == null) {
-            return;
-        }
-
-        JULConsoleFormatter formatter = new JULConsoleFormatter();
-        for (Handler h : root.getHandlers()) {
-            h.setFormatter(formatter);
-        }
     }
 }

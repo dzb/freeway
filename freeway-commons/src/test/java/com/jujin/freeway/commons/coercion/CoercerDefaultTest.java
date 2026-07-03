@@ -81,8 +81,25 @@ class CoercerDefaultTest {
 
     @Test
     void cannotCoerceUnsupported() {
-        assertFalse(coercer.supports(Integer.class, java.nio.file.Path.class));
-        assertFalse(coercer.supports(Color.class, java.nio.file.Path.class));
+        assertFalse(coercer.supports(Integer.class, java.util.regex.Pattern.class));
+        assertFalse(coercer.supports(Color.class, java.util.regex.Pattern.class));
+    }
+
+    @Test
+    void coerceNumberRejectsNaN() {
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(Double.NaN, Integer.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(Double.POSITIVE_INFINITY, Long.class));
+    }
+
+    @Test
+    void coerceNumberRejectsOversized() {
+        java.math.BigInteger huge = new java.math.BigInteger("99999999999999999999");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(huge, Integer.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(huge, Short.class));
     }
 
     @Test

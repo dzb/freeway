@@ -5,7 +5,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 流引擎实现（核心图遍历逻辑 + 拦截器链）
+ * 流引擎实现。
+ *
+ * <p>迁移说明：
+ * <ul>
+ *   <li>保留节点遍历、条件分支、子图调用和拦截器链逻辑，但把执行态控制显式收敛在引擎实例内。</li>
+ *   <li>驱动器解析改为按 graph 的 driver 名称显式查找，默认驱动器作为兜底，不再依赖容器扫描。</li>
+ *   <li>暂停、终止、回退等标志只属于单次执行状态，方便恢复和短暂中断后继续执行。</li>
+ * </ul>
+ * 这样做是为了让移植后的引擎仍保留原行为，同时满足 Freeway 的显式装配模型。</p>
  *
  * @author noear
  * @since 3.0
@@ -13,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class FlowEngineImpl implements FlowEngine {
     protected final Map<String, Graph> graphMap;
     protected final Map<String, FlowDriver> driverMap;
+    protected final FlowMarkerIndex markerIndex = new FlowMarkerIndex();
     protected FlowDriver driverDef;
     protected final List<FlowOptions.RankedInterceptor> interceptorList;
 
@@ -52,6 +61,18 @@ public class FlowEngineImpl implements FlowEngine {
         if (name != null && !name.isEmpty()) driverMap.remove(name);
     }
 
+    @Override
+    public void register(TaskComponent handler) {
+        if (handler != null) {
+            markerIndex.register(handler);
+        }
+    }
+
+    @Override
+    public FlowMarkerIndex markerIndex() {
+        return markerIndex;
+    }
+
     // --- interceptor ---
 
     @Override
@@ -68,7 +89,16 @@ public class FlowEngineImpl implements FlowEngine {
     // --- graph ---
 
     @Override
-    public void load(Graph graph) { graphMap.put(graph.getId(), graph); }
+    public void load(Graph graph) {
+        String id = Objects.requireNonNull(graph, "graph").getId();
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Graph id must not be blank");
+        }
+        if (graphMap.containsKey(id)) {
+            throw new IllegalArgumentException("Graph already loaded: " + id);
+        }
+        graphMap.put(id, graph);
+    }
 
     @Override
     public void unload(String graphId) { graphMap.remove(graphId); }
@@ -193,7 +223,7 @@ public class FlowEngineImpl implements FlowEngine {
         }
 
         if (!exchanger.isReverting()) {
-            if (!exchanger.nextSetp(node)) {
+            if (!exchanger.nextStep(node)) {
                 exchanger.stop();
                 return;
             }
@@ -334,7 +364,12 @@ public class FlowEngineImpl implements FlowEngine {
                     }
                 });
             }
-            try { cdl.await(); } catch (InterruptedException ignored) {}
+            try {
+                cdl.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new FlowException("Parallel execution interrupted", e);
+            }
             if (errorRef.get() != null) {
                 if (errorRef.get() instanceof FlowException) throw (FlowException) errorRef.get();
                 throw new FlowException(errorRef.get());

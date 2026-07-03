@@ -1,37 +1,28 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.extension.Extension;
-import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.PostConstruct;
-import com.jujin.freeway.ioc.annotation.PreDestroy;
-import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoerceRule;
-
-import com.jujin.freeway.ioc.annotation.IntermediateType;
-
-import com.jujin.freeway.ioc.annotation.Symbol;
-import com.jujin.freeway.ioc.annotation.Value;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.scoped.ScopedCache;
+import com.jujin.freeway.ioc.annotation.*;
+import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.lang.reflect.Proxy;
-import org.slf4j.Logger;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class FreewayTest {
     private static final String PORT_KEY = "freeway.test.port";
@@ -102,7 +93,7 @@ class FreewayTest {
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
-        CheckoutService service = container.get(CheckoutService.class);
+        CheckoutService service = container.create(CheckoutService.class);
 
         assertEquals("stripe", service.gatewayName());
         assertEquals("stripe", container.get(PaymentGateway.class).name());
@@ -140,7 +131,7 @@ class FreewayTest {
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
-        NamedCheckoutService service = container.get(NamedCheckoutService.class);
+        NamedCheckoutService service = container.create(NamedCheckoutService.class);
 
         assertEquals("paypal", service.gatewayName());
     }
@@ -152,7 +143,7 @@ class FreewayTest {
             binder -> binder.bind(PaymentGateway.class).to(PaypalGateway.class).id("paypal")
         );
 
-        InjectNamedCheckoutService service = container.get(InjectNamedCheckoutService.class);
+        InjectNamedCheckoutService service = container.create(InjectNamedCheckoutService.class);
 
         assertEquals("paypal", service.gatewayName());
     }
@@ -165,10 +156,10 @@ class FreewayTest {
         assertEquals(LoggerFieldHolder.class.getName(), loggerSource.get(LoggerFieldHolder.class).getName());
         assertTrue(loggerSource.get(LoggerFieldHolder.class).isInfoEnabled());
 
-        LoggerFieldHolder fieldHolder = container.get(LoggerFieldHolder.class);
+        LoggerFieldHolder fieldHolder = container.create(LoggerFieldHolder.class);
         assertEquals(LoggerFieldHolder.class.getName(), fieldHolder.loggerName());
 
-        LoggerCtorHolder ctorHolder = container.get(LoggerCtorHolder.class);
+        LoggerCtorHolder ctorHolder = container.create(LoggerCtorHolder.class);
         assertEquals(LoggerCtorHolder.class.getName(), ctorHolder.loggerName());
     }
 
@@ -176,9 +167,190 @@ class FreewayTest {
     void loggerInjectionCanUseExplicitName() {
         Container container = Freeway.create();
 
-        NamedLoggerHolder holder = container.get(NamedLoggerHolder.class);
+        NamedLoggerHolder holder = container.create(NamedLoggerHolder.class);
 
         assertEquals("audit", holder.loggerName());
+    }
+
+    interface Marker {}
+
+    static class EndpointContributor implements Marker {
+        final Endpoint endpoint;
+
+        @Inject
+        EndpointContributor(@Value("${endpoint}") Endpoint endpoint) {
+            this.endpoint = endpoint;
+        }
+    }
+
+    static class PlainLoggerHolder {
+        Logger logger; // no @Inject — should stay null
+    }
+
+    @Test
+    void loggerFieldNotInjectedWithoutAnnotation() {
+        Container container = Freeway.create();
+        PlainLoggerHolder holder = container.create(PlainLoggerHolder.class);
+        assertNull((Object) holder.logger,
+                "Logger field without @Inject should not be injected");
+    }
+
+    @Test
+    void contributedClassSeesCoerceRuleFromSameModule() {
+        System.setProperty("endpoint", "192.168.1.1:443");
+        Container container = Freeway.create(binder -> {
+            binder.contribute(CoerceRule.class).add(new CoerceRule<>(
+                String.class, Endpoint.class,
+                v -> { String[] p = v.split(":", 2); return new Endpoint(p[0], Integer.parseInt(p[1])); }));
+            binder.contribute(Marker.class).add(EndpointContributor.class);
+        });
+
+        var marker = container.extension(Marker.class).all().stream()
+                .filter(m -> m instanceof EndpointContributor)
+                .map(m -> (EndpointContributor) m)
+                .findFirst().orElseThrow();
+
+        assertEquals(new Endpoint("192.168.1.1", 443), marker.endpoint);
+        System.clearProperty("endpoint");
+    }
+
+    @Test
+    void classContributionAutoIdsIncludePackageName() {
+        Container container = Freeway.create(binder -> {
+            // CoreBean auto-id = core_bean@<package>
+            binder.contribute(Labeled.class).add(CoreBean.class);
+            binder.contribute(Labeled.class).add(WebBean.class).after(
+                    "core_bean@" + CoreBean.class.getPackageName());
+        });
+        List<String> labels = container.extension(Labeled.class).all()
+                .stream().map(Labeled::label).toList();
+        assertEquals(List.of("core", "web"), labels,
+                "auto-ids with package suffix should allow ordering");
+    }
+
+    @Test
+    void lambdaModulesAreInstalledByIdentity() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> { log.add("a"); },
+            binder -> { log.add("b"); }
+        );
+        assertEquals(List.of("a", "b"), log,
+                "lambda modules should dedup by identity, not class");
+    }
+
+    @Test
+    void classContributionCanUseCoerceRuleFromSeparateModule() {
+        System.setProperty("endpoint", "10.0.0.1:8080");
+        Container container = Freeway.create(
+            // module A: registers coercion
+            binder -> binder.contribute(CoerceRule.class).add(new CoerceRule<>(
+                String.class, Endpoint.class,
+                v -> { String[] p = v.split(":", 2); return new Endpoint(p[0], Integer.parseInt(p[1])); })),
+            // module B: contributes a class that depends on that coercion
+            binder -> binder.contribute(Marker.class).add(EndpointContributor.class)
+        );
+
+        var marker = container.extension(Marker.class).all().stream()
+                .filter(m -> m instanceof EndpointContributor)
+                .map(m -> (EndpointContributor) m)
+                .findFirst().orElseThrow();
+
+        assertEquals(new Endpoint("10.0.0.1", 8080), marker.endpoint);
+        System.clearProperty("endpoint");
+    }
+
+    // ── regression: PROTOTYPE + advise ────────────────────────────
+
+    interface PrototypeGreeter {
+        String greet();
+    }
+
+    static class PrototypeGreeterImpl implements PrototypeGreeter {
+        @Override public String greet() { return "hello"; }
+    }
+
+    interface SingletonService {
+        String name();
+    }
+
+    static class SingletonServiceImpl implements SingletonService {
+        @Override public String name() { return "singleton"; }
+    }
+
+    static class ThreadScopedDep {}
+
+    static class ConsumerWithThreadDep {
+        final ThreadScopedDep dep;
+
+        @Inject
+        ConsumerWithThreadDep(ThreadScopedDep dep) { this.dep = dep; }
+    }
+
+    interface BaseService { String name(); }
+    interface ExtendedService extends BaseService {}
+
+    static class ExtendedServiceImpl implements ExtendedService {
+        final ThreadScopedDep dep;
+
+        @Inject
+        ExtendedServiceImpl(ThreadScopedDep dep) { this.dep = dep; }
+
+        @Override public String name() { return "extended"; }
+    }
+
+    @Test
+    void singletonThroughIndirectInterfaceRejectsThreadScopedDependency() {
+        // Bind ExtendedServiceImpl under BaseService — an indirect interface.
+        // ExtendedServiceImpl extends ExtendedService extends BaseService.
+        // findOwnerBinding must walk ExtendedService → BaseService to find the binding.
+        Container container = Freeway.create(binder -> {
+            binder.bind(BaseService.class).to(ExtendedServiceImpl.class).scope(Scope.SINGLETON);
+            binder.bind(ThreadScopedDep.class).to(ThreadScopedDep.class).scope(Scope.THREAD);
+        });
+
+        // trigger proxy realization via ScopedCache (thread scope)
+        assertThrows(RuntimeException.class, () ->
+            ScopedCache.within(() -> {
+                BaseService svc = container.get(BaseService.class);
+                svc.name(); // triggers proxy → realize → scope check
+            }));
+    }
+
+    @Test
+    void singletonThroughInterfaceRejectsThreadScopedDependency() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(SingletonService.class).to(SingletonServiceImpl.class).scope(Scope.SINGLETON);
+            binder.bind(ThreadScopedDep.class).to(ThreadScopedDep.class).scope(Scope.THREAD);
+        });
+
+        assertThrows(RuntimeException.class, () ->
+            container.create(ConsumerWithThreadDep.class),
+                "Singleton injected with thread-scoped dep should fail");
+    }
+
+    @Test
+    void prototypeBindingHonorsAdvice() {
+        List<String> calls = new ArrayList<>();
+        Container container = Freeway.create(binder ->
+            binder.bind(PrototypeGreeter.class)
+                  .to(PrototypeGreeterImpl.class)
+                  .scope(Scope.PROTOTYPE)
+                  .advise(advisor -> advisor.wrap(
+                      inv -> true,
+                      inv -> {
+                          calls.add("advised");
+                          return inv.proceed();
+                      })));
+
+        PrototypeGreeter g1 = container.get(PrototypeGreeter.class);
+        PrototypeGreeter g2 = container.get(PrototypeGreeter.class);
+        g1.greet();
+        g2.greet();
+
+        assertEquals(List.of("advised", "advised"), calls,
+                "advice should fire on every PROTOTYPE resolution");
+        assertNotSame(g1, g2, "PROTOTYPE should create new instance each time");
     }
 
     @Test
@@ -199,7 +371,7 @@ class FreewayTest {
         System.setProperty(NAME_KEY, "freeway");
 
         Container container = Freeway.create();
-        ConfiguredService service = container.get(ConfiguredService.class);
+        ConfiguredService service = container.create(ConfiguredService.class);
 
         assertEquals(8081, service.port());
         assertEquals("freeway", service.name());
@@ -212,7 +384,7 @@ class FreewayTest {
         System.setProperty(NAME_KEY, "field-app");
 
         Container container = Freeway.create();
-        FieldConfiguredService service = container.get(FieldConfiguredService.class);
+        FieldConfiguredService service = container.create(FieldConfiguredService.class);
 
         assertEquals(9090, service.port());
         assertEquals("field-app", service.name());
@@ -243,7 +415,7 @@ class FreewayTest {
             ))
         );
 
-        EndpointHolder holder = container.get(EndpointHolder.class);
+        EndpointHolder holder = container.create(EndpointHolder.class);
 
         assertEquals(new Endpoint("localhost", 8088), holder.endpoint());
     }
@@ -260,7 +432,7 @@ class FreewayTest {
             ))
         );
 
-        TimeoutHolder holder = container.get(TimeoutHolder.class);
+        TimeoutHolder holder = container.create(TimeoutHolder.class);
 
         assertEquals(new Timeout(2500), holder.timeout());
     }
@@ -271,7 +443,7 @@ class FreewayTest {
             binder.contribute(SymbolProvider.class).add(name -> APP_NAME_KEY.equals(name) ? "freeway" : null)
         );
 
-        AppNameHolder holder = container.get(AppNameHolder.class);
+        AppNameHolder holder = container.create(AppNameHolder.class);
 
         assertEquals("freeway", holder.name());
     }
@@ -361,7 +533,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
-        AppConfig config = container.get(AppConfig.class);
+        AppConfig config = container.create(AppConfig.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
     }
@@ -373,7 +545,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
-        ParameterAppConfig config = container.get(ParameterAppConfig.class);
+        ParameterAppConfig config = container.create(ParameterAppConfig.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
     }
@@ -394,7 +566,7 @@ class FreewayTest {
                 .before("web")
         );
 
-        AppConfig config = container.get(AppConfig.class);
+        AppConfig config = container.create(AppConfig.class);
 
         assertEquals(List.of("core", "db", "metrics", "web"), config.featureNames());
     }
@@ -420,7 +592,7 @@ class FreewayTest {
                 .after("first")
         );
 
-        Throwable ex = assertThrows(Throwable.class, () -> container.get(AppConfig.class));
+        Throwable ex = assertThrows(Throwable.class, () -> container.create(AppConfig.class));
 
         Throwable root = ex;
         while (root.getCause() != null) root = root.getCause();
@@ -439,7 +611,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("timing", new AppFlag("timing", false)))
         );
 
-        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
+        MixedExtensionCatalog catalog = container.create(MixedExtensionCatalog.class);
 
         assertEquals(List.of("core", "web"), catalog.featureNames());
         assertEquals(Map.of("debug", new AppFlag("debug", true), "timing", new AppFlag("timing", false)), catalog.flags());
@@ -453,7 +625,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("   ", new AppFlag("blank-key", true)))
         );
 
-        MixedExtensionCatalog catalog = container.get(MixedExtensionCatalog.class);
+        MixedExtensionCatalog catalog = container.create(MixedExtensionCatalog.class);
 
         assertEquals(Map.of("debug", new AppFlag("debug", true), "   ", new AppFlag("blank-key", true)), catalog.flags());
     }
@@ -465,7 +637,7 @@ class FreewayTest {
             binder -> binder.contribute(EnumAppFlagEntry.class).add(new EnumAppFlagEntry(FlagKey.TIMING, new AppFlag("timing", false)))
         );
 
-        EnumKeyExtensionCatalog catalog = container.get(EnumKeyExtensionCatalog.class);
+        EnumKeyExtensionCatalog catalog = container.create(EnumKeyExtensionCatalog.class);
 
         assertEquals(
             Map.of(
@@ -482,7 +654,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
-        ListFeatureCatalog catalog = container.get(ListFeatureCatalog.class);
+        ListFeatureCatalog catalog = container.create(ListFeatureCatalog.class);
         assertEquals(List.of("core", "web"), catalog.featureNames());
     }
 
@@ -492,7 +664,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
-        FieldListFeatureCatalog catalog = container.get(FieldListFeatureCatalog.class);
+        FieldListFeatureCatalog catalog = container.create(FieldListFeatureCatalog.class);
         assertEquals(List.of("core", "web"), catalog.featureNames());
     }
 
@@ -581,6 +753,7 @@ class FreewayTest {
     public static final class LoggerCtorHolder {
         private final Logger logger;
 
+        @com.jujin.freeway.ioc.annotation.Inject
         public LoggerCtorHolder(Logger logger) {
             this.logger = logger;
         }
@@ -1018,7 +1191,7 @@ class FreewayTest {
     void rejectsUnknownSymbol() {
         Container container = Freeway.create();
         RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> container.get(UnknownSymbolService.class));
+            () -> container.create(UnknownSymbolService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
     }
 
@@ -1026,7 +1199,7 @@ class FreewayTest {
     void rejectsUnclosedSymbolExpression() {
         Container container = Freeway.create();
         RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> container.get(UnclosedSymbolService.class));
+            () -> container.create(UnclosedSymbolService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
     }
 
@@ -1035,7 +1208,7 @@ class FreewayTest {
         Container container = Freeway.create(binder ->
             binder.bind(PaymentGateway.class).to(StripeGateway.class));
         RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> container.get(ConflictingAnnotationsService.class));
+            () -> container.create(ConflictingAnnotationsService.class));
         assertEquals(IllegalArgumentException.class, ex.getCause().getClass());
     }
 
@@ -1310,6 +1483,139 @@ class FreewayTest {
 
         List<String> featureNames() {
             return features.stream().map(AppFeature::name).toList();
+        }
+    }
+
+    // ──── add(Class) ────
+
+    interface Labeled { String label(); }
+
+    public static final class CoreBean implements Labeled {
+        @Override public String label() { return "core"; }
+    }
+
+    public static final class WebBean implements Labeled {
+        @Override public String label() { return "web"; }
+    }
+
+    @Test
+    void classContributionCreatesAndOrders() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(Labeled.class)
+                .add(WebBean.class).after("core_bean@" + CoreBean.class.getPackageName()),
+            binder -> binder.contribute(Labeled.class)
+                .add(CoreBean.class)
+        );
+
+        List<String> labels = container.extension(Labeled.class).all()
+            .stream().map(Labeled::label).toList();
+        assertEquals(List.of("core", "web"), labels);
+    }
+
+    // ──── Marker annotation tests ────
+
+    @Test
+    void markerAnnotationResolvesCorrectService() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+            binder.bind(Cache.class).to(SlowCache.class).marker(Slow.class);
+        });
+
+        // By-marker resolution via container.get(type, markers...)
+        Cache cache = container.get(Cache.class, Fast.class);
+        assertEquals("fast", cache.name());
+
+        // Injection point with @Fast marker
+        CacheConsumer consumer = container.create(CacheConsumer.class);
+        assertEquals("fast", consumer.cacheName());
+    }
+
+    @Test
+    void primaryAlsoAddsMarker() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(FastCache.class).primary();
+            binder.bind(Cache.class).to(SlowCache.class);
+        });
+
+        // .primary() should add @Primary as a marker, so get(type, Primary.class) works
+        Cache cache = container.get(Cache.class, Primary.class);
+        assertEquals("fast", cache.name());
+    }
+
+    @Test
+    void markerResolutionRejectsAmbiguousMatch() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+            binder.bind(Cache.class).to(SlowCache.class).marker(Fast.class); // same marker!
+        });
+
+        assertThrows(IllegalArgumentException.class, () ->
+                container.get(Cache.class, Fast.class));
+    }
+
+    @Test
+    void builtinMarkerPropagatesToCoreServices() {
+        Container container = Freeway.create();
+        // Core services registered via registerBuiltin() should carry @Builtin
+        var symbols = container.get(com.jujin.freeway.ioc.symbol.SymbolSource.class, Builtin.class);
+        assertNotNull(symbols);
+    }
+
+    @Test
+    void moduleLevelMarkerPropagatesToBindings() {
+        Container container = Freeway.create(new MarkerTestModule());
+
+        // The Cache binding should inherit @Builtin from the module
+        Cache cache = container.get(Cache.class, Builtin.class);
+        assertEquals("fast", cache.name());
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.TYPE, ElementType.PARAMETER, ElementType.FIELD})
+    @interface Fast {
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.TYPE, ElementType.PARAMETER, ElementType.FIELD})
+    @interface Slow {
+    }
+
+    interface Cache {
+        String name();
+    }
+
+    @Fast
+    static class FastCache implements Cache {
+        @Override
+        public String name() {
+            return "fast";
+        }
+    }
+
+    @Slow
+    static class SlowCache implements Cache {
+        @Override
+        public String name() {
+            return "slow";
+        }
+    }
+
+    static class CacheConsumer {
+        @Inject
+        @Fast
+        Cache cache;
+
+        String cacheName() {
+            return cache.name();
+        }
+    }
+
+    // Module-level marker propagation
+    @com.jujin.freeway.ioc.annotation.Marker(Builtin.class)
+    static class MarkerTestModule implements ModuleEx {
+        @Override
+        public void bind(Binder binder) {
+            binder.bind(Cache.class).to(FastCache.class);
         }
     }
 }

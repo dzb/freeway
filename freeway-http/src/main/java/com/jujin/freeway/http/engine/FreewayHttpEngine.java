@@ -6,14 +6,15 @@ import com.jujin.freeway.http.HttpEngine;
 import com.jujin.freeway.http.HttpRequestHandler;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpServerHandle;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-import javax.net.ssl.SSLContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Built-in HTTP engine using virtual threads and synchronous socket I/O.
@@ -59,13 +60,17 @@ public final class FreewayHttpEngine implements HttpEngine {
 
         var finished = new AtomicBoolean();
 
+        // Single platform-thread acceptor, one virtual thread per connection.
+        // Virtual threads are cheap, so each connection gets its own carrier that
+        // parks when idle (blocking I/O). The acceptor itself stays on a platform
+        // thread to avoid virtual-thread pinning during accept().
         var acceptor = new Thread(() -> {
                 while (!finished.get()) {
                     try {
                         var socket = ss.accept();
                         Thread.ofVirtual()
                             .name("http-" + socket.getRemoteSocketAddress())
-                            .start(new HttpSession(socket, handler, jsonCodec, coercer, this, config.socketBufferSize()));
+                            .start(new HttpSession(socket, handler, jsonCodec, coercer, this, config.socketBufferSize(), config.maxBodySize()));
                     } catch (IOException e) {
                         if (!finished.get()) LOG.error("Accept failed", e);
                         break;

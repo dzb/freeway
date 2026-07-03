@@ -157,7 +157,8 @@ public final class ScopedCache {
                 cache.clear();
                 return;
             }
-            List<Object> values = List.copyOf(cache.values());
+            List<Object> values = cache.values().stream()
+                    .filter(v -> v != null).toList();
             cache.clear();
             Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
             for (Object value : values) {

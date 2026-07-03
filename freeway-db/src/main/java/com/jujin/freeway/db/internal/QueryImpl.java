@@ -1,31 +1,19 @@
 package com.jujin.freeway.db.internal;
 
-import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.*;
 import com.jujin.freeway.db.util.SqlTextParser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.db.ExecuteResult;
-import com.jujin.freeway.db.Pool;
-import com.jujin.freeway.db.Query;
-import com.jujin.freeway.db.SqlException;
 import java.lang.ref.Cleaner;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Spliterator;
-import java.util.Spliterators;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 final class QueryImpl implements Query {
 
@@ -256,6 +244,18 @@ final class QueryImpl implements Query {
         return parsed;
     }
 
+    /**
+     * Expands parameter placeholders into a flat positional array.
+     *
+     * <p>Handles three parameter styles:
+     * <ol>
+     *   <li>Named params ({@code :name / $name}) via {@code .param()} API</li>
+     *   <li>Auto-detected named placeholders with positional values</li>
+     *   <li>Pure positional ({@code ?}) with collection expansion
+     *       ({@code WHERE id IN (?)} with a List → repeated {@code ?})</li>
+     * </ol>
+     * Expanded results are cached so expansion runs exactly once per query.
+     */
     private void ensureExpanded() {
         if (expandedChecked) {
             return;
@@ -283,7 +283,17 @@ final class QueryImpl implements Query {
             );
         }
         for (int i = 0; i < p.names().size(); i++) {
-            namedParams.put(p.names().get(i), positionalParams[i]);
+            String name = p.names().get(i);
+            Object value = positionalParams[i];
+            if (namedParams.containsKey(name) && !Objects.equals(namedParams.get(name), value)) {
+                throw new SqlException(
+                    "Duplicate named parameter ':" + name +
+                    "' with different positional values in '" +
+                    originalSql + "'. Use .param(\"" + name +
+                    "\", value) for named parameters with repeated placeholders."
+                );
+            }
+            namedParams.put(name, value);
         }
         expandNamed();
     }

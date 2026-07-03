@@ -1,6 +1,9 @@
 package com.jujin.freeway.flow;
 
+import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.flow.v1.GraphSpec;
+import com.jujin.freeway.flow.v2.GraphSpec2;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -21,27 +24,33 @@ public class Graph {
     private final List<Link> links;
     private Node start;
 
-    protected Graph(GraphSpec spec) {
-        this.id = spec.getId();
-        this.title = spec.getTitle();
-        this.driver = spec.getDriver();
+    public Graph(GraphSpec2 blueprint) {
+        this.id = blueprint.getId();
+        this.title = blueprint.getTitle();
+        this.driver = blueprint.getDriver();
 
-        Map<String, Node> nodeMap = new LinkedHashMap<>(spec.getNodes().size());
-        List<Link> linkAry = new ArrayList<>(spec.getNodes().size());
+        String entryId = blueprint.getEntry();
+        if (entryId != null && !blueprint.getNodes().containsKey(entryId)) {
+            throw new IllegalStateException("Entry node not found: " + entryId);
+        }
 
-        for (Map.Entry<String, NodeSpec> kv : spec.getNodes().entrySet()) {
-            doAddNode(kv.getValue(), nodeMap, linkAry);
+        Map<String, Node> nodeMap = new LinkedHashMap<>(blueprint.getNodes().size());
+        List<Link> linkAry = new ArrayList<>(blueprint.getLinks().size());
+        Map<String, List<GraphSpec2.LinkSpec2>> outgoing = new LinkedHashMap<>();
+        for (GraphSpec2.LinkSpec2 link : blueprint.getLinks()) {
+            outgoing.computeIfAbsent(link.getFrom(), k -> new ArrayList<>()).add(link);
+        }
+
+        for (Map.Entry<String, GraphSpec2.NodeSpec2> kv : blueprint.getNodes().entrySet()) {
+            doAddNode(kv.getValue(), entryId, outgoing, nodeMap, linkAry);
         }
 
         this.nodes = Collections.unmodifiableMap(nodeMap);
         this.links = Collections.unmodifiableList(linkAry);
-        if (spec.getMeta() == null) {
-            this.metas = Collections.emptyMap();
-        } else {
-            this.metas = Collections.unmodifiableMap(spec.getMeta());
-        }
+        this.metas = blueprint.getMeta().isEmpty()
+                ? Collections.emptyMap()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.getMeta()));
 
-        // 校验结构：找到起始节点
         if (start == null) {
             for (Node node : nodes.values()) {
                 if (node.getPrevLinks().isEmpty()) {
@@ -52,22 +61,22 @@ public class Graph {
         }
 
         if (start == null) {
-            throw new IllegalStateException("No start node found, graph: " + spec);
+            throw new IllegalStateException("No start node found, graph: " + blueprint.getId());
         }
     }
 
-    private void doAddNode(NodeSpec nodeSpec, Map<String, Node> nodeMap, List<Link> linkAry) {
-        List<Link> tmp = new ArrayList<>(nodeSpec.getLinks().size());
-        for (LinkSpec linkSpec : nodeSpec.getLinks()) {
-            tmp.add(new Link(this, nodeSpec.getId(), linkSpec));
+    public static Graph fromText(String text) {
+        JsonObject dom = JsonUtils.parseObject(text);
+        // Route to v2 when either version==2 is declared, or the structural
+        // signature (top-level nodes + links) is present. v1 layout format
+        // never has a top-level "links" array.
+        Integer version = dom.getInt("version");
+        boolean isV2 = (version != null && version == GraphSpec2.VERSION)
+            || (dom.containsKey("nodes") && dom.containsKey("links"));
+        if (isV2) {
+            return GraphSpec2.fromDom(dom).create();
         }
-        linkAry.addAll(tmp);
-
-        Node node = new Node(this, nodeSpec, tmp);
-        nodeMap.put(node.getId(), node);
-        if (nodeSpec.getType() == NodeType.START) {
-            start = node;
-        }
+        return GraphSpec.fromDom(dom).create();
     }
 
     // --- getters ---
@@ -305,8 +314,25 @@ public class Graph {
         return spec.create();
     }
 
-    public static Graph fromText(String text) {
-        return GraphSpec.fromText(text).create();
+    private void doAddNode(GraphSpec2.NodeSpec2 nodeSpec, String entryId,
+                           Map<String, List<GraphSpec2.LinkSpec2>> outgoing,
+                           Map<String, Node> nodeMap, List<Link> linkAry) {
+        NodeType type = (entryId != null && entryId.equals(nodeSpec.getId()))
+                ? NodeType.START
+                : nodeSpec.getType();
+
+        List<GraphSpec2.LinkSpec2> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
+        List<Link> tmp = new ArrayList<>(nodeLinks.size());
+        for (GraphSpec2.LinkSpec2 linkSpec : nodeLinks) {
+            tmp.add(new Link(this, nodeSpec.getId(), linkSpec));
+        }
+        linkAry.addAll(tmp);
+
+        Node node = new Node(this, nodeSpec, type, tmp);
+        nodeMap.put(node.getId(), node);
+        if (type == NodeType.START) {
+            start = node;
+        }
     }
 
     @Override
