@@ -4,6 +4,12 @@
 
 Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API only.
 
+Freeway exists to show that a Java framework can be concise without being shallow,
+complete without being bloated. It is an exercise in engineering aesthetics —
+every API deliberate, every concept pulling its weight. In an ecosystem where
+ceremony is often mistaken for rigor, Freeway bets that clarity, simplicity, and
+good taste still have a place.
+
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
 | `freeway-commons` | Shared utilities: JSON, coercion, scoped primitives, logging |
@@ -31,9 +37,14 @@ Freeway.create(
 
 This gives you:
 
-- Fast startup - no bytecode scanning.
-- Total control - every binding is explicit.
-- Small footprint - core modules have zero external dependencies (SLF4J API only).
+- **Fast startup** — no bytecode scanning, no classpath crawling.
+- **Total control** — every binding is explicit, no magic.
+- **Small footprint** — core modules have zero external dependencies (SLF4J API only).
+- **Aesthetic coherence** — APIs are designed to read like the intent they express, not the machinery underneath.
+
+Freeway rejects the idea that enterprise Java must be verbose, annotation-riddled,
+and XML-laden. It offers a quieter, more deliberate alternative: fewer concepts,
+sharper boundaries, and code that looks like it was written by someone who cares.
 
 ## Core Design
 
@@ -88,7 +99,7 @@ public final class App implements ModuleEx {
         b.contribute(Route.class)
             .add(Route.get("/", ctx -> ctx.send(200, "Hello Freeway")))
             .add(Route.get("/users/{id}", ctx ->
-                ctx.sendJson(200, Map.of("id", ctx.pathVar("id"), "name", "Alice"))));
+                ctx.sendJson(200, Map.of("id", ctx.pathVar("id").orElse(""), "name", "Alice"))));
     }
 
     public static void main(String[] args) {
@@ -123,7 +134,7 @@ Shared utilities usable independently of the framework:
 - Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
 - Scoped primitives — `Defer` buffers commit-time side effects; `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
-- Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
+- Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max`/`@Valid` with `BeanValidator`.
 
 ### IoC (`freeway-ioc`)
 
@@ -149,7 +160,7 @@ Boot turns a composed container into an application runtime:
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.
-- Config providers - properties files, JSON, environment, system properties, CLI args.
+- Config providers - properties files, JSON, environment variables, CLI args.
 
 **Lifecycle:** state machine with six states:
 
@@ -207,6 +218,40 @@ A compact JDBC data access layer with ORM:
 - `DatabaseHub` - multi-datasource routing.
 
 Freeway-db is independently usable outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
+
+### Flow (`freeway-flow`)
+
+A lightweight graph workflow engine for orchestrating multi-step processes:
+
+- **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. V2 format (`nodes`+`links`) is the native dialect; v1 (solon-flow compatible) is auto-converted on load.
+- **Task resolution** — four lookup strategies in one syntax: `@beanName` (IoC service), `#graphId` (subgraph call), `$metaKey` (graph metadata), `!markerName` (FlowMarker match via `containsAll` semantics, most specific wins).
+- **Validation at build time** — `normalize()` checks link references, entry node uniqueness, and reachability before execution.
+- **Tracing** — pause/resume execution with step-by-step trace records.
+- **PlantUML export** — visualize any graph definition as a PlantUML diagram.
+- **Interceptor chain** — wrap task execution with custom logic.
+- **Expression evaluator** — self-written recursive-descent parser (~280 lines) for condition evaluation on decision nodes.
+- **Zero extra dependencies** — built on commons + ioc only.
+
+Graphs load from JSON:
+
+```java
+Graph graph = Graph.fromText("""
+    {
+      "version": 2,
+      "nodes": [
+        {"id": "start", "type": "START", "next": "greet"},
+        {"id": "greet", "task": "!greeter", "next": "end"},
+        {"id": "end", "type": "END"}
+      ],
+      "links": [
+        {"from": "start", "to": "greet"},
+        {"from": "greet", "to": "end"}
+      ]
+    }
+    """);
+FlowEngine engine = container.get(FlowEngine.class);
+engine.execute(graph, new HashMap<>());
+```
 
 ### Extensions
 
