@@ -7,13 +7,13 @@
 
 **A modern, full-featured, high-performance Java application framework for JDK 25+. Zero dependencies — SLF4J API only.**
 
-Lightweight. Compose-first. Zero classpath scanning. IoC, HTTP, DB, Flow — everything in one coherent design.
+Lightweight. **Compose-first.** Zero classpath scanning. IoC, HTTP, DB, Flow — everything in one coherent design.
 
-Freeway exists to show that a Java framework can be concise without being shallow,
-complete without being bloated. It is an exercise in engineering aesthetics —
+Freeway exists to show that a Java framework can be **concise without being shallow,
+complete without being bloated.** It is an exercise in **engineering aesthetics** —
 every API deliberate, every concept pulling its weight. In an ecosystem where
-ceremony is often mistaken for rigor, Freeway bets that clarity, simplicity, and
-good taste still have a place.
+ceremony is often mistaken for rigor, Freeway bets that **clarity, simplicity, and
+good taste** still have a place.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
@@ -25,12 +25,12 @@ good taste still have a place.
 | `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
 | `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
-Core modules have zero external dependencies. Third-party adapters live in
+Core modules have **zero external dependencies.** Third-party adapters live in
 **[freeway-ext](https://github.com/dzb/freeway-ext)**. Pick only what you need.
 
 ## Philosophy
 
-Freeway 2 is a compose-first framework. Instead of scanning the classpath,
+Freeway 2 is a **compose-first** framework. Instead of scanning the classpath,
 applications explicitly wire modules together:
 
 ```java
@@ -43,9 +43,9 @@ Freeway.create(
 This gives you:
 
 - **Fast startup** — no bytecode scanning, no classpath crawling.
-- **Total control** — every binding is explicit, no magic.
-- **Small footprint** — core modules have zero external dependencies (SLF4J API only).
-- **Aesthetic coherence** — APIs are designed to read like the intent they express, not the machinery underneath.
+- **Total control** — every binding is explicit, **no magic.**
+- **Small footprint** — core modules have **zero external dependencies** (SLF4J API only).
+- **Aesthetic coherence** — APIs read like the intent they express, not the machinery underneath.
 
 Freeway rejects the idea that enterprise Java must be verbose, annotation-riddled,
 and XML-laden. It offers a quieter, more deliberate alternative: fewer concepts,
@@ -57,15 +57,15 @@ Freeway 2 keeps its core concepts intentionally small:
 
 - `Module` is the unit of application composition and responsibility partitioning. `ModuleEx` is the Java type name used by Freeway. Modules carry `@Marker` annotations to tag all their bindings (e.g. `@Marker(Builtin.class)`).
 - `Freeway` builds a container; `FreewayApp` builds a runtime.
-- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` injects without caching.
+- `Container` is the **service lookup boundary**: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` **injects without caching.**
 - `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
-- Service ids are plain strings: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is no public `ServiceId` type.
+- Service ids are **plain strings**: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is **no public `ServiceId` type.**
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
 - `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and optional file logging with time+size rotation and GZIP compression. File logging activates via `-Dfreeway.log.file=auto` or explicit path.
-- Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
+- Framework-provided implementation names use the **`XDefault` suffix** form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/commons.md](docs/reference/commons.md) for deeper module notes.
 
@@ -155,7 +155,7 @@ The IoC module provides the framework core:
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
-- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. Transaction-aware: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
+- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
 
 ### Boot (`freeway-boot`)
 
@@ -194,7 +194,7 @@ The HTTP layer stays deliberately thin:
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
-- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow and Jetty adapters available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
+- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow and Jetty adapters available in [freeway-ext](https://github.com/dzb/freeway-ext). **Switch by adding a module** — the container selects via `.primary()`.
 
 Switch engines by adding the extension module — the container selects it via `.primary()`:
 
@@ -222,7 +222,7 @@ A compact JDBC data access layer with ORM:
 - **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation, format enforcement, and database-level concurrency lock. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
 - `DatabaseHub` - multi-datasource routing.
 
-Freeway-db is independently usable outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
+Freeway-db is **independently usable** outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
 
 ### Flow (`freeway-flow`)
 
