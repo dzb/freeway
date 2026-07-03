@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>迁移说明：
  * <ul>
  *   <li>保留节点遍历、条件分支、子图调用和拦截器链逻辑，但把执行态控制显式收敛在引擎实例内。</li>
- *   <li>驱动器解析改为按 graph 的 driver 名称显式查找，默认驱动器作为兜底，不再依赖容器扫描。</li>
+ *   <li>驱动器通过 {@code Map<String, FlowDriver>} 注入，按 graph 的 driver 名称（null/"" → "default"）匹配。</li>
  *   <li>暂停、终止、回退等标志只属于单次执行状态，方便恢复和短暂中断后继续执行。</li>
  * </ul>
  * 这样做是为了让移植后的引擎仍保留原行为，同时满足 Freeway 的显式装配模型。</p>
@@ -20,45 +20,28 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class FlowEngineImpl implements FlowEngine {
     protected final Map<String, Graph> graphMap;
-    protected final Map<String, FlowDriver> driverMap;
+    protected final Map<String, FlowDriver> drivers;
     protected final FlowMarkerIndex markerIndex = new FlowMarkerIndex();
-    protected FlowDriver driverDef;
     protected final List<FlowOptions.RankedInterceptor> interceptorList;
 
-    public FlowEngineImpl(FlowDriver driver) {
-        if (driver == null) {
-            driver = FlowDriverDefault.getInstance();
-        }
-        this.driverDef = driver;
+    public FlowEngineImpl(Map<String, FlowDriver> drivers) {
+        this.drivers = new HashMap<>(Objects.requireNonNull(drivers, "drivers"));
         this.graphMap = new HashMap<>();
-        this.driverMap = new HashMap<>();
         this.interceptorList = new ArrayList<>();
     }
 
     @Override
     public FlowDriver getDriver(Graph graph) {
         Objects.requireNonNull(graph, "graph is null");
-        if (graph.getDriver() == null || graph.getDriver().isEmpty()) {
-            return driverDef;
-        }
-        FlowDriver driver = driverMap.get(graph.getDriver());
+        String driverName = graph.getDriver();
+        final String lookup = (driverName == null || driverName.isEmpty()) ? "default" : driverName;
+        FlowDriver driver = drivers.get(lookup);
         if (driver == null) {
-            throw new IllegalArgumentException("No driver found for: '" + graph.getDriver() + "'");
+            throw new IllegalArgumentException(
+                "No driver found for: '" + lookup + "'. " +
+                "Contribute drivers via binder.contribute(FlowDriver.class).add(id, driver)");
         }
         return driver;
-    }
-
-    @Override
-    public void register(String name, FlowDriver driver) {
-        if (driver != null) {
-            if (name == null) driverDef = driver;
-            else driverMap.put(name, driver);
-        }
-    }
-
-    @Override
-    public void unregister(String name) {
-        if (name != null && !name.isEmpty()) driverMap.remove(name);
     }
 
     @Override

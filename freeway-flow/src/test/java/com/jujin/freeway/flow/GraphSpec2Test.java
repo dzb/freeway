@@ -3,11 +3,16 @@ package com.jujin.freeway.flow;
 import com.jujin.freeway.flow.v2.GraphSpec2;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class GraphSpec2Test {
+
+    private static FlowEngine newEngine(FlowDriver driver) {
+        return FlowEngine.newInstance(Map.of("default", driver));
+    }
 
     @Test
     void testBlueprintBuildsAndRuns() {
@@ -27,7 +32,7 @@ class GraphSpec2Test {
         assertEquals("start", graph.getStart().getId());
 
         AtomicInteger counter = new AtomicInteger();
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("counter".equals(name)) {
                         return (TaskComponent) (ctx, node) -> counter.incrementAndGet();
@@ -182,7 +187,7 @@ class GraphSpec2Test {
         });
 
         AtomicInteger counter = new AtomicInteger();
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("counter".equals(name)) {
                         return (TaskComponent) (ctx, node) -> counter.incrementAndGet();

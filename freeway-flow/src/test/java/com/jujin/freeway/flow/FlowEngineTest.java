@@ -1,9 +1,11 @@
 package com.jujin.freeway.flow;
 
+import com.jujin.freeway.flow.v2.GraphSpec2;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -33,7 +35,7 @@ class FlowEngineTest {
                 })
                 .build();
 
-        FlowEngine engine = FlowEngine.newInstance(driver);
+        FlowEngine engine = newEngine(driver);
         FlowContext ctx = FlowContext.of();
         engine.eval(graph, ctx);
 
@@ -66,7 +68,7 @@ class FlowEngineTest {
                 })
                 .build();
 
-        FlowEngine engine = FlowEngine.newInstance(driver);
+        FlowEngine engine = newEngine(driver);
 
         // score = 90 → high
         FlowContext ctx1 = FlowContext.of();
@@ -106,7 +108,7 @@ class FlowEngineTest {
 
         // 执行
         AtomicInteger counter = new AtomicInteger(0);
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("jsonTask".equals(name)) {
                         return (TaskComponent) (ctx, node) -> counter.incrementAndGet();
@@ -184,7 +186,7 @@ class FlowEngineTest {
         });
 
         List<String> executed = new ArrayList<>();
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("subTask".equals(name)) {
                         return (TaskComponent) (ctx, node) -> executed.add("sub");
@@ -212,7 +214,7 @@ class FlowEngineTest {
         });
 
         AtomicInteger bCount = new AtomicInteger(0);
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("stopper".equals(name)) {
                         return (TaskComponent) (ctx, node) -> ctx.stop();
@@ -261,7 +263,7 @@ class FlowEngineTest {
             spec.addEnd("e");
         });
 
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("publisher".equals(name)) {
                         return (TaskComponent) (ctx, node) -> {
@@ -308,7 +310,7 @@ class FlowEngineTest {
             }
         };
 
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("taskA".equals(name)) {
                         return (TaskComponent) (ctx, node) -> events.add("task:exec:" + node.getId());
@@ -343,7 +345,7 @@ class FlowEngineTest {
 
         AtomicInteger taskRan = new AtomicInteger(0);
 
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("neverRun".equals(name)) {
                         return (TaskComponent) (ctx, node) -> taskRan.incrementAndGet();
@@ -432,7 +434,7 @@ class FlowEngineTest {
                 });
 
         var driver = new FlowDriverDefault(null, null);
-        var engine = new FlowEngineImpl(driver);
+        var engine = new FlowEngineImpl(Map.of("default", driver));
         for (var handler : container.extension(TaskComponent.class).all()) {
             engine.register(handler);
         }
@@ -544,8 +546,85 @@ class FlowEngineTest {
     }
 
     @Test
+    private static FlowEngine newEngine(FlowDriver driver) {
+        return FlowEngine.newInstance(Map.of("default", driver));
+    }
+
     void flowMarkerIndexExtractsAnnotations() {
         java.util.Set<String> markers = FlowMarkerIndex.extractFlowMarkers(EmailTask.class);
         assertEquals(java.util.Set.of("channel:email", "priority:high"), markers);
+    }
+
+    // ── driver resolution ──────────────────────────────────────
+
+    private static Graph graphWithDriver(String driver) {
+        return GraphSpec2.create("g", "", driver, s -> {
+            s.entry("s");
+            s.addStart("s").linkAdd("e");
+            s.addEnd("e");
+        }).create();
+    }
+
+    @Test
+    void driverDefaultWhenNull() {
+        FlowDriver driver = new FlowDriverDefault(null, null);
+        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        Graph g = GraphSpec2.create("g", s -> {
+            s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
+        }).create();
+        assertSame(driver, engine.getDriver(g));
+    }
+
+    @Test
+    void driverDefaultWhenEmpty() {
+        FlowDriver driver = new FlowDriverDefault(null, null);
+        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        Graph g = GraphSpec2.create("g", "", "", s -> {
+            s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
+        }).create();
+        assertSame(driver, engine.getDriver(g));
+    }
+
+    @Test
+    void driverDefaultWhenLiteralDefault() {
+        FlowDriver driver = new FlowDriverDefault(null, null);
+        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        Graph g = graphWithDriver("default");
+        assertSame(driver, engine.getDriver(g));
+    }
+
+    @Test
+    void driverCustomById() {
+        FlowDriver defaultDriver = new FlowDriverDefault(null, null);
+        FlowDriver customDriver = new FlowDriverDefault(null, null);
+        FlowEngine engine = FlowEngine.newInstance(Map.of(
+            "default", defaultDriver,
+            "custom", customDriver
+        ));
+        Graph g = graphWithDriver("custom");
+        assertSame(customDriver, engine.getDriver(g));
+    }
+
+    @Test
+    void driverUnknownThrows() {
+        FlowDriver driver = new FlowDriverDefault(null, null);
+        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        Graph g = graphWithDriver("nonexistent");
+        assertThrows(IllegalArgumentException.class, () -> engine.getDriver(g));
+    }
+
+    @Test
+    void driverMultipleCoexist() {
+        var a = new AtomicInteger(0);
+        FlowDriver driverA = FlowDriverDefault.builder()
+            .container(name -> { a.incrementAndGet(); return null; }).build();
+        var b = new AtomicInteger(0);
+        FlowDriver driverB = FlowDriverDefault.builder()
+            .container(name -> { b.incrementAndGet(); return null; }).build();
+
+        FlowEngine engine = FlowEngine.newInstance(Map.of("a", driverA, "b", driverB));
+
+        assertSame(driverA, engine.getDriver(graphWithDriver("a")));
+        assertSame(driverB, engine.getDriver(graphWithDriver("b")));
     }
 }

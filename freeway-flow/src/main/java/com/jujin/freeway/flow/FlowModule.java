@@ -7,13 +7,20 @@ import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 
+import java.util.Map;
+
 /**
  * Flow 引擎的 Freeway IoC 适配模块。
  *
  * <p>安装此模块后，容器内：
  * <ul>
- *   <li>{@link FlowEngine} 作为单例绑定，自动装配 {@link FlowDriverDefault}
- *       和 {@link IocContainerAdapter}</li>
+ *   <li>{@link FlowDriverDefault} 以 id {@code "default"} 贡献到
+ *       {@link FlowDriver} 扩展点</li>
+ *   <li>用户可通过 {@code binder.contribute(FlowDriver.class).add("custom", myDriver)}
+ *       或 {@code .add(MyDriver.class)}（自动调用 {@code container.create()} 注入）
+ *       注册自定义驱动器，图定义中 {@code "driver":"custom"} 即使用之</li>
+ *   <li>{@link FlowEngine} 作为单例绑定，driver map 由模块从
+ *       {@code Extension<FlowDriver>} 组装后传入，引擎本体不感知 IoC</li>
  *   <li>通过 {@code binder.contribute(TaskComponent.class)} 贡献的
  *       handler 自动注册到引擎的 {@link FlowMarkerIndex}，
  *       可通过 {@code !markerName} 引用</li>
@@ -26,13 +33,18 @@ public class FlowModule implements ModuleEx {
 
     @Override
     public void bind(Binder binder) {
+        var adapter = new IocContainerAdapter(null); // completed on engine creation
+
+        // Contribute the default driver
+        binder.contribute(FlowDriver.class)
+            .add("default", new FlowDriverDefault(adapter, null));
+
+        // Bind the engine — builds driver map from Extension, passes plain Map to engine
         binder.bind(FlowEngine.class)
                 .to(container -> {
-                    FlowEngine engine = FlowEngine.newInstance();
-                    engine.register(new FlowDriverDefault(
-                            new IocContainerAdapter(container),
-                            null));
-                    // Register contributed TaskComponents in the marker index
+                    adapter.fwContainer = container; // complete the adapter
+                    Map<String, FlowDriver> driverMap = container.extension(FlowDriver.class).asMap();
+                    FlowEngine engine = FlowEngine.newInstance(driverMap);
                     for (var handler : container.extension(TaskComponent.class).all()) {
                         engine.register(handler);
                     }
@@ -42,7 +54,7 @@ public class FlowModule implements ModuleEx {
     }
 
     static class IocContainerAdapter implements FlowContainer {
-        private final Container fwContainer;
+        volatile Container fwContainer;
 
         IocContainerAdapter(Container fwContainer) {
             this.fwContainer = fwContainer;

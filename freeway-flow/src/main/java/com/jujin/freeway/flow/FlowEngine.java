@@ -3,6 +3,7 @@ package com.jujin.freeway.flow;
 import com.jujin.freeway.flow.v2.GraphSpec2;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -20,24 +21,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 public interface FlowEngine {
 
     static FlowEngine newInstance() {
-        return new FlowEngineImpl(null);
+        return new FlowEngineImpl(Map.of("default", FlowDriverDefault.getInstance()));
     }
 
-    static FlowEngine newInstance(FlowDriver driver) {
-        return new FlowEngineImpl(driver);
+    static FlowEngine newInstance(Map<String, FlowDriver> drivers) {
+        return new FlowEngineImpl(drivers);
     }
 
     // --- driver ---
 
     FlowDriver getDriver(Graph graph);
 
-    void register(String name, FlowDriver driver);
-
-    default void register(FlowDriver driver) {
-        register(null, driver);
-    }
-
-    void unregister(String name);
+    // --- task component ---
 
     /**
      * Register a task handler in the marker index for {@code !markerName} resolution.
