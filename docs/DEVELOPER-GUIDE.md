@@ -1295,7 +1295,7 @@ engine.eval("orderFlow", FlowContext.of());
 | `FlowEventBus` | Node lifecycle events (enter, exit, error) |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~280 lines) |
 
-**Driver:** Graphs select their driver via the `"driver"` field (null/"" → `"default"`). `FlowModule` contributes `FlowDriverDefault` with id `"default"`. Register a custom driver by contributing to the same extension point:
+**Driver:** Graphs select their driver via the `"driver"` field (null/"" → `"default"`). `FlowModule` binds `FlowContainer` (for `@beanName` resolution), creates `FlowDriverDefault` with id `"default"`, and merges contributed drivers from `Extension<FlowDriver>.asMap()`. Register a custom driver by contributing to the same extension point:
 
 ```java
 binder.contribute(FlowDriver.class)

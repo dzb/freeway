@@ -910,7 +910,7 @@ Graph graph = Graph.fromText("""
 
 ### Driver（驱动器）
 
-图通过 `"driver"` 字段选择驱动器（null/"" → `"default"`）。`FlowModule` 以 id `"default"` 贡献 `FlowDriverDefault`。自定义驱动器通过相同的扩展点贡献：
+图通过 `"driver"` 字段选择驱动器（null/"" → `"default"`）。`FlowModule` 绑定 `FlowContainer` 后创建 `FlowDriverDefault` 作为默认驱动器，再合并从 `Extension<FlowDriver>.asMap()` 获取的自定义驱动器。自定义驱动器通过扩展点贡献：
 
 ```java
 // 自定义驱动器

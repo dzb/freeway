@@ -7,7 +7,7 @@
 - `FlowEngine` — `load()`, `eval()`, `register(TaskComponent)`, `markerIndex()`
 - `FlowDriver` — contributed extension point; graph `"driver"` field selects by id (null/"" → `"default"`)
 - `FlowDriverDefault` — built-in driver contributed by `FlowModule` as id `"default"`
-- `FlowModule` — IoC integration; contributes `FlowDriverDefault`, auto-registers contributed `TaskComponent` instances, builds driver map from `Extension<FlowDriver>.asMap()`
+- `FlowModule` — IoC integration; binds `FlowContainer`, creates `FlowDriverDefault` internally, merges custom drivers from `Extension<FlowDriver>.asMap()`, auto-registers contributed `TaskComponent` instances
 - `@FlowMarker("name")` — repeatable, marks a `TaskComponent` for `!markerName` resolution
 - `FlowMarkerIndex` — reverse index from marker names to handlers; `containsAll` matching, most markers wins
 
