@@ -5,7 +5,7 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.1] — 2026-07-03
 
 ### Added
 
@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **IoC lifecycle** — `findOwnerBinding` walks full interface hierarchy; module dedup uses `IdentityHashMap`; PROTOTYPE+advise routes through `createAdvised()`; thread scope cycle detection.
 - **Multipart** — boundary terminator validation, semicolons in quoted strings.
 - **SSE** — `\r` handling, field injection prevention.
+
+## [Unreleased]
 
 ## [1.2.2] — 2026-06-28
 
@@ -291,5 +293,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
 - Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
+[1.3.1]: https://github.com/dzb/freeway/compare/v1.2.2...v1.3.1
 [1.1.1]: https://github.com/dzb/freeway/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/dzb/freeway/compare/v1.0.0...v1.1.0
