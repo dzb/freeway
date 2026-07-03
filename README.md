@@ -79,7 +79,10 @@ public final class AppModule implements ModuleEx {
     }
 }
 
-AppRuntime runtime = FreewayApp.run(new String[] {"--freeway.profile=dev"}, new AppModule());
+AppRuntime runtime = FreewayApp.run(
+    new String[] {"--freeway.profile=dev"},
+    new AppModule()
+);
 Greeter greeter = runtime.get(Greeter.class);
 System.out.println(greeter.greet("World"));
 runtime.close();
@@ -102,9 +105,13 @@ public final class App implements ModuleEx {
         b.install(new HttpModule());
 
         b.contribute(Route.class)
-            .add(Route.get("/", ctx -> ctx.send(200, "Hello Freeway")))
+            .add(Route.get("/", ctx ->
+                ctx.send(200, "Hello Freeway")))
             .add(Route.get("/users/{id}", ctx ->
-                ctx.sendJson(200, Map.of("id", ctx.pathVar("id").orElse(""), "name", "Alice"))));
+                ctx.sendJson(200, Map.of(
+                    "id", ctx.pathVar("id").orElse(""),
+                    "name", "Alice"
+                ))));
     }
 
     public static void main(String[] args) {
@@ -161,7 +168,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
+- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.
@@ -169,12 +176,16 @@ Boot turns a composed container into an application runtime:
 
 **Lifecycle:** state machine with six states:
 
-```
-CREATED ──start()──▶ STARTING ──ok──▶ RUNNING ──close()──▶ STOPPING ──▶ STOPPED
-  │                    │                 │                    │
-  └── close() ───────────────────────────────────────────────┘
-                       │                 │                    │
-                       └── error ──▶ FAILED ◀── error ───────┘
+```mermaid
+stateDiagram-v2
+    CREATED --> STARTING : start()
+    CREATED --> STOPPING : close()
+    STARTING --> RUNNING : ok
+    STARTING --> FAILED : error
+    RUNNING --> STOPPING : close()
+    RUNNING --> FAILED : error
+    STOPPING --> STOPPED : ok
+    STOPPING --> FAILED : error
 ```
 
 `start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions.
