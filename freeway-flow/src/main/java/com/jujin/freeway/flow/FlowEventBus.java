@@ -1,5 +1,8 @@
 package com.jujin.freeway.flow;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,6 +24,8 @@ import java.util.function.Consumer;
  */
 public class FlowEventBus {
 
+    private static final Logger LOG = LoggerFactory.getLogger(FlowEventBus.class);
+
     private final Map<String, List<Subscription>> topicSubs = new ConcurrentHashMap<>();
 
     /**
@@ -34,7 +39,7 @@ public class FlowEventBus {
             try {
                 sub.handler.accept(event);
             } catch (Exception e) {
-                // 订阅者异常不影响其他订阅者
+                LOG.warn("Subscriber failed for topic '{}': {}", topic, e.toString());
             }
         }
     }

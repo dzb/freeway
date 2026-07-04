@@ -5,23 +5,26 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.1] — 2026-07-03
 
 ### Added
 
 - **`GraphSpec2`** (v2 graph definition) — canonical DAG format with explicit `entry`, separated `nodes` + `links`, and `normalize()` validation (link references, BFS reachability). Designed as the primary authoring surface going forward.
-- **`@Marker` service disambiguation** — `@Marker(Builtin.class)` on modules, `bind().marker(Fast.class)` on individual bindings, `container.get(type, marker)` for resolution. `MarkerIndex` with `containsAll` semantics. Extends Flow with `@FlowMarker` for `!markerName` task resolution, replacing the removed typed-task mechanism.
+- **`@Marker` service disambiguation** — `@Marker(Builtin.class)` on modules, `bind().marker(Fast.class)` on individual bindings, `container.get(type, marker)` for resolution. `MarkerIndex` with `containsAll` semantics. Extends Flow with `@FlowMarker` for `!markerName` task resolution.
 - **`H2ResponseBridge`** — decouples `FreewayHttpContext` response writing from `Http2Stream`, enabling mock testing of H2 response paths.
-- **JUL file logging** — `JULFileHandler` with time+size dual rotation, async GZIP compression; `JULFileFormatter` with ISO 8601 timestamps.
 - **`Contributions.add(Class)`** — auto-generates canonical id as `snake_name@package`, ordering via `before`/`after`.
 
 ### Changed
 
 - **Flow v1/v2 unified** — `GraphSpec.create()` internally converts to `GraphSpec2`, eliminating duplicate `Graph`/`Node`/`Link` constructors. Runtime always builds through `Graph(GraphSpec2)`. `Graph.fromText()` auto-detects format. Renamed `GraphBlueprint`→`GraphSpec2`.
-- **Typed-task removed** — task resolution consolidated under `!markerName` (marker intersection) and `@beanName` (container lookup). `FlowEngine.register(Class, TaskComponent)` / `typedTasks()` removed.
-- **`Container` API refined** — `instantiate()` renamed to `create()`; `inject()` removed from public API; `RouteIndex` no longer depends on `Container`.
-- **SLF4J bootstrap decoupled** — `JULEnhancer` activates JUL enhancements unconditionally; SLF4J bridge only installs when no external provider (Logback/Log4j) is detected. `LogBootstrap` simplified to `ensureProvider()`.
+- **Flow task resolution** — consolidated under `!markerName` (marker intersection via `@FlowMarker`) and `@beanName` (IoC container lookup). The `!marker` mechanism replaces class-name-based task matching with a more flexible, refactoring-safe alternative.
+- **`Container` API refined** — `instantiate()` renamed to `create()`; `RouteIndex` no longer depends on `Container`.
+- **`Module2` renamed to `ModuleEx`** — the module entry-point type renamed to avoid collision with `java.lang.Module`. This is a breaking change for early adopters: replace all `Module2` references with `ModuleEx`.
 - **`DbModule` config centralized** — config reading delegates to `SymbolSource` + `Coercer` pair, eliminating scattered `parseInt`/`parseBool` helpers.
+- **`Contributions.add(T)` fluent chaining** — `add(value)` now returns `Contributions<T>` instead of `void`, enabling chained calls. Note: `before()`/`after()` ordering is only available via `add(id, value)` or `add(Class)`, which return `Contribution`.
+- **Flow driver extension point** — `FlowDriver` is a contributed extension point for custom drivers. `FlowModule` binds `FlowContainer` and constructs `FlowDriverDefault` internally as id `"default"`; graphs select their driver via the `"driver"` field (null/"" → `"default"`). User-defined drivers are contributed via `binder.contribute(FlowDriver.class).add("custom", myDriver)` or `.add(MyDriver.class)` (auto-instantiated via `container.create()`). `Extension.asMap()` assembles named contributions into a plain `Map`, keeping `FlowEngineImpl` IoC-free. Null guard added to `FlowDriverDefault.getContainer()` for clear error on missing `FlowContainer`; `@beanName` resolution failures in `IocContainerAdapter` now logged via SLF4J.
+- **`GraphSpec2` inner classes extracted** — `NodeSpec2` and `LinkSpec2` are now top-level classes in the v2 package. `linkAdd()` stores pending links that `GraphSpec2` drains during `create()`/`toMap()`, removing the owner-coupled inner-class pattern. Null validation added to `linkAdd()` and `link()`. `LinkSpec2` gains `toString()`.
+- **Logging system completed** — JUL logging upgraded from console-only fallback to a full-featured system: `JULFileHandler` (time+size dual rotation, async GZIP compression), `JULFileFormatter` (ISO 8601 timestamps, recursive exception rendering), `LogBootstrap.ensureProvider()` (auto-detects Logback/Log4j, installs JUL only as fallback), `logging.properties` loaded from classpath, virtual-thread-aware thread name rendering. Fixes: SLF4J state constants (2=FAILED in 2.x), DCL race in provider install, GZIP resource leak, `Files.move` missing `REPLACE_EXISTING`.
 
 ### Fixed
 
@@ -30,14 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **WebSocket strict compliance** — UTF-8 validation on text frames, close code reserved range rejection, extended 8-byte length for >65535 payloads, fragmented message assembly.
 - **Coercion edge cases** — NaN/Infinity/BigInteger/BigDecimal guards, narrow overflow rejection, `@Min`/`@Max` BigDecimal comparison, `@Size` Map support, Optional/OptionalInt/OptionalLong/OptionalDouble coercion.
 - **IoC lifecycle** — `findOwnerBinding` walks full interface hierarchy; module dedup uses `IdentityHashMap`; PROTOTYPE+advise routes through `createAdvised()`; thread scope cycle detection.
-- **Logging** — SLF4J state constants corrected; GZIP on daemon thread; `formatOverride()` whitespace preserved.
 - **Multipart** — boundary terminator validation, semicolons in quoted strings.
 - **SSE** — `\r` handling, field injection prevention.
 
-### Removed
-
-- `FlowEngine.register(Class<?>, TaskComponent)` and `typedTasks()` — superseded by `@FlowMarker`.
-- `Container.inject()` public API.
+## [Unreleased]
 
 ## [1.2.2] — 2026-06-28
 
@@ -294,5 +293,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
 - Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
+[1.3.1]: https://github.com/dzb/freeway/compare/v1.2.2...v1.3.1
 [1.1.1]: https://github.com/dzb/freeway/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/dzb/freeway/compare/v1.0.0...v1.1.0

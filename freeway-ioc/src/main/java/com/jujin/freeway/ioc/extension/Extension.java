@@ -1,12 +1,14 @@
 package com.jujin.freeway.ioc.extension;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
 
@@ -76,6 +78,35 @@ public final class Extension<V> {
         Extension<V> ext = new Extension<>(entryType);
         for (V value : values) ext.add(null, value);
         return ext;
+    }
+
+    /**
+     * Returns the contribution with the given id, or empty.
+     *
+     * @param id the contribution id
+     * @return the contributed value, or empty if not found
+     */
+    public Optional<V> get(String id) {
+        String normalized = normalizeOptionalId(id);
+        if (normalized == null) return Optional.empty();
+        for (Entry e : entries) {
+            if (normalized.equals(e.id)) return Optional.of(e.value);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Returns contributions as an id→value map. Unnamed entries
+     * (id=null) are excluded. Maintains insertion order.
+     *
+     * @return an ordered map of named contributions
+     */
+    public Map<String, V> asMap() {
+        Map<String, V> result = new LinkedHashMap<>();
+        for (Entry e : entries) {
+            if (e.id != null) result.put(e.id, e.value);
+        }
+        return Collections.unmodifiableMap(result);
     }
 
     /**

@@ -3,11 +3,17 @@ package com.jujin.freeway.flow;
 import com.jujin.freeway.flow.v2.GraphSpec2;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class GraphSpec2Test {
+
+    private static FlowEngine newEngine(FlowDriver driver) {
+        return FlowEngine.newInstance(Map.of("default", driver));
+    }
 
     @Test
     void testBlueprintBuildsAndRuns() {
@@ -27,7 +33,7 @@ class GraphSpec2Test {
         assertEquals("start", graph.getStart().getId());
 
         AtomicInteger counter = new AtomicInteger();
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("counter".equals(name)) {
                         return (TaskComponent) (ctx, node) -> counter.incrementAndGet();
@@ -100,7 +106,7 @@ class GraphSpec2Test {
         assertEquals("default", graph.getDriver());
         assertEquals("demo", graph.getMeta("kind"));
         assertEquals("task", graph.getStart().getId());
-        assertEquals(NodeType.START, graph.getNode("task").getType());
+        assertEquals(NodeType.ACTIVITY, graph.getNode("task").getType());
         assertEquals("@counter", graph.getNode("task").getTask().getDescription());
         assertEquals(7, graph.getNode("task").getNextLinks().get(0).getPriority());
     }
@@ -182,7 +188,7 @@ class GraphSpec2Test {
         });
 
         AtomicInteger counter = new AtomicInteger();
-        FlowEngine engine = FlowEngine.newInstance(FlowDriverDefault.builder()
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("counter".equals(name)) {
                         return (TaskComponent) (ctx, node) -> counter.incrementAndGet();
@@ -195,5 +201,120 @@ class GraphSpec2Test {
         assertNotNull(engine.getGraph("engine_blueprint"));
         engine.eval("engine_blueprint", FlowContext.of());
         assertEquals(1, counter.get());
+    }
+
+    @Test
+    void testToMapDrainsPendingLinks() {
+        GraphSpec2 bp = GraphSpec2.create("map_test", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@counter").linkAdd("e");
+            spec.addEnd("e");
+        });
+        Map<String, Object> map = bp.toMap();
+        assertNotNull(map.get("id"));
+        @SuppressWarnings("unchecked")
+        var links = (List<?>) map.get("links");
+        assertEquals(2, links.size());
+    }
+
+    @Test
+    void testToMapPreservesUnreachableNodes() {
+        GraphSpec2 bp = GraphSpec2.create("round_trip", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").linkAdd("e");
+            spec.addActivity("x");
+            spec.addEnd("e");
+        });
+
+        Map<String, Object> map = bp.toMap();
+        @SuppressWarnings("unchecked")
+        var nodes = (List<Map<String, Object>>) map.get("nodes");
+
+        assertEquals(4, nodes.size());
+        assertTrue(nodes.stream().anyMatch(node -> "x".equals(node.get("id"))),
+            "unreachable nodes must still be serialized");
+    }
+
+    @Test
+    void testNodeMutationInvalidatesCompileOrder() {
+        GraphSpec2 bp = GraphSpec2.create("mutation_order", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").linkAdd("e");
+            spec.addActivity("x");
+            spec.addEnd("e");
+        });
+
+        bp.toMap(); // prime cached normalization/BFS order
+        bp.getNode("s").linkAdd("x");
+
+        Map<String, Object> map = bp.toMap();
+        @SuppressWarnings("unchecked")
+        var nodes = (List<Map<String, Object>>) map.get("nodes");
+
+        assertEquals(
+            List.of("s", "a", "x", "e"),
+            nodes.stream().map(node -> (String) node.get("id")).toList()
+        );
+    }
+
+    @Test
+    void testThenChainAddsMoreNodes() {
+        GraphSpec2 bp = GraphSpec2.create("then_test", spec ->
+            spec.entry("s").addStart("s")
+        ).then(spec -> {
+            spec.addActivity("a").task("@counter");
+            spec.link("s", "a");
+            spec.link("a", "e");
+            spec.addEnd("e");
+        });
+        Graph g = bp.create();
+        assertEquals(3, g.getNodes().size());
+    }
+
+    @Test
+    void testNullLinkAddThrows() {
+        GraphSpec2 bp = GraphSpec2.create("null_link", spec -> {});
+        var node = bp.addActivity("a");
+        assertThrows(NullPointerException.class, () -> node.linkAdd(null));
+    }
+
+    @Test
+    void testNullLinkThrows() {
+        GraphSpec2 bp = GraphSpec2.create("null_link", spec -> {});
+        assertThrows(NullPointerException.class, () -> bp.link("a", null));
+        assertThrows(NullPointerException.class, () -> bp.link(null, "b"));
+    }
+
+    @Test
+    void testCyclicGraphCreatesNormally() {
+        // a → b → a forms a cycle; both nodes are reachable from entry 'a'.
+        // c is unreachable — normalize() logs a warning, create() succeeds.
+        GraphSpec2 bp = GraphSpec2.create("cycle", spec -> {
+            spec.entry("a");
+            spec.addActivity("a").task("@t1").linkAdd("b");
+            spec.addActivity("b").task("@t2").linkAdd("a");
+            spec.addActivity("c").task("@t3").linkAdd("end");
+            spec.addEnd("end");
+        });
+        Graph g = bp.create();
+        assertEquals("cycle", g.getId());
+        assertNotNull(g.getNode("a"));
+        assertNotNull(g.getNode("b"));
+        assertNotNull(g.getNode("c")); // created even though unreachable
+        assertEquals(4, g.getNodes().size());
+    }
+
+    @Test
+    void testToJsonAfterPartialBuild() {
+        GraphSpec2 bp = GraphSpec2.create("partial", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@counter");
+        });
+        String json = bp.toJson();
+        assertTrue(json.contains("\"version\":2"));
     }
 }

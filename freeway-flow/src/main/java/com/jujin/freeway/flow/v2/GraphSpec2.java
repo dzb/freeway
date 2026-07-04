@@ -42,7 +42,6 @@ public class GraphSpec2 {
     private final Map<String, Object> meta = new LinkedHashMap<>();
     private final Map<String, NodeSpec2> nodes = new LinkedHashMap<>();
     private final List<LinkSpec2> links = new ArrayList<>();
-    private boolean normalized;
     private Set<String> bfsOrder;
 
     public GraphSpec2(String id) {
@@ -82,21 +81,29 @@ public class GraphSpec2 {
 
     public GraphSpec2 then(Consumer<GraphSpec2> definition) {
         definition.accept(this);
+        invalidate();
         return this;
+    }
+
+    void invalidate() {
+        this.bfsOrder = null;
     }
 
     public GraphSpec2 title(String title) {
         this.title = title;
+        invalidate();
         return this;
     }
 
     public GraphSpec2 driver(String driver) {
         this.driver = driver;
+        invalidate();
         return this;
     }
 
     public GraphSpec2 entry(String entry) {
         this.entry = entry;
+        invalidate();
         return this;
     }
 
@@ -104,6 +111,7 @@ public class GraphSpec2 {
         if (key != null && !key.isEmpty()) {
             meta.put(key, value);
         }
+        invalidate();
         return this;
     }
 
@@ -111,6 +119,7 @@ public class GraphSpec2 {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
+        invalidate();
         return this;
     }
 
@@ -121,14 +130,16 @@ public class GraphSpec2 {
         }
         NodeSpec2 node = new NodeSpec2(this, id, type);
         nodes.put(id, node);
+        invalidate();
         return node;
     }
 
     public NodeSpec2 addStart(String id) {
+        NodeSpec2 node = addNode(id, NodeType.START);
         if (entry == null) {
             entry = id;
         }
-        return addNode(id, NodeType.START);
+        return node;
     }
 
     public NodeSpec2 addEnd(String id) {
@@ -168,21 +179,34 @@ public class GraphSpec2 {
     }
 
     public LinkSpec2 link(String from, String to) {
-        LinkSpec2 link = new LinkSpec2(from, to);
+        Objects.requireNonNull(from, "from must not be null");
+        Objects.requireNonNull(to, "to must not be null");
+        LinkSpec2 link = new LinkSpec2(this, from, to);
         links.add(link);
-        NodeSpec2 source = nodes.get(from);
-        if (source != null) {
-            source.links.add(link);
-        }
+        invalidate();
         return link;
     }
 
     public Graph create() {
+        drainNodeLinks();
         normalize();
         return new Graph(this);
     }
 
+    /** Flushes pending links from all nodes into top-level links list. */
+    private void drainNodeLinks() {
+        for (NodeSpec2 node : nodes.values()) {
+            for (var pending : node.drainPendingLinks()) {
+                LinkSpec2 link = link(node.getId(), pending.to());
+                if (pending.configure() != null) {
+                    pending.configure().accept(link);
+                }
+            }
+        }
+    }
+
     public Map<String, Object> toMap() {
+        drainNodeLinks();
         validateEntry();
         GraphSpec2 normalized = normalize();
         Map<String, Object> domRoot = new LinkedHashMap<>();
@@ -424,9 +448,6 @@ public class GraphSpec2 {
      * subgraphs. Idempotent — subsequent calls are no-ops.</p>
      */
     private GraphSpec2 normalize() {
-        if (normalized) {
-            return this;
-        }
 
         // 1. Validate all link references resolve
         for (LinkSpec2 link : links) {
@@ -443,8 +464,8 @@ public class GraphSpec2 {
         }
 
         // 2. Validate entry — v2 requires exactly one entry point.
-        //    The entry node may be typed as ACTIVITY etc. in the blueprint
-        //    and only promoted to START at Graph construction time.
+        //    The entry node keeps its original type in the runtime graph;
+        //    execution starts from that node regardless of type.
         String resolvedEntry = resolveEntry();
         List<String> starts = nodes.values().stream()
             .filter(n -> n.type == NodeType.START || n.id.equals(resolvedEntry))
@@ -498,31 +519,21 @@ public class GraphSpec2 {
             }
         }
 
-        normalized = true;
         return this;
     }
 
     private List<NodeSpec2> nodesInCompileOrder() {
+        // Reachable first (BFS order), then unreachable (insertion order) — never
+        // silently drop nodes; toMap()/toJson() must round-trip faithfully.
+        List<NodeSpec2> ordered = new ArrayList<>(nodes.size());
         if (bfsOrder != null && !bfsOrder.isEmpty()) {
-            List<NodeSpec2> ordered = new ArrayList<>(bfsOrder.size());
             for (String nodeId : bfsOrder) {
                 NodeSpec2 node = nodes.get(nodeId);
-                if (node != null) {
-                    ordered.add(node);
-                }
+                if (node != null) ordered.add(node);
             }
-            return ordered;
         }
-        // Fallback: insertion order with entry first
-        List<NodeSpec2> ordered = new ArrayList<>(nodes.values());
-        String resolvedEntry = resolveEntry();
-        if (resolvedEntry != null) {
-            for (int i = 0; i < ordered.size(); i++) {
-                if (resolvedEntry.equals(ordered.get(i).id)) {
-                    ordered.add(0, ordered.remove(i));
-                    break;
-                }
-            }
+        for (NodeSpec2 node : nodes.values()) {
+            if (!ordered.contains(node)) ordered.add(node);
         }
         return ordered;
     }
@@ -558,193 +569,4 @@ public class GraphSpec2 {
         return new LinkedHashMap<>(obj.toMap());
     }
 
-    public static final class NodeSpec2 {
-        private final GraphSpec2 owner;
-        private final String id;
-        private final NodeType type;
-        private String title;
-        private final Map<String, Object> meta = new LinkedHashMap<>();
-        private final List<LinkSpec2> links = new ArrayList<>();
-        private String when;
-        private ConditionComponent whenComponent;
-        private String task;
-        private TaskComponent taskComponent;
-
-        private NodeSpec2(GraphSpec2 owner, String id, NodeType type) {
-            this.owner = owner;
-            this.id = id;
-            this.type = type == null ? NodeType.ACTIVITY : type;
-        }
-
-        public NodeSpec2 title(String title) {
-            this.title = title;
-            return this;
-        }
-
-        public NodeSpec2 meta(Map<String, Object> meta) {
-            if (meta != null && !meta.isEmpty()) {
-                this.meta.putAll(meta);
-            }
-            return this;
-        }
-
-        public NodeSpec2 metaPut(String key, Object value) {
-            if (key != null && !key.isEmpty()) {
-                this.meta.put(key, value);
-            }
-            return this;
-        }
-
-        public NodeSpec2 when(String when) {
-            this.when = when;
-            this.whenComponent = null;
-            return this;
-        }
-
-        public NodeSpec2 when(ConditionComponent whenComponent) {
-            this.whenComponent = whenComponent;
-            this.when = null;
-            return this;
-        }
-
-        public NodeSpec2 task(String task) {
-            this.task = task;
-            this.taskComponent = null;
-            return this;
-        }
-
-        public NodeSpec2 task(TaskComponent taskComponent) {
-            this.taskComponent = taskComponent;
-            this.task = null;
-            return this;
-        }
-
-        public NodeSpec2 linkAdd(String to) {
-            owner.link(id, to);
-            return this;
-        }
-
-        public NodeSpec2 linkAdd(String to, Consumer<LinkSpec2> configure) {
-            LinkSpec2 link = owner.link(id, to);
-            if (configure != null) {
-                configure.accept(link);
-            }
-            return this;
-        }
-
-        public String getId() {
-            return id;
-        }
-
-        public NodeType getType() {
-            return type;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public Map<String, Object> getMeta() {
-            return Collections.unmodifiableMap(meta);
-        }
-
-        public List<LinkSpec2> getLinks() {
-            return Collections.unmodifiableList(links);
-        }
-
-        public String getWhen() {
-            return when;
-        }
-
-        public ConditionComponent getWhenComponent() {
-            return whenComponent;
-        }
-
-        public String getTask() {
-            return task;
-        }
-
-        public TaskComponent getTaskComponent() {
-            return taskComponent;
-        }
-    }
-
-    public static final class LinkSpec2 {
-        private final String from;
-        private final String to;
-        private String title;
-        private final Map<String, Object> meta = new LinkedHashMap<>();
-        private String when;
-        private ConditionComponent whenComponent;
-        private int priority;
-
-        private LinkSpec2(String from, String to) {
-            this.from = from;
-            this.to = to;
-        }
-
-        public LinkSpec2 title(String title) {
-            this.title = title;
-            return this;
-        }
-
-        public LinkSpec2 meta(Map<String, Object> meta) {
-            if (meta != null && !meta.isEmpty()) {
-                this.meta.putAll(meta);
-            }
-            return this;
-        }
-
-        public LinkSpec2 metaPut(String key, Object value) {
-            if (key != null && !key.isEmpty()) {
-                this.meta.put(key, value);
-            }
-            return this;
-        }
-
-        public LinkSpec2 when(String when) {
-            this.when = when;
-            this.whenComponent = null;
-            return this;
-        }
-
-        public LinkSpec2 when(ConditionComponent whenComponent) {
-            this.whenComponent = whenComponent;
-            this.when = null;
-            return this;
-        }
-
-        public LinkSpec2 priority(int priority) {
-            this.priority = priority;
-            return this;
-        }
-
-        public String getFrom() {
-            return from;
-        }
-
-        public String getTo() {
-            return to;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public Map<String, Object> getMeta() {
-            return Collections.unmodifiableMap(meta);
-        }
-
-        public String getWhen() {
-            return when;
-        }
-
-        public ConditionComponent getWhenComponent() {
-            return whenComponent;
-        }
-
-        public int getPriority() {
-            return priority;
-        }
-    }
 }

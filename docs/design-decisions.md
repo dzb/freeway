@@ -209,6 +209,93 @@ RouteHandler resolve(Container container) {
 
 **Why:** `XDefault` keeps the interface name dominant in alphabetized lists and imports. The name reads as "the default X" rather than "a default of X." The alternative `DefaultX` was rejected because it submerges the interface name.
 
+---
+
+## Flow v1/v2 Unified Build Path
+
+**Decision:** `GraphSpec` (v1) internally converts to `GraphSpec2` via `toBlueprint()` during `create()`. Runtime builds only through `Graph(GraphSpec2)`. `Graph.fromText()` auto-detects format by checking `version==2` or top-level `nodes`+`links` structure.
+
+**Why:** Dual constructors on `Graph`/`Node`/`Link` were an ongoing source of drift. By making v2 the single runtime path, v1 JSON becomes a compatibility adapter — parse v1, convert to v2, build. Future v1 removal only requires deleting the adapter layer; runtime is unaffected.
+
+```
+v1 JSON → GraphSpec → toBlueprint() → GraphSpec2.normalize() → new Graph
+v2 JSON → GraphSpec2 → normalize() → new Graph
+```
+
+**See also:** `GraphSpec2.java`, `v1/GraphSpec.java` (`freeway-flow`)
+
+---
+
+## Flow Driver Extension Point
+
+**Decision:** `FlowDriver` is a contributed extension point (`binder.contribute(FlowDriver.class)`). `FlowModule` binds `FlowContainer` and creates `FlowDriverDefault` internally; custom drivers are contributed by id. Graphs select their driver via the `"driver"` field (null/"" → `"default"`). The engine receives a plain `Map<String, FlowDriver>`, assembled by `FlowModule` via `Extension.asMap()`.
+
+**Why:** This keeps `FlowEngineImpl` IoC-free while giving users the standard Freeway extension mechanism. The `Extension.asMap()` bridge converts named contributions into a plain map at the module boundary. Custom drivers can be registered via `add("custom", driver)` or `add(MyDriver.class)` (auto-instantiated via `container.create()`).
+
+**See also:** `FlowModule.java`, `FlowEngineImpl.java`, `Extension.asMap()` (`freeway-flow`, `freeway-ioc`)
+
+---
+
+## Entry Node Type Preservation
+
+**Decision:** `Graph.doAddNode()` does NOT force the entry node to `NodeType.START`. The entry node keeps its original type; execution starts from that node regardless.
+
+**Why:** The previous behavior (promote entry→START) silently dropped task/loop behavior when the entry pointed to a non-START node. With type preservation, `node_run()` dispatches to the entry's actual type — an entry ACTIVITY runs its task, an entry LOOP iterates. This was the root cause of `loopNodeViaV2` test returning 0 executions when 4 were expected.
+
+**See also:** `Graph.java:doAddNode()` (`freeway-flow`)
+
+---
+
+## GraphSpec2 Cache Invalidation via owner.touch()
+
+**Decision:** `NodeSpec2` and `LinkSpec2` carry a package-private `owner` reference back to `GraphSpec2`. Every setter calls `touch()` → `owner.invalidate()`, which clears the cached BFS order. Normalization runs fresh on each `create()`/`toMap()` call.
+
+**Why:** Extracting the inner classes broke the implicit cache invalidation (inner classes had direct access). The `touch()` pattern restores it without exposing internals — `owner` is package-private, `touch()` is private, `invalidate()` is package-private. This guarantees that `create()` after any mutation always sees the correct graph state.
+
+**See also:** `GraphSpec2.java`, `NodeSpec2.java`, `LinkSpec2.java` (`freeway-flow`)
+
+---
+
+## unreachable nodes in serialization
+
+**Decision:** `nodesInCompileOrder()` returns all nodes — BFS-reachable first, then unreachable appended. `toMap()` and `toJson()` serialize the complete node set.
+
+**Why:** The previous implementation only returned BFS-reachable nodes, causing unreachable nodes to silently disappear from JSON output. This broke round-trip fidelity — a graph loaded from JSON, modified, and re-serialized would lose nodes. The new approach preserves all nodes while keeping the compilation order optimized for reachable paths.
+
+**See also:** `GraphSpec2.java:nodesInCompileOrder()` (`freeway-flow`)
+
+---
+
+## Subgraph Driver Re-resolution
+
+**Decision:** `FlowExchanger.runGraph()` calls `engine.getDriver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
+
+**Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowExchanger` with the correctly resolved driver. The same `Temporary` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
+
+**See also:** `FlowExchanger.java:runGraph()` (`freeway-flow`)
+
+---
+
+## Exception Wrapping Strategy
+
+**Decision:** `FlowEngineImpl.task_exec()` and `condition_test()` propagate `IllegalStateException` and `IllegalArgumentException` unwrapped. All other non-`FlowException` throwables are wrapped in `FlowException`.
+
+**Why:** Configuration errors (missing FlowContainer, unknown driver id) carry clear diagnostic messages. Wrapping them in a generic `FlowException("The task handle failed: g / a")` buried the root cause. The stratification preserves diagnostic clarity for setup errors while still wrapping unexpected runtime failures with graph context.
+
+**See also:** `FlowEngineImpl.java:task_exec()`, `FlowDriverDefault.java:getContainer()` (`freeway-flow`)
+
+---
+
+## FlowOptions Defensive Copy
+
+**Decision:** `FlowEngineImpl.eval()` always creates a new `FlowOptions` instance. If a non-null `options` is passed, its interceptor list is copied to the new instance before adding engine-level interceptors.
+
+**Why:** `FlowOptions.DEFAULT` is a public static singleton. The previous code mutating it via `options.interceptorAdd(interceptorList)` caused interceptor accumulation across multiple `eval()` calls sharing the same `DEFAULT` instance.
+
+**See also:** `FlowEngineImpl.java:eval()` (`freeway-flow`)
+
+---
+
 ## Design Philosophy
 
 A summary of the project's architectural values as established in this session:

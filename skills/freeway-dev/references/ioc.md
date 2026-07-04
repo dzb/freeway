@@ -10,7 +10,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `ModuleEx` - module entry-point type: `bind(Binder)`
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
 - `Scoping` - `within(...)`
-- `Extension<V>` - ordered contributions for a given entry type
+- `Extension<V>` - ordered contributions for a given entry type; `all()` for ordered list, `get(id)` for lookup, `asMap()` for id→value map
 - `Contribution` - `before(String...)`, `after(String...)`
 - `EventBus` - `publish`, `publishAsync`, `subscribe`, `unsubscribe`
 - `RuntimeHook` - `start(Container)`, `stop(Container)`
@@ -67,6 +67,8 @@ Freeway uses two annotations with distinct semantics:
 
 ## Contribution Ordering
 
-- Named contributions can be ordered with `before()` / `after()`.
+- `add(value)` — unnamed, insertion order.
+- `add(id, value)` — named, supports `before()` / `after()` topological ordering.
+- `add(Class)` — auto-instantiates from the container, generates a canonical id as `snake_name@package`. Returns `Contribution` for `before`/`after` chaining.
 - Unknown ids are not ignored. They fail resolution when ordering is evaluated.
 - Cycles fail resolution.

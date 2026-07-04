@@ -314,6 +314,7 @@ public interface Contribution {
 
 - `add(value)` — 无名贡献，按插入顺序排列
 - `add(id, value)` — 命名贡献，通过 `before()` / `after()` 声明依赖
+- `add(Class)` — 从容器自动实例化，生成 canonical id（`snake_name@package`），返回的 `Contribution` 支持 `before/after`
 - 拓扑排序：容器在收集完所有模块的贡献后，按 before/after 关系执行拓扑排序
 - 重复 id 立即报错
 - 缺失的排序目标（before/after 引用不存在的 id）会报错
@@ -863,7 +864,7 @@ freeway.db.schema.auto=true          freeway.db.schema.auto=false
 
 ## Flow — 图编排引擎
 
-基于 solon-flow 移植的轻量级图编排引擎，7 种节点类型：`START`、`END`、`ACTIVITY`、`EXCLUSIVE`、`INCLUSIVE`、`PARALLEL`、`LOOP`。
+7 种节点类型的轻量级图编排引擎：`START`、`END`、`ACTIVITY`、`EXCLUSIVE`、`INCLUSIVE`、`PARALLEL`、`LOOP`。v1 格式兼容 solon-flow，v2（`GraphSpec2`，`nodes`+`links` 结构）是 Freeway 原生格式，两者共享统一运行时。
 
 ### 图定义 — v2 格式（推荐）
 
@@ -896,14 +897,29 @@ Graph graph = Graph.fromText("""
 
 ### 任务解析
 
-| 策略 | 语法 | 说明 |
-|------|------|------|
-| Marker | `!name` | `!channel:order !priority:high` — FlowMarkerIndex 交集匹配，最具体者胜出 |
-| Bean | `@bean` | `@orderService` — 容器按 binding id 查找 |
-| 子图 | `#graph` | `#approvalFlow` — 调用命名子图 |
-| 元数据 | `$meta` | `$app.name` — 从图 meta 取值 |
+节点通过前缀语法指定要执行的内容，不同前缀走不同解析逻辑：
+
+| 前缀 | 语法 | 解析为 |
+|------|------|--------|
+| `!` (marker) | `!channel:order !priority:high` | `TaskComponent`，按 `@FlowMarker` 交集匹配，标记最多者胜出 |
+| `@` (bean) | `@orderService` | `TaskComponent`，容器按 binding id 查找。条件节点也支持 `@`，解析为 `ConditionComponent` |
+| `#` (子图) | `#approvalFlow` | 调用已加载的命名子图，嵌套执行 |
+| `$` (meta) | `$app.name` | 读取图元数据注入执行上下文，不解析为组件 |
 
 `@FlowMarker("channel:order")` 注解在 `TaskComponent` 实现类上，自动注册到 marker index。
+
+### Driver（驱动器）
+
+图通过 `"driver"` 字段选择驱动器（null/"" → `"default"`）。`FlowModule` 绑定 `FlowContainer` 后创建 `FlowDriverDefault` 作为默认驱动器，再合并从 `Extension<FlowDriver>.asMap()` 获取的自定义驱动器。自定义驱动器通过扩展点贡献：
+
+```java
+// 自定义驱动器
+binder.contribute(FlowDriver.class)
+    .add("custom", new MyCustomDriver())
+    .add(MyOtherDriver.class);  // add(Class) → container.create() 自动注入
+```
+
+图定义中指定：`{ "driver": "custom", ... }`
 
 ### 执行
 
@@ -912,7 +928,7 @@ FlowEngine engine = container.get(FlowEngine.class);
 engine.load(graph);
 engine.eval("orderFlow", FlowContext.of());
 
-// 通过 IoC — FlowModule 自动注册贡献的 TaskComponent
+// 通过 IoC — FlowModule 自动注册贡献的 TaskComponent 和 FlowDriver
 FreewayApp.run(args, new AppModule(), new FlowModule());
 ```
 

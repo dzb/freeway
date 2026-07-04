@@ -326,10 +326,19 @@ public class Router {
 
 The entry type itself (e.g., `Route.class`) is the extension point identifier. Contributions are ordered via `add(id, value)` with `before/after`.
 
+The three `add` variants are deliberately distinct, not an API gap waiting for a unifying default:
+
+- `add(value)` — unnamed, insertion order. No id. Not in `asMap()`. Use when only iteration order matters (routing, filters) and id-based lookup is irrelevant.
+- `add(id, value)` — named, with explicit id. Supports `before/after`. Included in `asMap()`. Use when the consumer needs to resolve a specific entry by name (drivers, runtime hooks).
+- `add(Class)` — named, with auto-generated canonical id (`snake_name@package`). Supports `before/after`. Included in `asMap()`. Use when the class itself is the natural identifier.
+
+`Extension.asMap()` returns only named contributions — this is by design, not a limitation. Unnamed entries serve iteration order; named entries serve identity. Forcing auto-generated ids onto unnamed entries would blur this distinction without solving a real problem.
+
 Rules:
 - `add(value)` preserves insertion order.
 - `add(id, value)` enables `before/after` constraints for topological ordering.
-- Duplicate ids fail immediately. Missing order targets are ignored. Cycles fail at resolution time.
+- `add(Class)` auto-instantiates the contributed class from the container and generates a canonical id as `snake_name@package` (e.g. `email_sender@com.example.flow`). Supports `before`/`after` ordering on the returned `Contribution`.
+- Duplicate ids fail immediately. Unknown order targets throw `IllegalArgumentException` at resolution time. Cycles fail at resolution time.
 - Constructor parameters are auto-resolved; fields require `@Inject`.
 
 ### EventBus
@@ -1054,8 +1063,8 @@ Freeway provides two complementary mechanisms for database evolution: **Schema**
 `Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns.
 
 ```java
-// Standalone usage
-Schema.ensure(db, User.class, Post.class);
+/// Standalone usage
+Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
 // AutoMigrate strategy
 // Table missing    → CREATE TABLE IF NOT EXISTS
@@ -1208,7 +1217,7 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Flow (`freeway-flow`)
 
-Lightweight graph-based workflow engine ported from solon-flow. Zero external dependencies beyond commons + ioc. Supports two DAG definition formats with a unified runtime.
+Lightweight graph-based workflow engine. v1 format is a port of solon-flow for compatibility; v2 (`GraphSpec2` with `nodes`+`links`) is the native Freeway format. Zero external dependencies beyond commons + ioc. Supports two DAG definition formats with a unified runtime.
 
 **7 node types:**
 
@@ -1253,16 +1262,16 @@ Graph graph = Graph.fromText("""
 
 v1 `layout`-format JSON is still supported — `Graph.fromText()` auto-detects and internally converts to the unified runtime path. `GraphSpec2.normalize()` validates link references and BFS reachability at `create()` time.
 
-**Task resolution:**
+**Task resolution** — nodes use prefix syntax to specify what to execute. Each prefix has different resolution logic:
 
-| Strategy | Syntax | Example |
-|----------|--------|---------|
-| Marker | `!name` | `!channel:order !priority:high` — resolved by `FlowMarkerIndex` intersection |
-| Bean | `@bean` | `@orderService` — resolved from IoC container by binding id |
-| Sub-graph | `#graph` | `#approvalFlow` — calls a named sub-graph |
-| Metadata | `$meta` | `$app.name` — resolved from graph meta |
+| Prefix | Syntax | Resolves to |
+|--------|--------|-------------|
+| `!` (marker) | `!channel:order !priority:high` | `TaskComponent` by `@FlowMarker` intersection — most markers wins |
+| `@` (bean) | `@orderService` | `TaskComponent` from IoC by binding id. Also works for conditions — `@validator` resolves to `ConditionComponent` |
+| `#` (sub-graph) | `#approvalFlow` | Another loaded graph, executed as a nested subflow |
+| `$` (meta) | `$app.name` | Reads graph metadata into execution context — no component is resolved |
 
-`@FlowMarker("channel:order")` on a `TaskComponent` implementation auto-registers it in the marker index. When multiple handlers match, the one with the most markers wins.
+`@FlowMarker("channel:order")` on a `TaskComponent` implementation auto-registers it in the marker index.
 
 **Execution:**
 
@@ -1279,10 +1288,25 @@ engine.eval("orderFlow", FlowContext.of());
 | `Graph` | Immutable runtime model — built from v1 or v2 definitions |
 | `GraphSpec2` | v2 DAG authoring surface with explicit `entry` and separated `nodes`/`links` |
 | `FlowEngine` | Graph executor: load, eval, pause, resume |
+| `FlowDriver` | Pluggable task executor — contributed via `binder.contribute(FlowDriver.class)` |
+| `FlowDriverDefault` | Built-in driver: resolves `@beanName` via IoC container, `!markerName` via `FlowMarkerIndex` |
 | `@FlowMarker` | String-based marker annotation for `TaskComponent` resolution |
 | `FlowMarkerIndex` | Reverse index from marker names to handlers with `containsAll` matching |
 | `FlowEventBus` | Node lifecycle events (enter, exit, error) |
 | `ExprEvaluator` | Self-written recursive descent expression evaluator (~280 lines) |
+
+**Driver:** Graphs select their driver via the `"driver"` field (null/"" → `"default"`). `FlowModule` binds `FlowContainer` (for `@beanName` resolution), creates `FlowDriverDefault` with id `"default"`, and merges contributed drivers from `Extension<FlowDriver>.asMap()`. Register a custom driver by contributing to the same extension point:
+
+```java
+binder.contribute(FlowDriver.class)
+    .add("custom", new MyCustomDriver());
+
+// Or use add(Class) for auto-instantiation via container.create()
+binder.contribute(FlowDriver.class)
+    .add(MyCustomDriver.class);
+```
+
+Graph definition: `{ "driver": "custom", ... }`
 
 Supports PlantUML export, execution tracing with pause/resume, subgraph calls, and interceptor chains.
 

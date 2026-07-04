@@ -3,6 +3,7 @@ package com.jujin.freeway.http.engine;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
 import com.jujin.freeway.http.route.Route;
@@ -28,6 +29,7 @@ import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
@@ -340,6 +342,7 @@ class FreewayHttpEngineTest {
     @Test
     void headResponseReportsCorrectContentLength() throws Exception {
         WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/data", ctx ->
                 ctx.send(200, "Hello World")))
             .build();
@@ -367,6 +370,7 @@ class FreewayHttpEngineTest {
     @Test
     void propagatesClientXRequestId() throws Exception {
         WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/whoami", ctx ->
                 ctx.send(200, ctx.requestContext().correlationId())))
             .build();
@@ -389,6 +393,7 @@ class FreewayHttpEngineTest {
     @Test
     void propagatesLowercaseXRequestId() throws Exception {
         WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/whoami", ctx ->
                 ctx.send(200, ctx.requestContext().correlationId())))
             .build();

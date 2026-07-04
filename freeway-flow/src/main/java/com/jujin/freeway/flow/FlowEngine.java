@@ -3,6 +3,7 @@ package com.jujin.freeway.flow;
 import com.jujin.freeway.flow.v2.GraphSpec2;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -19,25 +20,32 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public interface FlowEngine {
 
+    /**
+     * Creates an engine with only the built-in default driver. Suitable for
+     * simple standalone use where {@code @beanName} task resolution is not
+     * needed (the default driver has no {@link FlowContainer}). For IoC-based
+     * applications, let {@code FlowModule} build the engine with a proper
+     * container and contributed drivers.
+     */
     static FlowEngine newInstance() {
-        return new FlowEngineImpl(null);
+        return new FlowEngineImpl(Map.of("default", FlowDriverDefault.getInstance()));
     }
 
-    static FlowEngine newInstance(FlowDriver driver) {
-        return new FlowEngineImpl(driver);
+    /**
+     * Creates an engine with the given driver map. Id {@code "default"}
+     * (or a contributed override) is used when a graph has no explicit
+     * driver or {@code driver=""}. {@code FlowModule} uses this entry
+     * point after assembling drivers from contributions.
+     */
+    static FlowEngine newInstance(Map<String, FlowDriver> drivers) {
+        return new FlowEngineImpl(drivers);
     }
 
     // --- driver ---
 
     FlowDriver getDriver(Graph graph);
 
-    void register(String name, FlowDriver driver);
-
-    default void register(FlowDriver driver) {
-        register(null, driver);
-    }
-
-    void unregister(String name);
+    // --- task component ---
 
     /**
      * Register a task handler in the marker index for {@code !markerName} resolution.

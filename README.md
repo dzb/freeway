@@ -1,8 +1,19 @@
 # Freeway 2
 
-**A modern, lightweight Java application framework for JDK 25+.**
+[![Maven Central](https://img.shields.io/maven-central/v/com.jujin8.freeway/freeway-parent?label=Maven%20Central&color=blue)](https://central.sonatype.com/artifact/com.jujin8.freeway/freeway-parent)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![JDK](https://img.shields.io/badge/JDK-25%2B-orange)](https://jdk.java.net/25/)
+[![Dependencies](https://img.shields.io/badge/deps-0-brightgreen)]()
 
-Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API only.
+**A modern, full-featured, high-performance Java application framework for JDK 25+. Zero dependencies — SLF4J API only.**
+
+Lightweight. **Compose-first.** Zero classpath scanning. IoC, HTTP, DB, Flow — everything in one coherent design.
+
+Freeway exists to show that a Java framework can be **concise without being shallow,
+complete without being bloated.** It is an exercise in **engineering aesthetics** —
+every API deliberate, every concept pulling its weight. In an ecosystem where
+ceremony is often mistaken for rigor, Freeway bets that **clarity, simplicity, and
+good taste** still have a place.
 
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
@@ -14,12 +25,12 @@ Compose-first. Zero classpath scanning. Zero external dependencies — SLF4J API
 | `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
 | `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
-Core modules have zero external dependencies. Third-party adapters live in
+Core modules have **zero external dependencies.** Third-party adapters live in
 **[freeway-ext](https://github.com/dzb/freeway-ext)**. Pick only what you need.
 
 ## Philosophy
 
-Freeway 2 is a compose-first framework. Instead of scanning the classpath,
+Freeway 2 is a **compose-first** framework. Instead of scanning the classpath,
 applications explicitly wire modules together:
 
 ```java
@@ -31,9 +42,14 @@ Freeway.create(
 
 This gives you:
 
-- Fast startup - no bytecode scanning.
-- Total control - every binding is explicit.
-- Small footprint - core modules have zero external dependencies (SLF4J API only).
+- **Fast startup** — no bytecode scanning, no classpath crawling.
+- **Total control** — every binding is explicit, **no magic.**
+- **Small footprint** — core modules have **zero external dependencies** (SLF4J API only).
+- **Aesthetic coherence** — APIs read like the intent they express, not the machinery underneath.
+
+Freeway rejects the idea that enterprise Java must be verbose, annotation-riddled,
+and XML-laden. It offers a quieter, more deliberate alternative: fewer concepts,
+sharper boundaries, and code that looks like it was written by someone who cares.
 
 ## Core Design
 
@@ -41,15 +57,15 @@ Freeway 2 keeps its core concepts intentionally small:
 
 - `Module` is the unit of application composition and responsibility partitioning. `ModuleEx` is the Java type name used by Freeway. Modules carry `@Marker` annotations to tag all their bindings (e.g. `@Marker(Builtin.class)`).
 - `Freeway` builds a container; `FreewayApp` builds a runtime.
-- `Container` is the service lookup boundary: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` injects without caching.
+- `Container` is the **service lookup boundary**: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` **injects without caching.**
 - `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
-- Service ids are plain strings: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is no public `ServiceId` type.
+- Service ids are **plain strings**: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is **no public `ServiceId` type.**
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
 - `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and optional file logging with time+size rotation and GZIP compression. File logging activates via `-Dfreeway.log.file=auto` or explicit path.
-- Framework-provided implementation names use the `XDefault` suffix form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
+- Framework-provided implementation names use the **`XDefault` suffix** form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/commons.md](docs/reference/commons.md) for deeper module notes.
 
@@ -63,7 +79,10 @@ public final class AppModule implements ModuleEx {
     }
 }
 
-AppRuntime runtime = FreewayApp.run(new String[] {"--freeway.profile=dev"}, new AppModule());
+AppRuntime runtime = FreewayApp.run(
+    new String[] {"--freeway.profile=dev"},
+    new AppModule()
+);
 Greeter greeter = runtime.get(Greeter.class);
 System.out.println(greeter.greet("World"));
 runtime.close();
@@ -86,9 +105,13 @@ public final class App implements ModuleEx {
         b.install(new HttpModule());
 
         b.contribute(Route.class)
-            .add(Route.get("/", ctx -> ctx.send(200, "Hello Freeway")))
+            .add(Route.get("/", ctx ->
+                ctx.send(200, "Hello Freeway")))
             .add(Route.get("/users/{id}", ctx ->
-                ctx.sendJson(200, Map.of("id", ctx.pathVar("id"), "name", "Alice"))));
+                ctx.sendJson(200, Map.of(
+                    "id", ctx.pathVar("id").orElse(""),
+                    "name", "Alice"
+                ))));
     }
 
     public static void main(String[] args) {
@@ -123,7 +146,7 @@ Shared utilities usable independently of the framework:
 - Coercion — `Coercer` type conversion with pluggable `CoerceRule` extensions.
 - Scoped primitives — `Defer` buffers commit-time side effects; `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
-- Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max` with `BeanValidator`.
+- Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max`/`@Valid` with `BeanValidator`.
 
 ### IoC (`freeway-ioc`)
 
@@ -139,26 +162,30 @@ The IoC module provides the framework core:
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
-- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. Transaction-aware: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
+- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
 
 ### Boot (`freeway-boot`)
 
 Boot turns a composed container into an application runtime:
 
-- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...).autoDiscovery(false).shutdownHook(false)` for full control.
+- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.
-- Config providers - properties files, JSON, environment, system properties, CLI args.
+- Config providers - properties files, JSON, environment variables, CLI args.
 
 **Lifecycle:** state machine with six states:
 
-```
-CREATED ──start()──▶ STARTING ──ok──▶ RUNNING ──close()──▶ STOPPING ──▶ STOPPED
-  │                    │                 │                    │
-  └── close() ───────────────────────────────────────────────┘
-                       │                 │                    │
-                       └── error ──▶ FAILED ◀── error ───────┘
+```mermaid
+stateDiagram-v2
+    CREATED --> STARTING : start()
+    CREATED --> STOPPING : close()
+    STARTING --> RUNNING : ok
+    STARTING --> FAILED : error
+    RUNNING --> STOPPING : close()
+    RUNNING --> FAILED : error
+    STOPPING --> STOPPED : ok
+    STOPPING --> FAILED : error
 ```
 
 `start()` runs RuntimeHooks in contribution order (supports `before/after` ordering). Any hook failure rolls back already-started hooks. `close()` stops hooks in reverse order, then closes the container. Failed stop produces `FAILED` state with suppressed exceptions.
@@ -178,7 +205,7 @@ The HTTP layer stays deliberately thin:
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
-- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow and Jetty adapters available in [freeway-ext](https://github.com/dzb/freeway-ext) for alternative deployment.
+- Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow and Jetty adapters available in [freeway-ext](https://github.com/dzb/freeway-ext). **Switch by adding a module** — the container selects via `.primary()`.
 
 Switch engines by adding the extension module — the container selects it via `.primary()`:
 
@@ -206,7 +233,41 @@ A compact JDBC data access layer with ORM:
 - **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation, format enforcement, and database-level concurrency lock. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
 - `DatabaseHub` - multi-datasource routing.
 
-Freeway-db is independently usable outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
+Freeway-db is **independently usable** outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
+
+### Flow (`freeway-flow`)
+
+A lightweight graph workflow engine for orchestrating multi-step processes:
+
+- **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. V2 format (`nodes`+`links`) is the native dialect; v1 (solon-flow compatible) is auto-converted on load.
+- **Task resolution** — nodes specify what to execute via a prefix syntax. `!markerName` matches a `TaskComponent` by `@FlowMarker` intersection (most specific wins). `@beanName` looks up a `TaskComponent` from the IoC container. `#graphId` calls another loaded graph as a subflow. `$metaKey` reads graph metadata into the execution context. Conditions also support `@beanName` (resolving to `ConditionComponent`) in addition to inline expressions.
+- **Validation at build time** — `normalize()` checks link references, entry node uniqueness, and reachability before execution.
+- **Tracing** — pause/resume execution with step-by-step trace records.
+- **PlantUML export** — visualize any graph definition as a PlantUML diagram.
+- **Interceptor chain** — wrap task execution with custom logic.
+- **Expression evaluator** — self-written recursive-descent parser (~280 lines) for condition evaluation on decision nodes.
+- **Zero extra dependencies** — built on commons + ioc only.
+
+Graphs load from JSON:
+
+```java
+Graph graph = Graph.fromText("""
+    {
+      "version": 2,
+      "nodes": [
+        {"id": "start", "type": "START", "next": "greet"},
+        {"id": "greet", "task": "!greeter", "next": "end"},
+        {"id": "end", "type": "END"}
+      ],
+      "links": [
+        {"from": "start", "to": "greet"},
+        {"from": "greet", "to": "end"}
+      ]
+    }
+    """);
+FlowEngine engine = container.get(FlowEngine.class);
+engine.execute(graph, new HashMap<>());
+```
 
 ### Extensions
 
