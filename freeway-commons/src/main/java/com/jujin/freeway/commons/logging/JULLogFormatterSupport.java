@@ -27,7 +27,8 @@ final class JULLogFormatterSupport {
         DateTimeFormatter timestamp,
         int levelWidth,
         boolean useColor,
-        boolean abbreviateLogger
+        boolean abbreviateLogger,
+        boolean showMDC
     ) {}
 
     private JULLogFormatterSupport() {}
@@ -55,6 +56,15 @@ final class JULLogFormatterSupport {
                 : "",
             color ? CYAN : null
         ));
+
+        // MDC context (if enabled and present)
+        if (cfg.showMDC()) {
+            String mdcContext = formatMDC(color);
+            if (!mdcContext.isEmpty()) {
+                out.append(' ');
+                out.append(mdcContext);
+            }
+        }
 
         out.append(' ');
         out.append(dim("- ", color));
@@ -126,6 +136,48 @@ final class JULLogFormatterSupport {
             }
             return sb.toString();
         });
+    }
+
+    /**
+     * Formats MDC context as [key=value key2=value2].
+     * Common keys (code, market, diagId) are displayed first.
+     */
+    private static String formatMDC(boolean useColor) {
+        try {
+            java.util.Map<String, String> context = org.slf4j.MDC.getCopyOfContextMap();
+            if (context == null || context.isEmpty()) return "";
+
+            StringBuilder sb = new StringBuilder();
+            sb.append('[');
+            boolean first = true;
+
+            // Priority keys first: code, market, diagId
+            for (String key : new String[]{"code", "market", "diagId"}) {
+                String value = context.get(key);
+                if (value != null) {
+                    if (!first) sb.append(' ');
+                    sb.append(key).append('=').append(value);
+                    first = false;
+                }
+            }
+
+            // Other keys (alphabetically)
+            java.util.List<String> otherKeys = context.keySet().stream()
+                .filter(k -> !"code".equals(k) && !"market".equals(k) && !"diagId".equals(k))
+                .sorted()
+                .toList();
+            for (String key : otherKeys) {
+                if (!first) sb.append(' ');
+                sb.append(key).append('=').append(context.get(key));
+                first = false;
+            }
+
+            sb.append(']');
+            return color(sb.toString(), useColor ? DIM : null);
+        } catch (Exception e) {
+            // MDC access failed, silently ignore
+            return "";
+        }
     }
 
     private static Set<Throwable> newVisitedSet() {
