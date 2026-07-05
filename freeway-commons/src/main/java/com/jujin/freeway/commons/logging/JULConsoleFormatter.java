@@ -16,11 +16,15 @@ public final class JULConsoleFormatter extends Formatter {
     private final JULLogFormatterSupport.FormatConfig config;
 
     public JULConsoleFormatter() {
-        this(detectColor());
+        this(detectColor(), detectShowMDC());
     }
 
     JULConsoleFormatter(boolean useColor) {
-        this.config = new JULLogFormatterSupport.FormatConfig(TIMESTAMP, 7, useColor, true);
+        this(useColor, detectShowMDC());
+    }
+
+    JULConsoleFormatter(boolean useColor, boolean showMDC) {
+        this.config = new JULLogFormatterSupport.FormatConfig(TIMESTAMP, 7, useColor, true, showMDC);
     }
 
     public boolean useColor() {
@@ -47,5 +51,17 @@ public final class JULConsoleFormatter extends Formatter {
             return false;
         }
         return System.console() != null;
+    }
+
+    /**
+     * Detects whether MDC context should be displayed.
+     * Controlled by -Dfreeway.log.mdc=true|false (default: true)
+     */
+    private static boolean detectShowMDC() {
+        String override = System.getProperty("freeway.log.mdc", System.getenv("FREEWAY_LOG_MDC"));
+        if (override != null) {
+            return !"false".equalsIgnoreCase(override) && !"0".equals(override);
+        }
+        return true; // enabled by default
     }
 }
