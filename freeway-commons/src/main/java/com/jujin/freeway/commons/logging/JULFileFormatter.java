@@ -14,7 +14,7 @@ public final class JULFileFormatter extends Formatter {
             new JULLogFormatterSupport.FormatConfig(
                     DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
                             .withZone(ZoneId.systemDefault()),
-                    8, false, false);
+                    8, false, false, true);
 
     @Override
     public String format(LogRecord record) {
