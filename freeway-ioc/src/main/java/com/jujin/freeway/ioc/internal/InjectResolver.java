@@ -22,6 +22,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -113,6 +114,13 @@ final class InjectResolver {
         }
         if (targetType == List.class) {
             return container.extension(entryType).all();
+        }
+        if (targetType == Map.class) {
+            Type[] typeArgs = pt.getActualTypeArguments();
+            if (typeArgs.length < 2 || !(typeArgs[1] instanceof Class<?> mapValueType)) {
+                return null;
+            }
+            return container.extension(mapValueType).asMap();
         }
         return null;
     }

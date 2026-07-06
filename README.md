@@ -159,7 +159,7 @@ The IoC module provides the framework core:
 - Injection - constructor and field injection with `@Inject`, `@Symbol`, `@Value`.
 - Value expansion - `${...}` placeholder expansion for external configuration.
 - Type coercion - scalar and domain-specific conversions through contributed coercion rules.
-- Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
+- Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `List<V>`, `Map<String, V>`, or `Extension<V>` injection.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
 - EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.

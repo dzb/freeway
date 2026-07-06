@@ -297,7 +297,7 @@ automatically converted to the target type (`int`, `boolean`, `Duration`, etc.).
 
 ### Extensions
 
-Extensions are contributed by entry type and injected as `List<V>` or `Extension<V>`:
+Extensions are contributed by entry type and injected as `List<V>`, `Map<String, V>`, or `Extension<V>`:
 
 ```java
 // Module: contribute
@@ -311,15 +311,23 @@ binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(OrderCreated.class, e -> notify(e)))
     .after("audit");
 
-// Injection — List<V> is the simplest; Extension<V> gives access to .all() on demand
+// Injection — List<V> is simplest; Map<String, V> gives id → value lookup;
+// Extension<V> provides the full API (.all(), .get(id), .asMap())
 @Inject List<Route> routes;
 routes.forEach(r -> ...);
 
-// Or via constructor
+// Or via constructor — pick the form that fits your use case
 public class Router {
     private final List<Route> routes;
     public Router(List<Route> routes) {
         this.routes = List.copyOf(routes);
+    }
+}
+
+public class NamedRouter {
+    private final Map<String, Route> routes;
+    public NamedRouter(Map<String, Route> routes) {
+        this.routes = Map.copyOf(routes);
     }
 }
 ```
@@ -333,6 +341,14 @@ The three `add` variants are deliberately distinct, not an API gap waiting for a
 - `add(Class)` — named, with auto-generated canonical id (`snake_name@package`). Supports `before/after`. Included in `asMap()`. Use when the class itself is the natural identifier.
 
 `Extension.asMap()` returns only named contributions — this is by design, not a limitation. Unnamed entries serve iteration order; named entries serve identity. Forcing auto-generated ids onto unnamed entries would blur this distinction without solving a real problem.
+
+The three injection forms map to different usage patterns:
+
+| Form | Content | Use when |
+|------|---------|----------|
+| `List<V>` | All contributions (unnamed + named), in order | Iterating in registration order (filters, routes) |
+| `Map<String, V>` | Only named contributions, keyed by id | Looking up a specific entry by name (drivers, hooks) |
+| `Extension<V>` | Full Extension API | Need both ordered iteration and id-based lookup |
 
 Rules:
 - `add(value)` preserves insertion order.

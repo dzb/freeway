@@ -59,7 +59,7 @@ Freeway uses two annotations with distinct semantics:
 ## Important Behavior
 
 - `@Inject`, `@Symbol`, `@Value` are the main injection annotations.
-- `List<Foo>` and `Extension<Foo>` can be resolved through injection.
+- `List<Foo>`, `Map<String, Foo>`, and `Extension<Foo>` can be resolved through injection.
 - Singleton services should not directly inject thread-scoped concrete classes.
 - AOP only applies to interface-to-class bindings.
 - Blank ids are rejected.
