@@ -287,9 +287,10 @@ Module.bind() 中
   │
   └─ Container 启动时收集合并
        │
-       ├─ @Inject List<Route> routes       ← 注入为有序列表
-       ├─ @Inject Extension<Route> ext     ← 注入完整 Extension 对象
-       └─ c.extension(Route.class).all()   ← 运行时按需获取
+       ├─ @Inject List<Route> routes              ← 注入为有序列表
+       ├─ @Inject Map<String, Route> routeMap     ← 注入为 id→值 映射
+       ├─ @Inject Extension<Route> ext            ← 注入完整 Extension 对象
+       └─ c.extension(Route.class).all()          ← 运行时按需获取
 ```
 
 ### 贡献 API
@@ -337,7 +338,11 @@ private List<RuntimeHook> hooks;     // 按排序后的顺序
 @Inject List<Route> routes;
 routes.forEach(r -> register(r));
 
-// 方式 2：构造器注入
+// 方式 2：Map<String, V> 注入（按 id 查找）
+@Inject Map<String, Route> routeMap;
+Route healthRoute = routeMap.get("health");
+
+// 方式 3：构造器注入（三种形式均可）
 public class Router {
     private final List<Route> routes;
     public Router(List<Route> routes) {
@@ -345,12 +350,19 @@ public class Router {
     }
 }
 
-// 方式 3：Extension<V> 注入（延迟按需获取）
+public class NamedRouter {
+    private final Map<String, Route> routes;
+    public NamedRouter(Map<String, Route> routes) {
+        this.routes = Map.copyOf(routes);
+    }
+}
+
+// 方式 4：Extension<V> 注入（延迟按需获取）
 @Inject Extension<Route> routeExtension;
 // 在需要时才获取
 List<Route> all = routeExtension.all();
 
-// 方式 4：Container.extension() 运行时获取
+// 方式 5：Container.extension() 运行时获取
 Extension<Route> ext = c.extension(Route.class);
 List<Route> routes = ext.all();
 ```

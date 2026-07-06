@@ -668,6 +668,36 @@ class FreewayTest {
         assertEquals(List.of("core", "web"), catalog.featureNames());
     }
 
+    @Test
+    void mapInjectionFromExtensionParam() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add("core", new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add("web", new AppFeature("web"))
+        );
+        MapFeatureCatalog catalog = container.create(MapFeatureCatalog.class);
+        assertEquals(Map.of("core", new AppFeature("core"), "web", new AppFeature("web")), catalog.features());
+    }
+
+    @Test
+    void mapInjectionFromExtensionField() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add("core", new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add("web", new AppFeature("web"))
+        );
+        FieldMapFeatureCatalog catalog = container.create(FieldMapFeatureCatalog.class);
+        assertEquals(Map.of("core", new AppFeature("core"), "web", new AppFeature("web")), catalog.features());
+    }
+
+    @Test
+    void mapInjectionExcludesUnnamedContributions() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("unnamed")),
+            binder -> binder.contribute(AppFeature.class).add("named", new AppFeature("named"))
+        );
+        MapFeatureCatalog catalog = container.create(MapFeatureCatalog.class);
+        assertEquals(Map.of("named", new AppFeature("named")), catalog.features());
+    }
+
     interface Greeter {
         String greet();
     }
@@ -1483,6 +1513,29 @@ class FreewayTest {
 
         List<String> featureNames() {
             return features.stream().map(AppFeature::name).toList();
+        }
+    }
+
+    // ---- Map<String, Foo> contribution consumers ----
+
+    public static final class MapFeatureCatalog {
+        private final Map<String, AppFeature> features;
+
+        public MapFeatureCatalog(Map<String, AppFeature> features) {
+            this.features = Map.copyOf(features);
+        }
+
+        Map<String, AppFeature> features() {
+            return features;
+        }
+    }
+
+    public static final class FieldMapFeatureCatalog {
+        @Inject
+        private Map<String, AppFeature> features;
+
+        Map<String, AppFeature> features() {
+            return features;
         }
     }
 
