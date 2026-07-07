@@ -1,16 +1,18 @@
 package com.jujin.freeway.commons.logging;
 
-import org.slf4j.spi.MDCAdapter;
-
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.spi.MDCAdapter;
 
 public final class JULMDCAdapter implements MDCAdapter {
-    private final ThreadLocal<Map<String, String>> context = new ThreadLocal<>();
-    private final ThreadLocal<Map<String, Deque<String>>> dequeMap = new ThreadLocal<>();
+
+    private final ThreadLocal<Map<String, String>> context =
+        new ThreadLocal<>();
+    private final ThreadLocal<Map<String, Deque<String>>> dequeMap =
+        new ThreadLocal<>();
 
     @Override
     public void put(String key, String val) {
@@ -55,7 +57,9 @@ public final class JULMDCAdapter implements MDCAdapter {
 
     @Override
     public void pushByKey(String key, String value) {
-        deques().computeIfAbsent(key, ignored -> new ArrayDeque<>()).push(value);
+        deques()
+            .computeIfAbsent(key, ignored -> new ArrayDeque<>())
+            .push(value);
     }
 
     @Override

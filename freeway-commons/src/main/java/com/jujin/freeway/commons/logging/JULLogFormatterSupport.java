@@ -33,29 +33,50 @@ final class JULLogFormatterSupport {
 
     private JULLogFormatterSupport() {}
 
-    static String format(Formatter formatter, LogRecord record, FormatConfig cfg) {
-        int msgLen = record.getMessage() != null ? record.getMessage().length() : 0;
+    static String format(
+        Formatter formatter,
+        LogRecord record,
+        FormatConfig cfg
+    ) {
+        int msgLen =
+            record.getMessage() != null ? record.getMessage().length() : 0;
         String loggerName = record.getLoggerName();
         int loggerLen = loggerName != null ? loggerName.length() : 0;
         StringBuilder out = new StringBuilder(80 + msgLen + loggerLen);
 
         boolean color = cfg.useColor();
-        out.append(dim(cfg.timestamp().format(Instant.ofEpochMilli(record.getMillis())), color));
+        out.append(
+            dim(
+                cfg
+                    .timestamp()
+                    .format(Instant.ofEpochMilli(record.getMillis())),
+                color
+            )
+        );
 
         out.append(' ');
-        out.append(colorLevel(padRight(record.getLevel().getName(), cfg.levelWidth()),
-                record.getLevel(), color));
+        out.append(
+            colorLevel(
+                padRight(record.getLevel().getName(), cfg.levelWidth()),
+                record.getLevel(),
+                color
+            )
+        );
 
         out.append(' ');
         out.append(dim(LoggingSupport.formatThread(), color));
 
         out.append(' ');
-        out.append(color(
-            loggerName != null
-                ? (cfg.abbreviateLogger() ? abbreviate(loggerName) : loggerName)
-                : "",
-            color ? CYAN : null
-        ));
+        out.append(
+            color(
+                loggerName != null
+                    ? cfg.abbreviateLogger()
+                        ? abbreviate(loggerName)
+                        : loggerName
+                    : "",
+                color ? CYAN : null
+            )
+        );
 
         // MDC context (if enabled and present)
         if (cfg.showMDC()) {
@@ -83,7 +104,11 @@ final class JULLogFormatterSupport {
         return LoggingSupport.padRight(text, width);
     }
 
-    private static String colorLevel(String text, java.util.logging.Level level, boolean useColor) {
+    private static String colorLevel(
+        String text,
+        java.util.logging.Level level,
+        boolean useColor
+    ) {
         if (!useColor) {
             return text;
         }
@@ -144,7 +169,8 @@ final class JULLogFormatterSupport {
      */
     private static String formatMDC(boolean useColor) {
         try {
-            java.util.Map<String, String> context = org.slf4j.MDC.getCopyOfContextMap();
+            java.util.Map<String, String> context =
+                org.slf4j.MDC.getCopyOfContextMap();
             if (context == null || context.isEmpty()) return "";
 
             StringBuilder sb = new StringBuilder();
@@ -152,7 +178,7 @@ final class JULLogFormatterSupport {
             boolean first = true;
 
             // Priority keys first: code, market, diagId
-            for (String key : new String[]{"code", "market", "diagId"}) {
+            for (String key : new String[] { "code", "market", "diagId" }) {
                 String value = context.get(key);
                 if (value != null) {
                     if (!first) sb.append(' ');
@@ -162,8 +188,15 @@ final class JULLogFormatterSupport {
             }
 
             // Other keys (alphabetically)
-            java.util.List<String> otherKeys = context.keySet().stream()
-                .filter(k -> !"code".equals(k) && !"market".equals(k) && !"diagId".equals(k))
+            java.util.List<String> otherKeys = context
+                .keySet()
+                .stream()
+                .filter(
+                    k ->
+                        !"code".equals(k) &&
+                        !"market".equals(k) &&
+                        !"diagId".equals(k)
+                )
                 .sorted()
                 .toList();
             for (String key : otherKeys) {
@@ -201,11 +234,20 @@ final class JULLogFormatterSupport {
                 root = false;
             } else {
                 if (!visited.add(current)) {
-                    out.append(color("  [CIRCULAR: " + current.getClass().getSimpleName() + "]", useColor ? RED : null));
+                    out.append(
+                        color(
+                            "  [CIRCULAR: " +
+                                current.getClass().getSimpleName() +
+                                "]",
+                            useColor ? RED : null
+                        )
+                    );
                     break;
                 }
                 out.append(color("  Caused by: ", useColor ? RED : null));
-                out.append(color(String.valueOf(current), useColor ? RED : null));
+                out.append(
+                    color(String.valueOf(current), useColor ? RED : null)
+                );
             }
             out.append('\n');
             for (StackTraceElement frame : current.getStackTrace()) {
@@ -213,7 +255,14 @@ final class JULLogFormatterSupport {
                 out.append('\n');
             }
             for (Throwable suppressed : current.getSuppressed()) {
-                appendSuppressed(out, suppressed, useColor, "    Suppressed: ", "          at ", visited);
+                appendSuppressed(
+                    out,
+                    suppressed,
+                    useColor,
+                    "    Suppressed: ",
+                    "          at ",
+                    visited
+                );
             }
             current = current.getCause();
         }
@@ -228,7 +277,14 @@ final class JULLogFormatterSupport {
         Set<Throwable> visited
     ) {
         if (!visited.add(thrown)) {
-            out.append(color(headerPrefix + thrown.getClass().getSimpleName() + " [CIRCULAR]", useColor ? RED : null));
+            out.append(
+                color(
+                    headerPrefix +
+                        thrown.getClass().getSimpleName() +
+                        " [CIRCULAR]",
+                    useColor ? RED : null
+                )
+            );
             out.append('\n');
             return;
         }
@@ -238,13 +294,29 @@ final class JULLogFormatterSupport {
             out.append(color(framePrefix + frame, useColor ? DIM : null));
             out.append('\n');
         }
-        for (Throwable cause = thrown.getCause(); cause != null; cause = cause.getCause()) {
+        for (
+            Throwable cause = thrown.getCause();
+            cause != null;
+            cause = cause.getCause()
+        ) {
             if (!visited.add(cause)) {
-                out.append(color(headerPrefix.replace("Suppressed:", "Caused by:") + cause.getClass().getSimpleName() + " [CIRCULAR]", useColor ? RED : null));
+                out.append(
+                    color(
+                        headerPrefix.replace("Suppressed:", "Caused by:") +
+                            cause.getClass().getSimpleName() +
+                            " [CIRCULAR]",
+                        useColor ? RED : null
+                    )
+                );
                 out.append('\n');
                 break;
             }
-            out.append(color(headerPrefix.replace("Suppressed:", "Caused by:") + cause, useColor ? RED : null));
+            out.append(
+                color(
+                    headerPrefix.replace("Suppressed:", "Caused by:") + cause,
+                    useColor ? RED : null
+                )
+            );
             out.append('\n');
             for (StackTraceElement frame : cause.getStackTrace()) {
                 out.append(color(framePrefix + frame, useColor ? DIM : null));
@@ -252,7 +324,14 @@ final class JULLogFormatterSupport {
             }
         }
         for (Throwable nested : thrown.getSuppressed()) {
-            appendSuppressed(out, nested, useColor, headerPrefix + "  ", framePrefix + "  ", visited);
+            appendSuppressed(
+                out,
+                nested,
+                useColor,
+                headerPrefix + "  ",
+                framePrefix + "  ",
+                visited
+            );
         }
     }
 }

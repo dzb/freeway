@@ -11,7 +11,9 @@ import java.util.logging.LogRecord;
 public final class JULConsoleFormatter extends Formatter {
 
     private static final DateTimeFormatter TIMESTAMP =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(
+            ZoneId.systemDefault()
+        );
 
     private final JULLogFormatterSupport.FormatConfig config;
 
@@ -24,7 +26,13 @@ public final class JULConsoleFormatter extends Formatter {
     }
 
     JULConsoleFormatter(boolean useColor, boolean showMDC) {
-        this.config = new JULLogFormatterSupport.FormatConfig(TIMESTAMP, 7, useColor, true, showMDC);
+        this.config = new JULLogFormatterSupport.FormatConfig(
+            TIMESTAMP,
+            7,
+            useColor,
+            true,
+            showMDC
+        );
     }
 
     public boolean useColor() {
@@ -40,10 +48,16 @@ public final class JULConsoleFormatter extends Formatter {
      * Detects whether ANSI colors should be emitted.
      */
     private static boolean detectColor() {
-        if (System.getenv().containsKey("NO_COLOR") || System.getProperty("NO_COLOR") != null) {
+        if (
+            System.getenv().containsKey("NO_COLOR") ||
+            System.getProperty("NO_COLOR") != null
+        ) {
             return false;
         }
-        String override = System.getProperty("freeway.log.color", System.getenv("FREEWAY_LOG_COLOR"));
+        String override = System.getProperty(
+            "freeway.log.color",
+            System.getenv("FREEWAY_LOG_COLOR")
+        );
         if ("always".equalsIgnoreCase(override)) {
             return true;
         }
@@ -58,7 +72,10 @@ public final class JULConsoleFormatter extends Formatter {
      * Controlled by -Dfreeway.log.mdc=true|false (default: true)
      */
     private static boolean detectShowMDC() {
-        String override = System.getProperty("freeway.log.mdc", System.getenv("FREEWAY_LOG_MDC"));
+        String override = System.getProperty(
+            "freeway.log.mdc",
+            System.getenv("FREEWAY_LOG_MDC")
+        );
         if (override != null) {
             return !"false".equalsIgnoreCase(override) && !"0".equals(override);
         }

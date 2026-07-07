@@ -14,6 +14,7 @@ import java.util.Objects;
  * or the lightweight {@link JsonObject}/{@link JsonArray} wrappers.
  */
 final class JsonParser {
+
     /**
      * Maximum nesting depth for JSON objects and arrays.
      * Prevents stack overflow attacks from deeply nested structures.
@@ -44,8 +45,7 @@ final class JsonParser {
      */
     private static final int MAX_OBJECT_SIZE = 1_000_000;
 
-    private JsonParser() {
-    }
+    private JsonParser() {}
 
     static Object parse(String text) {
         return new Parser(Objects.requireNonNull(text, "text")).parse();
@@ -82,7 +82,11 @@ final class JsonParser {
     private static String readText(InputStream input) {
         Objects.requireNonNull(input, "input");
         try (input) {
-            byte[] data = ByteStreams.readBytes(input, MAX_INPUT_BYTES, "JSON input");
+            byte[] data = ByteStreams.readBytes(
+                input,
+                MAX_INPUT_BYTES,
+                "JSON input"
+            );
             return new String(data, StandardCharsets.UTF_8);
         } catch (IOException ex) {
             throw new IllegalArgumentException("Unable to read JSON input", ex);
@@ -90,6 +94,7 @@ final class JsonParser {
     }
 
     private static final class Parser {
+
         private final String text;
         private int index;
 
@@ -110,7 +115,9 @@ final class JsonParser {
 
         private Object parseValue(int depth) {
             if (depth > MAX_DEPTH) {
-                throw error("JSON nesting too deep (max " + MAX_DEPTH + " levels)");
+                throw error(
+                    "JSON nesting too deep (max " + MAX_DEPTH + " levels)"
+                );
             }
             skipWhitespace();
             if (eof()) {
@@ -135,7 +142,11 @@ final class JsonParser {
             }
             while (true) {
                 if (result.size() >= MAX_OBJECT_SIZE) {
-                    throw error("JSON object too large (max " + MAX_OBJECT_SIZE + " entries)");
+                    throw error(
+                        "JSON object too large (max " +
+                            MAX_OBJECT_SIZE +
+                            " entries)"
+                    );
                 }
                 skipWhitespace();
                 String key = parseString();
@@ -159,7 +170,11 @@ final class JsonParser {
             }
             while (true) {
                 if (result.size() >= MAX_ARRAY_SIZE) {
-                    throw error("JSON array too large (max " + MAX_ARRAY_SIZE + " elements)");
+                    throw error(
+                        "JSON array too large (max " +
+                            MAX_ARRAY_SIZE +
+                            " elements)"
+                    );
                 }
                 result.add(parseValue(depth));
                 skipWhitespace();
@@ -184,7 +199,11 @@ final class JsonParser {
                     }
                     out.append(c);
                     if (out.length() > MAX_STRING_LENGTH) {
-                        throw error("JSON string too long (max " + MAX_STRING_LENGTH + " characters)");
+                        throw error(
+                            "JSON string too long (max " +
+                                MAX_STRING_LENGTH +
+                                " characters)"
+                        );
                     }
                     continue;
                 }
@@ -203,7 +222,11 @@ final class JsonParser {
                     default -> throw error("Unsupported escape sequence");
                 }
                 if (out.length() > MAX_STRING_LENGTH) {
-                    throw error("JSON string too long (max " + MAX_STRING_LENGTH + " characters)");
+                    throw error(
+                        "JSON string too long (max " +
+                            MAX_STRING_LENGTH +
+                            " characters)"
+                    );
                 }
             }
             throw error("Unterminated string");
@@ -339,6 +362,5 @@ final class JsonParser {
         private IllegalArgumentException error(String message) {
             return new IllegalArgumentException(message + " at index " + index);
         }
-
     }
 }

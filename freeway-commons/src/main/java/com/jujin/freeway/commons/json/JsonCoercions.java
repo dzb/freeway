@@ -3,20 +3,19 @@ package com.jujin.freeway.commons.json;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
-
+import com.jujin.freeway.commons.util.Types;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.*;
 
 final class JsonCoercions {
+
     private static final CoercerDefault DEFAULT_COERCER = new CoercerDefault();
 
-    private JsonCoercions() {
-    }
+    private JsonCoercions() {}
 
     @SuppressWarnings("unchecked")
     static <T> T coerce(Object value, Class<T> targetType) {
@@ -45,13 +44,23 @@ final class JsonCoercions {
         return JsonNormalizer.deepCopy(value);
     }
 
-    private static Object coerce(Object value, Type type, Coercer coercer, TypeContext context) {
+    private static Object coerce(
+        Object value,
+        Type type,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Type resolvedType = context.resolve(type);
         if (resolvedType instanceof Class<?> targetType) {
             return coerce(value, targetType, coercer, context);
         }
         if (resolvedType instanceof ParameterizedType parameterizedType) {
-            return coerceParameterized(value, parameterizedType, coercer, context.child(parameterizedType));
+            return coerceParameterized(
+                value,
+                parameterizedType,
+                coercer,
+                context.child(parameterizedType)
+            );
         }
         if (resolvedType instanceof GenericArrayType arrayType) {
             return coerceGenericArray(value, arrayType, coercer, context);
@@ -64,10 +73,17 @@ final class JsonCoercions {
             Type fallback = firstBound(wildcard);
             return coerce(value, fallback, coercer, context);
         }
-        throw new IllegalArgumentException("Unsupported JSON target type: " + resolvedType.getTypeName());
+        throw new IllegalArgumentException(
+            "Unsupported JSON target type: " + resolvedType.getTypeName()
+        );
     }
 
-    private static Object coerce(Object value, Class<?> targetType, Coercer coercer, TypeContext context) {
+    private static Object coerce(
+        Object value,
+        Class<?> targetType,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Object plain = normalize(value);
         if (plain == null) {
             return CoercerDefault.defaultValue(targetType);
@@ -75,48 +91,112 @@ final class JsonCoercions {
         if (targetType.isInstance(plain)) {
             return targetType.cast(plain);
         }
-        if (plain instanceof JsonObject object && Map.class.isAssignableFrom(targetType)) {
-            return coerceToMap(object, targetType, String.class, Object.class, coercer, context);
+        if (
+            plain instanceof JsonObject object &&
+            Map.class.isAssignableFrom(targetType)
+        ) {
+            return coerceToMap(
+                object,
+                targetType,
+                String.class,
+                Object.class,
+                coercer,
+                context
+            );
         }
-        if (plain instanceof JsonArray array && Collection.class.isAssignableFrom(targetType)) {
-            return coerceToCollection(array, targetType, Object.class, coercer, context);
+        if (
+            plain instanceof JsonArray array &&
+            Collection.class.isAssignableFrom(targetType)
+        ) {
+            return coerceToCollection(
+                array,
+                targetType,
+                Object.class,
+                coercer,
+                context
+            );
         }
-        if (plain instanceof JsonObject object && !targetType.isArray() && !targetType.isEnum()) {
+        if (
+            plain instanceof JsonObject object &&
+            !targetType.isArray() &&
+            !targetType.isEnum()
+        ) {
             BeanPlan plan = BeanIntrospector.plan(targetType);
             return plan.record()
                 ? constructRecord(object, plan, coercer, context)
                 : constructBean(object, plan, coercer, context);
         }
         if (plain instanceof JsonArray array && targetType.isArray()) {
-            return coerceToArray(array, targetType.getComponentType(), coercer, context);
+            return coerceToArray(
+                array,
+                targetType.getComponentType(),
+                coercer,
+                context
+            );
         }
         return coercer.coerce(plain, targetType);
     }
 
-    private static Object coerceParameterized(Object value, ParameterizedType type, Coercer coercer, TypeContext context) {
+    private static Object coerceParameterized(
+        Object value,
+        ParameterizedType type,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Class<?> rawType = Types.rawClass(type.getRawType());
         Object plain = normalize(value);
         if (plain == null) {
             return CoercerDefault.defaultValue(rawType);
         }
-        if (plain instanceof JsonObject object && Map.class.isAssignableFrom(rawType)) {
+        if (
+            plain instanceof JsonObject object &&
+            Map.class.isAssignableFrom(rawType)
+        ) {
             Type[] args = type.getActualTypeArguments();
             Type keyType = args.length > 0 ? args[0] : String.class;
             Type valueType = args.length > 1 ? args[1] : Object.class;
-            return coerceToMap(object, rawType, keyType, valueType, coercer, context);
+            return coerceToMap(
+                object,
+                rawType,
+                keyType,
+                valueType,
+                coercer,
+                context
+            );
         }
-        if (plain instanceof JsonArray array && Collection.class.isAssignableFrom(rawType)) {
-            Type elementType = type.getActualTypeArguments().length > 0 ? type.getActualTypeArguments()[0] : Object.class;
-            return coerceToCollection(array, rawType, elementType, coercer, context);
+        if (
+            plain instanceof JsonArray array &&
+            Collection.class.isAssignableFrom(rawType)
+        ) {
+            Type elementType =
+                type.getActualTypeArguments().length > 0
+                    ? type.getActualTypeArguments()[0]
+                    : Object.class;
+            return coerceToCollection(
+                array,
+                rawType,
+                elementType,
+                coercer,
+                context
+            );
         }
-        if (plain instanceof JsonObject object && !rawType.isArray() && !rawType.isEnum()) {
+        if (
+            plain instanceof JsonObject object &&
+            !rawType.isArray() &&
+            !rawType.isEnum()
+        ) {
             BeanPlan plan = BeanIntrospector.plan(rawType);
             return plan.record()
                 ? constructRecord(object, plan, coercer, context)
                 : constructBean(object, plan, coercer, context);
         }
         if (plain instanceof JsonArray array && rawType.isArray()) {
-            return coerceToArray(array, rawType.getComponentType(), coercer, context);
+            return coerceToArray(
+                array,
+                rawType.getComponentType(),
+                coercer,
+                context
+            );
         }
         if (rawType.isInstance(plain)) {
             return rawType.cast(plain);
@@ -124,24 +204,43 @@ final class JsonCoercions {
         return coercer.coerce(plain, rawType);
     }
 
-    private static Object constructRecord(JsonObject data, BeanPlan plan, Coercer coercer, TypeContext context) {
+    private static Object constructRecord(
+        JsonObject data,
+        BeanPlan plan,
+        Coercer coercer,
+        TypeContext context
+    ) {
         if (!plan.isConstructable()) {
-            throw new IllegalArgumentException("Cannot construct record type: " + plan.type().getName());
+            throw new IllegalArgumentException(
+                "Cannot construct record type: " + plan.type().getName()
+            );
         }
         Object[] args = new Object[plan.properties().size()];
         for (int i = 0; i < plan.properties().size(); i++) {
             BeanProperty property = plan.properties().get(i);
             Type propertyType = context.resolve(property.type());
             args[i] = data.containsKey(property.name())
-                ? coerce(data.get(property.name()), propertyType, coercer, context)
+                ? coerce(
+                      data.get(property.name()),
+                      propertyType,
+                      coercer,
+                      context
+                  )
                 : coerce(null, propertyType, coercer, context);
         }
         return plan.constructor().newInstance(args);
     }
 
-    private static Object constructBean(JsonObject data, BeanPlan plan, Coercer coercer, TypeContext context) {
+    private static Object constructBean(
+        JsonObject data,
+        BeanPlan plan,
+        Coercer coercer,
+        TypeContext context
+    ) {
         if (!plan.isConstructable()) {
-            throw new IllegalArgumentException("Type " + plan.type().getName() + " has no no-arg constructor");
+            throw new IllegalArgumentException(
+                "Type " + plan.type().getName() + " has no no-arg constructor"
+            );
         }
         Object bean = plan.constructor().newInstance();
         for (BeanProperty property : plan.properties()) {
@@ -149,20 +248,44 @@ final class JsonCoercions {
                 continue;
             }
             Type propertyType = context.resolve(property.type());
-            property.write(bean, coerce(data.get(property.name()), propertyType, coercer, context));
+            property.write(
+                bean,
+                coerce(
+                    data.get(property.name()),
+                    propertyType,
+                    coercer,
+                    context
+                )
+            );
         }
         return bean;
     }
 
-    private static Object coerceToArray(JsonArray array, Class<?> componentType, Coercer coercer, TypeContext context) {
+    private static Object coerceToArray(
+        JsonArray array,
+        Class<?> componentType,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Object result = Array.newInstance(componentType, array.size());
         for (int i = 0; i < array.size(); i++) {
-            Array.set(result, i, coerce(array.get(i), componentType, coercer, context));
+            Array.set(
+                result,
+                i,
+                coerce(array.get(i), componentType, coercer, context)
+            );
         }
         return result;
     }
 
-    private static Object coerceToMap(JsonObject object, Class<?> targetType, Type keyType, Type valueType, Coercer coercer, TypeContext context) {
+    private static Object coerceToMap(
+        JsonObject object,
+        Class<?> targetType,
+        Type keyType,
+        Type valueType,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Map<Object, Object> mutable = newMapInstance(targetType, keyType);
         object.forEach((key, value) ->
             mutable.put(
@@ -173,36 +296,64 @@ final class JsonCoercions {
         return mutable;
     }
 
-    private static Object coerceToCollection(JsonArray array, Class<?> targetType, Type elementType, Coercer coercer, TypeContext context) {
-        Collection<Object> mutable = newCollectionInstance(targetType, elementType);
+    private static Object coerceToCollection(
+        JsonArray array,
+        Class<?> targetType,
+        Type elementType,
+        Coercer coercer,
+        TypeContext context
+    ) {
+        Collection<Object> mutable = newCollectionInstance(
+            targetType,
+            elementType
+        );
         for (int i = 0; i < array.size(); i++) {
             mutable.add(coerce(array.get(i), elementType, coercer, context));
         }
         return mutable;
     }
 
-    private static Object coerceGenericArray(Object value, GenericArrayType arrayType, Coercer coercer, TypeContext context) {
+    private static Object coerceGenericArray(
+        Object value,
+        GenericArrayType arrayType,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Object plain = normalize(value);
         if (plain == null) {
             return null;
         }
         if (!(plain instanceof JsonArray array)) {
-            throw new IllegalArgumentException("Unsupported JSON target type: " + arrayType.getTypeName());
+            throw new IllegalArgumentException(
+                "Unsupported JSON target type: " + arrayType.getTypeName()
+            );
         }
-        Type componentType = context.resolve(arrayType.getGenericComponentType());
+        Type componentType = context.resolve(
+            arrayType.getGenericComponentType()
+        );
         Class<?> componentClass = Types.rawClass(componentType);
         Object result = Array.newInstance(componentClass, array.size());
         for (int i = 0; i < array.size(); i++) {
-            Array.set(result, i, coerce(array.get(i), componentType, coercer, context));
+            Array.set(
+                result,
+                i,
+                coerce(array.get(i), componentType, coercer, context)
+            );
         }
         return result;
     }
 
-    private static Map<Object, Object> newMapInstance(Class<?> targetType, Type keyType) {
+    private static Map<Object, Object> newMapInstance(
+        Class<?> targetType,
+        Type keyType
+    ) {
         if (targetType == EnumMap.class) {
             return newEnumMap(keyType);
         }
-        if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
+        if (
+            targetType.isInterface() ||
+            Modifier.isAbstract(targetType.getModifiers())
+        ) {
             if (ConcurrentNavigableMap.class.isAssignableFrom(targetType)) {
                 return new ConcurrentSkipListMap<>();
             }
@@ -233,7 +384,10 @@ final class JsonCoercions {
         if (targetType == EnumSet.class) {
             return newEnumSet(elementType);
         }
-        if (targetType.isInterface() || Modifier.isAbstract(targetType.getModifiers())) {
+        if (
+            targetType.isInterface() ||
+            Modifier.isAbstract(targetType.getModifiers())
+        ) {
             if (TransferQueue.class.isAssignableFrom(targetType)) {
                 return new LinkedTransferQueue<>();
             }
@@ -277,7 +431,8 @@ final class JsonCoercions {
             );
         }
         @SuppressWarnings("unchecked")
-        Class<? extends Enum> rawEnum = (Class<? extends Enum>) enumType.asSubclass(Enum.class);
+        Class<? extends Enum> rawEnum =
+            (Class<? extends Enum>) enumType.asSubclass(Enum.class);
         return castMap(new EnumMap<>(rawEnum));
     }
 
@@ -285,11 +440,13 @@ final class JsonCoercions {
         Class<?> enumType = Types.rawClass(elementType);
         if (!enumType.isEnum()) {
             throw new IllegalArgumentException(
-                "EnumSet requires an enum element type: " + elementType.getTypeName()
+                "EnumSet requires an enum element type: " +
+                    elementType.getTypeName()
             );
         }
         @SuppressWarnings("unchecked")
-        Class<? extends Enum> rawEnum = (Class<? extends Enum>) enumType.asSubclass(Enum.class);
+        Class<? extends Enum> rawEnum =
+            (Class<? extends Enum>) enumType.asSubclass(Enum.class);
         return castCollection(EnumSet.noneOf(rawEnum));
     }
 
@@ -299,11 +456,15 @@ final class JsonCoercions {
                 targetType,
                 MethodHandles.lookup()
             );
-            var constructorHandle = lookup.unreflectConstructor(targetType.getDeclaredConstructor());
+            var constructorHandle = lookup.unreflectConstructor(
+                targetType.getDeclaredConstructor()
+            );
             return constructorHandle.invoke();
         } catch (ReflectiveOperationException ex) {
             return null;
-        } catch (Error e) { throw e; } catch (Throwable ex) {
+        } catch (Error e) {
+            throw e;
+        } catch (Throwable ex) {
             return null;
         }
     }
@@ -333,6 +494,7 @@ final class JsonCoercions {
     }
 
     private static final class TypeContext {
+
         private static final TypeContext EMPTY = new TypeContext(Map.of());
         private final Map<TypeVariable<?>, Type> bindings;
 
@@ -365,7 +527,8 @@ final class JsonCoercions {
             }
             if (type instanceof ParameterizedType parameterizedType) {
                 Type ownerType = parameterizedType.getOwnerType();
-                Type resolvedOwner = ownerType == null ? null : resolve(ownerType);
+                Type resolvedOwner =
+                    ownerType == null ? null : resolve(ownerType);
                 Type[] arguments = parameterizedType.getActualTypeArguments();
                 Type[] resolvedArguments = new Type[arguments.length];
                 boolean changed = resolvedOwner != ownerType;
@@ -378,10 +541,16 @@ final class JsonCoercions {
                 if (!changed) {
                     return parameterizedType;
                 }
-                return new ResolvedParameterizedType(resolvedOwner, Types.rawClass(parameterizedType.getRawType()), resolvedArguments);
+                return new ResolvedParameterizedType(
+                    resolvedOwner,
+                    Types.rawClass(parameterizedType.getRawType()),
+                    resolvedArguments
+                );
             }
             if (type instanceof GenericArrayType arrayType) {
-                Type resolvedComponent = resolve(arrayType.getGenericComponentType());
+                Type resolvedComponent = resolve(
+                    arrayType.getGenericComponentType()
+                );
                 if (resolvedComponent == arrayType.getGenericComponentType()) {
                     return arrayType;
                 }
@@ -402,10 +571,17 @@ final class JsonCoercions {
         }
     }
 
-    private record ResolvedParameterizedType(Type ownerType, Class<?> rawType, Type[] actualTypeArguments) implements ParameterizedType {
+    private record ResolvedParameterizedType(
+        Type ownerType,
+        Class<?> rawType,
+        Type[] actualTypeArguments
+    ) implements ParameterizedType {
         private ResolvedParameterizedType {
             Objects.requireNonNull(rawType, "rawType");
-            actualTypeArguments = Objects.requireNonNull(actualTypeArguments, "actualTypeArguments").clone();
+            actualTypeArguments = Objects.requireNonNull(
+                actualTypeArguments,
+                "actualTypeArguments"
+            ).clone();
         }
 
         @Override
@@ -440,9 +616,14 @@ final class JsonCoercions {
         }
     }
 
-    private record ResolvedGenericArrayType(Type componentType) implements GenericArrayType {
+    private record ResolvedGenericArrayType(
+        Type componentType
+    ) implements GenericArrayType {
         private ResolvedGenericArrayType {
-            componentType = Objects.requireNonNull(componentType, "componentType");
+            componentType = Objects.requireNonNull(
+                componentType,
+                "componentType"
+            );
         }
 
         @Override

@@ -15,6 +15,7 @@ import org.slf4j.spi.SLF4JServiceProvider;
  * by {@link JULEnhancer} — it activates regardless of SLF4J provider.
  */
 public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
+
     private ILoggerFactory loggerFactory;
     private IMarkerFactory markerFactory;
     private MDCAdapter mdcAdapter;

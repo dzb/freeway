@@ -3,10 +3,10 @@ package com.jujin.freeway.commons.json;
 import java.util.IdentityHashMap;
 
 final class JsonWriter {
+
     private static final int MAX_DEPTH = JsonParser.MAX_DEPTH;
 
-    private JsonWriter() {
-    }
+    private JsonWriter() {}
 
     static String stringify(Object value) {
         StringBuilder out = new StringBuilder();
@@ -20,9 +20,17 @@ final class JsonWriter {
         return out.toString();
     }
 
-    private static void writeValue(StringBuilder out, Object value, boolean pretty, int indent, Context context) {
+    private static void writeValue(
+        StringBuilder out,
+        Object value,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
         if (indent > MAX_DEPTH) {
-            throw new IllegalArgumentException("JSON value nesting too deep (max " + MAX_DEPTH + " levels)");
+            throw new IllegalArgumentException(
+                "JSON value nesting too deep (max " + MAX_DEPTH + " levels)"
+            );
         }
         if (value == null) {
             out.append("null");
@@ -56,14 +64,22 @@ final class JsonWriter {
             out.append(quote(e.name()));
             return;
         }
-        throw new IllegalArgumentException("Unsupported JSON value: " + value.getClass().getName());
+        throw new IllegalArgumentException(
+            "Unsupported JSON value: " + value.getClass().getName()
+        );
     }
 
-    private static void writeObject(StringBuilder out, JsonObject object, boolean pretty, int indent, Context context) {
+    private static void writeObject(
+        StringBuilder out,
+        JsonObject object,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
         context.enter(object);
         try {
             out.append('{');
-            final boolean[] first = {true};
+            final boolean[] first = { true };
             object.forEach((key, item) -> {
                 if (first[0]) {
                     first[0] = false;
@@ -91,7 +107,13 @@ final class JsonWriter {
         }
     }
 
-    private static void writeSequence(StringBuilder out, JsonArray array, boolean pretty, int indent, Context context) {
+    private static void writeSequence(
+        StringBuilder out,
+        JsonArray array,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
         context.enter(array);
         try {
             out.append('[');
@@ -160,7 +182,9 @@ final class JsonWriter {
     }
 
     private static final class Context {
-        private final IdentityHashMap<Object, Boolean> active = new IdentityHashMap<>();
+
+        private final IdentityHashMap<Object, Boolean> active =
+            new IdentityHashMap<>();
 
         void enter(Object value) {
             if (active.put(value, Boolean.TRUE) != null) {

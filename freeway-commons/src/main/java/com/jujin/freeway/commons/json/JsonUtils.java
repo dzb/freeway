@@ -1,14 +1,12 @@
 package com.jujin.freeway.commons.json;
 
+import com.jujin.freeway.commons.coercion.Coercer;
 import java.io.InputStream;
 import java.lang.reflect.Type;
-import java.util.Map;
-
-import com.jujin.freeway.commons.coercion.Coercer;
 
 public final class JsonUtils {
-    private JsonUtils() {
-    }
+
+    private JsonUtils() {}
 
     public static JsonObject object() {
         return new JsonObject();
@@ -46,7 +44,11 @@ public final class JsonUtils {
         return JsonCoercions.coerce(value, targetType);
     }
 
-    public static <T> T coerce(Object value, Class<T> targetType, Coercer coercer) {
+    public static <T> T coerce(
+        Object value,
+        Class<T> targetType,
+        Coercer coercer
+    ) {
         return JsonCoercions.coerce(value, targetType, coercer);
     }
 

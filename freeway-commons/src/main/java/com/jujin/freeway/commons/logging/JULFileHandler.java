@@ -60,18 +60,19 @@ import java.util.zip.GZIPOutputStream;
 public final class JULFileHandler extends StreamHandler {
 
     static final long DEFAULT_MAX_SIZE = 100L * 1024 * 1024; // 100 MB
-    static final int DEFAULT_MAX_HISTORY = 30;                // days
+    static final int DEFAULT_MAX_HISTORY = 30; // days
     static final boolean DEFAULT_COMPRESS = true;
 
     private static final DateTimeFormatter DATE_FMT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     /** Daemon thread for async GZIP compression so rotation never blocks logging. */
-    private static final ExecutorService COMPRESSOR = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "freeway-log-compressor");
-        t.setDaemon(true);
-        return t;
-    });
+    private static final ExecutorService COMPRESSOR =
+        Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "freeway-log-compressor");
+            t.setDaemon(true);
+            return t;
+        });
 
     private final Path basePath;
     private final long maxSize;
@@ -92,7 +93,8 @@ public final class JULFileHandler extends StreamHandler {
             requiredProperty("freeway.log.file"),
             longProperty("freeway.log.file.max-size", DEFAULT_MAX_SIZE),
             intProperty("freeway.log.file.max-history", DEFAULT_MAX_HISTORY),
-            booleanProperty("freeway.log.file.compress", DEFAULT_COMPRESS));
+            booleanProperty("freeway.log.file.compress", DEFAULT_COMPRESS)
+        );
     }
 
     /**
@@ -103,8 +105,12 @@ public final class JULFileHandler extends StreamHandler {
      * @param maxHistory days to retain
      * @param compress   whether to gzip rotated files
      */
-    public JULFileHandler(String filePath, long maxSize, int maxHistory, boolean compress)
-            throws IOException {
+    public JULFileHandler(
+        String filePath,
+        long maxSize,
+        int maxHistory,
+        boolean compress
+    ) throws IOException {
         this.basePath = Paths.get(filePath).toAbsolutePath();
         this.maxSize = Math.max(1024, maxSize);
         this.maxHistory = Math.max(1, maxHistory);
@@ -126,11 +132,16 @@ public final class JULFileHandler extends StreamHandler {
         if (!Files.exists(basePath) || fileSize(basePath) == 0) return;
         try {
             LocalDate fileDate = LocalDate.ofInstant(
-                    Files.getLastModifiedTime(basePath).toInstant(),
-                    java.time.ZoneId.systemDefault());
+                Files.getLastModifiedTime(basePath).toInstant(),
+                java.time.ZoneId.systemDefault()
+            );
             if (fileDate.isBefore(currentLocalDate)) {
                 Path archived = archivedPath(DATE_FMT.format(fileDate), 0);
-                Files.move(basePath, archived, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(
+                    basePath,
+                    archived,
+                    StandardCopyOption.REPLACE_EXISTING
+                );
                 if (compress) {
                     COMPRESSOR.execute(() -> compressFile(archived));
                 }
@@ -141,8 +152,11 @@ public final class JULFileHandler extends StreamHandler {
     }
 
     private static long fileSize(Path path) {
-        try { return Files.size(path); }
-        catch (IOException e) { return 0; }
+        try {
+            return Files.size(path);
+        } catch (IOException e) {
+            return 0;
+        }
     }
 
     // ── property helpers ─────────────────────────────────────────────
@@ -151,7 +165,8 @@ public final class JULFileHandler extends StreamHandler {
         String val = System.getProperty(key);
         if (val == null || val.isBlank()) {
             throw new IllegalArgumentException(
-                    key + " is required to activate JULFileHandler");
+                key + " is required to activate JULFileHandler"
+            );
         }
         return val;
     }
@@ -208,22 +223,35 @@ public final class JULFileHandler extends StreamHandler {
         try {
             closeOutputStream();
         } catch (Exception e) {
-            reportError("Failed to close current log stream", e,
-                    ErrorManager.WRITE_FAILURE);
+            reportError(
+                "Failed to close current log stream",
+                e,
+                ErrorManager.WRITE_FAILURE
+            );
         }
 
         // Archive the current file (best-effort)
         try {
             if (Files.exists(basePath) && Files.size(basePath) > 0) {
-                Path archived = archivedPath(DATE_FMT.format(currentLocalDate), currentIndex);
-                Files.move(basePath, archived, StandardCopyOption.REPLACE_EXISTING);
+                Path archived = archivedPath(
+                    DATE_FMT.format(currentLocalDate),
+                    currentIndex
+                );
+                Files.move(
+                    basePath,
+                    archived,
+                    StandardCopyOption.REPLACE_EXISTING
+                );
                 if (compress) {
                     COMPRESSOR.execute(() -> compressFile(archived));
                 }
             }
         } catch (IOException e) {
-            reportError("Failed to archive log file", e,
-                    ErrorManager.WRITE_FAILURE);
+            reportError(
+                "Failed to archive log file",
+                e,
+                ErrorManager.WRITE_FAILURE
+            );
         }
 
         // Advance counters
@@ -253,7 +281,8 @@ public final class JULFileHandler extends StreamHandler {
     private void openCurrentFile() throws IOException {
         Files.createDirectories(basePath.getParent());
         OutputStream out = new BufferedOutputStream(
-                new FileOutputStream(basePath.toFile(), true));
+            new FileOutputStream(basePath.toFile(), true)
+        );
         setOutputStream(out);
         bytesWritten = fileSize(basePath);
     }
@@ -264,20 +293,28 @@ public final class JULFileHandler extends StreamHandler {
 
     private void compressFile(Path file) {
         Path gzFile = file.getParent().resolve(file.getFileName() + ".gz");
-        try (FileInputStream fin = new FileInputStream(file.toFile());
-             FileOutputStream fos = new FileOutputStream(gzFile.toFile());
-             OutputStream gout = new GZIPOutputStream(fos)) {
+        try (
+            FileInputStream fin = new FileInputStream(file.toFile());
+            FileOutputStream fos = new FileOutputStream(gzFile.toFile());
+            OutputStream gout = new GZIPOutputStream(fos)
+        ) {
             fin.transferTo(gout);
         } catch (IOException e) {
-            reportError("Failed to compress " + file.getFileName(), e,
-                    ErrorManager.GENERIC_FAILURE);
+            reportError(
+                "Failed to compress " + file.getFileName(),
+                e,
+                ErrorManager.GENERIC_FAILURE
+            );
             return;
         }
         try {
             Files.delete(file);
         } catch (IOException e) {
-            reportError("Failed to delete uncompressed " + file.getFileName(), e,
-                    ErrorManager.GENERIC_FAILURE);
+            reportError(
+                "Failed to delete uncompressed " + file.getFileName(),
+                e,
+                ErrorManager.GENERIC_FAILURE
+            );
         }
     }
 
@@ -286,25 +323,30 @@ public final class JULFileHandler extends StreamHandler {
         int dateStart = stem.length() + 1; // after "stem."
         LocalDate cutoff = LocalDate.now().minusDays(maxHistory);
         try (var paths = Files.list(basePath.getParent())) {
-            paths.filter(p -> {
-                        String name = p.getFileName().toString();
-                        return name.startsWith(stem + ".") && !name.equals(
-                                basePath.getFileName().toString());
-                    })
-                    .forEach(p -> {
-                        String name = p.getFileName().toString();
-                        if (name.length() >= dateStart + 10) {
-                            try {
-                                LocalDate fileDate = LocalDate.parse(
-                                        name.substring(dateStart, dateStart + 10), DATE_FMT);
-                                if (fileDate.isBefore(cutoff)) {
-                                    Files.delete(p);
-                                }
-                            } catch (Exception ignored) {
-                                // unparseable filename — skip
+            paths
+                .filter(p -> {
+                    String name = p.getFileName().toString();
+                    return (
+                        name.startsWith(stem + ".") &&
+                        !name.equals(basePath.getFileName().toString())
+                    );
+                })
+                .forEach(p -> {
+                    String name = p.getFileName().toString();
+                    if (name.length() >= dateStart + 10) {
+                        try {
+                            LocalDate fileDate = LocalDate.parse(
+                                name.substring(dateStart, dateStart + 10),
+                                DATE_FMT
+                            );
+                            if (fileDate.isBefore(cutoff)) {
+                                Files.delete(p);
                             }
+                        } catch (Exception ignored) {
+                            // unparseable filename — skip
                         }
-                    });
+                    }
+                });
         } catch (IOException ignored) {
             // directory may not exist yet
         }
@@ -314,8 +356,10 @@ public final class JULFileHandler extends StreamHandler {
 
     private static long computeNextMidnight() {
         return java.time.ZonedDateTime.now()
-                .plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS)
-                .toInstant().toEpochMilli();
+            .plusDays(1)
+            .truncatedTo(java.time.temporal.ChronoUnit.DAYS)
+            .toInstant()
+            .toEpochMilli();
     }
 
     private static String stripExtension(String fileName) {
@@ -324,7 +368,8 @@ public final class JULFileHandler extends StreamHandler {
     }
 
     private long estimateSize(LogRecord record) {
-        int msgLen = record.getMessage() != null ? record.getMessage().length() : 0;
+        int msgLen =
+            record.getMessage() != null ? record.getMessage().length() : 0;
         String loggerName = record.getLoggerName();
         int loggerLen = loggerName != null ? loggerName.length() : 0;
         long size = 60 + msgLen + loggerLen;
@@ -337,7 +382,11 @@ public final class JULFileHandler extends StreamHandler {
 
     private static long estimateThrowableSize(Throwable t) {
         long size = 0;
-        for (Throwable current = t; current != null; current = current.getCause()) {
+        for (
+            Throwable current = t;
+            current != null;
+            current = current.getCause()
+        ) {
             size += 80 + current.toString().length();
             for (StackTraceElement frame : current.getStackTrace()) {
                 size += 60 + frame.toString().length();
@@ -350,7 +399,15 @@ public final class JULFileHandler extends StreamHandler {
     }
 
     // Visible for testing
-    String currentDate() { return DATE_FMT.format(currentLocalDate); }
-    int currentIndex() { return currentIndex; }
-    long bytesWritten() { return bytesWritten; }
+    String currentDate() {
+        return DATE_FMT.format(currentLocalDate);
+    }
+
+    int currentIndex() {
+        return currentIndex;
+    }
+
+    long bytesWritten() {
+        return bytesWritten;
+    }
 }

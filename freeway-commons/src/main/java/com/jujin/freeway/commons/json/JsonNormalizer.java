@@ -1,5 +1,8 @@
 package com.jujin.freeway.commons.json;
 
+import com.jujin.freeway.commons.bean.BeanIntrospector;
+import com.jujin.freeway.commons.bean.BeanPlan;
+import com.jujin.freeway.commons.bean.BeanProperty;
 import java.lang.reflect.Array;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -14,15 +17,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.jujin.freeway.commons.bean.BeanIntrospector;
-import com.jujin.freeway.commons.bean.BeanPlan;
-import com.jujin.freeway.commons.bean.BeanProperty;
 
 final class JsonNormalizer {
+
     private static final int MAX_DEPTH = JsonParser.MAX_DEPTH;
 
-    private JsonNormalizer() {
-    }
+    private JsonNormalizer() {}
 
     static Object normalize(Object value) {
         return normalize(value, new Context(), 0);
@@ -33,9 +33,17 @@ final class JsonNormalizer {
             return null;
         }
         if (depth > MAX_DEPTH) {
-            throw new IllegalArgumentException("JSON value nesting too deep (max " + MAX_DEPTH + " levels)");
+            throw new IllegalArgumentException(
+                "JSON value nesting too deep (max " + MAX_DEPTH + " levels)"
+            );
         }
-        if (value instanceof JsonObject || value instanceof JsonArray || value instanceof String || value instanceof Number || value instanceof Boolean) {
+        if (
+            value instanceof JsonObject ||
+            value instanceof JsonArray ||
+            value instanceof String ||
+            value instanceof Number ||
+            value instanceof Boolean
+        ) {
             return value;
         }
         if (value instanceof CharSequence cs) {
@@ -47,17 +55,19 @@ final class JsonNormalizer {
         if (value instanceof Enum<?> enumeration) {
             return enumeration.name();
         }
-        if (value instanceof LocalDate d)   return d.toString();
-        if (value instanceof LocalTime t)   return t.toString();
+        if (value instanceof LocalDate d) return d.toString();
+        if (value instanceof LocalTime t) return t.toString();
         if (value instanceof LocalDateTime dt) return dt.toString();
-        if (value instanceof OffsetTime ot)    return ot.toString();
+        if (value instanceof OffsetTime ot) return ot.toString();
         if (value instanceof OffsetDateTime odt) return odt.toString();
         if (value instanceof ZonedDateTime zdt) return zdt.toString();
-        if (value instanceof Instant i)    return i.toString();
-        if (value instanceof UUID u)       return u.toString();
+        if (value instanceof Instant i) return i.toString();
+        if (value instanceof UUID u) return u.toString();
         if (value instanceof java.nio.file.Path p) return p.toString();
         if (value instanceof java.util.Optional<?> opt) {
-            return opt.isPresent() ? normalize(opt.get(), context, depth + 1) : null;
+            return opt.isPresent()
+                ? normalize(opt.get(), context, depth + 1)
+                : null;
         }
         if (value instanceof java.util.OptionalInt oi) {
             return oi.isPresent() ? oi.getAsInt() : null;
@@ -68,12 +78,12 @@ final class JsonNormalizer {
         if (value instanceof java.util.OptionalDouble od) {
             return od.isPresent() ? od.getAsDouble() : null;
         }
-        if (value instanceof java.net.URI u)    return u.toString();
-        if (value instanceof java.net.URL u)    return u.toString();
+        if (value instanceof java.net.URI u) return u.toString();
+        if (value instanceof java.net.URL u) return u.toString();
         if (value instanceof java.util.Locale l) return l.toLanguageTag();
         if (value instanceof java.time.Duration d) return d.toString();
-        if (value instanceof java.util.Date d)    return d.toInstant().toString();
-        if (value instanceof java.io.File f)     return f.getPath();
+        if (value instanceof java.util.Date d) return d.toInstant().toString();
+        if (value instanceof java.io.File f) return f.getPath();
         if (value instanceof Map<?, ?> map) {
             return normalizeMap(map, context, depth);
         }
@@ -93,13 +103,17 @@ final class JsonNormalizer {
 
     private static Object deepCopy(Object value, Context context, int depth) {
         if (depth > MAX_DEPTH) {
-            throw new IllegalArgumentException("JSON value nesting too deep (max " + MAX_DEPTH + " levels)");
+            throw new IllegalArgumentException(
+                "JSON value nesting too deep (max " + MAX_DEPTH + " levels)"
+            );
         }
         if (value instanceof JsonObject object) {
             context.enter(object);
             try {
                 LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
-                object.forEach((key, item) -> copy.put(key, deepCopy(item, context, depth + 1)));
+                object.forEach((key, item) ->
+                    copy.put(key, deepCopy(item, context, depth + 1))
+                );
                 return copy;
             } finally {
                 context.exit(object);
@@ -120,13 +134,20 @@ final class JsonNormalizer {
         return value;
     }
 
-    private static JsonObject normalizeBean(Object value, Context context, int depth) {
+    private static JsonObject normalizeBean(
+        Object value,
+        Context context,
+        int depth
+    ) {
         context.enter(value);
         try {
             BeanPlan plan = BeanIntrospector.plan(value.getClass());
             JsonObject object = JsonUtils.object();
             for (BeanProperty property : plan.properties()) {
-                object.put(property.name(), normalize(property.read(value), context, depth + 1));
+                object.put(
+                    property.name(),
+                    normalize(property.read(value), context, depth + 1)
+                );
             }
             return object;
         } finally {
@@ -134,7 +155,11 @@ final class JsonNormalizer {
         }
     }
 
-    private static JsonArray normalizeArray(Object array, Context context, int depth) {
+    private static JsonArray normalizeArray(
+        Object array,
+        Context context,
+        int depth
+    ) {
         context.enter(array);
         try {
             JsonArray result = JsonUtils.array();
@@ -148,7 +173,11 @@ final class JsonNormalizer {
         }
     }
 
-    private static JsonArray normalizeIterable(Iterable<?> iterable, Context context, int depth) {
+    private static JsonArray normalizeIterable(
+        Iterable<?> iterable,
+        Context context,
+        int depth
+    ) {
         context.enter(iterable);
         try {
             JsonArray result = JsonUtils.array();
@@ -161,7 +190,11 @@ final class JsonNormalizer {
         }
     }
 
-    private static JsonObject normalizeMap(Map<?, ?> map, Context context, int depth) {
+    private static JsonObject normalizeMap(
+        Map<?, ?> map,
+        Context context,
+        int depth
+    ) {
         context.enter(map);
         try {
             JsonObject result = JsonUtils.object();
@@ -169,9 +202,13 @@ final class JsonNormalizer {
                 Object key = entry.getKey();
                 if (key == null) {
                     throw new IllegalArgumentException(
-                        "Cannot serialize a Map with null keys to JSON");
+                        "Cannot serialize a Map with null keys to JSON"
+                    );
                 }
-                result.put(String.valueOf(key), normalize(entry.getValue(), context, depth + 1));
+                result.put(
+                    String.valueOf(key),
+                    normalize(entry.getValue(), context, depth + 1)
+                );
             }
             return result;
         } finally {
@@ -192,7 +229,9 @@ final class JsonNormalizer {
     }
 
     private static final class Context {
-        private final IdentityHashMap<Object, Boolean> active = new IdentityHashMap<>();
+
+        private final IdentityHashMap<Object, Boolean> active =
+            new IdentityHashMap<>();
 
         void enter(Object value) {
             if (active.put(value, Boolean.TRUE) != null) {

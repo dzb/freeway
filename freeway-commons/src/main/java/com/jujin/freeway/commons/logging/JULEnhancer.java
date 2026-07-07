@@ -26,8 +26,9 @@ final class JULEnhancer {
             activateFileLogging();
             configured = true;
         } catch (RuntimeException e) {
-            java.util.logging.Logger.getLogger(JULEnhancer.class.getName())
-                    .severe("Failed to configure JUL logging: " + e);
+            java.util.logging.Logger.getLogger(
+                JULEnhancer.class.getName()
+            ).severe("Failed to configure JUL logging: " + e);
         }
     }
 
@@ -37,14 +38,18 @@ final class JULEnhancer {
         if (System.getProperty("java.util.logging.config.file") != null) {
             return; // explicit override — user controls it
         }
-        try (InputStream in = JULEnhancer.class.getClassLoader()
-                .getResourceAsStream("logging.properties")) {
+        try (
+            InputStream in = JULEnhancer.class
+                .getClassLoader()
+                .getResourceAsStream("logging.properties")
+        ) {
             if (in != null) {
                 LogManager.getLogManager().updateConfiguration(in, null);
             }
         } catch (IOException e) {
-            Logger.getLogger(JULEnhancer.class.getName())
-                    .warning("Failed to load logging.properties from classpath: " + e);
+            Logger.getLogger(JULEnhancer.class.getName()).warning(
+                "Failed to load logging.properties from classpath: " + e
+            );
         }
     }
 
@@ -56,8 +61,9 @@ final class JULEnhancer {
             String trimmed = format.strip();
             if ("simple".equalsIgnoreCase(trimmed)) return;
             if (!trimmed.isBlank()) {
-                Logger.getLogger("com.jujin.freeway.commons.logging")
-                        .warning("Unknown freeway.log.format '" + trimmed + "' — ignoring");
+                Logger.getLogger("com.jujin.freeway.commons.logging").warning(
+                    "Unknown freeway.log.format '" + trimmed + "' — ignoring"
+                );
             }
         }
 
@@ -84,12 +90,14 @@ final class JULEnhancer {
         configured = false;
         Logger root = Logger.getLogger("");
         for (Handler handler : root.getHandlers()) {
-            if (handler instanceof JULFileHandler || handler instanceof FileHandler) {
+            if (
+                handler instanceof JULFileHandler ||
+                handler instanceof FileHandler
+            ) {
                 root.removeHandler(handler);
                 try {
                     handler.close();
-                } catch (Exception ignored) {
-                }
+                } catch (Exception ignored) {}
             }
         }
     }
@@ -105,29 +113,47 @@ final class JULEnhancer {
         }
 
         try {
-            JULFileHandler fh = new JULFileHandler(path,
-                    longProperty("freeway.log.file.max-size", JULFileHandler.DEFAULT_MAX_SIZE),
-                    intProperty("freeway.log.file.max-history", JULFileHandler.DEFAULT_MAX_HISTORY),
-                    booleanProperty("freeway.log.file.compress", JULFileHandler.DEFAULT_COMPRESS));
+            JULFileHandler fh = new JULFileHandler(
+                path,
+                longProperty(
+                    "freeway.log.file.max-size",
+                    JULFileHandler.DEFAULT_MAX_SIZE
+                ),
+                intProperty(
+                    "freeway.log.file.max-history",
+                    JULFileHandler.DEFAULT_MAX_HISTORY
+                ),
+                booleanProperty(
+                    "freeway.log.file.compress",
+                    JULFileHandler.DEFAULT_COMPRESS
+                )
+            );
             Logger.getLogger("").addHandler(fh);
         } catch (IOException e) {
-            Logger.getLogger(JULEnhancer.class.getName())
-                    .warning("Failed to activate file logging: " + e);
+            Logger.getLogger(JULEnhancer.class.getName()).warning(
+                "Failed to activate file logging: " + e
+            );
         }
     }
 
     private static long longProperty(String key, long defaultValue) {
         String val = System.getProperty(key);
         if (val == null || val.isBlank()) return defaultValue;
-        try { return Long.parseLong(val.strip()); }
-        catch (NumberFormatException e) { return defaultValue; }
+        try {
+            return Long.parseLong(val.strip());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     private static int intProperty(String key, int defaultValue) {
         String val = System.getProperty(key);
         if (val == null || val.isBlank()) return defaultValue;
-        try { return Integer.parseInt(val.strip()); }
-        catch (NumberFormatException e) { return defaultValue; }
+        try {
+            return Integer.parseInt(val.strip());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     private static boolean booleanProperty(String key, boolean defaultValue) {

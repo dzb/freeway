@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 
 public final class JsonObject {
+
     private final LinkedHashMap<String, Object> values;
 
     JsonObject() {
@@ -16,7 +17,10 @@ public final class JsonObject {
     }
 
     public JsonObject put(String key, Object value) {
-        values.put(Objects.requireNonNull(key, "key"), JsonUtils.normalize(value));
+        values.put(
+            Objects.requireNonNull(key, "key"),
+            JsonUtils.normalize(value)
+        );
         return this;
     }
 
