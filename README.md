@@ -1,4 +1,9 @@
-# Freeway 2
+# Freeway Framework
+<div align="center">
+  <img width="96" src=".github/assets/logo.png" alt="Freeway Framework Logo">
+  <h1>Freeway Framework</h1>
+  <p>Compose-First · Full-Featured · Zero-Dependency · High-Performance · Concise & Tasteful.</p>
+</div>
 
 [![Maven Central](https://img.shields.io/maven-central/v/com.jujin8.freeway/freeway-parent?label=Maven%20Central&color=blue)](https://central.sonatype.com/artifact/com.jujin8.freeway/freeway-parent)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
