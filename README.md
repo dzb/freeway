@@ -1,7 +1,6 @@
 # Freeway Framework
-<div align="center">
+<div align="left">
   <img width="96" src=".github/assets/logo.png" alt="Freeway Framework Logo">
-  <h1>Freeway Framework</h1>
   <p>Compose-First · Full-Featured · Zero-Dependency · High-Performance · Concise & Tasteful.</p>
 </div>
 
