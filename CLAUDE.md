@@ -12,7 +12,6 @@ mvn -pl freeway-ioc -am test      # single module + dependencies
 mvn -pl freeway-http -am test
 mvn -pl freeway-db -am test
 mvn -pl freeway-flow -am test
-mvn -pl freeway-benchmark -am compile  # benchmark compilation
 mvn test -Dtest=CoercerDefaultTest  # single test class
 ```
 
