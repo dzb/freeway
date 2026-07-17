@@ -792,6 +792,13 @@ public final class SQL {
                 }
             }
 
+            // PostgreSQL type cast ::  — must precede :name check
+            if (c == ':' && i + 1 < len && fragment.charAt(i + 1) == ':') {
+                sb.append("::");
+                i += 2;
+                continue;
+            }
+
             // :name or $name named parameter
             if ((c == ':' || c == '$') && i + 1 < len && Names.isValidParamStart(fragment.charAt(i + 1))) {
                 int start = i + 1;

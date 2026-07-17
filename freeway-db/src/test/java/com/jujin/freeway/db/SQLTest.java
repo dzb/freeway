@@ -406,6 +406,38 @@ class SQLTest {
     }
 
     @Test
+    void selectWithTypeCastAndNamedParam() {
+        // PostgreSQL :: type cast must not be confused with :name
+        SQL q = SQL.select("*").from("events")
+            .where("created_at::date = :d", java.time.LocalDate.of(2024, 1, 15));
+        assertEquals("SELECT * FROM events WHERE created_at::date = ?", q.sql());
+        assertEquals(1, q.args().length);
+    }
+
+    @Test
+    void selectWithTypeCastAndMultipleNamedParams() {
+        SQL q = SQL.select("*").from("events")
+            .where("created_at::timestamp > :t AND id = :id",
+                java.time.LocalDateTime.of(2024, 6, 1, 0, 0), 1L);
+        assertEquals(
+            "SELECT * FROM events WHERE created_at::timestamp > ? AND id = ?",
+            q.sql());
+        assertEquals(2, q.args().length);
+    }
+
+    @Test
+    void selectWithTypeCastAndMixedParam() {
+        // ? positional + :: type cast — :: handling should not break ?
+        SQL q = SQL.select("*").from("events")
+            .where("created_at::date > ? AND status = :s",
+                java.time.LocalDate.of(2024, 1, 1), "active");
+        assertEquals(
+            "SELECT * FROM events WHERE created_at::date > ? AND status = ?",
+            q.sql());
+        assertEquals(2, q.args().length);
+    }
+
+    @Test
     void paramInStringLiteralNotParsed() {
         SQL q = SQL.select("*").from("users").where("name = '$literal'");
         assertEquals("SELECT * FROM users WHERE name = '$literal'", q.sql());
