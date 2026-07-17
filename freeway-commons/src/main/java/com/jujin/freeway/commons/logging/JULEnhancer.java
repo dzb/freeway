@@ -26,9 +26,8 @@ final class JULEnhancer {
             activateFileLogging();
             configured = true;
         } catch (RuntimeException e) {
-            java.util.logging.Logger.getLogger(
-                JULEnhancer.class.getName()
-            ).severe("Failed to configure JUL logging: " + e);
+            Logger.getLogger(JULEnhancer.class.getName())
+                .severe("Failed to configure JUL logging: " + e);
         }
     }
 

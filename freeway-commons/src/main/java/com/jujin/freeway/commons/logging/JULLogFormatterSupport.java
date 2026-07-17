@@ -4,10 +4,14 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Formatter;
+import java.util.logging.Level;
 import java.util.logging.LogRecord;
+import org.slf4j.MDC;
 
 final class JULLogFormatterSupport {
 
@@ -76,7 +80,7 @@ final class JULLogFormatterSupport {
         out.append(' ');
         out.append(
             colorLevel(
-                padRight(record.getLevel().getName(), cfg.levelWidth()),
+                LoggingSupport.padRight(record.getLevel().getName(), cfg.levelWidth()),
                 record.getLevel(),
                 color
             )
@@ -112,36 +116,33 @@ final class JULLogFormatterSupport {
 
         if (record.getThrown() != null) {
             out.append('\n');
-            appendThrowable(out, record.getThrown(), color, newVisitedSet());
+            appendThrowable(out, record.getThrown(), color,
+                Collections.newSetFromMap(new IdentityHashMap<>()));
         }
 
         out.append('\n');
         return out.toString();
     }
 
-    private static String padRight(String text, int width) {
-        return LoggingSupport.padRight(text, width);
-    }
-
     private static String colorLevel(
         String text,
-        java.util.logging.Level level,
+        Level level,
         boolean useColor
     ) {
         if (!useColor) {
             return text;
         }
         int severity = level.intValue();
-        if (severity >= java.util.logging.Level.SEVERE.intValue()) {
+        if (severity >= Level.SEVERE.intValue()) {
             return RED + BOLD + text + RESET;
         }
-        if (severity >= java.util.logging.Level.WARNING.intValue()) {
+        if (severity >= Level.WARNING.intValue()) {
             return YELLOW + text + RESET;
         }
-        if (severity >= java.util.logging.Level.INFO.intValue()) {
+        if (severity >= Level.INFO.intValue()) {
             return GREEN + text + RESET;
         }
-        if (severity >= java.util.logging.Level.FINE.intValue()) {
+        if (severity >= Level.FINE.intValue()) {
             return GRAY + text + RESET;
         }
         return text;
@@ -189,8 +190,7 @@ final class JULLogFormatterSupport {
      */
     private static String formatMDC(boolean useColor) {
         try {
-            java.util.Map<String, String> context =
-                org.slf4j.MDC.getCopyOfContextMap();
+            Map<String, String> context = MDC.getCopyOfContextMap();
             if (context == null || context.isEmpty()) return "";
 
             StringBuilder sb = new StringBuilder();
@@ -209,8 +209,8 @@ final class JULLogFormatterSupport {
             }
 
             // Other keys (alphabetically)
-            java.util.Set<String> prioritySet = java.util.Set.of(priorityKeys);
-            var otherKeys = new java.util.TreeSet<>(context.keySet());
+            Set<String> prioritySet = Set.of(priorityKeys);
+            var otherKeys = new TreeSet<>(context.keySet());
             otherKeys.removeAll(prioritySet);
             for (String key : otherKeys) {
                 if (!first) sb.append(' ');
@@ -224,10 +224,6 @@ final class JULLogFormatterSupport {
             // MDC access failed, silently ignore
             return "";
         }
-    }
-
-    private static Set<Throwable> newVisitedSet() {
-        return Collections.newSetFromMap(new IdentityHashMap<>());
     }
 
     private static void appendThrowable(

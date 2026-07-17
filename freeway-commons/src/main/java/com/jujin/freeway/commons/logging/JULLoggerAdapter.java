@@ -9,8 +9,6 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 public final class JULLoggerAdapter extends LegacyAbstractLogger {
-    private static final String FQCN = JULLoggerAdapter.class.getName();
-
     private final Logger julLogger;
 
     JULLoggerAdapter(Logger julLogger) {
@@ -19,9 +17,7 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
     }
 
     @Override
-    protected String getFullyQualifiedCallerName() {
-        return FQCN;
-    }
+    protected String getFullyQualifiedCallerName() { return JULLoggerAdapter.class.getName(); }
 
     @Override
     protected void handleNormalizedLoggingCall(

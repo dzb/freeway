@@ -21,43 +21,29 @@ import org.slf4j.spi.MDCAdapter;
 public final class JULMDCAdapter implements MDCAdapter {
 
     private final ThreadLocal<Map<String, String>> context =
-        new ThreadLocal<>();
+        ThreadLocal.withInitial(HashMap::new);
     private final ThreadLocal<Map<String, Deque<String>>> dequeMap =
-        new ThreadLocal<>();
+        ThreadLocal.withInitial(HashMap::new);
 
     @Override
-    public void put(String key, String val) {
-        context().put(key, val);
-    }
+    public void put(String key, String val) { context.get().put(key, val); }
 
     @Override
-    public String get(String key) {
-        return context().get(key);
-    }
+    public String get(String key) { return context.get().get(key); }
 
     @Override
-    public void remove(String key) {
-        context().remove(key);
-    }
+    public void remove(String key) { context.get().remove(key); }
 
     @Override
     public void clear() {
-        Map<String, String> ctx = context.get();
-        if (ctx != null) {
-            ctx.clear();
-        }
-        Map<String, Deque<String>> deques = dequeMap.get();
-        if (deques != null) {
-            deques.clear();
-        }
+        context.get().clear();
+        dequeMap.get().clear();
     }
 
     @Override
     public Map<String, String> getCopyOfContextMap() {
         Map<String, String> map = context.get();
-        if (map == null || map.isEmpty()) {
-            return null;
-        }
+        if (map.isEmpty()) return null;
         return Collections.unmodifiableMap(new HashMap<>(map));
     }
 
@@ -68,64 +54,26 @@ public final class JULMDCAdapter implements MDCAdapter {
 
     @Override
     public void pushByKey(String key, String value) {
-        deques()
-            .computeIfAbsent(key, ignored -> new ArrayDeque<>())
+        dequeMap.get()
+            .computeIfAbsent(key, k -> new ArrayDeque<>())
             .push(value);
     }
 
     @Override
     public String popByKey(String key) {
-        Map<String, Deque<String>> map = dequeMap.get();
-        if (map == null) {
-            return null;
-        }
-        Deque<String> deque = map.get(key);
-        if (deque != null && !deque.isEmpty()) {
-            return deque.pop();
-        }
-        return null;
+        Deque<String> deque = dequeMap.get().get(key);
+        return deque != null && !deque.isEmpty() ? deque.pop() : null;
     }
 
     @Override
     public Deque<String> getCopyOfDequeByKey(String key) {
-        Map<String, Deque<String>> map = dequeMap.get();
-        if (map == null) {
-            return null;
-        }
-        Deque<String> deque = map.get(key);
-        if (deque == null || deque.isEmpty()) {
-            return null;
-        }
-        return new ArrayDeque<>(deque);
+        Deque<String> deque = dequeMap.get().get(key);
+        return deque == null || deque.isEmpty() ? null : new ArrayDeque<>(deque);
     }
 
     @Override
     public void clearDequeByKey(String key) {
-        Map<String, Deque<String>> map = dequeMap.get();
-        if (map == null) {
-            return;
-        }
-        Deque<String> deque = map.get(key);
-        if (deque != null) {
-            deque.clear();
-        }
-    }
-
-    private Map<String, String> context() {
-        Map<String, String> map = context.get();
-        if (map == null) {
-            map = new HashMap<>();
-            context.set(map);
-        }
-        return map;
-    }
-
-    private Map<String, Deque<String>> deques() {
-        Map<String, Deque<String>> map = dequeMap.get();
-        if (map == null) {
-            map = new HashMap<>();
-            dequeMap.set(map);
-        }
-        return map;
+        Deque<String> deque = dequeMap.get().get(key);
+        if (deque != null) deque.clear();
     }
 }
