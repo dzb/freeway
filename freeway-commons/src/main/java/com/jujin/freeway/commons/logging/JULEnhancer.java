@@ -56,17 +56,11 @@ final class JULEnhancer {
     // ── formatter installation ──────────────────────────────────────
 
     private static void installFormatters() {
-        String format = formatOverride();
-        if (format != null) {
-            String trimmed = format.strip();
-            if ("simple".equalsIgnoreCase(trimmed)) return;
-            if (!trimmed.isBlank()) {
-                Logger.getLogger("com.jujin.freeway.commons.logging").warning(
-                    "Unknown freeway.log.format '" + trimmed + "' — ignoring"
-                );
-            }
+        if ("simple".equalsIgnoreCase(formatMode())) {
+            // Opt out: leave JUL's native SimpleFormatter in place.
+            return;
         }
-
+        // auto (default): install Freeway's JUL formatters.
         JULConsoleFormatter consoleFmt = new JULConsoleFormatter();
         JULFileFormatter fileFmt = new JULFileFormatter();
         for (Handler h : Logger.getLogger("").getHandlers()) {
@@ -78,10 +72,23 @@ final class JULEnhancer {
         }
     }
 
-    private static String formatOverride() {
+    /**
+     * Resolves the {@code freeway.log.format} switch.
+     * Unset or blank defaults to {@code auto}; unknown values warn and
+     * also fall back to {@code auto}.
+     */
+    private static String formatMode() {
         String v = System.getProperty("freeway.log.format");
-        if (v != null) return v;
-        return System.getenv("FREEWAY_LOG_FORMAT");
+        if (v == null) v = System.getenv("FREEWAY_LOG_FORMAT");
+        if (v == null || v.isBlank()) return "auto";
+        String trimmed = v.strip();
+        if ("auto".equalsIgnoreCase(trimmed) || "simple".equalsIgnoreCase(trimmed)) {
+            return trimmed.toLowerCase();
+        }
+        Logger.getLogger("com.jujin.freeway.commons.logging").warning(
+            "Unknown freeway.log.format '" + trimmed + "' — using 'auto'"
+        );
+        return "auto";
     }
 
     // ── file logging activation ─────────────────────────────────────
@@ -102,14 +109,29 @@ final class JULEnhancer {
         }
     }
 
-    private static void activateFileLogging() {
-        String path = System.getProperty("freeway.log.file");
-        if (path == null || path.isBlank()) return;
+    private static String resolveDefaultPath() {
+        String appName = System.getProperty("app.name");
+        if (appName == null || appName.isBlank()) appName = "freeway";
+        return "logs/" + appName + ".log";
+    }
 
-        if ("auto".equalsIgnoreCase(path.strip())) {
-            String appName = System.getProperty("app.name");
-            if (appName == null || appName.isBlank()) appName = "freeway";
-            path = "logs/" + appName + ".log";
+    private static void activateFileLogging() {
+        String raw = System.getProperty("freeway.log.file");
+        String path;
+
+        if (raw == null || raw.isBlank()) {
+            // auto mode: default to logs/{app.name}.log
+            path = resolveDefaultPath();
+        } else {
+            String trimmed = raw.strip();
+            if ("off".equalsIgnoreCase(trimmed) || "none".equalsIgnoreCase(trimmed)) {
+                return; // explicitly opted out
+            }
+            if ("auto".equalsIgnoreCase(trimmed)) {
+                path = resolveDefaultPath();
+            } else {
+                path = trimmed;
+            }
         }
 
         try {
