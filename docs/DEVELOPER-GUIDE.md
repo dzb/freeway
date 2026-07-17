@@ -464,7 +464,24 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 `freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 
-Console output is single-line with ANSI colors (auto-detected from the attached console). Colors are disabled when output is piped, redirected to a file, or `NO_COLOR` is set. Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
+**Console output** is single-line with ANSI colors (auto-detected from the attached console). Colors are disabled when output is piped, redirected to a file, or `NO_COLOR` is set. Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
+
+**File logging** is enabled by default. Output goes to `logs/{app.name}.log` (or `logs/freeway.log` if `app.name` is not set). The `JULFileHandler` uses time + size dual rotation with GZIP compression and automatic cleanup of files older than 30 days.
+
+```bash
+# Custom path
+-Dfreeway.log.file=logs/myapp.log
+
+# Disable file logging entirely
+-Dfreeway.log.file=off
+
+# Size and retention
+-Dfreeway.log.file.max-size=104857600   # 100 MB (per-file default)
+-Dfreeway.log.file.max-history=30       # days
+-Dfreeway.log.file.compress=true        # gzip rotated files
+```
+
+The `logging.properties` file at the classpath root is the reference for all logging configuration options.
 
 ---
 
