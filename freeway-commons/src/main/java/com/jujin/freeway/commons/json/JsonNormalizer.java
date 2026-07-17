@@ -3,7 +3,12 @@ package com.jujin.freeway.commons.json;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
+import java.io.File;
 import java.lang.reflect.Array;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -12,10 +17,16 @@ import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.UUID;
 
 final class JsonNormalizer {
@@ -63,27 +74,27 @@ final class JsonNormalizer {
         if (value instanceof ZonedDateTime zdt) return zdt.toString();
         if (value instanceof Instant i) return i.toString();
         if (value instanceof UUID u) return u.toString();
-        if (value instanceof java.nio.file.Path p) return p.toString();
-        if (value instanceof java.util.Optional<?> opt) {
+        if (value instanceof Path p) return p.toString();
+        if (value instanceof Optional<?> opt) {
             return opt.isPresent()
                 ? normalize(opt.get(), context, depth + 1)
                 : null;
         }
-        if (value instanceof java.util.OptionalInt oi) {
+        if (value instanceof OptionalInt oi) {
             return oi.isPresent() ? oi.getAsInt() : null;
         }
-        if (value instanceof java.util.OptionalLong ol) {
+        if (value instanceof OptionalLong ol) {
             return ol.isPresent() ? ol.getAsLong() : null;
         }
-        if (value instanceof java.util.OptionalDouble od) {
+        if (value instanceof OptionalDouble od) {
             return od.isPresent() ? od.getAsDouble() : null;
         }
-        if (value instanceof java.net.URI u) return u.toString();
-        if (value instanceof java.net.URL u) return u.toString();
-        if (value instanceof java.util.Locale l) return l.toLanguageTag();
-        if (value instanceof java.time.Duration d) return d.toString();
-        if (value instanceof java.util.Date d) return d.toInstant().toString();
-        if (value instanceof java.io.File f) return f.getPath();
+        if (value instanceof URI u) return u.toString();
+        if (value instanceof URL u) return u.toString();
+        if (value instanceof Locale l) return l.toLanguageTag();
+        if (value instanceof Duration d) return d.toString();
+        if (value instanceof Date d) return d.toInstant().toString();
+        if (value instanceof File f) return f.getPath();
         if (value instanceof Map<?, ?> map) {
             return normalizeMap(map, context, depth);
         }

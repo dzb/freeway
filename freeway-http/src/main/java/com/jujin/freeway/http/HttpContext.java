@@ -45,7 +45,7 @@ public abstract class HttpContext {
     public abstract String path();
 
     /** Returns the first query parameter value for the given name, or empty. */
-    public abstract java.util.Optional<String> queryParam(String name);
+    public abstract Optional<String> queryParam(String name);
 
     /** Returns all query parameter values for the given name. */
     public abstract List<String> queryParams(String name);
@@ -57,7 +57,7 @@ public abstract class HttpContext {
      * Returns the value of a single query parameter coerced to the
      * given type, or empty if absent.
      */
-    public <T> java.util.Optional<T> queryParam(String name, Class<T> type) {
+    public <T> Optional<T> queryParam(String name, Class<T> type) {
         return queryParam(name).map(v -> coerceText(v, type));
     }
 
@@ -65,7 +65,7 @@ public abstract class HttpContext {
      * Returns the first request header value for the given name, or empty.
      * Header names are case-insensitive.
      */
-    public abstract java.util.Optional<String> header(String name);
+    public abstract Optional<String> header(String name);
 
     /**
      * Returns all request header values for the given name.
@@ -77,7 +77,7 @@ public abstract class HttpContext {
      * Returns the value of a single request header coerced to the
      * given type, or empty if absent.
      */
-    public <T> java.util.Optional<T> header(String name, Class<T> type) {
+    public <T> Optional<T> header(String name, Class<T> type) {
         return header(name).map(v -> coerceText(v, type));
     }
 
@@ -97,20 +97,20 @@ public abstract class HttpContext {
      * Parses and returns the multipart form data, or empty if the request
      * is not a multipart upload.
      */
-    public java.util.Optional<MultipartForm> multipart() {
+    public Optional<MultipartForm> multipart() {
         return header("Content-Type").flatMap(ct -> {
             try {
-                return java.util.Optional.of(MultipartForm.parse(ct, body()));
+                return Optional.of(MultipartForm.parse(ct, body()));
             } catch (IOException e) {
                 LOG.debug("Failed to parse multipart body", e);
-                return java.util.Optional.empty();
+                return Optional.empty();
             }
         });
     }
 
     /** Returns a path parameter value by name, or empty. */
-    public java.util.Optional<String> pathVar(String name) {
-        return java.util.Optional.ofNullable(pathVariables.get(name));
+    public Optional<String> pathVar(String name) {
+        return Optional.ofNullable(pathVariables.get(name));
     }
 
     /** Returns an unmodifiable map of all path parameter values. */
@@ -127,21 +127,21 @@ public abstract class HttpContext {
     /**
      * Returns the value of a path parameter coerced to the given type.
      */
-    public <T> java.util.Optional<T> pathVar(String name, Class<T> type) {
+    public <T> Optional<T> pathVar(String name, Class<T> type) {
         return pathVar(name).map(v -> coerceText(v, type));
     }
 
     /**
      * Returns a request parameter (from query string first, then path).
      */
-    public java.util.Optional<String> param(String name) {
+    public Optional<String> param(String name) {
         return queryParam(name).or(() -> pathVar(name));
     }
 
     /**
      * Returns a request parameter coerced to the given type.
      */
-    public <T> java.util.Optional<T> param(String name, Class<T> type) {
+    public <T> Optional<T> param(String name, Class<T> type) {
         return param(name).map(v -> coerceText(v, type));
     }
 

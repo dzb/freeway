@@ -49,7 +49,7 @@ public final class ContainerImpl implements Container {
     private final InstanceFactory instanceFactory;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
-    private final Set<ModuleEx> installedModules = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    private final Set<ModuleEx> installedModules = Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<ModuleEx> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 

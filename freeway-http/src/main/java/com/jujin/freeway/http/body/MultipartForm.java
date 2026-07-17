@@ -82,7 +82,7 @@ public final class MultipartForm {
             .toList();
     }
 
-    public java.util.Optional<String> value(String name) {
+    public Optional<String> value(String name) {
         return values(name).stream().findFirst();
     }
 

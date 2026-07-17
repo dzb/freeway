@@ -76,10 +76,10 @@ public final class FreewayHttpContext extends HttpContext {
     public String path() { return path; }
 
     @Override
-    public java.util.Optional<String> queryParam(String name) {
+    public Optional<String> queryParam(String name) {
         List<String> values = queryParams.get(name);
         return (values != null && !values.isEmpty())
-                ? java.util.Optional.of(values.getFirst()) : java.util.Optional.empty();
+                ? Optional.of(values.getFirst()) : Optional.empty();
     }
 
     @Override
@@ -103,17 +103,17 @@ public final class FreewayHttpContext extends HttpContext {
     }
 
     @Override
-    public java.util.Optional<String> header(String name) {
+    public Optional<String> header(String name) {
         List<String> values = requestHeaders.get(name);
         if (values != null && !values.isEmpty())
-            return java.util.Optional.of(values.getFirst());
+            return Optional.of(values.getFirst());
         for (var entry : requestHeaders.entrySet()) {
             if (entry.getKey().equalsIgnoreCase(name)
                 && !entry.getValue().isEmpty()) {
-                return java.util.Optional.of(entry.getValue().getFirst());
+                return Optional.of(entry.getValue().getFirst());
             }
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 
     @Override
