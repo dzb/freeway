@@ -151,9 +151,9 @@ final class JULEnhancer {
                 )
             );
             Logger.getLogger("").addHandler(fh);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             Logger.getLogger(JULEnhancer.class.getName()).warning(
-                "Failed to activate file logging: " + e
+                "Failed to activate file logging for '" + path + "': " + e.getMessage()
             );
         }
     }

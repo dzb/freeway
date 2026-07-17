@@ -7,6 +7,17 @@ import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.spi.MDCAdapter;
 
+/**
+ * SLF4J {@link MDCAdapter} backed by {@link ThreadLocal}.
+ *
+ * <p>Context is scoped to the calling thread and is <em>not</em> propagated
+ * to threads spawned from it — neither virtual threads nor pooled platform
+ * threads. Callers that dispatch work to other threads must copy the context
+ * explicitly (e.g. capture {@code MDC.getCopyOfContextMap()} and restore it
+ * on the worker). Virtual threads clean up their own ThreadLocal state on
+ * termination; platform-thread pools must clear MDC between tasks to avoid
+ * leaking context across requests.
+ */
 public final class JULMDCAdapter implements MDCAdapter {
 
     private final ThreadLocal<Map<String, String>> context =

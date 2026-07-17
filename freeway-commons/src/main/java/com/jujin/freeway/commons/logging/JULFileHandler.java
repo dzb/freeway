@@ -52,8 +52,8 @@ import java.util.zip.GZIPOutputStream;
  * freeway.log.file.compress=true
  * }</pre>
  *
- * <p>All settings have sensible defaults. Only {@code freeway.log.file}
- * is required to activate file logging.
+ * <p>All settings have sensible defaults. File logging is auto-activated
+ * at startup; use {@code -Dfreeway.log.file=off} to disable.
  *
  * <p>Built entirely on JDK APIs — no external dependencies.
  */

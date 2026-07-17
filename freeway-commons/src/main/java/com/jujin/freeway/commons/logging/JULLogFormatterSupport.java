@@ -23,6 +23,25 @@ final class JULLogFormatterSupport {
     private static final ConcurrentHashMap<String, String> ABBREV_CACHE =
         new ConcurrentHashMap<>();
 
+    /**
+     * MDC keys displayed first in log output (in this order), before
+     * the remaining keys in alphabetical order.
+     *
+     * <p>These are common correlation / routing identifiers used across
+     * Freeway applications. Override by setting
+     * {@code -Dfreeway.log.mdc.priority=key1,key2,...}.
+     */
+    private static String[] mdcPriorityKeys() {
+        String override = System.getProperty(
+            "freeway.log.mdc.priority",
+            System.getenv("FREEWAY_LOG_MDC_PRIORITY")
+        );
+        if (override != null && !override.isBlank()) {
+            return override.split(",");
+        }
+        return new String[] { "code", "market", "diagId" };
+    }
+
     record FormatConfig(
         DateTimeFormatter timestamp,
         int levelWidth,
@@ -165,7 +184,8 @@ final class JULLogFormatterSupport {
 
     /**
      * Formats MDC context as [key=value key2=value2].
-     * Common keys (code, market, diagId) are displayed first.
+     * Priority keys (configurable via freeway.log.mdc.priority) are displayed first,
+     * followed by the remaining keys in alphabetical order.
      */
     private static String formatMDC(boolean useColor) {
         try {
@@ -177,8 +197,9 @@ final class JULLogFormatterSupport {
             sb.append('[');
             boolean first = true;
 
-            // Priority keys first: code, market, diagId
-            for (String key : new String[] { "code", "market", "diagId" }) {
+            // Priority keys first (in configured order)
+            String[] priorityKeys = mdcPriorityKeys();
+            for (String key : priorityKeys) {
                 String value = context.get(key);
                 if (value != null) {
                     if (!first) sb.append(' ');
@@ -188,17 +209,9 @@ final class JULLogFormatterSupport {
             }
 
             // Other keys (alphabetically)
-            java.util.List<String> otherKeys = context
-                .keySet()
-                .stream()
-                .filter(
-                    k ->
-                        !"code".equals(k) &&
-                        !"market".equals(k) &&
-                        !"diagId".equals(k)
-                )
-                .sorted()
-                .toList();
+            java.util.Set<String> prioritySet = java.util.Set.of(priorityKeys);
+            var otherKeys = new java.util.TreeSet<>(context.keySet());
+            otherKeys.removeAll(prioritySet);
             for (String key : otherKeys) {
                 if (!first) sb.append(' ');
                 sb.append(key).append('=').append(context.get(key));

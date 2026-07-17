@@ -43,7 +43,6 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
             record.setThrown(throwable);
         }
 
-        inferCaller(record);
         julLogger.log(record);
     }
 
@@ -107,22 +106,4 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
         };
     }
 
-    private void inferCaller(LogRecord record) {
-        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-        boolean foundFqcn = false;
-        for (StackTraceElement frame : stack) {
-            String className = frame.getClassName();
-            if (className.equals(FQCN)) {
-                foundFqcn = true;
-            } else if (foundFqcn
-                && !className.startsWith("org.slf4j.")
-                && !className.startsWith("java.util.logging.")
-                && !className.startsWith("java.lang.reflect.")
-                && !className.startsWith("sun.reflect.")) {
-                record.setSourceClassName(className);
-                record.setSourceMethodName(frame.getMethodName());
-                return;
-            }
-        }
-    }
 }

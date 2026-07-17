@@ -48,20 +48,17 @@ public final class JULConsoleFormatter extends Formatter {
      * Detects whether ANSI colors should be emitted.
      */
     private static boolean detectColor() {
-        if (
-            System.getenv().containsKey("NO_COLOR") ||
-            System.getProperty("NO_COLOR") != null
-        ) {
+        if (System.getenv().containsKey("NO_COLOR")) {
             return false;
         }
         String override = System.getProperty(
             "freeway.log.color",
             System.getenv("FREEWAY_LOG_COLOR")
         );
-        if ("always".equalsIgnoreCase(override)) {
+        if ("always".equalsIgnoreCase(override) || "true".equalsIgnoreCase(override)) {
             return true;
         }
-        if ("never".equalsIgnoreCase(override)) {
+        if ("never".equalsIgnoreCase(override) || "false".equalsIgnoreCase(override)) {
             return false;
         }
         return System.console() != null;
