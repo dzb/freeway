@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.schema.Column;
+import com.jujin.freeway.db.schema.Dialect;
 import com.jujin.freeway.db.schema.Generated;
 import com.jujin.freeway.db.schema.Id;
 import com.jujin.freeway.db.schema.SqlTypeMapping;
@@ -35,23 +36,25 @@ import java.util.Optional;
  */
 public final class Orm {
     private final Database db;
+    private final Dialect dialect;
     private final Coercer coercer;
 
-    public Orm(Database db, Coercer coercer) {
+    public Orm(Database db, Dialect dialect, Coercer coercer) {
         this.db = Objects.requireNonNull(db, "db");
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
-    /** Creates an Orm with a default Coercer for standalone use. */
+    /** Creates an Orm with a default Coercer, using the dialect from the database. */
     public static Orm of(Database db) {
-        return new Orm(db, new CoercerDefault());
+        return new Orm(db, db.dialect(), new CoercerDefault());
     }
 
     // ==================== find ====================
 
     public <T> Optional<T> findById(Class<T> type, Object... idValues) {
         BeanPlan plan = BeanIntrospector.plan(type);
-        String table = SqlTypeMapping.tableName(type);
+        String table = dialect.quoteName(SqlTypeMapping.tableName(type));
         String columns = columnsClause(plan);
         String where = idWhereClause(plan);
         return db.query("SELECT " + columns + " FROM " + table + " WHERE " + where, idValues).one(type);
@@ -61,9 +64,14 @@ public final class Orm {
         return findAll(type, "", 0, 0);
     }
 
+    /**
+     * @param orderBy raw SQL ORDER BY clause (e.g. {@code "name ASC"}).
+     *                <b>Warning:</b> this value is interpolated directly into the SQL;
+     *                do not pass unsanitized user input.
+     */
     public <T> List<T> findAll(Class<T> type, String orderBy, int limit, int offset) {
         BeanPlan plan = BeanIntrospector.plan(type);
-        String table = SqlTypeMapping.tableName(type);
+        String table = dialect.quoteName(SqlTypeMapping.tableName(type));
         String columns = columnsClause(plan);
         StringBuilder sql = new StringBuilder("SELECT ").append(columns).append(" FROM ").append(table);
         if (orderBy != null && !orderBy.isBlank()) {
@@ -87,7 +95,7 @@ public final class Orm {
     public <T> ExecuteResult insert(T entity, Class<T> type) {
         Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
-        String table = SqlTypeMapping.tableName(t);
+        String table = dialect.quoteName(SqlTypeMapping.tableName(t));
         ColumnInfo columns = insertColumns(plan);
         Object[] values = extractValues(plan, entity, columns.properties);
 
@@ -110,15 +118,15 @@ public final class Orm {
     public <T> ExecuteResult save(T entity, Class<T> type) {
         Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
-        String table = SqlTypeMapping.tableName(t);
+        String table = dialect.quoteName(SqlTypeMapping.tableName(t));
         List<BeanProperty> idProps = idProperties(plan);
 
-        // read id values — if any are null, this is a plain insert
-        Object[] idValues = new Object[idProps.size()];
+        // read id values and collect raw column names — if any id is null, plain insert
+        List<String> idCols = new ArrayList<>(idProps.size());
         boolean hasFullId = true;
-        for (int i = 0; i < idProps.size(); i++) {
-            idValues[i] = idProps.get(i).read(entity);
-            if (idValues[i] == null) hasFullId = false;
+        for (BeanProperty idProp : idProps) {
+            if (idProp.read(entity) == null) hasFullId = false;
+            idCols.add(rawColumnName(idProp));
         }
 
         if (!hasFullId) {
@@ -128,15 +136,8 @@ public final class Orm {
         ColumnInfo columns = insertColumns(plan);
         Object[] insertValues = extractValues(plan, entity, columns.properties);
 
-        // ON CONFLICT DO UPDATE — unique constraint already exists on @Id columns
-        List<String> updateClauses = new ArrayList<>();
-        for (int i = 0; i < columns.names.size(); i++) {
-            updateClauses.add(columns.names.get(i) + " = EXCLUDED." + columns.names.get(i));
-        }
-
         String sql = "INSERT INTO " + table + " (" + String.join(", ", columns.names) + ") VALUES ("
-            + placeholders(columns.names.size()) + ") ON CONFLICT DO UPDATE SET "
-            + String.join(", ", updateClauses);
+            + placeholders(columns.names.size()) + ")" + dialect.upsertClause(idCols, columns.rawNames);
 
         ExecuteResult result = db.execute(sql, insertValues);
 
@@ -156,13 +157,13 @@ public final class Orm {
     public <T> ExecuteResult update(T entity, Class<T> type) {
         Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
-        String table = SqlTypeMapping.tableName(t);
+        String table = dialect.quoteName(SqlTypeMapping.tableName(t));
         List<BeanProperty> idProps = idProperties(plan);
 
         Map<String, Object> setClauses = new LinkedHashMap<>();
         for (BeanProperty prop : plan.properties()) {
             if (isOrmTransient(prop) || isGenerated(prop) || isId(prop)) continue;
-            String col = SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null));
+            String col = dialect.quoteName(rawColumnName(prop));
             setClauses.put(col, prop.read(entity));
         }
 
@@ -196,7 +197,7 @@ public final class Orm {
     public <T> ExecuteResult delete(T entity, Class<T> type) {
         Class<T> t = resolveClass(entity, type);
         BeanPlan plan = BeanIntrospector.plan(t);
-        String table = SqlTypeMapping.tableName(t);
+        String table = dialect.quoteName(SqlTypeMapping.tableName(t));
         List<BeanProperty> idProps = idProperties(plan);
 
         Object[] ids = new Object[idProps.size()];
@@ -211,26 +212,26 @@ public final class Orm {
 
     public <T> ExecuteResult deleteById(Class<T> type, Object... idValues) {
         BeanPlan plan = BeanIntrospector.plan(type);
-        String table = SqlTypeMapping.tableName(type);
+        String table = dialect.quoteName(SqlTypeMapping.tableName(type));
         return db.execute("DELETE FROM " + table + " WHERE " + idWhereClause(plan), idValues);
     }
 
     // ==================== helpers ====================
 
-    private static String columnsClause(BeanPlan plan) {
+    private String columnsClause(BeanPlan plan) {
         List<String> cols = new ArrayList<>();
         for (BeanProperty prop : plan.properties()) {
             if (isOrmTransient(prop)) continue;
-            cols.add(SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null)));
+            cols.add(dialect.quoteName(rawColumnName(prop)));
         }
         return String.join(", ", cols);
     }
 
-    private static String idWhereClause(BeanPlan plan) {
+    private String idWhereClause(BeanPlan plan) {
         List<String> clauses = new ArrayList<>();
         for (BeanProperty prop : plan.properties()) {
             if (isId(prop)) {
-                clauses.add(SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null)) + " = ?");
+                clauses.add(dialect.quoteName(rawColumnName(prop)) + " = ?");
             }
         }
         if (clauses.isEmpty()) {
@@ -267,8 +268,13 @@ public final class Orm {
         return prop.hasAnnotation(Transient.class);
     }
 
-    private static ColumnInfo insertColumns(BeanPlan plan) {
+    private static String rawColumnName(BeanProperty prop) {
+        return SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null));
+    }
+
+    private ColumnInfo insertColumns(BeanPlan plan) {
         List<String> names = new ArrayList<>();
+        List<String> rawNames = new ArrayList<>();
         List<BeanProperty> properties = new ArrayList<>();
         BeanProperty generated = null;
         for (BeanProperty prop : plan.properties()) {
@@ -280,11 +286,12 @@ public final class Orm {
                 generated = prop;
                 continue;
             }
-            String col = SqlTypeMapping.columnName(prop, prop.annotation(Column.class).orElse(null));
-            names.add(col);
+            String raw = rawColumnName(prop);
+            names.add(dialect.quoteName(raw));
+            rawNames.add(raw);
             properties.add(prop);
         }
-        return new ColumnInfo(names, properties, generated);
+        return new ColumnInfo(names, rawNames, properties, generated);
     }
 
     private static Object[] extractValues(BeanPlan plan, Object entity, List<BeanProperty> properties) {
@@ -299,5 +306,5 @@ public final class Orm {
         return String.join(", ", Collections.nCopies(count, "?"));
     }
 
-    private record ColumnInfo(List<String> names, List<BeanProperty> properties, BeanProperty generated) {}
+    private record ColumnInfo(List<String> names, List<String> rawNames, List<BeanProperty> properties, BeanProperty generated) {}
 }

@@ -9,8 +9,6 @@ import com.jujin.freeway.commons.validation.NotBlank;
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.commons.validation.Size;
 
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Instant;
@@ -181,27 +179,10 @@ public final class SqlTypeMapping {
         Dialect dialect,
         boolean generated
     ) {
-        if (!generated || !(dialect instanceof SqliteDialect)) {
+        if (!generated) {
             return sqlType;
         }
-        if (isIntegralType(javaType) || "INTEGER".equalsIgnoreCase(sqlType)) {
-            return "INTEGER";
-        }
-        throw new IllegalArgumentException(
-            "SQLite AUTOINCREMENT columns must use an integer type: " +
-                javaType.getName()
-        );
-    }
-
-    private static boolean isIntegralType(Class<?> type) {
-        return type == Long.class ||
-            type == long.class ||
-            type == Integer.class ||
-            type == int.class ||
-            type == Short.class ||
-            type == short.class ||
-            type == Byte.class ||
-            type == byte.class;
+        return dialect.generatedTypeOverride(sqlType, javaType);
     }
 
     /**

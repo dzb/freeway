@@ -1,11 +1,13 @@
 package com.jujin.freeway.db;
 
 import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.db.schema.MySqlDialect;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class DatabaseBuilderTest {
     @Test
@@ -58,6 +60,19 @@ class DatabaseBuilderTest {
         try (db) {
             List<Marker> markers = db.query("select 'manual'").list(Marker.class);
             assertEquals(List.of(new Marker("manual")), markers);
+        }
+    }
+
+    @Test
+    void customDialectIsUsed() {
+        String dbName = "freeway_builder_dialect_" + UUID.randomUUID().toString().replace('-', '_');
+        Database db = new DatabaseBuilder()
+            .config(PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .dialect(new MySqlDialect())
+            .build();
+        try (db) {
+            assertEquals("mysql", db.dialect().dialectId());
+            assertFalse(db.dialect().supportsReturning());
         }
     }
 

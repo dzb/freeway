@@ -269,8 +269,9 @@ public final class RowMapperResolver {
 
         private final String[] names;
         private final String[] columnOverrides;
-        private volatile Signature signature;
-        private volatile int[] columns;
+        private volatile CacheEntry entry;
+
+        private record CacheEntry(Signature signature, int[] columns) {}
 
         private ColumnCache(List<BeanProperty> properties) {
             int n = properties.size();
@@ -286,20 +287,15 @@ public final class RowMapperResolver {
         }
 
         int[] resolve(ResultSetMetaData meta) throws SQLException {
-            Signature current = Signature.of(meta);
-            Signature cached = signature;
-            if (cached != null && cached.equals(current)) {
-                int[] resolved = columns;
-                if (resolved != null) {
-                    return resolved;
-                }
+            CacheEntry cached = entry;
+            if (cached != null && cached.signature().equals(Signature.of(meta))) {
+                return cached.columns();
             }
             int[] resolved = new int[names.length];
             for (int i = 0; i < names.length; i++) {
                 resolved[i] = findColumn(meta, names[i], columnOverrides[i]);
             }
-            signature = current;
-            columns = resolved;
+            entry = new CacheEntry(Signature.of(meta), resolved);
             return resolved;
         }
     }

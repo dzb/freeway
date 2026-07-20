@@ -461,4 +461,16 @@ public final class SqlTextParser {
         }
         current.setLength(0);
     }
+
+    /**
+     * Validates that the SQL does not mix named ({@code :name / $name}) and
+     * positional ({@code ?}) placeholders. Throws {@link com.jujin.freeway.db.SqlException}
+     * if both styles are present.
+     */
+    public static void requireNoMixedPlaceholders(String sql) {
+        if (hasNamedPlaceholders(sql) && !paramIndexes(sql).isEmpty()) {
+            throw new com.jujin.freeway.db.SqlException(
+                "Cannot mix named and positional placeholders in SQL: " + sql);
+        }
+    }
 }

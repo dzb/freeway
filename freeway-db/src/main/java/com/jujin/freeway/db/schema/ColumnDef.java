@@ -29,15 +29,21 @@ record ColumnDef(String name, String sqlType, boolean nullable, boolean primaryK
 
     /** Renders the column definition for ALTER TABLE ADD COLUMN. */
     String toAlterSql(Dialect dialect) {
-        return "ADD COLUMN " + toSql(dialect);
+        return toAlterSql(dialect, true, true);
     }
 
-    /** Same as {@link #toAlterSql} but without the generated clause. */
-    String toAlterSqlWithoutGenerated(Dialect dialect) {
+    /**
+     * Renders ALTER TABLE ADD COLUMN with optional NOT NULL and generated clause.
+     * Used by dialects that restrict ALTER TABLE (e.g. SQLite strips both).
+     */
+    String toAlterSql(Dialect dialect, boolean includeNotNull, boolean includeGenerated) {
         StringBuilder sb = new StringBuilder("ADD COLUMN ");
         sb.append(dialect.quoteName(name)).append(' ').append(sqlType);
-        if (!nullable) {
+        if (includeNotNull && !nullable) {
             sb.append(" NOT NULL");
+        }
+        if (includeGenerated && generated) {
+            sb.append(' ').append(dialect.generatedClause());
         }
         return sb.toString();
     }

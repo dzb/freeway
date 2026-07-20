@@ -256,8 +256,10 @@ class UserDemoTest {
 
     @Test
     void step07_saveUpsert() {
-        // ★ save（更新插入 — id=null 走 INSERT，id=已有走 ON CONFLICT DO UPDATE）
-        // 注意：ON CONFLICT 是 PostgreSQL 语法，H2 不支持，所以这里只测 INSERT 路径
+        // ★ save（更新插入 — id=null 走 INSERT，id 有值走 upsert）
+        // upsert 语法由 Dialect 驱动：PostgresDialect → ON CONFLICT DO UPDATE，
+        // MySqlDialect → ON DUPLICATE KEY UPDATE
+        // 这里测试 INSERT 路径（id=null）
         var db = builder(uniqueDb()).build();
         try (db) {
             Schema.ensure(db, new PostgresDialect(), UserBean.class);

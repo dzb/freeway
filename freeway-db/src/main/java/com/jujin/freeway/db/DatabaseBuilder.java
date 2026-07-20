@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.RowMapperResolver;
+import com.jujin.freeway.db.schema.Dialect;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -16,10 +17,11 @@ import java.util.Objects;
  * Database db = DatabaseBuilder.from(PoolConfig.defaults(url, user, pass)).build();
  * }</pre>
  *
- * <p>Custom pool, coercer, or row mappers can be configured before calling {@link #build()}:
+ * <p>Custom pool, coercer, dialect, or row mappers can be configured before calling {@link #build()}:
  * <pre>{@code
  * Database db = DatabaseBuilder.from(config)
  *     .pool(myPool)
+ *     .dialect(new MySqlDialect())
  *     .rowMapper(User.class, (rs, n) -> new User(rs.getLong("id"), rs.getString("name")))
  *     .build();
  * }</pre>
@@ -32,6 +34,7 @@ public final class DatabaseBuilder {
     private PoolConfig config;
     private Coercer coercer;
     private Pool pool;
+    private Dialect dialect;
     private final Map<Class<?>, RowMapper<?>> rowMappers =
         new LinkedHashMap<>();
 
@@ -53,6 +56,11 @@ public final class DatabaseBuilder {
 
     public DatabaseBuilder pool(Pool pool) {
         this.pool = Objects.requireNonNull(pool, "pool");
+        return this;
+    }
+
+    public DatabaseBuilder dialect(Dialect dialect) {
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
         return this;
     }
 
@@ -88,9 +96,10 @@ public final class DatabaseBuilder {
             new RowMapperResolver(
                 effective,
                 Map.copyOf(rowMappers),
-                Map.<Class<?>, RowMapper<?>>of()
+                Map.of()
             ),
-            pool
+            pool,
+            dialect
         );
     }
 }

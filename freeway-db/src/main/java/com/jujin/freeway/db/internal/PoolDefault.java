@@ -117,6 +117,7 @@ public final class PoolDefault implements Pool {
         semaphore.release();
     }
 
+    @Override
     public DatabaseStats stats() {
         int longLeased = 0;
         for (PooledConnectionDefault conn : active) {

@@ -1,5 +1,7 @@
 package com.jujin.freeway.db;
 
+import com.jujin.freeway.db.schema.Dialect;
+
 /**
  * Primary data-access interface. Each {@code Database} wraps a JDBC connection
  * pool and provides query, execute, batch, and transaction methods.
@@ -17,6 +19,11 @@ package com.jujin.freeway.db;
  * @see PoolConfig
  */
 public interface Database extends AutoCloseable {
+
+    /**
+     * Returns the SQL dialect associated with this database.
+     */
+    Dialect dialect();
 
     /**
      * Creates a new {@link Query} with positional or named parameters.
@@ -61,6 +68,14 @@ public interface Database extends AutoCloseable {
      * @return a {@link BatchQuery} for adding row batches and executing
      */
     BatchQuery batch(String sql);
+
+    /**
+     * Truncates (or deletes all rows from) a table using dialect-appropriate syntax.
+     * SQLite uses {@code DELETE FROM} since it has no TRUNCATE.
+     */
+    default void truncate(String tableName) {
+        execute(dialect().truncateTable(tableName));
+    }
 
     /**
      * Runs the given work inside a transaction. The transaction is committed

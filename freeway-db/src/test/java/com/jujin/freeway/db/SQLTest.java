@@ -318,6 +318,23 @@ class SQLTest {
     }
 
     @Test
+    void returningValidatedAgainstDialect() {
+        SQL q = SQL.insert("users").set("name", "john").returning("id");
+        assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id",
+            q.sql(new com.jujin.freeway.db.schema.PostgresDialect()));
+        assertThrows(SqlException.class, () ->
+            q.sql(new com.jujin.freeway.db.schema.MySqlDialect()));
+    }
+
+    @Test
+    void onConflictValidatedAgainstDialect() {
+        SQL q = SQL.insert("users").set("id", 1).onConflict("id").doNothing();
+        q.sql(new com.jujin.freeway.db.schema.PostgresDialect());
+        assertThrows(SqlException.class, () ->
+            q.sql(new com.jujin.freeway.db.schema.MySqlDialect()));
+    }
+
+    @Test
     void insertWithOnConflictDoNothing() {
         SQL q = SQL.insert("users").set("id", 1).set("name", "john")
             .onConflict("id")

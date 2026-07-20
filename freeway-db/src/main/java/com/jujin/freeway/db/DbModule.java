@@ -64,6 +64,7 @@ public final class DbModule implements ModuleEx {
             .primary();
         binder.bind(Dialect.class).to(MySqlDialect.class).id("mysql");
         binder.bind(Dialect.class).to(SqliteDialect.class).id("sqlite");
+        binder.bind(Dialect.class).to(H2Dialect.class).id("h2");
 
         // database
         binder.bind(RowMapperResolver.class).to(container ->
@@ -90,7 +91,7 @@ public final class DbModule implements ModuleEx {
             binder.contribute(CoerceRule.class).add(rule);
         }
 
-            // lifecycle: Schema (auto-DDL) → Migration (SQL evolution)
+        // lifecycle: Schema (auto-DDL) → Migration (SQL evolution)
             binder
                 .contribute(RuntimeHook.class)
                 .add("freeway.db.migration", new RuntimeHook() {
@@ -131,7 +132,8 @@ public final class DbModule implements ModuleEx {
         PoolConfig config = container.get(PoolConfig.class);
         RowMapperResolver resolver = container.get(RowMapperResolver.class);
         Pool pool = container.get(Pool.class);
-        return new DatabaseImpl(config, resolver, pool);
+        Dialect dialect = resolveDialect(container);
+        return new DatabaseImpl(config, resolver, pool, dialect);
     }
 
     private static MigrationRunner buildMigrationRunner(Container container) {
@@ -220,8 +222,10 @@ public final class DbModule implements ModuleEx {
         if (url.contains(":postgresql:")) return "postgresql";
         if (url.contains(":mysql:") || url.contains(":mariadb:")) return "mysql";
         if (url.contains(":h2:")) {
-            return url.contains("MODE=MySQL") || url.contains("MODE=MariaDB")
-                    ? "mysql" : "postgresql";
+            String upper = url.toUpperCase();
+            if (upper.contains("MODE=MYSQL") || upper.contains("MODE=MARIADB")) return "mysql";
+            if (upper.contains("MODE=POSTGRESQL")) return "postgresql";
+            return "h2";
         }
         if (url.contains(":sqlite:")) return "sqlite";
         return "";

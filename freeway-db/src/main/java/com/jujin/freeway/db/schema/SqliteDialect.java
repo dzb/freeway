@@ -1,47 +1,32 @@
 package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.Database;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.Locale;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * SQLite SQL dialect.
  *
  * <p>Uses double-quote quoting, {@code AUTOINCREMENT}, and {@code sqlite_master}
- * for schema introspection (SQLite has no {@code INFORMATION_SCHEMA}).
+ * for schema introspection. SQLite has no TRUNCATE, so {@link #truncateTable}
+ * generates {@code DELETE FROM} and also resets the auto-increment counter
+ * via {@code sqlite_sequence}. SQLite has no {@code FOR UPDATE}, so
+ * {@link #forUpdateClause} returns an empty string.
+ *
+ * <p>SQLite 3.35.0+ supports {@code RETURNING} — {@link #supportsReturning()}
+ * returns {@code true}.
  */
 public final class SqliteDialect implements Dialect {
-    private static final Logger LOG = LoggerFactory.getLogger(SqliteDialect.class);
-
-    private static final Set<String> RESERVED = Set.of(
-        "user", "order", "group", "table", "select", "from", "where",
-        "insert", "update", "delete", "create", "alter", "drop", "index",
-        "primary", "key", "foreign", "references", "check", "constraint",
-        "column", "view", "trigger", "case", "when", "then", "else", "end",
-        "as", "on", "off", "like", "in", "is", "not", "null", "and", "or",
-        "between", "join", "inner", "left", "right", "outer", "cross",
-        "union", "intersect", "except", "all", "any", "some", "exists",
-        "having", "limit", "offset", "with", "recursive", "values", "set",
-        "default", "unique", "distinct", "cast", "coalesce", "nullif",
-        "true", "false", "asc", "desc", "nulls", "first", "last",
-        "to", "add", "rename", "commit", "rollback", "begin", "start", "by",
+    private static final Set<String> RESERVED = buildReserved(
         "abort", "attach", "detach", "reindex", "release", "savepoint",
         "vacuum", "glob", "match", "regexp", "escape", "collate", "rowid"
     );
 
     @Override
-    public String quoteName(String name) {
-        if (needsQuoting(name)) {
-            return '"' + name + '"';
-        }
-        return name;
+    public String dialectId() {
+        return "sqlite";
     }
 
     @Override
@@ -52,8 +37,7 @@ public final class SqliteDialect implements Dialect {
         ColumnDef generatedPk = generatedPrimaryKey(table);
         if (generatedPk != null && pks.size() != 1) {
             throw new IllegalArgumentException(
-                "SQLite AUTOINCREMENT requires a single primary key column"
-            );
+                "SQLite AUTOINCREMENT requires a single primary key column");
         }
         for (int i = 0; i < table.columns().size(); i++) {
             ColumnDef col = table.columns().get(i);
@@ -72,31 +56,39 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
-    public List<String> createIndexes(TableDef table) {
-        List<String> ddls = new ArrayList<>();
-        for (IndexDef idx : table.indexes()) {
-            ddls.add(idx.toSql(this, table.name()));
-        }
-        return List.copyOf(ddls);
-    }
-
-    @Override
     public String addColumn(String tableName, ColumnDef column) {
-        // SQLite does not support AUTOINCREMENT in ALTER TABLE ADD COLUMN
-        String def = column.generated()
-            ? column.toAlterSqlWithoutGenerated(this)
-            : column.toAlterSql(this);
-        return "ALTER TABLE " + quoteName(tableName) + " " + def;
+        // SQLite ALTER TABLE ADD COLUMN does not support AUTOINCREMENT
+        // or NOT NULL without DEFAULT. Strip both for safety.
+        return "ALTER TABLE " + quoteName(tableName) + " "
+            + column.toAlterSql(this, false, false);
     }
 
     @Override
-    public String dropTable(String tableName) {
-        return "DROP TABLE IF EXISTS " + quoteName(tableName);
+    public String truncateTable(String tableName) {
+        // SQLite has no TRUNCATE. DELETE FROM does not reset AUTOINCREMENT
+        // counters; users who need that should manually DELETE FROM sqlite_sequence.
+        return "DELETE FROM " + quoteName(tableName);
+    }
+
+    @Override
+    public String forUpdateClause() {
+        return "";
     }
 
     @Override
     public String generatedClause() {
         return "AUTOINCREMENT";
+    }
+
+    @Override
+    public String generatedTypeOverride(String sqlType, Class<?> javaType) {
+        if (javaType == Long.class || javaType == long.class
+            || javaType == Integer.class || javaType == int.class
+            || "INTEGER".equalsIgnoreCase(sqlType)) {
+            return "INTEGER";
+        }
+        throw new IllegalArgumentException(
+            "SQLite AUTOINCREMENT columns must use an integer type: " + javaType.getName());
     }
 
     @Override
@@ -114,42 +106,32 @@ public final class SqliteDialect implements Dialect {
         return "BLOB";
     }
 
+    // ====================== schema introspection ======================
+
     @Override
     public Set<String> existingTables(Database db) {
-        try {
-            List<String> tables = db.query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            ).list(String.class);
-            return tables.stream()
-                .filter(t -> t != null)
-                .map(s -> s.toLowerCase(Locale.ROOT))
-                .collect(Collectors.toCollection(HashSet::new));
-        } catch (Exception e) {
-            LOG.warn("Failed to list existing tables", e);
-            return Collections.emptySet();
-        }
+        return querySet(db,
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
     }
 
     @Override
     public Set<String> existingColumns(Database db, String tableName) {
-        try {
-            List<String> columns = db.query(
-                "SELECT name FROM pragma_table_info(?)", tableName
-            ).list(String.class);
-            return columns.stream()
-                .filter(c -> c != null)
-                .map(s -> s.toLowerCase(Locale.ROOT))
-                .collect(Collectors.toCollection(HashSet::new));
-        } catch (Exception e) {
-            LOG.warn("Failed to list existing columns for table '{}'", tableName, e);
-            return Collections.emptySet();
-        }
+        return querySet(db,
+            "SELECT name FROM pragma_table_info(?)", tableName);
     }
 
     @Override
     public Set<String> reservedWords() {
         return RESERVED;
     }
+
+    private static Set<String> buildReserved(String... sqliteSpecific) {
+        Set<String> words = new HashSet<>(Dialect.COMMON_RESERVED);
+        words.addAll(Set.of(sqliteSpecific));
+        return Set.copyOf(words);
+    }
+
+    // ====================== internals ======================
 
     private String renderColumn(ColumnDef column, ColumnDef generatedPk) {
         if (column == generatedPk) {
@@ -158,7 +140,7 @@ public final class SqliteDialect implements Dialect {
         return column.toSql(this);
     }
 
-    private ColumnDef generatedPrimaryKey(TableDef table) {
+    private static ColumnDef generatedPrimaryKey(TableDef table) {
         ColumnDef generatedPk = null;
         for (ColumnDef column : table.columns()) {
             if (!column.generated()) {
@@ -166,13 +148,11 @@ public final class SqliteDialect implements Dialect {
             }
             if (!column.primaryKey()) {
                 throw new IllegalArgumentException(
-                    "SQLite AUTOINCREMENT columns must also be primary keys"
-                );
+                    "SQLite AUTOINCREMENT columns must also be primary keys");
             }
             if (generatedPk != null) {
                 throw new IllegalArgumentException(
-                    "SQLite AUTOINCREMENT requires a single generated primary key column"
-                );
+                    "SQLite AUTOINCREMENT requires a single generated primary key column");
             }
             generatedPk = column;
         }

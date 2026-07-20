@@ -365,15 +365,7 @@ final class QueryImpl implements Query {
     }
 
     private void rejectMixedPlaceholderStyles() {
-        if (
-            SqlTextParser.hasNamedPlaceholders(originalSql) &&
-            !SqlTextParser.paramIndexes(originalSql).isEmpty()
-        ) {
-            throw new SqlException(
-                "Cannot mix named and positional placeholders in SQL: " +
-                    originalSql
-            );
-        }
+        SqlTextParser.requireNoMixedPlaceholders(originalSql);
     }
 
     private void validateNamedParameters() {

@@ -4,8 +4,10 @@ import com.jujin.freeway.db.BatchQuery;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseStats;
 import com.jujin.freeway.db.ExecuteResult;
+import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.Transactional;
+import com.jujin.freeway.db.schema.Dialect;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,11 @@ class SchemaEnsureIndexCompatibilityTest {
 
     private static final class NonIdempotentDialect implements Dialect {
         @Override
+        public String dialectId() {
+            return "test";
+        }
+
+        @Override
         public String quoteName(String name) {
             return name;
         }
@@ -54,6 +61,11 @@ class SchemaEnsureIndexCompatibilityTest {
         @Override
         public String dropTable(String tableName) {
             return "DROP TABLE " + tableName;
+        }
+
+        @Override
+        public String truncateTable(String tableName) {
+            return "DELETE FROM " + tableName;
         }
 
         @Override
@@ -91,6 +103,11 @@ class SchemaEnsureIndexCompatibilityTest {
         private final List<String> executedSql = new ArrayList<>();
 
         @Override
+        public Dialect dialect() {
+            return new NonIdempotentDialect();
+        }
+
+        @Override
         public Query query(String sql, Object... params) {
             throw new UnsupportedOperationException("query should not be called");
         }
@@ -112,7 +129,7 @@ class SchemaEnsureIndexCompatibilityTest {
         }
 
         @Override
-        public void transaction(com.jujin.freeway.db.IsolationLevel isolation, Transactional work) {
+        public void transaction(IsolationLevel isolation, Transactional work) {
             throw new UnsupportedOperationException("transaction should not be called");
         }
 

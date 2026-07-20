@@ -62,6 +62,16 @@ class SchemaTest {
     }
 
     @Test
+    void defineWithDialectProducesDialectSpecificDdl() {
+        String pgDdl = Schema.define(new PostgresDialect(), User.class);
+        assertTrue(pgDdl.contains("GENERATED ALWAYS AS IDENTITY"));
+        assertFalse(pgDdl.contains("AUTO_INCREMENT"));
+
+        String mysqlDdl = Schema.define(new MySqlDialect(), User.class);
+        assertTrue(mysqlDdl.contains("AUTO_INCREMENT"));
+    }
+
+    @Test
     void defineAllReturnsMultipleDDLs() {
         var ddls = Schema.defineAll(User.class, Post.class);
         assertEquals(2, ddls.size());

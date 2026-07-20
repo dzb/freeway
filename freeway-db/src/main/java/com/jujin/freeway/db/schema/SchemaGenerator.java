@@ -55,10 +55,6 @@ public final class SchemaGenerator {
         return dialect.createIndexes(define(entityType));
     }
 
-    Dialect dialect() {
-        return dialect;
-    }
-
     private String generateTable(TableDef table) {
         return dialect.createTable(table);
     }

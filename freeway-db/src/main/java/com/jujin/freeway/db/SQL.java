@@ -1,5 +1,6 @@
 package com.jujin.freeway.db;
 
+import com.jujin.freeway.db.schema.Dialect;
 import com.jujin.freeway.db.util.Names;
 import java.util.ArrayList;
 import java.util.List;
@@ -95,22 +96,22 @@ public final class SQL {
     }
 
     /** UPDATE:{@code SQL.update("users").set("name = ?", v).where("id = ?", id)} */
-    public static SQL update(String table) {
-        return new SQL("UPDATE " + table, List.of(), "", new Object[0],
+    public static SQL update(String tableName) {
+        return new SQL("UPDATE " + tableName, List.of(), "", new Object[0],
             false, List.of(),
-            null, List.of(), List.of(), table, List.of(), List.of());
+            null, List.of(), List.of(), tableName, List.of(), List.of());
     }
 
     /** INSERT:{@code SQL.insert("users").set("name", v).set("status", v)} */
-    public static SQL insert(String table) {
+    public static SQL insert(String tableName) {
         return new SQL(null, List.of(), "", new Object[0],
             false, List.of(),
-            table, List.of(), List.of(), null, List.of(), List.of());
+            tableName, List.of(), List.of(), null, List.of(), List.of());
     }
 
     /** DELETE:{@code SQL.delete("users").where("id = ?", id)} */
-    public static SQL delete(String table) {
-        return new SQL("DELETE FROM " + table, List.of(), "", new Object[0],
+    public static SQL delete(String tableName) {
+        return new SQL("DELETE FROM " + tableName, List.of(), "", new Object[0],
             false, List.of(),
             null, List.of(), List.of(), null, List.of(), List.of());
     }
@@ -283,12 +284,14 @@ public final class SQL {
     public SQL limit(int n) {
         requireSelectable("LIMIT");
         requireNoPendingJoin("LIMIT");
+        if (n < 0) throw new IllegalArgumentException("LIMIT must be >= 0, got " + n);
         return withTail(" LIMIT " + n);
     }
 
     public SQL offset(int n) {
         requireSelectable("OFFSET");
         requireNoPendingJoin("OFFSET");
+        if (n < 0) throw new IllegalArgumentException("OFFSET must be >= 0, got " + n);
         return withTail(" OFFSET " + n);
     }
 
@@ -377,22 +380,42 @@ public final class SQL {
     /** Produces the complete SQL string. */
     public String sql() {
         requireNoPendingJoin("render SQL");
+        return buildSql();
+    }
+
+    /**
+     * Produces the SQL string and validates it against the given dialect.
+     * Throws {@link SqlException} if the SQL uses features the dialect does not
+     * support (e.g. {@code RETURNING} on MySQL, {@code ON CONFLICT} on MySQL).
+     */
+    public String sql(Dialect dialect) {
+        Objects.requireNonNull(dialect, "dialect");
+        String result = sql();
+        if (tail.contains("RETURNING") && !dialect.supportsReturning()) {
+            throw new SqlException(
+                "Dialect '" + dialect.dialectId() + "' does not support RETURNING");
+        }
+        if (tail.contains("ON CONFLICT") && !dialect.supportsOnConflict()) {
+            throw new SqlException(
+                "Dialect '" + dialect.dialectId() + "' does not support ON CONFLICT; use upsertClause() or raw SQL");
+        }
+        return result;
+    }
+
+    private String buildSql() {
         String withClause = renderWithClause();
         if (insertTable != null) {
-            // INSERT INTO table (col1, col2) VALUES (?, ?)
             var cols = String.join(", ", insertColumns);
             var placeholders = String.join(", ", insertValues.stream().map(v -> "?").toList());
             return withClause + "INSERT INTO " + insertTable + " (" + cols + ") VALUES (" + placeholders + ")" + tail;
         }
         var sb = new StringBuilder(head);
 
-        // SET clause (UPDATE)
         if (!setClauses.isEmpty()) {
             sb.append(" SET ");
             sb.append(String.join(", ", setClauses));
         }
 
-        // WHERE clause
         if (!conditions.isEmpty()) {
             sb.append(" WHERE ");
             sb.append(renderConditions(conditions));
@@ -706,125 +729,64 @@ public final class SQL {
         }
     }
 
+    /**
+     * Replaces named ({@code :name / $name}) and positional ({@code ?})
+     * placeholders with {@code ?} and extracts their values in order.
+     * Only skips single-quoted string literals — full SQL lexical scanning is
+     * handled by {@link SqlTextParser} when the complete statement is executed.
+     */
     private static Object[] normalizeArgs(String fragment, Object... values) {
         var sb = new StringBuilder(fragment.length());
         var matched = new ArrayList<>();
-        int vi = 0;
-        int len = fragment.length();
-        int i = 0;
+        int vi = 0, len = fragment.length(), i = 0;
 
         while (i < len) {
             char c = fragment.charAt(i);
 
-            // string literal '...'
+            // skip single-quoted string literals to avoid false positives
             if (c == '\'') {
-                sb.append(c);
+                sb.append('\'');
                 i++;
                 while (i < len) {
                     char sc = fragment.charAt(i);
                     sb.append(sc);
                     i++;
                     if (sc == '\'') {
-                        if (i < len && fragment.charAt(i) == '\'') {
-                            sb.append('\'');
-                            i++;
-                        } else {
-                            break;
-                        }
+                        if (i < len && fragment.charAt(i) == '\'') { sb.append('\''); i++; }
+                        else break;
                     }
                 }
                 continue;
             }
 
-            // identifier "..."
-            if (c == '"') {
-                sb.append(c);
-                i++;
-                while (i < len && fragment.charAt(i) != '"') {
-                    sb.append(fragment.charAt(i));
-                    i++;
-                }
-                if (i < len) {
-                    sb.append('"');
-                    i++;
-                }
-                continue;
-            }
-
-            // line comment --
-            if (c == '-' && i + 1 < len && fragment.charAt(i + 1) == '-') {
-                sb.append(c);
-                i++;
-                sb.append('-');
-                i++;
-                while (i < len && fragment.charAt(i) != '\n') {
-                    sb.append(fragment.charAt(i));
-                    i++;
-                }
-                continue;
-            }
-
-            // block comment /* */
-            if (c == '/' && i + 1 < len && fragment.charAt(i + 1) == '*') {
-                sb.append('/');
-                i++;
-                sb.append('*');
-                i++;
-                while (i < len) {
-                    char bc = fragment.charAt(i);
-                    sb.append(bc);
-                    i++;
-                    if (bc == '*' && i < len && fragment.charAt(i) == '/') {
-                        sb.append('/');
-                        i++;
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            // dollar-quoted string $$...$$ / $tag$...$tag$
-            if (c == '$' && i + 1 < len) {
-                int after = skipDollarQuote(fragment, i, sb);
-                if (after > i) {
-                    i = after;
-                    continue;
-                }
-            }
-
-            // PostgreSQL type cast ::  — must precede :name check
+            // PostgreSQL :: type cast — must precede :name check
             if (c == ':' && i + 1 < len && fragment.charAt(i + 1) == ':') {
                 sb.append("::");
                 i += 2;
                 continue;
             }
 
-            // :name or $name named parameter
-            if ((c == ':' || c == '$') && i + 1 < len && Names.isValidParamStart(fragment.charAt(i + 1))) {
+            if ((c == ':' || c == '$') && i + 1 < len
+                && Names.isValidParamStart(fragment.charAt(i + 1))) {
                 int start = i + 1;
                 i += 2;
-                while (i < len && Names.isValidParamChar(fragment.charAt(i))) {
-                    i++;
-                }
+                while (i < len && Names.isValidParamChar(fragment.charAt(i))) i++;
                 if (vi < values.length) {
                     appendValue(sb, matched, values[vi++]);
                 } else {
                     throw new SqlException(
                         "Missing value for named parameter at position " + start
-                            + " in fragment: " + fragment
-                    );
+                            + " in fragment: " + fragment);
                 }
                 continue;
             }
 
-            // ? positional parameter
             if (c == '?') {
                 if (vi < values.length) {
                     appendValue(sb, matched, values[vi++]);
                 } else {
                     throw new SqlException(
-                        "Missing value for '?' at position " + i + " in fragment: " + fragment
-                    );
+                        "Missing value for '?' at position " + i + " in fragment: " + fragment);
                 }
                 i++;
                 continue;
@@ -837,7 +799,7 @@ public final class SQL {
         if (vi < values.length) {
             throw new SqlException(
                 "Too many parameter values for SQL fragment: " + fragment
-                + " — " + vi + " placeholder(s) but " + values.length + " value(s) provided");
+                    + " — " + vi + " placeholder(s) but " + values.length + " value(s) provided");
         }
 
         return new Object[]{sb.toString(), matched.toArray()};
@@ -851,46 +813,6 @@ public final class SQL {
         }
         sb.append('?');
         matched.add(value);
-    }
-
-    /**
-     * Skips a PostgreSQL dollar-quoted string ({@code $$...$$} or
-     * {@code $tag$...$tag$}), copying it verbatim to {@code sb}.
-     * Returns the index after the closing delimiter, or {@code start}
-     * if no valid dollar quote was found.
-     */
-    private static int skipDollarQuote(String sql, int start, StringBuilder sb) {
-        int len = sql.length();
-        int tagEnd = start + 1;
-        if (tagEnd >= len) return start;
-
-        char next = sql.charAt(tagEnd);
-        // Anonymous $$...$$
-        if (next == '$') {
-            sb.append("$$");
-            int bodyStart = start + 2;
-            int end = sql.indexOf("$$", bodyStart);
-            if (end < 0) return start;
-            sb.append(sql, bodyStart, end);
-            sb.append("$$");
-            return end + 2;
-        }
-
-        // Named $tag$...$tag$
-        if (!Character.isLetterOrDigit(next) && next != '_') return start;
-        while (tagEnd < len && (Character.isLetterOrDigit(sql.charAt(tagEnd)) || sql.charAt(tagEnd) == '_')) {
-            tagEnd++;
-        }
-        if (tagEnd >= len || sql.charAt(tagEnd) != '$') return start;
-
-        String tag = sql.substring(start, tagEnd + 1); // e.g. "$body$"
-        sb.append(tag);
-        int bodyStart = tagEnd + 1;
-        int end = sql.indexOf(tag, bodyStart);
-        if (end < 0) return start;
-        sb.append(sql, bodyStart, end);
-        sb.append(tag);
-        return end + tag.length();
     }
 
     private static Object[] concat(Object[] a, Object[] b) {

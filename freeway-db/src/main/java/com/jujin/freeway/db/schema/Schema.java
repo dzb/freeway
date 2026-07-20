@@ -54,7 +54,15 @@ public final class Schema {
      * Uses PostgresDialect by default (suitable for PostgreSQL / H2).
      */
     public static String define(Class<?> entityType) {
-        return new SchemaGenerator(new PostgresDialect()).generate(entityType);
+        return define(new PostgresDialect(), entityType);
+    }
+
+    /**
+     * Generates a CREATE TABLE DDL string for the given entity type
+     * using a specific dialect.
+     */
+    public static String define(Dialect dialect, Class<?> entityType) {
+        return new SchemaGenerator(dialect).generate(entityType);
     }
 
     /**

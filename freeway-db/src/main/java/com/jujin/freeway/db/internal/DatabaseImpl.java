@@ -2,6 +2,8 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.db.*;
+import com.jujin.freeway.db.schema.Dialect;
+import com.jujin.freeway.db.schema.PostgresDialect;
 import com.jujin.freeway.db.util.SqlTextParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,25 +20,33 @@ public final class DatabaseImpl implements Database {
 
     private final Pool pool;
     private final RowMapperResolver rowMapperResolver;
+    private final Dialect dialect;
     private final int queryTimeoutSeconds;
 
     public DatabaseImpl(
         PoolConfig config,
         RowMapperResolver rowMapperResolver
     ) {
-        this(config, rowMapperResolver, null);
+        this(config, rowMapperResolver, null, null);
     }
 
     public DatabaseImpl(
         PoolConfig config,
         RowMapperResolver rowMapperResolver,
-        Pool pool
+        Pool pool,
+        Dialect dialect
     ) {
         this.pool =
             pool != null ? pool : new PoolDefault(config);
         this.rowMapperResolver = rowMapperResolver;
+        this.dialect = dialect != null ? dialect : new PostgresDialect();
         long millis = config.queryTimeout().toMillis();
         this.queryTimeoutSeconds = (int) Math.max(1, (millis + 999) / 1000);
+    }
+
+    @Override
+    public Dialect dialect() {
+        return dialect;
     }
 
     @Override

@@ -291,6 +291,136 @@ class SchemaGeneratorTest {
         assertEquals("CREATE INDEX idx_email ON users (email)", ddl);
     }
 
+    // ====================== upsert 子句 ======================
+
+    @Test
+    void postgresUpsertUsesOnConflict() {
+        String clause = new PostgresDialect().upsertClause(List.of("id"), List.of("name", "email"));
+        assertEquals(" ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email", clause);
+    }
+
+    @Test
+    void mysqlUpsertUsesOnDuplicateKey() {
+        String clause = new MySqlDialect().upsertClause(List.of("id"), List.of("name", "email"));
+        assertEquals(" ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email)", clause);
+    }
+
+    @Test
+    void sqliteUpsertUsesOnConflict() {
+        String clause = new SqliteDialect().upsertClause(List.of("id"), List.of("name"));
+        assertEquals(" ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name", clause);
+    }
+
+    // ====================== supportsReturning ======================
+
+    @Test
+    void postgresSupportsReturning() {
+        assertTrue(new PostgresDialect().supportsReturning());
+    }
+
+    @Test
+    void mysqlDoesNotSupportReturning() {
+        assertFalse(new MySqlDialect().supportsReturning());
+    }
+
+    @Test
+    void sqliteSupportsReturning() {
+        assertTrue(new SqliteDialect().supportsReturning());
+    }
+
+    // ====================== truncate ======================
+
+    @Test
+    void postgresTruncateIncludesRestartIdentity() {
+        String sql = new PostgresDialect().truncateTable("users");
+        assertEquals("TRUNCATE TABLE users RESTART IDENTITY", sql);
+    }
+
+    @Test
+    void mysqlTruncateIsSimple() {
+        String sql = new MySqlDialect().truncateTable("users");
+        assertEquals("TRUNCATE TABLE users", sql);
+    }
+
+    @Test
+    void sqliteTruncateUsesDeleteFrom() {
+        String sql = new SqliteDialect().truncateTable("users");
+        assertEquals("DELETE FROM users", sql);
+    }
+
+    @Test
+    void truncateQuotesReservedWordTable() {
+        String sql = new PostgresDialect().truncateTable("user");
+        assertEquals("TRUNCATE TABLE \"user\" RESTART IDENTITY", sql);
+    }
+
+    // ====================== H2Dialect ======================
+
+    @Test
+    void h2TruncateResetsIdentity() {
+        String sql = new H2Dialect().truncateTable("users");
+        assertEquals("TRUNCATE TABLE users RESTART IDENTITY", sql);
+    }
+
+    @Test
+    void h2BinaryTypeIsBinaryVarying() {
+        assertEquals("BINARY VARYING", new H2Dialect().defaultBinaryType());
+    }
+
+    @Test
+    void h2SupportsReturning() {
+        assertTrue(new H2Dialect().supportsReturning());
+    }
+
+    @Test
+    void h2QuotesReservedWord() {
+        assertEquals("\"user\"", new H2Dialect().quoteName("user"));
+    }
+
+    // ====================== forUpdateClause ======================
+
+    @Test
+    void forUpdateClauseDefault() {
+        assertEquals("FOR UPDATE", new PostgresDialect().forUpdateClause());
+        assertEquals("FOR UPDATE", new MySqlDialect().forUpdateClause());
+        assertEquals("", new SqliteDialect().forUpdateClause());
+        assertEquals("FOR UPDATE", new H2Dialect().forUpdateClause());
+    }
+
+    // ====================== dialectId ======================
+
+    @Test
+    void dialectIds() {
+        assertEquals("postgresql", new PostgresDialect().dialectId());
+        assertEquals("mysql", new MySqlDialect().dialectId());
+        assertEquals("sqlite", new SqliteDialect().dialectId());
+        assertEquals("h2", new H2Dialect().dialectId());
+    }
+
+    // ====================== generatedTypeOverride ======================
+
+    @Test
+    void defaultGeneratedTypeOverrideReturnsInput() {
+        assertEquals("BIGINT", new PostgresDialect().generatedTypeOverride("BIGINT", Long.class));
+        assertEquals("INTEGER", new MySqlDialect().generatedTypeOverride("INTEGER", Integer.class));
+    }
+
+    @Test
+    void sqliteGeneratedTypeOverrideForcesInteger() {
+        var d = new SqliteDialect();
+        assertEquals("INTEGER", d.generatedTypeOverride("BIGINT", Long.class));
+        assertEquals("INTEGER", d.generatedTypeOverride("BIGINT", long.class));
+        assertEquals("INTEGER", d.generatedTypeOverride("INTEGER", Integer.class));
+        assertEquals("INTEGER", d.generatedTypeOverride("BIGINT", int.class));
+    }
+
+    @Test
+    void sqliteGeneratedTypeOverrideRejectsNonIntegral() {
+        var d = new SqliteDialect();
+        assertThrows(IllegalArgumentException.class, () ->
+            d.generatedTypeOverride("TEXT", String.class));
+    }
+
     @Test
     void sqliteAddColumnDoesNotDuplicateKeyword() {
         String ddl = new SqliteDialect().addColumn(
