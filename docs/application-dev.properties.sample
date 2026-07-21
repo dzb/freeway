@@ -8,8 +8,8 @@
 #  Logging
 # ================================
 
-# Logging is controlled via JVM system properties or env vars,
-# not via application config files.
+# Logging config priority: -D flags > freeway-log.properties > code default.
+# See freeway-log.properties (classpath root) for all supported keys.
 # Color output for local terminal
 # JVM: -Dfreeway.log.color=always
 # Env: FREEWAY_LOG_COLOR=always

@@ -11,8 +11,8 @@
 #  Logging
 # ================================
 
-# Logging is controlled via JVM system properties or env vars,
-# not via application config files.
+# Logging config priority: -D flags > freeway-log.properties > code default.
+# See freeway-log.properties (classpath root) for all supported keys.
 # Disable color for log aggregators
 # JVM: -Dfreeway.log.color=never
 # Env: FREEWAY_LOG_COLOR=never
@@ -24,6 +24,12 @@
 # freeway.log.file.max-size=104857600
 # freeway.log.file.max-history=30
 # freeway.log.file.compress=true
+
+# Multi-file logging — separate audit log on its own logger
+# JVM: -Dfreeway.log.files=audit
+# -Dfreeway.log.file.audit.path=/var/log/myapp/audit.log
+# -Dfreeway.log.file.audit.logger=com.myapp.audit
+# -Dfreeway.log.file.audit.level=INFO
 
 
 # ================================

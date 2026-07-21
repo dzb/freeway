@@ -25,32 +25,49 @@
 
 
 # ================================
-#  Logging (JVM system properties, not in config map)
+#  Logging (freeway-log.properties on classpath root)
 # ================================
+# Freeway's JUL logging is configured via freeway-log.properties
+# (shipped in freeway-commons). System properties (-D) override file values.
+# All keys below work in both freeway-log.properties and -D flags.
 
 # Log format: unset = Freeway console formatter (color, compact)
 #             "simple" = JUL default SimpleFormatter
-#   JVM: -Dfreeway.log.format=simple
+#   -Dfreeway.log.format=simple
 #   Env: FREEWAY_LOG_FORMAT=simple
 # freeway.log.format=
 
 # Log color: auto-detected by default (enabled on TTY consoles).
 #   "always" — force color output
 #   "never"  — disable color (or set NO_COLOR=1)
-#   JVM: -Dfreeway.log.color=always
+#   -Dfreeway.log.color=always
 #   Env: FREEWAY_LOG_COLOR=always
 # freeway.log.color=
 
-# File logging — JULFileHandler with time+size dual rotation + GZIP compression.
-#   Set to "auto" to derive path from app.name (defaults to logs/freeway.log).
-#   Or set an explicit path. Omit to disable file logging (console only).
-#   All freeway.log.file.* keys are JVM system properties (-D), not config map.
-#   JVM: -Dfreeway.log.file=auto
-#   Env: FREEWAY_LOG_FILE=auto
-# freeway.log.file=
+# Console output
+# freeway.log.console.enabled=true
+# freeway.log.console.level=INFO
+
+# Default file logging — JULFileHandler with time+size dual rotation + GZIP compression.
+#   auto     → logs/{app.name}.log (default)
+#   <path>   → explicit path
+#   off      → disable file logging
+# freeway.log.file=auto
 # freeway.log.file.max-size=104857600   # 100 MB, bytes
 # freeway.log.file.max-history=30       # days
 # freeway.log.file.compress=true        # GZIP
+
+# Multi-file logging — declare named files with independent rotation/config.
+# Each file can be bound to a specific logger with an optional level.
+# freeway.log.files=biz,audit
+# freeway.log.file.biz.path=logs/biz.log
+# freeway.log.file.audit.path=logs/audit.log
+# freeway.log.file.audit.logger=com.myapp.audit
+# freeway.log.file.audit.level=FINE
+
+# Per-logger levels — any key ending with .level
+# freeway.log.level=INFO                # root logger level
+# com.myapp.audit.level=FINE
 
 
 # ================================

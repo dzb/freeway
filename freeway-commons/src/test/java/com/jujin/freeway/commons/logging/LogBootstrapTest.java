@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -173,6 +175,233 @@ class LogBootstrapTest {
         } finally {
             if (saved != null) System.setProperty("freeway.log.file", saved);
             else System.clearProperty("freeway.log.file");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    // ── multi-file logging ────────────────────────────────────
+
+    @Test
+    void multiFileCreatesHandlersOnCorrectLoggers(@TempDir Path tempDir) {
+        Path bizPath = tempDir.resolve("biz.log");
+        Path auditPath = tempDir.resolve("audit.log");
+
+        System.setProperty("freeway.log.file", "off"); // no default file
+        System.setProperty("freeway.log.files", "biz,audit");
+        System.setProperty("freeway.log.file.biz.path", bizPath.toString());
+        System.setProperty("freeway.log.file.audit.path", auditPath.toString());
+        System.setProperty("freeway.log.file.audit.logger", "com.myapp.audit");
+
+        JULEnhancer.resetForTest();
+        try {
+            JULEnhancer.configure();
+
+            java.util.logging.Logger root =
+                java.util.logging.Logger.getLogger("");
+            java.util.logging.Logger auditLogger =
+                java.util.logging.Logger.getLogger("com.myapp.audit");
+            java.util.logging.Logger otherLogger =
+                java.util.logging.Logger.getLogger("some.other");
+
+            // biz has no logger → on root
+            long rootFileHandlers = Arrays.stream(root.getHandlers())
+                .filter(h -> h instanceof JULFileHandler)
+                .count();
+            assertEquals(1, rootFileHandlers,
+                "biz handler should be on root");
+
+            // audit has logger=com.myapp.audit
+            long auditFileHandlers = Arrays.stream(auditLogger.getHandlers())
+                .filter(h -> h instanceof JULFileHandler)
+                .count();
+            assertEquals(1, auditFileHandlers,
+                "audit handler should be on com.myapp.audit");
+
+            // other logger has no JULFileHandler
+            long otherFileHandlers = Arrays.stream(otherLogger.getHandlers())
+                .filter(h -> h instanceof JULFileHandler)
+                .count();
+            assertEquals(0, otherFileHandlers,
+                "other logger should have no JULFileHandler");
+
+        } finally {
+            System.clearProperty("freeway.log.file");
+            System.clearProperty("freeway.log.files");
+            System.clearProperty("freeway.log.file.biz.path");
+            System.clearProperty("freeway.log.file.audit.path");
+            System.clearProperty("freeway.log.file.audit.logger");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    @Test
+    void multiFileWritesToSeparateFiles(@TempDir Path tempDir) throws Exception {
+        Path bizPath = tempDir.resolve("biz.log");
+        Path auditPath = tempDir.resolve("audit.log");
+
+        System.setProperty("freeway.log.file", "off"); // no default file
+        System.setProperty("freeway.log.files", "biz,audit");
+        System.setProperty("freeway.log.file.biz.path", bizPath.toString());
+        System.setProperty("freeway.log.file.audit.path", auditPath.toString());
+        System.setProperty("freeway.log.file.audit.logger", "com.myapp.audit");
+
+        JULEnhancer.resetForTest();
+        try {
+            JULEnhancer.configure();
+
+            org.slf4j.Logger bizLogger =
+                LoggerFactory.getLogger("com.myapp.biz");
+            org.slf4j.Logger auditLogger =
+                LoggerFactory.getLogger("com.myapp.audit");
+
+            bizLogger.info("biz specific message");
+            auditLogger.info("audit specific message");
+            auditLogger.warn("audit warning");
+
+            // Flush all JULFileHandlers
+            java.util.logging.Logger root =
+                java.util.logging.Logger.getLogger("");
+            for (var h : root.getHandlers()) {
+                if (h instanceof JULFileHandler) h.flush();
+            }
+            for (var h : java.util.logging.Logger
+                    .getLogger("com.myapp.audit").getHandlers()) {
+                if (h instanceof JULFileHandler) h.flush();
+            }
+
+            // Biz file should have biz message but NOT audit messages
+            String bizContent = Files.readString(bizPath);
+            assertTrue(bizContent.contains("biz specific message"),
+                "biz file should contain biz message");
+            assertFalse(bizContent.contains("audit specific message"),
+                "biz file should NOT contain audit message");
+
+            // Audit file should have audit messages
+            String auditContent = Files.readString(auditPath);
+            assertTrue(auditContent.contains("audit specific message"),
+                "audit file should contain audit message");
+            assertTrue(auditContent.contains("audit warning"),
+                "audit file should contain audit warning");
+
+        } finally {
+            System.clearProperty("freeway.log.file");
+            System.clearProperty("freeway.log.files");
+            System.clearProperty("freeway.log.file.biz.path");
+            System.clearProperty("freeway.log.file.audit.path");
+            System.clearProperty("freeway.log.file.audit.logger");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    @Test
+    void multiFileMissingPathDoesNotCrash() {
+        System.setProperty("freeway.log.files", "missing,also-missing");
+
+        JULEnhancer.resetForTest();
+        try {
+            assertDoesNotThrow(() -> JULEnhancer.configure(),
+                "Missing path should log warning, not crash");
+        } finally {
+            System.clearProperty("freeway.log.files");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    @Test
+    void defaultFilePlusNamedFiles(@TempDir Path tempDir) throws Exception {
+        Path mainPath = tempDir.resolve("main.log");
+        Path extraPath = tempDir.resolve("extra.log");
+
+        // Set default file path AND named files
+        System.setProperty("freeway.log.file", mainPath.toString());
+        System.setProperty("freeway.log.files", "extra");
+        System.setProperty("freeway.log.file.extra.path", extraPath.toString());
+
+        JULEnhancer.resetForTest();
+        try {
+            JULEnhancer.configure();
+
+            java.util.logging.Logger root =
+                java.util.logging.Logger.getLogger("");
+
+            // Both should be on root: default + extra
+            long rootFileHandlers = Arrays.stream(root.getHandlers())
+                .filter(h -> h instanceof JULFileHandler)
+                .count();
+            assertEquals(2, rootFileHandlers,
+                "Root should have 2 JULFileHandlers (default + extra)");
+
+        } finally {
+            System.clearProperty("freeway.log.file");
+            System.clearProperty("freeway.log.files");
+            System.clearProperty("freeway.log.file.extra.path");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    // ── console handler ────────────────────────────────────────
+
+    @Test
+    void consoleCanBeDisabled() {
+        System.setProperty("freeway.log.console.enabled", "false");
+        System.setProperty("freeway.log.file", "off");
+
+        JULEnhancer.resetForTest();
+        try {
+            JULEnhancer.configure();
+
+            java.util.logging.Logger root =
+                java.util.logging.Logger.getLogger("");
+            long consoleHandlers = Arrays.stream(root.getHandlers())
+                .filter(h -> h instanceof ConsoleHandler)
+                .count();
+            assertEquals(0, consoleHandlers,
+                "ConsoleHandler should be removed when disabled");
+        } finally {
+            System.clearProperty("freeway.log.console.enabled");
+            System.clearProperty("freeway.log.file");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    // ── level configuration ────────────────────────────────────
+
+    @Test
+    void systemPropertyOverridesLogLevel() {
+        System.setProperty("freeway.log.level", "FINE");
+        System.setProperty("freeway.log.file", "off");
+
+        JULEnhancer.resetForTest();
+        try {
+            JULEnhancer.configure();
+
+            java.util.logging.Logger root =
+                java.util.logging.Logger.getLogger("");
+            assertEquals(Level.FINE, root.getLevel(),
+                "System property should override freeway-log.properties");
+        } finally {
+            System.clearProperty("freeway.log.level");
+            System.clearProperty("freeway.log.file");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    @Test
+    void perLoggerLevelViaSystemProperty() {
+        System.setProperty("freeway.log.file", "off");
+        System.setProperty("com.myapp.audit.level", "FINE");
+
+        JULEnhancer.resetForTest();
+        try {
+            JULEnhancer.configure();
+
+            java.util.logging.Logger auditLogger =
+                java.util.logging.Logger.getLogger("com.myapp.audit");
+            assertEquals(Level.FINE, auditLogger.getLevel(),
+                "Per-logger level should be FINE");
+        } finally {
+            System.clearProperty("freeway.log.file");
+            System.clearProperty("com.myapp.audit.level");
             JULEnhancer.resetForTest();
         }
     }

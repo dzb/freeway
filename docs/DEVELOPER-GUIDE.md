@@ -464,24 +464,67 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 `freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
 
-**Console output** is single-line with ANSI colors (auto-detected from the attached console). Colors are disabled when output is piped, redirected to a file, or `NO_COLOR` is set. Opt out with `-Dfreeway.log.format=simple` or `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
+#### Configuration File
 
-**File logging** is enabled by default. Output goes to `logs/{app.name}.log` (or `logs/freeway.log` if `app.name` is not set). The `JULFileHandler` uses time + size dual rotation with GZIP compression and automatic cleanup of files older than 30 days.
+Logging is configured through `freeway-log.properties` on the classpath root (shipped with `freeway-commons`). System properties (`-D`) override file values at the same key.
 
-```bash
-# Custom path
--Dfreeway.log.file=logs/myapp.log
+```properties
+# ── Global level ──
+freeway.log.level=INFO
 
-# Disable file logging entirely
--Dfreeway.log.file=off
+# ── Console ──
+freeway.log.console.enabled=true
+freeway.log.console.level=INFO
 
-# Size and retention
--Dfreeway.log.file.max-size=104857600   # 100 MB (per-file default)
--Dfreeway.log.file.max-history=30       # days
--Dfreeway.log.file.compress=true        # gzip rotated files
+# ── Default file (time + size dual rotation, GZIP compression) ──
+freeway.log.file=auto                          # logs/{app.name}.log
+# freeway.log.file=logs/myapp.log               # custom path
+# freeway.log.file=off                          # disable
+# freeway.log.file.max-size=104857600            # 100 MB
+# freeway.log.file.max-history=30                # days
+# freeway.log.file.compress=true                 # gzip rotated files
+
+# ── Multi-file logging ──
+# freeway.log.files=biz,audit
+# freeway.log.file.biz.path=logs/biz.log
+# freeway.log.file.audit.path=logs/audit.log
+# freeway.log.file.audit.logger=com.myapp.audit
+# freeway.log.file.audit.level=FINE
+
+# ── Per-logger levels ──
+# com.myapp.audit.level=FINE
+# com.jujin.freeway.http.level=FINE
 ```
 
-The `logging.properties` file at the classpath root is the reference for all logging configuration options.
+**Priority:** `-D` flag > `freeway-log.properties` > code default.
+
+#### Console Output
+
+Single-line with ANSI colors (auto-detected from the attached console). Colors are disabled when output is piped, redirected to a file, or `NO_COLOR` is set. Disable console output with `-Dfreeway.log.console.enabled=false` or in the config file. Opt out of Freeway's formatter with `-Dfreeway.log.format=simple` / `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
+
+#### File Logging
+
+A single rotating log file is enabled by default at `logs/{app.name}.log` (or `logs/freeway.log`). The built-in `JULFileHandler` uses time + size dual rotation with GZIP compression and automatic cleanup.
+
+Additional named log files can be declared via `freeway.log.files`:
+
+```bash
+-Dfreeway.log.files=audit
+-Dfreeway.log.file.audit.path=logs/audit.log
+-Dfreeway.log.file.audit.logger=com.myapp.audit
+-Dfreeway.log.file.audit.level=FINE
+```
+
+Each named file creates a `JULFileHandler` attached to the specified logger (root if not set). Messages sent to that logger go only to its file (`useParentHandlers=false`), preventing double-delivery to the default log.
+
+#### Per-Logger Level Control
+
+Any key ending with `.level` in the config file or system properties sets the corresponding JUL logger level:
+
+```bash
+-Dcom.myapp.audit.level=FINE
+-Dorg.hibernate.level=WARNING
+```
 
 ---
 

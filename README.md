@@ -68,7 +68,7 @@ Freeway 2 keeps its core concepts intentionally small:
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and optional file logging with time+size rotation and GZIP compression. File logging activates via `-Dfreeway.log.file=auto` or explicit path.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and configurable file logging (single or multi-file) with time+size rotation and GZIP compression. Configured via `freeway-log.properties` or `-D` flags. Zero-dependency fallback; drop in Logback for advanced needs.
 - Framework-provided implementation names use the **`XDefault` suffix** form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/commons.md](docs/reference/commons.md) for deeper module notes.
@@ -151,6 +151,49 @@ Shared utilities usable independently of the framework:
 - Scoped primitives — `Defer` buffers commit-time side effects; `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit.
 - Bean — `BeanIntrospector`/`BeanPlan` for record/bean reflection.
 - Validation — `@NotNull`/`@NotBlank`/`@Size`/`@Min`/`@Max`/`@Valid` with `BeanValidator`.
+- **Logging** — built-in SLF4J 2 provider backed by JUL, with ANSI-colored console and time+size rotating file output (see [Logging](#logging) below).
+
+### Logging
+
+Freeway uses **SLF4J 2** as its logging API — `LoggerFactory.getLogger()` everywhere, in framework code and user code alike. No logging framework dependency at compile time.
+
+**Zero-dependency fallback:** When no external SLF4J provider (Logback, Log4j) is on the classpath, `freeway-commons` activates its built-in JUL-backed provider automatically. Console output with ANSI colors, rotating file logging, and per-logger level control all work **with zero configuration** — no XML, no `logging.properties`, no extra dependencies.
+
+**Seamless upgrade to Logback:** Add one dependency and SLF4J switches to Logback automatically. No code changes, no config conflicts.
+
+```xml
+<dependency>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-classic</artifactId>
+</dependency>
+```
+
+**Configuration** via `freeway-log.properties` on the classpath root. System properties (`-D`) override file values.
+
+```properties
+freeway.log.level=INFO
+freeway.log.console.enabled=true
+freeway.log.console.level=INFO
+freeway.log.file=auto                    # logs/{app.name}.log, rotation + GZIP
+```
+
+**Multi-file logging** — declare named files with independent paths, rotation settings, and logger binding:
+
+```bash
+-Dfreeway.log.files=audit
+-Dfreeway.log.file.audit.path=logs/audit.log
+-Dfreeway.log.file.audit.logger=com.myapp.audit
+-Dfreeway.log.file.audit.level=FINE
+```
+
+**Per-logger level control** — any key ending with `.level` sets the corresponding JUL logger:
+
+```bash
+-Dcom.myapp.audit.level=FINE
+-Dorg.hibernate.level=WARNING
+```
+
+See [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md#logging-service) and [freeway-log.properties](freeway-commons/src/main/resources/freeway-log.properties) for the full reference.
 
 ### IoC (`freeway-ioc`)
 
