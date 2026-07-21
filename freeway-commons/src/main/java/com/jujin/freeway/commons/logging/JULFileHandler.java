@@ -206,6 +206,7 @@ public final class JULFileHandler extends StreamHandler {
 
         super.publish(record);
         bytesWritten += estimateSize(record);
+        flush();
     }
 
     // ── rotation ────────────────────────────────────────────────────
