@@ -30,6 +30,14 @@ final class JULEnhancer {
 
     static synchronized void configure() {
         if (configured) return;
+
+        // Force JUL LogManager initialization BEFORE attaching handlers.
+        // LogManager is lazily initialized — ensureInitialized() calls
+        // readConfiguration() which calls reset(), removing all handlers
+        // from all existing loggers. By triggering it here, the reset
+        // happens before our handlers are attached and survives.
+        LogManager.getLogManager().getLoggerNames();
+
         try {
             Properties fileConfig = loadFreewayConfig();
             configureLevels(fileConfig);
