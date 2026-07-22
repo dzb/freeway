@@ -2,7 +2,9 @@ package com.jujin.freeway.commons.logging;
 
 import java.util.Set;
 
-import static com.jujin.freeway.commons.logging.JULLogFormatterSupport.*;
+import static com.jujin.freeway.commons.logging.JULLogFormatterSupport.RED;
+import static com.jujin.freeway.commons.logging.JULLogFormatterSupport.DIM;
+import static com.jujin.freeway.commons.logging.JULLogFormatterSupport.color;
 
 /**
  * Renders {@link Throwable} traces into log output with ANSI color support.
@@ -18,11 +20,6 @@ final class JULThrowableRenderer {
 
     /**
      * Appends the full trace of {@code thrown} to {@code out}.
-     *
-     * @param out      the target buffer
-     * @param thrown   the root throwable
-     * @param color    whether to emit ANSI escape codes
-     * @param visited  set used to detect circular references
      */
     static void appendThrowable(
         StringBuilder out,

@@ -326,6 +326,8 @@ final class JULEnhancer {
 
     static synchronized void resetForTest() {
         configured = false;
+        namedFilesApplied = false;
+        namedFileConfigs.clear();
         LogManager logManager = LogManager.getLogManager();
         var names = logManager.getLoggerNames();
         while (names.hasMoreElements()) {
@@ -349,11 +351,11 @@ final class JULEnhancer {
     // ── named file config persistence ───────────────────────────
 
     private static final List<NamedFileConfig> namedFileConfigs = new ArrayList<>();
+    private static boolean namedFilesApplied;
 
     /**
-     * Re-applies all named file handler configurations. Safe to call
-     * multiple times — existing handlers are not duplicated because each
-     * call creates a fresh {@link JULFileHandler} and attaches it.
+     * Re-applies all named file handler configurations. A no-op after
+     * the first call — an internal guard prevents duplicate handlers.
      *
      * <p>Intended for late-stage re-attachment when handlers configured
      * during {@link #configure()} may have been cleared by
@@ -362,6 +364,8 @@ final class JULEnhancer {
      * started to ensure named loggers have their file handlers present.
      */
     static void applyNamedFileConfigs() {
+        if (namedFilesApplied) return;
+        namedFilesApplied = true;
         for (NamedFileConfig cfg : namedFileConfigs) {
             attachNamedFile(cfg);
         }
