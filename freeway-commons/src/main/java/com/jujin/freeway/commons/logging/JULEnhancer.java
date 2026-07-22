@@ -46,8 +46,9 @@ final class JULEnhancer {
     // ── config loading ──────────────────────────────────────────
 
     /**
-     * Loads {@code freeway-log.properties} from the classpath root.
-     * Returns an empty {@code Properties} if the file is not found.
+     * Loads {@code freeway-log.properties} from the classpath root if the
+     * user has provided one. Returns an empty {@code Properties} if the
+     * file is not present — the framework does not bundle a default copy.
      */
     private static Properties loadFreewayConfig() {
         Properties props = new Properties();

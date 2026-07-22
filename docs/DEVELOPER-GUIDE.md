@@ -466,7 +466,11 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 #### Configuration File
 
-Logging is configured through `freeway-log.properties` on the classpath root (shipped with `freeway-commons`). System properties (`-D`) override file values at the same key.
+Logging is configured through `freeway-log.properties` on the classpath root. System properties (`-D`) override file values.
+
+The framework does **not** bundle this file — create it in your project's `src/main/resources/` only when you need custom settings. All defaults are built into the code, so zero config files are required for basic usage.
+
+A reference template is available at [`docs/freeway-log.properties.reference`](freeway-log.properties.reference):
 
 ```properties
 # ── Global level ──

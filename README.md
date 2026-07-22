@@ -193,7 +193,7 @@ freeway.log.file=auto                    # logs/{app.name}.log, rotation + GZIP
 -Dorg.hibernate.level=WARNING
 ```
 
-See [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md#logging-service) and [freeway-log.properties](freeway-commons/src/main/resources/freeway-log.properties) for the full reference.
+See [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md#logging-service) and [docs/freeway-log.properties.reference](docs/freeway-log.properties.reference) for the full reference.
 
 ### IoC (`freeway-ioc`)
 

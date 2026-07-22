@@ -28,8 +28,9 @@
 #  Logging (freeway-log.properties on classpath root)
 # ================================
 # Freeway's JUL logging is configured via freeway-log.properties
-# (shipped in freeway-commons). System properties (-D) override file values.
-# All keys below work in both freeway-log.properties and -D flags.
+# on the classpath root (create in src/main/resources/ to customize).
+# System properties (-D) override file values.
+# See docs/freeway-log.properties.reference for all supported keys.
 
 # Log format: unset = Freeway console formatter (color, compact)
 #             "simple" = JUL default SimpleFormatter
