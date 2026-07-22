@@ -428,4 +428,114 @@ class LogBootstrapTest {
             JULEnhancer.resetForTest();
         }
     }
+
+    // ── parseLogLevel ───────────────────────────────────────
+
+    @Test
+    void parseLogLevelMapsSlf4jNames() {
+        assertEquals(Level.FINEST, JULEnhancer.parseLogLevel("TRACE"),
+            "TRACE → FINEST");
+        assertEquals(Level.FINE, JULEnhancer.parseLogLevel("DEBUG"),
+            "DEBUG → FINE");
+        assertEquals(Level.INFO, JULEnhancer.parseLogLevel("INFO"),
+            "INFO → INFO");
+        assertEquals(Level.WARNING, JULEnhancer.parseLogLevel("WARN"),
+            "WARN → WARNING");
+        assertEquals(Level.WARNING, JULEnhancer.parseLogLevel("WARNING"),
+            "WARNING → WARNING");
+        assertEquals(Level.SEVERE, JULEnhancer.parseLogLevel("ERROR"),
+            "ERROR → SEVERE");
+        assertEquals(Level.SEVERE, JULEnhancer.parseLogLevel("FATAL"),
+            "FATAL → SEVERE");
+        assertEquals(Level.OFF, JULEnhancer.parseLogLevel("OFF"),
+            "OFF → OFF");
+        assertEquals(Level.ALL, JULEnhancer.parseLogLevel("ALL"),
+            "ALL → ALL");
+    }
+
+    @Test
+    void parseLogLevelAcceptsJulNames() {
+        assertEquals(Level.FINEST, JULEnhancer.parseLogLevel("FINEST"));
+        assertEquals(Level.FINER, JULEnhancer.parseLogLevel("FINER"));
+        assertEquals(Level.FINE, JULEnhancer.parseLogLevel("FINE"));
+        assertEquals(Level.SEVERE, JULEnhancer.parseLogLevel("SEVERE"));
+    }
+
+    @Test
+    void parseLogLevelIsCaseInsensitive() {
+        assertEquals(Level.FINE, JULEnhancer.parseLogLevel("debug"));
+        assertEquals(Level.FINE, JULEnhancer.parseLogLevel("Debug"));
+        assertEquals(Level.FINE, JULEnhancer.parseLogLevel("DEBUG"));
+        assertEquals(Level.SEVERE, JULEnhancer.parseLogLevel("error"));
+    }
+
+    @Test
+    void parseLogLevelRejectsUnknown() {
+        assertThrows(IllegalArgumentException.class,
+            () -> JULEnhancer.parseLogLevel("BOGUS"));
+        assertThrows(IllegalArgumentException.class,
+            () -> JULEnhancer.parseLogLevel(""));
+    }
+
+    @Test
+    void invalidLevelDoesNotAbortConfiguration() {
+        System.setProperty("freeway.log.level", "BOGUS");
+        System.setProperty("freeway.log.file", "off");
+
+        JULEnhancer.resetForTest();
+        try {
+            assertDoesNotThrow(() -> JULEnhancer.configure(),
+                "Invalid level should not crash configure()");
+            java.util.logging.Logger root =
+                java.util.logging.Logger.getLogger("");
+            assertNotNull(root.getLevel());
+        } finally {
+            System.clearProperty("freeway.log.level");
+            System.clearProperty("freeway.log.file");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    // ── caller info ─────────────────────────────────────────
+
+    @Test
+    void sfl4jLoggerHasCorrectCallerInfo() {
+        var records = new java.util.ArrayList<java.util.logging.LogRecord>();
+
+        java.util.logging.Logger testLogger =
+            java.util.logging.Logger.getLogger("caller.test");
+        testLogger.setUseParentHandlers(false);
+        testLogger.setLevel(Level.ALL);
+        testLogger.addHandler(new java.util.logging.Handler() {
+            { setLevel(Level.ALL); }
+            @Override public void publish(java.util.logging.LogRecord r) {
+                records.add(r);
+            }
+            @Override public void flush() {}
+            @Override public void close() {}
+        });
+
+        org.slf4j.Logger slf4j = org.slf4j.LoggerFactory.getLogger("caller.test");
+        slf4j.info("test caller info");
+
+        assertEquals(1, records.size(), "Should have captured one record");
+        java.util.logging.LogRecord record = records.getFirst();
+
+        assertEquals("caller.test", record.getLoggerName());
+        assertEquals(Level.INFO, record.getLevel());
+
+        // Source info should be THIS test class, not JULLoggerAdapter
+        assertEquals(
+            LogBootstrapTest.class.getName(),
+            record.getSourceClassName(),
+            "source class should be the test class, not the SLF4J bridge"
+        );
+        assertEquals(
+            "sfl4jLoggerHasCorrectCallerInfo",
+            record.getSourceMethodName(),
+            "source method should be the test method"
+        );
+
+        testLogger.removeHandler(testLogger.getHandlers()[0]);
+    }
 }

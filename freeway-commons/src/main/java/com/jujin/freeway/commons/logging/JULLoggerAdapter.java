@@ -4,11 +4,18 @@ import org.slf4j.Marker;
 import org.slf4j.helpers.LegacyAbstractLogger;
 import org.slf4j.helpers.MessageFormatter;
 
+import java.lang.StackWalker.StackFrame;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 public final class JULLoggerAdapter extends LegacyAbstractLogger {
+
+    /**
+     * Shared {@link StackWalker} for caller inference. Walks only until the
+     * first application-code frame is found — no full-array allocation.
+     */
+    private static final StackWalker WALKER = StackWalker.getInstance();
     private final Logger julLogger;
 
     JULLoggerAdapter(Logger julLogger) {
@@ -34,12 +41,53 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
 
         String formatted = MessageFormatter.basicArrayFormat(msg, args);
         LogRecord record = new LogRecord(julLevel, formatted);
+
+        // `new LogRecord(Level, String)` infers the caller from the stack.
+        // From a SLF4J bridge the inferred frame is always JULLoggerAdapter
+        // itself — wrong. Walk past the bridge and SLF4J internals to find
+        // the actual application code frame.
+        fixCallerInfo(record);
+
         record.setLoggerName(julLogger.getName());
         if (throwable != null) {
             record.setThrown(throwable);
         }
-
         julLogger.log(record);
+    }
+
+    /**
+     * Walks the call stack past SLF4J internals and this bridge to set the
+     * actual application-code caller on the {@link LogRecord}.
+     *
+     * <p>Clears the inferred values first. If the walk fails (should not
+     * happen in practice), {@code null} is safer than the wrong default
+     * from {@code LogRecord.inferCaller()}.
+     *
+     * <p>Uses a shared {@link StackWalker} (lazy, no full-array allocation)
+     * and stops at the first frame outside the bridge boundary.
+     */
+    private static void fixCallerInfo(LogRecord record) {
+        // Clear first — LogRecord constructor always infers and gets it wrong
+        record.setSourceClassName(null);
+        record.setSourceMethodName(null);
+
+        WALKER.walk(frames -> {
+            frames.skip(1) // skip fixCallerInfo itself
+                  .filter(JULLoggerAdapter::isApplicationFrame)
+                  .findFirst()
+                  .ifPresent(f -> {
+                      record.setSourceClassName(f.getClassName());
+                      record.setSourceMethodName(f.getMethodName());
+                  });
+            return null;
+        });
+    }
+
+    private static boolean isApplicationFrame(StackFrame frame) {
+        String cn = frame.getClassName();
+        return !cn.startsWith("org.slf4j.") &&
+               !cn.equals(JULLoggerAdapter.class.getName()) &&
+               !cn.startsWith("java.util.logging.");
     }
 
     @Override

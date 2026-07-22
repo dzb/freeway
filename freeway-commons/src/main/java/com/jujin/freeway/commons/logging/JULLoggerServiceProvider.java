@@ -45,5 +45,9 @@ public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
         loggerFactory = new JULLoggerFactory();
         markerFactory = new BasicMarkerFactory();
         mdcAdapter = new JULMDCAdapter();
+        // Ensure JUL enhancements are active regardless of when SLF4J
+        // initializes — guards against LoggerFactory.getLogger() being
+        // called before Freeway's own bootstrap runs.
+        JULEnhancer.configure();
     }
 }

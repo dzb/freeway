@@ -36,8 +36,8 @@ public final class JULMDCAdapter implements MDCAdapter {
 
     @Override
     public void clear() {
-        context.get().clear();
-        dequeMap.get().clear();
+        context.remove();
+        dequeMap.remove();
     }
 
     @Override

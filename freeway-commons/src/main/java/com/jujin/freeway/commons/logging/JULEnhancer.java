@@ -34,13 +34,22 @@ final class JULEnhancer {
             Properties fileConfig = loadFreewayConfig();
             configureLevels(fileConfig);
             configureConsole(fileConfig);
-            installFormatters();
+            installFormatters(fileConfig);
             activateFileLogging(fileConfig);
             configured = true;
         } catch (RuntimeException e) {
-            Logger.getLogger(JULEnhancer.class.getName())
-                .severe("Failed to configure JUL logging: " + e);
+            logEarly("SEVERE: Failed to configure JUL logging: " + e);
         }
+    }
+
+    /**
+     * Emits a diagnostic message to stderr during bootstrap, before JUL
+     * logging handlers are fully configured. {@code Logger.warning()} is
+     * unreliable here because the user's log environment may suppress
+     * console output or handlers may not yet be attached.
+     */
+    private static void logEarly(String message) {
+        System.err.println("[Freeway] " + message);
     }
 
     // ── config loading ──────────────────────────────────────────
@@ -49,27 +58,51 @@ final class JULEnhancer {
      * Loads {@code freeway-log.properties} from the classpath root if the
      * user has provided one. Returns an empty {@code Properties} if the
      * file is not present — the framework does not bundle a default copy.
+     *
+     * <p>Searches the thread context classloader first (user's classpath),
+     * then falls back to the classloader that loaded this class
+     * (module/JAR boundary), then the system classloader.
      */
     private static Properties loadFreewayConfig() {
         Properties props = new Properties();
-        try (InputStream in = JULEnhancer.class
-                .getClassLoader()
-                .getResourceAsStream("freeway-log.properties")) {
+        try (InputStream in = openConfigStream()) {
             if (in != null) {
                 props.load(in);
             }
         } catch (IOException e) {
-            Logger.getLogger(JULEnhancer.class.getName()).warning(
-                "Failed to load freeway-log.properties: " + e.getMessage()
-            );
+            logEarly("Failed to load freeway-log.properties: " + e.getMessage());
         }
         return props;
+    }
+
+    /**
+     * Opens {@code freeway-log.properties} from the classpath with
+     * cascading classloader search:
+     * <ol>
+     *   <li>Thread context classloader — user application classpath
+     *   <li>Own classloader — same JAR/module boundary
+     *   <li>System classloader — JVM classpath
+     * </ol>
+     */
+    private static InputStream openConfigStream() {
+        ClassLoader tccl = Thread.currentThread().getContextClassLoader();
+        if (tccl != null) {
+            InputStream in = tccl.getResourceAsStream("freeway-log.properties");
+            if (in != null) return in;
+        }
+        ClassLoader own = JULEnhancer.class.getClassLoader();
+        if (own != null) {
+            InputStream in = own.getResourceAsStream("freeway-log.properties");
+            if (in != null) return in;
+        }
+        return ClassLoader.getSystemResourceAsStream("freeway-log.properties");
     }
 
     /**
      * Reads a config value with cascading fallback:
      * <ol>
      *   <li>System property ({@code -Dkey=value}) — highest priority
+     *   <li>Environment variable ({@code FREEWAY_} prefix) — for {@code freeway.*} keys
      *   <li>{@code freeway-log.properties} key
      *   <li>{@code defaultValue}
      * </ol>
@@ -77,11 +110,25 @@ final class JULEnhancer {
     private static String readProperty(
         Properties fileConfig, String key, String defaultValue
     ) {
+        // 1. System property
         String sysVal = System.getProperty(key);
         if (sysVal != null) {
             String stripped = sysVal.strip();
             if (!stripped.isEmpty()) return stripped;
         }
+        // 2. Environment variable (FREEWAY_ → freeway., underscore → dot)
+        if (key.startsWith("freeway.")) {
+            String envKey = "FREEWAY_"
+                + key.substring("freeway.".length())
+                    .toUpperCase(Locale.ROOT)
+                    .replace('.', '_');
+            String envVal = System.getenv(envKey);
+            if (envVal != null) {
+                String stripped = envVal.strip();
+                if (!stripped.isEmpty()) return stripped;
+            }
+        }
+        // 3. Config file
         String fileVal = fileConfig.getProperty(key);
         if (fileVal != null) {
             String stripped = fileVal.strip();
@@ -93,13 +140,15 @@ final class JULEnhancer {
     // ── levels ──────────────────────────────────────────────────
 
     private static void configureLevels(Properties fileConfig) {
-        // Root logger level
+        // Root logger level — on failure log and skip, don't abort
         String rootLevel = readProperty(
             fileConfig, "freeway.log.level", "INFO"
         );
-        Logger.getLogger("").setLevel(
-            Level.parse(rootLevel.toUpperCase(Locale.ROOT))
-        );
+        try {
+            Logger.getLogger("").setLevel(parseLogLevel(rootLevel));
+        } catch (IllegalArgumentException e) {
+            logEarly("Invalid root level '" + rootLevel + "': " + e.getMessage());
+        }
 
         // Collect all .level keys from file config and system properties
         Set<String> levelKeys = new HashSet<>();
@@ -116,15 +165,60 @@ final class JULEnhancer {
 
         for (String key : levelKeys) {
             String effective = readProperty(fileConfig, key, null);
-            if (effective == null || effective.isBlank()) continue;
+            if (effective == null) continue;
 
             String loggerName = key.substring(
                 0, key.length() - ".level".length()
             );
-            Logger.getLogger(loggerName).setLevel(
-                Level.parse(effective.toUpperCase(Locale.ROOT))
-            );
+            try {
+                Logger.getLogger(loggerName).setLevel(parseLogLevel(effective));
+            } catch (IllegalArgumentException e) {
+                logEarly(
+                    "Invalid level '" + effective
+                        + "' for logger '" + loggerName + "': " + e.getMessage()
+                );
+            }
         }
+    }
+
+    /**
+     * Parses a log level string and returns the corresponding JUL
+     * {@link Level}. Accepts both SLF4J convention names and JUL level
+     * names — case-insensitive.
+     *
+     * <table>
+     *   <tr><th>SLF4J</th><th>JUL</th></tr>
+     *   <tr><td>TRACE</td><td>FINEST / FINER / FINE</td></tr>
+     *   <tr><td>DEBUG</td><td>FINE</td></tr>
+     *   <tr><td>INFO</td><td>INFO</td></tr>
+     *   <tr><td>WARN</td><td>WARNING</td></tr>
+     *   <tr><td>ERROR / FATAL</td><td>SEVERE</td></tr>
+     *   <tr><td>OFF</td><td>OFF</td></tr>
+     *   <tr><td>ALL</td><td>ALL</td></tr>
+     * </table>
+     */
+    static Level parseLogLevel(String value) {
+        String upper = value.strip().toUpperCase(Locale.ROOT);
+        return switch (upper) {
+            case "TRACE" -> Level.FINEST;
+            case "DEBUG" -> Level.FINE;
+            case "INFO"  -> Level.INFO;
+            case "WARN", "WARNING" -> Level.WARNING;
+            case "ERROR", "SEVERE", "FATAL" -> Level.SEVERE;
+            case "OFF"  -> Level.OFF;
+            case "ALL"  -> Level.ALL;
+            default -> {
+                // JUL-specific levels (FINER, FINEST, CONFIG, etc.)
+                try {
+                    yield Level.parse(upper);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException(
+                        "Unknown log level '" + value
+                            + "'. Supported: TRACE, DEBUG, INFO, WARN, ERROR, OFF, ALL"
+                    );
+                }
+            }
+        };
     }
 
     // ── console handler ─────────────────────────────────────────
@@ -156,9 +250,11 @@ final class JULEnhancer {
                     fileConfig, "freeway.log.console.level", null
                 );
                 if (level != null) {
-                    h.setLevel(
-                        Level.parse(level.toUpperCase(Locale.ROOT))
-                    );
+                    try {
+                        h.setLevel(parseLogLevel(level));
+                    } catch (IllegalArgumentException e) {
+                        logEarly("Invalid console level '" + level + "': " + e.getMessage());
+                    }
                 }
             }
         }
@@ -168,15 +264,20 @@ final class JULEnhancer {
             String level = readProperty(
                 fileConfig, "freeway.log.console.level", "INFO"
             );
-            ch.setLevel(Level.parse(level.toUpperCase(Locale.ROOT)));
+            try {
+                ch.setLevel(parseLogLevel(level));
+            } catch (IllegalArgumentException e) {
+                logEarly("Invalid console level '" + level + "': " + e.getMessage());
+                ch.setLevel(Level.INFO); // safe fallback
+            }
             root.addHandler(ch);
         }
     }
 
     // ── formatter installation ──────────────────────────────────
 
-    private static void installFormatters() {
-        if ("simple".equalsIgnoreCase(formatMode())) {
+    private static void installFormatters(Properties fileConfig) {
+        if ("simple".equalsIgnoreCase(formatMode(fileConfig))) {
             // Opt out: leave JUL's native SimpleFormatter in place.
             return;
         }
@@ -196,17 +297,17 @@ final class JULEnhancer {
      * Resolves the {@code freeway.log.format} switch.
      * Unset or blank defaults to {@code auto}; unknown values warn and
      * also fall back to {@code auto}.
+     *
+     * <p>Supports system property ({@code -Dfreeway.log.format}), env var
+     * ({@code FREEWAY_LOG_FORMAT}), and {@code freeway-log.properties}.
      */
-    private static String formatMode() {
-        String v = System.getProperty("freeway.log.format");
-        if (v == null) v = System.getenv("FREEWAY_LOG_FORMAT");
-        if (v == null || v.isBlank()) return "auto";
-        String trimmed = v.strip();
-        if ("auto".equalsIgnoreCase(trimmed) || "simple".equalsIgnoreCase(trimmed)) {
-            return trimmed.toLowerCase();
+    private static String formatMode(Properties fileConfig) {
+        String v = readProperty(fileConfig, "freeway.log.format", "auto");
+        if ("auto".equalsIgnoreCase(v) || "simple".equalsIgnoreCase(v)) {
+            return v.toLowerCase(Locale.ROOT);
         }
-        Logger.getLogger("com.jujin.freeway.commons.logging").warning(
-            "Unknown freeway.log.format '" + trimmed + "' — using 'auto'"
+        logEarly(
+            "Unknown freeway.log.format '" + v + "' — using 'auto'"
         );
         return "auto";
     }
@@ -260,9 +361,9 @@ final class JULEnhancer {
     private static void activateFileLogging(Properties fileConfig) {
         String raw = readProperty(fileConfig, "freeway.log.file", "auto");
 
-        if (!("off".equalsIgnoreCase(raw) || "none".equalsIgnoreCase(raw))) {
+        if (!"off".equalsIgnoreCase(raw)) {
             String path;
-            if (raw == null || raw.isBlank() || "auto".equalsIgnoreCase(raw)) {
+            if ("auto".equalsIgnoreCase(raw)) {
                 path = resolveDefaultPath();
             } else {
                 path = raw;
@@ -289,7 +390,7 @@ final class JULEnhancer {
                 );
                 Logger.getLogger("").addHandler(fh);
             } catch (IOException | RuntimeException e) {
-                Logger.getLogger(JULEnhancer.class.getName()).warning(
+                logEarly(
                     "Failed to activate file logging for '"
                         + path + "': " + e.getMessage()
                 );
@@ -315,7 +416,7 @@ final class JULEnhancer {
         String path = readProperty(fileConfig, prefix + ".path", null);
 
         if (path == null || path.isBlank()) {
-            Logger.getLogger(JULEnhancer.class.getName()).warning(
+            logEarly(
                 "Skipping log file '" + name + "': "
                     + prefix + ".path is not set"
             );
@@ -340,17 +441,22 @@ final class JULEnhancer {
             );
 
             String level = readProperty(fileConfig, prefix + ".level", null);
-            if (level != null && !level.isBlank()) {
-                handler.setLevel(
-                    Level.parse(level.strip().toUpperCase(Locale.ROOT))
-                );
+            if (level != null) {
+                try {
+                    handler.setLevel(parseLogLevel(level));
+                } catch (IllegalArgumentException e) {
+                    logEarly(
+                        "Invalid level '" + level
+                            + "' for log file '" + name + "': " + e.getMessage()
+                    );
+                }
             }
 
             String loggerName = readProperty(
                 fileConfig, prefix + ".logger", null
             );
-            Logger target = (loggerName != null && !loggerName.isBlank())
-                ? Logger.getLogger(loggerName.strip())
+            Logger target = (loggerName != null)
+                ? Logger.getLogger(loggerName)
                 : Logger.getLogger(""); // root
             target.addHandler(handler);
             // Prevent double-delivery: messages logged to this logger go
@@ -360,7 +466,7 @@ final class JULEnhancer {
             }
 
         } catch (IOException | RuntimeException e) {
-            Logger.getLogger(JULEnhancer.class.getName()).warning(
+            logEarly(
                 "Failed to activate named log file '"
                     + name + "' at '" + path + "': " + e.getMessage()
             );
@@ -373,9 +479,9 @@ final class JULEnhancer {
         Properties fileConfig, String key, long defaultValue
     ) {
         String val = readProperty(fileConfig, key, null);
-        if (val == null || val.isBlank()) return defaultValue;
+        if (val == null) return defaultValue;
         try {
-            return Long.parseLong(val.strip());
+            return Long.parseLong(val);
         } catch (NumberFormatException e) {
             return defaultValue;
         }
@@ -385,9 +491,9 @@ final class JULEnhancer {
         Properties fileConfig, String key, int defaultValue
     ) {
         String val = readProperty(fileConfig, key, null);
-        if (val == null || val.isBlank()) return defaultValue;
+        if (val == null) return defaultValue;
         try {
-            return Integer.parseInt(val.strip());
+            return Integer.parseInt(val);
         } catch (NumberFormatException e) {
             return defaultValue;
         }
@@ -397,7 +503,7 @@ final class JULEnhancer {
         Properties fileConfig, String key, boolean defaultValue
     ) {
         String val = readProperty(fileConfig, key, null);
-        if (val == null || val.isBlank()) return defaultValue;
-        return Boolean.parseBoolean(val.strip());
+        if (val == null) return defaultValue;
+        return Boolean.parseBoolean(val);
     }
 }

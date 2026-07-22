@@ -1,45 +1,106 @@
 # ═══════════════════════════════════════════════════════════════
-# Freeway 日志配置
+# Freeway 日志配置 — 参考模板
 # ═══════════════════════════════════════════════════════════════
 #
 # 此文件是 Freeway JUL 日志体系的唯一配置文件。
 # 由 JULEnhancer 在 bootstrap 阶段加载，替代 JUL 标准的 logging.properties。
 #
 # 系统属性（-D 参数）同名 key 会覆盖文件中的值，优先级：
-#   -D 参数 > freeway-log.properties > 代码默认值
+#   -D 参数 > 环境变量 FREEWAY_* > freeway-log.properties > 代码默认值
 #
 # 每组属性也支持通过环境变量 FREEWAY_<KEY> 传入：
 #   freeway.log.files       → FREEWAY_LOG_FILES
 #   freeway.log.console.enabled → FREEWAY_LOG_CONSOLE_ENABLED
 # 注意：带连字符的 key（如 max-size）不支持环境变量，需用 -D。
 
+
 # ── 全局日志级别 ────────────────────────────────────────────────
+#
+# 最佳实践：
+#   IDE/开发：INFO（默认）。想看细节用 freeway.log.level=DEBUG。
+#   生产环境：INFO（不要在生产开 DEBUG）。排障时临时降级。
+#
 freeway.log.level=INFO
 
+
 # ── 控制台日志 ──────────────────────────────────────────────────
+#
+# 控制台日志默认开启。12-factor app 要求日志走 stdout，容器环境
+# （Docker/K8s）依赖控制台输出做日志采集，不建议关闭。
+#
+# console.level 不设时继承 root 级别（freeway.log.level）。典型
+# 场景下两者一致就是最佳配置——开 DEBUG 时控制台也下放，不需要
+# 单独设。按需调高（如只盯 ERROR）再单独配。
+#
 freeway.log.console.enabled=true
-freeway.log.console.level=INFO
+# freeway.log.console.level=   # 继承 root 级别
+
+# 格式：auto = Freeway formatter + 颜色自适应
+#   - 有 TTY 终端 → ANSI 色彩 + 单行紧凑格式
+#   - 管道重定向 / Docker / K8s → 无色，不包含控制字符
+#   - 设置 simple 则退回 JUL SimpleFormatter（极少需要）
+#
+# freeway.log.format=auto
+
+# 颜色：auto = 跟随 format 行为。always 强制开启，never 强制关闭。
+# 遵循 NO_COLOR 环境变量规范（https://no-color.org）。
+#
+# freeway.log.color=auto
+
 
 # ── 默认文件日志 ────────────────────────────────────────────────
-# 缺省为 logs/{app.name}.log；设置 off 可关闭
+#
+# auto = 全托管：路径 logs/{app.name}.log，时间+大小双滚动，
+# 自动 GZIP 归档，30 天清理。
+#
+# file=auto 就是最佳实践——开箱即用，不需要操心路径和旋转策略。
+# 文件路径和安全地放日志之间没有偏门理由需要改它。
+#
+# 唯一需要 off 的场景：完全依赖 Docker 日志驱动且明确不想要文件。
+#
 freeway.log.file=auto
-freeway.log.file.max-size=104857600
-freeway.log.file.max-history=30
-freeway.log.file.compress=true
+# freeway.log.file=off                          # 关闭文件日志
+# freeway.log.file.max-size=104857600            # 100 MB 触发大小滚动
+# freeway.log.file.max-history=30                # 保留天数
+# freeway.log.file.compress=true                 # 归档后 GZIP
+
+# 注意：同时满足 file=auto（默认文件）和 files=...（多文件），
+# 两者叠加不冲突——默认文件继续收根 logger 的消息，命名文件收
+# 各自绑定的 logger 的消息。
+
 
 # ── 多文件日志输出 ──────────────────────────────────────────────
-# 声明额外的命名日志文件列表（逗号分隔）：
+#
+# 当需要按 Logger 分离日志时，通过 files 声明命名日志文件：
+#
 # freeway.log.files=biz,audit
 #
 # 每个文件通过 freeway.log.file.<name>.* 配置：
-# freeway.log.file.biz.path=logs/biz.log
-# freeway.log.file.biz.logger=com.myapp.biz
-# freeway.log.file.biz.level=INFO
-# freeway.log.file.audit.path=logs/audit.log
-# freeway.log.file.audit.logger=com.myapp.audit
-# freeway.log.file.audit.level=FINE
+# freeway.log.file.biz.path=logs/biz.log      # （必填）
+# freeway.log.file.biz.logger=com.myapp.biz   # （可选，缺省 root）
+# freeway.log.file.biz.level=INFO             # （可选，继承父 logger）
+# freeway.log.file.biz.max-size=104857600
+# freeway.log.file.biz.max-history=30
+# freeway.log.file.biz.compress=true
+#
+# 最佳实践：命名文件设了 logger 后，该 logger 的日志不再传播到
+# 根 logger，避免同一条消息出现在两个文件里。
+
 
 # ── 按包/类细粒度级别 ──────────────────────────────────────────
+#
 # 格式：<logger-name>.level=<LEVEL>
+#
+# 最佳实践：
+#   降低外部库的日志噪音（WARNING 以上才显示）：
+#     com.zaxxer.hikari.level=WARNING
+#     org.hibernate.level=WARNING
+#
+#   提高特定模块的日志级别（DEBUG 级别调细节）：
+#     com.myapp.biz.service.level=FINE
+#
+# 支持 SLF4J 级别名（TRACE/DEBUG/INFO/WARN/ERROR）和 JUL 级别名
+# （FINEST/FINE/INFO/WARNING/SEVERE），不区分大小写。
+#
 # com.jujin.freeway.http.level=FINE
 # com.jujin.freeway.db.level=FINE

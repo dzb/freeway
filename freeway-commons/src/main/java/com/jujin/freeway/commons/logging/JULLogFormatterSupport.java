@@ -15,14 +15,14 @@ import org.slf4j.MDC;
 
 final class JULLogFormatterSupport {
 
-    private static final String RESET = "\033[0m";
-    private static final String BOLD = "\033[1m";
-    private static final String DIM = "\033[2m";
-    private static final String RED = "\033[31m";
-    private static final String YELLOW = "\033[33m";
-    private static final String GREEN = "\033[32m";
-    private static final String CYAN = "\033[36m";
-    private static final String GRAY = "\033[90m";
+    static final String RESET = "\033[0m";
+    static final String BOLD = "\033[1m";
+    static final String DIM = "\033[2m";
+    static final String RED = "\033[31m";
+    static final String YELLOW = "\033[33m";
+    static final String GREEN = "\033[32m";
+    static final String CYAN = "\033[36m";
+    static final String GRAY = "\033[90m";
 
     private static final ConcurrentHashMap<String, String> ABBREV_CACHE =
         new ConcurrentHashMap<>();
@@ -34,14 +34,23 @@ final class JULLogFormatterSupport {
      * <p>These are common correlation / routing identifiers used across
      * Freeway applications. Override by setting
      * {@code -Dfreeway.log.mdc.priority=key1,key2,...}.
+     *
+     * <p>Computed once at class loading time — system properties that
+     * control log output formatting are not expected to change at runtime.
      */
-    private static String[] mdcPriorityKeys() {
+    private static final String[] MDC_PRIORITY_KEYS = loadMdcPriorityKeys();
+
+    private static String[] loadMdcPriorityKeys() {
         String override = System.getProperty(
             "freeway.log.mdc.priority",
             System.getenv("FREEWAY_LOG_MDC_PRIORITY")
         );
         if (override != null && !override.isBlank()) {
-            return override.split(",");
+            String[] keys = override.split(",");
+            for (int i = 0; i < keys.length; i++) {
+                keys[i] = keys[i].strip();
+            }
+            return keys;
         }
         return new String[] { "code", "market", "diagId" };
     }
@@ -116,7 +125,7 @@ final class JULLogFormatterSupport {
 
         if (record.getThrown() != null) {
             out.append('\n');
-            appendThrowable(out, record.getThrown(), color,
+            JULThrowableRenderer.appendThrowable(out, record.getThrown(), color,
                 Collections.newSetFromMap(new IdentityHashMap<>()));
         }
 
@@ -148,11 +157,11 @@ final class JULLogFormatterSupport {
         return text;
     }
 
-    private static String dim(String text, boolean useColor) {
+    static String dim(String text, boolean useColor) {
         return color(text, useColor ? DIM : null);
     }
 
-    private static String color(String text, String ansiCode) {
+    static String color(String text, String ansiCode) {
         if (ansiCode == null || text == null) {
             return text;
         }
@@ -198,8 +207,7 @@ final class JULLogFormatterSupport {
             boolean first = true;
 
             // Priority keys first (in configured order)
-            String[] priorityKeys = mdcPriorityKeys();
-            for (String key : priorityKeys) {
+            for (String key : MDC_PRIORITY_KEYS) {
                 String value = context.get(key);
                 if (value != null) {
                     if (!first) sb.append(' ');
@@ -209,7 +217,7 @@ final class JULLogFormatterSupport {
             }
 
             // Other keys (alphabetically)
-            Set<String> prioritySet = Set.of(priorityKeys);
+            Set<String> prioritySet = Set.of(MDC_PRIORITY_KEYS);
             var otherKeys = new TreeSet<>(context.keySet());
             otherKeys.removeAll(prioritySet);
             for (String key : otherKeys) {
@@ -226,121 +234,4 @@ final class JULLogFormatterSupport {
         }
     }
 
-    private static void appendThrowable(
-        StringBuilder out,
-        Throwable thrown,
-        boolean useColor,
-        Set<Throwable> visited
-    ) {
-        if (!visited.add(thrown)) {
-            return;
-        }
-        Throwable current = thrown;
-        boolean root = true;
-        while (current != null) {
-            if (root) {
-                out.append(color("  " + current, useColor ? RED : null));
-                root = false;
-            } else {
-                if (!visited.add(current)) {
-                    out.append(
-                        color(
-                            "  [CIRCULAR: " +
-                                current.getClass().getSimpleName() +
-                                "]",
-                            useColor ? RED : null
-                        )
-                    );
-                    break;
-                }
-                out.append(color("  Caused by: ", useColor ? RED : null));
-                out.append(
-                    color(String.valueOf(current), useColor ? RED : null)
-                );
-            }
-            out.append('\n');
-            for (StackTraceElement frame : current.getStackTrace()) {
-                out.append(color("      at " + frame, useColor ? DIM : null));
-                out.append('\n');
-            }
-            for (Throwable suppressed : current.getSuppressed()) {
-                appendSuppressed(
-                    out,
-                    suppressed,
-                    useColor,
-                    "    Suppressed: ",
-                    "          at ",
-                    visited
-                );
-            }
-            current = current.getCause();
-        }
-    }
-
-    private static void appendSuppressed(
-        StringBuilder out,
-        Throwable thrown,
-        boolean useColor,
-        String headerPrefix,
-        String framePrefix,
-        Set<Throwable> visited
-    ) {
-        if (!visited.add(thrown)) {
-            out.append(
-                color(
-                    headerPrefix +
-                        thrown.getClass().getSimpleName() +
-                        " [CIRCULAR]",
-                    useColor ? RED : null
-                )
-            );
-            out.append('\n');
-            return;
-        }
-        out.append(color(headerPrefix + thrown, useColor ? RED : null));
-        out.append('\n');
-        for (StackTraceElement frame : thrown.getStackTrace()) {
-            out.append(color(framePrefix + frame, useColor ? DIM : null));
-            out.append('\n');
-        }
-        for (
-            Throwable cause = thrown.getCause();
-            cause != null;
-            cause = cause.getCause()
-        ) {
-            if (!visited.add(cause)) {
-                out.append(
-                    color(
-                        headerPrefix.replace("Suppressed:", "Caused by:") +
-                            cause.getClass().getSimpleName() +
-                            " [CIRCULAR]",
-                        useColor ? RED : null
-                    )
-                );
-                out.append('\n');
-                break;
-            }
-            out.append(
-                color(
-                    headerPrefix.replace("Suppressed:", "Caused by:") + cause,
-                    useColor ? RED : null
-                )
-            );
-            out.append('\n');
-            for (StackTraceElement frame : cause.getStackTrace()) {
-                out.append(color(framePrefix + frame, useColor ? DIM : null));
-                out.append('\n');
-            }
-        }
-        for (Throwable nested : thrown.getSuppressed()) {
-            appendSuppressed(
-                out,
-                nested,
-                useColor,
-                headerPrefix + "  ",
-                framePrefix + "  ",
-                visited
-            );
-        }
-    }
 }
