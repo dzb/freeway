@@ -23,4 +23,19 @@ public final class LogBootstrap {
     public static void ensureProvider() {
         JULEnhancer.configure();
     }
+
+    /**
+     * Re-applies all named file handler configurations.
+     *
+     * <p>Call this after the application runtime is fully started if named
+     * file handlers configured via {@code freeway.log.files} are missing at
+     * runtime. JUL's {@link java.util.logging.LogManager} may clear handlers
+     * during its lazy initialization; this method re-attaches them.
+     *
+     * <p>Safe to call at any time and multiple times — handlers are not
+     * deduplicated, so typical usage is once after {@code FreewayApp.run()}.
+     */
+    public static void applyNamedFileLoggers() {
+        JULEnhancer.applyNamedFileConfigs();
+    }
 }

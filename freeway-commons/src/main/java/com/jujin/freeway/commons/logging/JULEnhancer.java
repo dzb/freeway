@@ -2,7 +2,9 @@ package com.jujin.freeway.commons.logging;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
@@ -344,6 +346,58 @@ final class JULEnhancer {
         }
     }
 
+    // ── named file config persistence ───────────────────────────
+
+    private static final List<NamedFileConfig> namedFileConfigs = new ArrayList<>();
+
+    /**
+     * Re-applies all named file handler configurations. Safe to call
+     * multiple times — existing handlers are not duplicated because each
+     * call creates a fresh {@link JULFileHandler} and attaches it.
+     *
+     * <p>Intended for late-stage re-attachment when handlers configured
+     * during {@link #configure()} may have been cleared by
+     * {@link LogManager} initialization sequences. Application code
+     * (or a {@code RuntimeHook}) calls this after the runtime is fully
+     * started to ensure named loggers have their file handlers present.
+     */
+    static void applyNamedFileConfigs() {
+        for (NamedFileConfig cfg : namedFileConfigs) {
+            attachNamedFile(cfg);
+        }
+    }
+
+    private record NamedFileConfig(
+        String path,
+        long maxSize,
+        int maxHistory,
+        boolean compress,
+        Level level,
+        String loggerName
+    ) {}
+
+    private static void attachNamedFile(NamedFileConfig cfg) {
+        try {
+            JULFileHandler handler = new JULFileHandler(
+                cfg.path, cfg.maxSize, cfg.maxHistory, cfg.compress
+            );
+            if (cfg.level != null) handler.setLevel(cfg.level);
+
+            Logger target = (cfg.loggerName != null)
+                ? Logger.getLogger(cfg.loggerName)
+                : Logger.getLogger(""); // root
+            target.addHandler(handler);
+            if (target.getParent() != null) {
+                target.setUseParentHandlers(false);
+            }
+        } catch (IOException | RuntimeException e) {
+            logEarly(
+                "Failed to attach named log file '"
+                    + cfg.path + "': " + e.getMessage()
+            );
+        }
+    }
+
     private static String resolveDefaultPath() {
         String appName = System.getProperty("app.name");
         if (appName == null || appName.isBlank()) appName = "freeway";
@@ -423,7 +477,7 @@ final class JULEnhancer {
         String prefix = "freeway.log.file." + name;
         String path = readProperty(fileConfig, prefix + ".path", null);
 
-        if (path == null || path.isBlank()) {
+        if (path == null) {
             logEarly(
                 "Skipping log file '" + name + "': "
                     + prefix + ".path is not set"
@@ -431,54 +485,27 @@ final class JULEnhancer {
             return;
         }
 
-        try {
-            JULFileHandler handler = new JULFileHandler(
-                path,
-                longProperty(
-                    fileConfig, prefix + ".max-size",
-                    JULFileHandler.DEFAULT_MAX_SIZE
-                ),
-                intProperty(
-                    fileConfig, prefix + ".max-history",
-                    JULFileHandler.DEFAULT_MAX_HISTORY
-                ),
-                booleanProperty(
-                    fileConfig, prefix + ".compress",
-                    JULFileHandler.DEFAULT_COMPRESS
-                )
-            );
-
-            String level = readProperty(fileConfig, prefix + ".level", null);
-            if (level != null) {
-                try {
-                    handler.setLevel(parseLogLevel(level));
-                } catch (IllegalArgumentException e) {
-                    logEarly(
-                        "Invalid level '" + level
-                            + "' for log file '" + name + "': " + e.getMessage()
-                    );
-                }
+        Level level = null;
+        String levelStr = readProperty(fileConfig, prefix + ".level", null);
+        if (levelStr != null) {
+            try {
+                level = parseLogLevel(levelStr);
+            } catch (IllegalArgumentException e) {
+                logEarly("Invalid level '" + levelStr + "' for log file '" + name + "': " + e.getMessage());
             }
-
-            String loggerName = readProperty(
-                fileConfig, prefix + ".logger", null
-            );
-            Logger target = (loggerName != null)
-                ? Logger.getLogger(loggerName)
-                : Logger.getLogger(""); // root
-            target.addHandler(handler);
-            // Prevent double-delivery: messages logged to this logger go
-            // only to this file, not also to root/parent handlers.
-            if (target.getParent() != null) {
-                target.setUseParentHandlers(false);
-            }
-
-        } catch (IOException | RuntimeException e) {
-            logEarly(
-                "Failed to activate named log file '"
-                    + name + "' at '" + path + "': " + e.getMessage()
-            );
         }
+
+        String loggerName = readProperty(fileConfig, prefix + ".logger", null);
+        NamedFileConfig cfg = new NamedFileConfig(
+            path,
+            longProperty(fileConfig, prefix + ".max-size", JULFileHandler.DEFAULT_MAX_SIZE),
+            intProperty(fileConfig, prefix + ".max-history", JULFileHandler.DEFAULT_MAX_HISTORY),
+            booleanProperty(fileConfig, prefix + ".compress", JULFileHandler.DEFAULT_COMPRESS),
+            level,
+            loggerName
+        );
+        namedFileConfigs.add(cfg);
+        attachNamedFile(cfg);
     }
 
     // ── property helpers ────────────────────────────────────────
