@@ -87,15 +87,10 @@ final class AppRuntimeDefault implements AppRuntime {
             failure = accumulate(failure, "Error closing container", ex);
             LOG.error("Error closing container", ex);
         }
-        try {
-            LOG.info("Application stopped");
-        } catch (RuntimeException ex) {
-            failure = accumulate(failure, "Failed to log stopped", ex);
-            LOG.warn("Failed to log stopped", ex);
-        }
+        LOG.info("Application stopped");
         if (failure != null) {
             state = AppState.FAILED;
-            failure.printStackTrace(System.err);
+            LOG.error("Application shutdown failed", failure);
             throw failure;
         }
         state = AppState.STOPPED;

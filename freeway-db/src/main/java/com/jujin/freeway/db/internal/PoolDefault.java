@@ -289,6 +289,10 @@ public final class PoolDefault implements Pool {
         }
     }
 
+    private int healthCheckTimeoutSeconds() {
+        return (int) Math.max(1, (config.healthCheckTimeout().toMillis() + 999) / 1000);
+    }
+
     private PooledConnectionDefault createConnection() {
         try {
             Properties properties = new Properties();
@@ -300,11 +304,7 @@ public final class PoolDefault implements Pool {
             );
             conn.setAutoCommit(true);
 
-            int healthTimeoutSec = (int) Math.max(
-                1,
-                (config.healthCheckTimeout().toMillis() + 999) / 1000
-            );
-            if (!conn.isValid(healthTimeoutSec)) {
+            if (!conn.isValid(healthCheckTimeoutSeconds())) {
                 try {
                     conn.close();
                 } catch (SQLException ignored) {}
@@ -337,10 +337,7 @@ public final class PoolDefault implements Pool {
     private boolean healthCheck(PooledConnectionDefault pooled) {
         try {
             Connection conn = pooled.connection();
-            int timeoutSec = (int) Math.max(
-                1,
-                (config.healthCheckTimeout().toMillis() + 999) / 1000
-            );
+            int timeoutSec = healthCheckTimeoutSeconds();
             if (!conn.isValid(timeoutSec)) {
                 return false;
             }

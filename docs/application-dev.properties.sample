@@ -7,20 +7,8 @@
 # ================================
 #  Logging
 # ================================
-
-# Logging config priority: -D flags > freeway-log.properties > code default.
 # See freeway-log.properties (classpath root) for all supported keys.
-# Color output for local terminal
-# JVM: -Dfreeway.log.color=always
-# Env: FREEWAY_LOG_COLOR=always
-# freeway.log.color=always
-
-# Compact console format (default — explicit for clarity)
-# freeway.log.format=
-
-# File logging for local development
-# JVM: -Dfreeway.log.file=auto
-# → writes to logs/freeway.log with rotation + GZIP
+# -D flags and FREEWAY_ env vars override file values.
 
 
 # ================================

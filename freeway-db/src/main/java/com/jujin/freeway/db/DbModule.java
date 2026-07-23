@@ -111,8 +111,8 @@ public final class DbModule implements ModuleEx {
             Objects.requireNonNull(s.resolve(DbConfigKeys.URL), DbConfigKeys.URL + " is required"),
             Objects.requireNonNull(s.resolve(DbConfigKeys.USERNAME), DbConfigKeys.USERNAME + " is required"),
             s.resolve(DbConfigKeys.PASSWORD, ""),
-            Integer.parseInt(s.resolve(DbConfigKeys.POOL_MAX_SIZE, String.valueOf(PoolConfig.DEFAULT_MAX_SIZE))),
-            Integer.parseInt(s.resolve(DbConfigKeys.POOL_MIN_IDLE, String.valueOf(PoolConfig.DEFAULT_MIN_IDLE))),
+            parseInt(s, DbConfigKeys.POOL_MAX_SIZE, PoolConfig.DEFAULT_MAX_SIZE),
+            parseInt(s, DbConfigKeys.POOL_MIN_IDLE, PoolConfig.DEFAULT_MIN_IDLE),
             resolveDuration(coercer, s, DbConfigKeys.POOL_CONNECTION_TIMEOUT, PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
             resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_LIFETIME, PoolConfig.DEFAULT_MAX_LIFETIME),
             resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_IDLE_TIME, PoolConfig.DEFAULT_MAX_IDLE_TIME),
@@ -121,6 +121,17 @@ public final class DbModule implements ModuleEx {
             resolveDuration(coercer, s, DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
             resolveDuration(coercer, s, DbConfigKeys.QUERY_TIMEOUT, PoolConfig.DEFAULT_QUERY_TIMEOUT)
         );
+    }
+
+    private static int parseInt(SymbolSource s, String key, int defaultValue) {
+        String raw = s.resolve(key, "");
+        if (raw.isBlank()) return defaultValue;
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                key + " must be an integer, got: '" + raw + "'", e);
+        }
     }
 
     private static Duration resolveDuration(Coercer coercer, SymbolSource s, String key, Duration def) {

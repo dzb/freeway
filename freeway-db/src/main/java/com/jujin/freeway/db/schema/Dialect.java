@@ -1,6 +1,8 @@
 package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.Database;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -253,8 +255,8 @@ public interface Dialect {
                 .map(s -> s.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toCollection(HashSet::new));
         } catch (Exception e) {
-            System.getLogger(Dialect.class.getName())
-                .log(System.Logger.Level.WARNING, "Schema introspection query failed: " + sql, e);
+            LoggerFactory.getLogger(Dialect.class)
+                .warn("Schema introspection query failed: {}", sql, e);
             return Collections.emptySet();
         }
     }
