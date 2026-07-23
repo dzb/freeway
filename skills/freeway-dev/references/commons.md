@@ -30,10 +30,32 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Logging
 
-- Console colors auto-detected from attached console; disabled when piped or `NO_COLOR` is set.
-- `freeway.log.color=always|never` overrides detection. `freeway.log.format=simple` keeps JUL's default formatter.
-- File logging: `freeway.log.file=auto` enables time+size dual rotation with GZIP compression via `JULFileHandler`. Custom path: `freeway.log.file=/var/log/app.log`.
-- `logging.properties` on the classpath is auto-loaded when the JUL provider activates.
+Freeway bundles a JUL-backed SLF4J 2 provider. Adding Logback to the classpath switches automatically — no code changes.
+
+**Configuration file:** `freeway-log.properties` on classpath root (not bundled in JAR). All logging keys also work as `-D` flags or `FREEWAY_*` env vars.
+
+```properties
+freeway.log.level=INFO
+freeway.log.console.enabled=true
+freeway.log.file=auto                    # logs/{app.name}.log, dual rotation + GZIP
+# freeway.log.file=off                   # disable file logging
+freeway.log.file.max-size=104857600       # 100 MB
+freeway.log.file.max-history=30           # days
+freeway.log.file.compress=true            # GZIP
+```
+
+**Multi-file logging** — named files with independent paths, loggers, and levels:
+```bash
+-Dfreeway.log.files=audit
+-Dfreeway.log.file.audit.path=logs/audit.log
+-Dfreeway.log.file.audit.logger=com.myapp.audit
+```
+
+**Per-logger levels** — any key ending with `.level`. Supports SLF4J (TRACE/DEBUG/INFO/WARN/ERROR) and JUL names, case-insensitive.
+
+**Late re-attach:** `LogBootstrap.applyNamedFileLoggers()` after `FreewayApp.run()` if named file handlers are missing.
+
+**Priority:** `-D` > `FREEWAY_` env > `freeway-log.properties` > code default.
 
 ## Canonical Snippets
 

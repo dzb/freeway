@@ -168,7 +168,7 @@ Freeway uses **SLF4J 2** as its logging API — `LoggerFactory.getLogger()` ever
 </dependency>
 ```
 
-**Configuration** via `freeway-log.properties` on the classpath root. System properties (`-D`) override file values.
+**Configuration** via `freeway-log.properties` on the classpath root. Priority: `-D` > `FREEWAY_` env vars > config file > code defaults.
 
 ```properties
 freeway.log.level=INFO

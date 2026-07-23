@@ -10,7 +10,7 @@ description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway�
 ## 项目模块结构
 
 ```
-freeway-commons     JSON、类型转换、Defer、ScopedCache、Bean 内省、验证
+freeway-commons     JSON、类型转换、Defer、ScopedCache、Bean 内省、验证、日志
 freeway-ioc         IoC 容器：绑定、注入、作用域、AOP、事件总线、扩展
 freeway-boot        launcher、配置级联、profiles、运行时生命周期
 freeway-flow        图编排引擎 — 7 节点类型、v2 DAG 格式、@FlowMarker
@@ -985,6 +985,49 @@ public class CreateUserRequest {
 ValidationResult result = BeanValidator.validate(request);
 if (result.hasErrors()) { ... }
 ```
+
+### 日志
+
+Freeway 内置 SLF4J 2 + JUL 日志后端，零依赖可用。添加 Logback 自动切换。
+
+**配置：** `freeway-log.properties`（classpath 根），框架不打包此文件。优先级：
+
+```
+-D 参数 > FREEWAY_ 环境变量 > freeway-log.properties > 代码默认值
+```
+
+**零配置使用：**
+```bash
+java -jar app.jar    # 控制台自动开、文件自动写 logs/{app.name}.log
+```
+
+**单文件自定义：**
+```properties
+freeway.log.file=auto                        # logs/{app.name}.log（默认）
+# freeway.log.file=logs/myapp.log            # 自定义路径
+# freeway.log.file=off                       # 关文件日志
+freeway.log.file.max-size=104857600           # 100 MB
+freeway.log.file.max-history=30               # days
+freeway.log.file.compress=true                # GZIP
+```
+
+**多文件日志：**
+```bash
+-Dfreeway.log.files=audit
+-Dfreeway.log.file.audit.path=logs/audit.log
+-Dfreeway.log.file.audit.logger=com.myapp.audit
+```
+
+每个文件有独立的 `JULFileHandler`（时间+大小双滚动+GZIP），路由到指定 Logger。配置写入 `freeway-log.properties` 或通过 `-D` 覆盖。
+
+**级别支持：** SLF4J 名（TRACE/DEBUG/INFO/WARN/ERROR）和 JUL 名（FINEST/FINE/INFO/WARNING/SEVERE），不区分大小写。
+
+**Late re-attach：** 如果命名文件 handler 被 JUL LogManager 清掉：
+```java
+LogBootstrap.applyNamedFileLoggers();  // 在 FreewayApp.run() 之后
+```
+
+**环境变量：** 所有 `freeway.log.*` 键支持 `FREEWAY_` 前缀——`FREEWAY_LOG_LEVEL=DEBUG` 等同 `-Dfreeway.log.level=DEBUG`。
 
 ## 应用生命周期
 

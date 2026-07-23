@@ -500,7 +500,7 @@ freeway.log.file=auto                          # logs/{app.name}.log
 # com.jujin.freeway.http.level=FINE
 ```
 
-**Priority:** `-D` flag > `freeway-log.properties` > code default.
+**Priority:** `-D` flag > `FREEWAY_` env var > `freeway-log.properties` > code default.
 
 #### Console Output
 
@@ -529,6 +529,17 @@ Any key ending with `.level` in the config file or system properties sets the co
 -Dcom.myapp.audit.level=FINE
 -Dorg.hibernate.level=WARNING
 ```
+
+#### Late-Stage Handler Re-attachment
+
+Named file handlers configured via `freeway.log.files` may be cleared during JUL's lazy `LogManager` initialization. If handlers are missing at runtime, call after `FreewayApp.run()`:
+
+```java
+AppRuntime runtime = FreewayApp.run(args, new AppModule());
+LogBootstrap.applyNamedFileLoggers();
+```
+
+This re-applies all named file configurations. Safe to call multiple times — the first call re-attaches all handlers; subsequent calls are no-ops.
 
 ---
 
