@@ -39,15 +39,14 @@
       bus.publish(new TransferEvent(1, 2, 100));  // 自动延迟到提交后发布
   });
 
-  // 8. ORM
+  // 8. ORM (Record 实体 — insert + find 可用，update/delete 走原始 SQL)
   Orm orm = Orm.of(db);
-  orm.insert(new User("Alice", "alice@example.com"));
+  orm.insert(new User(null, "Alice", null, "alice@example.com", null));
   User u = orm.findById(User.class, 1L).orElseThrow();
-  orm.update(u);
-  orm.delete(u);
+  db.execute("DELETE FROM users WHERE id = ?", 1L);
 
   // 9. 更新插入
-  orm.save(new User("Bob", "bob@example.com"));  // 插入或更新
+  orm.save(new User(null, "Bob", null, "bob@example.com", null));  // 插入或更新
 
   // 10. Schema 自动迁移
   Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
