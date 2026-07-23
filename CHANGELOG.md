@@ -38,6 +38,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] — 2026-07-23
+
+### Added
+
+- **`freeway-log.properties`** — dedicated logging configuration file at classpath root. Replaces JUL's `logging.properties` as the single entry point for all logging config. The file is not bundled in the JAR; all defaults are built into code.
+- **Multi-file logging** — `freeway.log.files=biz,audit` declares named log files with independent `JULFileHandler` instances, each configurable via `freeway.log.file.<name>.*` keys. Supports per-file logger binding and level control with `useParentHandlers=false` isolation.
+- **`FREEWAY_*` env var support for all `freeway.log.*` keys** — `FREEWAY_LOG_LEVEL=DEBUG` is equivalent to `-Dfreeway.log.level=DEBUG`. Config cascade: `-D` > env var > `freeway-log.properties` > code default.
+- **Config-driven console control** — `freeway.log.console.enabled=true|false` and `freeway.log.console.level` in the config file.
+- **Per-logger level via any `.level` key** — `com.myapp.audit.level=FINE` sets the corresponding JUL logger level. Accepts SLF4J names (TRACE/DEBUG/INFO/WARN/ERROR) and JUL names (FINEST/FINE/INFO/WARNING/SEVERE), case-insensitive via `parseLogLevel()`.
+- **Caller info propagation through SLF4J bridge** — `JULLoggerAdapter.fixCallerInfo()` uses `StackWalker` to correctly set `sourceClassName` and `sourceMethodName` on each `LogRecord`.
+- **`LogBootstrap.applyNamedFileLoggers()`** — late-stage re-attachment API for named file handlers that may have been cleared during JUL's lazy `LogManager` initialization. Safe to call multiple times.
+- **`JULThrowableRenderer`** — extracted throwable rendering from `JULLogFormatterSupport` (117 lines) with circular reference detection and suppressed exception chain support.
+
+### Changed
+
+- **`JULEnhancer` rewritten** — owns the full config lifecycle: level management, console handler creation, formatter installation, single and multi-file handler activation. Reads `freeway-log.properties` via three-tier classloader cascade (TCCL → own → system).
+- **Bootstrap diagnostics use `System.err`** — `JULEnhancer.logEarly()` replaces `Logger.warning()` during bootstrap to avoid silent message loss before handlers are configured.
+- **`JULFileHandler` flushes immediately** — `publish()` now calls `flush()` after each record to prevent loss in the 8 KB `BufferedOutputStream` buffer.
+- **`JULLoggerServiceProvider.initialize()` triggers `JULEnhancer.configure()`** — ensures JUL enhancements are active regardless of when SLF4J initializes, guarding against `LoggerFactory.getLogger()` calls before Freeway bootstrap.
+- **`JULMDCAdapter` uses `ThreadLocal.remove()`** — `clear()` now removes the ThreadLocal entry entirely rather than just clearing the contained HashMap.
+- **MDC priority keys cached at class loading time** — `loadMdcPriorityKeys()` runs once; `formatMDC()` no longer calls `System.getProperty()` on the hot path.
+- **`LogManager` forced init before handler attachment** — `JULEnhancer.configure()` triggers `LogManager.getLoggerNames()` early to prevent subsequent lazy `reset()` from clearing handlers.
+- **Named file configs persisted for deferred re-attachment** — `NamedFileConfig` record stores parsed config in list; `applyNamedFileConfigs()` re-creates handlers on demand.
+- **DB: `Dialect.querySet()` uses SLF4J** — replaces `System.getLogger()` for consistent log pipeline output.
+- **DB: `DbModule.buildConfig()` provides friendly parseInt error messages** — non-integer pool config values now produce clear errors instead of bare `NumberFormatException`.
+- **DB: `PoolDefault` extracts `healthCheckTimeoutSeconds()`** — eliminates duplicate millis-to-seconds conversion logic.
+- **Boot: shutdown failures use SLF4J logging** — replaces `failure.printStackTrace(System.err)` with `LOG.error()`.
+- **Boot: removed defensive try-catch around "Application stopped" log** — noise reduction in production code.
+
+### Removed
+
+- **`logging.properties` removed from JAR** — Freeway no longer depends on JUL's standard config file. `freeway-log.properties` is the replacement, and it's user-provided, not bundled.
+
+### Docs
+
+- **Sample configs cleaned** — `application-*.properties.sample` no longer carry `freeway.log.*` keys. Logging config lives in `freeway-log.properties`; samples point to the reference template.
+- **`docs/freeway-log.properties.reference`** — annotated reference with best practices, `auto` semantics, multi-file patterns, and level formatting.
+- **SKILL files updated** — `SKILL.zh.md` gains comprehensive logging section; `SKILL.md` and `references/commons.md` updated with multi-file, env var, and late re-attach docs.
+- **Release notes** — `docs/release-notes/v1.3.5.md`.
+
 ## [1.3.2] — 2026-07-07
 
 ### Added
