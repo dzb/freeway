@@ -42,8 +42,7 @@
   // 8. ORM
   Orm orm = Orm.of(db);
   orm.insert(new User("Alice", "alice@example.com"));
-  User u = orm.findById(User.class, "Alice").orElseThrow();
-  u.setEmail("new@example.com");
+  User u = orm.findById(User.class, 1L).orElseThrow();
   orm.update(u);
   orm.delete(u);
 
@@ -51,7 +50,7 @@
   orm.save(new User("Bob", "bob@example.com"));  // 插入或更新
 
   // 10. Schema 自动迁移
-  Schema.ensure(db, User.class, Post.class);
+  Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
   // 11. SQL 构建器
   SQL q = SQL.select("*").from("users")

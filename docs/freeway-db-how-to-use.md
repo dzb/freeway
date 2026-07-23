@@ -66,7 +66,7 @@ System.out.println(ddl);
 
 ```java
 Database db = ...;
-Schema.ensure(db, User.class);
+Schema.ensure(db, new PostgresDialect(), User.class);
 ```
 
 ---
@@ -360,7 +360,7 @@ record User(@Id @Generated Long id, @Column String name, @Column Integer age) {
 Database db = new DatabaseBuilder()
     .config(PoolConfig.defaults("jdbc:h2:mem:demo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
     .build();
-Schema.ensure(db, User.class);
+Schema.ensure(db, new PostgresDialect(), User.class);
 Orm orm = Orm.of(db);
 
 // 3. CRUD
