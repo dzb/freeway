@@ -39,21 +39,16 @@ db.transaction(() -> {
     bus.publish(new TransferEvent(1, 2, 100));  // 自动延迟到提交后发布
 });
 
-// 8. ORM（Record insert/find；update/delete 走 SQL）
+// 8. ORM
 Orm orm = Orm.of(db);
 orm.insert(new User("Alice", "alice@example.com"));
 User u = orm.findById(User.class, 1L).orElseThrow();
-db.execute("DELETE FROM users WHERE id = ?", 1L);
+orm.save(new User("Bob", "bob@example.com"));  // id null → INSERT，有值 → UPSERT
 
-// 9. Upsert（id null→INSERT；id 有值→ON CONFLICT DO UPDATE）
-orm.save(new User("Bob", "bob@example.com"));               // INSERT
-User existing = orm.findById(User.class, 1L).orElseThrow();
-orm.save(new User(existing.id(), "Bob", "new@example.com")); // UPSERT
-
-// 10. Schema 自动迁移
+// 9. Schema 自动迁移
 Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
-// 11. SQL 构建器
+// 10. SQL 构建器
 SQL q = SQL.select("*").from("users")
     .where("status = ?", 1)
     .orderBy("created_at DESC")
@@ -64,17 +59,19 @@ List<User> users = db.query(q).list(User.class);
 ### 注解驱动实体
 
 ```java
-@Table("users")
+@Table("users")              // 表名覆盖（默认：User → user）
 public record User(
-    @Id @Generated Long id,
-    @Column("user_name") @Size(max = 100) String name,
-    @Column(type = "TEXT") String bio,
-    @Index(name = "idx_email", unique = true) String email,
-    @Transient String temp
-) {
-    /** Convenience — id auto-generated, temp transient. */
-    public User(String name, String email) { this(null, name, null, email, null); }
-}
+    @Id @Generated Long id,  // 自动生成的主键
+    @Column("user_name")     // 列名覆盖
+    @Size(max = 100)         // VARCHAR(100)
+    String name,
+    @Column(type = "TEXT")   // 显式 SQL 类型
+    String bio,
+    @Index(name = "idx_email", unique = true)  // 唯一索引
+    String email,
+    @Transient                // 非持久化
+    String temp
+) {}
 ```
 
 ### 演示的 freeway-db 能力
@@ -82,7 +79,7 @@ public record User(
 ```
 注解驱动实体  →  @Table @Id @Generated @Column
 DDL 自动生成  →  Schema.define() / Schema.ensure()
-ORM 存取      →  Orm.insert / findById / findAll / save (upsert)
+ORM 存取      →  Orm.insert / findById / findAll / update / delete / save
 原始 SQL      →  db.execute() / db.query()
 SQL 构建器    →  SQL.select().from().where().orderBy()
 Row 列访问    →  row.string("name") / row.integer("age")
