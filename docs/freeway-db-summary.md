@@ -45,8 +45,9 @@
   User u = orm.findById(User.class, 1L).orElseThrow();
   db.execute("DELETE FROM users WHERE id = ?", 1L);
 
-  // 9. 更新插入
-  orm.save(new User(null, "Bob", null, "bob@example.com", null));  // 插入或更新
+  // 9. Upsert（id 为 null → INSERT；id 有值 → ON CONFLICT DO UPDATE）
+  orm.save(new User(null, "Bob", null, "bob@example.com", null));  // INSERT
+  // orm.save(existingUser);                                        // UPSERT
 
   // 10. Schema 自动迁移
   Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
@@ -81,7 +82,7 @@
   ```
   注解驱动实体  →  @Table @Id @Generated @Column
   DDL 自动生成  →  Schema.define() / Schema.ensure()
-  ORM 存取      →  Orm.insert / findById / findAll / update / delete / save
+  ORM 存取      →  Orm.insert / findById / findAll / save (upsert)
   原始 SQL      →  db.execute() / db.query()
   SQL 构建器    →  SQL.select().from().where().orderBy()
   Row 列访问    →  row.string("name") / row.integer("age")
