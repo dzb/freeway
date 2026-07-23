@@ -78,7 +78,7 @@ Typical module shapes:
 - framework modules register infrastructure defaults and runtime hooks
 - config-driven modules select one implementation from a set of bindings
 
-For the full module patterns, see [module.md](module.md).
+For the full module patterns, see [freeway-module.md](freeway-module.md).
 
 ---
 
@@ -471,7 +471,7 @@ freeway.log.level=INFO
 freeway.log.file=auto                    # logs/{app.name}.log, rotation + GZIP
 ```
 
-For multi-file logging, per-logger levels, env var support, and the full config reference, see [Commons Reference](commons.md#logging).
+For multi-file logging, per-logger levels, env var support, and the full config reference, see [Commons Reference](freeway-commons.md#logging).
 
 ---
 
@@ -1326,11 +1326,11 @@ Commons contains the shared runtime primitives used across Freeway: JSON, coerci
 - JSON parsing, building, and serialization live in `JsonUtils` and `JsonCodec`
 - coercion lives in `Coercer` and `CoerceRule`
 - validation lives in `BeanValidator`
-- scoped primitives are described in [commons.md](commons.md)
+- scoped primitives are described in [freeway-commons.md](freeway-commons.md)
 
 For more detail:
 
-- [docs/commons.md](commons.md)
+- [docs/freeway-commons.md](freeway-commons.md)
 - [Defer summary](freeway-defer-summary.md)
 - [DB usage guide](freeway-db-how-to-use.md)
 
