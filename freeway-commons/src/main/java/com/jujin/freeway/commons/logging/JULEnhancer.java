@@ -42,6 +42,9 @@ final class JULEnhancer {
 
         try {
             Properties fileConfig = loadFreewayConfig();
+            // Clear any stale named file configs from a previous failed
+            // configure() run — prevents duplicates on retry.
+            namedFileConfigs.clear();
             configureLevels(fileConfig);
             configureConsole(fileConfig);
             installFormatters(fileConfig);
@@ -465,7 +468,7 @@ final class JULEnhancer {
 
         // ── additional named files ──────────────────────────────
         String files = readProperty(fileConfig, "freeway.log.files", null);
-        if (files == null || files.isBlank()) return;
+        if (files == null) return;
         for (String name : files.split(",")) {
             name = name.strip();
             if (!name.isEmpty()) activateNamedFile(fileConfig, name);
