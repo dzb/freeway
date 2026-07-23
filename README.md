@@ -71,7 +71,7 @@ Freeway 2 keeps its core concepts intentionally small:
 - `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and configurable file logging (single or multi-file) with time+size rotation and GZIP compression. Configured via `freeway-log.properties` or `-D` flags. Zero-dependency fallback; drop in Logback for advanced needs.
 - Framework-provided implementation names use the **`XDefault` suffix** form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
-See [docs/reference/module.md](docs/reference/module.md) and [docs/reference/commons.md](docs/reference/commons.md) for deeper module notes.
+See [module.md](docs/module.md) and [commons.md](docs/commons.md) for deeper module notes.
 
 ## Quick Start
 

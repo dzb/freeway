@@ -78,7 +78,7 @@ Typical module shapes:
 - framework modules register infrastructure defaults and runtime hooks
 - config-driven modules select one implementation from a set of bindings
 
-For the full module patterns, see [docs/reference/module.md](reference/module.md).
+For the full module patterns, see [module.md](module.md).
 
 ---
 
@@ -462,84 +462,16 @@ public final class UserService {
 Logger log = container.get(LoggerSource.class).get(UserService.class);
 ```
 
-`freeway-commons` provides a JUL-backed SLF4J 2 provider registered via standard `META-INF/services`. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
+`freeway-commons` provides a JUL-backed SLF4J 2 provider — zero-dependency, enabled by default. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Adding Logback switches seamlessly without code changes.
 
-#### Configuration File
-
-Logging is configured through `freeway-log.properties` on the classpath root. System properties (`-D`) override file values.
-
-The framework does **not** bundle this file — create it in your project's `src/main/resources/` only when you need custom settings. All defaults are built into the code, so zero config files are required for basic usage.
-
-A reference template is available at [`docs/freeway-log.properties.reference`](freeway-log.properties.reference):
+Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Configuration is through `freeway-log.properties` on the classpath root (not bundled in the JAR). System properties (`-D`) and `FREEWAY_` env vars override file values.
 
 ```properties
-# ── Global level ──
 freeway.log.level=INFO
-
-# ── Console ──
-freeway.log.console.enabled=true
-freeway.log.console.level=INFO
-
-# ── Default file (time + size dual rotation, GZIP compression) ──
-freeway.log.file=auto                          # logs/{app.name}.log
-# freeway.log.file=logs/myapp.log               # custom path
-# freeway.log.file=off                          # disable
-# freeway.log.file.max-size=104857600            # 100 MB
-# freeway.log.file.max-history=30                # days
-# freeway.log.file.compress=true                 # gzip rotated files
-
-# ── Multi-file logging ──
-# freeway.log.files=biz,audit
-# freeway.log.file.biz.path=logs/biz.log
-# freeway.log.file.audit.path=logs/audit.log
-# freeway.log.file.audit.logger=com.myapp.audit
-# freeway.log.file.audit.level=FINE
-
-# ── Per-logger levels ──
-# com.myapp.audit.level=FINE
-# com.jujin.freeway.http.level=FINE
+freeway.log.file=auto                    # logs/{app.name}.log, rotation + GZIP
 ```
 
-**Priority:** `-D` flag > `FREEWAY_` env var > `freeway-log.properties` > code default.
-
-#### Console Output
-
-Single-line with ANSI colors (auto-detected from the attached console). Colors are disabled when output is piped, redirected to a file, or `NO_COLOR` is set. Disable console output with `-Dfreeway.log.console.enabled=false` or in the config file. Opt out of Freeway's formatter with `-Dfreeway.log.format=simple` / `FREEWAY_LOG_FORMAT=simple`. Force color on/off with `-Dfreeway.log.color=always|never`.
-
-#### File Logging
-
-A single rotating log file is enabled by default at `logs/{app.name}.log` (or `logs/freeway.log`). The built-in `JULFileHandler` uses time + size dual rotation with GZIP compression and automatic cleanup.
-
-Additional named log files can be declared via `freeway.log.files`:
-
-```bash
--Dfreeway.log.files=audit
--Dfreeway.log.file.audit.path=logs/audit.log
--Dfreeway.log.file.audit.logger=com.myapp.audit
--Dfreeway.log.file.audit.level=FINE
-```
-
-Each named file creates a `JULFileHandler` attached to the specified logger (root if not set). Messages sent to that logger go only to its file (`useParentHandlers=false`), preventing double-delivery to the default log.
-
-#### Per-Logger Level Control
-
-Any key ending with `.level` in the config file or system properties sets the corresponding JUL logger level:
-
-```bash
--Dcom.myapp.audit.level=FINE
--Dorg.hibernate.level=WARNING
-```
-
-#### Late-Stage Handler Re-attachment
-
-Named file handlers configured via `freeway.log.files` may be cleared during JUL's lazy `LogManager` initialization. If handlers are missing at runtime, call after `FreewayApp.run()`:
-
-```java
-AppRuntime runtime = FreewayApp.run(args, new AppModule());
-LogBootstrap.applyNamedFileLoggers();
-```
-
-This re-applies all named file configurations. Safe to call multiple times — the first call re-attaches all handlers; subsequent calls are no-ops.
+For multi-file logging, per-logger levels, env var support, and the full config reference, see [Commons Reference](commons.md#logging).
 
 ---
 
@@ -1394,11 +1326,11 @@ Commons contains the shared runtime primitives used across Freeway: JSON, coerci
 - JSON parsing, building, and serialization live in `JsonUtils` and `JsonCodec`
 - coercion lives in `Coercer` and `CoerceRule`
 - validation lives in `BeanValidator`
-- scoped primitives are described in [docs/reference/commons.md](reference/commons.md)
+- scoped primitives are described in [commons.md](commons.md)
 
 For more detail:
 
-- [docs/reference/commons.md](reference/commons.md)
+- [docs/commons.md](commons.md)
 - [Defer summary](freeway-defer-summary.md)
 - [DB usage guide](freeway-db-how-to-use.md)
 
