@@ -91,7 +91,7 @@ public class AppModule implements ModuleEx {
 | `Freeway` | 容器启动：`Freeway.create(ModuleEx...)` |
 | `Scoping` | `Scoping.within()` 进入 Thread 作用域 |
 | `Scope` | 枚举：`SINGLETON`、`THREAD`、`PROTOTYPE` |
-| `Extension<V>` | 运行时访问贡献列表：`extension(Class).all()` |
+| `Extension<V>` | 框架内部：聚合贡献值，通过 `container.extension(Class)` 访问。应用代码注入 `List<V>` 或 `Map<String, V>` |
 | `EventBus` | 进程内发布-订阅 |
 | `RuntimeHook` | 生命周期 start/stop 扩展点 |
 | `LoggerSource` | 拥有者感知的日志工厂 |
@@ -163,11 +163,9 @@ Greeter g = c.get(Greeter.class);
 PaymentGateway pg = c.get(PaymentGateway.class, "stripe");
 // 按类型 + 标记注解（containsAll 语义）
 Cache cache = c.get(Cache.class, Fast.class);
-// Container 本身也可注入
-Container self = c.get(Container.class);
 // 运行时访问贡献扩展列表
-Extension<Route> ext = c.extension(Route.class);
-List<Route> allRoutes = ext.all();
+List<Route> allRoutes = c.extension(Route.class).all();
+List<Route> namedRoutes = c.extension(Route.class).asMap().values().stream().toList();
 ```
 
 ### 标记注解（Marker）
@@ -287,9 +285,9 @@ Module.bind() 中
   │
   └─ Container 启动时收集合并
        │
-       ├─ @Inject List<Route> routes       ← 注入为有序列表
-       ├─ @Inject Extension<Route> ext     ← 注入完整 Extension 对象
-       └─ c.extension(Route.class).all()   ← 运行时按需获取
+       ├─ @Inject List<Route> routes         ← 注入为有序列表（所有贡献）
+       ├─ @Inject Map<String, Route> routes  ← 注入为 id→value 映射（仅命名贡献）
+       └─ c.extension(Route.class).all()     ← 框架运行时按需获取
 ```
 
 ### 贡献 API
@@ -333,27 +331,41 @@ private List<RuntimeHook> hooks;     // 按排序后的顺序
 ### 消费方式
 
 ```java
-// 方式 1：List<V> 注入（最常用）
+// 方式 1：List<V> 注入（所有贡献，按序）
 @Inject List<Route> routes;
 routes.forEach(r -> register(r));
 
-// 方式 2：构造器注入
+// 方式 2：Map<String, V> 注入（仅命名贡献，按 id 查找）
+@Inject Map<String, FlowDriver> drivers;
+FlowDriver custom = drivers.get("custom");
+
+// 方式 3：构造器注入
 public class Router {
     private final List<Route> routes;
-    public Router(List<Route> routes) {
+    private final Map<String, FlowDriver> drivers;
+    public Router(List<Route> routes, Map<String, FlowDriver> drivers) {
         this.routes = List.copyOf(routes);
+        this.drivers = Map.copyOf(drivers);
     }
 }
 
-// 方式 3：Extension<V> 注入（延迟按需获取）
-@Inject Extension<Route> routeExtension;
-// 在需要时才获取
-List<Route> all = routeExtension.all();
-
-// 方式 4：Container.extension() 运行时获取
-Extension<Route> ext = c.extension(Route.class);
-List<Route> routes = ext.all();
+// 方式 4：Container.extension() 运行时获取（框架模块使用）
+List<Route> all = c.extension(Route.class).all();
+Map<String, Route> named = c.extension(Route.class).asMap();
 ```
+
+**三种贡献方式对应的注入目标：**
+
+| 贡献方式 | 出现在 `List<V>` | 出现在 `Map<String, V>` |
+|---|---|---|
+| `add(value)` — 无名 | ✅ | ❌ |
+| `add("id", value)` — 命名 | ✅ | ✅ (id 为 key) |
+| `add(Class)` — 自动实例化 | ✅ | ✅ (自动生成 id 为 key) |
+
+`List<V>` = 所有贡献，保持排序。`Map<String, V>` = 仅命名贡献，按 id 查找。
+
+`Extension<V>` 不注入给应用代码，因为它是一个可变的聚合器。应用代码注入
+`List<V>` 或 `Map<String, V>` 即可 — 这些都是不可变视图。
 
 ### 内置扩展点
 
@@ -530,6 +542,8 @@ private RequestContext ctx;    // 这是 proxy，不是实际实例
 
 路径变量支持两种语法：`:name`（简洁，Express 风格）和 `{name}`。需要正则约束时用 `{name:regex}`，如 `{id:\\d+}` 仅匹配数字。两种可混用。
 
+**无依赖的简单处理器**用 lambda：
+
 ```java
 binder.contribute(Route.class)
     .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
@@ -540,6 +554,33 @@ binder.contribute(Route.class)
     .add(Route.put("/users/:id", User.class, (ctx, body) -> { ... }))
     .add(Route.delete("/users/:id", ctx -> { ... }));
 ```
+
+**需要注入服务的处理器**用 handler 类。容器启动时创建实例，构造器参数自动注入：
+
+```java
+// 1. 实现 RouteHandler，构造器声明依赖
+public static final class GetUser implements RouteHandler {
+    private final UserService svc;
+    public GetUser(UserService svc) { this.svc = svc; }
+    public void handle(HttpContext ctx) throws Exception {
+        var user = svc.findById(ctx.pathVar("id"));
+        user.ifPresentOrElse(
+            u -> ctx.sendJson(200, u),
+            () -> ctx.send(404, "Not found"));
+    }
+}
+
+// 2. 注册时传 class，不传 lambda
+binder.contribute(Route.class)
+    .add(Route.get("/api/users/:id", GetUser.class));
+
+// 3. 也支持带 body 的 POST/PUT/PATCH（handler 内调 ctx.bodyAsJson()）
+binder.contribute(Route.class)
+    .add(Route.post("/api/users", CreateUser.class));
+```
+
+**选择规则：** handler 纯粹做转发/静态响应 → lambda。handler 需要 `@Inject` 服务 → 类。
+如果在 lambda 中写静态方法调用 `Xxx.get()` 来获取服务，就说明该改成 handler 类了。
 
 ### RouteGroup
 

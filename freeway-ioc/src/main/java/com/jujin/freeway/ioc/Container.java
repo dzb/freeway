@@ -6,6 +6,14 @@ package com.jujin.freeway.ioc;
  * <p>Services are bound via {@link Binder#bind(Class)} in modules and resolved
  * by type (and optionally by id) at runtime.
  *
+ * <p>Container is a framework boundary type — it is not injectable via
+ * {@code @Inject}. Access it through:
+ * <ul>
+ *   <li>{@link Freeway#create(ModuleEx...)} — test and standalone usage</li>
+ *   <li>{@link com.jujin.freeway.ioc.RuntimeHook#start(Container)} — lifecycle callbacks</li>
+ *   <li>Provider lambdas via {@code binder.bind(X.class).to(container -> ...)}</li>
+ * </ul>
+ *
  * <p>Usage:
  * <pre>{@code
  * Container c = Freeway.create(binder -> {

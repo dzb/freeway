@@ -6,7 +6,6 @@ import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.util.Types;
-import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
@@ -22,6 +21,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -88,9 +88,13 @@ final class InjectResolver {
     }
 
     /**
-     * Resolves {@code Extension<Foo>} and {@code List<Foo>} from the contribution
-     * mechanism. For constructor parameters this fires unconditionally; for fields
+     * Resolves {@code List<Foo>}, {@code Map<String, Foo>}, and
+     * {@code Extension<Foo>} from the contribution mechanism.
+     * For constructor parameters this fires unconditionally; for fields
      * it requires an {@code @Inject} annotation.
+     *
+     * <p>{@code Extension<Foo>} is intentionally rejected — inject
+     * {@code List<Foo>} or {@code Map<String, Foo>} instead.
      */
     private Object resolveContributed(
         Type memberType,
@@ -101,18 +105,29 @@ final class InjectResolver {
         if (!(memberType instanceof ParameterizedType pt)) {
             return null;
         }
-        Type arg = pt.getActualTypeArguments()[0];
-        if (!(arg instanceof Class<?> entryType)) {
-            return null;
-        }
+        Type[] typeArgs = pt.getActualTypeArguments();
         if (!parameterMode && !hasInjectionAnnotation(lookup)) {
             return null;
         }
         if (targetType == Extension.class) {
-            return container.extension(entryType);
+            throw new IllegalArgumentException(
+                "Extension<V> is not injectable by design. "
+                + "Use @Inject List<V> to consume all contributions, "
+                + "or @Inject Map<String, V> to consume named contributions by id."
+            );
         }
         if (targetType == List.class) {
+            if (typeArgs.length < 1 || !(typeArgs[0] instanceof Class<?> entryType)) {
+                return null;
+            }
             return container.extension(entryType).all();
+        }
+        if (targetType == Map.class) {
+            if (typeArgs.length < 2 || typeArgs[0] != String.class
+                || !(typeArgs[1] instanceof Class<?> entryType)) {
+                return null;
+            }
+            return container.extension(entryType).asMap();
         }
         return null;
     }
@@ -194,9 +209,6 @@ final class InjectResolver {
         boolean parameterMode
     ) {
         if (parameterMode) {
-            if (targetType == Container.class) {
-                return container;
-            }
             if (targetType == SymbolSource.class) {
                 return container.symbolSource();
             }
@@ -208,9 +220,9 @@ final class InjectResolver {
                 && (parameterMode || hasInjectionAnnotation(lookup))) {
             return resolveLogger(ownerType, lookup);
         }
-        // Extension<Foo> / List<Foo> — resolved from contribution mechanism.
-        // Must precede resolveInjected so @Inject on these types does not
-        // attempt a broken container.get(Extension.class) / container.get(List.class).
+        // List<Foo> / Map<String, Foo> / Extension<Foo> — resolved from
+        // the contribution mechanism. Must precede resolveInjected so @Inject
+        // on these types does not attempt a broken container.get(...).
         Object contributed = resolveContributed(memberType, targetType, lookup, parameterMode);
         if (contributed != null) {
             return contributed;

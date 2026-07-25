@@ -38,11 +38,17 @@ Freeway supports two path variable syntaxes. They match identically at runtime �
 **建议：** 日常用 `:name`，需要正则约束时用 `{name:regex}`。两者可混用，如 `/users/:userId/posts/{postId:\d+}`。
 
 ```java
+// Lambda — stateless handlers, no injected dependencies
 binder.contribute(Route.class)
     .add(Route.get("/", ctx -> ctx.send(200, "Hello")))
     .add(Route.get("/users/:id", ctx -> ctx.sendJson(200, ctx.pathVar("id"))))
     .add(Route.get("/posts/{id}", ctx -> ctx.sendJson(200, ctx.pathVar("id"))))
     .add(Route.get("/items/{id:\\d+}", ctx -> ctx.sendJson(200, ctx.pathVar("id"))));
+
+// Handler class — constructor injection for handlers with dependencies
+binder.contribute(Route.class)
+    .add(Route.get("/api/users/:id", GetUserHandler.class));
+// GetUserHandler implements RouteHandler, receives UserService via constructor
 ```
 
 ```java

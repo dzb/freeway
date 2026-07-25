@@ -22,11 +22,6 @@ final class AppRuntimeDefault implements AppRuntime {
     }
 
     @Override
-    public Container container() {
-        return container;
-    }
-
-    @Override
     public AppConfig config() {
         return config;
     }
@@ -34,6 +29,16 @@ final class AppRuntimeDefault implements AppRuntime {
     @Override
     public AppState state() {
         return state;
+    }
+
+    @Override
+    public <T> T get(Class<T> type) {
+        return container.get(type);
+    }
+
+    @Override
+    public <T> T get(Class<T> type, String id) {
+        return container.get(type, id);
     }
 
     @Override

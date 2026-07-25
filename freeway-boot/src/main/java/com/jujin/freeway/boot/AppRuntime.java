@@ -1,10 +1,6 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.ioc.Container;
-
 public interface AppRuntime extends AutoCloseable {
-    Container container();
-
     AppConfig config();
 
     AppState state();
@@ -15,13 +11,11 @@ public interface AppRuntime extends AutoCloseable {
         return state() == AppState.RUNNING;
     }
 
-    default <T> T get(Class<T> type) {
-        return container().get(type);
-    }
+    /** Convenience: resolve a service by type. */
+    <T> T get(Class<T> type);
 
-    default <T> T get(Class<T> type, String id) {
-        return container().get(type, id);
-    }
+    /** Convenience: resolve a named service by type and id. */
+    <T> T get(Class<T> type, String id);
 
     @Override
     void close();

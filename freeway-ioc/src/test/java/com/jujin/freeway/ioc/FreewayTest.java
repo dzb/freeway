@@ -533,7 +533,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
-        AppConfig config = container.create(AppConfig.class);
+        ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
     }
@@ -545,7 +545,7 @@ class FreewayTest {
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web"))
         );
 
-        ParameterAppConfig config = container.create(ParameterAppConfig.class);
+        ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
     }
@@ -566,7 +566,7 @@ class FreewayTest {
                 .before("web")
         );
 
-        AppConfig config = container.create(AppConfig.class);
+        ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
 
         assertEquals(List.of("core", "db", "metrics", "web"), config.featureNames());
     }
@@ -592,7 +592,7 @@ class FreewayTest {
                 .after("first")
         );
 
-        Throwable ex = assertThrows(Throwable.class, () -> container.create(AppConfig.class));
+        Throwable ex = assertThrows(Throwable.class, () -> container.create(ListFeatureCatalog.class));
 
         Throwable root = ex;
         while (root.getCause() != null) root = root.getCause();
@@ -607,8 +607,8 @@ class FreewayTest {
         Container container = Freeway.create(
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("web")),
-            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("debug", new AppFlag("debug", true))),
-            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("timing", new AppFlag("timing", false)))
+            binder -> binder.contribute(AppFlagEntry.class).add("debug", new AppFlagEntry("debug", new AppFlag("debug", true))),
+            binder -> binder.contribute(AppFlagEntry.class).add("timing", new AppFlagEntry("timing", new AppFlag("timing", false)))
         );
 
         MixedExtensionCatalog catalog = container.create(MixedExtensionCatalog.class);
@@ -621,31 +621,25 @@ class FreewayTest {
     void extensionEntriesPreserveKeys() {
         Container container = Freeway.create(
             binder -> binder.contribute(AppFeature.class).add(new AppFeature("core")),
-            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("debug", new AppFlag("debug", true))),
-            binder -> binder.contribute(AppFlagEntry.class).add(new AppFlagEntry("   ", new AppFlag("blank-key", true)))
+            binder -> binder.contribute(AppFlagEntry.class).add("debug", new AppFlagEntry("debug", new AppFlag("debug", true))),
+            binder -> binder.contribute(AppFlagEntry.class).add("audit-special", new AppFlagEntry("audit-special", new AppFlag("audit-special", true)))
         );
 
         MixedExtensionCatalog catalog = container.create(MixedExtensionCatalog.class);
 
-        assertEquals(Map.of("debug", new AppFlag("debug", true), "   ", new AppFlag("blank-key", true)), catalog.flags());
+        assertEquals(Map.of("debug", new AppFlag("debug", true), "audit-special", new AppFlag("audit-special", true)), catalog.flags());
     }
 
     @Test
     void extensionEntriesSupportNonStringKeys() {
         Container container = Freeway.create(
-            binder -> binder.contribute(EnumAppFlagEntry.class).add(new EnumAppFlagEntry(FlagKey.DEBUG, new AppFlag("debug", true))),
-            binder -> binder.contribute(EnumAppFlagEntry.class).add(new EnumAppFlagEntry(FlagKey.TIMING, new AppFlag("timing", false)))
+            binder -> binder.contribute(EnumAppFlagEntry.class).add("debug", new EnumAppFlagEntry(FlagKey.DEBUG, new AppFlag("debug", true))),
+            binder -> binder.contribute(EnumAppFlagEntry.class).add("timing", new EnumAppFlagEntry(FlagKey.TIMING, new AppFlag("timing", false)))
         );
 
         EnumKeyExtensionCatalog catalog = container.create(EnumKeyExtensionCatalog.class);
 
-        assertEquals(
-            Map.of(
-                FlagKey.DEBUG, new AppFlag("debug", true),
-                FlagKey.TIMING, new AppFlag("timing", false)
-            ),
-            catalog.flags()
-        );
+        assertEquals(Map.of("debug", new AppFlag("debug", true), "timing", new AppFlag("timing", false)), catalog.flags());
     }
 
     @Test
@@ -666,6 +660,74 @@ class FreewayTest {
         );
         FieldListFeatureCatalog catalog = container.create(FieldListFeatureCatalog.class);
         assertEquals(List.of("core", "web"), catalog.featureNames());
+    }
+
+    @Test
+    void mapInjectionFromExtensionParam() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add("core", new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add("web", new AppFeature("web"))
+        );
+        MapFeatureCatalog catalog = container.create(MapFeatureCatalog.class);
+        assertEquals(Map.of("core", new AppFeature("core"), "web", new AppFeature("web")), catalog.features());
+    }
+
+    @Test
+    void mapInjectionFromExtensionField() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add("core", new AppFeature("core")),
+            binder -> binder.contribute(AppFeature.class).add("web", new AppFeature("web"))
+        );
+        FieldMapFeatureCatalog catalog = container.create(FieldMapFeatureCatalog.class);
+        assertEquals(Map.of("core", new AppFeature("core"), "web", new AppFeature("web")), catalog.features());
+    }
+
+    @Test
+    void mapInjectionExcludesUnnamedContributions() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add(new AppFeature("unnamed")),
+            binder -> binder.contribute(AppFeature.class).add("named", new AppFeature("named"))
+        );
+        MapFeatureCatalog catalog = container.create(MapFeatureCatalog.class);
+        assertEquals(Map.of("named", new AppFeature("named")), catalog.features());
+    }
+
+    @Test
+    void extensionInjectionRejectedConstructor() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add("core", new AppFeature("core"))
+        );
+        Throwable ex = assertThrows(Throwable.class, () ->
+            container.create(ExtensionConstructorInjection.class));
+        assertTrue(ex.getCause().getMessage().contains("Extension<V> is not injectable"));
+    }
+
+    @Test
+    void extensionInjectionRejectedField() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class).add("core", new AppFeature("core"))
+        );
+        Throwable ex = assertThrows(Throwable.class, () ->
+            container.create(ExtensionFieldInjection.class));
+        assertTrue(ex.getCause().getMessage().contains("Extension<V> is not injectable"));
+    }
+
+    @Test
+    void containerNotInjectableByField() {
+        Container container = Freeway.create(binder -> {});
+        Throwable ex = assertThrows(Throwable.class, () ->
+            container.create(ContainerFieldInjection.class));
+        assertTrue(ex.getCause().getMessage().contains("No service registered for type"),
+            "Got: " + ex.getCause().getMessage());
+    }
+
+    @Test
+    void containerNotInjectableByConstructor() {
+        Container container = Freeway.create(binder -> {});
+        Throwable ex = assertThrows(Throwable.class, () ->
+            container.create(ContainerConstructorInjection.class));
+        assertTrue(ex.getCause().getMessage().contains("No service registered for type"),
+            "Got: " + ex.getCause().getMessage());
     }
 
     interface Greeter {
@@ -818,38 +880,15 @@ class FreewayTest {
 
     // ---- Test consumers ----
 
-    public static final class AppConfig {
-        private final List<AppFeature> features;
-
-        public AppConfig(Extension<AppFeature> features) {
-            this.features = List.copyOf(features.all());
-        }
-
-        List<String> featureNames() {
-            return features.stream().map(AppFeature::name).toList();
-        }
-    }
-
-    public static final class ParameterAppConfig {
-        private final List<AppFeature> features;
-
-        public ParameterAppConfig(Extension<AppFeature> features) {
-            this.features = List.copyOf(features.all());
-        }
-
-        List<String> featureNames() {
-            return features.stream().map(AppFeature::name).toList();
-        }
-    }
-
     public static final class MixedExtensionCatalog {
         private final List<AppFeature> features;
         private final Map<String, AppFlag> flags;
 
-        public MixedExtensionCatalog(Extension<AppFeature> features, Extension<AppFlagEntry> flags) {
-            this.features = List.copyOf(features.all());
+        public MixedExtensionCatalog(List<AppFeature> features, Map<String, AppFlagEntry> flagEntries) {
+            this.features = List.copyOf(features);
             Map<String, AppFlag> map = new java.util.LinkedHashMap<>();
-            for (AppFlagEntry entry : flags.all()) map.put(entry.key(), entry.flag());
+            for (Map.Entry<String, AppFlagEntry> e : flagEntries.entrySet())
+                map.put(e.getKey(), e.getValue().flag());
             this.flags = Map.copyOf(map);
         }
 
@@ -863,15 +902,16 @@ class FreewayTest {
     }
 
     public static final class EnumKeyExtensionCatalog {
-        private final Map<FlagKey, AppFlag> flags;
+        private final Map<String, AppFlag> flags;
 
-        public EnumKeyExtensionCatalog(Extension<EnumAppFlagEntry> flags) {
-            Map<FlagKey, AppFlag> map = new java.util.LinkedHashMap<>();
-            for (EnumAppFlagEntry entry : flags.all()) map.put(entry.key(), entry.flag());
+        public EnumKeyExtensionCatalog(Map<String, EnumAppFlagEntry> flagEntries) {
+            Map<String, AppFlag> map = new java.util.LinkedHashMap<>();
+            for (Map.Entry<String, EnumAppFlagEntry> e : flagEntries.entrySet())
+                map.put(e.getKey(), e.getValue().flag());
             this.flags = Map.copyOf(map);
         }
 
-        Map<FlagKey, AppFlag> flags() {
+        Map<String, AppFlag> flags() {
             return flags;
         }
     }
@@ -1484,6 +1524,51 @@ class FreewayTest {
         List<String> featureNames() {
             return features.stream().map(AppFeature::name).toList();
         }
+    }
+
+    // ──── Map<String, Foo> contribution consumers ────
+
+    public static final class MapFeatureCatalog {
+        private final Map<String, AppFeature> features;
+
+        public MapFeatureCatalog(Map<String, AppFeature> features) {
+            this.features = Map.copyOf(features);
+        }
+
+        Map<String, AppFeature> features() {
+            return features;
+        }
+    }
+
+    public static final class FieldMapFeatureCatalog {
+        @Inject
+        private Map<String, AppFeature> features;
+
+        Map<String, AppFeature> features() {
+            return features;
+        }
+    }
+
+    // ──── rejected injection patterns ────
+
+    public static final class ExtensionConstructorInjection {
+        public ExtensionConstructorInjection(Extension<AppFeature> features) {}
+    }
+
+    public static final class ExtensionFieldInjection {
+        @SuppressWarnings("unused")
+        @Inject
+        private Extension<AppFeature> features;
+    }
+
+    public static final class ContainerFieldInjection {
+        @SuppressWarnings("unused")
+        @Inject
+        private Container container;
+    }
+
+    public static final class ContainerConstructorInjection {
+        public ContainerConstructorInjection(Container container) {}
     }
 
     // ──── add(Class) ────

@@ -10,7 +10,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `ModuleEx` - module entry-point type: `bind(Binder)`
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
 - `Scoping` - `within(...)`
-- `Extension<V>` - ordered contributions for a given entry type; `all()` for ordered list, `get(id)` for lookup, `asMap()` for id→value map
+- `Extension<V>` - framework-internal aggregation handle. Access via `container.extension(Class)`. Application code injects `List<V>` or `Map<String, V>`, not `Extension<V>` directly.
 - `Contribution` - `before(String...)`, `after(String...)`
 - `EventBus` - `publish`, `publishAsync`, `subscribe`, `unsubscribe`
 - `RuntimeHook` - `start(Container)`, `stop(Container)`
@@ -59,7 +59,8 @@ Freeway uses two annotations with distinct semantics:
 ## Important Behavior
 
 - `@Inject`, `@Symbol`, `@Value` are the main injection annotations.
-- `List<Foo>` and `Extension<Foo>` can be resolved through injection.
+- `List<Foo>` and `Map<String, Foo>` are injectable for contribution consumption. `Extension<Foo>` is not injectable — use `List` or `Map` instead.
+- `Container` is not injectable — access it via `RuntimeHook.start(Container)` or `Freeway.create()`.
 - Singleton services should not directly inject thread-scoped concrete classes.
 - AOP only applies to interface-to-class bindings.
 - Blank ids are rejected.

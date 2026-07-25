@@ -61,7 +61,7 @@ Freeway 2 keeps its core concepts intentionally small:
 
 - `Module` is the unit of application composition and responsibility partitioning. `ModuleEx` is the Java type name used by Freeway. Modules carry `@Marker` annotations to tag all their bindings (e.g. `@Marker(Builtin.class)`).
 - `Freeway` builds a container; `FreewayApp` builds a runtime.
-- `Container` is the **service lookup boundary**: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` **injects without caching.**
+- `Container` is the **service lookup boundary**: `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`. `create()` **injects without caching.** Container is a framework boundary type — accessed via `Freeway.create()`, `RuntimeHook`, or provider lambdas, not via `@Inject`.
 - `AppRuntime` owns startup, shutdown, profiles, config, and runtime hooks.
 - Service ids are **plain strings**: `.id("stripe")`, `get(PaymentGateway.class, "stripe")`. There is **no public `ServiceId` type.**
 - Service lifecycles are declared only through `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
@@ -206,7 +206,7 @@ The IoC module provides the framework core:
 - Injection - constructor and field injection with `@Inject`, `@Symbol`, `@Value`.
 - Value expansion - `${...}` placeholder expansion for external configuration.
 - Type coercion - scalar and domain-specific conversions through contributed coercion rules.
-- Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`, with `Extension<V>` for typed injection.
+- Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`. Inject as `List<V>` (all contributions, ordered) or `Map<String, V>` (named contributions, keyed by id). `Extension<V>` is a framework-internal handle, not injectable.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
 - EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.

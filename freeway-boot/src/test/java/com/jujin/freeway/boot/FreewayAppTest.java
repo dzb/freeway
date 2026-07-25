@@ -45,8 +45,7 @@ class FreewayAppTest {
         try {
             assertEquals(AppState.RUNNING, app.state());
             assertTrue(app.isRunning());
-            Container container = app.container();
-            SymbolSource symbolSource = container.get(SymbolSource.class);
+            SymbolSource symbolSource = app.get(SymbolSource.class);
 
             assertEquals("Overridden", symbolSource.resolve(APP_NAME_KEY));
             assertEquals("9191", symbolSource.resolve(SERVER_PORT_KEY));
@@ -59,7 +58,7 @@ class FreewayAppTest {
             assertEquals("9191", app.config().get(SERVER_PORT_KEY));
             assertEquals("Overridden", app.config().asMap().get(APP_NAME_KEY));
 
-            Greeter greeter = container.get(Greeter.class);
+            Greeter greeter = app.get(Greeter.class);
             assertEquals("Hello, World!", greeter.greet("World"));
         } finally {
             app.close();
@@ -74,7 +73,7 @@ class FreewayAppTest {
             .args("--freeway.profile=dev", "--app.name=Overridden")
             .start();
         try {
-            AutoMarker marker = app.container().get(AutoMarker.class);
+            AutoMarker marker = app.get(AutoMarker.class);
             assertEquals("auto", marker.value());
         } finally {
             app.close();
@@ -90,9 +89,8 @@ class FreewayAppTest {
             .start();
         try {
             // AutoModule should NOT be loaded when ServiceLoader is skipped
-            Container container = app.container();
-            assertDoesNotThrow(() -> container.get(Greeter.class));
-            assertThrows(Exception.class, () -> container.get(AutoMarker.class));
+            assertDoesNotThrow(() -> app.get(Greeter.class));
+            assertThrows(Exception.class, () -> app.get(AutoMarker.class));
         } finally {
             app.close();
         }
@@ -105,7 +103,7 @@ class FreewayAppTest {
         );
         try {
             assertEquals(AppState.RUNNING, app.state());
-            assertEquals("instance", app.container().get(PrimaryMarker.class).value());
+            assertEquals("instance", app.get(PrimaryMarker.class).value());
         } finally {
             app.close();
         }
@@ -131,7 +129,7 @@ class FreewayAppTest {
         AppRuntime app = FreewayApp.of().start();
         try {
             assertEquals(AppState.RUNNING, app.state());
-            AutoMarker marker = app.container().get(AutoMarker.class);
+            AutoMarker marker = app.get(AutoMarker.class);
             assertEquals("auto", marker.value());
         } finally {
             app.close();

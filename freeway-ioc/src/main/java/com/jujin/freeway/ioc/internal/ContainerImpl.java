@@ -73,7 +73,6 @@ public final class ContainerImpl implements Container {
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(serviceCache, targetCache, bindingIndex, coercer);
         this.serviceRuntime = new ServiceRuntime(proxyFactory, serviceCache, targetCache);
-        registerBuiltin(Container.class, this, "Container");
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");

@@ -4,6 +4,8 @@ Freeway is a lightweight, modern Java application framework for JDK 25+. Compose
 
 ## Quick Start
 
+Lambda handlers are the simplest way to get started:
+
 ```java
 // A minimal HTTP application
 public class App {
@@ -21,6 +23,44 @@ public class App {
     }
 }
 ```
+
+When a handler needs injected services, use a handler class instead.
+The container creates it and injects its dependencies via the constructor:
+
+```java
+public class App {
+    public static void main(String[] args) {
+        try (AppRuntime runtime = FreewayApp.run(args, new AppModule())) {
+        }
+    }
+
+    public static final class AppModule implements ModuleEx {
+        public void bind(Binder b) {
+            b.bind(UserService.class).to(UserService.class);
+            b.contribute(Route.class)
+                .add(Route.get("/api/users/{id}", UserHandlers.GetUser.class));
+        }
+    }
+
+    // Route handler with injected service
+    public static final class UserHandlers {
+        public static final class GetUser implements RouteHandler {
+            private final UserService service;
+            public GetUser(UserService service) { this.service = service; }
+
+            public void handle(HttpContext ctx) throws Exception {
+                var user = service.findById(ctx.pathVar("id"));
+                user.ifPresentOrElse(
+                    u -> ctx.sendJson(200, u),
+                    () -> ctx.send(404, "Not found"));
+            }
+        }
+    }
+}
+```
+
+**Rule of thumb:** use a lambda when the handler is stateless. Use a handler
+class with constructor injection when it depends on services.
 
 ```bash
 mvn test                          # all modules
@@ -297,7 +337,8 @@ automatically converted to the target type (`int`, `boolean`, `Duration`, etc.).
 
 ### Extensions
 
-Extensions are contributed by entry type and injected as `List<V>` or `Extension<V>`:
+Extensions are contributed by entry type and consumed via `List<V>` or
+`Map<String, V>` injection:
 
 ```java
 // Module: contribute
@@ -311,9 +352,12 @@ binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(OrderCreated.class, e -> notify(e)))
     .after("audit");
 
-// Injection — List<V> is the simplest; Extension<V> gives access to .all() on demand
-@Inject List<Route> routes;
+// Consumption — inject List<V> or Map<String, V>
+@Inject List<Route> routes;           // all contributions, ordered
 routes.forEach(r -> ...);
+
+@Inject Map<String, FlowDriver> drivers;  // only named contributions, keyed by id
+FlowDriver custom = drivers.get("custom");
 
 // Or via constructor
 public class Router {
@@ -323,6 +367,28 @@ public class Router {
     }
 }
 ```
+
+**Choosing between List and Map:**
+
+| Injection | Returns | When to use |
+|---|---|---|
+| `List<V>` | All contributions (named + unnamed), ordered | Iteration, registration, filter chains |
+| `Map<String, V>` | Named contributions only, keyed by contribution id | Look up a specific entry by name |
+
+**How contributions map to injection targets:**
+
+| Contribution | Appears in `List<V>` | Appears in `Map<String, V>` |
+|---|---|---|
+| `add(value)` — unnamed | ✅ | ❌ |
+| `add("id", value)` — named | ✅ | ✅ (keyed by id) |
+| `add(Class)` — auto-instantiated | ✅ | ✅ (keyed by auto-generated id) |
+
+This means `List<V>` always gives you every contribution in order.
+`Map<String, V>` gives you only the ones you can look up by name.
+
+`Extension<V>` is intentionally not injectable — it is a mutable aggregation
+handle used by framework modules. Application code uses `List<V>` or
+`Map<String, V>` for consumption.
 
 The entry type itself (e.g., `Route.class`) is the extension point identifier. Contributions are ordered via `add(id, value)` with `before/after`.
 
@@ -579,6 +645,76 @@ binder.contribute(RouteGroup.class)
         Route.get("/users/{id}", ctx -> ctx.sendJson(200, user(ctx.pathVar("id"))))
     ));
 ```
+
+### Routes with Dependencies
+
+When a handler needs injected services, use a **handler class** instead of a
+lambda. Pass the class reference to `Route.get()` — the container creates the
+instance and resolves its constructor parameters:
+
+```java
+// 1. Define a handler class implementing RouteHandler
+public static final class UserHandlers {
+    public static final class List implements RouteHandler {
+        private final UserService service;
+
+        public List(UserService service) {
+            this.service = service;
+        }
+
+        public void handle(HttpContext ctx) throws Exception {
+            int page = Integer.parseInt(ctx.queryParam("page").orElse("1"));
+            ctx.sendJson(200, service.list(page));
+        }
+    }
+
+    public static final class Get implements RouteHandler {
+        private final UserService service;
+
+        public Get(UserService service) {
+            this.service = service;
+        }
+
+        public void handle(HttpContext ctx) throws Exception {
+            var user = service.findById(ctx.pathVar("id"));
+            user.ifPresentOrElse(
+                u -> ctx.sendJson(200, u),
+                () -> ctx.send(404, "Not found"));
+        }
+    }
+}
+
+// 2. Register with the handler class (not a lambda)
+binder.contribute(Route.class)
+    .add(Route.get("/api/users", UserHandlers.List.class))
+    .add(Route.get("/api/users/{id}", UserHandlers.Get.class));
+
+// 3. Works with RouteGroup too
+binder.contribute(RouteGroup.class)
+    .add(RouteGroup.of("/api/v1",
+        Route.get("/users", UserHandlers.List.class),
+        Route.get("/users/{id}", UserHandlers.Get.class)));
+```
+
+The container instantiates each handler class once at startup via
+`container.create()`, injecting all `@Inject`-annotated constructor
+parameters. The same handler instance is reused for every request.
+
+**Choosing lambda vs handler class:**
+
+| Style | When to use |
+|---|---|
+| Lambda `ctx -> { ... }` | Stateless handler — no injected dependencies needed |
+| Handler class `MyHandler.class` | Stateful handler — depends on services, needs constructor injection |
+
+Handler classes also support `POST`/`PUT`/`PATCH` with request bodies.
+Call `ctx.bodyAsJson(BodyType.class)` inside the handler to deserialize
+the request body — equivalent to the `BodyHandler<T>` convenience but
+with full access to constructor-injected services.
+
+If you find yourself calling a static method like
+`AppContext.get(SomeService.class)` inside a lambda handler, switch to a
+handler class — that is the signal that you need constructor injection.
 
 ### Request Context
 
@@ -1376,8 +1512,8 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 
 ### Architecture Baseline
 
-- **`Container`** is the IoC boundary only. It exposes service lookup and `close()`, not application runtime operations.
-- **`AppRuntime`** is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks.
+- **`Container`** is the IoC boundary. Created via `Freeway.create()` for tests, received as a parameter in `RuntimeHook` callbacks and provider lambdas. Container is not injectable — use `@Inject` for service dependencies, not for the container itself.
+- **`AppRuntime`** is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks. Access services through `app.get(Class)` rather than reaching for the Container.
 - Service ids are **plain strings** and are normalized internally by `ServiceIds`. There is no public `ServiceId` type.
 - Service lifecycle is declared only with `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`.
 - **`Defer` and `ScopedCache`** are the two scope-bound primitives in Commons. `Defer` buffers actions until the enclosing unit of work commits; `ScopedCache` memoizes values for the lifetime of a scope and closes them on exit. IoC's thread scope is built on `ScopedCache`.

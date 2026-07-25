@@ -19,7 +19,7 @@ public final class BootConfigModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
         binder.bind(AppConfig.class).to(config);
-        binder.bind(HookLifecycle.class).to(HookLifecycle.class);
+        binder.bind(HookLifecycle.class).to(container -> new HookLifecycle(container));
         binder.contribute(SymbolProvider.class).add(config::get);
     }
 }
