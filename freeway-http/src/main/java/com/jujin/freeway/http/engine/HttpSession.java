@@ -96,6 +96,7 @@ public final class HttpSession implements Runnable {
             var parser = new HttpParser(in);
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
+            ctx.setSecure(connection.isSSL());
 
             while (!connection.closed) {
                 parser.reset(in);
@@ -185,7 +186,7 @@ public final class HttpSession implements Runnable {
             var h2conn = new Http2Connection(connection.socket(), in,
                     connection.outputStream(), h2Executor,
                 (stream, streamIn, streamOut, reqHeaders) ->
-                    handleHttp2Stream(stream, streamIn, streamOut, reqHeaders));
+                    handleHttp2Stream(stream, streamIn, streamOut, reqHeaders, ssl));
 
             if (ssl) {
                 if (!h2conn.hasProperPreface(true))
@@ -212,7 +213,8 @@ public final class HttpSession implements Runnable {
 
     private void handleHttp2Stream(Http2Stream stream, InputStream in,
                                     OutputStream out,
-                                    Map<String, List<String>> reqHeaders) {
+                                    Map<String, List<String>> reqHeaders,
+                                    boolean secure) {
         try {
             String method = headerValue(reqHeaders, ":method");
             String fullPath = headerValue(reqHeaders, ":path");
@@ -238,6 +240,7 @@ public final class HttpSession implements Runnable {
                 headerValue(reqHeaders, "x-request-id"));
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
+            ctx.setSecure(secure);
             ctx.reset(method, path, rawQuery, headers, in, -1, false, out, rc, false, false);
             ctx.h2Bridge = stream;
             ctx.headerSet("X-Request-Id", rc.correlationId());

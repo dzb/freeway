@@ -97,6 +97,14 @@ public abstract class HttpContext {
     /** Returns the request context for this request. */
     public abstract RequestContext requestContext();
 
+    /**
+     * Returns true when this request was received over a TLS connection
+     * (HTTPS / WSS). Defaults to {@code false}; transport bridges override it.
+     */
+    public boolean isSecure() {
+        return false;
+    }
+
     /** Returns true if the request has a multipart/form-data content type. */
     public boolean isMultipart() { return multipart().isPresent(); }
 

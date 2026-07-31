@@ -491,6 +491,30 @@ class FreewayHttpEngineTest {
             new HttpServerConfig("127.0.0.1", 0, 0, 1024, Duration.ofSeconds(2), 0));
     }
 
+    // ── transport security flag ────────────────────────────────────
+
+    @Test
+    void plainHttpRequestIsNotSecure() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/secure", ctx -> ctx.send(200, String.valueOf(ctx.isSecure()))))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/secure"))
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals("false", resp.body(),
+                "plain HTTP requests must report isSecure() == false");
+        } finally {
+            server.stop();
+        }
+    }
+
     // ── HTTP/2 h2c prior-knowledge ─────────────────────────────────
 
     @Test

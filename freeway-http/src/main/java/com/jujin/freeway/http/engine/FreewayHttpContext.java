@@ -35,6 +35,7 @@ public final class FreewayHttpContext extends HttpContext {
     private boolean responded;
     H2ResponseBridge h2Bridge; // non-null → HTTP/2 path
     private byte[] cachedBody;
+    private boolean secure;
     // Shared drain buffer — reused across drainUnreadBody calls
     private byte[] drainBuf;
 
@@ -45,6 +46,16 @@ public final class FreewayHttpContext extends HttpContext {
     /** Sets the maximum request body size. Called after reset() or construction. */
     public void setMaxBodySize(long maxBodySize) {
         this.maxBodySize = maxBodySize;
+    }
+
+    /** Marks this request as transported over TLS. */
+    void setSecure(boolean secure) {
+        this.secure = secure;
+    }
+
+    @Override
+    public boolean isSecure() {
+        return secure;
     }
 
     /** Reuse this context for a new request. */
