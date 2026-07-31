@@ -42,9 +42,6 @@ public enum FrameFlag {
             return (value & f.value) == f.value;
         }
 
-        public boolean isAck() {
-            return ack;
-        }
 
         public String toString() {
             var sb = new StringBuilder("[");

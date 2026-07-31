@@ -70,14 +70,6 @@ public interface Database extends AutoCloseable {
     BatchQuery batch(String sql);
 
     /**
-     * Truncates (or deletes all rows from) a table using dialect-appropriate syntax.
-     * SQLite uses {@code DELETE FROM} since it has no TRUNCATE.
-     */
-    default void truncate(String tableName) {
-        execute(dialect().truncateTable(tableName));
-    }
-
-    /**
      * Runs the given work inside a transaction. The transaction is committed
      * on success and rolled back on exception.
      *

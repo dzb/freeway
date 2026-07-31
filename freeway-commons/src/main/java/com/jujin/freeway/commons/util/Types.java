@@ -14,9 +14,6 @@ public final class Types {
     private Types() {}
 
     /** Returns {@code true} if the type is concrete (not interface, not abstract). */
-    public static boolean isConcrete(Class<?> type) {
-        return !type.isInterface() && !Modifier.isAbstract(type.getModifiers());
-    }
 
     /**
      * Extracts the raw {@link Class} from a {@link Type}.

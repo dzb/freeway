@@ -9,7 +9,6 @@ public abstract class BaseFrame {
 
     public BaseFrame(FrameHeader header) { this.header = header; }
     public FrameHeader header() { return header; }
-    public void setHeader(FrameHeader header) { this.header = header; }
     public abstract void writeTo(OutputStream outputStream) throws IOException;
 
     public byte[] encode() {

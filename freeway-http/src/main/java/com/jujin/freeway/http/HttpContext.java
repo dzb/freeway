@@ -396,42 +396,4 @@ public abstract class HttpContext {
         catch (Exception e) { return text; }
     }
 
-    /**
-     * HTTP chunked transfer encoding output stream.
-     * Lives here so subclasses (HTTP/1.1, HTTP/2 bridge) share the same
-     * encoding without duplicating the chunk framing logic.
-     */
-    static final class ChunkedOutputStream extends OutputStream {
-        private final OutputStream out;
-        private static final byte[] CRLF = {'\r', '\n'};
-        private static final byte[] TERMINAL_CHUNK = {'0', '\r', '\n', '\r', '\n'};
-        private boolean closed;
-
-        ChunkedOutputStream(OutputStream out) {
-            this.out = Objects.requireNonNull(out, "out");
-        }
-
-        @Override public void write(int b) throws IOException { write(new byte[]{(byte) b}); }
-
-        @Override
-        public void write(byte[] data, int off, int len) throws IOException {
-            if (len == 0) return;
-            String hex = Integer.toHexString(len);
-            out.write(hex.getBytes(StandardCharsets.US_ASCII));
-            out.write(CRLF);
-            out.write(data, off, len);
-            out.write(CRLF);
-            out.flush();
-        }
-
-        @Override
-        public void close() throws IOException {
-            if (closed) return;
-            closed = true;
-            try {
-                out.write(TERMINAL_CHUNK);
-                out.flush();
-            } finally { out.close(); }
-        }
-    }
 }

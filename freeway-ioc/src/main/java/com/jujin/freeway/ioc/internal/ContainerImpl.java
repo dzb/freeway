@@ -116,13 +116,7 @@ public final class ContainerImpl implements Container {
         return bindingIndex;
     }
 
-    SymbolSource symbolSource() {
-        return symbolSource;
-    }
 
-    Coercer coercer() {
-        return coercer;
-    }
 
     LoggerSource loggerSource() {
         return loggerSource;

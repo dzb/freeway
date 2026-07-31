@@ -36,7 +36,6 @@ public final class Http11Connection {
         this.bufferedOut = new BufferedOutputStream(socket.getOutputStream(), bufferSize);
     }
 
-    public boolean isSSL() { return socket instanceof SSLSocket; }
 
     SSLSession getSSLSession() {
         return socket instanceof SSLSocket ssl ? ssl.getSession() : null;

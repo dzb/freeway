@@ -28,7 +28,4 @@ public record DatabaseStats(
         return borrowCount == 0 ? 0 : borrowWaitNanos / borrowCount;
     }
 
-    public Duration averageBorrowWait() {
-        return Duration.ofNanos(averageBorrowWaitNanos());
-    }
 }

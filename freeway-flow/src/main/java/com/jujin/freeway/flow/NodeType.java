@@ -29,9 +29,6 @@ public enum NodeType {
         this.code = code;
     }
 
-    public int getCode() {
-        return code;
-    }
 
     /**
      * 根据名称获取类型（不区分大小写）
