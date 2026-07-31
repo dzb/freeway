@@ -82,6 +82,9 @@ public class FlowExchanger {
         context.trace().recordNode(graph, node);
     }
 
+    public void recordClear() {
+        context.trace().clear();
+    }
 
     // --- sub-graph ---
 
@@ -99,6 +102,16 @@ public class FlowExchanger {
         }
     }
 
+    public void runTask(Node node, String description) throws FlowException {
+        Objects.requireNonNull(node, "node");
+        try {
+            engine.getDriver(node.getGraph()).handleTask(this, new TaskDesc(node, description));
+        } catch (FlowException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new FlowException("The task handle failed: " + node.getGraph().getId() + " / " + node.getId(), e);
+        }
+    }
 
     // --- step control ---
 

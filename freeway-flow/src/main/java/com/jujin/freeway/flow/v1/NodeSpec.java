@@ -69,7 +69,15 @@ public class NodeSpec {
         return linkAdd(nextId, null);
     }
 
+    public NodeSpec linkRemove(String nextId) {
+        this.links.removeIf(l -> l.getNextId().equals(nextId));
+        return this;
+    }
 
+    public NodeSpec linkClear() {
+        this.links.clear();
+        return this;
+    }
 
     public NodeSpec when(String when) {
         this.when = when;
@@ -124,6 +132,13 @@ public class NodeSpec {
     }
 
     // --- static factories ---
+    public static NodeSpec startOf(String id) { return new NodeSpec(id, NodeType.START); }
+    public static NodeSpec endOf(String id) { return new NodeSpec(id, NodeType.END); }
+    public static NodeSpec activityOf(String id) { return new NodeSpec(id, NodeType.ACTIVITY); }
+    public static NodeSpec inclusiveOf(String id) { return new NodeSpec(id, NodeType.INCLUSIVE); }
+    public static NodeSpec exclusiveOf(String id) { return new NodeSpec(id, NodeType.EXCLUSIVE); }
+    public static NodeSpec parallelOf(String id) { return new NodeSpec(id, NodeType.PARALLEL); }
+    public static NodeSpec loopOf(String id) { return new NodeSpec(id, NodeType.LOOP); }
 
     // --- getters ---
     public String getId() { return id; }

@@ -63,8 +63,14 @@ public class Temporary {
         return counts.computeIfAbsent(ROOT + "/" + key, k -> new AtomicInteger(0)).addAndGet(delta);
     }
 
+    public Map<String, Object> vars() {
+        return vars;
+    }
 
     @SuppressWarnings("unchecked")
+    public <T> T varAs(String key) {
+        return (T) vars.get(key);
+    }
 
     @Override
     public String toString() {

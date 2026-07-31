@@ -46,7 +46,26 @@ public final class RouteIndex {
         }
     }
 
+    public int routeCount() {
+        int count = 0;
+        for (TrieNode root : methodRoots.values()) {
+            count += countLeaves(root);
+        }
+        return count;
+    }
 
+    private static int countLeaves(TrieNode node) {
+        int n = node.handler != null ? 1 : 0;
+        if (node.literals != null) {
+            for (TrieNode child : node.literals.values()) {
+                n += countLeaves(child);
+            }
+        }
+        if (node.paramChild != null) {
+            n += countLeaves(node.paramChild);
+        }
+        return n;
+    }
 
     private void addRoute(String method, String path, RouteHandler handler) {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);

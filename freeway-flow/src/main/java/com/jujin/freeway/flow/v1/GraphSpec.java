@@ -96,6 +96,9 @@ public class GraphSpec {
         return bp;
     }
 
+    public NodeSpec removeNode(String nodeId) {
+        return nodes.remove(nodeId);
+    }
 
     public NodeSpec addNode(NodeSpec nodeSpec) {
         nodes.put(nodeSpec.getId(), nodeSpec);
@@ -113,6 +116,7 @@ public class GraphSpec {
     public Map<String, Object> getMeta() { return Collections.unmodifiableMap(meta); }
     public Map<String, NodeSpec> getNodes() { return Collections.unmodifiableMap(nodes); }
 
+    public void clearNodes() { nodes.clear(); }
 
     // --- meta ---
     public GraphSpec metaPut(String key, Object value) {
