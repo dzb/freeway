@@ -272,13 +272,16 @@ final class JsonParser {
             if (index + 4 > text.length()) {
                 throw error("Unterminated unicode escape");
             }
-            String hex = text.substring(index, index + 4);
-            index += 4;
-            try {
-                return (char) Integer.parseInt(hex, 16);
-            } catch (NumberFormatException ex) {
-                throw error("Invalid unicode escape");
+            int value = 0;
+            for (int i = 0; i < 4; i++) {
+                int digit = Character.digit(text.charAt(index + i), 16);
+                if (digit < 0) {
+                    throw error("Invalid unicode escape");
+                }
+                value = (value << 4) | digit;
             }
+            index += 4;
+            return (char) value;
         }
 
         private Object parseLiteral() {
@@ -324,23 +327,24 @@ final class JsonParser {
                 }
                 readDigits();
             }
-            String text = this.text.substring(start, index);
-            try {
-                if (decimal) {
-                    return new BigDecimal(text);
+            if (decimal) {
+                try {
+                    return new BigDecimal(this.text.substring(start, index));
+                } catch (NumberFormatException ex) {
+                    throw error("Invalid number");
                 }
-                long value = Long.parseLong(text);
+            }
+            try {
+                long value = Long.parseLong(this.text, start, index, 10);
                 if (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE) {
                     return (int) value;
                 }
                 return value;
             } catch (NumberFormatException ex) {
-                if (!decimal) {
-                    try {
-                        return new BigInteger(text);
-                    } catch (NumberFormatException ignored) {
-                        // fall through to error
-                    }
+                try {
+                    return new BigInteger(this.text.substring(start, index));
+                } catch (NumberFormatException ignored) {
+                    // fall through to error
                 }
                 throw error("Invalid number");
             }

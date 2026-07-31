@@ -175,6 +175,14 @@ class JsonUtilsTest {
     }
 
     @Test
+    void rejectsNonHexUnicodeEscape() {
+        assertThrows(IllegalArgumentException.class, () ->
+            JsonUtils.parse("\"\\u-123\""));
+        assertThrows(IllegalArgumentException.class, () ->
+            JsonUtils.parse("\"\\uZZZZ\""));
+    }
+
+    @Test
     void rejectsUnescapedControlCharactersInStrings() {
         assertThrows(IllegalArgumentException.class, () ->
             JsonUtils.parseObject("{\"msg\":\"line1\nline2\"}"));

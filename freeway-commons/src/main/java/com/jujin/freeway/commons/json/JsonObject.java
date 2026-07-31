@@ -113,4 +113,12 @@ public final class JsonObject {
     void forEach(BiConsumer<String, Object> consumer) {
         values.forEach(consumer);
     }
+
+    /**
+     * Package-private live entry view for internal iteration without
+     * per-entry lambda allocation.
+     */
+    Iterable<Map.Entry<String, Object>> entries() {
+        return values.entrySet();
+    }
 }

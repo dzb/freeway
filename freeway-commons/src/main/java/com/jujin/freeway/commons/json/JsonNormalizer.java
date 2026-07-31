@@ -122,9 +122,12 @@ final class JsonNormalizer {
             context.enter(object);
             try {
                 LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
-                object.forEach((key, item) ->
-                    copy.put(key, deepCopy(item, context, depth + 1))
-                );
+                for (Map.Entry<String, Object> entry : object.entries()) {
+                    copy.put(
+                        entry.getKey(),
+                        deepCopy(entry.getValue(), context, depth + 1)
+                    );
+                }
                 return copy;
             } finally {
                 context.exit(object);

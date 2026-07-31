@@ -1,6 +1,7 @@
 package com.jujin.freeway.commons.json;
 
 import java.util.IdentityHashMap;
+import java.util.Map;
 
 final class JsonWriter {
 
@@ -45,11 +46,11 @@ final class JsonWriter {
             return;
         }
         if (value instanceof String s) {
-            out.append(quote(s));
+            quote(out, s);
             return;
         }
         if (value instanceof Character c) {
-            out.append(quote(String.valueOf(c)));
+            quote(out, String.valueOf(c));
             return;
         }
         if (value instanceof Boolean b) {
@@ -61,7 +62,7 @@ final class JsonWriter {
             return;
         }
         if (value instanceof Enum<?> e) {
-            out.append(quote(e.name()));
+            quote(out, e.name());
             return;
         }
         throw new IllegalArgumentException(
@@ -79,10 +80,10 @@ final class JsonWriter {
         context.enter(object);
         try {
             out.append('{');
-            final boolean[] first = { true };
-            object.forEach((key, item) -> {
-                if (first[0]) {
-                    first[0] = false;
+            boolean first = true;
+            for (Map.Entry<String, Object> entry : object.entries()) {
+                if (first) {
+                    first = false;
                 } else {
                     out.append(',');
                 }
@@ -90,14 +91,14 @@ final class JsonWriter {
                     out.append('\n');
                     indent(out, indent + 1);
                 }
-                out.append(quote(String.valueOf(key)));
+                quote(out, entry.getKey());
                 out.append(':');
                 if (pretty) {
                     out.append(' ');
                 }
-                writeValue(out, item, pretty, indent + 1, context);
-            });
-            if (pretty && !first[0]) {
+                writeValue(out, entry.getValue(), pretty, indent + 1, context);
+            }
+            if (pretty && !first) {
                 out.append('\n');
                 indent(out, indent);
             }
@@ -155,39 +156,30 @@ final class JsonWriter {
         out.append(number);
     }
 
-    private static String quote(String value) {
+    private static void quote(StringBuilder out, String value) {
         int length = value.length();
+        out.append('"');
+        int last = 0; // start of the unescaped run not yet copied
         for (int i = 0; i < length; i++) {
             char c = value.charAt(i);
             if (c == '"' || c == '\\' || c < 0x20) {
-                // Slow path — at least one character needs escaping.
-                StringBuilder out = new StringBuilder(length + 16);
-                out.append('"').append(value, 0, i);
-                for (; i < length; i++) {
-                    char ch = value.charAt(i);
-                    switch (ch) {
-                        case '"' -> out.append("\\\"");
-                        case '\\' -> out.append("\\\\");
-                        case '\b' -> out.append("\\b");
-                        case '\f' -> out.append("\\f");
-                        case '\n' -> out.append("\\n");
-                        case '\r' -> out.append("\\r");
-                        case '\t' -> out.append("\\t");
-                        default -> {
-                            if (ch < 0x20) {
-                                out.append(CONTROL_ESCAPES[ch]);
-                            } else {
-                                out.append(ch);
-                            }
-                        }
-                    }
+                // Copy the safe prefix, then the escape.
+                out.append(value, last, i);
+                switch (c) {
+                    case '"' -> out.append("\\\"");
+                    case '\\' -> out.append("\\\\");
+                    case '\b' -> out.append("\\b");
+                    case '\f' -> out.append("\\f");
+                    case '\n' -> out.append("\\n");
+                    case '\r' -> out.append("\\r");
+                    case '\t' -> out.append("\\t");
+                    default -> out.append(CONTROL_ESCAPES[c]);
                 }
-                out.append('"');
-                return out.toString();
+                last = i + 1;
             }
         }
-        // Fast path — nothing to escape.
-        return '"' + value + '"';
+        out.append(value, last, length);
+        out.append('"');
     }
 
     /** Precomputed {@code \\uXXXX} escapes for control characters U+0000..U+001F. */

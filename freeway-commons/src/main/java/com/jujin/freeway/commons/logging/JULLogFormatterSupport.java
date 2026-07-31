@@ -40,6 +40,9 @@ final class JULLogFormatterSupport {
      */
     private static final String[] MDC_PRIORITY_KEYS = loadMdcPriorityKeys();
 
+    /** Immutable view of {@link #MDC_PRIORITY_KEYS}, hoisted to avoid per-record allocation. */
+    private static final Set<String> MDC_PRIORITY_SET = Set.of(MDC_PRIORITY_KEYS);
+
     private static String[] loadMdcPriorityKeys() {
         String override = System.getProperty(
             "freeway.log.mdc.priority",
@@ -217,9 +220,8 @@ final class JULLogFormatterSupport {
             }
 
             // Other keys (alphabetically)
-            Set<String> prioritySet = Set.of(MDC_PRIORITY_KEYS);
             var otherKeys = new TreeSet<>(context.keySet());
-            otherKeys.removeAll(prioritySet);
+            otherKeys.removeAll(MDC_PRIORITY_SET);
             for (String key : otherKeys) {
                 if (!first) sb.append(' ');
                 sb.append(key).append('=').append(context.get(key));

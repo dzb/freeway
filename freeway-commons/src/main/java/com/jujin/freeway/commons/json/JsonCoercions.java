@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.util.Types;
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
 import java.util.*;
@@ -287,12 +288,12 @@ final class JsonCoercions {
         TypeContext context
     ) {
         Map<Object, Object> mutable = newMapInstance(targetType, keyType);
-        object.forEach((key, value) ->
+        for (Map.Entry<String, Object> entry : object.entries()) {
             mutable.put(
-                coerce(key, keyType, coercer, context),
-                coerce(value, valueType, coercer, context)
-            )
-        );
+                coerce(entry.getKey(), keyType, coercer, context),
+                coerce(entry.getValue(), valueType, coercer, context)
+            );
+        }
         return mutable;
     }
 
@@ -451,15 +452,35 @@ final class JsonCoercions {
     }
 
     private static Object instantiate(Class<?> targetType) {
+        MethodHandle constructorHandle = EMPTY_CONSTRUCTORS.computeIfAbsent(
+            targetType,
+            JsonCoercions::emptyConstructor
+        );
+        if (constructorHandle == null) {
+            return null;
+        }
+        try {
+            return constructorHandle.invoke();
+        } catch (Error e) {
+            throw e;
+        } catch (Throwable ex) {
+            return null;
+        }
+    }
+
+    /** No-arg constructor handle per concrete class; null entry means "no such constructor". */
+    private static final Map<Class<?>, MethodHandle> EMPTY_CONSTRUCTORS =
+        Collections.synchronizedMap(new WeakHashMap<>());
+
+    private static MethodHandle emptyConstructor(Class<?> targetType) {
         try {
             var lookup = MethodHandles.privateLookupIn(
                 targetType,
                 MethodHandles.lookup()
             );
-            var constructorHandle = lookup.unreflectConstructor(
+            return lookup.unreflectConstructor(
                 targetType.getDeclaredConstructor()
             );
-            return constructorHandle.invoke();
         } catch (ReflectiveOperationException ex) {
             return null;
         } catch (Error e) {
