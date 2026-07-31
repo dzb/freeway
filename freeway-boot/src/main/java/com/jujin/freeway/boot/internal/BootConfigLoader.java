@@ -33,6 +33,9 @@ import java.util.Locale;
 public final class BootConfigLoader implements ConfigLoader {
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
+    /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}). */
+    private static final Pattern NEGATIVE_NUMBER_PATTERN = Pattern.compile("-\\d");
+
     public BootConfigLoader() {
     }
 
@@ -151,7 +154,7 @@ public final class BootConfigLoader implements ConfigLoader {
                 int eq = raw.indexOf('=');
                 if (eq > 0) {
                     values.put(applyFreewayPrefix(raw.substring(0, eq)), raw.substring(eq + 1));
-                } else if (i + 1 < list.size() && !list.get(i + 1).startsWith("-")) {
+                } else if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
                     values.put(applyFreewayPrefix(raw), list.get(++i));
                 } else {
                     values.put(applyFreewayPrefix(raw), "true");
@@ -164,12 +167,21 @@ public final class BootConfigLoader implements ConfigLoader {
                 }
             } else if (arg.startsWith("-") && arg.length() == 2) {
                 String key = arg.substring(1);
-                if (i + 1 < list.size() && !list.get(i + 1).startsWith("-")) {
+                if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
                     values.put(key, list.get(++i));
                 }
             }
         }
         return values;
+    }
+
+    /**
+     * A following argument can be consumed as a value when it is not another
+     * flag — or when it is a negative number, so {@code --port -1} parses as a
+     * value instead of turning {@code --port} into a boolean.
+     */
+    private static boolean isConsumableValue(String next) {
+        return !next.startsWith("-") || NEGATIVE_NUMBER_PATTERN.matcher(next).find();
     }
 
     /**

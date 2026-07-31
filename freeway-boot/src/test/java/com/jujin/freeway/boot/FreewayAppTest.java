@@ -1,6 +1,7 @@
 package com.jujin.freeway.boot;
 
 import com.jujin.freeway.ioc.*;
+import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -135,6 +136,41 @@ class FreewayAppTest {
             app.close();
         }
         assertEquals(AppState.STOPPED, app.state());
+    }
+
+    public static class ValueHolder {
+        @Value("${server.port}")
+        String port;
+    }
+
+    public static class ValueHolderModule implements ModuleEx {
+        @Override
+        public void bind(Binder binder) {
+            binder.bind(ValueHolder.class).to(ValueHolder.class);
+        }
+    }
+
+    @Test
+    void valueInjectionFollowsDocumentedCascadePriority() {
+        // A JVM-level system property must not outrank the documented
+        // config cascade (CLI > env > files) for @Value/@Symbol injection.
+        System.setProperty(SERVER_PORT_KEY, "8080");
+        try {
+            AppRuntime app = FreewayApp.run(
+                new String[]{"--server.port=7070"},
+                new ValueHolderModule()
+            );
+            try {
+                ValueHolder holder = app.get(ValueHolder.class);
+                assertEquals("7070", holder.port,
+                    "@Value must honor the CLI argument over the JVM system property");
+                assertEquals("7070", app.config().get(SERVER_PORT_KEY));
+            } finally {
+                app.close();
+            }
+        } finally {
+            System.clearProperty(SERVER_PORT_KEY);
+        }
     }
 
     @Test

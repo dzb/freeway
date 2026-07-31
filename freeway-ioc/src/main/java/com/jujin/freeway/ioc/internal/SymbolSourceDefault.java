@@ -9,10 +9,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 final class SymbolSourceDefault implements SymbolSource {
     private static final int MAX_EXPAND_DEPTH = 40;
-    private final CopyOnWriteArrayList<SymbolProvider> providers = new CopyOnWriteArrayList<>();
+
+    /** Explicitly contributed providers (e.g. the boot config cascade) — checked first. */
+    private final CopyOnWriteArrayList<SymbolProvider> contributed = new CopyOnWriteArrayList<>();
+
+    /** Built-in fallbacks (system properties, environment variables) — checked last. */
+    private final CopyOnWriteArrayList<SymbolProvider> defaults = new CopyOnWriteArrayList<>();
 
     SymbolSourceDefault(List<SymbolProvider> providers) {
-        this.providers.addAll(Objects.requireNonNull(providers, "providers"));
+        this.defaults.addAll(Objects.requireNonNull(providers, "providers"));
     }
 
     /**
@@ -36,7 +41,10 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     void register(SymbolProvider provider) {
-        providers.add(Objects.requireNonNull(provider, "provider"));
+        // Explicit providers take priority over the implicit system sources so
+        // the documented config cascade (CLI > env > files, via AppConfig) is
+        // honored by @Value/@Symbol instead of being outranked by JVM -D flags.
+        contributed.add(Objects.requireNonNull(provider, "provider"));
     }
 
     @Override
@@ -49,7 +57,13 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     private String raw(String name) {
-        for (SymbolProvider provider : providers) {
+        for (SymbolProvider provider : contributed) {
+            String value = provider.lookup(name);
+            if (value != null) {
+                return value;
+            }
+        }
+        for (SymbolProvider provider : defaults) {
             String value = provider.lookup(name);
             if (value != null) {
                 return value;

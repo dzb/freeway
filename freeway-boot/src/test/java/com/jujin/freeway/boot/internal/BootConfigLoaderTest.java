@@ -72,6 +72,31 @@ class BootConfigLoaderTest {
     }
 
     @Test
+    void parsesNegativeNumberValues() {
+        Map<String, String> args = BootConfigLoader.parseArgs(
+            "--offset=-1",
+            "--port", "-1",
+            "--ratio", "-2.5"
+        );
+
+        assertEquals("-1", args.get("freeway.offset"));
+        assertEquals("-1", args.get("freeway.port"),
+            "--port -1 must consume -1 as the value, not treat --port as a boolean");
+        assertEquals("-2.5", args.get("freeway.ratio"));
+    }
+
+    @Test
+    void followingFlagTurnsKeyIntoBoolean() {
+        Map<String, String> args = BootConfigLoader.parseArgs(
+            "--port", "--verbose"
+        );
+
+        assertEquals("true", args.get("freeway.port"),
+            "a following flag must turn the key into a boolean");
+        assertEquals("true", args.get("freeway.verbose"));
+    }
+
+    @Test
     void rejectsOversizedPropertiesResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
             BootConfigLoader.loadLayers(new OversizedPropertiesLoader()));
