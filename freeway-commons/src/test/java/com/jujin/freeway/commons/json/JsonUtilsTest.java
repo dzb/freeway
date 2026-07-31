@@ -7,6 +7,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.ArrayDeque;
@@ -14,6 +16,7 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -660,6 +663,61 @@ class JsonUtilsTest {
             return (T) Character.valueOf(text.isEmpty() ? '\0' : text.charAt(0));
         }
         return FALLBACK_COERCER.coerce(input, targetType);
+    }
+
+    @Test
+    void stringifyRawStructuresDirectly() {
+        // A raw Map/List/bean tree is written in one pass — no intermediate
+        // normalized tree — with leaf conversions matching JsonNormalizer.
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("name", "freeway");
+        raw.put("count", 42);
+        raw.put("ratio", 1.5);
+        raw.put("flag", true);
+        raw.put("nothing", null);
+        raw.put("tags", List.of("a", "b"));
+        raw.put("when", LocalDate.of(2026, 6, 18));
+        raw.put("maybe", Optional.of("present"));
+        raw.put("color", Color.RED);
+        raw.put("endpoint", new Endpoint("x"));
+
+        String json = JsonUtils.stringify(raw);
+        assertEquals(
+            "{\"name\":\"freeway\",\"count\":42,\"ratio\":1.5,\"flag\":true,"
+                + "\"nothing\":null,\"tags\":[\"a\",\"b\"],\"when\":\"2026-06-18\","
+                + "\"maybe\":\"present\",\"color\":\"RED\","
+                + "\"endpoint\":{\"value\":\"x\"}}",
+            json
+        );
+
+        // Parity with the previous normalize-then-write path.
+        assertEquals(
+            JsonUtils.stringify(JsonUtils.normalize(raw)),
+            json
+        );
+    }
+
+    @Test
+    void stringifyRawArrayAndPrimitiveArray() {
+        int[] ints = {1, 2, 3};
+        assertEquals("[1,2,3]", JsonUtils.stringify(ints));
+
+        String[] strs = {"a", null, "c"};
+        assertEquals("[\"a\",null,\"c\"]", JsonUtils.stringify(strs));
+    }
+
+    @Test
+    void rejectsCyclicRawList() {
+        List<Object> list = new ArrayList<>();
+        list.add("x");
+        list.add(list);
+
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> JsonUtils.stringify(list)
+        );
+        assertTrue(ex.getMessage().contains("Cyclic"),
+            "cyclic raw list must be rejected by the writer, got: " + ex.getMessage());
     }
 
     private record Endpoint(String value) {

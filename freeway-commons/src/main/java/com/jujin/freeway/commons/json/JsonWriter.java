@@ -1,8 +1,40 @@
 package com.jujin.freeway.commons.json;
 
+import com.jujin.freeway.commons.bean.BeanIntrospector;
+import com.jujin.freeway.commons.bean.BeanPlan;
+import com.jujin.freeway.commons.bean.BeanProperty;
+import java.io.File;
+import java.lang.reflect.Array;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.ZonedDateTime;
+import java.util.Date;
 import java.util.IdentityHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
+import java.util.UUID;
 
+/**
+ * Hand-written JSON serializer.
+ *
+ * <p>Writes both the lightweight {@link JsonObject}/{@link JsonArray} wrappers
+ * and raw JDK/domain values ({@code Map}, {@code Iterable}, arrays, beans,
+ * temporal types, {@code Optional}, ...) directly in a single pass — no
+ * intermediate normalized tree is built for raw structures. Leaf conversions
+ * mirror {@link JsonNormalizer} exactly.
+ */
 final class JsonWriter {
 
     private static final int MAX_DEPTH = JsonParser.MAX_DEPTH;
@@ -61,13 +93,128 @@ final class JsonWriter {
             writeNumber(out, number);
             return;
         }
+        if (value instanceof CharSequence cs) {
+            quote(out, cs.toString());
+            return;
+        }
         if (value instanceof Enum<?> e) {
             quote(out, e.name());
             return;
         }
-        throw new IllegalArgumentException(
-            "Unsupported JSON value: " + value.getClass().getName()
-        );
+        // Leaf conversions mirroring JsonNormalizer (same dispatch order).
+        if (value instanceof LocalDate d) {
+            quote(out, d.toString());
+            return;
+        }
+        if (value instanceof LocalTime t) {
+            quote(out, t.toString());
+            return;
+        }
+        if (value instanceof LocalDateTime dt) {
+            quote(out, dt.toString());
+            return;
+        }
+        if (value instanceof OffsetTime ot) {
+            quote(out, ot.toString());
+            return;
+        }
+        if (value instanceof OffsetDateTime odt) {
+            quote(out, odt.toString());
+            return;
+        }
+        if (value instanceof ZonedDateTime zdt) {
+            quote(out, zdt.toString());
+            return;
+        }
+        if (value instanceof Instant i) {
+            quote(out, i.toString());
+            return;
+        }
+        if (value instanceof UUID u) {
+            quote(out, u.toString());
+            return;
+        }
+        if (value instanceof Path p) {
+            quote(out, p.toString());
+            return;
+        }
+        if (value instanceof Optional<?> opt) {
+            writeValue(
+                out,
+                opt.isPresent() ? opt.get() : null,
+                pretty,
+                indent + 1,
+                context
+            );
+            return;
+        }
+        if (value instanceof OptionalInt oi) {
+            writeValue(
+                out,
+                oi.isPresent() ? oi.getAsInt() : null,
+                pretty,
+                indent + 1,
+                context
+            );
+            return;
+        }
+        if (value instanceof OptionalLong ol) {
+            writeValue(
+                out,
+                ol.isPresent() ? ol.getAsLong() : null,
+                pretty,
+                indent + 1,
+                context
+            );
+            return;
+        }
+        if (value instanceof OptionalDouble od) {
+            writeValue(
+                out,
+                od.isPresent() ? od.getAsDouble() : null,
+                pretty,
+                indent + 1,
+                context
+            );
+            return;
+        }
+        if (value instanceof URI u) {
+            quote(out, u.toString());
+            return;
+        }
+        if (value instanceof URL u) {
+            quote(out, u.toString());
+            return;
+        }
+        if (value instanceof Locale l) {
+            quote(out, l.toLanguageTag());
+            return;
+        }
+        if (value instanceof Duration d) {
+            quote(out, d.toString());
+            return;
+        }
+        if (value instanceof Date d) {
+            quote(out, d.toInstant().toString());
+            return;
+        }
+        if (value instanceof File f) {
+            quote(out, f.getPath());
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            writeMap(out, map, pretty, indent, context);
+            return;
+        }
+        if (value.getClass().isArray()) {
+            writeArray(out, value, pretty, indent, context);
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            writeIterable(out, iterable, pretty, indent, context);
+            return;
+        }
+        writeBean(out, value, pretty, indent, context);
     }
 
     private static void writeObject(
@@ -108,6 +255,50 @@ final class JsonWriter {
         }
     }
 
+    private static void writeMap(
+        StringBuilder out,
+        Map<?, ?> map,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
+        context.enter(map);
+        try {
+            out.append('{');
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (first) {
+                    first = false;
+                } else {
+                    out.append(',');
+                }
+                if (pretty) {
+                    out.append('\n');
+                    indent(out, indent + 1);
+                }
+                Object key = entry.getKey();
+                if (key == null) {
+                    throw new IllegalArgumentException(
+                        "Cannot serialize a Map with null keys to JSON"
+                    );
+                }
+                quote(out, String.valueOf(key));
+                out.append(':');
+                if (pretty) {
+                    out.append(' ');
+                }
+                writeValue(out, entry.getValue(), pretty, indent + 1, context);
+            }
+            if (pretty && !first) {
+                out.append('\n');
+                indent(out, indent);
+            }
+            out.append('}');
+        } finally {
+            context.exit(map);
+        }
+    }
+
     private static void writeSequence(
         StringBuilder out,
         JsonArray array,
@@ -139,6 +330,119 @@ final class JsonWriter {
             out.append(']');
         } finally {
             context.exit(array);
+        }
+    }
+
+    private static void writeArray(
+        StringBuilder out,
+        Object array,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
+        context.enter(array);
+        try {
+            out.append('[');
+            int length = Array.getLength(array);
+            boolean first = true;
+            for (int i = 0; i < length; i++) {
+                Object item = Array.get(array, i);
+                if (first) {
+                    first = false;
+                } else {
+                    out.append(',');
+                }
+                if (pretty) {
+                    out.append('\n');
+                    indent(out, indent + 1);
+                }
+                writeValue(out, item, pretty, indent + 1, context);
+            }
+            if (pretty && !first) {
+                out.append('\n');
+                indent(out, indent);
+            }
+            out.append(']');
+        } finally {
+            context.exit(array);
+        }
+    }
+
+    private static void writeIterable(
+        StringBuilder out,
+        Iterable<?> iterable,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
+        context.enter(iterable);
+        try {
+            out.append('[');
+            boolean first = true;
+            for (Object item : iterable) {
+                if (first) {
+                    first = false;
+                } else {
+                    out.append(',');
+                }
+                if (pretty) {
+                    out.append('\n');
+                    indent(out, indent + 1);
+                }
+                writeValue(out, item, pretty, indent + 1, context);
+            }
+            if (pretty && !first) {
+                out.append('\n');
+                indent(out, indent);
+            }
+            out.append(']');
+        } finally {
+            context.exit(iterable);
+        }
+    }
+
+    private static void writeBean(
+        StringBuilder out,
+        Object value,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
+        context.enter(value);
+        try {
+            BeanPlan plan = BeanIntrospector.plan(value.getClass());
+            out.append('{');
+            boolean first = true;
+            for (BeanProperty property : plan.properties()) {
+                if (first) {
+                    first = false;
+                } else {
+                    out.append(',');
+                }
+                if (pretty) {
+                    out.append('\n');
+                    indent(out, indent + 1);
+                }
+                quote(out, property.name());
+                out.append(':');
+                if (pretty) {
+                    out.append(' ');
+                }
+                writeValue(
+                    out,
+                    property.read(value),
+                    pretty,
+                    indent + 1,
+                    context
+                );
+            }
+            if (pretty && !first) {
+                out.append('\n');
+                indent(out, indent);
+            }
+            out.append('}');
+        } finally {
+            context.exit(value);
         }
     }
 

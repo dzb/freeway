@@ -61,11 +61,11 @@ public final class JsonUtils {
     }
 
     public static String stringify(Object value) {
-        return JsonWriter.stringify(normalize(value));
+        return JsonWriter.stringify(value);
     }
 
     public static String stringifyPretty(Object value) {
-        return JsonWriter.stringifyPretty(normalize(value));
+        return JsonWriter.stringifyPretty(value);
     }
 
     public static Object normalize(Object value) {
