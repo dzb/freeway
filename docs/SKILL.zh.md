@@ -834,7 +834,8 @@ Freeway 提供两种互补的数据库演进机制：Schema（注解驱动，当
 
 ```java
 // 独立使用（dialect 参数必须显式提供）
-Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
+// 方言取自 db.dialect()，无需显式传入
+Schema.ensure(db, User.class, Post.class);
 
 // 策略：表不存在 → CREATE TABLE IF NOT EXISTS
 //       列缺失   → ALTER TABLE ADD COLUMN
@@ -1128,7 +1129,7 @@ try {
 ```java
 PoolConfig config = PoolConfig.defaults("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "");
 Database db = new DatabaseBuilder().config(config).build();
-Schema.ensure(db, new PostgresDialect(), TestEntity.class);
+Schema.ensure(db, TestEntity.class);
 ```
 
 ## 设计约定

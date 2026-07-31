@@ -180,7 +180,6 @@ public final class DbModule implements ModuleEx {
         );
 
         Database db = container.get(Database.class);
-        Dialect globalDialect = resolveDialect(container);
         int total = 0;
         for (SchemaEntity se : entities) {
             if (se.entityTypes().length == 0) continue;
@@ -190,8 +189,8 @@ public final class DbModule implements ModuleEx {
                 continue;
             }
 
-            Dialect dialect = se.dialect() != null ? se.dialect() : globalDialect;
-            int ops = Schema.ensure(db, dialect, se.entityTypes());
+            // The schema dialect always comes from the database.
+            int ops = Schema.ensure(db, se.entityTypes());
             if (ops > 0) {
                 LOG.info("Schema group '{}' applied {} change(s)", se.name(), ops);
             }

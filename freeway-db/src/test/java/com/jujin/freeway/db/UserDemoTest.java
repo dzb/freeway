@@ -67,8 +67,8 @@ class UserDemoTest {
     @Test
     void step01_showDDL() {
         // ★ 展示 Schema.define() 生成的 DDL 语句
-        String ddl = Schema.define(User.class);
-        System.out.println("=== Schema.define(User.class) ===");
+        String ddl = Schema.define(new PostgresDialect(), User.class);
+        System.out.println("=== Schema.define(new PostgresDialect(), User.class) ===");
         System.out.println(ddl);
         System.out.println();
 
@@ -90,7 +90,7 @@ class UserDemoTest {
         // ★ 展示 Schema.ensure() 自动建表
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, new PostgresDialect(), User.class);
+            Schema.ensure(db, User.class);
 
             // 验证表已存在 — 可以正常插入
             Orm orm = Orm.of(db);
@@ -107,7 +107,7 @@ class UserDemoTest {
         var db = builder(uniqueDb()).build();
         try (db) {
             // ----- 建表（DDL） -----
-            Schema.ensure(db, new PostgresDialect(), User.class);
+            Schema.ensure(db, User.class);
             Orm orm = Orm.of(db);
 
             // ----- C: Create -----
@@ -139,7 +139,7 @@ class UserDemoTest {
 
             // ----- U: Update (使用 Bean 风格) -----
             // Record 是不可变的，update 用 Bean
-            Schema.ensure(db, new PostgresDialect(), UserBean.class);
+            Schema.ensure(db, UserBean.class);
             Orm ormBean = Orm.of(db);
 
             UserBean bean = new UserBean("闪电", 3);
@@ -201,7 +201,7 @@ class UserDemoTest {
         // ★ SQL 构建器风格
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, new PostgresDialect(), User.class);
+            Schema.ensure(db, User.class);
             Orm orm = Orm.of(db);
 
             orm.insert(new User("闪电", 3));
@@ -226,7 +226,7 @@ class UserDemoTest {
         // ★ 事务操作
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, new PostgresDialect(), User.class);
+            Schema.ensure(db, User.class);
             Orm orm = Orm.of(db);
 
             db.transaction(() -> {
@@ -262,7 +262,7 @@ class UserDemoTest {
         // 这里测试 INSERT 路径（id=null）
         var db = builder(uniqueDb()).build();
         try (db) {
-            Schema.ensure(db, new PostgresDialect(), UserBean.class);
+            Schema.ensure(db, UserBean.class);
             Orm orm = Orm.of(db);
 
             // id=null → INSERT

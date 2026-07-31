@@ -39,20 +39,21 @@ public final class Orm {
     private final Dialect dialect;
     private final Coercer coercer;
 
-    public Orm(Database db, Dialect dialect, Coercer coercer) {
+    /** The dialect always comes from the database — it is never passed in. */
+    public Orm(Database db, Coercer coercer) {
         this.db = Objects.requireNonNull(db, "db");
-        this.dialect = Objects.requireNonNull(dialect, "dialect");
+        this.dialect = Objects.requireNonNull(db.dialect(), "db.dialect()");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
     /** Creates an Orm with a default Coercer, using the dialect from the database. */
     public static Orm of(Database db) {
-        return new Orm(db, db.dialect(), new CoercerDefault());
+        return new Orm(db, new CoercerDefault());
     }
 
     /** Creates an Orm with the given Coercer, using the dialect from the database. */
     public static Orm of(Database db, Coercer coercer) {
-        return new Orm(db, db.dialect(), coercer);
+        return new Orm(db, coercer);
     }
 
     // ==================== find ====================

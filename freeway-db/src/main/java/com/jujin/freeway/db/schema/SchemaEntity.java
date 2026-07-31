@@ -10,50 +10,34 @@ import java.util.Objects;
  * contributed groups and executes {@link Schema#ensure}
  * at startup (before migration SQL files), logged by group name.
  *
+ * <p>The schema dialect always comes from the {@link Database} — a group is a
+ * logical label (typically the domain or module that owns the entities), not
+ * a dialect boundary.
+ *
  * <h3>Usage</h3>
  * <pre>{@code
- * // Default dialect
  * binder.contribute(SchemaEntity.class)
  *     .add(SchemaEntity.of("core", User.class, Post.class))
  *     .add(SchemaEntity.of("audit", AuditLog.class));
- *
- * // Per-group dialect override
- * binder.contribute(SchemaEntity.class)
- *     .add(SchemaEntity.of("core", new PostgresDialect(), UserProfile.class));
  * }</pre>
- *
- * <h3>Naming</h3>
- * The group name is a logical label — typically the domain or module
- * that owns the entities. It appears in startup logs and can be used
- * to reason about which module contributed which table definitions.
  */
 public final class SchemaEntity {
 
     private final String name;
-    private final Dialect dialect;
     private final Class<?>[] entityTypes;
 
-    private SchemaEntity(String name, Dialect dialect, Class<?>[] entityTypes) {
+    private SchemaEntity(String name, Class<?>[] entityTypes) {
         this.name = Objects.requireNonNull(name, "name");
-        this.dialect = dialect;
         this.entityTypes = Objects.requireNonNull(entityTypes, "entityTypes").clone();
     }
 
-    /** Register a named group with the default dialect. */
+    /** Register a named group. */
     public static SchemaEntity of(String name, Class<?>... entityTypes) {
-        return new SchemaEntity(name, null, entityTypes);
-    }
-
-    /** Register a named group with an explicit dialect. */
-    public static SchemaEntity of(String name, Dialect dialect, Class<?>... entityTypes) {
-        return new SchemaEntity(name, dialect, entityTypes);
+        return new SchemaEntity(name, entityTypes);
     }
 
     /** Logical group name (e.g. "core", "audit"). */
     public String name() { return name; }
-
-    /** Per-group dialect override, or {@code null} to use the global dialect. */
-    public Dialect dialect() { return dialect; }
 
     /** The entity classes in this group. */
     public Class<?>[] entityTypes() { return entityTypes.clone(); }

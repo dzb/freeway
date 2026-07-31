@@ -242,7 +242,7 @@ class DbModuleTest {
                 Database db = container.get(Database.class);
 
                 // 1. Schema: auto-create the Category table from @Table annotation
-                int schemaOps = Schema.ensure(db, new PostgresDialect(), Category.class);
+                int schemaOps = Schema.ensure(db, Category.class);
                 assertTrue(schemaOps >= 1, "Schema should create the table");
 
                 // Verify table exists and is empty
@@ -311,7 +311,7 @@ class DbModuleTest {
                 assertEquals(List.of("hello"), labels);
 
                 // 2. Schema: adds Tag table without touching items
-                int ops = Schema.ensure(db, new PostgresDialect(), Tag.class);
+                int ops = Schema.ensure(db, Tag.class);
                 assertTrue(ops == 1, "Should create the Tag table exactly once");
 
                 // items table still intact
@@ -350,8 +350,8 @@ class DbModuleTest {
 
             // Simulate runSchema's group filtering:
             // only "core" group should be applied, "audit" skipped
-            Schema.ensure(db, new PostgresDialect(), Category.class);
-            // audit group NOT called: Schema.ensure(db, new PostgresDialect(), AuditEntry.class)
+            Schema.ensure(db, Category.class);
+            // audit group NOT called: Schema.ensure(db, AuditEntry.class)
 
             // Verify: core table exists
             db.execute("insert into category (id, name) values (1, 'tech')");

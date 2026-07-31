@@ -21,9 +21,9 @@ class SchemaEnsureIndexCompatibilityTest {
     @Test
     void skipsExistingIndexWhenDialectDoesNotSupportIfNotExists() {
         RecordingDatabase db = new RecordingDatabase();
-        Dialect dialect = new NonIdempotentDialect();
 
-        int applied = Schema.ensure(db, dialect, IndexedEntity.class);
+        // dialect comes from the database (RecordingDatabase.dialect())
+        int applied = Schema.ensure(db, IndexedEntity.class);
 
         assertEquals(0, applied);
         assertTrue(db.executedSql.isEmpty(), "no DDL should be executed");

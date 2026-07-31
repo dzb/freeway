@@ -53,27 +53,19 @@ public final class Schema {
     }
 
     /**
-     * Generates a CREATE TABLE DDL string for the given entity type.
-     * Uses PostgresDialect by default (suitable for PostgreSQL / H2).
-     */
-    public static String define(Class<?> entityType) {
-        return define(new PostgresDialect(), entityType);
-    }
-
-    /**
-     * Generates a CREATE TABLE DDL string for the given entity type
-     * using a specific dialect.
+     * Generates a CREATE TABLE DDL string for the given entity type using a
+     * specific dialect. DDL generation has no {@link Database} to derive a
+     * dialect from, so the dialect is an explicit choice.
      */
     public static String define(Dialect dialect, Class<?> entityType) {
         return new SchemaGenerator(dialect).generate(entityType);
     }
 
     /**
-     * Generates CREATE TABLE DDL for multiple entity types.
-     * Uses PostgresDialect by default (suitable for PostgreSQL / H2).
+     * Generates CREATE TABLE DDL for multiple entity types using a specific dialect.
      */
-    public static List<String> defineAll(Class<?>... entityTypes) {
-        return new SchemaGenerator(new PostgresDialect()).generateAll(entityTypes);
+    public static List<String> defineAll(Dialect dialect, Class<?>... entityTypes) {
+        return new SchemaGenerator(dialect).generateAll(entityTypes);
     }
 
     /**
@@ -87,6 +79,7 @@ public final class Schema {
      * @throws SqlException if execution fails
      */
     public static int ensure(Database db, Class<?>... entityTypes) {
+        Objects.requireNonNull(db, "db");
         return ensure(db, db.dialect(), entityTypes);
     }
 
@@ -95,17 +88,13 @@ public final class Schema {
      * specified dialect. Creates missing tables, adds missing columns, and
      * creates missing indexes. Never drops or alters existing columns.
      *
-     * <p>The {@link Database} already carries its dialect — use
-     * {@link #ensure(Database, Class[]...)} unless you genuinely need a
-     * different dialect for this specific call.</p>
-     *
      * @param db          database connection
      * @param dialect     SQL dialect for DDL generation
      * @param entityTypes entity classes annotated with @Table, @Id, etc.
      * @return number of DDL statements executed
      * @throws SqlException if execution fails
      */
-    public static int ensure(Database db, Dialect dialect, Class<?>... entityTypes) {
+    private static int ensure(Database db, Dialect dialect, Class<?>... entityTypes) {
         Objects.requireNonNull(db, "db");
         Objects.requireNonNull(dialect, "dialect");
         if (entityTypes == null || entityTypes.length == 0) {
@@ -176,13 +165,14 @@ public final class Schema {
      * Drops tables for the given entity types using the database's dialect.
      */
     public static void drop(Database db, Class<?>... entityTypes) {
+        Objects.requireNonNull(db, "db");
         drop(db, db.dialect(), entityTypes);
     }
 
     /**
      * Drops tables for the given entity types using the specified dialect.
      */
-    public static void drop(Database db, Dialect dialect, Class<?>... entityTypes) {
+    private static void drop(Database db, Dialect dialect, Class<?>... entityTypes) {
         Objects.requireNonNull(db, "db");
         Objects.requireNonNull(dialect, "dialect");
         if (entityTypes == null || entityTypes.length == 0) {
