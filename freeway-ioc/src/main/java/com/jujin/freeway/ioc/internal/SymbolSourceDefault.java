@@ -65,6 +65,10 @@ final class SymbolSourceDefault implements SymbolSource {
      * will be expanded recursively. This means that if a symbol's value
      * contains unescaped {@code ${...}} syntax that matches another symbol
      * name, it will also be expanded.
+     * <p>
+     * Escape syntax: a backslash immediately before {@code ${} emits a literal
+     * {@code ${} — e.g. {@code "price is \${total}"} stays as-is. An even run
+     * of backslashes leaves the expression active (the backslashes are literal).
      */
     @Override
     public String expand(String input) {
@@ -105,6 +109,18 @@ final class SymbolSourceDefault implements SymbolSource {
             if (start < 0) {
                 out.append(input, i, input.length());
                 break;
+            }
+            // Count the backslash run immediately before "${". An odd run
+            // escapes the expression: drop one backslash and emit "${" literally.
+            int backslashes = 0;
+            for (int k = start - 1; k >= i && input.charAt(k) == '\\'; k--) {
+                backslashes++;
+            }
+            if ((backslashes & 1) == 1) {
+                out.append(input, i, start - 1);
+                out.append("${");
+                i = start + 2;
+                continue;
             }
             out.append(input, i, start);
             int end = input.indexOf('}', start + 2);

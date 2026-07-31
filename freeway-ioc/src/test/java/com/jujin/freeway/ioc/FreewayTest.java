@@ -1411,6 +1411,55 @@ class FreewayTest {
     }
 
     @Test
+    void expandEscapesDollarBrace() {
+        Container container = Freeway.create();
+        SymbolSource symbols = container.get(SymbolSource.class);
+
+        assertEquals("a ${b} c", symbols.expand("a \\${b} c"),
+            "\\${ must emit a literal ${");
+        assertEquals("${not-a-symbol}", symbols.expand("\\${not-a-symbol}"),
+            "an escaped expression must not be resolved");
+
+        // An even backslash run leaves the expression active — the backslashes
+        // are literal and ${...} still resolves.
+        System.setProperty(NAME_KEY, "resolved");
+        assertEquals("a \\\\resolved", symbols.expand("a \\\\${" + NAME_KEY + "}"),
+            "an even backslash run stays literal and the expression still resolves");
+        System.clearProperty(NAME_KEY);
+        container.close();
+    }
+
+    @Test
+    void expandEscapesDollarBraceInsideResolvedValue() {
+        System.setProperty(APP_NAME_KEY, "price is \\${total}");
+        Container container = Freeway.create();
+        SymbolSource symbols = container.get(SymbolSource.class);
+
+        assertEquals("price is ${total}", symbols.expand("${" + APP_NAME_KEY + "}"),
+            "escaped ${ in a resolved value must not be expanded again");
+        System.clearProperty(APP_NAME_KEY);
+        container.close();
+    }
+
+    @Test
+    void configuredValueCoercionErrorIncludesContext() {
+        System.setProperty(APP_NAME_KEY, "not-a-list");
+        Container container = Freeway.create();
+        try {
+            RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> container.create(UncoercibleListService.class));
+            Throwable cause = ex.getCause();
+            assertTrue(cause != null && cause.getMessage() != null
+                    && cause.getMessage().contains("Cannot coerce configured value"),
+                "coercion failure should include config context, got: "
+                    + (cause == null ? null : cause.getMessage()));
+        } finally {
+            System.clearProperty(APP_NAME_KEY);
+        }
+        container.close();
+    }
+
+    @Test
     void rejectsUnclosedSymbolExpression() {
         Container container = Freeway.create();
         RuntimeException ex = assertThrows(RuntimeException.class,
@@ -1444,6 +1493,11 @@ class FreewayTest {
     public static final class UnknownSymbolService {
         @Symbol("nonexistent.key")
         private String value;
+    }
+
+    public static final class UncoercibleListService {
+        @Value("${" + APP_NAME_KEY + "}")
+        private java.util.List<String> values;
     }
 
     public static final class UnclosedSymbolService {

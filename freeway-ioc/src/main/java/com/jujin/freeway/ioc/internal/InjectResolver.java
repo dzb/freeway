@@ -201,11 +201,24 @@ final class InjectResolver {
     private Object coerceConfiguredValue(Class<?> targetType, Object rawValue, AnnotationLookup lookup) {
         var intermediateType = lookup.annotation(IntermediateType.class);
         Object value = rawValue;
-        if (intermediateType.isPresent()) {
-            value = container.get(Coercer.class).coerce(rawValue, intermediateType.get().value());
+        try {
+            if (intermediateType.isPresent()) {
+                value = container.get(Coercer.class).coerce(rawValue, intermediateType.get().value());
+            }
+            return container.get(Coercer.class).coerce(value, targetType);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                "Cannot coerce configured value '" + rawValue + "' to " + targetType.getName()
+                    + (intermediateType.isPresent()
+                        ? " via intermediate type " + intermediateType.get().value().getName()
+                        : ""),
+                e
+            );
         }
-        return container.get(Coercer.class).coerce(value, targetType);
     }
+
+    private static final java.util.concurrent.ConcurrentHashMap.KeySetView<String, Boolean> MARKER_WARNED =
+        java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private Object resolveValue(
         Class<?> ownerType,
@@ -240,7 +253,7 @@ final class InjectResolver {
             return container.get(String.class);
         }
         // Constructor parameters may carry marker annotations without @Inject
-        Set<Class<? extends Annotation>> markers = resolveMarkers(lookup);
+        Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
         Object service;
         if (!markers.isEmpty()) {
             @SuppressWarnings("unchecked")
@@ -274,7 +287,7 @@ final class InjectResolver {
             return service;
         }
         // No explicit id — try marker-based resolution
-        Set<Class<? extends Annotation>> markers = resolveMarkers(lookup);
+        Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
         Object service;
         if (!markers.isEmpty()) {
             @SuppressWarnings("unchecked")
@@ -295,9 +308,11 @@ final class InjectResolver {
      * <p>Annotations that are neither framework annotations nor known markers
      * are ignored with a warning — they may be markers the binding forgot to
      * register via {@code .marker(...)}, which would otherwise resolve the
-     * wrong service silently.
+     * wrong service silently. Each (annotation, owner) pair is warned about
+     * only once so prototype-heavy code does not flood the log.
      */
     private Set<Class<? extends Annotation>> resolveMarkers(
+            Class<?> ownerType,
             AnnotationLookup lookup
     ) {
         Set<Class<? extends Annotation>> result = new HashSet<>();
@@ -311,12 +326,13 @@ final class InjectResolver {
             // Check if this annotation is a known marker
             if (container.markerIndex().isKnownMarker(annType)) {
                 result.add(annType);
-            } else {
+            } else if (MARKER_WARNED.add(annType.getName() + "#" + ownerType.getName())) {
                 LOG.warn(
-                    "Ignoring unrecognized annotation {} at an injection point; "
+                    "Ignoring unrecognized annotation {} at an injection point on {}; "
                         + "register it with .marker({}.class) on the binding, "
                         + "or remove it from the injection point",
                     annType.getName(),
+                    ownerType.getName(),
                     annType.getSimpleName()
                 );
             }

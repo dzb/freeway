@@ -249,6 +249,9 @@ public final class EventBus implements AutoCloseable {
         closed = true;
         runtimeSubs.clear();
         runtimeTopicSubs.clear();
+        moduleClassIndex = null;
+        moduleTopicIndex = null;
+        moduleIndexVersion = -1;
         if (defaultAsyncExecutor != null) {
             try {
                 defaultAsyncExecutor.close();

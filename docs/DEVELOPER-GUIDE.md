@@ -335,6 +335,11 @@ public record ServerConfig(
 Both paths use the container's type coercion mechanism, so values are
 automatically converted to the target type (`int`, `boolean`, `Duration`, etc.).
 
+To emit a literal `${` in a value (e.g. shell-style text), escape it with a
+backslash — `\${total}` stays as-is and is never expanded. An even run of
+backslashes keeps the expression active (`\\${key}` → a literal `\` plus the
+expanded value).
+
 ### Extensions
 
 Extensions are contributed by entry type and consumed via `List<V>` or

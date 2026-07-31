@@ -50,7 +50,7 @@ public final class Extension<V> {
      * @return a {@link Contribution} handle for declaring ordering constraints
      * @throws IllegalStateException if the id is a duplicate
      */
-    public Contribution add(String id, V value) {
+    public synchronized Contribution add(String id, V value) {
         Objects.requireNonNull(value, "value");
         String normalizedId = normalizeOptionalId(id);
         if (normalizedId != null && !ids.add(normalizedId)) {
@@ -97,7 +97,7 @@ public final class Extension<V> {
      * @param id the contribution id
      * @return the contributed value, or empty if not found
      */
-    public Optional<V> get(String id) {
+    public synchronized Optional<V> get(String id) {
         String normalized = normalizeOptionalId(id);
         if (normalized == null) return Optional.empty();
         for (Entry e : entries) {
@@ -112,7 +112,7 @@ public final class Extension<V> {
      *
      * @return an ordered map of named contributions
      */
-    public Map<String, V> asMap() {
+    public synchronized Map<String, V> asMap() {
         Map<String, V> result = new LinkedHashMap<>();
         for (Entry e : entries) {
             if (e.id != null) result.put(e.id, e.value);
@@ -127,7 +127,7 @@ public final class Extension<V> {
      *
      * @return an unmodifiable list of contributed values
      */
-    public List<V> all() {
+    public synchronized List<V> all() {
         if (sorted == null) {
             sorted = order();
         }
