@@ -37,6 +37,18 @@ class OrmTest {
         User(String username, String email) { this.username = username; this.email = email; }
     }
 
+    @Test
+    void ofWithCoercerUsesDatabaseDialect() {
+        Database db = builder("orm_coercer").build();
+        try (db) {
+            Schema.ensure(db, Post.class);
+            Orm orm = Orm.of(db, new com.jujin.freeway.commons.coercion.CoercerDefault());
+            orm.insert(new Post("title", "body"));
+            assertTrue(orm.findById(Post.class, 1L).isPresent(),
+                "Orm.of(db, coercer) should derive the dialect from the database");
+        }
+    }
+
     // ==================== helpers ====================
 
     private static DatabaseBuilder builder(String name) {

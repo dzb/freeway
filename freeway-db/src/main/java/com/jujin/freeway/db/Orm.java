@@ -50,6 +50,11 @@ public final class Orm {
         return new Orm(db, db.dialect(), new CoercerDefault());
     }
 
+    /** Creates an Orm with the given Coercer, using the dialect from the database. */
+    public static Orm of(Database db, Coercer coercer) {
+        return new Orm(db, db.dialect(), coercer);
+    }
+
     // ==================== find ====================
 
     public <T> Optional<T> findById(Class<T> type, Object... idValues) {

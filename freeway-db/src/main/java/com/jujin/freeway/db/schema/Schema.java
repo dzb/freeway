@@ -82,6 +82,24 @@ public final class Schema {
      * creates missing indexes. Never drops or alters existing columns.
      *
      * @param db          database connection
+     * @param entityTypes entity classes annotated with @Table, @Id, etc.
+     * @return number of DDL statements executed
+     * @throws SqlException if execution fails
+     */
+    public static int ensure(Database db, Class<?>... entityTypes) {
+        return ensure(db, db.dialect(), entityTypes);
+    }
+
+    /**
+     * Ensures tables and columns exist for the given entity types using the
+     * specified dialect. Creates missing tables, adds missing columns, and
+     * creates missing indexes. Never drops or alters existing columns.
+     *
+     * <p>The {@link Database} already carries its dialect — use
+     * {@link #ensure(Database, Class[]...)} unless you genuinely need a
+     * different dialect for this specific call.</p>
+     *
+     * @param db          database connection
      * @param dialect     SQL dialect for DDL generation
      * @param entityTypes entity classes annotated with @Table, @Id, etc.
      * @return number of DDL statements executed
@@ -152,6 +170,13 @@ public final class Schema {
             LOG.info("AutoMigrate applied {} change(s)", executed);
         }
         return executed;
+    }
+
+    /**
+     * Drops tables for the given entity types using the database's dialect.
+     */
+    public static void drop(Database db, Class<?>... entityTypes) {
+        drop(db, db.dialect(), entityTypes);
     }
 
     /**

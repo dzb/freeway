@@ -1218,6 +1218,9 @@ Freeway provides two complementary mechanisms for database evolution: **Schema**
 
 ```java
 /// Standalone usage
+// The database carries its dialect — no explicit Dialect needed
+Schema.ensure(db, User.class, Post.class);
+// Explicit override only when you genuinely need a different dialect
 Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
 // AutoMigrate strategy

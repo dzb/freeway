@@ -32,6 +32,22 @@ class SchemaTest {
         return "fw_schema_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
     }
 
+    @Test
+    void ensureAndDropWithoutExplicitDialect() {
+        Database db = builder("nodialect").build();
+        try (db) {
+            // The database carries its dialect — no explicit Dialect needed.
+            int created = Schema.ensure(db, User.class);
+            assertTrue(created > 0, "no-dialect ensure should create tables: " + created);
+            assertTrue(columnNames(db, "users").contains("name"),
+                "table should exist after ensure without explicit dialect");
+
+            Schema.drop(db, User.class);
+            assertFalse(columnNames(db, "users").contains("name"),
+                "drop without explicit dialect should remove the table");
+        }
+    }
+
     /** H2 中 INFORMATION_SCHEMA 返回大写列名/表名，统一转小写方便比对。 */
     private static Set<String> columnNames(Database db, String tableName) {
         return db.query(

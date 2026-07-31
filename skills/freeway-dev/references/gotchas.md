@@ -8,7 +8,7 @@
 - `FreewayApp.run(...)` already starts the runtime; `HttpModule` already contributes the server hook.
 - A `THREAD` scoped concrete class should not be injected directly into a singleton.
 - `Binding.primary()` is the API for primary resolution, not an annotation.
-- `Schema.ensure()` requires an explicit `Dialect` parameter — there is no no-dialect overload.
+- `Schema.ensure(db, ...)` / `Schema.drop(db, ...)` use the database's dialect by default; pass an explicit `Dialect` only for a genuine per-call override.
 - `HttpContext.pathVar()` returns `Optional<String>`, not a bare `String`.
 - Tests that start a `WebServer` should use `port=0` to avoid conflicts with running services.
 - `Container` and `Extension<V>` are not injectable. Use `@Inject List<V>` or `@Inject Map<String, V>` to consume contributions. Access `Container` only via `RuntimeHook`, `Freeway.create()`, or provider lambdas.
