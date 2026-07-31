@@ -183,6 +183,37 @@ class JsonUtilsTest {
     }
 
     @Test
+    void escapesLoneSurrogates() {
+        String escapedHigh = JsonUtils.stringify("\ud800");
+        assertTrue(escapedHigh.contains("\\ud800"),
+            "lone high surrogate must be escaped, got: " + escapedHigh);
+        String escapedLow = JsonUtils.stringify("\udfff");
+        assertTrue(escapedLow.contains("\\udfff"),
+            "lone low surrogate must be escaped, got: " + escapedLow);
+
+        // A valid surrogate pair round-trips unchanged.
+        String emoji = "\ud83d\ude00";
+        assertEquals(emoji, JsonUtils.parse(JsonUtils.stringify(emoji)));
+    }
+
+    @Test
+    void rejectsNonJsonWhitespace() {
+        assertThrows(IllegalArgumentException.class, () ->
+            JsonUtils.parse("[\u000B1\u000B]"),
+            "vertical tab is not JSON whitespace");
+        assertThrows(IllegalArgumentException.class, () ->
+            JsonUtils.parse("{\u001Ca\u001C:1}"),
+            "file separator is not JSON whitespace");
+    }
+
+    @Test
+    void rejectsNonAsciiDigitsInNumbers() {
+        assertThrows(IllegalArgumentException.class, () ->
+            JsonUtils.parse("[١٢٣]"),
+            "Arabic-Indic digits are not valid JSON number digits");
+    }
+
+    @Test
     void rejectsUnescapedControlCharactersInStrings() {
         assertThrows(IllegalArgumentException.class, () ->
             JsonUtils.parseObject("{\"msg\":\"line1\nline2\"}"));

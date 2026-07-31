@@ -28,6 +28,17 @@ class UtilRegressionTest {
     }
 
     @Test
+    void mapsFlattenRejectsKeyCollision() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("a.b", 1);
+        Map<String, Object> inner = new LinkedHashMap<>();
+        inner.put("b", 2);
+        m.put("a", inner);
+        assertThrows(IllegalArgumentException.class, () -> Maps.flatten(m),
+            "colliding flattened keys must not silently overwrite");
+    }
+
+    @Test
     void boundedStreamClosesUnderlying() throws IOException {
         ByteArrayInputStream underlying = new ByteArrayInputStream(new byte[0]);
         var bounded = ByteStreams.bounded(underlying, 100, "test");

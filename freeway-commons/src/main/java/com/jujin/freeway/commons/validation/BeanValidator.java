@@ -88,7 +88,8 @@ public final class BeanValidator {
                     ? property.name()
                     : prefix + "." + property.name();
 
-                for (Annotation ann : property.annotations()) {
+                Annotation[] annotations = property.annotations();
+                for (Annotation ann : annotations) {
                     if (ann instanceof NotNull notNull && value == null) {
                         result.addError(fieldPath, notNull.message(), null);
                     } else if (ann instanceof NotBlank notBlank && (value == null || value.toString().trim().isEmpty())) {
@@ -106,6 +107,7 @@ public final class BeanValidator {
                         }
                     } else if (ann instanceof Min min) {
                         if (value instanceof Number n
+                                && isFiniteNumber(n)
                                 && compareToMinMax(n).compareTo(BigDecimal.valueOf(min.value())) < 0) {
                             result.addError(
                                 fieldPath,
@@ -115,6 +117,7 @@ public final class BeanValidator {
                         }
                     } else if (ann instanceof Max max) {
                         if (value instanceof Number n
+                                && isFiniteNumber(n)
                                 && compareToMinMax(n).compareTo(BigDecimal.valueOf(max.value())) > 0) {
                             result.addError(
                                 fieldPath,
@@ -125,7 +128,7 @@ public final class BeanValidator {
                     }
                 }
 
-                if (property.hasAnnotation(Valid.class) && value != null) {
+                if (value != null && hasAnnotation(annotations, Valid.class)) {
                     if (value instanceof Collection<?> c) {
                         int i = 0;
                         for (Object element : c) {
@@ -196,6 +199,24 @@ public final class BeanValidator {
      */
     private static boolean isJdkType(Class<?> type) {
         return type.getClassLoader() == null;
+    }
+
+    private static boolean isFiniteNumber(Number value) {
+        if (value instanceof Double d) return Double.isFinite(d);
+        if (value instanceof Float f) return Float.isFinite(f);
+        return true;
+    }
+
+    private static boolean hasAnnotation(
+        Annotation[] annotations,
+        Class<? extends Annotation> type
+    ) {
+        for (Annotation annotation : annotations) {
+            if (type.isInstance(annotation)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static final class ValidationContext {

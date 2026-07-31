@@ -307,7 +307,7 @@ final class JsonParser {
             }
             if (peek() == '0') {
                 next();
-                if (!eof() && Character.isDigit(peek())) {
+                if (!eof() && isAsciiDigit(peek())) {
                     throw error("Leading zeros are not allowed");
                 }
             } else {
@@ -351,12 +351,16 @@ final class JsonParser {
         }
 
         private void readDigits() {
-            if (eof() || !Character.isDigit(peek())) {
+            if (eof() || !isAsciiDigit(peek())) {
                 throw error("Expected digit");
             }
-            while (!eof() && Character.isDigit(peek())) {
+            while (!eof() && isAsciiDigit(peek())) {
                 next();
             }
+        }
+
+        private static boolean isAsciiDigit(char c) {
+            return c >= '0' && c <= '9';
         }
 
         private boolean match(String literal) {
@@ -368,9 +372,14 @@ final class JsonParser {
         }
 
         private void skipWhitespace() {
-            while (!eof() && Character.isWhitespace(peek())) {
+            while (!eof() && isJsonWhitespace(peek())) {
                 index++;
             }
+        }
+
+        /** RFC 8259 whitespace: space, horizontal tab, line feed, carriage return. */
+        private static boolean isJsonWhitespace(char c) {
+            return c == ' ' || c == '\t' || c == '\n' || c == '\r';
         }
 
         private void expect(char expected) {

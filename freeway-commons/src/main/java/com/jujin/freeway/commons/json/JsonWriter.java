@@ -176,11 +176,34 @@ final class JsonWriter {
                     default -> out.append(CONTROL_ESCAPES[c]);
                 }
                 last = i + 1;
+            } else if (Character.isHighSurrogate(c)) {
+                if (i + 1 < length && Character.isLowSurrogate(value.charAt(i + 1))) {
+                    i++; // valid surrogate pair — both stay raw
+                } else {
+                    // Lone high surrogate — escape so UTF-8 encoding cannot corrupt it.
+                    out.append(value, last, i).append("\\u");
+                    appendHex(out, c);
+                    last = i + 1;
+                }
+            } else if (Character.isLowSurrogate(c)) {
+                // Lone low surrogate — escape.
+                out.append(value, last, i).append("\\u");
+                appendHex(out, c);
+                last = i + 1;
             }
         }
         out.append(value, last, length);
         out.append('"');
     }
+
+    private static void appendHex(StringBuilder out, char c) {
+        out.append(HEX[c >>> 12])
+           .append(HEX[(c >>> 8) & 0xF])
+           .append(HEX[(c >>> 4) & 0xF])
+           .append(HEX[c & 0xF]);
+    }
+
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
 
     /** Precomputed {@code \\uXXXX} escapes for control characters U+0000..U+001F. */
     private static final String[] CONTROL_ESCAPES = new String[0x20];

@@ -277,6 +277,23 @@ class BeanValidatorTest {
         java.util.Map<String, String> entries;
     }
 
+    static class NonFiniteMinMax {
+        @Min(0)
+        double score;
+        @Max(100)
+        float ratio;
+    }
+
+    @Test
+    void minMaxNonFiniteDoesNotThrow() {
+        NonFiniteMinMax bean = new NonFiniteMinMax();
+        bean.score = Double.NaN;
+        bean.ratio = Float.POSITIVE_INFINITY;
+
+        assertDoesNotThrow(() -> BeanValidator.validate(bean),
+            "NaN/Infinity must not crash @Min/@Max validation");
+    }
+
     @Test
     void sizeValidatesMapSize() {
         MapSized obj = new MapSized();

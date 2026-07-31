@@ -47,7 +47,11 @@ public final class Maps {
         } else if (value instanceof List<?> list) {
             flatten(key, delimiter, list, target, visited);
         } else if (value != null) {
-            target.put(key, String.valueOf(value));
+            if (target.put(key, String.valueOf(value)) != null) {
+                throw new IllegalArgumentException(
+                    "Duplicate flattened key '" + key + "'"
+                );
+            }
         }
     }
 

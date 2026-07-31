@@ -100,6 +100,28 @@ class CoercerDefaultTest {
             () -> coercer.coerce(huge, Integer.class));
         assertThrows(IllegalArgumentException.class,
             () -> coercer.coerce(huge, Short.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(huge, Long.class),
+            "BigInteger beyond Long range must throw, not wrap");
+    }
+
+    @Test
+    void coerceStringOverflowThrows() {
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("2147483648", Integer.class),
+            "out-of-range integer literal must throw, not wrap");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("9223372036854775808", Long.class),
+            "out-of-range long literal must throw, not wrap");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("1e30", Integer.class),
+            "huge exponent must throw, not wrap");
+    }
+
+    @Test
+    void coerceInRangeDecimalTruncates() {
+        assertEquals(Integer.valueOf(1), coercer.coerce("1.5", Integer.class));
+        assertEquals(Long.valueOf(-2L), coercer.coerce("-2.9", Long.class));
     }
 
     @Test

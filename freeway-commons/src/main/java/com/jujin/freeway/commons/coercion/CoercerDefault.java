@@ -355,6 +355,10 @@ public final class CoercerDefault implements Coercer {
             if (bi.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0
                     || bi.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0)
                 throw new IllegalArgumentException("Cannot coerce " + bi + " to Integer");
+        } else if (targetType == Long.class || targetType == long.class) {
+            if (bi.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0
+                    || bi.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0)
+                throw new IllegalArgumentException("Cannot coerce " + bi + " to Long");
         } else if (targetType == Short.class || targetType == short.class) {
             if (bi.compareTo(BigInteger.valueOf(Short.MAX_VALUE)) > 0
                     || bi.compareTo(BigInteger.valueOf(Short.MIN_VALUE)) < 0)
@@ -388,7 +392,11 @@ public final class CoercerDefault implements Coercer {
         try {
             return Integer.parseInt(text);
         } catch (NumberFormatException e) {
-            return new BigDecimal(text).intValue();
+            // Decimal string or out-of-range literal — range-check before
+            // truncating so oversized values fail loudly instead of wrapping.
+            BigDecimal bd = new BigDecimal(text);
+            checkRange(bd, Integer.class);
+            return bd.intValue();
         }
     }
 
@@ -396,7 +404,9 @@ public final class CoercerDefault implements Coercer {
         try {
             return Long.parseLong(text);
         } catch (NumberFormatException e) {
-            return new BigDecimal(text).longValue();
+            BigDecimal bd = new BigDecimal(text);
+            checkRange(bd, Long.class);
+            return bd.longValue();
         }
     }
 
