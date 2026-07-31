@@ -59,6 +59,7 @@ public final class FreewayHttpEngine implements HttpEngine {
         int port = ss.getLocalPort();
 
         var finished = new AtomicBoolean();
+        var registry = new ConnectionRegistry();
 
         // Single platform-thread acceptor, one virtual thread per connection.
         // Virtual threads are cheap, so each connection gets its own carrier that
@@ -70,7 +71,8 @@ public final class FreewayHttpEngine implements HttpEngine {
                         var socket = ss.accept();
                         Thread.ofVirtual()
                             .name("http-" + socket.getRemoteSocketAddress())
-                            .start(new HttpSession(socket, handler, jsonCodec, coercer, this, config.socketBufferSize(), config.maxBodySize()));
+                            .start(new HttpSession(socket, handler, jsonCodec, coercer, this,
+                                config.socketBufferSize(), config.maxBodySize(), registry));
                     } catch (IOException e) {
                         if (!finished.get()) LOG.error("Accept failed", e);
                         break;
@@ -82,6 +84,6 @@ public final class FreewayHttpEngine implements HttpEngine {
         String scheme = sslContext != null ? "https" : "http";
         LOG.info("Freeway HTTP engine ({}) started on {}:{}", scheme, config.host(), port);
         return new ServerHandle(ss, acceptor,
-            config.shutdownGrace(), finished, config.host(), port);
+            config.shutdownGrace(), finished, registry, config.host(), port);
     }
 }

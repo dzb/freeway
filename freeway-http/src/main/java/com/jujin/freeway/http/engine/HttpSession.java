@@ -44,11 +44,12 @@ public final class HttpSession implements Runnable {
     private final FreewayHttpEngine engine;
     private final int socketBufferSize;
     private final long maxBodySize;
+    private final ConnectionRegistry registry;
     private java.util.concurrent.ExecutorService h2Executor;
 
     public HttpSession(Socket socket, HttpRequestHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
-            int socketBufferSize, long maxBodySize) {
+            int socketBufferSize, long maxBodySize, ConnectionRegistry registry) {
         this.rawSocket = socket;
         this.handler = handler;
         this.jsonCodec = jsonCodec;
@@ -56,6 +57,7 @@ public final class HttpSession implements Runnable {
         this.engine = engine;
         this.socketBufferSize = socketBufferSize;
         this.maxBodySize = maxBodySize;
+        this.registry = registry;
     }
 
     @Override
@@ -80,12 +82,13 @@ public final class HttpSession implements Runnable {
             }
 
             connection = new Http11Connection(socket, socketBufferSize);
+            registry.register(connection);
             var in = connection.inputStream();
             var out = connection.outputStream();
 
             // HTTP/2 over TLS (ALPN negotiated)
             if (isH2) {
-                handleHttp2Upgrade(connection, true);
+                handleHttp2Upgrade(connection, true, null);
                 return;
             }
 
@@ -100,7 +103,7 @@ public final class HttpSession implements Runnable {
                 if (req == null) break;
 
                 if (req.isHttp2Preface()) {
-                    handleHttp2Upgrade(connection, false);
+                    handleHttp2Upgrade(connection, false, parser);
                     return;
                 }
 
@@ -136,6 +139,7 @@ public final class HttpSession implements Runnable {
                 }
 
                 ctx.drainUnreadBody();
+                if (registry.isStopping()) break;
                 if (!ctx.isKeepAlive()) break;
                 if (req.isHttp10() && !req.keepAlive()) break;
             }
@@ -144,15 +148,27 @@ public final class HttpSession implements Runnable {
         } catch (Exception e) {
             LOG.warn("Unexpected session error", e);
         } finally {
-            if (connection != null) connection.close();
+            if (connection != null) {
+                registry.unregister(connection);
+                connection.close();
+            }
         }
     }
 
     // --- HTTP/2 upgrade (h2c: ssl=false, h2: ssl=true) ---
 
-    private void handleHttp2Upgrade(Http11Connection connection, boolean ssl) {
+    private void handleHttp2Upgrade(
+        Http11Connection connection,
+        boolean ssl,
+        HttpParser parser
+    ) {
         try {
-            var in = connection.inputStream();
+            // For h2c the request-line parser has already bulk-read the rest
+            // of the magic preface into its own buffer — read the remaining
+            // "\r\nSM\r\n\r\n" from there so the bytes are not lost.
+            InputStream in = ssl
+                ? connection.inputStream()
+                : parser.bodyStream();
             if (!ssl) {
                 byte[] preface = new byte[Http2Connection.PARTIAL_PREFACE.length()];
                 int off = 0;
@@ -175,6 +191,12 @@ public final class HttpSession implements Runnable {
                 if (!h2conn.hasProperPreface(true))
                     throw new IOException("Invalid HTTP/2 TLS preface");
             }
+            // Server connection preface (RFC 7540 §3.5) — must be sent before
+            // any frame, for both h2c and h2-over-TLS.
+            connection.outputStream().write(
+                Http2Connection.PREFACE.getBytes(StandardCharsets.US_ASCII)
+            );
+            connection.outputStream().flush();
             h2conn.sendMySettings();
             h2conn.handle();
         } catch (IOException e) {

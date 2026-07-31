@@ -14,6 +14,7 @@ public final class HttpParser {
 
     private static final int MAX_HEADER_COUNT = 200;
     private static final int MAX_HEADER_SIZE = 8192;
+    private static final int MAX_REQUEST_LINE_SIZE = 8192;
     static final char CR = '\r';
     static final char LF = '\n';
 
@@ -162,6 +163,11 @@ public final class HttpParser {
             if (c == -1) {
                 if (reqLineBuf.isEmpty()) return null; // empty stream → clean
                 throw new IOException("EOF while reading HTTP request line");
+            }
+            if (reqLineBuf.length() >= MAX_REQUEST_LINE_SIZE) {
+                throw new IOException(
+                    "Request line too long (max " + MAX_REQUEST_LINE_SIZE + " chars)"
+                );
             }
             if (gotCR) {
                 if (c == LF) return reqLineBuf.isEmpty() ? "" : reqLineBuf.toString();

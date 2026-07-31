@@ -19,16 +19,19 @@ public final class ServerHandle implements HttpServerHandle {
     private final Thread acceptor;
     private final Duration shutdownGrace;
     private final AtomicBoolean finished;
+    private final ConnectionRegistry registry;
     private final String host;
     private final int port;
 
     public ServerHandle(ServerSocket serverSocket, Thread acceptor,
                  Duration shutdownGrace, AtomicBoolean finished,
+                 ConnectionRegistry registry,
                  String host, int port) {
         this.serverSocket = serverSocket;
         this.acceptor = acceptor;
         this.shutdownGrace = shutdownGrace;
         this.finished = finished;
+        this.registry = registry;
         this.host = host;
         this.port = port;
     }
@@ -42,10 +45,26 @@ public final class ServerHandle implements HttpServerHandle {
     @Override
     public void close() {
         finished.set(true);
+        registry.beginShutdown();
         try { serverSocket.close(); } catch (IOException ignored) {}
         try { acceptor.join(1000); } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         }
+        // Grace window: let in-flight requests finish; sessions close their
+        // connection as soon as they observe isStopping().
+        long graceMillis = shutdownGrace.toMillis();
+        if (graceMillis > 0 && registry.activeCount() > 0) {
+            long deadline = System.currentTimeMillis() + graceMillis;
+            while (registry.activeCount() > 0 && System.currentTimeMillis() < deadline) {
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        registry.closeAll();
         LOG.info("Freeway HTTP engine stopped");
     }
 }

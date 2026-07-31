@@ -337,6 +337,112 @@ class FreewayHttpEngineTest {
         }
     }
 
+    // ── HTTP/2 h2c prior-knowledge ─────────────────────────────────
+
+    @Test
+    void h2cPriorKnowledgeGetsServerPrefaceAndSettings() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
+                java.nio.charset.StandardCharsets.US_ASCII);
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(3000);
+                socket.getOutputStream().write(preface);
+                socket.getOutputStream().flush();
+                byte[] buf = new byte[64];
+                int off = 0;
+                while (off < 24) {
+                    int n = socket.getInputStream().read(buf, off, buf.length - off);
+                    if (n < 0) break;
+                    off += n;
+                }
+                assertTrue(off >= 24,
+                    "server must respond with its HTTP/2 preface, got " + off + " bytes");
+                byte[] got = new byte[24];
+                System.arraycopy(buf, 0, got, 0, 24);
+                assertArrayEquals(preface, got,
+                    "server connection preface must be sent before any frame");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    // ── oversized request line ────────────────────────────────────
+
+    @Test
+    void rejectsOversizedRequestLine() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(3000);
+                String line = "GET /" + "A".repeat(9000) + " HTTP/1.1\r\n\r\n";
+                socket.getOutputStream().write(line.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+                socket.getOutputStream().flush();
+                int read = socket.getInputStream().read();
+                assertEquals(-1, read,
+                    "oversized request line must close the connection, not buffer unboundedly");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    // ── graceful shutdown drains in-flight requests ───────────────
+
+    @Test
+    void closeWaitsForInFlightRequestWithinGrace() throws Exception {
+        var handlerStarted = new java.util.concurrent.CountDownLatch(1);
+        var releaseHandler = new java.util.concurrent.CountDownLatch(1);
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/slow", ctx -> {
+                handlerStarted.countDown();
+                releaseHandler.await();
+                ctx.send(200, "slow-done");
+            }))
+            .build();
+        server.start();
+        try {
+            var socket = new java.net.Socket("127.0.0.1", server.port());
+            socket.setSoTimeout(3000);
+            socket.getOutputStream().write(
+                "GET /slow HTTP/1.1\r\nHost: x\r\n\r\n".getBytes(
+                    java.nio.charset.StandardCharsets.ISO_8859_1));
+            socket.getOutputStream().flush();
+            assertTrue(handlerStarted.await(3, TimeUnit.SECONDS));
+
+            Thread closer = new Thread(server::stop);
+            closer.start();
+            Thread.sleep(150);
+            assertTrue(closer.isAlive(),
+                "close() must wait for the in-flight request within the grace window");
+
+            releaseHandler.countDown();
+            closer.join(3000);
+            assertFalse(closer.isAlive(), "close() must return after the request completes");
+
+            byte[] buf = new byte[256];
+            int n = socket.getInputStream().read(buf);
+            String response = n > 0
+                ? new String(buf, 0, n, java.nio.charset.StandardCharsets.ISO_8859_1)
+                : "";
+            assertTrue(response.contains("200") && response.contains("slow-done"),
+                "the in-flight request must complete before the connection closes: " + response);
+            socket.close();
+        } finally {
+            server.stop();
+        }
+    }
+
     // ── HEAD response Content-Length (RFC 7231 §4.3.2) ────────────
 
     @Test
