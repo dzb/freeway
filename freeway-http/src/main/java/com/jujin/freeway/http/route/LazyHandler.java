@@ -4,9 +4,11 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.ioc.Container;
 
 /**
- * A {@link RouteHandler} that wraps a handler class. The handler
- * instance is obtained from the container on the first invocation
- * and cached for subsequent calls.
+ * A {@link RouteHandler} that wraps a handler class. The handler instance is
+ * obtained from the container (constructor + field injection + lifecycle) when
+ * the route index is built at server startup — see
+ * {@code HttpModule}'s RouteIndex binding — so missing or misconfigured
+ * handlers fail fast at startup rather than on the first request.
  */
 public final class LazyHandler implements RouteHandler {
     private final Class<? extends RouteHandler> handlerType;

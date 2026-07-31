@@ -39,7 +39,8 @@ public final class HealthFilter implements HttpFilter {
 
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
-        if (enabled && "GET".equalsIgnoreCase(ctx.method()) && healthPath.equals(ctx.path())) {
+        if (enabled && "GET".equalsIgnoreCase(ctx.method())
+                && healthPath.equals(PathPattern.normalizePath(ctx.path()))) {
             if (healthCheck instanceof HealthCheck.Default) {
                 ctx.status(200).headerSet("Content-Type", "application/json; charset=utf-8")
                     .output(DEFAULT_RESPONSE);

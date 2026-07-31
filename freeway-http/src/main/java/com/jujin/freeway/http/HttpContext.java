@@ -98,14 +98,20 @@ public abstract class HttpContext {
      * is not a multipart upload.
      */
     public Optional<MultipartForm> multipart() {
-        return header("Content-Type").flatMap(ct -> {
-            try {
-                return Optional.of(MultipartForm.parse(ct, body()));
-            } catch (IOException e) {
-                LOG.debug("Failed to parse multipart body", e);
-                return Optional.empty();
-            }
-        });
+        // Guard on the Content-Type before reading the body — parsing a
+        // non-multipart request would consume the entire request body for
+        // nothing (and could trip the body-size limit on isMultipart()).
+        return header("Content-Type")
+            .filter(ct -> ct.toLowerCase(Locale.ROOT)
+                .contains("multipart/form-data"))
+            .flatMap(ct -> {
+                try {
+                    return Optional.of(MultipartForm.parse(ct, body()));
+                } catch (IOException e) {
+                    LOG.debug("Failed to parse multipart body", e);
+                    return Optional.empty();
+                }
+            });
     }
 
     /** Returns a path parameter value by name, or empty. */

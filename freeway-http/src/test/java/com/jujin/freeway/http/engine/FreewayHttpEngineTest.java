@@ -337,6 +337,160 @@ class FreewayHttpEngineTest {
         }
     }
 
+    // ── multipart guard / WebSocket subprotocol / parser hardening ──
+
+    @Test
+    void isMultipartDoesNotReadBodyForNonMultipartRequest() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig(
+                "127.0.0.1", 0, 0, 1024, Duration.ofSeconds(2), 1024))
+            .route(Route.post("/check", ctx ->
+                ctx.send(200, "is-multipart=" + ctx.isMultipart())))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            String body = "x".repeat(2048);
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/check"))
+                    .header("Content-Type", "application/json")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
+                    .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode(),
+                "isMultipart() on a non-multipart request must not read the body: " + resp.body());
+            assertEquals("is-multipart=false", resp.body());
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void webSocketSubprotocolIsNegotiated() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .wsRoute(WebSocketRoute.of("/ws/sub", new com.jujin.freeway.http.websocket.WebSocketEndpoint() {
+                @Override
+                public com.jujin.freeway.http.websocket.WebSocketListener open(
+                        com.jujin.freeway.http.websocket.WebSocketSession session) {
+                    return new com.jujin.freeway.http.websocket.WebSocketListener() {
+                        @Override public void onText(String text) throws Exception {}
+                    };
+                }
+
+                @Override
+                public java.util.Set<String> subprotocols() {
+                    return java.util.Set.of("chat");
+                }
+            }))
+            .build();
+        server.start();
+        try {
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(3000);
+                String key = java.util.Base64.getEncoder().encodeToString(
+                    new byte[16]); // valid 16-byte nonce
+                String req = "GET /ws/sub HTTP/1.1\r\n"
+                    + "Host: x\r\n"
+                    + "Upgrade: websocket\r\n"
+                    + "Connection: Upgrade\r\n"
+                    + "Sec-WebSocket-Key: " + key + "\r\n"
+                    + "Sec-WebSocket-Version: 13\r\n"
+                    + "Sec-WebSocket-Protocol: chat, superchat\r\n\r\n";
+                socket.getOutputStream().write(req.getBytes(
+                    java.nio.charset.StandardCharsets.ISO_8859_1));
+                socket.getOutputStream().flush();
+                byte[] buf = new byte[1024];
+                int n = socket.getInputStream().read(buf);
+                String response = new String(buf, 0, Math.max(n, 0),
+                    java.nio.charset.StandardCharsets.ISO_8859_1);
+                assertTrue(response.startsWith("HTTP/1.1 101"), response);
+                assertTrue(response.contains("Sec-WebSocket-Protocol: chat"),
+                    "server must select the first client protocol the endpoint supports: " + response);
+                assertFalse(response.contains("superchat"), response);
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void leadingEmptyLineIsIgnoredOnKeepAlive() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(3000);
+                socket.getOutputStream().write(
+                    "\r\nGET / HTTP/1.1\r\nHost: x\r\n\r\n".getBytes(
+                        java.nio.charset.StandardCharsets.ISO_8859_1));
+                socket.getOutputStream().flush();
+                byte[] buf = new byte[256];
+                int n = socket.getInputStream().read(buf);
+                String response = new String(buf, 0, Math.max(n, 0),
+                    java.nio.charset.StandardCharsets.ISO_8859_1);
+                assertTrue(response.startsWith("HTTP/1.1 200"),
+                    "a leading empty line must be ignored, got: " + response);
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void negativeContentLengthIsRejected() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(3000);
+                socket.getOutputStream().write(
+                    "GET / HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\n".getBytes(
+                        java.nio.charset.StandardCharsets.ISO_8859_1));
+                socket.getOutputStream().flush();
+                int read = socket.getInputStream().read();
+                assertEquals(-1, read,
+                    "a negative Content-Length must close the connection");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void healthzMatchesTrailingSlash() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "root")))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/healthz/"))
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode(),
+                "/healthz/ must match the health filter path: " + resp.body());
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void configRejectsNonPositiveMaxBodySize() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpServerConfig("127.0.0.1", 0, 0, 1024, Duration.ofSeconds(2), 0));
+    }
+
     // ── HTTP/2 h2c prior-knowledge ─────────────────────────────────
 
     @Test

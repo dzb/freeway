@@ -21,7 +21,10 @@ public record HttpServerConfig(String host, int port, int backlog, int socketBuf
             throw new IllegalArgumentException(
                 "shutdownGrace must be non-negative: " + shutdownGrace);
         }
-        if (maxBodySize <= 0) maxBodySize = DEFAULT_MAX_BODY_SIZE;
+        if (maxBodySize <= 0) {
+            throw new IllegalArgumentException(
+                "maxBodySize must be positive: " + maxBodySize);
+        }
     }
 
     public HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {

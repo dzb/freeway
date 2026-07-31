@@ -292,11 +292,16 @@ public final class HttpSession implements Runnable {
             writeLine(out, "Upgrade: websocket");
             writeLine(out, "Connection: Upgrade");
             writeLine(out, "Sec-WebSocket-Accept: " + acceptKey);
-            String protocol = headerValue(req.headers(), "Sec-WebSocket-Protocol");
-            if (protocol != null) {
-                String selected = protocol.split(",")[0].trim();
-                if (!selected.isEmpty()) {
-                    writeLine(out, "Sec-WebSocket-Protocol: " + selected);
+            String protocolHeader =
+                headerValue(req.headers(), "Sec-WebSocket-Protocol");
+            if (protocolHeader != null
+                    && !match.endpoint().subprotocols().isEmpty()) {
+                for (String candidate : protocolHeader.split(",")) {
+                    String candidateProtocol = candidate.trim();
+                    if (match.endpoint().subprotocols().contains(candidateProtocol)) {
+                        writeLine(out, "Sec-WebSocket-Protocol: " + candidateProtocol);
+                        break;
+                    }
                 }
             }
             writeLine(out, "");

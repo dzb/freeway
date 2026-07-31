@@ -50,7 +50,18 @@ public final class HttpParser {
         pos = 0;
 
         String requestLine = readRequestLine();
-        if (requestLine == null || requestLine.isEmpty()) return null;
+        if (requestLine == null) return null;
+        // RFC 7230 §3.5: servers MUST ignore at least one empty line received
+        // before the request-line (clients occasionally emit a stray CRLF on
+        // keep-alive connections).
+        int emptyLines = 0;
+        while (requestLine.isEmpty()) {
+            if (++emptyLines > 5) {
+                throw new IOException("Too many empty lines before request");
+            }
+            requestLine = readRequestLine();
+            if (requestLine == null) return null;
+        }
 
         // Manual space-scan — avoids split(" ", 3) regex + String[] allocation
         int sp1 = requestLine.indexOf(' ');
@@ -97,7 +108,11 @@ public final class HttpParser {
                     if (contentLength >= 0) throw new IOException("Duplicate Content-Length header");
                     String v = entry.getValue().getFirst();
                     if (entry.getValue().size() > 1) throw new IOException("Duplicate Content-Length values");
-                    if (v != null) { try { contentLength = Long.parseLong(v); } catch (NumberFormatException e) { throw new IOException("Invalid Content-Length: " + v); } }
+                    if (v != null) {
+                        try { contentLength = Long.parseLong(v); }
+                        catch (NumberFormatException e) { throw new IOException("Invalid Content-Length: " + v); }
+                        if (contentLength < 0) throw new IOException("Invalid Content-Length: " + v);
+                    }
                 }
                 case "transfer-encoding" -> {
                     for (String v : entry.getValue()) {
