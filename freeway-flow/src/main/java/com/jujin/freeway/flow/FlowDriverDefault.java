@@ -15,8 +15,10 @@ import java.util.concurrent.ExecutorService;
  *   <li>{@code @beanName} → 从 FlowContainer 查找组件</li>
  *   <li>{@code #graphId} → 执行子图</li>
  *   <li>{@code $metaKey} → 从 Graph meta 取值</li>
- *   <li>其他 → 使用 ExprEvaluator 求值表达式</li>
+ *   <li>{@code !markerName} → 按 {@link FlowMarkerIndex} 标记交集解析</li>
  * </ul>
+ * <p>任务描述符只支持上述前缀；裸表达式仅用于条件（{@code ExprEvaluator}）。
+ * 任务描述符无法识别时抛 {@link FlowException}。
  */
 public class FlowDriverDefault implements FlowDriver {
     private static final FlowDriverDefault INSTANCE = new FlowDriverDefault(null, null);

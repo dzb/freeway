@@ -639,6 +639,42 @@ class FlowEngineTest {
         return FlowEngine.newInstance(Map.of("default", driver));
     }
 
+    // ── regression: deep-graph stack safety ───────────────────────
+
+    private static Graph chain(int nodes) {
+        GraphSpec2 b = GraphSpec2.create("chain_" + nodes, x -> {});
+        b.entry("s");
+        b.addStart("s");
+        for (int i = 0; i < nodes; i++) b.addActivity("a" + i);
+        b.addEnd("e");
+        b.link("s", "a0");
+        for (int i = 0; i < nodes - 1; i++) b.link("a" + i, "a" + (i + 1));
+        b.link("a" + (nodes - 1), "e");
+        return b.create();
+    }
+
+    @Test
+    void moderatelyDeepGraphStillRuns() {
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> {})
+            .build());
+        assertDoesNotThrow(() -> engine.eval(chain(500), FlowContext.of()));
+    }
+
+    @Test
+    void excessivelyDeepGraphFailsCleanlyInsteadOfStackOverflow() {
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> {})
+            .build());
+        int nodes = FlowEngineImpl.MAX_EXECUTION_DEPTH + 200;
+        FlowException ex = assertThrows(
+            FlowException.class,
+            () -> engine.eval(chain(nodes), FlowContext.of())
+        );
+        assertTrue(ex.getMessage().contains("depth"),
+            "must report a clear depth error, got: " + ex.getMessage());
+    }
+
     @Test
     void flowMarkerIndexExtractsAnnotations() {
         Set<String> markers = FlowMarkerIndex.extractFlowMarkers(EmailTask.class);

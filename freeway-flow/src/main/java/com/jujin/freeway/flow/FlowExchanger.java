@@ -26,15 +26,17 @@ public class FlowExchanger {
     private final AtomicInteger stepCount;
 
     private final Temporary temporary;
+    /** Shared recursion depth guard — see {@link FlowEngineImpl#MAX_EXECUTION_DEPTH}. */
+    private final AtomicInteger depth;
     private volatile boolean interrupted = false;
     private volatile boolean stopped = false;
     private volatile boolean reverting = true;
 
     public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount) {
-        this(graph, engine, driver, context, steps, stepCount, new Temporary());
+        this(graph, engine, driver, context, steps, stepCount, new Temporary(), new AtomicInteger());
     }
 
-    private FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount, Temporary temporary) {
+    private FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount, Temporary temporary, AtomicInteger depth) {
         Objects.requireNonNull(engine, "engine");
         Objects.requireNonNull(driver, "driver");
         Objects.requireNonNull(context, "context");
@@ -47,14 +49,25 @@ public class FlowExchanger {
         this.steps = steps;
         this.stepCount = stepCount;
         this.temporary = temporary;
+        this.depth = depth;
     }
 
     public FlowExchanger copy(Graph graphNew) {
-        return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, temporary);
+        return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, temporary, depth);
     }
 
     public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, temporary);
+        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, temporary, depth);
+    }
+
+    /** Enters a node — returns the current recursion depth. */
+    int enterNode() {
+        return depth.incrementAndGet();
+    }
+
+    /** Leaves a node. */
+    void exitNode() {
+        depth.decrementAndGet();
     }
 
     public Graph graph() { return graph; }
@@ -79,7 +92,7 @@ public class FlowExchanger {
         prevStep(); // 回退步数（子图调用不算步数）
         // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
         FlowExchanger subEx = new FlowExchanger(graph, engine,
-            engine.getDriver(graph), context, steps, stepCount, temporary);
+            engine.getDriver(graph), context, steps, stepCount, temporary, depth);
         engine.eval(graph, subEx, null);
 
         if (!isStopped()) {

@@ -113,6 +113,8 @@ public interface FlowEngine {
     }
 
     default void eval(Graph graph, int steps, FlowContext context) throws FlowException {
+        // steps: -1 = unlimited (default), 0 = stop before the first node,
+        // n = run at most n nodes.
         FlowDriver driver = getDriver(graph);
         eval(graph, new FlowExchanger(graph, this, driver, context, steps, new AtomicInteger(0)), null);
     }

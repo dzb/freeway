@@ -19,6 +19,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since 3.0
  */
 public class FlowEngineImpl implements FlowEngine {
+
+    /**
+     * Maximum node recursion depth during evaluation. The executor walks the
+     * graph recursively (one frame per node), so pathologically deep chains
+     * could exhaust the JVM stack. This limit fails fast with a clear error;
+     * real-world flows rarely exceed a few hundred nodes. Deeper graphs should
+     * be restructured or evaluated iteratively.
+     */
+    static final int MAX_EXECUTION_DEPTH = 1000;
+
     protected final Map<String, Graph> graphMap;
     protected final Map<String, FlowDriver> drivers;
     protected final FlowMarkerIndex markerIndex = new FlowMarkerIndex();
@@ -111,6 +121,15 @@ public class FlowEngineImpl implements FlowEngine {
             exchanger.context().exchanger(exchanger);
             exchanger.context().stopped(false);
             new FlowInvocation(exchanger, opts, lastNode, this::evalDo).invoke();
+        } catch (StackOverflowError e) {
+            // Safety net for recursion the depth guard cannot see (e.g. a
+            // user TaskComponent recursing) — surface it as a FlowException
+            // instead of crashing the thread with an Error.
+            throw new FlowException(
+                "Graph execution exceeded the JVM stack depth ("
+                    + graph.getId() + "); check for cycles or excessive nesting",
+                e
+            );
         } finally {
             exchanger.context().exchanger(bak);
         }
@@ -199,6 +218,24 @@ public class FlowEngineImpl implements FlowEngine {
 
     protected void node_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) throws FlowException {
         if (node == null) return;
+        int depth = exchanger.enterNode();
+        try {
+            if (depth > MAX_EXECUTION_DEPTH) {
+                throw new FlowException(
+                    "Flow execution depth exceeded (max " + MAX_EXECUTION_DEPTH
+                        + " nodes) at graph '" + node.getGraph().getId()
+                        + "' / node '" + node.getId()
+                        + "' — check for cycles or an excessively long chain"
+                );
+            }
+            nodeRunBody(exchanger, options, node, startNode);
+        } finally {
+            exchanger.exitNode();
+        }
+    }
+
+    /** The recursive traversal body — kept separate so the depth guard wraps every entry. */
+    private void nodeRunBody(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) throws FlowException {
         if (exchanger.isStopped()) return;
         if (exchanger.isInterrupted()) {
             exchanger.interrupt(false);
@@ -337,6 +374,8 @@ public class FlowEngineImpl implements FlowEngine {
     }
 
     protected void parallel_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
+        // Branches share the same FlowContext — concurrent writes to the same
+        // key are a known limitation (see docs/freeway-flow-parallel-context-isolation.md).
         exchanger.temporary().countSet(node.getGraph(), node.getId(), 0);
 
         if (exchanger.driver().getExecutor() == null || node.getNextNodes().size() < 2) {
