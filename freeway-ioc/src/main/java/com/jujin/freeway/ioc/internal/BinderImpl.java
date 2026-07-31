@@ -72,12 +72,15 @@ final class BinderImpl implements Binder {
             @Override
             public Contributions<V> add(V value) {
                 ext.add(null, value);
+                container.wireContribution(entryType, value);
                 return this;
             }
 
             @Override
             public Contribution add(String id, V value) {
-                return ext.add(id, value);
+                Contribution handle = ext.add(id, value);
+                container.wireContribution(entryType, value);
+                return handle;
             }
 
             @Override
@@ -89,7 +92,9 @@ final class BinderImpl implements Binder {
                 var deferred = new DeferredContribution();
                 pendingCreates.add(() -> {
                     V instance = container.create(implClass);
-                    deferred.apply(ext.add(id, instance));
+                    Contribution real = ext.add(id, instance);
+                    container.wireContribution(entryType, instance);
+                    deferred.apply(real);
                 });
                 return deferred;
             }

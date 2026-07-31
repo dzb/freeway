@@ -14,6 +14,7 @@ import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
@@ -26,6 +27,8 @@ import java.util.Objects;
 import java.util.Set;
 
 final class InjectResolver {
+    private static final Logger LOG = LoggerFactory.getLogger(InjectResolver.class);
+
     private final ContainerImpl container;
 
     InjectResolver(ContainerImpl container) {
@@ -293,6 +296,11 @@ final class InjectResolver {
     /**
      * Scans the injection point for annotations that are known markers.
      * Returns the set of marker annotations found.
+     *
+     * <p>Annotations that are neither framework annotations nor known markers
+     * are ignored with a warning — they may be markers the binding forgot to
+     * register via {@code .marker(...)}, which would otherwise resolve the
+     * wrong service silently.
      */
     private Set<Class<? extends Annotation>> resolveMarkers(
             AnnotationLookup lookup
@@ -308,6 +316,14 @@ final class InjectResolver {
             // Check if this annotation is a known marker
             if (container.markerIndex().isKnownMarker(annType)) {
                 result.add(annType);
+            } else {
+                LOG.warn(
+                    "Ignoring unrecognized annotation {} at an injection point; "
+                        + "register it with .marker({}.class) on the binding, "
+                        + "or remove it from the injection point",
+                    annType.getName(),
+                    annType.getSimpleName()
+                );
             }
         }
         return result;

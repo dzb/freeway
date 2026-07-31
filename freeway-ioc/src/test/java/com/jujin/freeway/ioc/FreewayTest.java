@@ -260,7 +260,120 @@ class FreewayTest {
         System.clearProperty("endpoint");
     }
 
-    // ── regression: PROTOTYPE + advise ────────────────────────────
+    // ── regression: deferred add(Class) wiring for built-in consumers ──
+
+    public interface SpecialConsumer {
+        String value();
+    }
+
+    public static class SpecialConsumerImpl implements SpecialConsumer {
+        final String value;
+
+        @Inject
+        SpecialConsumerImpl(@Value("${" + IocKeys.SPECIAL + "}") String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String value() {
+            return value;
+        }
+    }
+
+    public static class SpecialSymbolProvider implements SymbolProvider {
+        @Override
+        public String lookup(String name) {
+            return IocKeys.SPECIAL.equals(name) ? "special-value" : null;
+        }
+    }
+
+    private static final class IocKeys {
+        static final String SPECIAL = "ioc.test.special";
+    }
+
+    @Test
+    void sameModuleClassContributedSymbolProviderIsWired() {
+        Container container = Freeway.create(binder -> {
+            binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class);
+            binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class);
+        });
+
+        Object consumer = container.extension(SpecialConsumer.class).all().get(0);
+        assertEquals("special-value", ((SpecialConsumer) consumer).value(),
+            "add(Class) SymbolProvider in the same module must be wired before the consumer is created");
+        container.close();
+    }
+
+    @Test
+    void classContributedSymbolProviderFromEarlierModuleIsWired() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class),
+            binder -> binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class)
+        );
+
+        Object consumer = container.extension(SpecialConsumer.class).all().get(0);
+        assertEquals("special-value", ((SpecialConsumer) consumer).value());
+        container.close();
+    }
+
+    // ── regression: multi-constructor beans ───────────────────────
+
+    public static class MultiCtorBean {
+        boolean noArgUsed;
+
+        MultiCtorBean() {
+            noArgUsed = true;
+        }
+
+        MultiCtorBean(String name, int count) {
+        }
+    }
+
+    @Test
+    void createPrefersNoArgConstructorOverLargerConstructor() {
+        Container container = Freeway.create(binder -> {});
+        MultiCtorBean bean = container.create(MultiCtorBean.class);
+        assertTrue(bean.noArgUsed,
+            "no-arg constructor must be preferred over a larger convenience constructor");
+        container.close();
+    }
+
+    // ── regression: unrecognized annotation at injection point ────
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @interface Unrecognized {
+    }
+
+    public interface SimpleGreeter {
+        String greet();
+    }
+
+    public static class SimpleGreeterImpl implements SimpleGreeter {
+        @Override
+        public String greet() {
+            return "hi";
+        }
+    }
+
+    public static class GreeterConsumer {
+        @Inject
+        @Unrecognized
+        SimpleGreeter greeter;
+    }
+
+    @Test
+    void injectWithUnrecognizedAnnotationStillResolvesPlainBinding() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(SimpleGreeter.class).to(SimpleGreeterImpl.class);
+            binder.bind(GreeterConsumer.class).to(GreeterConsumer.class);
+        });
+
+        GreeterConsumer consumer = container.get(GreeterConsumer.class);
+        assertEquals("hi", consumer.greeter.greet(),
+            "unrecognized annotation at the injection point should not break resolution");
+        container.close();
+    }
+
 
     interface PrototypeGreeter {
         String greet();

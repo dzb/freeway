@@ -66,7 +66,11 @@ public final class BeanIntrospector {
      * <ul>
      *   <li>If a constructor annotated with {@code preferredAnnotation} exists,
      *       that one is returned (multiple matches throw).</li>
-     *   <li>Otherwise the constructor with the most parameters is returned.</li>
+     *   <li>Otherwise the no-arg constructor is returned when present — beans
+     *       with convenience constructors must not be auto-wired by parameter
+     *       count, since arbitrary parameters are not resolvable services.</li>
+     *   <li>Otherwise the constructor with the most parameters is returned
+     *       (single-constructor classes without a no-arg constructor).</li>
      * </ul>
      *
      * @param type                 the class to inspect
@@ -84,6 +88,7 @@ public final class BeanIntrospector {
             return constructor(type.getDeclaredConstructor());
         }
         BeanConstructor preferred = null;
+        BeanConstructor noArg = null;
         BeanConstructor maxParams = null;
         for (Constructor<?> constructor : constructors) {
             BeanConstructor candidate = constructor(constructor);
@@ -96,11 +101,17 @@ public final class BeanIntrospector {
                 }
                 preferred = candidate;
             }
+            if (constructor.getParameterCount() == 0) {
+                noArg = candidate;
+            }
             if (maxParams == null
                 || candidate.parameters().size() > maxParams.parameters().size()) {
                 maxParams = candidate;
             }
         }
-        return preferred != null ? preferred : maxParams;
+        if (preferred != null) {
+            return preferred;
+        }
+        return noArg != null ? noArg : maxParams;
     }
 }

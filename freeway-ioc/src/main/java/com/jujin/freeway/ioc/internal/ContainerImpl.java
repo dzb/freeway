@@ -124,7 +124,6 @@ public final class ContainerImpl implements Container {
             binderImpl.setCurrentModule(module.getClass());
             module.bind(binder);
             binderImpl.restoreCurrentModule(previousModule);
-            wireBuiltinExtensions();
             binderImpl.flushPending();
             return;
         }
@@ -139,26 +138,18 @@ public final class ContainerImpl implements Container {
     }
 
     /**
-     * Wire built-in consumers that depend on contributed extension values.
-     * Called after each module install so contributions are available to
-     * the next module's bind logic. Idempotent — repeated wiring of the
-     * same extensions is harmless (same providers registered).
+     * Registers a built-in extension consumer as soon as the contribution is
+     * added — independent of module order. Without this, contributions made
+     * through {@code contribute(...).add(Class)} in the same module as their
+     * consumers were never registered (wiring ran before deferred creates
+     * flushed).
      */
     @SuppressWarnings("rawtypes")
-    private void wireBuiltinExtensions() {
-        // SymbolProvider -> SymbolSource
-        Extension<?> spExt = extensions.get(SymbolProvider.class);
-        if (spExt != null) {
-            for (Object p : spExt.all()) {
-                symbolSource.register((SymbolProvider) p);
-            }
-        }
-        // CoerceRule -> Coercer
-        Extension<?> crExt = extensions.get(CoerceRule.class);
-        if (crExt != null) {
-            for (Object rule : crExt.all()) {
-                coercer.register((CoerceRule) rule);
-            }
+    void wireContribution(Class<?> entryType, Object value) {
+        if (entryType == SymbolProvider.class) {
+            symbolSource.register((SymbolProvider) value);
+        } else if (entryType == CoerceRule.class) {
+            coercer.register((CoerceRule) value);
         }
     }
 
