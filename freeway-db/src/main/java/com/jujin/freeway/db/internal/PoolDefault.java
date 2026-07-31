@@ -76,7 +76,12 @@ public final class PoolDefault implements Pool {
         try {
             PooledConnectionDefault conn = idle.pollFirst();
             if (conn != null) {
-                if (conn.isFresh(FRESH_IDLE_THRESHOLD) || isValid(conn)) {
+                // A freshly returned connection skips the full health check,
+                // but must still not be closed at the JDBC level.
+                if (
+                    (conn.isFresh(FRESH_IDLE_THRESHOLD) && !isClosed(conn)) ||
+                    isValid(conn)
+                ) {
                     success = true;
                     conn.markBorrowed();
                     active.add(conn);
@@ -327,11 +332,30 @@ public final class PoolDefault implements Pool {
     }
 
     private boolean isAlive(PooledConnectionDefault conn) {
-        return !conn.isExpired(
+        if (conn.isExpired(
             Instant.now(),
             config.maxLifetime(),
             config.maxIdleTime()
-        );
+        )) {
+            return false;
+        }
+        // The physical connection may have been closed out-of-band (database
+        // restart, restoreConnectionState failure, driver reset). isClosed()
+        // is a local flag — no network round trip — so check it before the
+        // connection is recycled into the idle pool.
+        try {
+            return !conn.connection().isClosed();
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    private boolean isClosed(PooledConnectionDefault pooled) {
+        try {
+            return pooled.connection().isClosed();
+        } catch (SQLException e) {
+            return true;
+        }
     }
 
     private boolean healthCheck(PooledConnectionDefault pooled) {

@@ -67,7 +67,11 @@ public record PoolConfig(
         requireDuration(maxIdleTime, "maxIdleTime");
         requireDuration(cleanInterval, "cleanInterval");
         requireDuration(healthCheckTimeout, "healthCheckTimeout");
-        requireDuration(queryTimeout, "queryTimeout");
+        // queryTimeout is the only duration where 0 is meaningful — it maps to
+        // JDBC setQueryTimeout(0), i.e. no statement timeout.
+        if (queryTimeout == null || queryTimeout.isNegative()) {
+            throw new IllegalArgumentException("queryTimeout must not be negative");
+        }
 
         if (healthCheckQuery != null && healthCheckQuery.isBlank()) healthCheckQuery = null;
     }

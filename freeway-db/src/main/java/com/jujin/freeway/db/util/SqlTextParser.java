@@ -14,6 +14,14 @@ public final class SqlTextParser {
         List<Integer> parameterIndexes
     ) {}
 
+    /**
+     * Note on {@code $} handling: PostgreSQL-style dollar quotes
+     * ({@code $$...$$}, {@code $tag$...$tag$}) are skipped before named
+     * parameters are recognized, so a named parameter written directly before
+     * a literal {@code $} (e.g. {@code WHERE x = $name$}) is ambiguous and
+     * resolves to the parameter plus a literal {@code $} — write
+     * {@code WHERE x = $name || '$'} or use {@code :name} in that case.
+     */
     public static Result parseNamed(String sql) {
         var names = new ArrayList<String>();
         var parameterIndexes = new ArrayList<Integer>();

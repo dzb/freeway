@@ -41,7 +41,9 @@ public final class DatabaseImpl implements Database {
         this.rowMapperResolver = rowMapperResolver;
         this.dialect = dialect != null ? dialect : new PostgresDialect();
         long millis = config.queryTimeout().toMillis();
-        this.queryTimeoutSeconds = (int) Math.max(1, (millis + 999) / 1000);
+        // 0 = no timeout (JDBC setQueryTimeout(0)); sub-second values round up
+        // to a whole second.
+        this.queryTimeoutSeconds = (int) Math.max(0, (millis + 999) / 1000);
     }
 
     @Override

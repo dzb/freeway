@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.IsolationLevel;
 import java.sql.Connection;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,41 @@ class DatabaseImplResourceTest {
                 db.pool().release(after);
             }
         }
+    }
+
+    @Test
+    void zeroQueryTimeoutMeansNoTimeout() {
+        DatabaseImpl db = createDb(Duration.ZERO);
+        try (db) {
+            assertEquals(0, db.queryTimeoutSeconds(),
+                "queryTimeout 0 must map to JDBC setQueryTimeout(0) = no timeout");
+        }
+    }
+
+    @Test
+    void subSecondQueryTimeoutRoundsUpToWholeSeconds() {
+        DatabaseImpl db = createDb(Duration.ofMillis(500));
+        try (db) {
+            assertEquals(1, db.queryTimeoutSeconds());
+        }
+    }
+
+    private static DatabaseImpl createDb(Duration queryTimeout) {
+        String dbName = "freeway_timeout_" + UUID.randomUUID().toString().replace('-', '_');
+        return new DatabaseImpl(
+            new PoolConfig(
+                "jdbc:h2:mem:" + dbName + ";DB_CLOSE_DELAY=-1", "sa", "",
+                1, 0,
+                Duration.ofSeconds(5),
+                Duration.ofMinutes(30),
+                Duration.ofMinutes(5),
+                Duration.ofSeconds(30),
+                null,
+                Duration.ofSeconds(5),
+                queryTimeout
+            ),
+            new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of())
+        );
     }
 
     private static DatabaseImpl createDb() {

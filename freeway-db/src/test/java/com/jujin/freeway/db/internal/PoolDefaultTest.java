@@ -29,6 +29,39 @@ import static org.junit.jupiter.api.Assertions.*;
 class PoolDefaultTest {
 
     @Test
+    void physicallyClosedConnectionIsNotReused() throws Exception {
+        var config = new PoolConfig(
+            "jdbc:h2:mem:pool_closed_reuse;DB_CLOSE_DELAY=-1", "sa", "",
+            4, 0,
+            Duration.ofSeconds(5),
+            Duration.ofMinutes(30),
+            Duration.ofMinutes(5),
+            Duration.ofSeconds(30),
+            null,
+            Duration.ofSeconds(5),
+            Duration.ofSeconds(15)
+        );
+        PoolDefault pool = new PoolDefault(config);
+        try {
+            // Simulate an out-of-band physical close (DB restart, driver reset,
+            // restoreConnectionState failure) followed by a release.
+            PooledConnection first = pool.borrow();
+            first.connection().close();
+            pool.release(first);
+
+            // The next borrow must not hand out the dead connection — the
+            // pool must replace it with a healthy one.
+            PooledConnection second = pool.borrow();
+            try (var stmt = second.connection().createStatement()) {
+                stmt.execute("SELECT 1");
+            }
+            pool.release(second);
+        } finally {
+            pool.close();
+        }
+    }
+
+    @Test
     void statsShowsBorrowedConnectionInActive() {
         var config = new PoolConfig(
             "jdbc:h2:mem:leak_test_1;DB_CLOSE_DELAY=-1", "sa", "",
