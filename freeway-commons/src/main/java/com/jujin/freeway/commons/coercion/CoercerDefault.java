@@ -9,12 +9,17 @@ import java.nio.file.Paths;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static java.util.Map.entry;
 
 public final class CoercerDefault implements Coercer {
 
     private final ConcurrentHashMap<CoercionKey, CoerceRule<?, ?>> rules =
+        new ConcurrentHashMap<>();
+
+    /** Rules indexed by target type for assignable-source lookups in {@link #supports}. */
+    private final Map<Class<?>, List<CoerceRule<?, ?>>> rulesByTarget =
         new ConcurrentHashMap<>();
 
     private static final Map<Class<?>, Object> PRIMITIVE_DEFAULTS = Map.of(
@@ -34,11 +39,15 @@ public final class CoercerDefault implements Coercer {
         }
         CoercionKey key = new CoercionKey(rule.sourceType(), rule.targetType());
         rules.put(key, rule);
+        rulesByTarget
+            .computeIfAbsent(rule.targetType(), k -> new CopyOnWriteArrayList<>())
+            .add(rule);
         return this;
     }
 
     public void clearRules() {
         rules.clear();
+        rulesByTarget.clear();
     }
 
     // --- static utilities ---
@@ -68,12 +77,12 @@ public final class CoercerDefault implements Coercer {
             return true;
         }
 
-        for (CoercionKey k : rules.keySet()) {
-            if (
-                k.targetType() == targetType &&
-                k.sourceType().isAssignableFrom(sourceType)
-            ) {
-                return true;
+        List<CoerceRule<?, ?>> targetRules = rulesByTarget.get(targetType);
+        if (targetRules != null) {
+            for (CoerceRule<?, ?> rule : targetRules) {
+                if (rule.sourceType().isAssignableFrom(sourceType)) {
+                    return true;
+                }
             }
         }
 

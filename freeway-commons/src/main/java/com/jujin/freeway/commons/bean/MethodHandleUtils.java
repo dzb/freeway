@@ -6,8 +6,9 @@ import java.lang.invoke.VarHandle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 /**
  * Caching utility for {@link MethodHandle}, {@link VarHandle}, and
@@ -21,9 +22,17 @@ import java.util.concurrent.ConcurrentMap;
  */
 public final class MethodHandleUtils {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
-    private static final ConcurrentMap<Constructor<?>, MethodHandle> CONSTRUCTOR_HANDLES = new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Method, MethodHandle> METHOD_HANDLES = new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Field, VarHandle> VAR_HANDLES = new ConcurrentHashMap<>();
+    /**
+     * Weakly keyed caches: entries are dropped when the reflection objects
+     * (and their declaring classes / classloaders) become unreachable, so
+     * dynamically loaded classes do not leak through these maps.
+     */
+    private static final Map<Constructor<?>, MethodHandle> CONSTRUCTOR_HANDLES =
+        Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Method, MethodHandle> METHOD_HANDLES =
+        Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Field, VarHandle> VAR_HANDLES =
+        Collections.synchronizedMap(new WeakHashMap<>());
 
     private MethodHandleUtils() {
     }
@@ -40,7 +49,13 @@ public final class MethodHandleUtils {
      * @return the corresponding MethodHandle
      */
     public static MethodHandle methodHandle(Method method) {
-        return METHOD_HANDLES.computeIfAbsent(method, MethodHandleUtils::createMethodHandle);
+        MethodHandle cached = METHOD_HANDLES.get(method);
+        if (cached != null) {
+            return cached;
+        }
+        MethodHandle created = createMethodHandle(method);
+        METHOD_HANDLES.put(method, created);
+        return created;
     }
 
     /**
@@ -94,7 +109,13 @@ public final class MethodHandleUtils {
      * @return the corresponding VarHandle
      */
     static VarHandle varHandle(Field field) {
-        return VAR_HANDLES.computeIfAbsent(field, MethodHandleUtils::createVarHandle);
+        VarHandle cached = VAR_HANDLES.get(field);
+        if (cached != null) {
+            return cached;
+        }
+        VarHandle created = createVarHandle(field);
+        VAR_HANDLES.put(field, created);
+        return created;
     }
 
     /**
@@ -104,7 +125,13 @@ public final class MethodHandleUtils {
      * @return the corresponding MethodHandle
      */
     static MethodHandle constructorHandle(Constructor<?> constructor) {
-        return CONSTRUCTOR_HANDLES.computeIfAbsent(constructor, MethodHandleUtils::createConstructorHandle);
+        MethodHandle cached = CONSTRUCTOR_HANDLES.get(constructor);
+        if (cached != null) {
+            return cached;
+        }
+        MethodHandle created = createConstructorHandle(constructor);
+        CONSTRUCTOR_HANDLES.put(constructor, created);
+        return created;
     }
 
     // -- private factories --

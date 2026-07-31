@@ -2,9 +2,10 @@ package com.jujin.freeway.commons.bean;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.WeakHashMap;
 
 /**
  * Cached bean/record introspection engine.
@@ -27,8 +28,8 @@ public final class BeanIntrospector {
             return BeanPlan.of(type);
         }
     };
-    private static final ConcurrentMap<Constructor<?>, BeanConstructor> CONSTRUCTORS =
-        new ConcurrentHashMap<>();
+    private static final Map<Constructor<?>, BeanConstructor> CONSTRUCTORS =
+        Collections.synchronizedMap(new WeakHashMap<>());
 
     private BeanIntrospector() {
     }
@@ -50,10 +51,14 @@ public final class BeanIntrospector {
      * @return the bean constructor handle
      */
     public static BeanConstructor constructor(Constructor<?> constructor) {
-        return CONSTRUCTORS.computeIfAbsent(
-            Objects.requireNonNull(constructor, "constructor"),
-            BeanConstructor::of
-        );
+        Objects.requireNonNull(constructor, "constructor");
+        BeanConstructor cached = CONSTRUCTORS.get(constructor);
+        if (cached != null) {
+            return cached;
+        }
+        BeanConstructor created = BeanConstructor.of(constructor);
+        CONSTRUCTORS.put(constructor, created);
+        return created;
     }
 
     /**

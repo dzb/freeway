@@ -47,6 +47,12 @@ freeway.log.console.enabled=true
 #
 # freeway.log.color=auto
 
+# 调用者信息：每条日志解析 source class/method（供 formatter 使用）。
+# 默认 true。日志量极大且自定义 formatter 不展示调用者时，设 false
+# 可跳过每次日志的栈遍历，显著提升吞吐。
+#
+# freeway.log.caller-info=true
+
 
 # ── 默认文件日志 ────────────────────────────────────────────────
 #
@@ -63,6 +69,7 @@ freeway.log.file=auto
 # freeway.log.file.max-size=104857600            # 100 MB 触发大小滚动
 # freeway.log.file.max-history=30                # 保留天数
 # freeway.log.file.compress=true                 # 归档后 GZIP
+# freeway.log.file.flush-interval=250            # 批量刷盘间隔（毫秒）；0 = 每条日志立即刷盘（最保险、吞吐低）
 
 # 注意：同时满足 file=auto（默认文件）和 files=...（多文件），
 # 两者叠加不冲突——默认文件继续收根 logger 的消息，命名文件收
@@ -82,6 +89,7 @@ freeway.log.file=auto
 # freeway.log.file.biz.max-size=104857600
 # freeway.log.file.biz.max-history=30
 # freeway.log.file.biz.compress=true
+# freeway.log.file.biz.flush-interval=250
 #
 # 最佳实践：命名文件设了 logger 后，该 logger 的日志不再传播到
 # 根 logger，避免同一条消息出现在两个文件里。

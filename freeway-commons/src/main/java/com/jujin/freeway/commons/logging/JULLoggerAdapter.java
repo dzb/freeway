@@ -16,6 +16,27 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
      * first application-code frame is found — no full-array allocation.
      */
     private static final StackWalker WALKER = StackWalker.getInstance();
+
+    /**
+     * Whether source class/method names are resolved on each log record.
+     * Enabled by default; disable with
+     * {@code -Dfreeway.log.caller-info=false} (or {@code FREEWAY_LOG_CALLER_INFO=0})
+     * to skip the per-record stack walk when the installed formatters do not
+     * display caller information.
+     */
+    static volatile boolean callerInfoEnabled = loadCallerInfoFlag();
+
+    private static boolean loadCallerInfoFlag() {
+        String value = System.getProperty(
+            "freeway.log.caller-info",
+            System.getenv("FREEWAY_LOG_CALLER_INFO")
+        );
+        if (value != null) {
+            return !("false".equalsIgnoreCase(value) || "0".equals(value));
+        }
+        return true;
+    }
+
     private final Logger julLogger;
 
     JULLoggerAdapter(Logger julLogger) {
@@ -45,8 +66,14 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
         // `new LogRecord(Level, String)` infers the caller from the stack.
         // From a SLF4J bridge the inferred frame is always JULLoggerAdapter
         // itself — wrong. Walk past the bridge and SLF4J internals to find
-        // the actual application code frame.
-        fixCallerInfo(record);
+        // the actual application code frame. When caller info is disabled,
+        // clear the wrong inferred values instead of walking the stack.
+        if (callerInfoEnabled) {
+            fixCallerInfo(record);
+        } else {
+            record.setSourceClassName(null);
+            record.setSourceMethodName(null);
+        }
 
         record.setLoggerName(julLogger.getName());
         if (throwable != null) {

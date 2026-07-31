@@ -187,7 +187,43 @@ final class JsonParser {
 
         private String parseString() {
             expect('"');
-            StringBuilder out = new StringBuilder();
+            int start = index;
+
+            // Fast path — scan for the closing quote when no escape or
+            // control character is present, then substring directly.
+            // Bounds-checked inline so oversized strings still abort early.
+            while (index < text.length()) {
+                char c = text.charAt(index);
+                if (c == '"') {
+                    if (index - start > MAX_STRING_LENGTH) {
+                        throw error(
+                            "JSON string too long (max " +
+                                MAX_STRING_LENGTH +
+                                " characters)"
+                        );
+                    }
+                    String result = text.substring(start, index);
+                    index++;
+                    return result;
+                }
+                if (c == '\\' || c < 0x20) {
+                    break;
+                }
+                if (index - start >= MAX_STRING_LENGTH) {
+                    throw error(
+                        "JSON string too long (max " +
+                            MAX_STRING_LENGTH +
+                            " characters)"
+                    );
+                }
+                index++;
+            }
+
+            // Slow path — escapes or control characters present.
+            StringBuilder out = new StringBuilder(
+                Math.min(index - start + 8, MAX_STRING_LENGTH + 16)
+            );
+            out.append(text, start, index);
             while (!eof()) {
                 char c = next();
                 if (c == '"') {

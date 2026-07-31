@@ -50,6 +50,7 @@ import java.util.zip.GZIPOutputStream;
  * freeway.log.file.max-size=104857600   # 100 MB
  * freeway.log.file.max-history=30       # days
  * freeway.log.file.compress=true
+ * freeway.log.file.flush-interval=250   # ms between background flushes; 0 = flush per record
  * }</pre>
  *
  * <p>All settings have sensible defaults. File logging is auto-activated
@@ -62,6 +63,15 @@ public final class JULFileHandler extends StreamHandler {
     static final long DEFAULT_MAX_SIZE = 100L * 1024 * 1024; // 100 MB
     static final int DEFAULT_MAX_HISTORY = 30; // days
     static final boolean DEFAULT_COMPRESS = true;
+
+    /**
+     * Default interval between background flushes (milliseconds). Log records
+     * are buffered and flushed together at this cadence instead of flushing
+     * after every record, which avoids one write syscall per log line.
+     * Set {@code freeway.log.file.flush-interval=0} to flush after every
+     * record (maximum durability, lower throughput).
+     */
+    static final long DEFAULT_FLUSH_INTERVAL_MS = 250;
 
     private static final DateTimeFormatter DATE_FMT =
         DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -78,11 +88,16 @@ public final class JULFileHandler extends StreamHandler {
     private final long maxSize;
     private final int maxHistory;
     private final boolean compress;
+    private final long flushIntervalMs;
 
     private LocalDate currentLocalDate;
     private long nextMidnightMillis;
     private int currentIndex;
     private long bytesWritten;
+
+    /** Daemon thread performing periodic flushes; null when {@code flushIntervalMs <= 0}. */
+    private final Thread flusher;
+    private volatile boolean closed;
 
     /**
      * No-arg constructor for {@code logging.properties} / {@code LogManager}
@@ -93,17 +108,17 @@ public final class JULFileHandler extends StreamHandler {
             requiredProperty("freeway.log.file"),
             longProperty("freeway.log.file.max-size", DEFAULT_MAX_SIZE),
             intProperty("freeway.log.file.max-history", DEFAULT_MAX_HISTORY),
-            booleanProperty("freeway.log.file.compress", DEFAULT_COMPRESS)
+            booleanProperty("freeway.log.file.compress", DEFAULT_COMPRESS),
+            longProperty(
+                "freeway.log.file.flush-interval",
+                DEFAULT_FLUSH_INTERVAL_MS
+            )
         );
     }
 
     /**
-     * Programmatic constructor.
-     *
-     * @param filePath   path to the log file (e.g. {@code logs/app.log})
-     * @param maxSize    max bytes before size-based rotation
-     * @param maxHistory days to retain
-     * @param compress   whether to gzip rotated files
+     * Programmatic constructor using the default flush interval
+     * ({@link #DEFAULT_FLUSH_INTERVAL_MS}).
      */
     public JULFileHandler(
         String filePath,
@@ -111,10 +126,31 @@ public final class JULFileHandler extends StreamHandler {
         int maxHistory,
         boolean compress
     ) throws IOException {
+        this(filePath, maxSize, maxHistory, compress, DEFAULT_FLUSH_INTERVAL_MS);
+    }
+
+    /**
+     * Programmatic constructor.
+     *
+     * @param filePath        path to the log file (e.g. {@code logs/app.log})
+     * @param maxSize         max bytes before size-based rotation
+     * @param maxHistory      days to retain
+     * @param compress        whether to gzip rotated files
+     * @param flushIntervalMs background flush cadence in milliseconds;
+     *                        {@code <= 0} flushes after every record
+     */
+    public JULFileHandler(
+        String filePath,
+        long maxSize,
+        int maxHistory,
+        boolean compress,
+        long flushIntervalMs
+    ) throws IOException {
         this.basePath = Paths.get(filePath).toAbsolutePath();
         this.maxSize = Math.max(1024, maxSize);
         this.maxHistory = Math.max(1, maxHistory);
         this.compress = compress;
+        this.flushIntervalMs = flushIntervalMs;
         this.currentLocalDate = LocalDate.now();
         this.nextMidnightMillis = computeNextMidnight();
         this.currentIndex = 0;
@@ -125,6 +161,7 @@ public final class JULFileHandler extends StreamHandler {
         setLevel(Level.ALL);
         rotateStaleFileOnStartup();
         openCurrentFile();
+        this.flusher = startFlusher();
     }
 
     /** If the log file exists and was last modified before today, archive it. */
@@ -206,7 +243,45 @@ public final class JULFileHandler extends StreamHandler {
 
         super.publish(record);
         bytesWritten += estimateSize(record);
-        flush();
+        if (flushIntervalMs <= 0) {
+            flush(); // eager mode — maximum durability
+        }
+    }
+
+    /**
+     * Stops the periodic flusher and closes the underlying stream.
+     * Pending buffered records are flushed by {@link StreamHandler#close()}.
+     */
+    @Override
+    public synchronized void close() {
+        closed = true;
+        if (flusher != null) {
+            flusher.interrupt();
+        }
+        super.close();
+    }
+
+    private Thread startFlusher() {
+        if (flushIntervalMs <= 0) {
+            return null;
+        }
+        Thread t = new Thread(() -> {
+            while (!closed) {
+                try {
+                    Thread.sleep(flushIntervalMs);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                try {
+                    flush();
+                } catch (Exception ignored) {
+                    // best-effort periodic flush; errors surface on next publish
+                }
+            }
+        }, "freeway-log-flusher-" + basePath.getFileName());
+        t.setDaemon(true);
+        t.start();
+        return t;
     }
 
     // ── rotation ────────────────────────────────────────────────────

@@ -156,29 +156,47 @@ final class JsonWriter {
     }
 
     private static String quote(String value) {
-        StringBuilder out = new StringBuilder(value.length() + 2);
-        out.append('"');
-        for (int i = 0; i < value.length(); i++) {
+        int length = value.length();
+        for (int i = 0; i < length; i++) {
             char c = value.charAt(i);
-            switch (c) {
-                case '"' -> out.append("\\\"");
-                case '\\' -> out.append("\\\\");
-                case '\b' -> out.append("\\b");
-                case '\f' -> out.append("\\f");
-                case '\n' -> out.append("\\n");
-                case '\r' -> out.append("\\r");
-                case '\t' -> out.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        out.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        out.append(c);
+            if (c == '"' || c == '\\' || c < 0x20) {
+                // Slow path — at least one character needs escaping.
+                StringBuilder out = new StringBuilder(length + 16);
+                out.append('"').append(value, 0, i);
+                for (; i < length; i++) {
+                    char ch = value.charAt(i);
+                    switch (ch) {
+                        case '"' -> out.append("\\\"");
+                        case '\\' -> out.append("\\\\");
+                        case '\b' -> out.append("\\b");
+                        case '\f' -> out.append("\\f");
+                        case '\n' -> out.append("\\n");
+                        case '\r' -> out.append("\\r");
+                        case '\t' -> out.append("\\t");
+                        default -> {
+                            if (ch < 0x20) {
+                                out.append(CONTROL_ESCAPES[ch]);
+                            } else {
+                                out.append(ch);
+                            }
+                        }
                     }
                 }
+                out.append('"');
+                return out.toString();
             }
         }
-        out.append('"');
-        return out.toString();
+        // Fast path — nothing to escape.
+        return '"' + value + '"';
+    }
+
+    /** Precomputed {@code \\uXXXX} escapes for control characters U+0000..U+001F. */
+    private static final String[] CONTROL_ESCAPES = new String[0x20];
+
+    static {
+        for (int i = 0; i < CONTROL_ESCAPES.length; i++) {
+            CONTROL_ESCAPES[i] = String.format("\\u%04x", i);
+        }
     }
 
     private static final class Context {

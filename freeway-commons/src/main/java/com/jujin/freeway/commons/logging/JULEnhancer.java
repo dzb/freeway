@@ -379,6 +379,7 @@ final class JULEnhancer {
         long maxSize,
         int maxHistory,
         boolean compress,
+        long flushIntervalMs,
         Level level,
         String loggerName
     ) {}
@@ -386,7 +387,11 @@ final class JULEnhancer {
     private static void attachNamedFile(NamedFileConfig cfg) {
         try {
             JULFileHandler handler = new JULFileHandler(
-                cfg.path, cfg.maxSize, cfg.maxHistory, cfg.compress
+                cfg.path,
+                cfg.maxSize,
+                cfg.maxHistory,
+                cfg.compress,
+                cfg.flushIntervalMs
             );
             if (cfg.level != null) handler.setLevel(cfg.level);
 
@@ -455,6 +460,11 @@ final class JULEnhancer {
                         fileConfig,
                         "freeway.log.file.compress",
                         JULFileHandler.DEFAULT_COMPRESS
+                    ),
+                    longProperty(
+                        fileConfig,
+                        "freeway.log.file.flush-interval",
+                        JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS
                     )
                 );
                 Logger.getLogger("").addHandler(fh);
@@ -508,6 +518,11 @@ final class JULEnhancer {
             longProperty(fileConfig, prefix + ".max-size", JULFileHandler.DEFAULT_MAX_SIZE),
             intProperty(fileConfig, prefix + ".max-history", JULFileHandler.DEFAULT_MAX_HISTORY),
             booleanProperty(fileConfig, prefix + ".compress", JULFileHandler.DEFAULT_COMPRESS),
+            longProperty(
+                fileConfig,
+                prefix + ".flush-interval",
+                JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS
+            ),
             level,
             loggerName
         );

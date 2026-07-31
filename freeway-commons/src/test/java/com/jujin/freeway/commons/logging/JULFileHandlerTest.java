@@ -32,6 +32,47 @@ class JULFileHandlerTest {
     }
 
     @Test
+    void flushIsBatchedByDefault(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("batched.log");
+        // A very large flush interval means the background flusher never
+        // fires during the test window — data stays buffered until close.
+        JULFileHandler handler = new JULFileHandler(
+                logFile.toString(), 10 * 1024 * 1024, 30, false, 60_000);
+
+        LogRecord record = new LogRecord(Level.INFO, "batched message");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        handler.publish(record);
+
+        String beforeClose = Files.exists(logFile) ? Files.readString(logFile) : "";
+        assertFalse(beforeClose.contains("batched message"),
+                "Batched flush should not write before close/flush: " + beforeClose);
+
+        handler.close();
+
+        String afterClose = Files.readString(logFile);
+        assertTrue(afterClose.contains("batched message"),
+                "Close should flush buffered records: " + afterClose);
+    }
+
+    @Test
+    void flushIntervalZeroFlushesEagerly(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("eager.log");
+        JULFileHandler handler = new JULFileHandler(
+                logFile.toString(), 10 * 1024 * 1024, 30, false, 0);
+
+        LogRecord record = new LogRecord(Level.INFO, "eager message");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        handler.publish(record);
+
+        String content = Files.readString(logFile);
+        assertTrue(content.contains("eager message"),
+                "Eager mode (interval 0) should flush per record: " + content);
+        handler.close();
+    }
+
+    @Test
     void createsParentDirectories(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("nested").resolve("deep").resolve("app.log");
         JULFileHandler handler = new JULFileHandler(

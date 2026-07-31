@@ -141,6 +141,11 @@ class LogBootstrapTest {
             log.warn("警告 {}", "详情");
             log.error("异常日志", new RuntimeException("demo error"));
 
+            // File publish is batched by default — flush before reading
+            for (var h : java.util.logging.Logger.getLogger("").getHandlers()) {
+                if (h instanceof JULFileHandler) h.flush();
+            }
+
             String fileContent = Files.readString(logFile);
             assertTrue(fileContent.contains("hello 控制台 + 文件"),
                     "文件应含 info 消息: " + fileContent);
