@@ -22,8 +22,19 @@ public final class ContainerImpl implements Container {
 
     private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
 
+    /**
+     * Thread-scope values realized by this container. The {@link ScopedCache}
+     * close hook only runs container lifecycle for these — values cached by
+     * standalone {@code ScopedCache} users are left untouched.
+     */
+    private static final Set<Object> MANAGED_SCOPE_VALUES =
+        Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+
     static {
         ScopedCache.onClose(v -> {
+            if (!MANAGED_SCOPE_VALUES.remove(v)) {
+                return;
+            }
             Lifecycle.invokePreDestroy(v);
             if (v instanceof AutoCloseable c) {
                 try {
@@ -33,6 +44,11 @@ public final class ContainerImpl implements Container {
                 }
             }
         });
+    }
+
+    /** Marks a value as container-managed so scope exit runs its lifecycle. */
+    static void manageScopeValue(Object value) {
+        MANAGED_SCOPE_VALUES.add(value);
     }
 
     private volatile boolean closed;

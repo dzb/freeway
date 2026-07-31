@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.annotation.*;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -335,6 +336,67 @@ class FreewayTest {
         MultiCtorBean bean = container.create(MultiCtorBean.class);
         assertTrue(bean.noArgUsed,
             "no-arg constructor must be preferred over a larger convenience constructor");
+        container.close();
+    }
+
+    // ── regression: scope-lifecycle isolation and primary override ──
+
+    @Test
+    void standaloneScopedCacheValueIsNotClosedByContainer() {
+        Container container = Freeway.create(binder -> {});
+        List<AutoCloseable> closed = new ArrayList<>();
+
+        ScopedCache.within(() -> {
+            ScopedCache.get("k", () -> (AutoCloseable) () -> closed.add(null));
+            return null;
+        });
+
+        container.close();
+        assertTrue(closed.isEmpty(),
+            "standalone ScopedCache values must not be closed by the container hook");
+    }
+
+    public static class OverrideSymbolSource implements SymbolSource {
+        @Override
+        public String resolve(String name) {
+            return "override:" + name;
+        }
+
+        @Override
+        public String expand(String input) {
+            return input.startsWith("${")
+                ? resolve(input.substring(2, input.length() - 1))
+                : input;
+        }
+    }
+
+    public static class ValueConsumer {
+        @Value("${ioc.override.key}")
+        String value;
+    }
+
+    public static class SymbolHolder {
+        final SymbolSource source;
+
+        @Inject
+        SymbolHolder(SymbolSource source) {
+            this.source = source;
+        }
+    }
+
+    @Test
+    void primarySymbolSourceOverrideIsHonoredEverywhere() {
+        Container container = Freeway.create(binder ->
+            binder.bind(SymbolSource.class).to(new OverrideSymbolSource()).primary()
+        );
+
+        ValueConsumer consumer = container.create(ValueConsumer.class);
+        assertEquals("override:ioc.override.key", consumer.value,
+            "@Value expansion must use the primary SymbolSource override");
+
+        SymbolHolder holder = container.create(SymbolHolder.class);
+        assertEquals("override:y", holder.source.resolve("y"),
+            "constructor injection of SymbolSource must honor the primary override");
         container.close();
     }
 

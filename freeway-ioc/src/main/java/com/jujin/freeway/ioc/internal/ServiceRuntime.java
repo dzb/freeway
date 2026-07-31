@@ -110,7 +110,11 @@ final class ServiceRuntime {
             throw new IllegalStateException("Circular dependency detected: " + key);
         }
         try {
-            return binding.type().cast(ScopedCache.get(key, binding::directInstance));
+            return binding.type().cast(ScopedCache.get(key, () -> {
+                Object created = binding.directInstance();
+                ContainerImpl.manageScopeValue(created);
+                return created;
+            }));
         } finally {
             stack.remove(key);
         }

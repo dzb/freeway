@@ -196,8 +196,10 @@ class EventBusTest {
         EventBus bus = new EventBus(container);
         bus.subscribe(PostCreatedEvent.class, e -> log.add("x"));
         bus.close();
-        bus.publish(new PostCreatedEvent(new Post("x")));
 
+        // Publishing to a closed bus is a programming error — fail fast.
+        assertThrows(IllegalStateException.class,
+            () -> bus.publish(new PostCreatedEvent(new Post("x"))));
         assertTrue(log.isEmpty());
     }
 
@@ -396,6 +398,85 @@ class EventBusTest {
         bus.publish(new PostCreatedEvent(new Post("x")));
 
         assertEquals(List.of("event"), log);
+    }
+
+    // ==================== close semantics / late contributions ====================
+
+    @Test
+    void publishAfterCloseThrows() {
+        Container container = Freeway.create(binder -> {});
+        EventBus bus = container.get(EventBus.class);
+        bus.close();
+
+        assertThrows(IllegalStateException.class,
+            () -> bus.publish(new PostCreatedEvent(new Post("x"))));
+        assertThrows(IllegalStateException.class,
+            () -> bus.publish("topic", "payload"));
+        assertThrows(IllegalStateException.class,
+            () -> bus.publishAsync(new PostCreatedEvent(new Post("x"))));
+        assertThrows(IllegalStateException.class,
+            () -> bus.publishAsync("topic", "payload"));
+        assertThrows(IllegalStateException.class,
+            () -> bus.subscribe(PostCreatedEvent.class, e -> {}));
+        assertThrows(IllegalStateException.class,
+            () -> bus.subscribe("topic", p -> {}));
+        assertThrows(IllegalStateException.class,
+            () -> bus.setEventBridge((t, e) -> {}));
+        container.close();
+    }
+
+    @Test
+    void closeIsIdempotent() {
+        Container container = Freeway.create(binder -> {});
+        EventBus bus = container.get(EventBus.class);
+        bus.close();
+        assertDoesNotThrow(() -> bus.close());
+        assertDoesNotThrow(() -> bus.close());
+        container.close();
+    }
+
+    @Test
+    void publishNullEventThrows() {
+        Container container = Freeway.create(binder -> {});
+        EventBus bus = container.get(EventBus.class);
+        assertThrows(NullPointerException.class, () -> bus.publish((Object) null));
+        container.close();
+    }
+
+    @Test
+    void moduleSubscriberAddedAfterFirstPublishIsPickedUp() {
+        Container container = Freeway.create(binder -> {});
+        EventBus bus = container.get(EventBus.class);
+        AtomicBoolean received = new AtomicBoolean();
+
+        bus.publish(new PostCreatedEvent(new Post("first"))); // builds the index
+        container.extension(EventSubscriber.class).add(
+            null,
+            EventSubscriber.of(PostCreatedEvent.class, e -> received.set(true))
+        );
+        bus.publish(new PostCreatedEvent(new Post("second")));
+
+        assertTrue(received.get(),
+            "module subscriber added after the first publish must receive events");
+        container.close();
+    }
+
+    @Test
+    void deadEventIsNotBridged() {
+        Container container = Freeway.create(binder -> {});
+        EventBus bus = container.get(EventBus.class);
+        List<String> bridged = new ArrayList<>();
+        bus.setEventBridge(
+            (topic, event) -> bridged.add(topic + "=" + event.getClass().getSimpleName())
+        );
+
+        bus.publish(new PostCreatedEvent(new Post("x"))); // zero subscribers -> DeadEvent
+
+        assertFalse(bridged.stream().anyMatch(s -> s.startsWith("DeadEvent")),
+            "DeadEvent diagnostics must not reach the MQ bridge: " + bridged);
+        assertEquals(1, bridged.size(),
+            "the original event should still be bridged: " + bridged);
+        container.close();
     }
 
     @Test

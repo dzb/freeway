@@ -15,11 +15,13 @@ public final class EventBus implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(EventBus.class);
 
     private final Container container;
+    private volatile boolean closed;
     private volatile EventBridge bridge;
     private volatile Executor asyncExecutor;
     private volatile ExecutorService defaultAsyncExecutor;
     private volatile Map<Class<?>, List<Consumer<Object>>> moduleClassIndex;
     private volatile Map<String, List<Consumer<Object>>> moduleTopicIndex;
+    private volatile long moduleIndexVersion = -1;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
         new ConcurrentHashMap<>();
     private final Map<String, List<Subscription<?>>> runtimeTopicSubs =
@@ -37,6 +39,7 @@ public final class EventBus implements AutoCloseable {
 
     /** Wire an event bridge (Kafka, RabbitMQ, etc.) after construction. */
     public void setEventBridge(EventBridge bridge) {
+        requireOpen();
         this.bridge = Objects.requireNonNull(bridge, "bridge");
     }
 
@@ -51,6 +54,8 @@ public final class EventBus implements AutoCloseable {
      * If no scope is active, the event is published immediately.</p>
      */
     public <E> void publish(E event) {
+        Objects.requireNonNull(event, "event");
+        requireOpen();
         // DeadEvent always dispatches immediately — it is a diagnostic
         // event that fires when zero subscribers exist, and must not be
         // re-deferred during drain of committed events.
@@ -100,7 +105,7 @@ public final class EventBus implements AutoCloseable {
             publish(new DeadEvent(this, event));
         }
 
-        if (bridge != null) {
+        if (bridge != null && !(event instanceof DeadEvent)) {
             bridge.send(resolveTopic(eventType), event);
         }
     }
@@ -115,6 +120,8 @@ public final class EventBus implements AutoCloseable {
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
     public void publish(String topic, Object payload) {
+        Objects.requireNonNull(topic, "topic");
+        requireOpen();
         if (Defer.isActive()) {
             Defer.defer(() -> dispatchTopic(topic, payload));
             return;
@@ -123,7 +130,6 @@ public final class EventBus implements AutoCloseable {
     }
 
     private void dispatchTopic(String topic, Object payload) {
-        Objects.requireNonNull(topic, "topic");
         List<Consumer<Object>> moduleHandlers = topicSubscribers(topic);
         List<Subscription<?>> runtimeHandlers = runtimeTopicSubs.getOrDefault(
             topic,
@@ -164,6 +170,7 @@ public final class EventBus implements AutoCloseable {
 
     /** Set a custom executor for async dispatch. Defaults to virtual threads. */
     public void setAsyncExecutor(Executor executor) {
+        requireOpen();
         this.asyncExecutor = Objects.requireNonNull(executor, "executor");
     }
 
@@ -178,11 +185,15 @@ public final class EventBus implements AutoCloseable {
 
     /** Async version of {@link #publish(Object)}. */
     public <E> void publishAsync(E event) {
+        Objects.requireNonNull(event, "event");
+        requireOpen();
         executor().execute(() -> publish(event));
     }
 
     /** Async version of {@link #publish(String, Object)}. */
     public void publishAsync(String topic, Object payload) {
+        Objects.requireNonNull(topic, "topic");
+        requireOpen();
         executor().execute(() -> publish(topic, payload));
     }
 
@@ -192,6 +203,7 @@ public final class EventBus implements AutoCloseable {
         Class<E> eventType,
         Consumer<E> handler
     ) {
+        requireOpen();
         Subscription<E> sub = new Subscription<>(eventType, handler);
         runtimeSubs
             .computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
@@ -205,6 +217,7 @@ public final class EventBus implements AutoCloseable {
         String topic,
         Consumer<Object> handler
     ) {
+        requireOpen();
         Subscription<Object> sub = new Subscription<>(
             Object.class,
             handler,
@@ -230,6 +243,10 @@ public final class EventBus implements AutoCloseable {
 
     @Override
     public void close() {
+        if (closed) {
+            return;
+        }
+        closed = true;
         runtimeSubs.clear();
         runtimeTopicSubs.clear();
         if (defaultAsyncExecutor != null) {
@@ -239,6 +256,12 @@ public final class EventBus implements AutoCloseable {
                 LOG.warn("Failed to close default async executor", e);
             }
             defaultAsyncExecutor = null;
+        }
+    }
+
+    private void requireOpen() {
+        if (closed) {
+            throw new IllegalStateException("EventBus is closed");
         }
     }
 
@@ -257,8 +280,11 @@ public final class EventBus implements AutoCloseable {
     }
 
     private synchronized void ensureIndexed() {
-        if (moduleClassIndex != null) return;
         Extension<?> ext = container.extension(EventSubscriber.class);
+        long version = ext.version();
+        if (moduleClassIndex != null && moduleIndexVersion == version) {
+            return;
+        }
         var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
         var topicIdx = new HashMap<String, List<Consumer<Object>>>();
         for (Object entry : ext.all()) {
@@ -276,6 +302,7 @@ public final class EventBus implements AutoCloseable {
         }
         moduleClassIndex = classIdx;
         moduleTopicIndex = topicIdx;
+        moduleIndexVersion = version;
     }
 
     private static <E> Consumer<Object> adapt(EventSubscriber<E> sub) {

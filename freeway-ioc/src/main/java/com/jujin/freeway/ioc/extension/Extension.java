@@ -35,6 +35,8 @@ public final class Extension<V> {
     private final Set<String> ids = new LinkedHashSet<>();
     private final Class<V> entryType;
     private volatile List<V> sorted;
+    private final java.util.concurrent.atomic.AtomicLong version =
+        new java.util.concurrent.atomic.AtomicLong();
 
     public Extension(Class<V> entryType) {
         this.entryType = Objects.requireNonNull(entryType, "entryType");
@@ -62,7 +64,16 @@ public final class Extension<V> {
         Entry entry = new Entry(normalizedId, value);
         entries.add(entry);
         sorted = null;
+        version.incrementAndGet();
         return entry;
+    }
+
+    /**
+     * Monotonic change counter. Incremented whenever a contribution is added,
+     * letting consumers (e.g. the event bus) refresh cached views lazily.
+     */
+    public long version() {
+        return version.get();
     }
 
     /**

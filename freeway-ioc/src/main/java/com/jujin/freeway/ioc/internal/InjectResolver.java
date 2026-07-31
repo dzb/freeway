@@ -180,16 +180,19 @@ final class InjectResolver {
     }
 
     private Object resolveConfiguredValue(AnnotationLookup lookup, Class<?> targetType) {
+        // Resolve SymbolSource/Coercer through the container so a primary
+        // override is honored at every injection site (constructor, field,
+        // @Value, @Symbol) instead of hard-coding the built-in instance.
         var symbol = lookup.annotation(Symbol.class);
         if (symbol.isPresent()) {
             return coerceConfiguredValue(targetType,
-                container.symbolSource().resolve(symbol.get().value()), lookup);
+                container.get(SymbolSource.class).resolve(symbol.get().value()), lookup);
         }
 
         var value = lookup.annotation(Value.class);
         if (value.isPresent()) {
             return coerceConfiguredValue(targetType,
-                container.symbolSource().expand(value.get().value()), lookup);
+                container.get(SymbolSource.class).expand(value.get().value()), lookup);
         }
 
         return null;
@@ -199,9 +202,9 @@ final class InjectResolver {
         var intermediateType = lookup.annotation(IntermediateType.class);
         Object value = rawValue;
         if (intermediateType.isPresent()) {
-            value = container.coercer().coerce(rawValue, intermediateType.get().value());
+            value = container.get(Coercer.class).coerce(rawValue, intermediateType.get().value());
         }
-        return container.coercer().coerce(value, targetType);
+        return container.get(Coercer.class).coerce(value, targetType);
     }
 
     private Object resolveValue(
@@ -211,14 +214,6 @@ final class InjectResolver {
         Class<?> targetType,
         boolean parameterMode
     ) {
-        if (parameterMode) {
-            if (targetType == SymbolSource.class) {
-                return container.symbolSource();
-            }
-            if (targetType == Coercer.class) {
-                return container.coercer();
-            }
-        }
         if (targetType == Logger.class
                 && (parameterMode || hasInjectionAnnotation(lookup))) {
             return resolveLogger(ownerType, lookup);
