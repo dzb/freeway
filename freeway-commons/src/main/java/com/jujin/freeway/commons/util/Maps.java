@@ -1,6 +1,11 @@
 package com.jujin.freeway.commons.util;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Map utility methods: flattening nested structures with cycle detection.

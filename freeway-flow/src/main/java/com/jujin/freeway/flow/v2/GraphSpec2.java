@@ -3,7 +3,6 @@ package com.jujin.freeway.flow.v2;
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.flow.ConditionComponent;
 import com.jujin.freeway.flow.Graph;
 import com.jujin.freeway.flow.Link;
 import com.jujin.freeway.flow.NamedTaskComponent;

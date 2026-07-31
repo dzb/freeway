@@ -17,7 +17,12 @@ import com.jujin.freeway.db.schema.SqlTypeMapping;
 import java.lang.reflect.Modifier;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class RowMapperResolver {

@@ -2,7 +2,12 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 final class Shutdown {
     private final Map<ServiceKey, Object> serviceCache;

@@ -19,9 +19,10 @@ mvn -pl freeway-http -am test      # module + upstream deps
 | `freeway-ioc` | Container, binding DSL, scopes, injection, extensions | commons |
 | `freeway-boot` | Launcher, runtime lifecycle, profiles, config cascade | ioc |
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc |
-| `freeway-db` | JDBC, ORM, pooling, migrations | commons |
+| `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons |
+| `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution | ioc + commons |
 
-Extension adapters (Undertow, HikariCP, Kafka) live in
+Extension adapters (Undertow, Jetty, HikariCP, Kafka) live in
 [freeway-ext](https://github.com/dzb/freeway-ext). Core modules have zero
 external dependencies.
 

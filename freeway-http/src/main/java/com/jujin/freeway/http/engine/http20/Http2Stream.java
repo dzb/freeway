@@ -1,7 +1,13 @@
 package com.jujin.freeway.http.engine.http20;
 
 import com.jujin.freeway.http.engine.H2ResponseBridge;
-import com.jujin.freeway.http.engine.http20.frame.*;
+import com.jujin.freeway.http.engine.http20.frame.BaseFrame;
+import com.jujin.freeway.http.engine.http20.frame.DataFrame;
+import com.jujin.freeway.http.engine.http20.frame.FrameFlag;
+import com.jujin.freeway.http.engine.http20.frame.FrameHeader;
+import com.jujin.freeway.http.engine.http20.frame.FrameType;
+import com.jujin.freeway.http.engine.http20.frame.SettingIdentifier;
+import com.jujin.freeway.http.engine.http20.frame.WindowUpdateFrame;
 import com.jujin.freeway.http.engine.http20.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http20.util.Http2Exception;
 import org.slf4j.Logger;
