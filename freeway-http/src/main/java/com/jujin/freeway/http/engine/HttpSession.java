@@ -96,7 +96,7 @@ public final class HttpSession implements Runnable {
             var parser = new HttpParser(in);
             var ctx = new HttpContextDefault(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
-            ctx.setSecure(connection.isSSL());
+            ctx.setSecure(connection.getSSLSession() != null);
             ctx.setSslSession(connection.getSSLSession());
 
             while (!connection.closed) {
