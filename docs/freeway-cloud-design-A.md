@@ -15,7 +15,7 @@
 |------|-------------|-----------|
 | **公开接口** | `http/` 顶层 — `HttpEngine`, `HttpContext`, `WebServer` | `db/` 顶层 — `Database`, `Pool`, `Dialect`, `Orm` |
 | **配置键** | `HttpConfigKeys` 集中常量类 | `DbConfigKeys` 集中常量类 |
-| **实现隔离** | `engine/` 子包（含 `http11/`, `http20/`, `ws/`） | `internal/` 子包（`DatabaseImpl`, `PoolDefault` 等） |
+| **实现隔离** | `engine/` 子包（含 `http11/`, `http2/`, `ws/`） | `internal/` 子包（`DatabaseImpl`, `PoolDefault` 等） |
 | **独立子系统** | `filter/`, `route/`, `sse/`, `websocket/`, `staticfile/` | `schema/`, `migration/` |
 | **领域事件** | `event/` — `HttpServerStartedEvent`, `HttpRequestEvent` | 无 |
 | **独立构建器** | `WebServerBuilder` | `DatabaseBuilder` |

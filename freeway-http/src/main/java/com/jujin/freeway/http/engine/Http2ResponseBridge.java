@@ -8,7 +8,7 @@ import java.util.Map;
  * When set on the context, header and status flows go through this
  * bridge and the body is written directly to the underlying stream.
  *
- * <p>{@link com.jujin.freeway.http.engine.http20.Http2Stream} implements
+ * <p>{@link com.jujin.freeway.http.engine.http2.Http2Stream} implements
  * this interface. Tests can supply a mock implementation without
  * needing a full HTTP/2 connection.
  */
