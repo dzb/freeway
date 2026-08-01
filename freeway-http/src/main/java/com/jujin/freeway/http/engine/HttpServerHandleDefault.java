@@ -11,9 +11,9 @@ import org.slf4j.LoggerFactory;
 /**
  * Lifecycle handle for the built-in HTTP engine.
  */
-public final class ServerHandle implements HttpServerHandle {
+public final class HttpServerHandleDefault implements HttpServerHandle {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ServerHandle.class);
+    private static final Logger LOG = LoggerFactory.getLogger(HttpServerHandleDefault.class);
 
     private final ServerSocket serverSocket;
     private final Thread acceptor;
@@ -23,7 +23,7 @@ public final class ServerHandle implements HttpServerHandle {
     private final String host;
     private final int port;
 
-    public ServerHandle(ServerSocket serverSocket, Thread acceptor,
+    public HttpServerHandleDefault(ServerSocket serverSocket, Thread acceptor,
                  Duration shutdownGrace, AtomicBoolean finished,
                  ConnectionRegistry registry,
                  String host, int port) {

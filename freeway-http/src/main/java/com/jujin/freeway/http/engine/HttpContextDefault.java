@@ -21,7 +21,7 @@ import java.util.Optional;
  * {@link HttpContext} implementation backed by a raw socket connection.
  * Writes HTTP/1.1 response wire format directly to the output stream.
  */
-public final class FreewayHttpContext extends HttpContext {
+public final class HttpContextDefault extends HttpContext {
 
     private String method, path, rawQuery;
     private Map<String, List<String>> requestHeaders, queryParams;
@@ -33,14 +33,14 @@ public final class FreewayHttpContext extends HttpContext {
     private final Map<String, String> responseHeaders = new LinkedHashMap<>();
     private int responseStatus = 200;
     private boolean responded;
-    H2ResponseBridge h2Bridge; // non-null → HTTP/2 path
+    Http2ResponseBridge h2Bridge; // non-null → HTTP/2 path
     private byte[] cachedBody;
     private boolean secure;
     private javax.net.ssl.SSLSession sslSession;
     // Shared drain buffer — reused across drainUnreadBody calls
     private byte[] drainBuf;
 
-    public FreewayHttpContext(JsonCodec jsonCodec, Coercer coercer) {
+    public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer) {
         super(jsonCodec, coercer);
     }
 

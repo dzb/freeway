@@ -372,7 +372,7 @@ class FreewayHttpEngineTest {
     void webSocketSubprotocolIsNegotiated() throws Exception {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
-            .wsRoute(WebSocketRoute.of("/ws/sub", new com.jujin.freeway.http.websocket.WebSocketEndpoint() {
+            .webSocketRoute(WebSocketRoute.of("/ws/sub", new com.jujin.freeway.http.websocket.WebSocketEndpoint() {
                 @Override
                 public com.jujin.freeway.http.websocket.WebSocketListener open(
                         com.jujin.freeway.http.websocket.WebSocketSession session) {

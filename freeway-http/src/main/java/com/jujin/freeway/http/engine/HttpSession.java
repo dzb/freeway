@@ -11,7 +11,7 @@ import com.jujin.freeway.http.engine.http20.Http2Connection;
 import com.jujin.freeway.http.engine.http20.Http2Stream;
 import com.jujin.freeway.http.engine.ws.WebSocket;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
-import com.jujin.freeway.http.engine.ws.WsUtil;
+import com.jujin.freeway.http.engine.ws.WebSocketUtil;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,7 +94,7 @@ public final class HttpSession implements Runnable {
 
             // HTTP/1.1 loop — reuse parser + context across requests
             var parser = new HttpParser(in);
-            var ctx = new FreewayHttpContext(jsonCodec, coercer);
+            var ctx = new HttpContextDefault(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
             ctx.setSecure(connection.isSSL());
             ctx.setSslSession(connection.getSSLSession());
@@ -245,7 +245,7 @@ public final class HttpSession implements Runnable {
 
             var rc = HttpContext.createRequestContext(
                 headerValue(reqHeaders, "x-request-id"));
-            var ctx = new FreewayHttpContext(jsonCodec, coercer);
+            var ctx = new HttpContextDefault(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
             ctx.setSecure(sslSession != null);
             ctx.setSslSession(sslSession);
@@ -292,7 +292,7 @@ public final class HttpSession implements Runnable {
                 return;
             }
             String acceptKey;
-            try { acceptKey = WsUtil.makeAcceptKey(wsKey); }
+            try { acceptKey = WebSocketUtil.makeAcceptKey(wsKey); }
             catch (Exception e) {
                 sendUpgradeError(connection.outputStream(), 500, "Key generation failed");
                 return;

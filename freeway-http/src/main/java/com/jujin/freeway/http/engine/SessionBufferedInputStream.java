@@ -7,14 +7,14 @@ import java.io.InputStream;
  * Non-synchronized buffered input stream designed for virtual threads
  * where each connection has exclusive access to its streams.
  */
-public final class BufferedInputStream extends InputStream {
+public final class SessionBufferedInputStream extends InputStream {
 
     private final InputStream in;
     private byte[] buf = new byte[1024];
     private int count;
     private int pos;
 
-    public BufferedInputStream(InputStream in) {
+    public SessionBufferedInputStream(InputStream in) {
         this.in = in;
     }
 

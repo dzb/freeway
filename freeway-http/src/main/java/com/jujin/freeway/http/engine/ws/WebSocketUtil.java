@@ -4,9 +4,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 
-public final class WsUtil {
+public final class WebSocketUtil {
 
-    private WsUtil() {}
+    private WebSocketUtil() {}
 
     private static final String MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 

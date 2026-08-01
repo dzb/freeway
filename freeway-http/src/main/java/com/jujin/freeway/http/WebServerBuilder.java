@@ -38,8 +38,8 @@ public final class WebServerBuilder {
 
     private final List<Route> routes = new ArrayList<>();
     private final List<RouteGroup> routeGroups = new ArrayList<>();
-    private final List<WebSocketRoute> wsRoutes = new ArrayList<>();
-    private final List<WebSocketGroup> wsGroups = new ArrayList<>();
+    private final List<WebSocketRoute> webSocketRoutes = new ArrayList<>();
+    private final List<WebSocketGroup> webSocketGroups = new ArrayList<>();
     private final List<HttpFilter> filters = new ArrayList<>();
     private final List<ExceptionMapper> exceptionMappers = new ArrayList<>();
     private final List<StaticResourceMount> staticMounts = new ArrayList<>();
@@ -79,13 +79,13 @@ public final class WebServerBuilder {
         return this;
     }
 
-    public WebServerBuilder wsRoute(WebSocketRoute route) {
-        wsRoutes.add(Objects.requireNonNull(route, "wsRoute"));
+    public WebServerBuilder webSocketRoute(WebSocketRoute route) {
+        webSocketRoutes.add(Objects.requireNonNull(route, "webSocketRoute"));
         return this;
     }
 
-    public WebServerBuilder wsGroup(WebSocketGroup group) {
-        wsGroups.add(Objects.requireNonNull(group, "wsGroup"));
+    public WebServerBuilder webSocketGroup(WebSocketGroup group) {
+        webSocketGroups.add(Objects.requireNonNull(group, "webSocketGroup"));
         return this;
     }
 
@@ -141,7 +141,7 @@ public final class WebServerBuilder {
             engine = new FreewayHttpEngine(jsonCodec, coercer);
         }
         var routeIndex = new RouteIndex(routes, routeGroups);
-        var wsIndex = new WebSocketIndex(wsRoutes, wsGroups);
+        var wsIndex = new WebSocketIndex(webSocketRoutes, webSocketGroups);
         var pipeline = new RequestPipeline(
             routeIndex, wsIndex, corsFilter, healthFilter,
             List.copyOf(staticMounts),

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class FreewayHttpContextTest {
+class HttpContextDefaultTest {
 
     private static final com.jujin.freeway.commons.json.JsonCodec CODEC =
             new com.jujin.freeway.commons.json.JsonCodecDefault();
@@ -17,7 +17,7 @@ class FreewayHttpContextTest {
             new com.jujin.freeway.commons.coercion.CoercerDefault();
 
     /** Simulates an H2 stream's header map without needing a full Http2Connection. */
-    private static H2ResponseBridge mockBridge() {
+    private static Http2ResponseBridge mockBridge() {
         Map<String, List<String>> headers = new LinkedHashMap<>();
         return () -> headers;
     }
@@ -25,7 +25,7 @@ class FreewayHttpContextTest {
     @Test
     void h2BodyOnlyNoWireFormat() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         ctx.h2Bridge = mockBridge();
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
 
@@ -42,7 +42,7 @@ class FreewayHttpContextTest {
 
     @Test
     void h2HeaderSetRoutesToBridge() {
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         var bridge = mockBridge();
         ctx.h2Bridge = bridge;
 
@@ -54,7 +54,7 @@ class FreewayHttpContextTest {
 
     @Test
     void headerSetRejectsCRLFInName() {
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         assertThrows(IllegalArgumentException.class, () ->
             ctx.headerSet("X-Test\r\nInjected", "yes"),
                 "Header name with CRLF must be rejected");
@@ -67,7 +67,7 @@ class FreewayHttpContextTest {
     void h2SseIncludesContentType() throws Exception {
         var out = new java.io.ByteArrayOutputStream();
         var bridge = mockBridge();
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         ctx.h2Bridge = bridge;
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
 
@@ -87,7 +87,7 @@ class FreewayHttpContextTest {
     void h2SseSkipsHttp1Framing() throws Exception {
         var out = new ByteArrayOutputStream();
         var bridge = mockBridge();
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         ctx.h2Bridge = bridge;
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
 
@@ -108,7 +108,7 @@ class FreewayHttpContextTest {
     void h2OutputRespectsNoBodyStatus() throws Exception {
         var out = new ByteArrayOutputStream();
         var bridge = mockBridge();
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         ctx.h2Bridge = bridge;
         ctx.reset("POST", "/", null, Map.of(), null, -1, false, out, null, false, false);
 
@@ -121,7 +121,7 @@ class FreewayHttpContextTest {
 
     @Test
     void queryParamsAreDeeplyUnmodifiable() {
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         ctx.reset("GET", "/path", "a=1&a=2", Map.of(), null, -1, false,
                 new java.io.ByteArrayOutputStream(), null, false, false);
 
@@ -135,7 +135,7 @@ class FreewayHttpContextTest {
     @Test
     void h2DefaultsToHttp1WhenNoBridge() throws Exception {
         var out = new ByteArrayOutputStream();
-        var ctx = new FreewayHttpContext(CODEC, COERCER);
+        var ctx = new HttpContextDefault(CODEC, COERCER);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
 
         ctx.send(200, "ok");

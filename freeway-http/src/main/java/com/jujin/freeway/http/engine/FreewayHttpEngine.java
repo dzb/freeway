@@ -83,7 +83,7 @@ public final class FreewayHttpEngine implements HttpEngine {
 
         String scheme = sslContext != null ? "https" : "http";
         LOG.info("Freeway HTTP engine ({}) started on {}:{}", scheme, config.host(), port);
-        return new ServerHandle(ss, acceptor,
+        return new HttpServerHandleDefault(ss, acceptor,
             config.shutdownGrace(), finished, registry, config.host(), port);
     }
 }

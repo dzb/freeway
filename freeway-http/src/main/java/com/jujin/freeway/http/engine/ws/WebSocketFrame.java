@@ -202,7 +202,7 @@ public final class WebSocketFrame {
         this.payload = new byte[payloadLength];
     }
 
-    /** Writes frame without flushing — for high-frequency sends where BufferedOutputStream batching is preferred. */
+    /** Writes frame without flushing — for high-frequency sends where SessionBufferedOutputStream batching is preferred. */
     void writeWithoutFlush(OutputStream out) throws IOException {
         int header = fin ? 0x80 : 0;
         header |= opCode.value() & 0x0F;

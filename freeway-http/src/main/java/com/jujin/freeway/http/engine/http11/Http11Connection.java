@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.engine.http11;
-import com.jujin.freeway.http.engine.BufferedInputStream;
-import com.jujin.freeway.http.engine.BufferedOutputStream;
+import com.jujin.freeway.http.engine.SessionBufferedInputStream;
+import com.jujin.freeway.http.engine.SessionBufferedOutputStream;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,8 +32,8 @@ public final class Http11Connection {
 
     public Http11Connection(Socket socket, int bufferSize) throws IOException {
         this.socket = socket;
-        this.bufferedIn = new BufferedInputStream(socket.getInputStream());
-        this.bufferedOut = new BufferedOutputStream(socket.getOutputStream(), bufferSize);
+        this.bufferedIn = new SessionBufferedInputStream(socket.getInputStream());
+        this.bufferedOut = new SessionBufferedOutputStream(socket.getOutputStream(), bufferSize);
     }
 
 
