@@ -5,7 +5,7 @@ import java.util.Map;
 /**
  * Registry for multiple named {@link Database} instances.
  *
- * <p>Contributions are made via {@code binder.contribute(DatabaseNamed.class)} in IoC mode,
+ * <p>Contributions are made via {@code binder.contribute(NamedDatabase.class)} in IoC mode,
  * or via {@link DatabaseHubImpl} directly in standalone mode.
  */
 public interface DatabaseHub {

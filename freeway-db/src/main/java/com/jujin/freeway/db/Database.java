@@ -35,11 +35,11 @@ public interface Database extends AutoCloseable {
     Query query(String sql, Object... params);
 
     /**
-     * Convenience method accepting a {@link SQL} builder.
+     * Convenience method accepting a {@link Sql} builder.
      *
      * @see #query(String, Object...)
      */
-    default Query query(SQL sql) {
+    default Query query(Sql sql) {
         return query(sql.sql(), sql.args());
     }
 
@@ -53,11 +53,11 @@ public interface Database extends AutoCloseable {
     ExecuteResult execute(String sql, Object... params);
 
     /**
-     * Convenience method accepting a {@link SQL} builder.
+     * Convenience method accepting a {@link Sql} builder.
      *
      * @see #execute(String, Object...)
      */
-    default ExecuteResult execute(SQL sql) {
+    default ExecuteResult execute(Sql sql) {
         return execute(sql.sql(), sql.args());
     }
 

@@ -85,7 +85,7 @@ public final class DbModule implements ModuleEx {
         binder
             .bind(DatabaseHub.class)
             .to(container ->
-                new DatabaseHubImpl(container.extension(DatabaseNamed.class).all())
+                new DatabaseHubImpl(container.extension(NamedDatabase.class).all())
             );
         binder.bind(Orm.class).to(Orm.class);
         binder

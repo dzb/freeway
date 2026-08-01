@@ -210,7 +210,7 @@ class UserDemoTest {
 
             // SQL 构建器：条件查询
             List<User> adults = db.query(
-                SQL.select("*").from("t_user").where("age >= ?", 3)
+                Sql.select("*").from("t_user").where("age >= ?", 3)
                     .orderBy("age DESC")
             ).list(User.class);
 

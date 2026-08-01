@@ -53,7 +53,7 @@
   Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
 
   // 11. SQL 构建器
-  SQL q = SQL.select("*").from("users")
+  Sql q = Sql.select("*").from("users")
       .where("status = ?", 1)
       .orderBy("created_at DESC")
       .limit(10);
@@ -84,7 +84,7 @@
   DDL 自动生成  →  Schema.define() / Schema.ensure()
   ORM 存取      →  Orm.insert / findById / findAll / save (upsert)
   原始 SQL      →  db.execute() / db.query()
-  SQL 构建器    →  SQL.select().from().where().orderBy()
+  SQL 构建器    →  Sql.select().from().where().orderBy()
   Row 列访问    →  row.string("name") / row.integer("age")
   事务处理      →  db.transaction(() -> ...) + EventBus 事务感知
   ```

@@ -271,7 +271,7 @@ A compact JDBC data access layer with ORM:
 - `Database` - SQL execution with positional/named parameters and collection expansion.
 - `Orm` - lightweight CRUD: `insert`, `update`, `delete`, `findById`, `findAll`, `save` (upsert).
 - `Row` - schema-less query result with type-safe column access.
-- `SQL` - programmatic SQL builder: `SQL.insert("t").set("col", v)`.
+- `Sql` - programmatic SQL builder: `Sql.insert("t").set("col", v)`.
 - `RowMapper` - auto-mapping for records, beans, and basic types; `@Column` annotation drives column name matching.
 - Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus.
 - Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via module `.primary()` (same pattern as HTTP engine). HikariCP adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).

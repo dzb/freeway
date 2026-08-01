@@ -2,7 +2,7 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseHub;
-import com.jujin.freeway.db.DatabaseNamed;
+import com.jujin.freeway.db.NamedDatabase;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,10 +18,10 @@ public final class DatabaseHubImpl implements DatabaseHub {
     private final Map<String, Database> databases;
 
     /**
-     * IoC constructor — {@code List<DatabaseNamed>} populated from module
-     * contributions via {@code binder.contribute(DatabaseNamed.class).add(...)}.
+     * IoC constructor — {@code List<NamedDatabase>} populated from module
+     * contributions via {@code binder.contribute(NamedDatabase.class).add(...)}.
      */
-    public DatabaseHubImpl(List<DatabaseNamed> entries) {
+    public DatabaseHubImpl(List<NamedDatabase> entries) {
         this(toMap(entries));
     }
 
@@ -32,9 +32,9 @@ public final class DatabaseHubImpl implements DatabaseHub {
         }
     }
 
-    private static Map<String, Database> toMap(List<DatabaseNamed> entries) {
+    private static Map<String, Database> toMap(List<NamedDatabase> entries) {
         Map<String, Database> map = new LinkedHashMap<>();
-        for (DatabaseNamed entry : entries) {
+        for (NamedDatabase entry : entries) {
             map.put(entry.name(), entry.db());
         }
         return map;

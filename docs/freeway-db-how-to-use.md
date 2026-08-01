@@ -99,10 +99,10 @@ Database audit = ...;
 Container container = Freeway.create(
     new DbModule(),
     binder -> {
-        binder.contribute(DatabaseNamed.class)
-              .add(new DatabaseNamed("primary", primary));
-        binder.contribute(DatabaseNamed.class)
-              .add(new DatabaseNamed("audit", audit));
+        binder.contribute(NamedDatabase.class)
+              .add(new NamedDatabase("primary", primary));
+        binder.contribute(NamedDatabase.class)
+              .add(new NamedDatabase("audit", audit));
     }
 );
 
@@ -249,7 +249,7 @@ List<Row> rows = db.query("SELECT * FROM t_user WHERE id = ?", 1L)
 Row row = rows.get(0);
 String name  = row.string("name");       // 字符串
 Integer age  = row.integer("age");      // 整数
-Long    id   = row.longVal("id");       // 长整型
+Long    id   = row.longValue("id");       // 长整型
 Double score = row.doubleVal("score");  // 浮点数
 List<String> cols = row.columns();      // 获取所有列名
 ```
@@ -262,7 +262,7 @@ List<String> cols = row.columns();      // 获取所有列名
 
 ```java
 List<User> adults = db.query(
-    SQL.select("*")
+    Sql.select("*")
         .from("t_user")
         .where("age >= ?", 3)
         .orderBy("age DESC")
@@ -273,7 +273,7 @@ INSERT 构建器：
 
 ```java
 ExecuteResult r = db.execute(
-    SQL.insert("t_user")
+    Sql.insert("t_user")
         .set("name", "闪电")
         .set("age", 3)
 );

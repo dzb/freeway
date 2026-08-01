@@ -987,7 +987,7 @@ binder.contribute(RowMapping.class)
 ### SQL Builder
 
 ```java
-SQL sql = SQL.select("u.name, o.total")
+Sql sql = Sql.select("u.name, o.total")
     .from("users u")
     .join("orders o").on("u.id = o.user_id")
     .where("u.active = ?", true)
@@ -1320,9 +1320,9 @@ The same entity classes and SQL files work in both environments. Switching modes
 ### DatabaseHub
 
 ```java
-binder.contribute(DatabaseNamed.class)
-    .add(new DatabaseNamed("audit", auditDb))
-    .add(new DatabaseNamed("primary", mainDb));
+binder.contribute(NamedDatabase.class)
+    .add(new NamedDatabase("audit", auditDb))
+    .add(new NamedDatabase("primary", mainDb));
 
 DatabaseHub hub = container.get(DatabaseHub.class);
 Database primary = hub.primary();

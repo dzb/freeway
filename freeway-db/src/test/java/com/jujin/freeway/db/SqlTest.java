@@ -5,44 +5,44 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link SQL} 构建器的单元测试。
+ * {@link Sql} 构建器的单元测试。
  * 直接验证 sql() 和 args() 的输出，无需数据库连接。
  */
-class SQLTest {
+class SqlTest {
 
     // ====================== SELECT ======================
 
     @Test
     void simpleSelect() {
-        SQL q = SQL.select("id, name").from("users");
+        Sql q = Sql.select("id, name").from("users");
         assertEquals("SELECT id, name FROM users", q.sql());
         assertArrayEquals(new Object[0], q.args());
     }
 
     @Test
     void selectWithPositionalParam() {
-        SQL q = SQL.select("*").from("users").where("id = ?", 1);
+        Sql q = Sql.select("*").from("users").where("id = ?", 1);
         assertEquals("SELECT * FROM users WHERE id = ?", q.sql());
         assertArrayEquals(new Object[]{1}, q.args());
     }
 
     @Test
     void selectWithNamedParam() {
-        SQL q = SQL.select("*").from("users").where("name = :name", "john");
+        Sql q = Sql.select("*").from("users").where("name = :name", "john");
         assertEquals("SELECT * FROM users WHERE name = ?", q.sql());
         assertArrayEquals(new Object[]{"john"}, q.args());
     }
 
     @Test
     void selectWithDollarParam() {
-        SQL q = SQL.select("*").from("users").where("status = $status", "active");
+        Sql q = Sql.select("*").from("users").where("status = $status", "active");
         assertEquals("SELECT * FROM users WHERE status = ?", q.sql());
         assertArrayEquals(new Object[]{"active"}, q.args());
     }
 
     @Test
     void selectWithMixedParams() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .where("id = :id and name = ?", 1, "john");
         assertEquals("SELECT * FROM users WHERE id = ? and name = ?", q.sql());
         assertArrayEquals(new Object[]{1, "john"}, q.args());
@@ -50,7 +50,7 @@ class SQLTest {
 
     @Test
     void selectWithMultipleWhere() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .where("id = ?", 1)
             .where("name = ?", "john");
         assertEquals("SELECT * FROM users WHERE id = ? AND name = ?", q.sql());
@@ -59,7 +59,7 @@ class SQLTest {
 
     @Test
     void selectWithOrWhere() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .where("status = ?", 1)
             .orWhere("role = ?", "admin");
         assertEquals("SELECT * FROM users WHERE status = ? OR role = ?", q.sql());
@@ -68,7 +68,7 @@ class SQLTest {
 
     @Test
     void selectWithWhereNot() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .where("status = ?", 1)
             .whereNot("deleted = ?", 1);
         assertEquals("SELECT * FROM users WHERE status = ? AND NOT deleted = ?", q.sql());
@@ -77,7 +77,7 @@ class SQLTest {
 
     @Test
     void selectWithWhereGroup() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .whereGroup(g -> g.where("status = ?", "ACTIVE")
                 .orWhere("role = ?", "admin"));
         assertEquals("SELECT * FROM users WHERE (status = ? OR role = ?)", q.sql());
@@ -86,7 +86,7 @@ class SQLTest {
 
     @Test
     void selectWithNestedWhereGroup() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .whereGroup(g -> g.where("tenant_id = ?", 7)
                 .whereGroup(h -> h.where("status = ?", "ACTIVE")
                     .orWhere("role = ?", "admin")));
@@ -96,7 +96,7 @@ class SQLTest {
 
     @Test
     void selectWithWhereNotGroup() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .whereNotGroup(g -> g.where("deleted = ?", true)
                 .where("archived = ?", true));
         assertEquals("SELECT * FROM users WHERE NOT (deleted = ? AND archived = ?)", q.sql());
@@ -106,14 +106,14 @@ class SQLTest {
     @Test
     void joinMustBeClosedByOnBeforeNextClause() {
         assertThrows(IllegalStateException.class, () ->
-            SQL.select("*").from("users")
+            Sql.select("*").from("users")
                 .join("orders")
                 .where("orders.user_id = users.id"));
     }
 
     @Test
     void selectWithWhereOrWhereWhereNot() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .where("a = ?", 1)
             .orWhere("b = ?", 2)
             .whereNot("c = ?", 3)
@@ -124,26 +124,26 @@ class SQLTest {
 
     @Test
     void selectWithOrderBy() {
-        SQL q = SQL.select("*").from("users").where("id = ?", 1).orderBy("name DESC");
+        Sql q = Sql.select("*").from("users").where("id = ?", 1).orderBy("name DESC");
         assertEquals("SELECT * FROM users WHERE id = ? ORDER BY name DESC", q.sql());
         assertArrayEquals(new Object[]{1}, q.args());
     }
 
     @Test
     void selectWithLimit() {
-        SQL q = SQL.select("*").from("users").limit(10);
+        Sql q = Sql.select("*").from("users").limit(10);
         assertEquals("SELECT * FROM users LIMIT 10", q.sql());
     }
 
     @Test
     void selectWithLimitOffset() {
-        SQL q = SQL.select("*").from("users").limit(10).offset(20);
+        Sql q = Sql.select("*").from("users").limit(10).offset(20);
         assertEquals("SELECT * FROM users LIMIT 10 OFFSET 20", q.sql());
     }
 
     @Test
     void selectWithJoin() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .join("orders").on("users.id = orders.user_id")
             .where("orders.total > ?", 100);
         assertEquals(
@@ -154,7 +154,7 @@ class SQLTest {
 
     @Test
     void selectWithLeftJoin() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .leftJoin("orders").on("users.id = orders.user_id");
         assertEquals(
             "SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id",
@@ -163,7 +163,7 @@ class SQLTest {
 
     @Test
     void selectWithInnerJoin() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .innerJoin("orders").on("users.id = orders.user_id");
         assertEquals(
             "SELECT * FROM users INNER JOIN orders ON users.id = orders.user_id",
@@ -172,7 +172,7 @@ class SQLTest {
 
     @Test
     void selectWithGroupByAndHaving() {
-        SQL q = SQL.select("dept, count(*) as cnt").from("users")
+        Sql q = Sql.select("dept, count(*) as cnt").from("users")
             .groupBy("dept")
             .having("cnt > ?", 5);
         assertEquals(
@@ -183,7 +183,7 @@ class SQLTest {
 
     @Test
     void selectWithHavingGroup() {
-        SQL q = SQL.select("dept, count(*) as cnt").from("users")
+        Sql q = Sql.select("dept, count(*) as cnt").from("users")
             .groupBy("dept")
             .havingGroup(g -> g.where("cnt > ?", 5)
                 .whereNot("dept = ?", "tmp"));
@@ -195,10 +195,10 @@ class SQLTest {
 
     @Test
     void selectWithUnionAllAndOuterOrderBy() {
-        SQL left = SQL.select("id").from("active_users").where("status = ?", "A");
-        SQL right = SQL.select("id").from("archived_users").where("status = ?", "B");
+        Sql left = Sql.select("id").from("active_users").where("status = ?", "A");
+        Sql right = Sql.select("id").from("archived_users").where("status = ?", "B");
 
-        SQL q = left.unionAll(right).orderBy("id DESC");
+        Sql q = left.unionAll(right).orderBy("id DESC");
 
         assertEquals(
             "(SELECT id FROM active_users WHERE status = ?) UNION ALL (SELECT id FROM archived_users WHERE status = ?) ORDER BY id DESC",
@@ -209,18 +209,18 @@ class SQLTest {
     @Test
     void unionRejectsFurtherWhereClauses() {
         assertThrows(IllegalStateException.class, () ->
-            SQL.select("*").from("users")
-                .union(SQL.select("*").from("archived_users"))
+            Sql.select("*").from("users")
+                .union(Sql.select("*").from("archived_users"))
                 .where("id = ?", 1));
     }
 
     @Test
     void selectWithCommonTableExpression() {
-        SQL activeUsers = SQL.select("id")
+        Sql activeUsers = Sql.select("id")
             .from("users")
             .where("status = ?", "ACTIVE");
 
-        SQL q = SQL.select("id")
+        Sql q = Sql.select("id")
             .with("active_users", activeUsers)
             .from("active_users")
             .where("id > ?", 10);
@@ -233,8 +233,8 @@ class SQLTest {
 
     @Test
     void selectWithSubqueryArgument() {
-        SQL sub = SQL.select("user_id").from("orders").where("total > ?", 100);
-        SQL q = SQL.select("*").from("users").where("id in (?)", sub);
+        Sql sub = Sql.select("user_id").from("orders").where("total > ?", 100);
+        Sql q = Sql.select("*").from("users").where("id in (?)", sub);
         assertEquals("SELECT * FROM users WHERE id in (SELECT user_id FROM orders WHERE total > ?)", q.sql());
         assertArrayEquals(new Object[]{100}, q.args());
     }
@@ -242,39 +242,39 @@ class SQLTest {
     @Test
     void insertRejectsWhere() {
         assertThrows(IllegalStateException.class, () ->
-            SQL.insert("users").where("id = ?", 1));
+            Sql.insert("users").where("id = ?", 1));
     }
 
     @Test
     void selectRejectsSet() {
         assertThrows(IllegalStateException.class, () ->
-            SQL.select("*").from("users").set("name = ?", "john"));
+            Sql.select("*").from("users").set("name = ?", "john"));
     }
 
     @Test
     void updateRejectsGroupBy() {
         assertThrows(IllegalStateException.class, () ->
-            SQL.update("users").groupBy("dept"));
+            Sql.update("users").groupBy("dept"));
     }
 
     @Test
     void selectRejectsOnConflict() {
         assertThrows(IllegalStateException.class, () ->
-            SQL.select("*").from("users").onConflict("id"));
+            Sql.select("*").from("users").onConflict("id"));
     }
 
     // ====================== UPDATE ======================
 
     @Test
     void simpleUpdate() {
-        SQL q = SQL.update("users").set("name = ?", "john").where("id = ?", 1);
+        Sql q = Sql.update("users").set("name = ?", "john").where("id = ?", 1);
         assertEquals("UPDATE users SET name = ? WHERE id = ?", q.sql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
     @Test
     void updateWithMultipleSets() {
-        SQL q = SQL.update("users")
+        Sql q = Sql.update("users")
             .set("name = ?", "john")
             .set("status = ?", 1)
             .where("id = ?", 42);
@@ -284,7 +284,7 @@ class SQLTest {
 
     @Test
     void updateWithNamedParams() {
-        SQL q = SQL.update("users")
+        Sql q = Sql.update("users")
             .set("name = :name", "john")
             .where("id = :id", 1);
         assertEquals("UPDATE users SET name = ? WHERE id = ?", q.sql());
@@ -293,7 +293,7 @@ class SQLTest {
 
     @Test
     void updateWithReturning() {
-        SQL q = SQL.update("users")
+        Sql q = Sql.update("users")
             .set("name = ?", "john")
             .where("id = ?", 1)
             .returning("id");
@@ -305,21 +305,21 @@ class SQLTest {
 
     @Test
     void simpleInsert() {
-        SQL q = SQL.insert("users").set("name", "john").set("status", 1);
+        Sql q = Sql.insert("users").set("name", "john").set("status", 1);
         assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.sql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
     @Test
     void insertWithReturning() {
-        SQL q = SQL.insert("users").set("name", "john").returning("id");
+        Sql q = Sql.insert("users").set("name", "john").returning("id");
         assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id", q.sql());
         assertArrayEquals(new Object[]{"john"}, q.args());
     }
 
     @Test
     void returningValidatedAgainstDialect() {
-        SQL q = SQL.insert("users").set("name", "john").returning("id");
+        Sql q = Sql.insert("users").set("name", "john").returning("id");
         assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id",
             q.sql(new com.jujin.freeway.db.schema.PostgresDialect()));
         assertThrows(SqlException.class, () ->
@@ -328,7 +328,7 @@ class SQLTest {
 
     @Test
     void onConflictValidatedAgainstDialect() {
-        SQL q = SQL.insert("users").set("id", 1).onConflict("id").doNothing();
+        Sql q = Sql.insert("users").set("id", 1).onConflict("id").doNothing();
         q.sql(new com.jujin.freeway.db.schema.PostgresDialect());
         assertThrows(SqlException.class, () ->
             q.sql(new com.jujin.freeway.db.schema.MySqlDialect()));
@@ -336,7 +336,7 @@ class SQLTest {
 
     @Test
     void insertWithOnConflictDoNothing() {
-        SQL q = SQL.insert("users").set("id", 1).set("name", "john")
+        Sql q = Sql.insert("users").set("id", 1).set("name", "john")
             .onConflict("id")
             .doNothing();
         assertEquals("INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO NOTHING", q.sql());
@@ -345,7 +345,7 @@ class SQLTest {
 
     @Test
     void insertWithOnConflictDoUpdateSet() {
-        SQL q = SQL.insert("users").set("id", 1).set("name", "john")
+        Sql q = Sql.insert("users").set("id", 1).set("name", "john")
             .onConflict("id")
             .doUpdateSet("name = excluded.name")
             .returning("id");
@@ -357,7 +357,7 @@ class SQLTest {
 
     @Test
     void insertSingleColumn() {
-        SQL q = SQL.insert("logs").set("message", "hello");
+        Sql q = Sql.insert("logs").set("message", "hello");
         assertEquals("INSERT INTO logs (message) VALUES (?)", q.sql());
         assertArrayEquals(new Object[]{"hello"}, q.args());
     }
@@ -366,14 +366,14 @@ class SQLTest {
 
     @Test
     void simpleDelete() {
-        SQL q = SQL.delete("users").where("id = ?", 1);
+        Sql q = Sql.delete("users").where("id = ?", 1);
         assertEquals("DELETE FROM users WHERE id = ?", q.sql());
         assertArrayEquals(new Object[]{1}, q.args());
     }
 
     @Test
     void deleteWithMultipleConditions() {
-        SQL q = SQL.delete("users")
+        Sql q = Sql.delete("users")
             .where("status = ?", 0)
             .where("expired = ?", true);
         assertEquals("DELETE FROM users WHERE status = ? AND expired = ?", q.sql());
@@ -384,8 +384,8 @@ class SQLTest {
 
     @Test
     void immutability() {
-        SQL q1 = SQL.select("*").from("users").where("id = ?", 1);
-        SQL q2 = q1.where("name = ?", "john");
+        Sql q1 = Sql.select("*").from("users").where("id = ?", 1);
+        Sql q2 = q1.where("name = ?", "john");
 
         assertEquals("SELECT * FROM users WHERE id = ?", q1.sql());
         assertArrayEquals(new Object[]{1}, q1.args());
@@ -396,8 +396,8 @@ class SQLTest {
 
     @Test
     void immutabilityInsert() {
-        SQL q1 = SQL.insert("users").set("name", "john");
-        SQL q2 = q1.set("status", 1);
+        Sql q1 = Sql.insert("users").set("name", "john");
+        Sql q2 = q1.set("status", 1);
 
         assertEquals("INSERT INTO users (name) VALUES (?)", q1.sql());
         assertArrayEquals(new Object[]{"john"}, q1.args());
@@ -410,14 +410,14 @@ class SQLTest {
 
     @Test
     void whereNoConditions() {
-        SQL q = SQL.select("*").from("users");
+        Sql q = Sql.select("*").from("users");
         assertEquals("SELECT * FROM users", q.sql());
         assertEquals(0, q.args().length);
     }
 
     @Test
     void stringLiteralContainingDollar() {
-        SQL q = SQL.select("*").from("users").where("label = ?", "a$b");
+        Sql q = Sql.select("*").from("users").where("label = ?", "a$b");
         assertEquals("SELECT * FROM users WHERE label = ?", q.sql());
         assertArrayEquals(new Object[]{"a$b"}, q.args());
     }
@@ -425,7 +425,7 @@ class SQLTest {
     @Test
     void selectWithTypeCastAndNamedParam() {
         // PostgreSQL :: type cast must not be confused with :name
-        SQL q = SQL.select("*").from("events")
+        Sql q = Sql.select("*").from("events")
             .where("created_at::date = :d", java.time.LocalDate.of(2024, 1, 15));
         assertEquals("SELECT * FROM events WHERE created_at::date = ?", q.sql());
         assertEquals(1, q.args().length);
@@ -433,7 +433,7 @@ class SQLTest {
 
     @Test
     void selectWithTypeCastAndMultipleNamedParams() {
-        SQL q = SQL.select("*").from("events")
+        Sql q = Sql.select("*").from("events")
             .where("created_at::timestamp > :t AND id = :id",
                 java.time.LocalDateTime.of(2024, 6, 1, 0, 0), 1L);
         assertEquals(
@@ -445,7 +445,7 @@ class SQLTest {
     @Test
     void selectWithTypeCastAndMixedParam() {
         // ? positional + :: type cast — :: handling should not break ?
-        SQL q = SQL.select("*").from("events")
+        Sql q = Sql.select("*").from("events")
             .where("created_at::date > ? AND status = :s",
                 java.time.LocalDate.of(2024, 1, 1), "active");
         assertEquals(
@@ -456,14 +456,14 @@ class SQLTest {
 
     @Test
     void paramInStringLiteralNotParsed() {
-        SQL q = SQL.select("*").from("users").where("name = '$literal'");
+        Sql q = Sql.select("*").from("users").where("name = '$literal'");
         assertEquals("SELECT * FROM users WHERE name = '$literal'", q.sql());
         assertEquals(0, q.args().length);
     }
 
     @Test
     void multipleParamsInOneFragment() {
-        SQL q = SQL.select("*").from("users")
+        Sql q = Sql.select("*").from("users")
             .where("a = ? AND b = :b AND c = ?", 1, 2, 3);
         assertEquals("SELECT * FROM users WHERE a = ? AND b = ? AND c = ?", q.sql());
         assertArrayEquals(new Object[]{1, 2, 3}, q.args());
@@ -471,20 +471,20 @@ class SQLTest {
 
     @Test
     void emptyWhereAfterFrom() {
-        SQL q = SQL.select("*").from("users").orderBy("id");
+        Sql q = Sql.select("*").from("users").orderBy("id");
         assertEquals("SELECT * FROM users ORDER BY id", q.sql());
     }
 
     @Test
     void toStringReturnsSql() {
-        SQL q = SQL.select("*").from("users").where("id = ?", 1);
+        Sql q = Sql.select("*").from("users").where("id = ?", 1);
         assertEquals(q.sql(), q.toString());
     }
 
     @Test
     void equalsAndHashCode() {
-        SQL q1 = SQL.select("*").from("users").where("id = ?", 1);
-        SQL q2 = SQL.select("*").from("users").where("id = ?", 1);
+        Sql q1 = Sql.select("*").from("users").where("id = ?", 1);
+        Sql q2 = Sql.select("*").from("users").where("id = ?", 1);
         assertEquals(q1, q2);
         assertEquals(q1.hashCode(), q2.hashCode());
     }
@@ -498,7 +498,7 @@ class SQLTest {
             db.execute("create table t_user (id bigint primary key, name varchar(16), status int)");
             db.execute("insert into t_user values (1, 'alpha', 1), (2, 'beta', 0)");
 
-            SQL q = SQL.select("*").from("t_user").where("status = ?", 1);
+            Sql q = Sql.select("*").from("t_user").where("status = ?", 1);
             var users = db.query(q.sql(), q.args()).list(IdName.class);
             assertEquals(1, users.size());
             assertEquals("alpha", users.get(0).name());
@@ -512,7 +512,7 @@ class SQLTest {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'alpha')");
 
-            SQL q = SQL.select("*").from("t_user").where("id = :id", 1L);
+            Sql q = Sql.select("*").from("t_user").where("id = :id", 1L);
             var user = db.query(q.sql(), q.args()).one(IdName.class);
             assertTrue(user.isPresent());
             assertEquals("alpha", user.get().name());
@@ -530,7 +530,7 @@ class SQLTest {
             String nameFilter = "alpha";
             int ageFilter = 0;
 
-            SQL q = SQL.select("*").from("t_user");
+            Sql q = Sql.select("*").from("t_user");
             if (!nameFilter.isEmpty()) q = q.where("name = ?", nameFilter);
             if (ageFilter > 0) q = q.where("age >= ?", ageFilter);
 
@@ -546,7 +546,7 @@ class SQLTest {
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
-            SQL q = SQL.insert("t_user").set("id", 1L).set("name", "newguy");
+            Sql q = Sql.insert("t_user").set("id", 1L).set("name", "newguy");
             db.execute(q.sql(), q.args());
 
             var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
@@ -562,7 +562,7 @@ class SQLTest {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'oldname')");
 
-            SQL q = SQL.update("t_user").set("name = ?", "newname").where("id = ?", 1L);
+            Sql q = Sql.update("t_user").set("name = ?", "newname").where("id = ?", 1L);
             db.execute(q.sql(), q.args());
 
             var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
@@ -578,7 +578,7 @@ class SQLTest {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'goner'), (2, 'keeper')");
 
-            SQL q = SQL.delete("t_user").where("id = ?", 1L);
+            Sql q = Sql.delete("t_user").where("id = ?", 1L);
             db.execute(q.sql(), q.args());
 
             var users = db.query("select id, name from t_user order by id").list(IdName.class);
@@ -595,8 +595,8 @@ class SQLTest {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'hello')");
 
-            // 用文本块写 SQL，SQL 类只负责构建
-            SQL q = SQL.select("id, name").from("t_user").where("id = ?", 1L);
+            // 用文本块写 Sql，Sql 类只负责构建
+            Sql q = Sql.select("id, name").from("t_user").where("id = ?", 1L);
             var user = db.query(q.sql(), q.args()).one(IdName.class);
             assertTrue(user.isPresent());
         }

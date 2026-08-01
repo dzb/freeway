@@ -196,8 +196,8 @@ class DbModuleTest {
         try {
             Container container = Freeway.create(
                 new DbModule(),
-                    binder -> binder.contribute(DatabaseNamed.class).add(new DatabaseNamed("primary", primary)),
-                    binder -> binder.contribute(DatabaseNamed.class).add(new DatabaseNamed("audit", audit))
+                    binder -> binder.contribute(NamedDatabase.class).add(new NamedDatabase("primary", primary)),
+                    binder -> binder.contribute(NamedDatabase.class).add(new NamedDatabase("audit", audit))
             );
 
             DatabaseHub hub = container.get(DatabaseHub.class);

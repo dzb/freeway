@@ -382,7 +382,7 @@ Map<String, Route> named = c.extension(Route.class).asMap();
 | `WebSocketRoute.class` | WebSocket 路由 |
 | `WebSocketGroup.class` | WebSocket 路由组 |
 | `RowMapping.class` | 数据库行映射 |
-| `DatabaseNamed.class` | 命名数据库注册 |
+| `NamedDatabase.class` | 命名数据库注册 |
 
 ## EventBus
 
@@ -730,7 +730,7 @@ r.key();    // 生成的主键
 Row r = db.query("SELECT * FROM t").list(Row.class).get(0);
 r.string("name");
 r.integer("age");
-r.longVal("id");
+r.longValue("id");
 r.bool("active");
 r.decimal("amount");
 r.date("created_at");
@@ -755,7 +755,7 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> { ... });
 ### SQL 构建器
 
 ```java
-SQL sql = SQL.select("u.name, o.total")
+Sql sql = Sql.select("u.name, o.total")
     .from("users u")
     .join("orders o").on("u.id = o.user_id")
     .where("u.active = ?", true)

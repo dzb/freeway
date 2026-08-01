@@ -19,7 +19,7 @@ import java.util.UUID;
  * A schema-less query result row with type-safe column access.
  *
  * <p>Supports coercion from the raw JDBC value to common Java types:
- * {@link #string(String)}, {@link #integer(String)}, {@link #longVal(String)},
+ * {@link #string(String)}, {@link #integer(String)}, {@link #longValue(String)},
  * {@link #bool(String)}, {@link #decimal(String)}, {@link #date(String)},
  * {@link #dateTime(String)}, {@link #instant(String)}, {@link #uuid(String)},
  * and more.
@@ -27,7 +27,7 @@ import java.util.UUID;
  * <p>Example:
  * <pre>{@code
  * Row row = db.query("SELECT id, name FROM users WHERE id = ?", 1).list(Row.class).get(0);
- * long id = row.longVal("id");
+ * long id = row.longValue("id");
  * String name = row.string("name");
  * }</pre>
  */
@@ -56,7 +56,7 @@ public final class Row {
 
     public Integer integer(String col) { return get(col, Integer.class); }
 
-    public Long longVal(String col) { return get(col, Long.class); }
+    public Long longValue(String col) { return get(col, Long.class); }
 
     public Boolean bool(String col) { return get(col, Boolean.class); }
 

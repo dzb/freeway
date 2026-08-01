@@ -17,29 +17,29 @@ import java.util.function.Consumer;
  * Examples:
  * <pre>{@code
  * // raw text block (Java 25+)
- * db.query(SQL.select("*").from("users").where("status = ?", 1));
+ * db.query(Sql.select("*").from("users").where("status = ?", 1));
  *
  * // dynamic conditions
- * SQL q = SQL.select("*").from("users");
+ * Sql q = Sql.select("*").from("users");
  * if (name != null)  q = q.where("name LIKE ?", name);
  * if (status != 0)   q = q.where("status = ?", status);
  * db.query(q.sql(), q.args()).list(User.class);
  *
  * // named parameter style
- * SQL q = SQL.select("*").from("users").where("name = :name", name);
+ * Sql q = Sql.select("*").from("users").where("name = :name", name);
  * db.query(q.sql(), q.args()).list(User.class);
  *
  * // UPDATE
- * SQL.update("users").set("name = ?", name).set("status = ?", status).where("id = ?", id);
+ * Sql.update("users").set("name = ?", name).set("status = ?", status).where("id = ?", id);
  *
  * // INSERT
- * SQL.insert("users").set("name", name).set("status", status);
+ * Sql.insert("users").set("name", name).set("status", status);
  *
  * // DELETE
- * SQL.delete("users").where("id = ?", id);
+ * Sql.delete("users").where("id = ?", id);
  * }</pre>
  */
-public final class SQL {
+public final class Sql {
 
     private final String head;
     private final List<Condition> conditions;
@@ -58,7 +58,7 @@ public final class SQL {
     private final List<String> setClauses;
     private final List<Object> setArgs;
 
-    private SQL(
+    private Sql(
         String head,
         List<Condition> conditions,
         String tail,
@@ -88,39 +88,39 @@ public final class SQL {
 
     // ====================== static factories ======================
 
-    /** SELECT:{@code SQL.select("id, name").from("users").where(...)} */
-    public static SQL select(String columns) {
-        return new SQL("SELECT " + columns, List.of(), "", new Object[0],
+    /** SELECT:{@code Sql.select("id, name").from("users").where(...)} */
+    public static Sql select(String columns) {
+        return new Sql("SELECT " + columns, List.of(), "", new Object[0],
             false, List.of(),
             null, List.of(), List.of(), null, List.of(), List.of());
     }
 
-    /** UPDATE:{@code SQL.update("users").set("name = ?", v).where("id = ?", id)} */
-    public static SQL update(String tableName) {
-        return new SQL("UPDATE " + tableName, List.of(), "", new Object[0],
+    /** UPDATE:{@code Sql.update("users").set("name = ?", v).where("id = ?", id)} */
+    public static Sql update(String tableName) {
+        return new Sql("UPDATE " + tableName, List.of(), "", new Object[0],
             false, List.of(),
             null, List.of(), List.of(), tableName, List.of(), List.of());
     }
 
-    /** INSERT:{@code SQL.insert("users").set("name", v).set("status", v)} */
-    public static SQL insert(String tableName) {
-        return new SQL(null, List.of(), "", new Object[0],
+    /** INSERT:{@code Sql.insert("users").set("name", v).set("status", v)} */
+    public static Sql insert(String tableName) {
+        return new Sql(null, List.of(), "", new Object[0],
             false, List.of(),
             tableName, List.of(), List.of(), null, List.of(), List.of());
     }
 
-    /** DELETE:{@code SQL.delete("users").where("id = ?", id)} */
-    public static SQL delete(String tableName) {
-        return new SQL("DELETE FROM " + tableName, List.of(), "", new Object[0],
+    /** DELETE:{@code Sql.delete("users").where("id = ?", id)} */
+    public static Sql delete(String tableName) {
+        return new Sql("DELETE FROM " + tableName, List.of(), "", new Object[0],
             false, List.of(),
             null, List.of(), List.of(), null, List.of(), List.of());
     }
 
-    public SQL with(String name, SQL query) {
+    public Sql with(String name, Sql query) {
         return with(name, null, query);
     }
 
-    public SQL with(String name, String columns, SQL query) {
+    public Sql with(String name, String columns, Sql query) {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(query, "query");
         String trimmed = name.trim();
@@ -137,31 +137,31 @@ public final class SQL {
 
     // ====================== FROM / JOIN ======================
 
-    public SQL from(String tables) {
+    public Sql from(String tables) {
         requireSimpleSelect("FROM");
         requireNoPendingJoin("FROM");
         return withHead(head + " FROM " + tables);
     }
 
-    public SQL join(String table) {
+    public Sql join(String table) {
         requireSimpleSelect("JOIN");
         requireNoPendingJoin("JOIN");
         return withHead(head + " JOIN " + table);
     }
 
-    public SQL leftJoin(String table) {
+    public Sql leftJoin(String table) {
         requireSimpleSelect("LEFT JOIN");
         requireNoPendingJoin("LEFT JOIN");
         return withHead(head + " LEFT JOIN " + table);
     }
 
-    public SQL innerJoin(String table) {
+    public Sql innerJoin(String table) {
         requireSimpleSelect("INNER JOIN");
         requireNoPendingJoin("INNER JOIN");
         return withHead(head + " INNER JOIN " + table);
     }
 
-    public SQL on(String expr) {
+    public Sql on(String expr) {
         requireSimpleSelect("ON");
         requirePendingJoin("ON");
         return withHead(head + " ON " + expr);
@@ -170,40 +170,40 @@ public final class SQL {
     // ====================== WHERE conditions ======================
 
     /** {@code WHERE expr} (or {@code AND expr} when a condition already exists). */
-    public SQL where(String expr, Object... values) {
+    public Sql where(String expr, Object... values) {
         requireWhereAllowed("WHERE");
         String connector = conditions.isEmpty() ? "" : "AND";
         return addCondition(connector, expr, values);
     }
 
     /** {@code OR expr} */
-    public SQL orWhere(String expr, Object... values) {
+    public Sql orWhere(String expr, Object... values) {
         requireWhereAllowed("OR WHERE");
         return addCondition("OR", expr, values);
     }
 
     /** {@code AND NOT expr} */
-    public SQL whereNot(String expr, Object... values) {
+    public Sql whereNot(String expr, Object... values) {
         requireWhereAllowed("WHERE NOT");
         return addCondition(notConnector(conditions), expr, values);
     }
 
-    public SQL whereGroup(Consumer<Group> builder) {
+    public Sql whereGroup(Consumer<Group> builder) {
         requireWhereAllowed("WHERE GROUP");
         return addGroupedCondition(andConnector(conditions), builder);
     }
 
-    public SQL orWhereGroup(Consumer<Group> builder) {
+    public Sql orWhereGroup(Consumer<Group> builder) {
         requireWhereAllowed("OR WHERE GROUP");
         return addGroupedCondition("OR", builder);
     }
 
-    public SQL whereNotGroup(Consumer<Group> builder) {
+    public Sql whereNotGroup(Consumer<Group> builder) {
         requireWhereAllowed("WHERE NOT GROUP");
         return addGroupedCondition(notConnector(conditions), builder);
     }
 
-    private SQL addCondition(String connector, String expr, Object... values) {
+    private Sql addCondition(String connector, String expr, Object... values) {
         Object[] parsed = normalizeArgs(expr, values);
         String normalized = (String) parsed[0];
         Object[] extraArgs = (Object[]) parsed[1];
@@ -220,7 +220,7 @@ public final class SQL {
             updateTable, setClauses, setArgs);
     }
 
-    private SQL addGroupedCondition(String connector, Consumer<Group> builder) {
+    private Sql addGroupedCondition(String connector, Consumer<Group> builder) {
         Objects.requireNonNull(builder, "builder");
         Group group = new Group();
         builder.accept(group);
@@ -232,19 +232,19 @@ public final class SQL {
 
     // ====================== ORDER BY / GROUP BY / HAVING ======================
 
-    public SQL orderBy(String clause) {
+    public Sql orderBy(String clause) {
         requireSelectable("ORDER BY");
         requireNoPendingJoin("ORDER BY");
         return withTail(" ORDER BY " + clause);
     }
 
-    public SQL groupBy(String columns) {
+    public Sql groupBy(String columns) {
         requireSimpleSelect("GROUP BY");
         requireNoPendingJoin("GROUP BY");
         return withTail(" GROUP BY " + columns);
     }
 
-    public SQL having(String expr, Object... values) {
+    public Sql having(String expr, Object... values) {
         requireSimpleSelect("HAVING");
         requireNoPendingJoin("HAVING");
         Object[] parsed = normalizeArgs(expr, values);
@@ -260,7 +260,7 @@ public final class SQL {
             updateTable, setClauses, setArgs);
     }
 
-    public SQL havingGroup(Consumer<Group> builder) {
+    public Sql havingGroup(Consumer<Group> builder) {
         requireSimpleSelect("HAVING GROUP");
         requireNoPendingJoin("HAVING GROUP");
         Objects.requireNonNull(builder, "builder");
@@ -281,30 +281,30 @@ public final class SQL {
 
     // ====================== LIMIT / OFFSET ======================
 
-    public SQL limit(int n) {
+    public Sql limit(int n) {
         requireSelectable("LIMIT");
         requireNoPendingJoin("LIMIT");
         if (n < 0) throw new IllegalArgumentException("LIMIT must be >= 0, got " + n);
         return withTail(" LIMIT " + n);
     }
 
-    public SQL offset(int n) {
+    public Sql offset(int n) {
         requireSelectable("OFFSET");
         requireNoPendingJoin("OFFSET");
         if (n < 0) throw new IllegalArgumentException("OFFSET must be >= 0, got " + n);
         return withTail(" OFFSET " + n);
     }
 
-    public SQL union(SQL other) {
+    public Sql union(Sql other) {
         return combineCompound("UNION", other);
     }
 
-    public SQL unionAll(SQL other) {
+    public Sql unionAll(Sql other) {
         return combineCompound("UNION ALL", other);
     }
 
     /** Return columns for INSERT / UPDATE / DELETE. */
-    public SQL returning(String columns) {
+    public Sql returning(String columns) {
         Objects.requireNonNull(columns, "columns");
         if (!isDml()) {
             throw new IllegalStateException("RETURNING is only supported for INSERT/UPDATE/DELETE");
@@ -314,20 +314,20 @@ public final class SQL {
     }
 
     /** INSERT ... ON CONFLICT (...)。 */
-    public SQL onConflict(String targetColumns) {
+    public Sql onConflict(String targetColumns) {
         requireInsert("ON CONFLICT");
         Objects.requireNonNull(targetColumns, "targetColumns");
         return withTail(" ON CONFLICT (" + targetColumns + ")");
     }
 
     /** INSERT ... DO NOTHING。 */
-    public SQL doNothing() {
+    public Sql doNothing() {
         requireInsert("DO NOTHING");
         return withTail(" DO NOTHING");
     }
 
     /** INSERT ... DO UPDATE SET ...。 */
-    public SQL doUpdateSet(String assignments) {
+    public Sql doUpdateSet(String assignments) {
         requireInsert("DO UPDATE SET");
         Objects.requireNonNull(assignments, "assignments");
         return withTail(" DO UPDATE SET " + assignments);
@@ -342,7 +342,7 @@ public final class SQL {
      * <br>
     * <b>INSERT</b>: {@code .set("name", value)} — column name + value
      */
-    public SQL set(String expr, Object value) {
+    public Sql set(String expr, Object value) {
         requireUpdateOrInsert("SET");
         requireNoPendingJoin("SET");
         if (insertTable != null) {
@@ -447,7 +447,7 @@ public final class SQL {
 
     private record Condition(String connector, String expr) {}
 
-    private record Cte(String name, String columns, SQL query) {}
+    private record Cte(String name, String columns, Sql query) {}
 
     public static final class Group {
         private final List<Condition> conditions = new ArrayList<>();
@@ -509,7 +509,7 @@ public final class SQL {
         }
     }
 
-    private SQL withHead(String newHead) {
+    private Sql withHead(String newHead) {
         return copy(newHead, conditions, tail, args,
             compoundQuery,
             ctes,
@@ -517,7 +517,7 @@ public final class SQL {
             updateTable, setClauses, setArgs);
     }
 
-    private SQL withTail(String newTail) {
+    private Sql withTail(String newTail) {
         return copy(head, conditions, tail + newTail, args,
             compoundQuery,
             ctes,
@@ -556,7 +556,7 @@ public final class SQL {
         return values.toArray();
     }
 
-    private SQL combineCompound(String operator, SQL other) {
+    private Sql combineCompound(String operator, Sql other) {
         requireSelectable(operator);
         requireNoPendingJoin(operator);
         requireNoOuterTail(operator);
@@ -573,7 +573,7 @@ public final class SQL {
 
         String combined = "(" + sql() + ") " + operator + " (" + other.sql() + ")";
         Object[] combinedArgs = concat(args(), other.args());
-        return new SQL(combined, List.of(), "", combinedArgs,
+        return new Sql(combined, List.of(), "", combinedArgs,
             true, List.of(),
             null, List.of(), List.of(),
             null, List.of(), List.of());
@@ -672,7 +672,7 @@ public final class SQL {
         return head.indexOf(" ON ", joinIndex) < 0;
     }
 
-    private static SQL copy(
+    private static Sql copy(
         String head,
         List<Condition> conditions,
         String tail,
@@ -686,7 +686,7 @@ public final class SQL {
         List<String> setClauses,
         List<Object> setArgs
     ) {
-        return new SQL(head, conditions, tail, args,
+        return new Sql(head, conditions, tail, args,
             compoundQuery,
             ctes,
             insertTable, insertColumns, insertValues,
@@ -806,7 +806,7 @@ public final class SQL {
     }
 
     private static void appendValue(StringBuilder sb, List<Object> matched, Object value) {
-        if (value instanceof SQL sql) {
+        if (value instanceof Sql sql) {
             sb.append(sql.sql());
             appendArgs(matched, sql.args());
             return;
@@ -827,7 +827,7 @@ public final class SQL {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof SQL sql)) return false;
+        if (!(o instanceof Sql sql)) return false;
         String s = sql(); return Objects.equals(s, sql.sql());
     }
 
