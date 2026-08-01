@@ -9,34 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **TLS session on `HttpContext`** — `sslSession()` exposes the TLS protocol and peer certificates; `isSecure()` derives encryption state from the session. `Http11Connection.isSSL` dropped.
-- **Schema dialect derived from the database** — `Database.dialect()` drives schema DDL; redundant `Dialect` parameters removed from `Schema.ensure()`, `Schema.drop()`, `SchemaEntity.of()`, and related APIs. `freeway.db.dialect` still overrides JDBC URL auto-detection.
-- **Direct JSON serialization** — raw structures serialize in a single pass without an intermediate normalized tree (`JsonWriter`).
+- **TLS session on `HttpContext`** — `sslSession()` exposes the TLS protocol and peer certificates; `isSecure()` derives encryption state from the session.
+- **Schema dialect derived from the database** — `Database.dialect()` drives schema DDL; redundant `Dialect` parameters removed from `Schema.ensure()`, `Schema.drop()`, `SchemaEntity.of()`, and related APIs.
 
 ### Changed
 
-- **freeway-http naming aligned** — `FreewayHttpContext → HttpContextDefault`, `ServerHandle → HttpServerHandleDefault`, `H2ResponseBridge → Http2ResponseBridge`, `WsUtil → WebSocketUtil`, `Buffered* → SessionBuffered*`, `wsRoute/wsGroup → webSocketRoute/webSocketGroup`; engine package `http20 → http2`.
-- **freeway-boot naming aligned** — `AppBuilder.config → configLoader`, `BootConfigLoader → ConfigLoaderDefault`.
-- **freeway-commons naming aligned** — `Coercer.supported() → conversions()`; `LoggingSupport` merged into `JULLogFormatterSupport`.
-- **freeway-db naming aligned** — `SQL → Sql`, `DatabaseNamed → NamedDatabase`, `Row.longVal() → Row.longValue()`.
+- **Naming conventions aligned across modules** — breaking renames: `FreewayHttpContext → HttpContextDefault`, `ServerHandle → HttpServerHandleDefault`, `BootConfigLoader → ConfigLoaderDefault`, `AppBuilder.config → configLoader`, `SQL → Sql`, `DatabaseNamed → NamedDatabase`, `Coercer.supported() → conversions()`, `Temporary → ExecState`; engine package `http20 → http2`.
 - **freeway-flow single canonical GraphSpec** — legacy solon-flow v1 `layout` format removed; `GraphSpec2`/`NodeSpec2`/`LinkSpec2` promoted to the root package as `GraphSpec`/`NodeSpec`/`LinkSpec`; `Graph.toMap()/toJson()` emit the canonical `nodes`+`links` format; `Graph.fromText()` accepts canonical JSON only.
-- **`Temporary → ExecState`** — flow working state renamed; exposed as `FlowExchanger.execState()`.
 - **IoC boundaries tightened** — `Container` and `Extension<V>` are no longer injectable; consume contributions via `List<V>` / `Map<String, V>`.
 
 ### Fixed
 
-- **HTTP engine** — h2c upgrade repair, request-line length cap, connection draining on shutdown, multipart parsing guards, WebSocket subprotocol negotiation, parser hardening.
+- **HTTP engine** — h2c upgrade repair, request-line cap, connection draining on shutdown, multipart parsing guards, WebSocket subprotocol negotiation.
 - **DB** — never recycle closed physical connections; `queryTimeout=0` supported.
-- **Flow** — execution depth guard and clarified resolution semantics.
 - **Boot/config** — documented config cascade honored in value injection; negative CLI values parsed correctly.
-- **Commons** — coercion/validation/flatten/JSON edge cases hardened; symbol escape added; extension concurrency and error context improved; EventBus lifecycle hardened; class contributions wired eagerly with no-arg constructor preference.
-- **JSON perf** — hot-path allocation cuts in parsing and serialization.
+- **Commons** — coercion/validation/JSON edge cases hardened; symbol escape; EventBus lifecycle and extension concurrency hardened.
 
 ### Docs
 
 - **Naming rules clarified** — `XImpl` is the definitive implementation; `XDefault` is the replaceable default; `ModuleEx` avoids `java.lang.Module` collision.
-- **Repository docs and English skill synced** — stale class names and API signatures updated across `docs/` and `skills/freeway-dev/`.
-- **CHANGELOG reordered** — version sections sorted newest-first per Keep a Changelog.
+- **Docs and English skill synced** — stale class names and API signatures updated across `docs/` and `skills/freeway-dev/`.
 
 ## [1.3.5] — 2026-07-23
 
@@ -49,23 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-logger level via any `.level` key** — `com.myapp.audit.level=FINE` sets the corresponding JUL logger level. Accepts SLF4J names (TRACE/DEBUG/INFO/WARN/ERROR) and JUL names (FINEST/FINE/INFO/WARNING/SEVERE), case-insensitive via `parseLogLevel()`.
 - **Caller info propagation through SLF4J bridge** — `JULLoggerAdapter.fixCallerInfo()` uses `StackWalker` to correctly set `sourceClassName` and `sourceMethodName` on each `LogRecord`.
 - **`LogBootstrap.applyNamedFileLoggers()`** — late-stage re-attachment API for named file handlers that may have been cleared during JUL's lazy `LogManager` initialization. Safe to call multiple times.
-- **`JULThrowableRenderer`** — extracted throwable rendering from `JULLogFormatterSupport` (117 lines) with circular reference detection and suppressed exception chain support.
 
 ### Changed
 
 - **`JULEnhancer` rewritten** — owns the full config lifecycle: level management, console handler creation, formatter installation, single and multi-file handler activation. Reads `freeway-log.properties` via three-tier classloader cascade (TCCL → own → system).
-- **Bootstrap diagnostics use `System.err`** — `JULEnhancer.logEarly()` replaces `Logger.warning()` during bootstrap to avoid silent message loss before handlers are configured.
-- **`JULFileHandler` flushes immediately** — `publish()` now calls `flush()` after each record to prevent loss in the 8 KB `BufferedOutputStream` buffer.
 - **`JULLoggerServiceProvider.initialize()` triggers `JULEnhancer.configure()`** — ensures JUL enhancements are active regardless of when SLF4J initializes, guarding against `LoggerFactory.getLogger()` calls before Freeway bootstrap.
-- **`JULMDCAdapter` uses `ThreadLocal.remove()`** — `clear()` now removes the ThreadLocal entry entirely rather than just clearing the contained HashMap.
-- **MDC priority keys cached at class loading time** — `loadMdcPriorityKeys()` runs once; `formatMDC()` no longer calls `System.getProperty()` on the hot path.
-- **`LogManager` forced init before handler attachment** — `JULEnhancer.configure()` triggers `LogManager.getLoggerNames()` early to prevent subsequent lazy `reset()` from clearing handlers.
-- **Named file configs persisted for deferred re-attachment** — `NamedFileConfig` record stores parsed config in list; `applyNamedFileConfigs()` re-creates handlers on demand.
-- **DB: `Dialect.querySet()` uses SLF4J** — replaces `System.getLogger()` for consistent log pipeline output.
 - **DB: `DbModule.buildConfig()` provides friendly parseInt error messages** — non-integer pool config values now produce clear errors instead of bare `NumberFormatException`.
-- **DB: `PoolDefault` extracts `healthCheckTimeoutSeconds()`** — eliminates duplicate millis-to-seconds conversion logic.
-- **Boot: shutdown failures use SLF4J logging** — replaces `failure.printStackTrace(System.err)` with `LOG.error()`.
-- **Boot: removed defensive try-catch around "Application stopped" log** — noise reduction in production code.
 
 ### Removed
 
@@ -76,7 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sample configs cleaned** — `application-*.properties.sample` no longer carry `freeway.log.*` keys. Logging config lives in `freeway-log.properties`; samples point to the reference template.
 - **`docs/freeway-log.properties.reference`** — annotated reference with best practices, `auto` semantics, multi-file patterns, and level formatting.
 - **SKILL files updated** — `SKILL.zh.md` gains comprehensive logging section; `SKILL.md` and `references/commons.md` updated with multi-file, env var, and late re-attach docs.
-- **Release notes** — `docs/release-notes/v1.3.5.md`.
 
 ## [1.3.2] — 2026-07-07
 
@@ -84,9 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **MDC context display in log formatters** — `JULLogFormatterSupport` renders MDC key-value pairs in log output when MDC context is present. Both `JULConsoleFormatter` and `JULFileFormatter` support MDC rendering.
 
-### Changed
 
-- **Style reformat** — long lines across `json` and `logging` packages wrapped for readability.
 
 ### Docs
 
@@ -98,7 +76,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`GraphSpec2`** (v2 graph definition) — canonical DAG format with explicit `entry`, separated `nodes` + `links`, and `normalize()` validation (link references, BFS reachability). Designed as the primary authoring surface going forward.
 - **`@Marker` service disambiguation** — `@Marker(Builtin.class)` on modules, `bind().marker(Fast.class)` on individual bindings, `container.get(type, marker)` for resolution. `MarkerIndex` with `containsAll` semantics. Extends Flow with `@FlowMarker` for `!markerName` task resolution.
-- **`H2ResponseBridge`** — decouples `FreewayHttpContext` response writing from `Http2Stream`, enabling mock testing of H2 response paths.
 - **`Contributions.add(Class)`** — auto-generates canonical id as `snake_name@package`, ordering via `before`/`after`.
 
 ### Changed
@@ -107,10 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Flow task resolution** — consolidated under `!markerName` (marker intersection via `@FlowMarker`) and `@beanName` (IoC container lookup). The `!marker` mechanism replaces class-name-based task matching with a more flexible, refactoring-safe alternative.
 - **`Container` API refined** — `instantiate()` renamed to `create()`; `RouteIndex` no longer depends on `Container`.
 - **`Module2` renamed to `ModuleEx`** — the module entry-point type renamed to avoid collision with `java.lang.Module`. This is a breaking change for early adopters: replace all `Module2` references with `ModuleEx`.
-- **`DbModule` config centralized** — config reading delegates to `SymbolSource` + `Coercer` pair, eliminating scattered `parseInt`/`parseBool` helpers.
 - **`Contributions.add(T)` fluent chaining** — `add(value)` now returns `Contributions<T>` instead of `void`, enabling chained calls. Note: `before()`/`after()` ordering is only available via `add(id, value)` or `add(Class)`, which return `Contribution`.
-- **Flow driver extension point** — `FlowDriver` is a contributed extension point for custom drivers. `FlowModule` binds `FlowContainer` and constructs `FlowDriverDefault` internally as id `"default"`; graphs select their driver via the `"driver"` field (null/"" → `"default"`). User-defined drivers are contributed via `binder.contribute(FlowDriver.class).add("custom", myDriver)` or `.add(MyDriver.class)` (auto-instantiated via `container.create()`). `Extension.asMap()` assembles named contributions into a plain `Map`, keeping `FlowEngineImpl` IoC-free. Null guard added to `FlowDriverDefault.getContainer()` for clear error on missing `FlowContainer`; `@beanName` resolution failures in `IocContainerAdapter` now logged via SLF4J.
-- **`GraphSpec2` inner classes extracted** — `NodeSpec2` and `LinkSpec2` are now top-level classes in the v2 package. `linkAdd()` stores pending links that `GraphSpec2` drains during `create()`/`toMap()`, removing the owner-coupled inner-class pattern. Null validation added to `linkAdd()` and `link()`. `LinkSpec2` gains `toString()`.
+- **Flow driver extension point** — `FlowDriver` is a contributed extension point; `FlowModule` builds `FlowDriverDefault` as id `"default"` and graphs select a driver via the `"driver"` field. Custom drivers are contributed via `binder.contribute(FlowDriver.class)`.
 - **Logging system completed** — JUL logging upgraded from console-only fallback to a full-featured system: `JULFileHandler` (time+size dual rotation, async GZIP compression), `JULFileFormatter` (ISO 8601 timestamps, recursive exception rendering), `LogBootstrap.ensureProvider()` (auto-detects Logback/Log4j, installs JUL only as fallback), `logging.properties` loaded from classpath, virtual-thread-aware thread name rendering. Fixes: SLF4J state constants (2=FAILED in 2.x), DCL race in provider install, GZIP resource leak, `Files.move` missing `REPLACE_EXISTING`.
 
 ### Fixed
@@ -136,7 +111,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Response serialization** — status code and Content-Length digits pre-computed as `byte[]`, eliminating per-request allocations. Error response bodies (404, 500) pre-computed.
 - **`@Named` removed** — superseded by `@Inject("id")`.
 - **Documentation restructured** — `DEVELOPER-GUIDE.md`, config samples, and module summaries moved to `docs/` directory.
 
@@ -162,28 +136,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`HttpConfigKeys` / `DbConfigKeys`** — config key constants extracted from `HttpModule`/`WebServer`/`HealthFilter` and `DbModule`/`PoolConfig`. All raw string literals (`"freeway.web.health.path"`, `"freeway.db.url"`, etc.) replaced with constant references.
 - **Deferred binding registration** — bindings flushed after each module's `bind()` completes instead of immediately in `BinderImpl.bind()`. Default ids are now unique (`type@N` counter suffix), avoiding false cross-module collisions.
-- **Built-in engine id** — renamed to `"builtin"`, consistent with `PoolDefault` id pattern.
-- **HTTP config helpers consolidated** — 4 manual helpers (`stringConfig`, `boolConfig`, `intConfig`, `durationConfig`) replaced with single generic `config()` that delegates to `SymbolSource` + `Coercer`.
-- **DB config validation** — `PoolConfig` `require*` methods consolidated (4→2), dead `PREFIX` removed.
-- **`HttpContext` cleanup** — removed dead status reason code table (`REASON_BYTES`, `buildReasonBytes`, `responseClass`, `responseReasons`, `reasonBytes`).
 
 ### Performance
 
-- Request line parsing: `String.split(" ", 3)` → manual `indexOf` scanning
-- Path segment parsing: `String.split("/")` → manual segment scanner
-- 3 `StringBuilder` pools as `HttpParser` instance fields (zero per-request allocation)
-- `LinkedHashMap` in `RouteIndex.matchTrie()` deferred until a path variable actually matches
-- `toUpperCase()` → `switch` on raw HTTP version string
-- Filter chain pre-built in `WebServer` constructor (eliminates 2 capturing lambdas per request)
-- Drain buffer reused as instance field
-- Redundant `.trim()` on parsed header keys/values dropped
+- **HTTP request hot path** — request-line and path parsing rewritten to manual scanning, parser buffers and filter chain pre-built, per-request allocations eliminated.
 
 ### Removed
 
 - **`freeway-benchmark`** — migrated to [freeway-ext](https://github.com/dzb/freeway-ext). All 31 source files, benchmark scenarios, and CLI tooling removed from core repository.
 - **GitHub Actions auto-deploy** — `publish-release.yml` and `publish-snapshot.yml` deleted. Deploys now done manually via `mvn deploy`.
-- **`Http11Connection` dead code** — `lastActivityTime`, `ActivityTrackingInputStream`, `ActivityTrackingOutputStream` removed.
-- **`PoolConfig.PREFIX`** — unused constant removed. `require*` validation methods consolidated.
 
 ## [1.2.0] — 2026-06-22
 
@@ -240,33 +201,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`StubHttpContext`** — request/response headers separated; request headers support multi-value (`List<String>`). `requestHeader()` fluent setter, `responseHeader()` query method. `headerSet()` validates CR/LF. `queryParam()` allows null→empty for bare params.
 - **`RequestContext.create(String)`** — normalizes blank input to random UUID. `RequestContextDefault` constructor mirrors this behavior.
 - **Environment variable mapping** — `FREEWAY_DB_URL` now maps to `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended).
-- **`@SuppressWarnings("SameParameterValue")` removed** — `coerceNumber` parameter narrowed to `Number`.
-- **`BootConfigLoader`** — four one-use String constants inlined.
-- **CI** — `mvn test` added before deploy in both snapshot and release workflows.
 - **Extension mechanism simplified** — removed `Extension.Key` record (was `Class<?> entryType` + `String name`, the latter dead). `extensions` map changed to `Map<Class<?>, Extension<?>>`. FQN-based binding registration removed; extensions live exclusively in their own `ConcurrentHashMap`.
 - **`Binder` API cleaned** — removed unused `contribute(Class, String name)` overload. Removed never-implemented `contributeMapped`.
-- **`Container.extension()`** — default method changed to abstract; removed misleading `get(Extension.class, entryType.getName())` fallback.
-- **HTTP internals** — `RouteIndex`, `WebSocketIndex`, and `WebServer` constructors now take `List<T>` instead of `Extension<T>`. Seven parameters dropped `.all()` calls.
-- **`InjectResolver` restructured** — `Extension<Foo>` and `List<Foo>` resolution moved into dedicated `resolveContributed()` method, fixing a hidden bug where `@Inject Extension<Foo>` on fields would construct a broken empty Extension instance.
 - **HTTP package restructuring** — filter, route, body, event, sse, staticfile, and websocket classes extracted into sub-packages. `JdkHttpContext`/`JdkHttpEngine`/`RequestContextDefault` moved from `internal` back to root. `PathJoiner` moved to `route`. `RequestBodyTooLargeException` renamed to `BodyTooLargeException`. Test packages mirrored to match source layout.
 - **`PooledConnection` interface** — extracted from the old concrete class (now `PooledConnectionDefault`). Public `Pool` API now returns the interface, eliminating the cross-module `internal` boundary violation in the HikariCP adapter.
 - **`HikariPoolModule`** — now binds `Pool.class` instead of `HikariPool.class`, aligning with `DbModule.resolvePool()`.
 - **`Schema.ensure()` / `drop()`** — no-dialect convenience overloads removed; caller must supply explicit dialect. `SchemaGenerator` no-arg constructor removed.
-- **`SqlTypeMapping.BASIC_TYPES`** — shared type set extracted; `RowMapperResolver.isBasicType()` delegates to `SqlTypeMapping.isBasicType()`, eliminating duplicated type lists.
-- **`Coercions`** — `registerJdbcDefaults()` removed; callers use `jdbcDefaults()` directly for a single entry point.
-- **`Names`** — moved from `db` to `db/util`.
-- **Schema package Javadoc** — all Chinese comments converted to English across 13 files.
-- **`HikariPool`** — now tracks `borrowCount` via internal counter (was hardcoded 0 in stats). Added 7 integration tests covering concurrency, exhaustion, close semantics, and health check query forwarding.
-- **`WebSocketRoute`** — `PathPattern` now cached at construction time instead of re-parsed on every match.
-- **`StaticResourceMount.StaticAsset`** — ETag computed once at construction (was SHA-256 per request).
-- **`WebServer` filter chain** — pre-built in constructor instead of reconstructed per request.
-- **Robaho `WebSocketSession`** — request headers snapshotted at upgrade time, matching Undertow/Jetty behavior.
-- **`UndertowWebEngine` exception handling** — removed double `RuntimeException` wrapping of handler errors.
-- **`HttpSession.createBodyStream()`** — removed private helper; body stream creation moved to `HttpParser.bodyStream()`, which properly handles bytes already buffered past the header boundary.
 - **Engine selection** — switched from config-key-based (`freeway.web.engine`) to `.primary()`-based IoC resolution. `HttpModule` binds `FreewayHttpEngine` without `.primary()`; extension modules (e.g. `UndertowModule`) bind with `.primary()`. No config key needed — just add or remove the extension module.
-- **docs/DEVELOPER-GUIDE.md** — updated engine switching section with `.primary()` mechanism explanation, code examples, and corrected module tree (removed robaho/jetty references).
-- **SKILL.md** — updated module tree and added HTTP engine switching section in Chinese, matching docs/DEVELOPER-GUIDE.md.
-- **Enhanced test coverage** — HTTP module 30→62 tests (`FilterChain`, `ExceptionMapper`, `StaticResourceConditional`, `ClasspathResourceSource`, `HealthFilter`, engine fallback, static fallthrough). DB: `RowTest`, `PooledConnectionDefaultTest`.
 
 ### Removed
 
@@ -300,9 +241,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Named parameter auto-bind** — query named parameters (`:name`) now auto-bind to matching record/bean property names. (`097f218`)
 - **Generics audit** — eliminated all raw types and unchecked casts across the codebase. (`f1ed490`)
 
-### Fixed
 
-- Maven publishing metadata added to `freeway-db-hikari` and `freeway-mq-kafka` modules. (`878ad3e`)
 
 ## [1.1.0] — 2026-06-10
 
