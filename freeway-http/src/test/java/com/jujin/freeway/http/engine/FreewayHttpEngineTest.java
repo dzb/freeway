@@ -22,6 +22,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.security.KeyStore;
+import javax.net.ssl.KeyManagerFactory;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -515,6 +517,29 @@ class FreewayHttpEngineTest {
         }
     }
 
+    @Test
+    void plainHttpRequestHasNoSslSession() throws Exception {
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/session", ctx ->
+                ctx.send(200, String.valueOf(ctx.sslSession() != null))))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/session"))
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals("false", resp.body(),
+                "plain HTTP requests must have a null SSL session");
+        } finally {
+            server.stop();
+        }
+    }
+
     // ── HTTP/2 h2c prior-knowledge ─────────────────────────────────
 
     @Test
@@ -618,6 +643,82 @@ class FreewayHttpEngineTest {
             socket.close();
         } finally {
             server.stop();
+        }
+    }
+
+    // ── HTTPS: transport security + TLS session ────────────────────
+
+    @Test
+    void httpsRequestReportsSecureAndSslSession(@TempDir Path tempDir) throws Exception {
+        Path keystore = tempDir.resolve("test.p12");
+        Process keytool = new ProcessBuilder(
+                System.getProperty("java.home") + "/bin/keytool",
+                "-genkeypair", "-alias", "test",
+                "-keyalg", "RSA", "-keysize", "2048",
+                "-keystore", keystore.toString(),
+                "-storetype", "PKCS12", "-storepass", "changeit",
+                "-dname", "CN=localhost", "-validity", "1",
+                "-ext", "SAN=dns:localhost")
+            .redirectErrorStream(true).start();
+        keytool.getInputStream().readAllBytes();
+        assertTrue(keytool.waitFor(30, TimeUnit.SECONDS) && keytool.exitValue() == 0,
+            "keytool should generate a keystore");
+
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        try (var in = Files.newInputStream(keystore)) {
+            ks.load(in, "changeit".toCharArray());
+        }
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, "changeit".toCharArray());
+        javax.net.ssl.SSLContext serverSsl = javax.net.ssl.SSLContext.getInstance("TLS");
+        serverSsl.init(kmf.getKeyManagers(), null, null);
+
+        FreewayHttpEngine engine = new FreewayHttpEngine(
+            new com.jujin.freeway.commons.json.JsonCodecDefault(),
+            new com.jujin.freeway.commons.coercion.CoercerDefault(),
+            serverSsl,
+            false
+        );
+        var handle = engine.start(
+            new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)),
+            ctx -> ctx.sendJson(200, java.util.Map.of(
+                "secure", ctx.isSecure(),
+                "session", ctx.sslSession() != null,
+                "protocol", ctx.sslSession() != null
+                    ? ctx.sslSession().getProtocol() : ""))
+        );
+        try {
+            javax.net.ssl.SSLContext trustAll = javax.net.ssl.SSLContext.getInstance("TLS");
+            trustAll.init(null, new javax.net.ssl.TrustManager[]{
+                new javax.net.ssl.X509TrustManager() {
+                    @Override public void checkClientTrusted(
+                        java.security.cert.X509Certificate[] chain, String authType) {}
+                    @Override public void checkServerTrusted(
+                        java.security.cert.X509Certificate[] chain, String authType) {}
+                    @Override public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return new java.security.cert.X509Certificate[0];
+                    }
+                }
+            }, new java.security.SecureRandom());
+
+            var client = java.net.http.HttpClient.newBuilder()
+                .sslContext(trustAll).build();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("https://localhost:" + handle.port() + "/tls"))
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode(), resp.body());
+            var body = com.jujin.freeway.commons.json.JsonUtils.parseObject(resp.body());
+            assertTrue(body.getBoolean("secure"),
+                "HTTPS requests must report isSecure() == true: " + resp.body());
+            assertTrue(body.getBoolean("session"),
+                "HTTPS requests must expose the TLS session: " + resp.body());
+            assertFalse(body.getString("protocol").isBlank(),
+                "TLS protocol must be negotiated: " + resp.body());
+        } finally {
+            handle.close();
         }
     }
 

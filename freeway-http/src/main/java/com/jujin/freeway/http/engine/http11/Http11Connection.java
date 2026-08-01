@@ -40,7 +40,8 @@ public final class Http11Connection {
     /** Returns true when this connection is transported over TLS (HTTPS). */
     public boolean isSSL() { return socket instanceof SSLSocket; }
 
-    SSLSession getSSLSession() {
+    /** Returns the TLS session for this connection, or null for plain HTTP. */
+    public SSLSession getSSLSession() {
         return socket instanceof SSLSocket ssl ? ssl.getSession() : null;
     }
 

@@ -105,6 +105,14 @@ public abstract class HttpContext {
         return false;
     }
 
+    /**
+     * Returns the TLS session for this request (negotiated protocol, cipher
+     * suite, peer certificates), or {@code null} for plain HTTP.
+     */
+    public javax.net.ssl.SSLSession sslSession() {
+        return null;
+    }
+
     /** Returns true if the request has a multipart/form-data content type. */
     public boolean isMultipart() { return multipart().isPresent(); }
 

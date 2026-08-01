@@ -36,6 +36,7 @@ public final class FreewayHttpContext extends HttpContext {
     H2ResponseBridge h2Bridge; // non-null → HTTP/2 path
     private byte[] cachedBody;
     private boolean secure;
+    private javax.net.ssl.SSLSession sslSession;
     // Shared drain buffer — reused across drainUnreadBody calls
     private byte[] drainBuf;
 
@@ -53,9 +54,19 @@ public final class FreewayHttpContext extends HttpContext {
         this.secure = secure;
     }
 
+    /** Attaches the TLS session for this request. */
+    void setSslSession(javax.net.ssl.SSLSession sslSession) {
+        this.sslSession = sslSession;
+    }
+
     @Override
     public boolean isSecure() {
         return secure;
+    }
+
+    @Override
+    public javax.net.ssl.SSLSession sslSession() {
+        return sslSession;
     }
 
     /** Reuse this context for a new request. */

@@ -97,6 +97,7 @@ public final class HttpSession implements Runnable {
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
             ctx.setSecure(connection.isSSL());
+            ctx.setSslSession(connection.getSSLSession());
 
             while (!connection.closed) {
                 parser.reset(in);
@@ -186,7 +187,13 @@ public final class HttpSession implements Runnable {
             var h2conn = new Http2Connection(connection.socket(), in,
                     connection.outputStream(), h2Executor,
                 (stream, streamIn, streamOut, reqHeaders) ->
-                    handleHttp2Stream(stream, streamIn, streamOut, reqHeaders, ssl));
+                    handleHttp2Stream(
+                        stream,
+                        streamIn,
+                        streamOut,
+                        reqHeaders,
+                        ssl ? connection.getSSLSession() : null
+                    ));
 
             if (ssl) {
                 if (!h2conn.hasProperPreface(true))
@@ -214,7 +221,7 @@ public final class HttpSession implements Runnable {
     private void handleHttp2Stream(Http2Stream stream, InputStream in,
                                     OutputStream out,
                                     Map<String, List<String>> reqHeaders,
-                                    boolean secure) {
+                                    javax.net.ssl.SSLSession sslSession) {
         try {
             String method = headerValue(reqHeaders, ":method");
             String fullPath = headerValue(reqHeaders, ":path");
@@ -240,7 +247,8 @@ public final class HttpSession implements Runnable {
                 headerValue(reqHeaders, "x-request-id"));
             var ctx = new FreewayHttpContext(jsonCodec, coercer);
             ctx.setMaxBodySize(maxBodySize);
-            ctx.setSecure(secure);
+            ctx.setSecure(sslSession != null);
+            ctx.setSslSession(sslSession);
             ctx.reset(method, path, rawQuery, headers, in, -1, false, out, rc, false, false);
             ctx.h2Bridge = stream;
             ctx.headerSet("X-Request-Id", rc.correlationId());
