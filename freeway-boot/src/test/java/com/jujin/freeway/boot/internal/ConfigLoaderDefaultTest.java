@@ -10,10 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class BootConfigLoaderTest {
+class ConfigLoaderDefaultTest {
     @Test
     void keepsSourcesSeparateAndAppliesPrecedenceOnMerge() {
-        BootConfigLoader.BootConfigLayers layers = BootConfigLoader.loadLayers(
+        ConfigLoaderDefault.BootConfigLayers layers = ConfigLoaderDefault.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev",
             "--app.name=Overridden",
@@ -40,7 +40,7 @@ class BootConfigLoaderTest {
 
     @Test
     void autoPrefixesSimpleCliKeysWithFreewayNamespace() {
-        Map<String, String> args = BootConfigLoader.parseArgs(
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
             "--profile=dev",
             "--verbose",
             "--app.name=Overridden",
@@ -63,7 +63,7 @@ class BootConfigLoaderTest {
 
     @Test
     void explicitFreewayPrefixStillWorks() {
-        Map<String, String> args = BootConfigLoader.parseArgs(
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
             "--freeway.profile=dev"
         );
 
@@ -73,7 +73,7 @@ class BootConfigLoaderTest {
 
     @Test
     void parsesNegativeNumberValues() {
-        Map<String, String> args = BootConfigLoader.parseArgs(
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
             "--offset=-1",
             "--port", "-1",
             "--ratio", "-2.5"
@@ -87,7 +87,7 @@ class BootConfigLoaderTest {
 
     @Test
     void followingFlagTurnsKeyIntoBoolean() {
-        Map<String, String> args = BootConfigLoader.parseArgs(
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
             "--port", "--verbose"
         );
 
@@ -99,7 +99,7 @@ class BootConfigLoaderTest {
     @Test
     void rejectsOversizedPropertiesResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            BootConfigLoader.loadLayers(new OversizedPropertiesLoader()));
+            ConfigLoaderDefault.loadLayers(new OversizedPropertiesLoader()));
 
         assertTrue(ex.getMessage().contains("Unable to load application.properties"));
         assertTrue(ex.getCause().getMessage().contains("exceeds"));
@@ -108,7 +108,7 @@ class BootConfigLoaderTest {
     @Test
     void rejectsProfileNamesThatCanAddressOtherResources() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            BootConfigLoader.loadLayers(BootConfigLoaderTest.class.getClassLoader(), "--freeway.profile=../secret"));
+            ConfigLoaderDefault.loadLayers(ConfigLoaderDefaultTest.class.getClassLoader(), "--freeway.profile=../secret"));
 
         assertTrue(ex.getMessage().contains("Invalid freeway.profile value"));
     }

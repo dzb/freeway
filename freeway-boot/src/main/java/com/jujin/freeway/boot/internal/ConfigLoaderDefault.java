@@ -30,13 +30,13 @@ import java.util.Locale;
  *   <li>CLI arguments ({@code --key=value})</li>
  * </ol>
  */
-public final class BootConfigLoader implements ConfigLoader {
+public final class ConfigLoaderDefault implements ConfigLoader {
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}). */
     private static final Pattern NEGATIVE_NUMBER_PATTERN = Pattern.compile("-\\d");
 
-    public BootConfigLoader() {
+    public ConfigLoaderDefault() {
     }
 
     @Override
@@ -92,7 +92,7 @@ public final class BootConfigLoader implements ConfigLoader {
     }
 
     private static Map<String, String> loadProperties(ClassLoader loader, String resourceName) {
-        ClassLoader effectiveLoader = loader != null ? loader : BootConfigLoader.class.getClassLoader();
+        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
         InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
         if (stream == null) {
             return Map.of();
@@ -112,7 +112,7 @@ public final class BootConfigLoader implements ConfigLoader {
     }
 
     private static Map<String, String> loadJson(ClassLoader loader, String resourceName) {
-        ClassLoader effectiveLoader = loader != null ? loader : BootConfigLoader.class.getClassLoader();
+        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
         InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
         if (stream == null) {
             return Map.of();

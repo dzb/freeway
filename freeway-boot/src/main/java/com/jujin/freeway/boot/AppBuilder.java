@@ -1,6 +1,6 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.BootConfigLoader;
+import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
 import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
  *     .args("--freeway.profile=dev")
  *     .autoDiscovery(false)
  *     .shutdownHook(false)
- *     .config(myLoader)
+ *     .configLoader(myLoader)
  *     .start();
  * }</pre>
  */
@@ -55,7 +55,7 @@ public final class AppBuilder {
     }
 
     /** Use a custom {@link ConfigLoader} instead of the default cascade. */
-    public AppBuilder config(ConfigLoader loader) {
+    public AppBuilder configLoader(ConfigLoader loader) {
         this.configLoader = Objects.requireNonNull(loader, "configLoader");
         return this;
     }
@@ -92,7 +92,7 @@ public final class AppBuilder {
         ClassLoader effectiveLoader = resolveClassLoader();
         ConfigLoader effectiveConfigLoader = configLoader != null
             ? configLoader
-            : new BootConfigLoader();
+            : new ConfigLoaderDefault();
         AppConfig config = effectiveConfigLoader.load(effectiveLoader, args);
 
         LinkedHashMap<Class<?>, ModuleEx> allModules = new LinkedHashMap<>();
