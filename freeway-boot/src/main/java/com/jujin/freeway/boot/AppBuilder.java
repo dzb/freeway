@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
  *     .args("--freeway.profile=dev")
  *     .autoDiscovery(false)
  *     .shutdownHook(false)
- *     .configLoader(myLoader)
+ *     .config(myLoader)
  *     .start();
  * }</pre>
  */
@@ -55,8 +55,8 @@ public final class AppBuilder {
     }
 
     /** Use a custom {@link ConfigLoader} instead of the default cascade. */
-    public AppBuilder configLoader(ConfigLoader loader) {
-        this.configLoader = Objects.requireNonNull(loader, "configLoader");
+    public AppBuilder config(ConfigLoader loader) {
+        this.configLoader = Objects.requireNonNull(loader, "loader");
         return this;
     }
 

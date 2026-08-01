@@ -22,7 +22,7 @@ import com.jujin.freeway.ioc.ModuleEx;
  *     .add(new DbModule())
  *     .autoDiscovery(false)       // disable SPI scanning
  *     .shutdownHook(false)        // no JVM shutdown hook
- *     .configLoader(myLoader)     // custom config source
+ *     .config(myLoader)     // custom config source
  *     .start();
  * }</pre>
  */

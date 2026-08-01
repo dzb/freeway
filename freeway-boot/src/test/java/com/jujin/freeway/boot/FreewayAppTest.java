@@ -213,7 +213,7 @@ class FreewayAppTest {
     void builderWithCustomConfig() {
         AppRuntime app = FreewayApp.of()
             .add(new InstancePrimaryModule())
-            .configLoader((loader, args) -> new AppConfigDefault(
+            .config((loader, args) -> new AppConfigDefault(
                 Map.of("custom.key", "custom-value"), List.of()))
             .start();
         try {

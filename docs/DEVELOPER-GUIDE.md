@@ -571,7 +571,7 @@ AppRuntime app = FreewayApp.of(new MyModule())
     .classLoader(customLoader)               // custom class loader for SPI/resources
     .autoDiscovery(false)                     // disable SPI module discovery
     .shutdownHook(false)                      // skip JVM shutdown hook
-    .configLoader(myConfigLoader)                // custom ConfigLoader
+    .config(myConfigLoader)                     // custom ConfigLoader
     .start();
 ```
 

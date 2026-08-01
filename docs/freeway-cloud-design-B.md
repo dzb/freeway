@@ -94,7 +94,7 @@
 
 **所有项都是 additive**，不碰 `freeway-boot`/`freeway-ioc` 内部。
 
-> 上述扩展点名、钩子签名、`ConfigLoader` 替换入口（`AppBuilder.configLoader(loader)`）、HTTP 配置键（`freeway.http.server.host/port/shutdown-grace`、`freeway.http.health.*`）均已对照 `freeway-dev` 技能 reference（ioc/boot/http）逐条校验，无偏差。
+> 上述扩展点名、钩子签名、`ConfigLoader` 替换入口（`AppBuilder.config(loader)`）、HTTP 配置键（`freeway.http.server.host/port/shutdown-grace`、`freeway.http.health.*`）均已对照 `freeway-dev` 技能 reference（ioc/boot/http）逐条校验，无偏差。
 
 **已具备的优雅关停基础**（无需 cloud 模块新建）：`freeway.http.server.shutdown-grace` 配置项控制关停宽限；`RuntimeHook.stop(Container)` + `AppStoppingEvent`（shutdown 前发布）提供有序反注册时机；JVM shutdown hook 默认开启。cloud 模块只需在其 `RuntimeHook.stop` 里做注册中心反注册，并补 `/health/ready`、`/health/live` 拆分即可，不必重造关停机制。
 

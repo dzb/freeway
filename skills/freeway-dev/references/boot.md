@@ -8,7 +8,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `FreewayApp.of(ModuleEx...)` - builder for composing module instances
 - `AppBuilder.add(...)`
 - `AppBuilder.args(...)`
-- `AppBuilder.configLoader(...)`
+- `AppBuilder.config(...)`
 - `AppBuilder.autoDiscovery(...)`
 - `AppBuilder.classLoader(...)`
 - `AppBuilder.shutdownHook(...)`
