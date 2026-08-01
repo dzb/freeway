@@ -13,7 +13,6 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `@NotNull`, `@NotBlank`, `@Size`, `@Min`, `@Max`, `@Valid`
 - `Coercer`
 - `CoerceRule`
-- `LoggerSource`
 
 `Defer` buffers side effects until the enclosing scope commits. `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit.
 

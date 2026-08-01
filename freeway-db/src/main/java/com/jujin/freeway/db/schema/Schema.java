@@ -20,10 +20,10 @@ import java.util.Locale;
  * String ddl = Schema.define(User.class);
  *
  * // AutoMigrate: create tables + add missing columns (never drops or alters)
- * Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
+ * Schema.ensure(db, User.class, Post.class);
  *
  * // Drop tables
- * Schema.drop(db, new PostgresDialect(), User.class);
+ * Schema.drop(db, User.class);
  * }</pre>
  *
  * <h3>AutoMigrate strategy</h3>

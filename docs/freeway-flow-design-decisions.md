@@ -269,7 +269,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Decision:** `FlowExchanger.runGraph()` calls `engine.getDriver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
 
-**Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowExchanger` with the correctly resolved driver. The same `Temporary` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
+**Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowExchanger` with the correctly resolved driver. The same `ExecState` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
 
 **See also:** `FlowExchanger.java:runGraph()` (`freeway-flow`)
 

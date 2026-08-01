@@ -50,7 +50,7 @@
   // orm.save(existingUser);                                        // UPSERT
 
   // 10. Schema 自动迁移
-  Schema.ensure(db, new PostgresDialect(), User.class, Post.class);
+  Schema.ensure(db, User.class, Post.class);
 
   // 11. SQL 构建器
   Sql q = Sql.select("*").from("users")

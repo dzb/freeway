@@ -66,7 +66,7 @@ System.out.println(ddl);
 
 ```java
 Database db = ...;
-Schema.ensure(db, new PostgresDialect(), User.class);
+Schema.ensure(db, User.class);
 ```
 
 ---
@@ -256,7 +256,7 @@ List<String> cols = row.columns();      // 获取所有列名
 
 ---
 
-## 七、SQL 构建器（`SQL` 类）
+## 七、SQL 构建器（`Sql` 类）
 
 链式构建 SQL 语句，适合动态条件场景：
 
@@ -360,7 +360,7 @@ record User(@Id @Generated Long id, @Column String name, @Column Integer age) {
 Database db = new DatabaseBuilder()
     .config(PoolConfig.defaults("jdbc:h2:mem:demo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
     .build();
-Schema.ensure(db, new PostgresDialect(), User.class);
+Schema.ensure(db, User.class);
 Orm orm = Orm.of(db);
 
 // 3. CRUD

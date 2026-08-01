@@ -35,7 +35,7 @@ binder.contribute(FlowDriver.class)
 ```
 
 ```java
-// v2 format (recommended)
+// canonical format
 GraphSpec bp = GraphSpec.create("flow", spec -> {
     spec.entry("start");
     spec.addStart("start").linkAdd("task");
@@ -44,7 +44,7 @@ GraphSpec bp = GraphSpec.create("flow", spec -> {
 });
 Graph graph = bp.create(); // normalize() validates links + reachability
 
-// JSON — auto-detects v1/v2
+// JSON — canonical nodes+links format
 Graph graph = Graph.fromText(json);
 
 // Execution
@@ -55,6 +55,6 @@ engine.eval("flow", FlowContext.of());
 
 ## Important Behavior
 
-- `Graph.fromText()` auto-detects v1 (`layout`) and v2 (`nodes`+`links`+`version`) JSON.
+- `Graph.fromText()` parses the canonical `nodes`+`links`+`version` JSON; legacy `layout` format is rejected.
 - `GraphSpec.normalize()` validates link references and logs unreachable nodes.
 - Flow expressions are cached (LRU, 512 entries) via self-written recursive-descent parser.

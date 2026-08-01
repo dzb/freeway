@@ -65,7 +65,7 @@ Container → Binder → ModuleEx → Defer → Extension<T> → RuntimeHook
 - `inject()` — 因为鼓励 `new X() + container.inject(x)` 的反模式
 - `Extension.Key` — 因为"没用，`Class<?>` 就够了"
 - `@Named` — 被 `@Inject("id")` 取代
-- `Module2` — 因为和 `java.lang.Module` 冲突
+- `Module2`（更名为 `ModuleEx`）— 因为和 `java.lang.Module` 冲突
 - Strict mode — 因为 `System.setProperty` 作为副作用通道
 - `logging.properties` — 被 `freeway-log.properties` 取代
 - Extension 适配器模块、benchmark 模块 — 移到外部仓库

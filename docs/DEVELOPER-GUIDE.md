@@ -571,7 +571,7 @@ AppRuntime app = FreewayApp.of(new MyModule())
     .classLoader(customLoader)               // custom class loader for SPI/resources
     .autoDiscovery(false)                     // disable SPI module discovery
     .shutdownHook(false)                      // skip JVM shutdown hook
-    .config(myConfigLoader)                   // custom ConfigLoader
+    .configLoader(myConfigLoader)                // custom ConfigLoader
     .start();
 ```
 
@@ -1240,9 +1240,9 @@ public class AppModule implements ModuleEx {
         b.contribute(SchemaEntity.class)
             .add(SchemaEntity.of("app", User.class, Post.class, Comment.class));
 
-        // Custom dialect
+        // Another schema group
         b.contribute(SchemaEntity.class)
-            .add(SchemaEntity.of("profile", new PostgresDialect(), UserProfile.class));
+            .add(SchemaEntity.of("profile", UserProfile.class));
     }
 }
 ```
