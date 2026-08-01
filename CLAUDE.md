@@ -60,6 +60,7 @@ Robaho adapter has been removed.
 ## Naming Rules
 
 - Public interfaces use the domain name directly: `Container`, `JsonCodec`, `RequestContext`.
+- `ModuleEx` is the module entry-point interface — spelled `ModuleEx` (not `Module`) to avoid colliding with `java.lang.Module`.
 - `XDefault` is the framework's default choice — replaceable; extension modules bind an alternative via `.primary()` (e.g. `PoolDefault` vs a Hikari-backed pool): `AppRuntimeDefault`, `JsonCodecDefault`, `RequestContextDefault`, `CoercerDefault`.
 - `XImpl` is the definitive implementation — the single intended implementation, not meant to be replaced (e.g. `DatabaseImpl`, `QueryImpl`).
 - `DefaultX` is avoided — `XDefault` keeps the interface name dominant.
