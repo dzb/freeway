@@ -44,7 +44,7 @@ public interface Coercer {
      *
      * @return an unmodifiable conversion map keyed by target type
      */
-    default Map<Class<?>, Set<Class<?>>> supported() {
+    default Map<Class<?>, Set<Class<?>>> conversions() {
         return Map.of();
     }
 }

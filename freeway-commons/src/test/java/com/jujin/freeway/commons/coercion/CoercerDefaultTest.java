@@ -152,21 +152,21 @@ class CoercerDefaultTest {
         assertThrows(NullPointerException.class, () -> coercer.supports(String.class, null));
     }
 
-    // --- supported tests ---
+    // --- conversions tests ---
 
     @Test
     void supportedIncludesCustomRules() {
         CoercerDefault c = new CoercerDefault()
             .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
 
-        Map<Class<?>, Set<Class<?>>> result = c.supported();
+        Map<Class<?>, Set<Class<?>>> result = c.conversions();
         assertTrue(result.containsKey(Duration.class));
         assertTrue(result.get(Duration.class).contains(String.class));
     }
 
     @Test
     void supportedIncludesBuiltins() {
-        Map<Class<?>, Set<Class<?>>> result = coercer.supported();
+        Map<Class<?>, Set<Class<?>>> result = coercer.conversions();
 
         // 所有内置标量目标类型都应出现
         assertTrue(result.containsKey(String.class));
@@ -183,7 +183,7 @@ class CoercerDefaultTest {
     @Test
     void supportedIncludesBuiltinDuration() {
         // Duration is now a built-in scalar target
-        Map<Class<?>, Set<Class<?>>> result = coercer.supported();
+        Map<Class<?>, Set<Class<?>>> result = coercer.conversions();
         assertTrue(result.containsKey(Duration.class));
         assertTrue(result.get(Duration.class).contains(Object.class));
     }
@@ -191,7 +191,7 @@ class CoercerDefaultTest {
     @Test
     void supportedIsUnmodifiable() {
         assertThrows(UnsupportedOperationException.class, () ->
-            coercer.supported().put(Integer.class, Set.of()));
+            coercer.conversions().put(Integer.class, Set.of()));
     }
 
     // --- existing coercion tests ---

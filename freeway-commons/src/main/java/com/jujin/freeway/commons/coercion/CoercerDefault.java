@@ -85,7 +85,7 @@ public final class CoercerDefault implements Coercer {
         return BOXED_TYPES.get(type);
     }
 
-    // --- supports / supported ---
+    // --- supports / conversions ---
 
     @Override
     public boolean supports(Class<?> sourceType, Class<?> targetType) {
@@ -109,7 +109,7 @@ public final class CoercerDefault implements Coercer {
     }
 
     @Override
-    public Map<Class<?>, Set<Class<?>>> supported() {
+    public Map<Class<?>, Set<Class<?>>> conversions() {
         Map<Class<?>, Set<Class<?>>> map = new LinkedHashMap<>();
 
         for (CoerceRule<?, ?> rule : rules.values()) {

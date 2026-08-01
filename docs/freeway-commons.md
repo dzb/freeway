@@ -8,7 +8,6 @@ Commons provides the small, shared runtime utilities used across Freeway.
 - `Defer` / `ScopedCache`
 - `BeanValidator`
 - `Coercer` / `CoerceRule`
-- `LoggerSource`
 - `JULFileHandler`
 - `LogBootstrap`
 

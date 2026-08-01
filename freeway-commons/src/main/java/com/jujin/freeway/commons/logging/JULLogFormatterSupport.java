@@ -68,6 +68,24 @@ final class JULLogFormatterSupport {
 
     private JULLogFormatterSupport() {}
 
+    static String padRight(String s, int n) {
+        if (s.length() >= n) return s;
+        return s + " ".repeat(n - s.length());
+    }
+
+    /**
+     * Formats the current thread name for log output.
+     * Falls back to {@code #threadId} for unnamed virtual threads.
+     */
+    static String formatThread() {
+        Thread t = Thread.currentThread();
+        String name = t.getName();
+        if (!name.isBlank()) {
+            return '[' + name + ']';
+        }
+        return "[#" + t.threadId() + ']';
+    }
+
     static String format(
         Formatter formatter,
         LogRecord record,
@@ -92,14 +110,14 @@ final class JULLogFormatterSupport {
         out.append(' ');
         out.append(
             colorLevel(
-                LoggingSupport.padRight(record.getLevel().getName(), cfg.levelWidth()),
+                padRight(record.getLevel().getName(), cfg.levelWidth()),
                 record.getLevel(),
                 color
             )
         );
 
         out.append(' ');
-        out.append(dim(LoggingSupport.formatThread(), color));
+        out.append(dim(formatThread(), color));
 
         out.append(' ');
         out.append(

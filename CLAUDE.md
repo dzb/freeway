@@ -53,7 +53,7 @@ Robaho adapter has been removed.
   - **Integration layer** (`HttpModule`): bridges `Consumer<Object>` → EventBus, registers `FreewayHttpEngine` as default.
   - `JdkHttpEngine` / `JdkHttpContext` have been removed — the built-in engine is now the only default.
   - Route path variables use `:name` or `{name}` syntax; `{name:regex}` for regex constraints.
-  - HttpParser uses a reusable 4KB bulk-read buffer per connection; `HttpContextImpl` (now `FreewayHttpContext`) writes responses into a reusable byte buffer for a single socket write.
+  - HttpParser uses a reusable 4KB bulk-read buffer per connection; `HttpContextImpl` (now `HttpContextDefault`) writes responses into a reusable byte buffer for a single socket write.
 - **DB** — `Database` is the entry point. Named params (`:name`/`$name`), programmatic transactions, built-in pooling, dialect auto-detection from JDBC URL, `DatabaseHub` for multi-datasource. Schema (annotation-driven DDL) and Migration (versioned SQL) provide complementary DB evolution.
 - **Flow** — Lightweight graph orchestration engine ported from solon-flow. 7 node types (START/END/ACTIVITY/EXCLUSIVE/INCLUSIVE/PARALLEL/LOOP). JSON-based graph definitions via `Graph.fromText(json)`. Self-written expression evaluator (`ExprEvaluator`, ~280-line recursive descent parser) and event bus (`FlowEventBus`). Supports PlantUML export, execution tracing with pause/resume, subgraph calls (`#graphId`), and interceptor chains. Task resolution: `@bean` / `#graph` / `$meta`. Zero extra dependencies beyond commons + ioc.
 
