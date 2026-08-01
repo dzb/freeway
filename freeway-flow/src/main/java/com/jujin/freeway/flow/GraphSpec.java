@@ -1,14 +1,8 @@
-package com.jujin.freeway.flow.v2;
+package com.jujin.freeway.flow;
 
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.flow.Graph;
-import com.jujin.freeway.flow.Link;
-import com.jujin.freeway.flow.NamedTaskComponent;
-import com.jujin.freeway.flow.Node;
-import com.jujin.freeway.flow.NodeType;
-import com.jujin.freeway.flow.TaskComponent;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -23,35 +17,34 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * Canonical graph blueprint for v2.
+ * Canonical graph blueprint — the single DAG authoring surface.
  *
- * <p>This is the new authoring surface. It only accepts the canonical
- * {@code id/title/driver/version/entry/meta/nodes/links} shape. Legacy layout
- * Legacy graphs stay on {@code com.jujin.freeway.flow.v1.GraphSpec}; v2 does
- * not accept legacy aliases.</p>
+ * <p>Accepts the canonical {@code id/title/driver/version/entry/meta/nodes/links}
+ * shape only. The legacy solon-flow {@code layout} format was dropped in favor
+ * of this explicit (V, E) representation.</p>
  */
-public class GraphSpec2 {
+public class GraphSpec {
     public static final int VERSION = 2;
-    private static final System.Logger LOG = System.getLogger(GraphSpec2.class.getName());
+    private static final System.Logger LOG = System.getLogger(GraphSpec.class.getName());
 
     private final String id;
     private String title;
     private String driver;
     private String entry;
     private final Map<String, Object> meta = new LinkedHashMap<>();
-    private final Map<String, NodeSpec2> nodes = new LinkedHashMap<>();
-    private final List<LinkSpec2> links = new ArrayList<>();
+    private final Map<String, NodeSpec> nodes = new LinkedHashMap<>();
+    private final List<LinkSpec> links = new ArrayList<>();
     private Set<String> bfsOrder;
 
-    public GraphSpec2(String id) {
+    public GraphSpec(String id) {
         this(id, null, null);
     }
 
-    public GraphSpec2(String id, String title) {
+    public GraphSpec(String id, String title) {
         this(id, title, null);
     }
 
-    public GraphSpec2(String id, String title, String driver) {
+    public GraphSpec(String id, String title, String driver) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Graph id must not be blank");
         }
@@ -60,25 +53,25 @@ public class GraphSpec2 {
         this.driver = driver;
     }
 
-    public static GraphSpec2 create(String id, Consumer<GraphSpec2> definition) {
-        GraphSpec2 blueprint = new GraphSpec2(id);
+    public static GraphSpec create(String id, Consumer<GraphSpec> definition) {
+        GraphSpec blueprint = new GraphSpec(id);
         definition.accept(blueprint);
         return blueprint;
     }
 
-    public static GraphSpec2 create(String id, String title, Consumer<GraphSpec2> definition) {
-        GraphSpec2 blueprint = new GraphSpec2(id, title);
+    public static GraphSpec create(String id, String title, Consumer<GraphSpec> definition) {
+        GraphSpec blueprint = new GraphSpec(id, title);
         definition.accept(blueprint);
         return blueprint;
     }
 
-    public static GraphSpec2 create(String id, String title, String driver, Consumer<GraphSpec2> definition) {
-        GraphSpec2 blueprint = new GraphSpec2(id, title, driver);
+    public static GraphSpec create(String id, String title, String driver, Consumer<GraphSpec> definition) {
+        GraphSpec blueprint = new GraphSpec(id, title, driver);
         definition.accept(blueprint);
         return blueprint;
     }
 
-    public GraphSpec2 then(Consumer<GraphSpec2> definition) {
+    public GraphSpec then(Consumer<GraphSpec> definition) {
         definition.accept(this);
         invalidate();
         return this;
@@ -88,25 +81,25 @@ public class GraphSpec2 {
         this.bfsOrder = null;
     }
 
-    public GraphSpec2 title(String title) {
+    public GraphSpec title(String title) {
         this.title = title;
         invalidate();
         return this;
     }
 
-    public GraphSpec2 driver(String driver) {
+    public GraphSpec driver(String driver) {
         this.driver = driver;
         invalidate();
         return this;
     }
 
-    public GraphSpec2 entry(String entry) {
+    public GraphSpec entry(String entry) {
         this.entry = entry;
         invalidate();
         return this;
     }
 
-    public GraphSpec2 metaPut(String key, Object value) {
+    public GraphSpec metaPut(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             meta.put(key, value);
         }
@@ -114,7 +107,7 @@ public class GraphSpec2 {
         return this;
     }
 
-    public GraphSpec2 meta(Map<String, Object> meta) {
+    public GraphSpec meta(Map<String, Object> meta) {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
@@ -122,65 +115,65 @@ public class GraphSpec2 {
         return this;
     }
 
-    public NodeSpec2 addNode(String id, NodeType type) {
+    public NodeSpec addNode(String id, NodeType type) {
         if (nodes.containsKey(id)) {
             throw new IllegalArgumentException(
                 "Duplicate node id '" + id + "' in graph: " + this.id);
         }
-        NodeSpec2 node = new NodeSpec2(this, id, type);
+        NodeSpec node = new NodeSpec(this, id, type);
         nodes.put(id, node);
         invalidate();
         return node;
     }
 
-    public NodeSpec2 addStart(String id) {
-        NodeSpec2 node = addNode(id, NodeType.START);
+    public NodeSpec addStart(String id) {
+        NodeSpec node = addNode(id, NodeType.START);
         if (entry == null) {
             entry = id;
         }
         return node;
     }
 
-    public NodeSpec2 addEnd(String id) {
+    public NodeSpec addEnd(String id) {
         return addNode(id, NodeType.END);
     }
 
-    public NodeSpec2 addActivity(String id) {
+    public NodeSpec addActivity(String id) {
         return addNode(id, NodeType.ACTIVITY);
     }
 
-    public NodeSpec2 addActivity(NamedTaskComponent component) {
+    public NodeSpec addActivity(NamedTaskComponent component) {
         Objects.requireNonNull(component, "component");
-        NodeSpec2 node = addActivity(component.name());
+        NodeSpec node = addActivity(component.name());
         node.title(component.title());
         node.task(component);
         return node;
     }
 
-    public NodeSpec2 addInclusive(String id) {
+    public NodeSpec addInclusive(String id) {
         return addNode(id, NodeType.INCLUSIVE);
     }
 
-    public NodeSpec2 addExclusive(String id) {
+    public NodeSpec addExclusive(String id) {
         return addNode(id, NodeType.EXCLUSIVE);
     }
 
-    public NodeSpec2 addParallel(String id) {
+    public NodeSpec addParallel(String id) {
         return addNode(id, NodeType.PARALLEL);
     }
 
-    public NodeSpec2 addLoop(String id) {
+    public NodeSpec addLoop(String id) {
         return addNode(id, NodeType.LOOP);
     }
 
-    public NodeSpec2 getNode(String id) {
+    public NodeSpec getNode(String id) {
         return nodes.get(id);
     }
 
-    public LinkSpec2 link(String from, String to) {
+    public LinkSpec link(String from, String to) {
         Objects.requireNonNull(from, "from must not be null");
         Objects.requireNonNull(to, "to must not be null");
-        LinkSpec2 link = new LinkSpec2(this, from, to);
+        LinkSpec link = new LinkSpec(this, from, to);
         links.add(link);
         invalidate();
         return link;
@@ -194,9 +187,9 @@ public class GraphSpec2 {
 
     /** Flushes pending links from all nodes into top-level links list. */
     private void drainNodeLinks() {
-        for (NodeSpec2 node : nodes.values()) {
+        for (NodeSpec node : nodes.values()) {
             for (var pending : node.drainPendingLinks()) {
-                LinkSpec2 link = link(node.getId(), pending.to());
+                LinkSpec link = link(node.getId(), pending.to());
                 if (pending.configure() != null) {
                     pending.configure().accept(link);
                 }
@@ -207,7 +200,7 @@ public class GraphSpec2 {
     public Map<String, Object> toMap() {
         drainNodeLinks();
         validateEntry();
-        GraphSpec2 normalized = normalize();
+        GraphSpec normalized = normalize();
         Map<String, Object> domRoot = new LinkedHashMap<>();
         domRoot.put("id", id);
         if (title != null && !title.isEmpty()) {
@@ -229,7 +222,7 @@ public class GraphSpec2 {
 
         List<Map<String, Object>> domNodes = new ArrayList<>();
         domRoot.put("nodes", domNodes);
-        for (NodeSpec2 node : normalized.nodesInCompileOrder()) {
+        for (NodeSpec node : normalized.nodesInCompileOrder()) {
             Map<String, Object> domNode = new LinkedHashMap<>();
             domNode.put("id", node.id);
             domNode.put("type", node.type.toString());
@@ -250,7 +243,7 @@ public class GraphSpec2 {
 
         List<Map<String, Object>> domLinks = new ArrayList<>();
         domRoot.put("links", domLinks);
-        for (LinkSpec2 link : normalized.links) {
+        for (LinkSpec link : normalized.links) {
             Map<String, Object> domLink = new LinkedHashMap<>();
             domLink.put("from", link.from);
             domLink.put("to", link.to);
@@ -276,7 +269,7 @@ public class GraphSpec2 {
         return JsonUtils.stringify(toMap());
     }
 
-    public static GraphSpec2 fromText(String text) {
+    public static GraphSpec fromText(String text) {
         JsonObject dom = JsonUtils.parseObject(text);
         Integer version = dom.containsKey("version") ? dom.getInt("version") : null;
         if (version != null && version == VERSION && dom.containsKey("nodes") && dom.containsKey("links")) {
@@ -286,8 +279,8 @@ public class GraphSpec2 {
         throw new IllegalArgumentException("Expected a v2 graph definition");
     }
 
-    public static GraphSpec2 fromDom(JsonObject dom) {
-        GraphSpec2 blueprint = new GraphSpec2(
+    public static GraphSpec fromDom(JsonObject dom) {
+        GraphSpec blueprint = new GraphSpec(
                 dom.getString("id"),
                 dom.getString("title"),
                 dom.getString("driver"));
@@ -323,7 +316,7 @@ public class GraphSpec2 {
                 throw new IllegalArgumentException(
                     "Unknown node type '" + typeStr + "' for node '" + nodeId + "'");
             }
-            NodeSpec2 node = blueprint.addNode(nodeId, nodeType);
+            NodeSpec node = blueprint.addNode(nodeId, nodeType);
             node.title(nodeDom.getString("title"));
             node.meta(toMap(nodeDom.getObject("meta")));
             node.when(nodeDom.getString("when"));
@@ -348,7 +341,7 @@ public class GraphSpec2 {
                     throw new IllegalArgumentException(
                         "Link at index " + i + " is missing required 'to' field");
                 }
-                LinkSpec2 link = blueprint.link(from, to);
+                LinkSpec link = blueprint.link(from, to);
                 link.title(linkDom.getString("title"));
                 link.meta(toMap(linkDom.getObject("meta")));
                 link.when(linkDom.getString("when"));
@@ -362,8 +355,8 @@ public class GraphSpec2 {
         return blueprint;
     }
 
-    public static GraphSpec2 copy(Graph graph) {
-        GraphSpec2 blueprint = new GraphSpec2(graph.getId(), graph.getTitle(), graph.getDriver());
+    public static GraphSpec copy(Graph graph) {
+        GraphSpec blueprint = new GraphSpec(graph.getId(), graph.getTitle(), graph.getDriver());
 
         if (graph.getStart() != null) {
             blueprint.entry(graph.getStart().getId());
@@ -371,7 +364,7 @@ public class GraphSpec2 {
         blueprint.meta(graph.getMetas());
 
         for (Node node : graph.getNodes().values()) {
-            NodeSpec2 nodeBlueprint = blueprint.addNode(node.getId(), node.getType());
+            NodeSpec nodeBlueprint = blueprint.addNode(node.getId(), node.getType());
             nodeBlueprint.title(node.getTitle());
             nodeBlueprint.meta(node.getMetas());
             if (node.getWhen() != null) {
@@ -391,7 +384,7 @@ public class GraphSpec2 {
         }
 
         for (Link link : graph.getLinks()) {
-            LinkSpec2 linkBlueprint = blueprint.link(link.getPrevId(), link.getNextId());
+            LinkSpec linkBlueprint = blueprint.link(link.getPrevId(), link.getNextId());
             linkBlueprint.title(link.getTitle());
             linkBlueprint.meta(link.getMetas());
             if (link.getWhen() != null) {
@@ -431,11 +424,11 @@ public class GraphSpec2 {
         return Collections.unmodifiableMap(meta);
     }
 
-    public Map<String, NodeSpec2> getNodes() {
+    public Map<String, NodeSpec> getNodes() {
         return Collections.unmodifiableMap(nodes);
     }
 
-    public List<LinkSpec2> getLinks() {
+    public List<LinkSpec> getLinks() {
         return Collections.unmodifiableList(links);
     }
 
@@ -446,10 +439,10 @@ public class GraphSpec2 {
      * entry to determine reachable nodes, and warns about disconnected
      * subgraphs. Idempotent — subsequent calls are no-ops.</p>
      */
-    private GraphSpec2 normalize() {
+    private GraphSpec normalize() {
 
         // 1. Validate all link references resolve
-        for (LinkSpec2 link : links) {
+        for (LinkSpec link : links) {
             if (!nodes.containsKey(link.from)) {
                 throw new IllegalStateException(
                         "Link references unknown source node '" + link.from
@@ -497,7 +490,7 @@ public class GraphSpec2 {
                 if (!bfsOrder.add(nodeId)) {
                     continue;
                 }
-                for (LinkSpec2 link : links) {
+                for (LinkSpec link : links) {
                     if (link.from.equals(nodeId)) {
                         queue.addLast(link.to);
                     }
@@ -521,17 +514,17 @@ public class GraphSpec2 {
         return this;
     }
 
-    private List<NodeSpec2> nodesInCompileOrder() {
+    private List<NodeSpec> nodesInCompileOrder() {
         // Reachable first (BFS order), then unreachable (insertion order) — never
         // silently drop nodes; toMap()/toJson() must round-trip faithfully.
-        List<NodeSpec2> ordered = new ArrayList<>(nodes.size());
+        List<NodeSpec> ordered = new ArrayList<>(nodes.size());
         if (bfsOrder != null && !bfsOrder.isEmpty()) {
             for (String nodeId : bfsOrder) {
-                NodeSpec2 node = nodes.get(nodeId);
+                NodeSpec node = nodes.get(nodeId);
                 if (node != null) ordered.add(node);
             }
         }
-        for (NodeSpec2 node : nodes.values()) {
+        for (NodeSpec node : nodes.values()) {
             if (!ordered.contains(node)) ordered.add(node);
         }
         return ordered;
@@ -544,7 +537,7 @@ public class GraphSpec2 {
 
         // Auto-detect: single START node wins
         String singleStart = null;
-        for (NodeSpec2 node : nodes.values()) {
+        for (NodeSpec node : nodes.values()) {
             if (node.type == NodeType.START) {
                 if (singleStart != null) {
                     return null; // ambiguous — user must set entry explicitly

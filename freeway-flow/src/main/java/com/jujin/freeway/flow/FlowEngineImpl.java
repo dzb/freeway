@@ -343,11 +343,11 @@ public class FlowEngineImpl implements FlowEngine {
 
     @SuppressWarnings("unchecked")
     protected boolean inclusive_run_in(FlowExchanger exchanger, Node node) {
-        Stack<Integer> stack = exchanger.temporary().stack(node.getGraph(), "inclusive_run");
+        Stack<Integer> stack = exchanger.execState().stack(node.getGraph(), "inclusive_run");
         if (node.getPrevLinks().size() > 1) {
             if (!stack.isEmpty()) {
                 int startSize = stack.peek();
-                int inSize = exchanger.temporary().countIncr(node.getGraph(), node.getId());
+                int inSize = exchanger.execState().countIncr(node.getGraph(), node.getId());
                 if (startSize > inSize) return false;
                 stack.pop();
             }
@@ -357,7 +357,7 @@ public class FlowEngineImpl implements FlowEngine {
 
     @SuppressWarnings("unchecked")
     protected void inclusive_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        Stack<Integer> stack = exchanger.temporary().stack(node.getGraph(), "inclusive_run");
+        Stack<Integer> stack = exchanger.execState().stack(node.getGraph(), "inclusive_run");
         List<Link> matched = new ArrayList<>();
         for (Link l : node.getNextLinks()) {
             if (condition_test(exchanger, l.getWhen(), true)) matched.add(l);
@@ -377,14 +377,14 @@ public class FlowEngineImpl implements FlowEngine {
     }
 
     protected boolean parallel_run_in(FlowExchanger exchanger, Node node) {
-        int count = exchanger.temporary().countIncr(node.getGraph(), node.getId());
+        int count = exchanger.execState().countIncr(node.getGraph(), node.getId());
         return node.getPrevLinks().size() <= count;
     }
 
     protected void parallel_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
         // Branches share the same FlowContext — concurrent writes to the same
         // key are a known limitation (see docs/freeway-flow-parallel-context-isolation.md).
-        exchanger.temporary().countSet(node.getGraph(), node.getId(), 0);
+        exchanger.execState().countSet(node.getGraph(), node.getId(), 0);
 
         if (exchanger.driver().getExecutor() == null || node.getNextNodes().size() < 2) {
             for (Node n : node.getNextNodes()) node_run(exchanger, options, n, startNode);
@@ -432,7 +432,7 @@ public class FlowEngineImpl implements FlowEngine {
 
     @SuppressWarnings("unchecked")
     protected boolean loop_run_in(FlowExchanger exchanger, Node node) {
-        Stack<Iterator> stack = exchanger.temporary().stack(node.getGraph(), "loop_run");
+        Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run");
         if (!stack.isEmpty()) {
             Iterator<?> iter = stack.peek();
             if (iter.hasNext()) return false;
@@ -464,7 +464,7 @@ public class FlowEngineImpl implements FlowEngine {
         else if (inObj instanceof Iterable) iter = ((Iterable<?>) inObj).iterator();
         else throw new FlowException(inKey + " is not a collection");
 
-        Stack<Iterator> stack = exchanger.temporary().stack(node.getGraph(), "loop_run");
+        Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run");
         stack.push(iter);
 
         while (iter.hasNext()) {

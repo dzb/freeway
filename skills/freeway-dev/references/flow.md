@@ -3,7 +3,7 @@
 ## Stable API
 
 - `Graph` — immutable runtime model
-- `GraphSpec2` — v2 DAG authoring surface (explicit entry, separated nodes+links)
+- `GraphSpec` — canonical DAG authoring surface (explicit entry, separated nodes+links)
 - `FlowEngine` — `load()`, `eval()`, `register(TaskComponent)`, `markerIndex()`
 - `FlowDriver` — contributed extension point; graph `"driver"` field selects by id (null/"" → `"default"`)
 - `FlowDriverDefault` — built-in driver contributed by `FlowModule` as id `"default"`
@@ -36,7 +36,7 @@ binder.contribute(FlowDriver.class)
 
 ```java
 // v2 format (recommended)
-GraphSpec2 bp = GraphSpec2.create("flow", spec -> {
+GraphSpec bp = GraphSpec.create("flow", spec -> {
     spec.entry("start");
     spec.addStart("start").linkAdd("task");
     spec.addActivity("task").task("!channel:order").linkAdd("end");
@@ -56,5 +56,5 @@ engine.eval("flow", FlowContext.of());
 ## Important Behavior
 
 - `Graph.fromText()` auto-detects v1 (`layout`) and v2 (`nodes`+`links`+`version`) JSON.
-- `GraphSpec2.normalize()` validates link references and logs unreachable nodes.
+- `GraphSpec.normalize()` validates link references and logs unreachable nodes.
 - Flow expressions are cached (LRU, 512 entries) via self-written recursive-descent parser.

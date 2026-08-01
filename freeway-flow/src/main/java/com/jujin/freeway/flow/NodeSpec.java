@@ -1,8 +1,5 @@
-package com.jujin.freeway.flow.v2;
+package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.ConditionComponent;
-import com.jujin.freeway.flow.NodeType;
-import com.jujin.freeway.flow.TaskComponent;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,16 +10,16 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Node specification for v2 graph blueprints.
+ * Node specification for a graph blueprint.
  *
- * <p>Nodes are created via {@link GraphSpec2#addNode(String, NodeType)}
- * or convenience methods like {@link GraphSpec2#addStart(String)}.
+ * <p>Nodes are created via {@link GraphSpec#addNode(String, NodeType)}
+ * or convenience methods like {@link GraphSpec#addStart(String)}.
  * {@link #linkAdd(String)} and {@link #linkAdd(String, Consumer)}
  * store pending links that are collected and instantiated by
- * {@link GraphSpec2} during {@code create()}.
+ * {@link GraphSpec} during {@code create()}.
  */
-public final class NodeSpec2 {
-    private final GraphSpec2 owner;
+public final class NodeSpec {
+    private final GraphSpec owner;
     final String id;
     final NodeType type;
     String title;
@@ -33,7 +30,7 @@ public final class NodeSpec2 {
     String task;
     TaskComponent taskComponent;
 
-    NodeSpec2(GraphSpec2 owner, String id, NodeType type) {
+    NodeSpec(GraphSpec owner, String id, NodeType type) {
         this.owner = owner;
         this.id = id;
         this.type = type == null ? NodeType.ACTIVITY : type;
@@ -45,13 +42,13 @@ public final class NodeSpec2 {
         }
     }
 
-    public NodeSpec2 title(String title) {
+    public NodeSpec title(String title) {
         this.title = title;
         touch();
         return this;
     }
 
-    public NodeSpec2 meta(Map<String, Object> meta) {
+    public NodeSpec meta(Map<String, Object> meta) {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
@@ -59,7 +56,7 @@ public final class NodeSpec2 {
         return this;
     }
 
-    public NodeSpec2 metaPut(String key, Object value) {
+    public NodeSpec metaPut(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             this.meta.put(key, value);
         }
@@ -67,28 +64,28 @@ public final class NodeSpec2 {
         return this;
     }
 
-    public NodeSpec2 when(String when) {
+    public NodeSpec when(String when) {
         this.when = when;
         this.whenComponent = null;
         touch();
         return this;
     }
 
-    public NodeSpec2 when(ConditionComponent whenComponent) {
+    public NodeSpec when(ConditionComponent whenComponent) {
         this.whenComponent = whenComponent;
         this.when = null;
         touch();
         return this;
     }
 
-    public NodeSpec2 task(String task) {
+    public NodeSpec task(String task) {
         this.task = task;
         this.taskComponent = null;
         touch();
         return this;
     }
 
-    public NodeSpec2 task(TaskComponent taskComponent) {
+    public NodeSpec task(TaskComponent taskComponent) {
         this.taskComponent = taskComponent;
         this.task = null;
         touch();
@@ -97,16 +94,16 @@ public final class NodeSpec2 {
 
     /**
      * Stores a pending link from this node to {@code to}.
-     * The link is instantiated later by {@link GraphSpec2#create()}.
+     * The link is instantiated later by {@link GraphSpec#create()}.
      */
-    public NodeSpec2 linkAdd(String to) {
+    public NodeSpec linkAdd(String to) {
         pendingLinks.add(new PendingLink(
             Objects.requireNonNull(to, "to must not be null"), null));
         touch();
         return this;
     }
 
-    public NodeSpec2 linkAdd(String to, Consumer<LinkSpec2> configure) {
+    public NodeSpec linkAdd(String to, Consumer<LinkSpec> configure) {
         pendingLinks.add(new PendingLink(
             Objects.requireNonNull(to, "to must not be null"), configure));
         touch();
@@ -115,7 +112,7 @@ public final class NodeSpec2 {
 
     /**
      * Drains and returns the pending links for this node, clearing the internal list.
-     * Called by {@link GraphSpec2} during {@code create()}.
+     * Called by {@link GraphSpec} during {@code create()}.
      */
     List<PendingLink> drainPendingLinks() {
         if (pendingLinks.isEmpty()) return List.of();
@@ -126,9 +123,9 @@ public final class NodeSpec2 {
 
     /**
      * A pending link from this node to a target, with optional configuration.
-     * Instantiated as {@link LinkSpec2} by GraphSpec2 during create().
+     * Instantiated as {@link LinkSpec} by GraphSpec during create().
      */
-    record PendingLink(String to, Consumer<LinkSpec2> configure) {}
+    record PendingLink(String to, Consumer<LinkSpec> configure) {}
 
     public String getId() {
         return id;

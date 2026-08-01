@@ -25,7 +25,7 @@ public class FlowExchanger {
     private final int steps;
     private final AtomicInteger stepCount;
 
-    private final Temporary temporary;
+    private final ExecState execState;
     /** Shared recursion depth guard — see {@link FlowEngineImpl#MAX_EXECUTION_DEPTH}. */
     private final AtomicInteger depth;
     private volatile boolean interrupted = false;
@@ -33,14 +33,14 @@ public class FlowExchanger {
     private volatile boolean reverting = true;
 
     public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount) {
-        this(graph, engine, driver, context, steps, stepCount, new Temporary(), new AtomicInteger());
+        this(graph, engine, driver, context, steps, stepCount, new ExecState(), new AtomicInteger());
     }
 
-    private FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount, Temporary temporary, AtomicInteger depth) {
+    private FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount, ExecState execState, AtomicInteger depth) {
         Objects.requireNonNull(engine, "engine");
         Objects.requireNonNull(driver, "driver");
         Objects.requireNonNull(context, "context");
-        Objects.requireNonNull(temporary, "temporary");
+        Objects.requireNonNull(execState, "execState");
 
         this.graph = graph;
         this.engine = engine;
@@ -48,16 +48,16 @@ public class FlowExchanger {
         this.context = context;
         this.steps = steps;
         this.stepCount = stepCount;
-        this.temporary = temporary;
+        this.execState = execState;
         this.depth = depth;
     }
 
     public FlowExchanger copy(Graph graphNew) {
-        return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, temporary, depth);
+        return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, execState, depth);
     }
 
     public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, temporary, depth);
+        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, execState, depth);
     }
 
     /** Enters a node — returns the current recursion depth. */
@@ -74,7 +74,7 @@ public class FlowExchanger {
     public FlowEngine engine() { return engine; }
     public FlowDriver driver() { return driver; }
     public FlowContext context() { return context; }
-    public Temporary temporary() { return temporary; }
+    public ExecState execState() { return execState; }
 
     // --- trace ---
 
@@ -92,7 +92,7 @@ public class FlowExchanger {
         prevStep(); // 回退步数（子图调用不算步数）
         // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
         FlowExchanger subEx = new FlowExchanger(graph, engine,
-            engine.getDriver(graph), context, steps, stepCount, temporary, depth);
+            engine.getDriver(graph), context, steps, stepCount, execState, depth);
         engine.eval(graph, subEx, null);
 
         if (!isStopped()) {

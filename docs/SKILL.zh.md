@@ -906,13 +906,13 @@ freeway.db.schema.auto=true          freeway.db.schema.auto=false
 
 ## Flow — 图编排引擎
 
-7 种节点类型的轻量级图编排引擎：`START`、`END`、`ACTIVITY`、`EXCLUSIVE`、`INCLUSIVE`、`PARALLEL`、`LOOP`。v1 格式兼容 solon-flow，v2（`GraphSpec2`，`nodes`+`links` 结构）是 Freeway 原生格式，两者共享统一运行时。
+7 种节点类型的轻量级图编排引擎：`START`、`END`、`ACTIVITY`、`EXCLUSIVE`、`INCLUSIVE`、`PARALLEL`、`LOOP`。图定义使用规范的 `GraphSpec`（`nodes`+`links` 结构、显式 `entry`），严格校验链接引用与可达性。
 
-### 图定义 — v2 格式（推荐）
+### 图定义
 
 ```java
 // 编程式
-GraphSpec2 bp = GraphSpec2.create("orderFlow", spec -> {
+GraphSpec bp = GraphSpec.create("orderFlow", spec -> {
     spec.entry("start");
     spec.addStart("start").linkAdd("approve");
     spec.addActivity("approve").task("!channel:order").linkAdd("end");
@@ -920,7 +920,7 @@ GraphSpec2 bp = GraphSpec2.create("orderFlow", spec -> {
 });
 Graph graph = bp.create();          // normalize() 自动校验 link 引用 + 可达性
 
-// JSON — fromText() 自动检测 v1/v2 格式
+// JSON — 规范的 nodes+links 格式
 Graph graph = Graph.fromText("""
 {
     "id": "orderFlow", "version": 2, "entry": "start",

@@ -6,12 +6,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 临时的（内部使用）
+ * Per-execution working state of a {@link FlowExchanger}: stacks, counters,
+ * and variables used while a flow (or sub-graph call) is running.
+ *
+ * <p>Shared across {@link FlowExchanger#copy()} boundaries so loop and
+ * inclusive-gateway bookkeeping survives sub-graph switches.
  *
  * @author noear
  * @since 3.0
  */
-public class Temporary {
+public class ExecState {
     static final String ROOT = "_ROOT";
 
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
@@ -74,7 +78,7 @@ public class Temporary {
 
     @Override
     public String toString() {
-        return "Temporary{" +
+        return "ExecState{" +
                 "counts=" + counts +
                 ", stacks=" + stacks +
                 '}';

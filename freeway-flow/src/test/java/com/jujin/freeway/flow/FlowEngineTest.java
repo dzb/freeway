@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.v2.GraphSpec2;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.Scope;
@@ -98,10 +97,15 @@ class FlowEngineTest {
         String json = """
                 {
                   "id": "json_test",
-                  "layout": [
-                    { "id": "s", "type": "start", "link": "a" },
-                    { "id": "a", "type": "activity", "task": "@jsonTask", "link": "e" },
+                  "version": 2,
+                  "nodes": [
+                    { "id": "s", "type": "start" },
+                    { "id": "a", "type": "activity", "task": "@jsonTask" },
                     { "id": "e", "type": "end" }
+                  ],
+                  "links": [
+                    { "from": "s", "to": "a" },
+                    { "from": "a", "to": "e" }
                   ]
                 }""";
 
@@ -180,13 +184,13 @@ class FlowEngineTest {
 
     @Test
     void testSubGraph() {
-        Graph subGraph = GraphSpec2.create("sub", "", "default", spec -> {
+        Graph subGraph = GraphSpec.create("sub", "", "default", spec -> {
             spec.addStart("sub_s").linkAdd("sub_a");
             spec.addActivity("sub_a").task("@subTask").linkAdd("sub_e");
             spec.addEnd("sub_e");
         }).create();
 
-        Graph mainGraph = GraphSpec2.create("main", "", "default", spec -> {
+        Graph mainGraph = GraphSpec.create("main", "", "default", spec -> {
             spec.addStart("s").linkAdd("call");
             spec.addActivity("call").task("#sub").linkAdd("e");
             spec.addEnd("e");
@@ -246,13 +250,13 @@ class FlowEngineTest {
             "sub", subDriver
         ));
 
-        Graph subGraph = GraphSpec2.create("sub", "", "sub", spec -> {
+        Graph subGraph = GraphSpec.create("sub", "", "sub", spec -> {
             spec.addStart("sub_s").linkAdd("sub_a");
             spec.addActivity("sub_a").task("@subTask").linkAdd("sub_e");
             spec.addEnd("sub_e");
         }).create();
 
-        Graph mainGraph = GraphSpec2.create("main", "", "default", spec -> {
+        Graph mainGraph = GraphSpec.create("main", "", "default", spec -> {
             spec.addStart("main_s").linkAdd("main_a");
             spec.addActivity("main_a").task("@mainTask").linkAdd("call");
             spec.addActivity("call").task("#sub").linkAdd("main_e");
@@ -272,7 +276,7 @@ class FlowEngineTest {
     }
 
     @Test
-    void exchangerCopyKeepsTemporaryState() {
+    void exchangerCopyKeepsExecState() {
         FlowEngine engine = FlowEngine.newInstance();
         Graph graph = graphWithDriver("default");
         FlowExchanger exchanger = new FlowExchanger(
@@ -284,11 +288,11 @@ class FlowEngineTest {
             new AtomicInteger(0)
         );
 
-        exchanger.temporary().countSet(graph, "loop", 3);
+        exchanger.execState().countSet(graph, "loop", 3);
 
         FlowExchanger copy = exchanger.copy(graph);
-        assertSame(exchanger.temporary(), copy.temporary());
-        assertEquals(3, copy.temporary().count(graph, "loop"));
+        assertSame(exchanger.execState(), copy.execState());
+        assertEquals(3, copy.execState().count(graph, "loop"));
     }
 
     // --- 停止 ---
@@ -642,7 +646,7 @@ class FlowEngineTest {
     // ── regression: deep-graph stack safety ───────────────────────
 
     private static Graph chain(int nodes) {
-        GraphSpec2 b = GraphSpec2.create("chain_" + nodes, x -> {});
+        GraphSpec b = GraphSpec.create("chain_" + nodes, x -> {});
         b.entry("s");
         b.addStart("s");
         for (int i = 0; i < nodes; i++) b.addActivity("a" + i);
@@ -684,7 +688,7 @@ class FlowEngineTest {
     // ── driver resolution ──────────────────────────────────────
 
     private static Graph graphWithDriver(String driver) {
-        return GraphSpec2.create("g", "", driver, s -> {
+        return GraphSpec.create("g", "", driver, s -> {
             s.entry("s");
             s.addStart("s").linkAdd("e");
             s.addEnd("e");
@@ -695,7 +699,7 @@ class FlowEngineTest {
     void driverDefaultWhenNull() {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
-        Graph g = GraphSpec2.create("g", s -> {
+        Graph g = GraphSpec.create("g", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
         assertSame(driver, engine.getDriver(g));
@@ -705,7 +709,7 @@ class FlowEngineTest {
     void driverDefaultWhenEmpty() {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
-        Graph g = GraphSpec2.create("g", "", "", s -> {
+        Graph g = GraphSpec.create("g", "", "", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
         assertSame(driver, engine.getDriver(g));
@@ -715,7 +719,7 @@ class FlowEngineTest {
     void driverDefaultWhenBlank() {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
-        Graph g = GraphSpec2.create("g", "", "   ", s -> {
+        Graph g = GraphSpec.create("g", "", "   ", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
         assertSame(driver, engine.getDriver(g));
@@ -816,7 +820,7 @@ class FlowEngineTest {
 
         var driver = new FlowDriverDefault(fc, null);
         FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
-        Graph g = GraphSpec2.create("g", s -> {
+        Graph g = GraphSpec.create("g", s -> {
             s.entry("s"); s.addStart("s").linkAdd("a");
             s.addActivity("a").task("@counter").linkAdd("e");
             s.addEnd("e");
@@ -844,7 +848,7 @@ class FlowEngineTest {
         driverMap.putAll(container.extension(FlowDriver.class).asMap());
         FlowEngine engine = FlowEngine.newInstance(driverMap);
 
-        Graph g = GraphSpec2.create("g", "", "fast", s -> {
+        Graph g = GraphSpec.create("g", "", "fast", s -> {
             s.entry("s"); s.addStart("s").linkAdd("a");
             s.addActivity("a").task("@dummy").linkAdd("e");
             s.addEnd("e");
@@ -874,7 +878,7 @@ class FlowEngineTest {
         String generatedId = driverMap.keySet().stream()
             .filter(k -> !"default".equals(k)).findFirst().orElseThrow();
 
-        Graph g = GraphSpec2.create("g", "", generatedId, s -> {
+        Graph g = GraphSpec.create("g", "", generatedId, s -> {
             s.entry("s"); s.addStart("s").linkAdd("a");
             s.addActivity("a").task("@dummy").linkAdd("e");
             s.addEnd("e");
@@ -889,7 +893,7 @@ class FlowEngineTest {
     void nullContainerThrowsClearErrorForBeanName() {
         // FlowDriverDefault.getInstance() has container=null
         FlowEngine engine = FlowEngine.newInstance(); // uses getInstance()
-        Graph g = GraphSpec2.create("g", spec -> {
+        Graph g = GraphSpec.create("g", spec -> {
             spec.entry("s"); spec.addStart("s").linkAdd("a");
             spec.addActivity("a").task("@counter").linkAdd("e");
             spec.addEnd("e");
@@ -911,7 +915,7 @@ class FlowEngineTest {
             .container(name -> (TaskComponent) (ctx, node) -> counter.incrementAndGet())
             .build());
         // Entry points to the LOOP node — keeps its LOOP type (not force-promoted to START)
-        Graph g = GraphSpec2.create("loop", spec -> {
+        Graph g = GraphSpec.create("loop", spec -> {
             spec.entry("l");
             spec.addLoop("l").metaPut("$for", "item")
                 .metaPut("$in", List.of(1, 2, 3))
@@ -944,7 +948,7 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
             .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
             .build());
-        Graph g = GraphSpec2.create("inc", spec -> {
+        Graph g = GraphSpec.create("inc", spec -> {
             spec.entry("s");
             spec.addStart("s").linkAdd("gw");
             spec.addInclusive("gw").task("@dummy")
@@ -966,7 +970,7 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
             .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
             .build());
-        Graph g = GraphSpec2.create("ex", spec -> {
+        Graph g = GraphSpec.create("ex", spec -> {
             spec.entry("s");
             spec.addStart("s").linkAdd("gw");
             // two links: one conditional (won't match), one default

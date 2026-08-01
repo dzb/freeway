@@ -2,10 +2,6 @@ package com.jujin.freeway.flow;
 
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.flow.v1.GraphSpec;
-import com.jujin.freeway.flow.v2.GraphSpec2;
-import com.jujin.freeway.flow.v2.LinkSpec2;
-import com.jujin.freeway.flow.v2.NodeSpec2;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +26,7 @@ public class Graph {
     private final List<Link> links;
     private Node start;
 
-    public Graph(GraphSpec2 blueprint) {
+    public Graph(GraphSpec blueprint) {
         this.id = blueprint.getId();
         this.title = blueprint.getTitle();
         this.driver = blueprint.getDriver();
@@ -42,12 +38,12 @@ public class Graph {
 
         Map<String, Node> nodeMap = new LinkedHashMap<>(blueprint.getNodes().size());
         List<Link> linkAry = new ArrayList<>(blueprint.getLinks().size());
-        Map<String, List<LinkSpec2>> outgoing = new LinkedHashMap<>();
-        for (LinkSpec2 link : blueprint.getLinks()) {
+        Map<String, List<LinkSpec>> outgoing = new LinkedHashMap<>();
+        for (LinkSpec link : blueprint.getLinks()) {
             outgoing.computeIfAbsent(link.getFrom(), k -> new ArrayList<>()).add(link);
         }
 
-        for (Map.Entry<String, NodeSpec2> kv : blueprint.getNodes().entrySet()) {
+        for (Map.Entry<String, NodeSpec> kv : blueprint.getNodes().entrySet()) {
             doAddNode(kv.getValue(), entryId, outgoing, nodeMap, linkAry);
         }
 
@@ -73,15 +69,6 @@ public class Graph {
 
     public static Graph fromText(String text) {
         JsonObject dom = JsonUtils.parseObject(text);
-        // Route to v2 when either version==2 is declared, or the structural
-        // signature (top-level nodes + links) is present. v1 layout format
-        // never has a top-level "links" array.
-        Integer version = dom.getInt("version");
-        boolean isV2 = (version != null && version == GraphSpec2.VERSION)
-            || (dom.containsKey("nodes") && dom.containsKey("links"));
-        if (isV2) {
-            return GraphSpec2.fromDom(dom).create();
-        }
         return GraphSpec.fromDom(dom).create();
     }
 
@@ -117,44 +104,8 @@ public class Graph {
         return JsonUtils.stringify(toMap());
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> toMap() {
-        Map<String, Object> domRoot = new LinkedHashMap<>();
-        domRoot.put("id", id);
-        if (title != null && !title.isEmpty()) domRoot.put("title", title);
-        if (driver != null && !driver.isEmpty()) domRoot.put("driver", driver);
-        if (!metas.isEmpty()) domRoot.put("meta", metas);
-
-        List<Map<String, Object>> domNodes = new ArrayList<>();
-        domRoot.put("layout", domNodes);
-
-        for (Map.Entry<String, Node> kv : nodes.entrySet()) {
-            Node node = kv.getValue();
-            Map<String, Object> domNode = new LinkedHashMap<>();
-            domNodes.add(domNode);
-
-            domNode.put("id", node.getId());
-            domNode.put("type", node.getType().toString().toLowerCase());
-            if (node.getTitle() != null && !node.getTitle().isEmpty()) domNode.put("title", node.getTitle());
-            if (!node.getMetas().isEmpty()) domNode.put("meta", node.getMetas());
-            if (ConditionDesc.isNotEmpty(node.getWhen())) domNode.put("when", node.getWhen().getDescription());
-            if (TaskDesc.isNotEmpty(node.getTask())) domNode.put("task", node.getTask().getDescription());
-
-            if (!node.getNextLinks().isEmpty()) {
-                List<Map<String, Object>> domLinks = new ArrayList<>();
-                domNode.put("link", domLinks);
-                for (Link link : node.getNextLinks()) {
-                    Map<String, Object> domLink = new LinkedHashMap<>();
-                    domLinks.add(domLink);
-                    domLink.put("nextId", link.getNextId());
-                    if (link.getTitle() != null && !link.getTitle().isEmpty()) domLink.put("title", link.getTitle());
-                    if (!link.getMetas().isEmpty()) domLink.put("meta", link.getMetas());
-                    if (ConditionDesc.isNotEmpty(link.getWhen())) domLink.put("when", link.getWhen().getDescription());
-                }
-            }
-        }
-
-        return domRoot;
+        return GraphSpec.copy(this).toMap();
     }
 
     // --- PlantUML ---
@@ -320,12 +271,12 @@ public class Graph {
         return spec.create();
     }
 
-    private void doAddNode(NodeSpec2 nodeSpec, String entryId,
-                           Map<String, List<LinkSpec2>> outgoing,
+    private void doAddNode(NodeSpec nodeSpec, String entryId,
+                           Map<String, List<LinkSpec>> outgoing,
                            Map<String, Node> nodeMap, List<Link> linkAry) {
-        List<LinkSpec2> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
+        List<LinkSpec> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
         List<Link> tmp = new ArrayList<>(nodeLinks.size());
-        for (LinkSpec2 linkSpec : nodeLinks) {
+        for (LinkSpec linkSpec : nodeLinks) {
             tmp.add(new Link(this, nodeSpec.getId(), linkSpec));
         }
         linkAry.addAll(tmp);

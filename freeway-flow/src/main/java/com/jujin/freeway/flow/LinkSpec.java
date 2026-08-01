@@ -1,18 +1,17 @@
-package com.jujin.freeway.flow.v2;
+package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.ConditionComponent;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Link specification for v2 graph blueprints.
+ * Link specification for a graph blueprint.
  *
- * <p>Links are created via {@link GraphSpec2#link(String, String)}.
+ * <p>Links are created via {@link GraphSpec#link(String, String)}.
  */
-public final class LinkSpec2 {
-    private final GraphSpec2 owner;
+public final class LinkSpec {
+    private final GraphSpec owner;
     final String from;
     final String to;
     String title;
@@ -21,7 +20,7 @@ public final class LinkSpec2 {
     ConditionComponent whenComponent;
     int priority;
 
-    LinkSpec2(GraphSpec2 owner, String from, String to) {
+    LinkSpec(GraphSpec owner, String from, String to) {
         this.owner = owner;
         this.from = from;
         this.to = to;
@@ -33,13 +32,13 @@ public final class LinkSpec2 {
         }
     }
 
-    public LinkSpec2 title(String title) {
+    public LinkSpec title(String title) {
         this.title = title;
         touch();
         return this;
     }
 
-    public LinkSpec2 meta(Map<String, Object> meta) {
+    public LinkSpec meta(Map<String, Object> meta) {
         if (meta != null && !meta.isEmpty()) {
             this.meta.putAll(meta);
         }
@@ -47,7 +46,7 @@ public final class LinkSpec2 {
         return this;
     }
 
-    public LinkSpec2 metaPut(String key, Object value) {
+    public LinkSpec metaPut(String key, Object value) {
         if (key != null && !key.isEmpty()) {
             this.meta.put(key, value);
         }
@@ -55,21 +54,21 @@ public final class LinkSpec2 {
         return this;
     }
 
-    public LinkSpec2 when(String when) {
+    public LinkSpec when(String when) {
         this.when = when;
         this.whenComponent = null;
         touch();
         return this;
     }
 
-    public LinkSpec2 when(ConditionComponent whenComponent) {
+    public LinkSpec when(ConditionComponent whenComponent) {
         this.whenComponent = whenComponent;
         this.when = null;
         touch();
         return this;
     }
 
-    public LinkSpec2 priority(int priority) {
+    public LinkSpec priority(int priority) {
         this.priority = priority;
         touch();
         return this;

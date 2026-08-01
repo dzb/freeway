@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.v2.NodeSpec2;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,11 +30,11 @@ public class Node {
     private List<Link> prevLinks;
     public Object attachment;
 
-    public Node(Graph graph, NodeSpec2 spec, List<Link> links) {
+    public Node(Graph graph, NodeSpec spec, List<Link> links) {
         this(graph, spec, spec.getType(), links);
     }
 
-    public Node(Graph graph, NodeSpec2 spec, NodeType type, List<Link> links) {
+    public Node(Graph graph, NodeSpec spec, NodeType type, List<Link> links) {
         this.graph = graph;
         this.id = spec.getId();
         this.title = spec.getTitle();

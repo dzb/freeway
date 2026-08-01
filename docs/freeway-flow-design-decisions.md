@@ -211,18 +211,17 @@ RouteHandler resolve(Container container) {
 
 ---
 
-## Flow v1/v2 Unified Build Path
+## Flow Single Canonical Graph Spec
 
-**Decision:** `GraphSpec` (v1) internally converts to `GraphSpec2` via `toBlueprint()` during `create()`. Runtime builds only through `Graph(GraphSpec2)`. `Graph.fromText()` auto-detects format by checking `version==2` or top-level `nodes`+`links` structure.
+**Decision:** `Graph` is built exclusively from the canonical `GraphSpec` blueprint (`id/title/driver/version/entry/meta/nodes/links`). The legacy solon-flow v1 `layout` format (per-node embedded `link`, implicit auto-linking, `when`/`condition` aliases) was removed; `Graph.fromText()` accepts only the canonical shape and `Graph.toMap()`/`toJson()` serialize it.
 
-**Why:** Dual constructors on `Graph`/`Node`/`Link` were an ongoing source of drift. By making v2 the single runtime path, v1 JSON becomes a compatibility adapter — parse v1, convert to v2, build. Future v1 removal only requires deleting the adapter layer; runtime is unaffected.
+**Why:** v1's auto-linking and auto-generated ids made the graph topology a function of array order — the same definition could produce different graphs. The canonical `(V, E)` representation is order-independent, declares exactly one entry, validates every link reference, and computes BFS reachability at `create()` time. Removing the v1 adapter deleted ~560 lines and eliminated the dual-format surface.
 
 ```
-v1 JSON → GraphSpec → toBlueprint() → GraphSpec2.normalize() → new Graph
-v2 JSON → GraphSpec2 → normalize() → new Graph
+JSON → GraphSpec.normalize() → new Graph
 ```
 
-**See also:** `GraphSpec2.java`, `v1/GraphSpec.java` (`freeway-flow`)
+**See also:** `GraphSpec.java`, `NodeSpec.java`, `LinkSpec.java` (`freeway-flow`)
 
 ---
 
@@ -246,13 +245,13 @@ v2 JSON → GraphSpec2 → normalize() → new Graph
 
 ---
 
-## GraphSpec2 Cache Invalidation via owner.touch()
+## GraphSpec Cache Invalidation via owner.touch()
 
-**Decision:** `NodeSpec2` and `LinkSpec2` carry a package-private `owner` reference back to `GraphSpec2`. Every setter calls `touch()` → `owner.invalidate()`, which clears the cached BFS order. Normalization runs fresh on each `create()`/`toMap()` call.
+**Decision:** `NodeSpec` and `LinkSpec` carry a package-private `owner` reference back to `GraphSpec`. Every setter calls `touch()` → `owner.invalidate()`, which clears the cached BFS order. Normalization runs fresh on each `create()`/`toMap()` call.
 
 **Why:** Extracting the inner classes broke the implicit cache invalidation (inner classes had direct access). The `touch()` pattern restores it without exposing internals — `owner` is package-private, `touch()` is private, `invalidate()` is package-private. This guarantees that `create()` after any mutation always sees the correct graph state.
 
-**See also:** `GraphSpec2.java`, `NodeSpec2.java`, `LinkSpec2.java` (`freeway-flow`)
+**See also:** `GraphSpec.java`, `NodeSpec.java`, `LinkSpec.java` (`freeway-flow`)
 
 ---
 
@@ -262,7 +261,7 @@ v2 JSON → GraphSpec2 → normalize() → new Graph
 
 **Why:** The previous implementation only returned BFS-reachable nodes, causing unreachable nodes to silently disappear from JSON output. This broke round-trip fidelity — a graph loaded from JSON, modified, and re-serialized would lose nodes. The new approach preserves all nodes while keeping the compilation order optimized for reachable paths.
 
-**See also:** `GraphSpec2.java:nodesInCompileOrder()` (`freeway-flow`)
+**See also:** `GraphSpec.java:nodesInCompileOrder()` (`freeway-flow`)
 
 ---
 

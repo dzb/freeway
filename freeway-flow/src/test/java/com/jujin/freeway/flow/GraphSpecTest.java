@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.v2.GraphSpec2;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -9,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class GraphSpec2Test {
+class GraphSpecTest {
 
     private static FlowEngine newEngine(FlowDriver driver) {
         return FlowEngine.newInstance(Map.of("default", driver));
@@ -17,7 +16,7 @@ class GraphSpec2Test {
 
     @Test
     void testBlueprintBuildsAndRuns() {
-        GraphSpec2 blueprint = GraphSpec2.create("blueprint_v2", bp -> {
+        GraphSpec blueprint = GraphSpec.create("blueprint_v2", bp -> {
             bp.entry("start");
             bp.metaPut("kind", "demo");
             bp.addStart("start").linkAdd("task");
@@ -47,7 +46,7 @@ class GraphSpec2Test {
     }
 
     @Test
-    void testBlueprintReadsLegacyGraph() {
+    void testLegacyLayoutFormatIsRejected() {
         String legacyJson = """
                 {
                   "id": "legacy",
@@ -59,18 +58,14 @@ class GraphSpec2Test {
                 }
                 """;
 
-        Graph graph = Graph.fromText(legacyJson);
-        assertEquals("legacy", graph.getId());
-        assertEquals("s", graph.getStart().getId());
-        assertNotNull(graph.getNode("a"));
-        assertNotNull(graph.getNode("e"));
-
-        assertThrows(IllegalArgumentException.class, () -> GraphSpec2.fromText(legacyJson));
+        // The solon-flow v1 layout format was removed — only the canonical
+        // v2 shape (nodes + links) loads.
+        assertThrows(IllegalArgumentException.class, () -> Graph.fromText(legacyJson));
     }
 
     @Test
     void testV2JsonCanLoadThroughGraphApi() {
-        GraphSpec2 blueprint = GraphSpec2.create("v2_graph", bp -> {
+        GraphSpec blueprint = GraphSpec.create("v2_graph", bp -> {
             bp.entry("start");
             bp.addStart("start").linkAdd("task");
             bp.addActivity("task").task("@counter").linkAdd("end");
@@ -78,7 +73,7 @@ class GraphSpec2Test {
         });
 
         String json = blueprint.toJson();
-        GraphSpec2 parsed = GraphSpec2.fromText(json);
+        GraphSpec parsed = GraphSpec.fromText(json);
         assertEquals(2, parsed.getVersion());
         assertEquals("start", parsed.getEntry());
         assertEquals(3, parsed.getNodes().size());
@@ -91,7 +86,7 @@ class GraphSpec2Test {
 
     @Test
     void testBlueprintPromotesEntryNodeInRuntimeGraph() {
-        GraphSpec2 blueprint = GraphSpec2.create("entry_promote", bp -> {
+        GraphSpec blueprint = GraphSpec.create("entry_promote", bp -> {
             bp.entry("task");
             bp.metaPut("kind", "demo");
             bp.title("entry promote");
@@ -130,7 +125,7 @@ class GraphSpec2Test {
                 }
                 """;
 
-        GraphSpec2 blueprint = GraphSpec2.fromText(json);
+        GraphSpec blueprint = GraphSpec.fromText(json);
         assertEquals("compat", blueprint.getId());
         assertEquals("start", blueprint.getEntry());
         assertEquals("score > 0", blueprint.getNode("task").getWhen());
@@ -155,7 +150,7 @@ class GraphSpec2Test {
             spec.addEnd("e");
         });
 
-        GraphSpec2 blueprint = GraphSpec2.copy(graph);
+        GraphSpec blueprint = GraphSpec.copy(graph);
         assertEquals("s", blueprint.getEntry());
         assertEquals(2, blueprint.getLinks().size());
         assertTrue(blueprint.getLinks().stream().anyMatch(link ->
@@ -168,7 +163,7 @@ class GraphSpec2Test {
 
     @Test
     void testBlueprintRejectsMissingEntryNode() {
-        GraphSpec2 blueprint = GraphSpec2.create("broken", bp -> {
+        GraphSpec blueprint = GraphSpec.create("broken", bp -> {
             bp.entry("missing");
             bp.addStart("start").linkAdd("end");
             bp.addEnd("end");
@@ -180,7 +175,7 @@ class GraphSpec2Test {
 
     @Test
     void testEngineCanLoadBlueprintDirectly() {
-        GraphSpec2 blueprint = GraphSpec2.create("engine_blueprint", bp -> {
+        GraphSpec blueprint = GraphSpec.create("engine_blueprint", bp -> {
             bp.entry("start");
             bp.addStart("start").linkAdd("task");
             bp.addActivity("task").task("@counter").linkAdd("end");
@@ -205,7 +200,7 @@ class GraphSpec2Test {
 
     @Test
     void testToMapDrainsPendingLinks() {
-        GraphSpec2 bp = GraphSpec2.create("map_test", spec -> {
+        GraphSpec bp = GraphSpec.create("map_test", spec -> {
             spec.entry("s");
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a").task("@counter").linkAdd("e");
@@ -220,7 +215,7 @@ class GraphSpec2Test {
 
     @Test
     void testToMapPreservesUnreachableNodes() {
-        GraphSpec2 bp = GraphSpec2.create("round_trip", spec -> {
+        GraphSpec bp = GraphSpec.create("round_trip", spec -> {
             spec.entry("s");
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a").linkAdd("e");
@@ -239,7 +234,7 @@ class GraphSpec2Test {
 
     @Test
     void testNodeMutationInvalidatesCompileOrder() {
-        GraphSpec2 bp = GraphSpec2.create("mutation_order", spec -> {
+        GraphSpec bp = GraphSpec.create("mutation_order", spec -> {
             spec.entry("s");
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a").linkAdd("e");
@@ -262,7 +257,7 @@ class GraphSpec2Test {
 
     @Test
     void testThenChainAddsMoreNodes() {
-        GraphSpec2 bp = GraphSpec2.create("then_test", spec ->
+        GraphSpec bp = GraphSpec.create("then_test", spec ->
             spec.entry("s").addStart("s")
         ).then(spec -> {
             spec.addActivity("a").task("@counter");
@@ -276,14 +271,14 @@ class GraphSpec2Test {
 
     @Test
     void testNullLinkAddThrows() {
-        GraphSpec2 bp = GraphSpec2.create("null_link", spec -> {});
+        GraphSpec bp = GraphSpec.create("null_link", spec -> {});
         var node = bp.addActivity("a");
         assertThrows(NullPointerException.class, () -> node.linkAdd(null));
     }
 
     @Test
     void testNullLinkThrows() {
-        GraphSpec2 bp = GraphSpec2.create("null_link", spec -> {});
+        GraphSpec bp = GraphSpec.create("null_link", spec -> {});
         assertThrows(NullPointerException.class, () -> bp.link("a", null));
         assertThrows(NullPointerException.class, () -> bp.link(null, "b"));
     }
@@ -292,7 +287,7 @@ class GraphSpec2Test {
     void testCyclicGraphCreatesNormally() {
         // a → b → a forms a cycle; both nodes are reachable from entry 'a'.
         // c is unreachable — normalize() logs a warning, create() succeeds.
-        GraphSpec2 bp = GraphSpec2.create("cycle", spec -> {
+        GraphSpec bp = GraphSpec.create("cycle", spec -> {
             spec.entry("a");
             spec.addActivity("a").task("@t1").linkAdd("b");
             spec.addActivity("b").task("@t2").linkAdd("a");
@@ -309,7 +304,7 @@ class GraphSpec2Test {
 
     @Test
     void testToJsonAfterPartialBuild() {
-        GraphSpec2 bp = GraphSpec2.create("partial", spec -> {
+        GraphSpec bp = GraphSpec.create("partial", spec -> {
             spec.entry("s");
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a").task("@counter");

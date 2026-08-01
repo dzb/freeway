@@ -1372,7 +1372,7 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Flow (`freeway-flow`)
 
-Lightweight graph-based workflow engine. v1 format is a port of solon-flow for compatibility; v2 (`GraphSpec2` with `nodes`+`links`) is the native Freeway format. Zero external dependencies beyond commons + ioc. Supports two DAG definition formats with a unified runtime.
+Lightweight graph-based workflow engine. Graphs are defined by the canonical `GraphSpec` (`nodes`+`links` structure with explicit `entry`). Zero external dependencies beyond commons + ioc. The legacy solon-flow `layout` format was removed — only the canonical shape loads.
 
 **7 node types:**
 
@@ -1386,11 +1386,11 @@ Lightweight graph-based workflow engine. v1 format is a port of solon-flow for c
 | `PARALLEL` | Parallel fork |
 | `LOOP` | Loop until condition |
 
-**Graph definition — v2 format (recommended):**
+**Graph definition:**
 
 ```java
 // Programmatic
-GraphSpec2 bp = GraphSpec2.create("orderFlow", spec -> {
+GraphSpec bp = GraphSpec.create("orderFlow", spec -> {
     spec.entry("start");
     spec.addStart("start").linkAdd("approve");
     spec.addActivity("approve").task("!channel:order").linkAdd("end");
@@ -1398,7 +1398,7 @@ GraphSpec2 bp = GraphSpec2.create("orderFlow", spec -> {
 });
 Graph graph = bp.create();
 
-// JSON — Graph.fromText() auto-detects format
+// JSON — canonical nodes+links format
 Graph graph = Graph.fromText("""
 {
     "id": "orderFlow", "version": 2, "entry": "start",
@@ -1415,7 +1415,7 @@ Graph graph = Graph.fromText("""
 """);
 ```
 
-v1 `layout`-format JSON is still supported — `Graph.fromText()` auto-detects and internally converts to the unified runtime path. `GraphSpec2.normalize()` validates link references and BFS reachability at `create()` time.
+`Graph.fromText()` accepts only the canonical format above. `GraphSpec.normalize()` validates link references, requires exactly one entry, and checks BFS reachability at `create()` time.
 
 **Task resolution** — nodes use prefix syntax to specify what to execute. Each prefix has different resolution logic:
 
@@ -1440,8 +1440,8 @@ engine.eval("orderFlow", FlowContext.of());
 
 | Type | Purpose |
 |------|---------|
-| `Graph` | Immutable runtime model — built from v1 or v2 definitions |
-| `GraphSpec2` | v2 DAG authoring surface with explicit `entry` and separated `nodes`/`links` |
+| `Graph` | Immutable runtime model — built from `GraphSpec` blueprints |
+| `GraphSpec` | Canonical DAG authoring surface with explicit `entry` and separated `nodes`/`links` |
 | `FlowEngine` | Graph executor: load, eval, pause, resume |
 | `FlowDriver` | Pluggable task executor — contributed via `binder.contribute(FlowDriver.class)` |
 | `FlowDriverDefault` | Built-in driver: resolves `@beanName` via IoC container, `!markerName` via `FlowMarkerIndex` |

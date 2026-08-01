@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.flow.v2.GraphSpec2;
 
 import java.util.Collection;
 import java.util.Map;
@@ -63,13 +62,12 @@ public interface FlowEngine {
     void removeInterceptor(FlowInterceptor interceptor);
 
     // --- graph management ---
-    // GraphSpec2 is the v2 authoring surface. These overloads keep the
-    // runtime API backward-compatible while letting callers load/eval blueprints
-    // directly during migration.
+    // GraphSpec is the canonical authoring surface. These overloads let
+    // callers load/eval blueprints directly.
 
     void load(Graph graph);
 
-    default void load(GraphSpec2 blueprint) {
+    default void load(GraphSpec blueprint) {
         load(blueprint.create());
     }
 
@@ -119,15 +117,15 @@ public interface FlowEngine {
         eval(graph, new FlowExchanger(graph, this, driver, context, steps, new AtomicInteger(0)), null);
     }
 
-    default void eval(GraphSpec2 blueprint) throws FlowException {
+    default void eval(GraphSpec blueprint) throws FlowException {
         eval(blueprint, FlowContext.of());
     }
 
-    default void eval(GraphSpec2 blueprint, FlowContext context) throws FlowException {
+    default void eval(GraphSpec blueprint, FlowContext context) throws FlowException {
         eval(blueprint, -1, context);
     }
 
-    default void eval(GraphSpec2 blueprint, int steps, FlowContext context) throws FlowException {
+    default void eval(GraphSpec blueprint, int steps, FlowContext context) throws FlowException {
         eval(blueprint.create(), steps, context);
     }
 
