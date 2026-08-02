@@ -37,6 +37,14 @@ class OrmTest {
         User(String username, String email) { this.username = username; this.email = email; }
     }
 
+    @Table("id_only")
+    static class IdOnly {
+        @Id String id;
+
+        IdOnly() {}
+        IdOnly(String id) { this.id = id; }
+    }
+
     @Test
     void ofWithCoercerUsesDatabaseDialect() {
         Database db = builder("orm_coercer").build();
@@ -46,6 +54,21 @@ class OrmTest {
             orm.insert(new Post("title", "body"));
             assertTrue(orm.findById(Post.class, 1L).isPresent(),
                 "Orm.of(db, coercer) should derive the dialect from the database");
+        }
+    }
+
+    @Test
+    void updateWithNoUpdatableColumnsFailsClearly() {
+        var db = builder(uniqueDb("orm_update_empty")).build();
+        try (db) {
+            Schema.ensure(db, IdOnly.class);
+            Orm orm = Orm.of(db);
+            IdOnly entity = new IdOnly("key");
+            orm.insert(entity);
+
+            SqlException ex = assertThrows(SqlException.class, () -> orm.update(entity));
+            assertTrue(ex.getMessage().contains("updatable"),
+                "empty UPDATE must fail with a clear message, got: " + ex.getMessage());
         }
     }
 

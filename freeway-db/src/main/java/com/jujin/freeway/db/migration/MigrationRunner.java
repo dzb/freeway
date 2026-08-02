@@ -108,7 +108,7 @@ public final class MigrationRunner {
         Map<String, String> existing = loadChecksums();
         validateChecksums(migrations, existing);
 
-        int installedRank = existing.size();
+        int installedRank = loadMaxInstalledRank();
         int ran = 0;
         for (String migration : migrations) {
             String version = versionFromPath(migration);
@@ -117,7 +117,7 @@ public final class MigrationRunner {
             }
             byte[] raw = readResourceBytes(migration);
             String checksum = Digests.sha256Hex(raw);
-            applyMigration(migration, checksum, installedRank + ran + 1);
+            applyMigration(migration, checksum, ++installedRank);
             ran++;
             LOG.info("Applied migration: {}", migration);
         }
@@ -370,7 +370,21 @@ public final class MigrationRunner {
         return map;
     }
 
+    /** Highest installed_rank across applied migrations (excluding the lock row). */
+    private int loadMaxInstalledRank() {
+        List<RankRow> rows = database
+            .query(
+                "select installed_rank from " +
+                    table +
+                    " where version <> '" + LOCK_VERSION + "'"
+            )
+            .list(RankRow.class);
+        return rows.stream().mapToInt(RankRow::installedRank).max().orElse(0);
+    }
+
     private record ChecksumRow(String version, String checksum) {}
+
+    private record RankRow(int installedRank) {}
 
     private byte[] readResourceBytes(String resourcePath) {
         ClassLoader classLoader = classLoader();

@@ -38,6 +38,43 @@ class DatabaseResourceLifecycleTest {
         }
     }
 
+    @Test
+    void queryCreatedInsideTransactionCannotBeConsumedAfter() {
+        Database db = singleConnectionDb("tx_query_after");
+        try (db) {
+            Query[] holder = new Query[1];
+            db.transaction(() -> holder[0] = db.query("select 1"));
+
+            assertThrows(SqlException.class,
+                () -> holder[0].one(Integer.class),
+                "consuming a transaction-bound Query after commit must fail loudly");
+        }
+    }
+
+    @Test
+    void batchCreatedInsideTransactionCannotBeConsumedAfter() {
+        Database db = singleConnectionDb("tx_batch_after");
+        try (db) {
+            db.execute("create table t (id int)");
+            BatchQuery[] holder = new BatchQuery[1];
+            db.transaction(() -> holder[0] = db.batch("insert into t values (?)"));
+
+            assertThrows(SqlException.class,
+                () -> holder[0].rows(new Object[]{1}).execute(),
+                "consuming a transaction-bound BatchQuery after commit must fail loudly");
+        }
+    }
+
+    @Test
+    void queryCreatedAndConsumedInsideTransactionWorks() {
+        Database db = singleConnectionDb("tx_query_inside");
+        try (db) {
+            db.transaction(() ->
+                assertEquals(1,
+                    db.query("select 1").one(Integer.class).orElseThrow()));
+        }
+    }
+
     private static Database singleConnectionDb(String prefix) {
         String dbName = "freeway_resource_" + prefix + "_" + UUID.randomUUID().toString().replace('-', '_');
         PoolConfig defaults = PoolConfig.defaults(

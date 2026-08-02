@@ -33,6 +33,7 @@ final class QueryImpl implements Query {
     private static final Logger LOG = LoggerFactory.getLogger(QueryImpl.class);
     private final DatabaseImpl db;
     private final PooledConnection boundConnection;
+    private final long boundEpoch;
     private final String originalSql;
     private final Object[] positionalParams;
     private final Map<String, Object> namedParams;
@@ -52,6 +53,7 @@ final class QueryImpl implements Query {
     ) {
         this.db = db;
         this.boundConnection = boundConnection;
+        this.boundEpoch = db.txEpoch();
         this.originalSql = sql;
         this.positionalParams = positionalParams;
         this.mayHaveGeneratedKeys = mayHaveGeneratedKeys;
@@ -466,6 +468,7 @@ final class QueryImpl implements Query {
             ? Statement.RETURN_GENERATED_KEYS
             : Statement.NO_GENERATED_KEYS;
         if (boundConnection != null) {
+            db.checkBoundEpoch(boundEpoch);
             var stmt = boundConnection
                 .connection()
                 .prepareStatement(effectiveSql, autoKeys);

@@ -30,7 +30,7 @@ public @interface Column {
     /** DECIMAL precision (total digits), e.g. {@code precision=10, scale=2} → {@code DECIMAL(10,2)}. 0 uses the default. */
     int precision() default 0;
 
-    /** DECIMAL scale (fractional digits). Only applied when precision &gt; 0; defaults to 2. */
+    /** DECIMAL scale (fractional digits). Only applied when precision &gt; 0; defaults to 2. A value of 0 is treated as the default (2). */
     int scale() default 0;
 
     /** Whether the column is nullable. Defaults to true for boxed types, false for primitives or when {@code @NotNull} is present. */

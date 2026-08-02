@@ -82,6 +82,13 @@ class SchemaGeneratorTest {
     }
 
     @Test
+    void decimalScaleDefaultsToTwo() {
+        String ddl = gen.generate(PrecisionDecimalEntity.class);
+        assertTrue(ddl.contains("DECIMAL(10,2)"),
+            "an unset @Column.scale must fall back to the documented default 2: " + ddl);
+    }
+
+    @Test
     void temporalTypesMapCorrectly() {
         String ddl = gen.generate(TemporalEntity.class);
         assertTrue(ddl.contains("DATE"));
@@ -504,6 +511,11 @@ class SchemaGeneratorTest {
     public record SizeConstrained(
         @Id Long id,
         @Size(min = 1, max = 50) String shortName
+    ) {}
+
+    public record PrecisionDecimalEntity(
+        @Id Long id,
+        @Column(precision = 10) java.math.BigDecimal amount
     ) {}
 
     public record WithTransient(

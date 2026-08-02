@@ -1,7 +1,9 @@
 package com.jujin.freeway.db;
 
 import com.jujin.freeway.db.PooledConnection;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.schema.MySqlDialect;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -60,6 +62,26 @@ class DatabaseBuilderTest {
         try (db) {
             List<Marker> markers = db.query("select 'manual'").list(Marker.class);
             assertEquals(List.of(new Marker("manual")), markers);
+        }
+    }
+
+    @Test
+    void customCoercerRetainsJdbcDefaultRules() {
+        String dbName = "freeway_builder_jdbc_rules_" + UUID.randomUUID().toString().replace('-', '_');
+        Database db = new DatabaseBuilder()
+            .config(PoolConfig.defaults(
+                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .coercer(new CoercerDefault())
+            .build();
+
+        try (db) {
+            db.execute("create table t (ts timestamp)");
+            db.execute("insert into t values ('2024-06-15 14:30:00')");
+
+            LocalDateTime value = db.query("select ts from t")
+                .one(LocalDateTime.class).orElseThrow();
+            assertEquals(LocalDateTime.of(2024, 6, 15, 14, 30, 0), value,
+                "a custom CoercerDefault must still get the JDBC Timestamp rule");
         }
     }
 

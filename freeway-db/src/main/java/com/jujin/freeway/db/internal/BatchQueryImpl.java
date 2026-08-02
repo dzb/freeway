@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ final class BatchQueryImpl implements BatchQuery {
     );
     private final DatabaseImpl db;
     private final PooledConnection boundConnection;
+    private final long boundEpoch;
     private final String sql;
     private final SqlTextParser.Result parsed;
     private final boolean mayHaveGeneratedKeys;
@@ -37,6 +39,7 @@ final class BatchQueryImpl implements BatchQuery {
     ) {
         this.db = db;
         this.boundConnection = boundConnection;
+        this.boundEpoch = db.txEpoch();
         this.sql = sql;
         this.parsed = SqlTextParser.parseNamed(sql);
         this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql);
@@ -47,7 +50,9 @@ final class BatchQueryImpl implements BatchQuery {
 
     @Override
     public BatchQuery rows(Object[]... rows) {
-        this.positionalRows = List.of(rows);
+        this.positionalRows = rows == null
+            ? List.of()
+            : List.copyOf(Arrays.asList(rows));
         this.namedRows = List.of();
         return this;
     }
@@ -68,6 +73,9 @@ final class BatchQueryImpl implements BatchQuery {
 
     @Override
     public List<ExecuteResult> execute() {
+        if (boundConnection != null) {
+            db.checkBoundEpoch(boundEpoch);
+        }
         boolean ownConnection = boundConnection == null;
         PooledConnection conn = ownConnection
             ? db.pool().borrow()

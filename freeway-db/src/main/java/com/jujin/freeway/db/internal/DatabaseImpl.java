@@ -10,6 +10,7 @@ import com.jujin.freeway.db.Pool;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.PooledConnection;
 import com.jujin.freeway.db.Query;
+import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.Transactional;
 import com.jujin.freeway.db.schema.Dialect;
 import com.jujin.freeway.db.schema.PostgresDialect;
@@ -18,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class DatabaseImpl implements Database {
 
@@ -26,6 +28,8 @@ public final class DatabaseImpl implements Database {
     );
     private static final ScopedValue<PooledConnection> TX_CONN =
         ScopedValue.newInstance();
+    /** Bumped whenever a transaction releases its connection back to the pool. */
+    private final AtomicLong txEpoch = new AtomicLong();
 
     private final Pool pool;
     private final RowMapperResolver rowMapperResolver;
@@ -140,6 +144,7 @@ public final class DatabaseImpl implements Database {
         } finally {
             restoreConnectionState(conn, originalIsolation);
             pool.release(conn);
+            txEpoch.incrementAndGet();
         }
     }
 
@@ -210,6 +215,24 @@ public final class DatabaseImpl implements Database {
 
     Pool pool() {
         return pool;
+    }
+
+    long txEpoch() {
+        return txEpoch.get();
+    }
+
+    /**
+     * Guards against consuming a Query/BatchQuery created inside a
+     * transaction after that transaction has released its connection.
+     */
+    void checkBoundEpoch(long epoch) {
+        if (epoch != txEpoch.get()) {
+            throw new SqlException(
+                "Query/BatchQuery created inside a transaction must be consumed "
+                    + "before the transaction ends — the pooled connection has "
+                    + "already been released"
+            );
+        }
     }
 
 }

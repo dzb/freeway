@@ -9,9 +9,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -56,6 +60,18 @@ class RowTest {
             assertNull(r.string("name"));
             assertNull(r.integer("name")); // missing column returns null
         }
+    }
+
+    @Test
+    void columnAccessIsCaseInsensitive() {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("name", "alice");
+        Row row = new Row(values, new CoercerDefault());
+
+        assertEquals("alice", row.string("name"));
+        assertEquals("alice", row.string("NAME"));
+        assertEquals("alice", row.string("Name"));
+        assertNull(row.string("missing"));
     }
 
     // ===================== date / time types =====================

@@ -3,6 +3,7 @@ package com.jujin.freeway.db;
 import com.jujin.freeway.db.schema.Dialect;
 import com.jujin.freeway.db.util.Names;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -732,12 +733,14 @@ public final class Sql {
     /**
      * Replaces named ({@code :name / $name}) and positional ({@code ?})
      * placeholders with {@code ?} and extracts their values in order.
-     * Only skips single-quoted string literals — full SQL lexical scanning is
-     * handled by {@link SqlTextParser} when the complete statement is executed.
+     * Skips string literals, quoted identifiers, and comments so placeholders
+     * inside them are not mistaken for parameters. A named parameter repeated
+     * within the same fragment reuses its first value.
      */
     private static Object[] normalizeArgs(String fragment, Object... values) {
         var sb = new StringBuilder(fragment.length());
         var matched = new ArrayList<>();
+        var seen = new HashMap<String, Object>();
         int vi = 0, len = fragment.length(), i = 0;
 
         while (i < len) {
@@ -759,6 +762,53 @@ public final class Sql {
                 continue;
             }
 
+            // double-quoted identifier — skip (doubled quotes escape)
+            if (c == '"') {
+                sb.append('"');
+                i++;
+                while (i < len) {
+                    char sc = fragment.charAt(i);
+                    sb.append(sc);
+                    i++;
+                    if (sc == '"') {
+                        if (i < len && fragment.charAt(i) == '"') {
+                            sb.append('"');
+                            i++;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // -- line comment — skip to end of line
+            if (c == '-' && i + 1 < len && fragment.charAt(i + 1) == '-') {
+                while (i < len && fragment.charAt(i) != '\n') {
+                    sb.append(fragment.charAt(i));
+                    i++;
+                }
+                continue;
+            }
+
+            // /* block comment */ — skip (nested markers are not supported,
+            // matching SqlTextParser)
+            if (c == '/' && i + 1 < len && fragment.charAt(i + 1) == '*') {
+                sb.append("/*");
+                i += 2;
+                while (i < len) {
+                    char cc = fragment.charAt(i);
+                    sb.append(cc);
+                    i++;
+                    if (cc == '*' && i < len && fragment.charAt(i) == '/') {
+                        sb.append('/');
+                        i++;
+                        break;
+                    }
+                }
+                continue;
+            }
+
             // PostgreSQL :: type cast — must precede :name check
             if (c == ':' && i + 1 < len && fragment.charAt(i + 1) == ':') {
                 sb.append("::");
@@ -771,8 +821,14 @@ public final class Sql {
                 int start = i + 1;
                 i += 2;
                 while (i < len && Names.isValidParamChar(fragment.charAt(i))) i++;
-                if (vi < values.length) {
-                    appendValue(sb, matched, values[vi++]);
+                String name = fragment.substring(start, i);
+                if (seen.containsKey(name)) {
+                    // repeated named parameter — reuse the first value
+                    appendValue(sb, matched, seen.get(name));
+                } else if (vi < values.length) {
+                    Object value = values[vi++];
+                    seen.put(name, value);
+                    appendValue(sb, matched, value);
                 } else {
                     throw new SqlException(
                         "Missing value for named parameter at position " + start

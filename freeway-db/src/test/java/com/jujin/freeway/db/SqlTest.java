@@ -41,6 +41,38 @@ class SqlTest {
     }
 
     @Test
+    void ignoresPlaceholdersInsideCommentsAndQuotedIdentifiers() {
+        Sql q = Sql.select("*").from("users")
+            .where("id = ? /* comment ? */ and name = ?", 1, "john");
+        assertEquals(
+            "SELECT * FROM users WHERE id = ? /* comment ? */ and name = ?",
+            q.sql());
+        assertArrayEquals(new Object[]{1, "john"}, q.args());
+
+        Sql lineComment = Sql.select("*").from("users")
+            .where("id = ? -- trailing ?\nand active = ?", 1, true);
+        assertEquals(
+            "SELECT * FROM users WHERE id = ? -- trailing ?\nand active = ?",
+            lineComment.sql());
+        assertArrayEquals(new Object[]{1, true}, lineComment.args());
+
+        Sql quoted = Sql.select("*").from("users")
+            .where("name = ? and \"col?umn\" = ?", 1, 2);
+        assertEquals(
+            "SELECT * FROM users WHERE name = ? and \"col?umn\" = ?",
+            quoted.sql());
+        assertArrayEquals(new Object[]{1, 2}, quoted.args());
+    }
+
+    @Test
+    void repeatedNamedParamInFragmentReusesItsValue() {
+        Sql q = Sql.select("*").from("users")
+            .where("a = :x and b = :x", 1);
+        assertEquals("SELECT * FROM users WHERE a = ? and b = ?", q.sql());
+        assertArrayEquals(new Object[]{1, 1}, q.args());
+    }
+
+    @Test
     void selectWithMixedParams() {
         Sql q = Sql.select("*").from("users")
             .where("id = :id and name = ?", 1, "john");

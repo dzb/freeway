@@ -98,17 +98,17 @@ public final class DbModule implements ModuleEx {
         }
 
         // lifecycle: Schema (auto-DDL) → Migration (SQL evolution)
-            binder
-                .contribute(RuntimeHook.class)
-                .add("freeway.db.migration", new RuntimeHook() {
-                    @Override
-                    public void start(Container container) {
-                        runSchema(container);
-                        runMigration(container);
-                    }
-                })
-                .before("freeway.http.server");
-        }
+        binder
+            .contribute(RuntimeHook.class)
+            .add("freeway.db.migration", new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    runSchema(container);
+                    runMigration(container);
+                }
+            })
+            .before("freeway.http.server");
+    }
 
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);

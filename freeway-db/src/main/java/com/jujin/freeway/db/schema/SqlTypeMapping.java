@@ -229,7 +229,9 @@ public final class SqlTypeMapping {
         if (precision <= 0) {
             precision = 30;
         }
-        int scale = col.scale();
+        // The annotation cannot distinguish "unset" from 0, and the documented
+        // default is 2 — so 0 means "use the default".
+        int scale = col.scale() == 0 ? 2 : col.scale();
         return "DECIMAL(" + precision + "," + scale + ")";
     }
 

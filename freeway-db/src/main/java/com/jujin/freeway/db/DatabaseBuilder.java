@@ -90,6 +90,13 @@ public final class DatabaseBuilder {
                 cd.register(rule);
             }
             effective = cd;
+        } else if (effective instanceof CoercerDefault cd) {
+            // A custom CoercerDefault must not silently lose the JDBC rules
+            // (java.sql.Date/Timestamp/Time → java.time) that the IoC path
+            // always contributes. Caller-registered rules keep priority.
+            for (var rule : Coercions.jdbcDefaults()) {
+                cd.registerIfAbsent(rule);
+            }
         }
         return new DatabaseImpl(
             config,

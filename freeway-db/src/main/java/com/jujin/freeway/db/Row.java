@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -33,10 +34,18 @@ import java.util.UUID;
  */
 public final class Row {
     private final Map<String, Object> values;
+    private final Map<String, Object> lowerIndex;
     private final Coercer coercer;
 
     public Row(Map<String, Object> values, Coercer coercer) {
         this.values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        Map<String, Object> index = new LinkedHashMap<>();
+        values.forEach((key, value) -> {
+            if (key != null) {
+                index.put(key.toLowerCase(Locale.ROOT), value);
+            }
+        });
+        this.lowerIndex = Collections.unmodifiableMap(index);
         this.coercer = Objects.requireNonNull(coercer, "coercer");
     }
 
@@ -45,11 +54,17 @@ public final class Row {
     }
 
     public Object raw(String col) {
-        return values.get(col);
+        Object value = values.get(col);
+        if (value == null && col != null) {
+            // Column labels are normalized to lowercase by the row mapper —
+            // tolerate any casing from callers instead of silently returning null.
+            value = lowerIndex.get(col.toLowerCase(Locale.ROOT));
+        }
+        return value;
     }
 
     public <T> T get(String col, Class<T> type) {
-        return coercer.coerce(values.get(col), type);
+        return coercer.coerce(raw(col), type);
     }
 
     public String string(String col) { return get(col, String.class); }

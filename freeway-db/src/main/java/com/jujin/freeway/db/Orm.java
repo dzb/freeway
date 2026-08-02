@@ -172,6 +172,12 @@ public final class Orm {
             String col = dialect.quoteName(rawColumnName(prop));
             setClauses.put(col, prop.read(entity));
         }
+        if (setClauses.isEmpty()) {
+            throw new SqlException(
+                "No updatable properties on " + t.getName()
+                    + " (all columns are @Id, @Generated, or @Transient)"
+            );
+        }
 
         List<Object> values = new ArrayList<>(setClauses.values());
         Object[] ids = new Object[idProps.size()];
