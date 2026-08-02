@@ -1,6 +1,5 @@
 package com.jujin.freeway.http.staticfile;
 
-import com.jujin.freeway.commons.util.Digests;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
@@ -109,17 +108,33 @@ public final class StaticResourceMount {
         if (relative == null) {
             return notFound(ctx);
         }
+        AssetMeta meta = source.meta(relative);
+        if (meta == null) {
+            return notFound(ctx);
+        }
+        applyCacheHeaders(ctx, meta);
+        if (isNotModified(ctx, meta)) {
+            ctx.status(HttpStatus.NOT_MODIFIED).output(new byte[0]);
+            return true;
+        }
+        if ("HEAD".equalsIgnoreCase(ctx.method())) {
+            // No body needed — report the headers (and real size) without
+            // reading the file contents.
+            ctx.status(HttpStatus.OK);
+            ctx.headerSet("Content-Type", contentType(meta.name()));
+            ctx.headerSet("X-Content-Type-Options", "nosniff");
+            if (meta.size() >= 0) {
+                ctx.headerSet("Content-Length", Long.toString(meta.size()));
+            }
+            ctx.output(new byte[0]);
+            return true;
+        }
         StaticAsset asset = source.load(relative);
         if (asset == null) {
             return notFound(ctx);
         }
-        applyCacheHeaders(ctx, asset);
-        if (isNotModified(ctx, asset)) {
-            ctx.status(HttpStatus.NOT_MODIFIED).output(new byte[0]);
-            return true;
-        }
         ctx.status(HttpStatus.OK);
-        ctx.headerSet("Content-Type", contentType(asset.name()));
+        ctx.headerSet("Content-Type", contentType(asset.meta().name()));
         ctx.headerSet("X-Content-Type-Options", "nosniff");
         ctx.output(asset.bytes());
         return true;
@@ -171,30 +186,30 @@ public final class StaticResourceMount {
         return normalized;
     }
 
-    private void applyCacheHeaders(HttpContext ctx, StaticAsset asset) {
+    private void applyCacheHeaders(HttpContext ctx, AssetMeta meta) {
         StringBuilder cacheControl = new StringBuilder("public, max-age=").append(cacheMaxAgeSeconds);
         if (immutable) {
             cacheControl.append(", immutable");
         }
         ctx.headerSet("Cache-Control", cacheControl.toString());
-        if (asset.lastModifiedMillis() > 0) {
-            ctx.headerSet("Last-Modified", httpDate(asset.lastModifiedMillis()));
+        if (meta.lastModifiedMillis() > 0) {
+            ctx.headerSet("Last-Modified", httpDate(meta.lastModifiedMillis()));
         }
-        ctx.headerSet("ETag", asset.etag());
+        ctx.headerSet("ETag", meta.etag());
     }
 
-    private boolean isNotModified(HttpContext ctx, StaticAsset asset) {
+    private boolean isNotModified(HttpContext ctx, AssetMeta meta) {
         String ifNoneMatch = Strings.blankToNull(ctx.header("If-None-Match").orElse(null));
         if (ifNoneMatch != null) {
-            return etagMatches(ifNoneMatch, asset.etag());
+            return etagMatches(ifNoneMatch, meta.etag());
         }
         String ifModifiedSince = Strings.blankToNull(ctx.header("If-Modified-Since").orElse(null));
-        if (ifModifiedSince == null || asset.lastModifiedMillis() <= 0) {
+        if (ifModifiedSince == null || meta.lastModifiedMillis() <= 0) {
             return false;
         }
         try {
             Instant requested = ZonedDateTime.parse(ifModifiedSince, HTTP_DATE).toInstant();
-            Instant lastModified = Instant.ofEpochMilli(asset.lastModifiedMillis());
+            Instant lastModified = Instant.ofEpochMilli(meta.lastModifiedMillis());
             return !lastModified.isAfter(requested);
         } catch (DateTimeParseException ignored) {
             return false;
@@ -267,12 +282,18 @@ public final class StaticResourceMount {
     }
 
     private interface ResourceSource {
+        /** Lightweight metadata lookup — does not read file contents. */
+        AssetMeta meta(String relative) throws IOException;
+
+        /** Full load: metadata plus contents. */
         StaticAsset load(String relative) throws IOException;
     }
 
-    private record StaticAsset(String name, byte[] bytes, long lastModifiedMillis, String etag) {
-        StaticAsset(String name, byte[] bytes, long lastModifiedMillis) {
-            this(name, bytes, lastModifiedMillis, computeEtag(bytes));
+    private record AssetMeta(String name, long size, long lastModifiedMillis, String etag) {}
+
+    private record StaticAsset(AssetMeta meta, byte[] bytes) {
+        StaticAsset {
+            bytes = bytes.clone();
         }
     }
 
@@ -284,27 +305,61 @@ public final class StaticResourceMount {
         }
 
         @Override
-        public StaticAsset load(String relative) throws IOException {
+        public AssetMeta meta(String relative) throws IOException {
             Path candidate = root.resolve(relative).normalize();
             if (!candidate.startsWith(root)) {
                 return null;
             }
-            Path realRoot;
             Path realCandidate;
             try {
-                realRoot = root.toRealPath();
                 realCandidate = candidate.toRealPath();
             } catch (IOException e) {
                 return null;
             }
-            if (!realCandidate.startsWith(realRoot) || !Files.isRegularFile(realCandidate)) {
+            if (!realCandidate.startsWith(root.toRealPath()) || !Files.isRegularFile(realCandidate)) {
                 return null;
             }
             long size = Files.size(realCandidate);
             if (size > MAX_FILE_SIZE_BYTES) {
                 throw new IOException("File too large: " + candidate.getFileName() + " (" + size + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
             }
-            return new StaticAsset(candidate.getFileName().toString(), Files.readAllBytes(realCandidate), Files.getLastModifiedTime(realCandidate).toMillis());
+            long lastModified = Files.getLastModifiedTime(realCandidate).toMillis();
+            return new AssetMeta(realCandidate.getFileName().toString(),
+                size, lastModified, etag(lastModified, size));
+        }
+
+        @Override
+        public StaticAsset load(String relative) throws IOException {
+            AssetMeta meta = meta(relative);
+            if (meta == null) {
+                return null;
+            }
+            // Re-verify containment on the load path: the file may have been
+            // replaced by a symlink between meta() and here (TOCTOU).
+            Path candidate = root.resolve(relative).normalize();
+            Path realCandidate;
+            try {
+                realCandidate = candidate.toRealPath();
+            } catch (IOException e) {
+                return null;
+            }
+            if (!realCandidate.startsWith(root.toRealPath())
+                    || !Files.isRegularFile(realCandidate)) {
+                return null;
+            }
+            byte[] bytes = Files.readAllBytes(realCandidate);
+            if (bytes.length > MAX_FILE_SIZE_BYTES) {
+                throw new IOException("File too large: " + realCandidate.getFileName()
+                    + " (" + bytes.length + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
+            }
+            if (bytes.length != meta.size()) {
+                // File changed between meta() and load() — refresh metadata so
+                // the ETag/Last-Modified headers match the bytes being sent.
+                long lastModified = Files.getLastModifiedTime(realCandidate).toMillis();
+                meta = new AssetMeta(
+                    meta.name(), bytes.length, lastModified, etag(lastModified, bytes.length));
+            }
+            return new StaticAsset(meta, bytes);
         }
     }
 
@@ -324,7 +379,7 @@ public final class StaticResourceMount {
         }
 
         @Override
-        public StaticAsset load(String relative) throws IOException {
+        public AssetMeta meta(String relative) throws IOException {
             String resourceName = root.isEmpty() ? relative : root + "/" + relative;
             URL url = loader.getResource(resourceName);
             if (url == null) {
@@ -335,13 +390,31 @@ public final class StaticResourceMount {
             if (contentLength > MAX_FILE_SIZE_BYTES) {
                 throw new IOException("Classpath resource too large: " + resourceName + " (" + contentLength + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
             }
-            try (InputStream in = connection.getInputStream()) {
-                return new StaticAsset(relative, ByteStreams.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName), connection.getLastModified());
+            // -1 means the length is unknown (e.g. some custom classloaders);
+            // callers must not report a bogus Content-Length for it.
+            long size = contentLength < 0 ? -1 : contentLength;
+            long lastModified = connection.getLastModified();
+            return new AssetMeta(relative, size, lastModified, etag(lastModified, size));
+        }
+
+        @Override
+        public StaticAsset load(String relative) throws IOException {
+            AssetMeta meta = meta(relative);
+            if (meta == null) {
+                return null;
+            }
+            String resourceName = root.isEmpty() ? relative : root + "/" + relative;
+            URL url = loader.getResource(resourceName);
+            if (url == null) {
+                return null;
+            }
+            try (InputStream in = url.openConnection().getInputStream()) {
+                return new StaticAsset(meta, ByteStreams.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName));
             }
         }
     }
 
-    private static String computeEtag(byte[] bytes) {
-        return "\"sha256-" + Digests.sha256Base64(bytes) + "\"";
+    private static String etag(long lastModifiedMillis, long size) {
+        return "\"" + lastModifiedMillis + "-" + size + "\"";
     }
 }

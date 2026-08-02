@@ -28,7 +28,7 @@ Three-layer design:
 ```
 engine/              — socket I/O, protocol parsing, connection lifecycle
   http11/            — Http11Connection, HttpParser
-  http20/            — Http2Connection, frame/HPACK/stream management
+  http2/             — Http2Connection, frame/HPACK/stream management
   ws/                — WebSocket frame read/write protocol
 WebServer            — filter chain, routing, event publishing (Consumer<Object>)
 HttpModule           — IoC bridge: registers FreewayHttpEngine, wires EventBus
@@ -37,7 +37,7 @@ HttpModule           — IoC bridge: registers FreewayHttpEngine, wires EventBus
 ### Standalone use (no IoC)
 
 ```java
-var server = WebServer.builder()
+var server = WebServerBuilder.builder()
     .config(new HttpServerConfig("0.0.0.0", 8080, 0, Duration.ofSeconds(2)))
     .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
     .build();
@@ -59,20 +59,13 @@ FreewayApp.run(args, new HttpModule(), binder -> {
 | `http/` | public API | WebServer, HttpContext, HttpEngine, RouteIndex, filter interfaces |
 | `http/engine/` | implementation | `FreewayHttpEngine` (public), shared I/O (BufferedIn/Out, ChunkedIn, FixedLengthIn), WS frame protocol |
 | `http/engine/http11/` | package | Http11Connection, HttpParser |
-| `http/engine/http20/` | package | Http2Connection, 29 HTTP/2 frame/HPACK/stream files |
+| `http/engine/http2/` | package | Http2Connection, 29 HTTP/2 frame/HPACK/stream files |
 | `http/engine/ws/` | package | WebSocketFrame, WebSocketSessionImpl, WsUtil, opcode/close enums |
 
 ## Performance
 
-See `freeway-benchmark` module for reproducible benchmarks. Run:
-
-```bash
-mvn -pl freeway-benchmark exec:java \
-  -Dexec.mainClass=...BenchmarkRunner \
-  -Dbench.engine=freeway -Dbench.mode=keepalive
-```
-
-### Baseline (2026-06, keep-alive, 2 conns, 2000 reqs, independent JVM)
+The `freeway-benchmark` module lives outside this repository. Historical
+baseline (2026-06, keep-alive, 2 conns, 2000 reqs, independent JVM):
 
 | Engine | rps | p50 | vs robaho |
 |---|---|---|---|

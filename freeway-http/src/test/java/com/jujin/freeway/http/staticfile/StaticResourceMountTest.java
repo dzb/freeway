@@ -3,16 +3,19 @@ package com.jujin.freeway.http.staticfile;
 import com.jujin.freeway.http.StubHttpContext;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLStreamHandler;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -101,6 +104,24 @@ class StaticResourceMountTest {
         }
     }
 
+    @Test
+    void headOmitsContentLengthWhenClasspathSizeUnknown() throws Exception {
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(
+            new UnknownSizeClassLoader("assets/app.js"));
+        try {
+            StaticResourceMount mount = StaticResourceMount.classpath("/static", "assets");
+            StubHttpContext ctx = new StubHttpContext("HEAD", "/static/app.js");
+
+            assertTrue(mount.serve(ctx));
+            assertEquals(200, ctx.status());
+            assertNull(ctx.responseHeader("Content-Length"),
+                "an unknown resource size must not be reported as 0");
+        } finally {
+            Thread.currentThread().setContextClassLoader(original);
+        }
+    }
+
     private static void createSymlinkOrSkip(Path link, Path target) {
         try {
             Files.createSymbolicLink(link, target);
@@ -141,6 +162,47 @@ class StaticResourceMountTest {
                             @Override
                             public InputStream getInputStream() {
                                 throw new AssertionError("oversized resource should fail before reading");
+                            }
+                        };
+                    }
+                });
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
+    private static final class UnknownSizeClassLoader extends ClassLoader {
+        private final String resourceName;
+
+        private UnknownSizeClassLoader(String resourceName) {
+            this.resourceName = resourceName;
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public URL getResource(String name) {
+            if (!resourceName.equals(name)) {
+                return null;
+            }
+            try {
+                return new URL(null, "memory:/" + name, new URLStreamHandler() {
+                    @Override
+                    protected URLConnection openConnection(URL url) {
+                        return new URLConnection(url) {
+                            @Override
+                            public void connect() {
+                            }
+
+                            @Override
+                            public long getContentLengthLong() {
+                                return -1;
+                            }
+
+                            @Override
+                            public InputStream getInputStream() {
+                                return new ByteArrayInputStream(
+                                    "content".getBytes(StandardCharsets.UTF_8));
                             }
                         };
                     }

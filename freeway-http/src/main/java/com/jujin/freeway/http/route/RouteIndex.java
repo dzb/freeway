@@ -138,21 +138,29 @@ public final class RouteIndex {
 
     public RouteMatch match(String method, String path) {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
+        // Decode the request path exactly once before matching or cache lookup,
+        // so "/a%20b" matches a route registered as "/a b" and path variables
+        // carry decoded values. Malformed encodings never match.
+        String decodedPath = PathPattern.decodePath(path);
+        if (decodedPath == null) {
+            return null;
+        }
         // Fast path: exact match cache bypasses trie for routes without variables
-        String cacheKey = key.concat(":").concat(path);
+        String cacheKey = key.concat(":").concat(decodedPath);
         RouteHandler exact = exactCache.get(cacheKey);
         if (exact != null) return new RouteMatch(exact, Map.of());
         // HEAD fallback to GET exact cache
         if ("HEAD".equals(key)) {
-            exact = exactCache.get("GET:".concat(path));
+            exact = exactCache.get("GET:".concat(decodedPath));
             if (exact != null) return new RouteMatch(exact, Map.of());
         }
         TrieNode root = methodRoots.get(key);
-        RouteMatch result = matchTrie(root, path);
+        RouteMatch result = matchTrie(root, decodedPath);
         if (result != null || !"HEAD".equals(key)) return result;
-        return matchTrie(methodRoots.get("GET"), path);
+        return matchTrie(methodRoots.get("GET"), decodedPath);
     }
 
+    /** @param path the already-decoded request path */
     private RouteMatch matchTrie(TrieNode root, String path) {
         if (root == null) {
             return null;

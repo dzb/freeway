@@ -8,7 +8,7 @@ import java.io.InputStream;
  * Parses chunk headers ({@code hex-size\r\n}), reads chunk data,
  * and detects the final zero-length chunk.
  */
-public final class ChunkedInputStream extends InputStream {
+final class ChunkedInputStream extends InputStream {
 
     private static final int MAX_CHUNK_HEADER_SIZE = 2050;
     static final char CR = '\r';

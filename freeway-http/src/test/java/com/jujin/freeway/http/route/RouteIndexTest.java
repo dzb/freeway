@@ -74,6 +74,55 @@ class RouteIndexTest {
             WebSocketRoute.of("/ws/%2e%2e", session -> WebSocketListener.NOOP));
     }
 
+    @Test
+    void rejectsEmptyParameterNameInHttpRouteRegistration() {
+        assertThrows(IllegalArgumentException.class, () ->
+            Route.get("/users/{}", ctx -> ctx.send(200, "ok")));
+        assertThrows(IllegalArgumentException.class, () ->
+            Route.get("/users/{:id}", ctx -> ctx.send(200, "ok")));
+    }
+
+    @Test
+    void matchesEncodedLiteralSegments() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/hello world", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        assertNotNull(registry.match("GET", "/hello%20world"),
+            "Encoded request path must match a decoded literal route");
+    }
+
+    @Test
+    void pathVariablesAreDecoded() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/users/{name}", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        RouteIndex.RouteMatch match = registry.match("GET", "/users/a%20b");
+        assertNotNull(match);
+        assertEquals("a b", match.pathVariables().get("name"),
+            "Path variables must be percent-decoded");
+    }
+
+    @Test
+    void encodedTraversalIsRejectedAtMatchTime() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/files/{name}", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        assertNull(registry.match("GET", "/files/%2e%2e"));
+        assertNull(registry.match("GET", "/files/..%2Fetc"));
+    }
+
+    @Test
+    void malformedEncodingDoesNotMatch() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/files/{name}", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        assertNull(registry.match("GET", "/files/%zz"));
+    }
+
     // ──── handler class registration ────
 
     static class NoDepsHandler implements RouteHandler {

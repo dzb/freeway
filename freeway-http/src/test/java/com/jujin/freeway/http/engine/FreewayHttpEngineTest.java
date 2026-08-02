@@ -21,7 +21,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.security.KeyStore;
 import javax.net.ssl.KeyManagerFactory;
 import java.net.URI;
@@ -31,6 +34,7 @@ import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -49,8 +53,217 @@ class FreewayHttpEngineTest {
         }
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(HttpConfigKeys.SERVER_HOST);
+        System.clearProperty(HttpConfigKeys.MAX_BODY_SIZE);
         System.clearProperty("freeway.web.server.port");
         System.clearProperty("freeway.web.server.host");
+    }
+
+    @Test
+    void maxBodySizeConfigKeyIsHonored() throws Exception {
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(HttpConfigKeys.MAX_BODY_SIZE, "8");
+
+        app = FreewayApp.run(new String[0], binder ->
+            binder.contribute(Route.class).add(
+                Route.post("/upload", ctx -> {
+                    ctx.body();
+                    ctx.send(200, "ok");
+                })
+            ));
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> resp = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + port + "/upload"))
+                .POST(HttpRequest.BodyPublishers.ofString("0123456789"))
+                .build(),
+            HttpResponse.BodyHandlers.ofString()
+        );
+        assertEquals(413, resp.statusCode(),
+            "freeway.http.max-body-size must be applied to request bodies");
+    }
+
+    @Test
+    void bodyOnGetWithoutContentLengthReturnsEmptyAndKeepsConnectionUsable() throws Exception {
+        int port = freePort();
+        var server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/read", ctx -> ctx.send(200, "len=" + ctx.body().length)))
+            .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+            .build();
+        server.start();
+        try (var sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(3000);
+            var out = sock.getOutputStream();
+            out.write((
+                "GET /read HTTP/1.1\r\nHost: x\r\n\r\n"
+                    + "GET /ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            String response = new String(
+                sock.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("len=0"),
+                "Unframed GET body must read as empty: " + response);
+            assertTrue(response.contains("pong"),
+                "Keep-alive connection must stay usable: " + response);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void unreadPostBodyDoesNotBreakKeepAlive() throws Exception {
+        int port = freePort();
+        var server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.post("/ignore", ctx -> ctx.send(200, "ok")))
+            .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+            .build();
+        server.start();
+        try (var sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(3000);
+            var out = sock.getOutputStream();
+            out.write(("POST /ignore HTTP/1.1\r\n"
+                    + "Host: x\r\n"
+                    + "Content-Length: 5\r\n"
+                    + "\r\n"
+                    + "hello")
+                .getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            String first = readHttpResponse(sock);
+            assertTrue(first.contains("200"),
+                "POST response missing: " + first);
+
+            // The unread body must be drained exactly, leaving the keep-alive
+            // connection usable for the next request.
+            out.write(("GET /ping HTTP/1.1\r\n"
+                    + "Host: x\r\n"
+                    + "Connection: close\r\n"
+                    + "\r\n")
+                .getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            String second = readHttpResponse(sock);
+            assertTrue(second.contains("pong"),
+                "Second request on the same connection failed: " + second);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void sseClosesConnectionAfterComplete() throws Exception {
+        int port = freePort();
+        var server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/sse", ctx -> {
+                try (var emitter = ctx.sse()) {
+                    emitter.send("hi");
+                }
+            }))
+            .build();
+        server.start();
+        try (var sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(3000);
+            sock.getOutputStream().write(
+                "GET /sse HTTP/1.1\r\nHost: x\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            sock.getOutputStream().flush();
+            String response = new String(
+                sock.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("Connection: close"),
+                "SSE must force Connection: close: " + response);
+            assertTrue(response.contains("hi"),
+                "SSE body missing: " + response);
+            assertTrue(response.endsWith("0\r\n\r\n"),
+                "SSE stream must end with the terminal chunk: " + response);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2ShutdownClosesStreamWaitingForRequestBody() throws Exception {
+        int port = freePort();
+        var server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(1)))
+            .route(Route.post("/upload", ctx -> {
+                ctx.body();
+                ctx.send(200, "ok");
+            }))
+            .build();
+        server.start();
+        try (var sock = new Socket("127.0.0.1", port)) {
+            var out = sock.getOutputStream();
+            out.write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            writeH2Frame(out, 0, 4, 0, 0); // SETTINGS
+            // HEADERS: POST /upload with required pseudo-headers, END_HEADERS
+            // but NO END_STREAM — the handler blocks waiting for the body.
+            byte[] block = {
+                0x03, 0x04, 'P', 'O', 'S', 'T',                       // :method POST
+                0x06, 0x04, 'h', 't', 't', 'p',                       // :scheme http
+                0x04, 0x07, '/', 'u', 'p', 'l', 'o', 'a', 'd',        // :path /upload
+                0x01, 0x01, 'x'                                       // :authority x
+            };
+            writeH2Frame(out, block.length, 1, 0x04, 1); // HEADERS, END_HEADERS
+            out.write(block);
+            out.flush();
+
+            Thread.sleep(300); // let the stream handler block on body()
+            server.stop();
+            Thread.sleep(300); // allow the session thread to unwind
+
+            boolean lingering = Thread.getAllStackTraces().keySet().stream()
+                .anyMatch(t -> t.getName().startsWith("http-"));
+            assertFalse(lingering,
+                "HTTP/2 session thread must exit after shutdown");
+        } finally {
+            if (server.isRunning()) {
+                server.stop();
+            }
+        }
+    }
+
+    private static void writeH2Frame(OutputStream out, int length, int type,
+                                     int flags, int streamId) throws IOException {
+        out.write(length >>> 16);
+        out.write(length >>> 8);
+        out.write(length);
+        out.write(type);
+        out.write(flags);
+        out.write(0);
+        out.write(0);
+        out.write(streamId >>> 24);
+        out.write(streamId >>> 16);
+        out.write(streamId >>> 8);
+        out.write(streamId);
+    }
+
+    private static String readHttpResponse(Socket sock) throws IOException {
+        var in = sock.getInputStream();
+        var head = new ByteArrayOutputStream();
+        int state = 0;
+        while (state < 4) {
+            int b = in.read();
+            if (b < 0) {
+                break;
+            }
+            head.write(b);
+            if ((state == 0 || state == 2) && b == '\r') state++;
+            else if ((state == 1 || state == 3) && b == '\n') state++;
+            else state = 0;
+        }
+        String headers = head.toString(StandardCharsets.ISO_8859_1);
+        int contentLength = 0;
+        for (String line : headers.split("\r\n")) {
+            if (line.toLowerCase(java.util.Locale.ROOT)
+                    .startsWith("content-length:")) {
+                contentLength = Integer.parseInt(line.substring(15).trim());
+            }
+        }
+        byte[] body = in.readNBytes(contentLength);
+        return headers + new String(body, StandardCharsets.UTF_8);
     }
 
     @Test

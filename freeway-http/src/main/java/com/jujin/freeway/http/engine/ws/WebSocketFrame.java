@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 public final class WebSocketFrame {
 
     static final Charset TEXT_CHARSET = StandardCharsets.UTF_8;
+    static final int MAX_FRAME_SIZE = 16 * 1024 * 1024;
 
     private final OpCode opCode;
     private final boolean fin;
@@ -93,7 +94,7 @@ public final class WebSocketFrame {
 
     // --- write to wire ---
 
-    private static String decodeUtf8(byte[] data, int offset, int length) throws IOException {
+    static String decodeUtf8(byte[] data, int offset, int length) throws IOException {
         var decoder = StandardCharsets.UTF_8.newDecoder();
         decoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
         decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
@@ -176,11 +177,15 @@ public final class WebSocketFrame {
                 throw new WebSocketException(CloseCode.ProtocolError,
                     "Not using minimal length encoding");
             }
-            if (longLen < 0 || longLen > Integer.MAX_VALUE) {
+            if (longLen < 0 || longLen > MAX_FRAME_SIZE) {
                 throw new WebSocketException(CloseCode.MessageTooBig,
                     "Max frame length exceeded");
             }
             payloadLength = (int) longLen;
+        }
+        if (payloadLength > MAX_FRAME_SIZE) {
+            throw new WebSocketException(CloseCode.MessageTooBig,
+                "Max frame length exceeded: " + payloadLength);
         }
 
         if (opCode.isControlFrame() && payloadLength > 125) {
@@ -250,8 +255,10 @@ public final class WebSocketFrame {
                 payload[i] ^= maskingKey[i % 4];
             }
         }
-        // validate UTF-8 for text frames (strict — reject invalid sequences)
-        if (opCode == OpCode.Text) {
+        // Validate UTF-8 only for complete text messages. Fragmented text is
+        // reassembled by the read loop and decoded there — a multi-byte
+        // character may legitimately span fragment boundaries.
+        if (opCode == OpCode.Text && fin) {
             payloadString = decodeUtf8(payload, 0, payload.length);
         }
     }

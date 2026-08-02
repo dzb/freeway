@@ -64,4 +64,13 @@ class WebSocketFrameTest {
         assertTrue(frame.isFin(), "Final continuation should have FIN=true");
         assertEquals("lo", frame.payloadAsString());
     }
+
+    @Test
+    void rejectsFrameLargerThanMaxFrameSize() throws Exception {
+        // 16 MiB + 1 declared via the 64-bit length field
+        byte[] header = {(byte) 0x81, (byte) 0x7F, 0, 0, 0, 0, 1, 0, 0, 1};
+        WebSocketException ex = assertThrows(WebSocketException.class,
+            () -> WebSocketFrame.read(new ByteArrayInputStream(header)));
+        assertEquals(CloseCode.MessageTooBig, ex.closeCode());
+    }
 }

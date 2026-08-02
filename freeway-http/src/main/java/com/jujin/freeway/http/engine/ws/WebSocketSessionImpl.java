@@ -58,7 +58,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     @Override
     public List<String> queryParams(String name) {
-        return ensureQueryParams().getOrDefault(name, List.of());
+        return List.copyOf(ensureQueryParams().getOrDefault(name, List.of()));
     }
 
     @Override

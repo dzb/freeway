@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Lifecycle handle for the built-in HTTP engine.
  */
-public final class HttpServerHandleDefault implements HttpServerHandle {
+final class HttpServerHandleDefault implements HttpServerHandle {
 
     private static final Logger LOG = LoggerFactory.getLogger(HttpServerHandleDefault.class);
 

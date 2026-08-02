@@ -145,6 +145,8 @@ public final class HttpModule implements ModuleEx {
             Duration shutdownGrace = config(symbols, coercer,
                 HttpConfigKeys.SERVER_SHUTDOWN_GRACE, HttpConfigKeys.LEGACY_PREFIX + ".server.shutdown-grace",
                 Duration.ofSeconds(2));
+            long maxBodySize = config(symbols, coercer,
+                HttpConfigKeys.MAX_BODY_SIZE, null, HttpServerConfig.DEFAULT_MAX_BODY_SIZE);
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
@@ -161,7 +163,8 @@ public final class HttpModule implements ModuleEx {
 
             return new WebServer(
                 engine,
-                new HttpServerConfig(host, port, backlog, shutdownGrace),
+                new HttpServerConfig(host, port, backlog,
+                    HttpServerConfig.DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace, maxBodySize),
                 eventSink,
                 pipeline
             );

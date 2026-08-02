@@ -201,7 +201,10 @@ public final class Http2Connection {
                 case DATA -> {
                     if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     var dataFrame = (DataFrame) frame;
-                    if (receiveWindow.addAndGet(-dataFrame.body.length) < connectionWindowSize / 10)
+                    if (dataFrame.body.length > receiveWindow.get())
+                        throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    receiveWindow.addAndGet(-dataFrame.body.length);
+                    if (receiveWindow.get() < connectionWindowSize / 10)
                         sendConnectionWindowUpdate();
                     if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }

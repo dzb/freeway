@@ -47,6 +47,8 @@ public final class WebServerBuilder {
     private HttpServerConfig config = new HttpServerConfig(
         "127.0.0.1", 8080, 0, Duration.ofSeconds(2));
     private HttpEngine engine;
+    private SSLContext sslContext;
+    private boolean http2OverSsl;
     private CorsFilter corsFilter = CorsFilter.DEFAULT;
     private HealthFilter healthFilter = HealthFilter.DEFAULT;
     private Consumer<Object> eventSink = WebServer.NOOP_SINK;
@@ -131,14 +133,16 @@ public final class WebServerBuilder {
 
     /** Enables HTTPS on the server with the given SSL context and optional HTTP/2. */
     public WebServerBuilder sslContext(SSLContext sslContext, boolean http2OverSsl) {
-        this.engine = new FreewayHttpEngine(jsonCodec, coercer,
-            Objects.requireNonNull(sslContext, "sslContext"), http2OverSsl);
+        this.sslContext = Objects.requireNonNull(sslContext, "sslContext");
+        this.http2OverSsl = http2OverSsl;
         return this;
     }
 
     public WebServer build() {
         if (engine == null) {
-            engine = new FreewayHttpEngine(jsonCodec, coercer);
+            engine = sslContext != null
+                ? new FreewayHttpEngine(jsonCodec, coercer, sslContext, http2OverSsl)
+                : new FreewayHttpEngine(jsonCodec, coercer);
         }
         var routeIndex = new RouteIndex(routes, routeGroups);
         var wsIndex = new WebSocketIndex(webSocketRoutes, webSocketGroups);

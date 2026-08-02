@@ -31,7 +31,7 @@ import java.util.concurrent.Executors;
  * Per-connection handler. Handles plain HTTP, HTTPS with ALPN, WebSocket upgrade,
  * and HTTP/2 (both h2c and h2 over TLS).
  */
-public final class HttpSession implements Runnable {
+final class HttpSession implements Runnable {
 
     private static final Logger LOG = LoggerFactory.getLogger(HttpSession.class);
     private static final byte[] INTERNAL_ERROR_BODY =
@@ -124,10 +124,18 @@ public final class HttpSession implements Runnable {
                     ? reqIdHeader.getFirst() : null;
                 RequestContext requestContext = HttpContext.createRequestContext(correlationId);
 
-                InputStream bodyStream = parser.bodyStream();
-
+                // RFC 7230 §3.3.3: a request with neither Content-Length nor
+                // Transfer-Encoding has a zero-length body. Reading to EOF here
+                // would block on a keep-alive socket and consume pipelined data.
+                long bodyLength = req.isChunked() ? -1L : Math.max(0L, req.contentLength());
+                // Only hand the parser's buffered bytes to the body stream when
+                // there actually is a body. Otherwise pipelined bytes for the
+                // next request would be stranded in the body prefix and lost.
+                InputStream bodyStream = req.isChunked() || req.contentLength() > 0
+                    ? parser.bodyStream()
+                    : in;
                 ctx.reset(req.method(), req.path(), req.queryString(),
-                    req.headers(), bodyStream, req.contentLength(), req.isChunked(),
+                    req.headers(), bodyStream, bodyLength, req.isChunked(),
                     out, requestContext, req.isHttp10(), req.keepAlive());
                 ctx.headerSet("X-Request-Id", requestContext.correlationId());
 
@@ -210,11 +218,14 @@ public final class HttpSession implements Runnable {
         } catch (IOException e) {
             LOG.trace("HTTP/2 error: {}", e.getMessage());
         } finally {
+            // Close the connection first: it closes all streams and interrupts
+            // handlers blocked waiting for request body DATA. Closing the
+            // executor first would wait forever on those parked handlers.
+            connection.close();
             if (h2Executor != null) {
                 h2Executor.close();
                 h2Executor = null;
             }
-            connection.close();
         }
     }
 

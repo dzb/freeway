@@ -17,6 +17,7 @@ import java.io.OutputStream;
 public final class WebSocket {
 
     private static final Logger LOG = LoggerFactory.getLogger(WebSocket.class);
+    private static final long MAX_MESSAGE_SIZE = 16L * 1024 * 1024;
 
     private WebSocket() {}
 
@@ -28,9 +29,10 @@ public final class WebSocket {
                          WebSocketSessionImpl session,
                          WebSocketListener listener) {
         session.markOpen();
-        var textBuf = new StringBuilder();
+        var textBuf = new ByteArrayOutputStream();
         var binaryBuf = new ByteArrayOutputStream();
         OpCode fragType = null;
+        long messageBytes = 0;
 
         try {
             while (session.isOpen()) {
@@ -43,6 +45,11 @@ public final class WebSocket {
                     case Text, Binary -> {
                         if (fragType != null) {
                             session.close(1002, "Continuation expected");
+                            return;
+                        }
+                        messageBytes += frame.payload().length;
+                        if (messageBytes > MAX_MESSAGE_SIZE) {
+                            session.close(1009, "Message too large");
                             return;
                         }
                         if (frame.isFin()) {
@@ -75,12 +82,20 @@ public final class WebSocket {
                             session.close(1002, "Unexpected continuation");
                             return;
                         }
+                        messageBytes += frame.payload().length;
+                        if (messageBytes > MAX_MESSAGE_SIZE) {
+                            session.close(1009, "Message too large");
+                            return;
+                        }
                         appendData(frame, textBuf, binaryBuf, fragType);
                         if (frame.isFin()) {
-                            deliverFragmented(fragType, textBuf, binaryBuf, listener);
+                            if (!deliverFragmented(fragType, textBuf, binaryBuf, listener, session)) {
+                                return;
+                            }
                             fragType = null;
-                            textBuf.setLength(0);
+                            textBuf.reset();
                             binaryBuf.reset();
+                            messageBytes = 0;
                         }
                     }
                     case Ping -> writeFrame(out,
@@ -134,11 +149,11 @@ public final class WebSocket {
 
     // -- fragmentation helpers --
 
-    private static void appendData(WebSocketFrame frame, StringBuilder textBuf,
+    private static void appendData(WebSocketFrame frame, ByteArrayOutputStream textBuf,
                                    ByteArrayOutputStream binaryBuf, OpCode fragType) {
         OpCode type = frame.opCode() == OpCode.Continuation ? fragType : frame.opCode();
         if (type == OpCode.Text) {
-            textBuf.append(frame.payloadAsString());
+            textBuf.writeBytes(frame.payload());
         } else {
             try {
                 binaryBuf.write(frame.payload());
@@ -146,15 +161,30 @@ public final class WebSocket {
         }
     }
 
-    private static void deliverFragmented(OpCode fragType, StringBuilder textBuf,
-                                          ByteArrayOutputStream binaryBuf,
-                                          WebSocketListener listener) {
+    private static boolean deliverFragmented(OpCode fragType, ByteArrayOutputStream textBuf,
+                                             ByteArrayOutputStream binaryBuf,
+                                             WebSocketListener listener,
+                                             WebSocketSessionImpl session) {
         try {
-            if (fragType == OpCode.Text) listener.onText(textBuf.toString());
-            else listener.onBinary(binaryBuf.toByteArray());
+            if (fragType == OpCode.Text) {
+                // Decode the reassembled message strictly — fragments may split
+                // a single UTF-8 code point.
+                String text = WebSocketFrame.decodeUtf8(
+                    textBuf.toByteArray(), 0, textBuf.size());
+                listener.onText(text);
+            } else {
+                listener.onBinary(binaryBuf.toByteArray());
+            }
+            return true;
+        } catch (WebSocketException e) {
+            LOG.trace("WebSocket invalid UTF-8 in fragmented message", e);
+            try { session.close(1007, "Invalid UTF-8"); } catch (IOException ignored) {}
+            return false;
         } catch (Exception e) {
             LOG.trace("WebSocket handler error", e);
             listener.onError(e);
+            try { session.close(1011, "Handler error"); } catch (IOException ignored) {}
+            return false;
         }
     }
 }

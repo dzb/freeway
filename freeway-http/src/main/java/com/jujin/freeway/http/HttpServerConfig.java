@@ -2,7 +2,24 @@ package com.jujin.freeway.http;
 
 import java.time.Duration;
 
-public record HttpServerConfig(String host, int port, int backlog, int socketBufferSize, Duration shutdownGrace, long maxBodySize) {
+/**
+ * Server-level configuration for the built-in HTTP engine.
+ *
+ * @param host              bind address
+ * @param port              listen port (0 selects an ephemeral port)
+ * @param backlog           accept backlog (0 uses the platform default)
+ * @param socketBufferSize  per-connection output buffer size in bytes
+ * @param shutdownGrace     grace period for in-flight requests on shutdown
+ * @param maxBodySize       maximum request body size in bytes
+ */
+public record HttpServerConfig(
+    String host,
+    int port,
+    int backlog,
+    int socketBufferSize,
+    Duration shutdownGrace,
+    long maxBodySize
+) {
     public static final int DEFAULT_SOCKET_BUFFER_SIZE = 1024;
     public static final long DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024L; // 10MB
 

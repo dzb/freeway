@@ -21,7 +21,7 @@ import java.util.Optional;
  * {@link HttpContext} implementation backed by a raw socket connection.
  * Writes HTTP/1.1 response wire format directly to the output stream.
  */
-public final class HttpContextDefault extends HttpContext {
+final class HttpContextDefault extends HttpContext {
 
     private String method, path, rawQuery;
     private Map<String, List<String>> requestHeaders, queryParams;
@@ -271,7 +271,11 @@ public final class HttpContextDefault extends HttpContext {
             responded = true;
             return new SseEmitter(rawOut);
         }
+        // SSE terminates the HTTP/1.1 exchange: SseEmitter.complete() closes the
+        // shared buffered output stream, so this connection must not be reused.
+        this.keepAlive = false;
         setupSseHeaders();
+        headerSet("Connection", "close");
         writeLine("HTTP/1.1 200 OK");
         for (var entry : responseHeaders.entrySet()) {
             writeLine(entry.getKey() + ": " + entry.getValue());
@@ -307,7 +311,11 @@ public final class HttpContextDefault extends HttpContext {
         try {
             if (bodyStream != null) {
                 if (drainBuf == null) drainBuf = new byte[2048];
-                while (bodyStream.read(drainBuf) >= 0) { /* drain */ }
+                // Drain through the bounded body stream so we stop exactly at
+                // the end of the body. Reading the raw stream would block on
+                // a keep-alive socket and swallow the next request.
+                InputStream remaining = bodyStream();
+                while (remaining.read(drainBuf) >= 0) { /* drain */ }
             }
         } catch (IOException ignored) { /* best-effort */ }
     }

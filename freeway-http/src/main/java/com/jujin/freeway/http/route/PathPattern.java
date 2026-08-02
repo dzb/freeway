@@ -81,6 +81,15 @@ public final class PathPattern {
                 throw new IllegalArgumentException(
                     "Unclosed parameter — missing '}': " + seg + " (path: " + path + ")");
             }
+            if (seg.startsWith("{") && seg.endsWith("}")) {
+                String inner = seg.substring(1, seg.length() - 1);
+                int colon = inner.indexOf(':');
+                String name = colon >= 0 ? inner.substring(0, colon) : inner;
+                if (name.isEmpty()) {
+                    throw new IllegalArgumentException(
+                        "Empty parameter name in path: " + path);
+                }
+            }
         }
     }
 
@@ -89,7 +98,14 @@ public final class PathPattern {
     }
 
     public Map<String, String> match(String path) {
-        String[] input = PathPattern.splitPath(path);
+        String[] raw = PathPattern.splitPath(path);
+        String[] input = new String[raw.length];
+        for (int i = 0; i < raw.length; i++) {
+            input[i] = PathPattern.decodeSegment(raw[i]);
+            if (input[i] == null) {
+                return null; // malformed percent-encoding
+            }
+        }
         if (wildcard) {
             if (input.length < segments.length) {
                 return null;
@@ -121,6 +137,37 @@ public final class PathPattern {
             }
         }
         return vars;
+    }
+
+    /**
+     * Decodes one percent-encoded path segment, keeping '+' as a literal
+     * (it is only form-encoding in query strings, not in paths). Returns
+     * {@code null} for malformed encodings.
+     */
+    static String decodeSegment(String seg) {
+        try {
+            return URLDecoder.decode(
+                seg.replace("+", "%2B"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** Decodes an entire request path once, preserving segment boundaries. */
+    static String decodePath(String path) {
+        String[] segments = PathPattern.splitPath(path);
+        if (segments.length == 0) {
+            return "/";
+        }
+        StringBuilder decoded = new StringBuilder(path.length());
+        for (String segment : segments) {
+            String value = PathPattern.decodeSegment(segment);
+            if (value == null) {
+                return null;
+            }
+            decoded.append('/').append(value);
+        }
+        return decoded.toString();
     }
 
     public static String normalizePath(String path) {

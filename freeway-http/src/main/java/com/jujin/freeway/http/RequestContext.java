@@ -26,7 +26,7 @@ public interface RequestContext {
     /** Stores an arbitrary attribute for the lifetime of this request. */
     void setAttribute(String key, Object value);
 
-    /** Returns a live mutable map of all attributes associated with this request. */
+    /** Returns an immutable snapshot of all attributes associated with this request. */
     Map<String, Object> attributes();
 
     /** Creates a new context with an auto-generated correlation ID. */

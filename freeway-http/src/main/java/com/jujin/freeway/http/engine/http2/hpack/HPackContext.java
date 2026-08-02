@@ -204,8 +204,7 @@ public final class HPackContext {
             } else if ((firstByte & 0x40) != 0) {
                 // Incremental-indexed literal header
                 pos = decodeIncremental(block, pos, field);
-                dynamicTable.addFirst(field);
-                dynamicTableByteSize += headerFieldSize(field);
+                addToDynamicTable(field);
             } else if ((firstByte & 0xF0) == 0) {
                 // Without-indexing literal header
                 pos = decodeWithoutIndexing(block, pos, field);
@@ -242,20 +241,35 @@ public final class HPackContext {
     }
 
     /**
+     * Adds an incremental-indexed literal to the dynamic table, evicting
+     * least-recently-used entries so the table stays within its size limit
+     * (RFC 7541 §4.4). Entries larger than the limit are not stored.
+     */
+    private void addToDynamicTable(Http2HeaderField field) {
+        long size = headerFieldSize(field);
+        if (size > maxDynamicTableSize) return;
+        dynamicTable.addFirst(field);
+        dynamicTableByteSize += size;
+        trimDynamicTable();
+    }
+
+    /**
      * Decodes a header name (may be indexed or literal).
      */
     private int decodeName(byte[] block, int pos, int index, Http2HeaderField field) throws IOException {
         if (index == 0) {
             // Literal name
             boolean huffmanEncoded = (block[pos] & 0x80) != 0;
-            int length = block[pos] & 0x7F;
-            pos++;
-            if (pos + length > block.length) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
-            String name = huffmanEncoded ? Huffman.decode(block, pos, length) : new String(block, pos, length);
+            var result = readInt(block, pos, 7);
+            if (result.position + result.value > block.length)
+                throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
+            String name = huffmanEncoded
+                ? Huffman.decode(block, result.position, result.value)
+                : new String(block, result.position, result.value);
             if (!name.equals(name.toLowerCase())) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             field.name = name;
             field.normalizedName = Http2HeaderField.normalize(name);
-            return pos + length;
+            return result.position + result.value;
         }
         // Indexed name
         var indexedField = get(index);

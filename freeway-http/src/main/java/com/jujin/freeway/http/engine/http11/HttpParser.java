@@ -37,17 +37,29 @@ public final class HttpParser {
     /** Reuse this parser for a new request on the same connection. */
     public void reset(InputStream newIn) {
         this.in = newIn;
-        pos = 0; end = 0;
+        // Preserve bytes buffered past the previous request's header boundary
+        // (a pipelined next request); otherwise they would be lost.
+        if (pos > 0 && pos < end) {
+            System.arraycopy(buf, pos, buf, 0, end - pos);
+            end -= pos;
+        } else if (pos >= end) {
+            end = 0;
+        }
+        // pos == 0 && end > 0 → buffer already compacted; keep it
+        pos = 0;
         reqLineBuf.setLength(0);
         headerKeyBuf.setLength(0);
         headerValBuf.setLength(0);
     }
 
     public ParsedRequest parse() throws IOException {
-        // Preserve unread bytes from previous pipelined request
-        if (pos > 0 && pos < end) {
-            System.arraycopy(buf, pos, buf, 0, end - pos);
-            end -= pos;
+        // Preserve unread bytes from a previous pipelined request. reset()
+        // may already have compacted the buffer (pos == 0 with end > 0).
+        if (pos < end) {
+            if (pos > 0) {
+                System.arraycopy(buf, pos, buf, 0, end - pos);
+                end -= pos;
+            }
         } else {
             end = 0;
         }

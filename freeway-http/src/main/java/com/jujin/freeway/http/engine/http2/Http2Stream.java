@@ -111,6 +111,11 @@ public final class Http2Stream implements Http2ResponseBridge {
                 var dataFrame = (DataFrame) frame;
                 if (halfClosed) throw new Http2Exception(Http2ErrorCode.STREAM_CLOSED);
                 if (!streamOpen) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                // Enforce the stream-level receive window at frame receipt, not
+                // only when the application reads, so a peer cannot overflow it.
+                if (dataFrame.body.length > receiveWindow.get())
+                    throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                receiveWindow.addAndGet(-dataFrame.body.length);
                 dataIn.enqueue(dataFrame.body);
                 if (dataFrame.header().flags().contains(FrameFlag.END_STREAM)) {
                     halfClosed = true;
@@ -224,6 +229,7 @@ public final class Http2Stream implements Http2ResponseBridge {
         private final ConcurrentLinkedQueue<byte[]> queue = new ConcurrentLinkedQueue<>();
         private volatile Thread reader;
         private int offset;
+        private long readSinceWindowUpdate;
 
         void enqueue(byte[] data) { queue.add(data); LockSupport.unpark(reader); }
         void wakeupReader() { LockSupport.unpark(reader); }
@@ -268,12 +274,17 @@ public final class Http2Stream implements Http2ResponseBridge {
                 }
                 return bytesRead;
             } finally {
-                if (bytesRead > 0 && receiveWindow.addAndGet(-bytesRead) < initialWindowSize / 2) {
-                    receiveWindow.addAndGet(initialWindowSize / 2);
-                    connection.lock();
-                    try {
-                        new WindowUpdateFrame(streamId, initialWindowSize / 2).writeTo(connection.outputStream());
-                    } finally { connection.unlock(); }
+                if (bytesRead > 0) {
+                    readSinceWindowUpdate += bytesRead;
+                    if (readSinceWindowUpdate >= initialWindowSize / 2) {
+                        int increment = (int) readSinceWindowUpdate;
+                        readSinceWindowUpdate = 0;
+                        receiveWindow.addAndGet(increment);
+                        connection.lock();
+                        try {
+                            new WindowUpdateFrame(streamId, increment).writeTo(connection.outputStream());
+                        } finally { connection.unlock(); }
+                    }
                 }
             }
         }
