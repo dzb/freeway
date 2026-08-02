@@ -98,7 +98,9 @@ public final class BeanValidator {
                         result.addError(fieldPath, notNull.message(), null);
                     } else if (ann instanceof NotBlank notBlank && (value == null || value.toString().trim().isEmpty())) {
                         result.addError(fieldPath, notBlank.message(), value);
-                    } else if (ann instanceof Size size) {
+                    } else if (ann instanceof Size size && value != null) {
+                        // @Size follows Bean Validation conventions: null is
+                        // valid here — nullness belongs to @NotNull.
                         int len = lengthOf(value);
                         if (len < size.min() || len > size.max()) {
                             result.addError(

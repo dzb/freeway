@@ -16,7 +16,17 @@ public final class Strings {
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
             if (Character.isUpperCase(c)) {
-                if (i > 0) sb.append('_');
+                // Split before an uppercase letter when the previous char is
+                // lowercase/digit, or when it ends an acronym ("HTTPServer" →
+                // "http_server", not "h_t_t_p_server").
+                if (i > 0) {
+                    char prev = name.charAt(i - 1);
+                    boolean prevLower =
+                        Character.isLowerCase(prev) || Character.isDigit(prev);
+                    boolean nextLower = i + 1 < name.length()
+                        && Character.isLowerCase(name.charAt(i + 1));
+                    if (prevLower || nextLower) sb.append('_');
+                }
                 sb.append(Character.toLowerCase(c));
             } else {
                 sb.append(c);

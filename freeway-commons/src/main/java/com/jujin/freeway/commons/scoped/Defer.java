@@ -124,9 +124,9 @@ public final class Defer {
 
     /**
      * If inside a {@link #within} block, returns a {@link Supplier} whose
-     * {@code get()} blocks until the scope commits, then caches and returns
-     * the result. Outside a scope, the supplier computes immediately on
-     * each {@code get()} call.
+     * {@code get()} computes the value on first access and caches it; if it
+     * is never accessed, the value is computed when the scope commits.
+     * Outside a scope, the supplier computes on each {@code get()} call.
      */
     public static <T> Supplier<T> supply(Callable<T> callable) {
         Objects.requireNonNull(callable, "callable");
@@ -147,18 +147,24 @@ public final class Defer {
     /**
      * Named variant of {@link #supply(Callable)} — the returned handle
      * supports {@link DeferAction#before} / {@link DeferAction#after}
-     * for ordering relative to other named actions.
+     * for ordering relative to other named actions, and
+     * {@link DeferAction#value()} to retrieve the computed value. Outside a
+     * scope the callable runs immediately and the handle still exposes the
+     * value.
      */
     public static <T> DeferAction supply(String id, Callable<T> callable) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(callable, "callable");
+        DeferredSupplier<T> ds = new DeferredSupplier<>(callable);
         if (CURRENT.isBound()) {
-            DeferredSupplier<T> ds = new DeferredSupplier<>(callable);
-            DeferAction da = new DeferAction(id, (Runnable) ds::compute);
+            DeferAction da = new DeferAction(id, ds::compute, ds);
             CURRENT.get().add(da);
             return da;
         }
-        return DeferAction.NOOP;
+        // Outside a scope, run immediately — a silently dropped callable
+        // would be a footgun. The value stays available via value().
+        ds.compute();
+        return new DeferAction(id, ds::compute, ds);
     }
 
     // ==================== internal ====================

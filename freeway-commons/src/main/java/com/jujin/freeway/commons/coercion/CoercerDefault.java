@@ -64,6 +64,21 @@ public final class CoercerDefault implements Coercer {
         return this;
     }
 
+    /**
+     * Registers the rule only when no exact rule exists for the same
+     * (source, target) pair — caller-registered rules keep priority.
+     */
+    public CoercerDefault registerIfAbsent(CoerceRule<?, ?> rule) {
+        if (rule == null) {
+            throw new IllegalArgumentException("CoerceRule must not be null");
+        }
+        CoercionKey key = new CoercionKey(rule.sourceType(), rule.targetType());
+        if (rules.containsKey(key)) {
+            return this;
+        }
+        return register(rule);
+    }
+
     public void clearRules() {
         rules.clear();
         rulesByTarget.clear();
@@ -459,13 +474,18 @@ public final class CoercerDefault implements Coercer {
         Class<?> sourceType = input == null ? Void.class : input.getClass();
         CoercionKey key = new CoercionKey(sourceType, targetType);
 
-        CoerceRule<Object, Object> rule = (CoerceRule<
-            Object,
-            Object
-        >) rules.get(key);
+        CoerceRule<?, ?> rule = rules.get(key);
+        // Fall back to rules whose source type is a supertype of the input
+        // (e.g. a Number → String rule applies to Integer inputs), matching
+        // what supports() already advertises. Null inputs keep their built-in
+        // semantics and never trigger custom rules.
+        if (rule == null && input != null) {
+            rule = findAssignableRule(sourceType, targetType);
+        }
         if (rule != null) {
             try {
-                return (T) rule.mapping().apply(rule.sourceType().cast(input));
+                return (T) ((CoerceRule<Object, Object>) rule)
+                    .mapping().apply(rule.sourceType().cast(input));
             } catch (Exception e) {
                 throw new IllegalArgumentException(
                     String.format(
@@ -490,6 +510,32 @@ public final class CoercerDefault implements Coercer {
                 e
             );
         }
+    }
+
+    /**
+     * Finds the most specific custom rule whose source type is assignable
+     * from the given input type. Ties keep insertion order.
+     */
+    private CoerceRule<?, ?> findAssignableRule(
+        Class<?> sourceType,
+        Class<?> targetType
+    ) {
+        List<CoerceRule<?, ?>> targetRules = rulesByTarget.get(targetType);
+        if (targetRules == null) {
+            return null;
+        }
+        CoerceRule<?, ?> best = null;
+        for (CoerceRule<?, ?> rule : targetRules) {
+            if (!rule.sourceType().isAssignableFrom(sourceType)) {
+                continue;
+            }
+            if (best == null
+                    || best.sourceType().isAssignableFrom(rule.sourceType())) {
+                // rule's source type is more specific than the current best
+                best = rule;
+            }
+        }
+        return best;
     }
 
     private static final Map<Class<?>, Class<?>> BOXED_TYPES = Map.of(

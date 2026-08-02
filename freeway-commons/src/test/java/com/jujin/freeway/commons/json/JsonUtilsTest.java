@@ -720,6 +720,27 @@ class JsonUtilsTest {
             "cyclic raw list must be rejected by the writer, got: " + ex.getMessage());
     }
 
+    @Test
+    void writerAndNormalizerAgreeOnScalarLeaves() {
+        LeafBean bean = new LeafBean();
+
+        String direct = JsonUtils.stringify(bean);
+        assertEquals(direct, JsonUtils.stringify(JsonUtils.normalize(bean)),
+            "writer and normalizer must map scalar leaves identically");
+    }
+
+    private static class LeafBean {
+        public java.util.Date date = new java.util.Date(0);
+        public java.io.File file = new java.io.File("tmp/leaf.txt");
+        public java.util.Locale locale = java.util.Locale.CHINA;
+        public java.time.Duration duration = java.time.Duration.ofSeconds(5);
+        public java.time.LocalTime time = java.time.LocalTime.NOON;
+        public java.util.UUID uuid =
+            java.util.UUID.fromString("00000000-0000-0000-0000-000000000001");
+        public Color color = Color.RED;
+        public Optional<String> maybe = Optional.of("v");
+    }
+
     private record Endpoint(String value) {
     }
 

@@ -157,7 +157,10 @@ public final class BeanPlan {
         }
         Map<String, Method> setters = new LinkedHashMap<>();
         for (Method method : type.getMethods()) {
-            if (method.getParameterCount() == 1 && method.getName().startsWith("set") && method.getName().length() > 3) {
+            if (!Modifier.isStatic(method.getModifiers())
+                    && method.getParameterCount() == 1
+                    && method.getName().startsWith("set")
+                    && method.getName().length() > 3) {
                 String prop = Introspector.decapitalize(method.getName().substring(3));
                 setters.putIfAbsent(prop, method);
             }

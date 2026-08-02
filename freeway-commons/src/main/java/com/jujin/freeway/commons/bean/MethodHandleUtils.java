@@ -143,10 +143,10 @@ public final class MethodHandleUtils {
         } catch (IllegalAccessException ex) {
             // Module system blocked privateLookupIn (e.g. javax.sql.DataSource
             // from java.sql module). Fall back to setAccessible + reflection.
-            method.setAccessible(true);
             try {
+                method.setAccessible(true);
                 return LOOKUP.unreflect(method).asFixedArity();
-            } catch (IllegalAccessException e) {
+            } catch (RuntimeException | IllegalAccessException e) {
                 throw new RuntimeException("Cannot access method: " + method, e);
             }
         }

@@ -3,28 +3,13 @@ package com.jujin.freeway.commons.json;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import java.io.File;
 import java.lang.reflect.Array;
-import java.net.URI;
-import java.net.URL;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.OffsetTime;
-import java.time.ZonedDateTime;
-import java.util.Date;
 import java.util.IdentityHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.UUID;
 
 /**
  * Hand-written JSON serializer.
@@ -33,7 +18,8 @@ import java.util.UUID;
  * and raw JDK/domain values ({@code Map}, {@code Iterable}, arrays, beans,
  * temporal types, {@code Optional}, ...) directly in a single pass — no
  * intermediate normalized tree is built for raw structures. Leaf conversions
- * mirror {@link JsonNormalizer} exactly.
+ * share the scalar-leaf mapping with {@link JsonNormalizer} via
+ * {@link JsonLeaves}, so the two paths cannot drift apart.
  */
 final class JsonWriter {
 
@@ -93,49 +79,11 @@ final class JsonWriter {
             writeNumber(out, number);
             return;
         }
-        if (value instanceof CharSequence cs) {
-            quote(out, cs.toString());
-            return;
-        }
-        if (value instanceof Enum<?> e) {
-            quote(out, e.name());
-            return;
-        }
-        // Leaf conversions mirroring JsonNormalizer (same dispatch order).
-        if (value instanceof LocalDate d) {
-            quote(out, d.toString());
-            return;
-        }
-        if (value instanceof LocalTime t) {
-            quote(out, t.toString());
-            return;
-        }
-        if (value instanceof LocalDateTime dt) {
-            quote(out, dt.toString());
-            return;
-        }
-        if (value instanceof OffsetTime ot) {
-            quote(out, ot.toString());
-            return;
-        }
-        if (value instanceof OffsetDateTime odt) {
-            quote(out, odt.toString());
-            return;
-        }
-        if (value instanceof ZonedDateTime zdt) {
-            quote(out, zdt.toString());
-            return;
-        }
-        if (value instanceof Instant i) {
-            quote(out, i.toString());
-            return;
-        }
-        if (value instanceof UUID u) {
-            quote(out, u.toString());
-            return;
-        }
-        if (value instanceof Path p) {
-            quote(out, p.toString());
+        // Shared scalar-leaf mapping — keeps leaf conversions consistent
+        // with JsonNormalizer (single source of truth).
+        Object leaf = JsonLeaves.leaf(value);
+        if (leaf != JsonLeaves.UNHANDLED) {
+            quote(out, (String) leaf);
             return;
         }
         if (value instanceof Optional<?> opt) {
@@ -176,30 +124,6 @@ final class JsonWriter {
                 indent + 1,
                 context
             );
-            return;
-        }
-        if (value instanceof URI u) {
-            quote(out, u.toString());
-            return;
-        }
-        if (value instanceof URL u) {
-            quote(out, u.toString());
-            return;
-        }
-        if (value instanceof Locale l) {
-            quote(out, l.toLanguageTag());
-            return;
-        }
-        if (value instanceof Duration d) {
-            quote(out, d.toString());
-            return;
-        }
-        if (value instanceof Date d) {
-            quote(out, d.toInstant().toString());
-            return;
-        }
-        if (value instanceof File f) {
-            quote(out, f.getPath());
             return;
         }
         if (value instanceof Map<?, ?> map) {

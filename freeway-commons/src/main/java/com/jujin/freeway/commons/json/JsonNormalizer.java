@@ -3,31 +3,16 @@ package com.jujin.freeway.commons.json;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
-import java.io.File;
 import java.lang.reflect.Array;
-import java.net.URI;
-import java.net.URL;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.OffsetTime;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.UUID;
 
 final class JsonNormalizer {
 
@@ -57,24 +42,10 @@ final class JsonNormalizer {
         ) {
             return value;
         }
-        if (value instanceof CharSequence cs) {
-            return cs.toString();
+        Object leaf = JsonLeaves.leaf(value);
+        if (leaf != JsonLeaves.UNHANDLED) {
+            return leaf;
         }
-        if (value instanceof Character character) {
-            return String.valueOf(character);
-        }
-        if (value instanceof Enum<?> enumeration) {
-            return enumeration.name();
-        }
-        if (value instanceof LocalDate d) return d.toString();
-        if (value instanceof LocalTime t) return t.toString();
-        if (value instanceof LocalDateTime dt) return dt.toString();
-        if (value instanceof OffsetTime ot) return ot.toString();
-        if (value instanceof OffsetDateTime odt) return odt.toString();
-        if (value instanceof ZonedDateTime zdt) return zdt.toString();
-        if (value instanceof Instant i) return i.toString();
-        if (value instanceof UUID u) return u.toString();
-        if (value instanceof Path p) return p.toString();
         if (value instanceof Optional<?> opt) {
             return opt.isPresent()
                 ? normalize(opt.get(), context, depth + 1)
@@ -89,12 +60,6 @@ final class JsonNormalizer {
         if (value instanceof OptionalDouble od) {
             return od.isPresent() ? od.getAsDouble() : null;
         }
-        if (value instanceof URI u) return u.toString();
-        if (value instanceof URL u) return u.toString();
-        if (value instanceof Locale l) return l.toLanguageTag();
-        if (value instanceof Duration d) return d.toString();
-        if (value instanceof Date d) return d.toInstant().toString();
-        if (value instanceof File f) return f.getPath();
         if (value instanceof Map<?, ?> map) {
             return normalizeMap(map, context, depth);
         }

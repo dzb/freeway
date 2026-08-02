@@ -27,7 +27,8 @@ Defer.within(() → {              // 托盘就位
 | `Defer.within(Consumer<DeferScope>)` | 同上，但可通过 `DeferScope.rollback()` 不回抛直接丢弃 |
 | `Defer.defer(Runnable)` | 作用域内入列，作用域外立即跑 |
 | `Defer.defer(String id, Runnable)` | 命名动作，返回 `DeferAction` 可链式 `.before(id)` / `.after(id)` |
-| `Defer.supply(Callable<T>)` | 延迟值，返回 `Supplier<T>`，提交时计算并缓存 |
+| `Defer.supply(Callable<T>)` | 延迟值，返回 `Supplier<T>`，首次 `get()` 计算并缓存；从未 `get()` 则在提交时计算 |
+| `Defer.supply(String id, Callable<T>)` | 命名延迟值，返回 `DeferAction`，支持排序和 `.value()` 取值；作用域外立即执行 |
 | `Defer.isActive()` | 是否在作用域内 |
 
 ## 使用示例
@@ -93,7 +94,7 @@ Defer.within(scope → {
 
 ### 延迟值
 
-`supply()` 返回一个 `Supplier<T>`。作用域内：提交时计算一次并缓存；作用域外：每次 `get()` 即时计算。
+`supply()` 返回一个 `Supplier<T>`。作用域内：首次 `get()` 即时计算并缓存；如果从未调用 `get()`，则在作用域提交时计算一次。作用域外：每次 `get()` 即时计算。
 
 ```java
 // —— 作用域内 ——
@@ -103,7 +104,7 @@ Defer.within(() → {
     cache = Defer.supply(() → expensiveQuery());   // 还没算
     doWork();
 });
-String result = cache.get();  // 此时才计算，后续 get() 返回缓存
+String result = cache.get();  // 首次 get() 即计算，后续 get() 返回缓存
 String again = cache.get();   // 不重新算，直接返回缓存
 
 // —— 作用域外 ——

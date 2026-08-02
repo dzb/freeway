@@ -3,6 +3,7 @@ package com.jujin.freeway.commons.scoped;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -344,5 +345,64 @@ class DeferTest {
         });
 
         assertEquals(List.of("a", "b"), log);
+    }
+
+    @Test
+    void namedSupplyOutsideScopeRunsImmediatelyAndExposesValue() {
+        List<String> log = new ArrayList<>();
+
+        DeferAction handle = Defer.supply("x", () -> {
+            log.add("computed");
+            return "ok";
+        });
+
+        assertEquals(List.of("computed"), log,
+            "named supply must run immediately outside a scope");
+        assertEquals("ok", handle.value());
+        assertEquals("ok", handle.value(), "value must be cached");
+        assertEquals(1, log.size(), "value() must not recompute");
+    }
+
+    @Test
+    void namedSupplyInsideScopeComputesAtCommitAndExposesValue() {
+        List<String> log = new ArrayList<>();
+        DeferAction[] holder = new DeferAction[1];
+
+        Defer.within(() -> {
+            holder[0] = Defer.supply("x", () -> {
+                log.add("computed");
+                return "ok";
+            });
+            assertTrue(log.isEmpty(), "must not compute inside the scope");
+        });
+
+        assertEquals(List.of("computed"), log);
+        assertEquals("ok", holder[0].value());
+    }
+
+    @Test
+    void namedSupplyValueBeforeCommitComputesImmediately() {
+        List<String> log = new ArrayList<>();
+
+        Defer.within(() -> {
+            DeferAction handle = Defer.supply("x", () -> {
+                log.add("computed");
+                return "ok";
+            });
+            assertEquals("ok", handle.value());
+            assertEquals(List.of("computed"), log);
+        });
+
+        assertEquals(List.of("computed"), log,
+            "drain must not recompute a value already resolved");
+    }
+
+    @Test
+    void plainDeferHandleHasNoValue() {
+        Defer.within(() -> {
+            DeferAction handle = Defer.defer("x", () -> {});
+            assertNull(handle.value(),
+                "plain defer() handles must not expose a value");
+        });
     }
 }

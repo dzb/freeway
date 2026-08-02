@@ -47,6 +47,11 @@ class BeanValidatorTest {
         CyclicNode next;
     }
 
+    static class SizeBean {
+        @Size(min = 2)
+        String name;
+    }
+
     // --- Tests ---
 
     @Test
@@ -74,8 +79,26 @@ class BeanValidatorTest {
     void notNullViolation() {
         var result = BeanValidator.validate(new LoginRequest());
         assertTrue(result.hasErrors());
-        // null username -> NotBlank fires; null password -> NotNull + Size(min=6) both fire
-        assertEquals(3, result.getErrors().size());
+        // null username -> NotBlank fires; null password -> NotNull fires;
+        // @Size ignores null (Bean Validation convention)
+        assertEquals(2, result.getErrors().size());
+    }
+
+    @Test
+    void sizeIgnoresNull() {
+        var result = BeanValidator.validate(new SizeBean());
+        assertFalse(result.hasErrors(),
+            "@Size must ignore null — nullness belongs to @NotNull");
+    }
+
+    @Test
+    void sizeStillValidatesNonNullValues() {
+        var bean = new SizeBean();
+        bean.name = "a";
+        var result = BeanValidator.validate(bean);
+        assertTrue(result.hasErrors());
+        assertEquals(1, result.getErrors().size());
+        assertEquals("name", result.getErrors().get(0).field());
     }
 
     @Test
@@ -195,7 +218,7 @@ class BeanValidatorTest {
         var req = new LoginRecord(null, null);
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertEquals(3, result.getErrors().size()); // null username → NotBlank + null password → NotNull + Size
+        assertEquals(2, result.getErrors().size()); // null username → NotBlank + null password → NotNull; @Size ignores null
     }
 
     @Test

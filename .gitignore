@@ -29,6 +29,7 @@ Desktop.ini
 
 # Logs
 *.log
+*.log.gz
 *.trace
 
 # Temp

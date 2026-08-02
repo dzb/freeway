@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
@@ -313,6 +314,68 @@ class CoercerDefaultTest {
         assertEquals(12.5f, coercer.coerce("12.5", float.class), 0f);
         assertEquals(12.5, coercer.coerce("12.5", double.class), 0d);
         assertEquals('\0', coercer.coerce("", char.class));
+    }
+
+    @Test
+    void customRuleWithSupertypeSourceIsAppliedInCoerce() {
+        coercer.register(new CoerceRule<>(
+            Number.class, String.class, n -> "num:" + n));
+
+        assertTrue(coercer.supports(Integer.class, String.class));
+        assertEquals("num:42", coercer.coerce(42, String.class),
+            "coerce must apply rules whose source type is a supertype of the input");
+    }
+
+    @Test
+    void mostSpecificCustomRuleWins() {
+        coercer.register(new CoerceRule<>(
+            Number.class, String.class, n -> "num"));
+        coercer.register(new CoerceRule<>(
+            Integer.class, String.class, n -> "int"));
+
+        assertEquals("int", coercer.coerce(42, String.class),
+            "the most specific matching rule must win");
+        assertEquals("num", coercer.coerce(4.5, String.class));
+    }
+
+    @Test
+    void mostSpecificAssignableRuleWinsWithoutExactMatch() {
+        coercer.register(new CoerceRule<>(
+            Serializable.class, String.class, n -> "serializable"));
+        coercer.register(new CoerceRule<>(
+            Number.class, String.class, n -> "num"));
+
+        assertEquals("num", coercer.coerce(42, String.class),
+            "the closest assignable source type must win");
+    }
+
+    @Test
+    void nullInputNeverTriggersCustomRules() {
+        coercer.register(new CoerceRule<>(
+            Object.class, String.class, n -> "obj"));
+
+        assertNull(coercer.coerce(null, String.class),
+            "null must keep its built-in semantics and not hit custom rules");
+        assertEquals("obj", coercer.coerce("x", String.class));
+    }
+
+    @Test
+    void registerIfAbsentAddsMissingRule() {
+        coercer.registerIfAbsent(new CoerceRule<>(
+            String.class, Integer.class, s -> 42));
+
+        assertEquals(42, coercer.coerce("x", Integer.class));
+    }
+
+    @Test
+    void registerIfAbsentDoesNotOverwriteExistingRule() {
+        coercer.register(new CoerceRule<>(
+            String.class, Integer.class, s -> 1));
+        coercer.registerIfAbsent(new CoerceRule<>(
+            String.class, Integer.class, s -> 2));
+
+        assertEquals(1, coercer.coerce("x", Integer.class),
+            "an existing exact rule must keep priority");
     }
 
     @Test
