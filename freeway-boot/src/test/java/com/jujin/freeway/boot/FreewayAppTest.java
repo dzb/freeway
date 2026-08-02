@@ -196,7 +196,11 @@ class FreewayAppTest {
             new HookFailureModule()
         ));
 
-        assertEquals(List.of("first:start", "second:start", "first:stop"), hookEvents);
+        assertEquals(
+            List.of("first:start", "second:start", "second:stop", "first:stop"),
+            hookEvents,
+            "The failing hook must get a stop() chance, then started hooks roll back in reverse order"
+        );
         hookEvents = null;
     }
 
@@ -221,6 +225,23 @@ class FreewayAppTest {
         } finally {
             app.close();
         }
+    }
+
+    @Test
+    void closeIsIdempotent() {
+        AppRuntime app = FreewayApp.run(new TestBootApp());
+        app.close();
+        assertDoesNotThrow(app::close);
+        assertEquals(AppState.STOPPED, app.state());
+    }
+
+    @Test
+    void closeAfterFailedShutdownIsNoop() {
+        AppRuntime app = FreewayApp.run(new HookStopFailureModule());
+        assertThrows(RuntimeException.class, app::close);
+        assertEquals(AppState.FAILED, app.state());
+        // A second close must not re-run shutdown and double-close the container.
+        assertDoesNotThrow(app::close);
     }
 
     public record PrimaryMarker(String value) {}
@@ -296,6 +317,24 @@ class FreewayAppTest {
                 public void start(Container container) {
                     hookEvents.add("second:start");
                     throw new IllegalStateException("boom");
+                }
+                @Override
+                public void stop(Container container) {
+                    hookEvents.add("second:stop");
+                }
+            });
+        }
+    }
+
+    public static final class HookStopFailureModule implements ModuleEx {
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(RuntimeHook.class).add(new RuntimeHook() {
+                @Override
+                public void start(Container container) {}
+                @Override
+                public void stop(Container container) {
+                    throw new IllegalStateException("stop boom");
                 }
             });
         }

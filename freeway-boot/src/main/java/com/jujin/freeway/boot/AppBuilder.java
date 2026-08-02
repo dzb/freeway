@@ -98,11 +98,11 @@ public final class AppBuilder {
         LinkedHashMap<Class<?>, ModuleEx> allModules = new LinkedHashMap<>();
         allModules.put(BootConfigModule.class, new BootConfigModule(config));
         for (ModuleEx module : modules) {
-            addModule(allModules, module);
+            addModule(allModules, module, true);
         }
         if (autoDiscovery) {
             for (ModuleEx module : ServiceLoader.load(ModuleEx.class, effectiveLoader)) {
-                addModule(allModules, module);
+                addModule(allModules, module, false);
             }
         }
         List<ModuleEx> moduleList = List.copyOf(allModules.values());
@@ -155,13 +155,18 @@ public final class AppBuilder {
 
     private static void addModule(
         LinkedHashMap<Class<?>, ModuleEx> allModules,
-        ModuleEx module
+        ModuleEx module,
+        boolean explicit
     ) {
         ModuleEx existing = allModules.putIfAbsent(module.getClass(), module);
         if (existing == null) {
             return;
         }
-        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
+        if (explicit) {
+            LOG.warn("Ignoring duplicate module: {}", module.getClass().getSimpleName());
+        } else {
+            LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
+        }
     }
 
     private ClassLoader resolveClassLoader() {

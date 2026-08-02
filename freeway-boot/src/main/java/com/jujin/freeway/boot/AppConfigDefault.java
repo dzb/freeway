@@ -1,6 +1,7 @@
 package com.jujin.freeway.boot;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -14,7 +15,17 @@ public record AppConfigDefault(
     List<String> profiles
 ) implements AppConfig {
     public AppConfigDefault {
-        values = Map.copyOf(values);
+        // Custom loaders may include null entries to mean "unset" — skip them
+        // instead of failing with an opaque NPE from Map.copyOf.
+        Map<String, String> cleaned = new LinkedHashMap<>();
+        if (values != null) {
+            values.forEach((key, value) -> {
+                if (key != null && value != null) {
+                    cleaned.put(key, value);
+                }
+            });
+        }
+        values = Map.copyOf(cleaned);
         profiles = List.copyOf(profiles);
     }
 

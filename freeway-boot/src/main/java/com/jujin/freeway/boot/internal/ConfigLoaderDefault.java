@@ -34,7 +34,8 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}). */
-    private static final Pattern NEGATIVE_NUMBER_PATTERN = Pattern.compile("-\\d");
+    private static final Pattern NEGATIVE_NUMBER_PATTERN =
+        Pattern.compile("-\\d+(\\.\\d+)?");
 
     public ConfigLoaderDefault() {
     }
@@ -118,8 +119,9 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             return Map.of();
         }
 
-        try (stream) {
-            JsonObject root = JsonUtils.parseObject(stream);
+        try (stream; InputStream bounded = ByteStreams.bounded(
+                stream, 16L * 1024 * 1024, resourceName)) {
+            JsonObject root = JsonUtils.parseObject(bounded);
             return Maps.flatten(root.toMap(), ".");
         } catch (IOException | RuntimeException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
@@ -164,11 +166,17 @@ public final class ConfigLoaderDefault implements ConfigLoader {
                 int eq = raw.indexOf('=');
                 if (eq > 0) {
                     values.put(applyFreewayPrefix(raw.substring(0, eq)), raw.substring(eq + 1));
+                } else if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
+                    values.put(applyFreewayPrefix(raw), list.get(++i));
+                } else {
+                    values.put(applyFreewayPrefix(raw), "true");
                 }
             } else if (arg.startsWith("-") && arg.length() == 2) {
                 String key = arg.substring(1);
                 if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
-                    values.put(key, list.get(++i));
+                    values.put(applyFreewayPrefix(key), list.get(++i));
+                } else {
+                    values.put(applyFreewayPrefix(key), "true");
                 }
             }
         }
@@ -181,7 +189,8 @@ public final class ConfigLoaderDefault implements ConfigLoader {
      * value instead of turning {@code --port} into a boolean.
      */
     private static boolean isConsumableValue(String next) {
-        return !next.startsWith("-") || NEGATIVE_NUMBER_PATTERN.matcher(next).find();
+        return !next.startsWith("-")
+            || NEGATIVE_NUMBER_PATTERN.matcher(next).matches();
     }
 
     /**

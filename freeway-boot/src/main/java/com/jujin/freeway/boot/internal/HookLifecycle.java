@@ -32,8 +32,10 @@ public final class HookLifecycle {
             return;
         }
         List<RuntimeHook> list = resolveHooks();
+        RuntimeHook current = null;
         try {
             for (RuntimeHook hook : list) {
+                current = hook;
                 LOG.debug("Starting hook: {}", hook.getClass().getSimpleName());
                 hook.start(container);
                 started.add(hook);
@@ -44,11 +46,29 @@ public final class HookLifecycle {
                 "Runtime hook start failed",
                 ex
             );
+            // The failing hook may have acquired resources before throwing —
+            // give it a chance to release them, then roll back the started ones.
+            if (current != null) {
+                RuntimeException failedHookStop = stopFailedHook(current);
+                if (failedHookStop != null) {
+                    failure.addSuppressed(failedHookStop);
+                }
+            }
             RuntimeException rollback = stopStarted();
             if (rollback != null) {
                 failure.addSuppressed(rollback);
             }
             throw failure;
+        }
+    }
+
+    private RuntimeException stopFailedHook(RuntimeHook hook) {
+        try {
+            hook.stop(container);
+            return null;
+        } catch (Exception ex) {
+            LOG.warn("Hook stop failed after failed start: {}", ex.getMessage(), ex);
+            return new RuntimeException("Runtime hook stop failed", ex);
         }
     }
 

@@ -15,6 +15,7 @@ final class AppRuntimeDefault implements AppRuntime {
     private final Container container;
     private final AppConfig config;
     private volatile AppState state = AppState.CREATED;
+    private boolean shutdownAttempted;
 
     AppRuntimeDefault(Container container, AppConfig config) {
         this.container = Objects.requireNonNull(container, "container");
@@ -67,7 +68,11 @@ final class AppRuntimeDefault implements AppRuntime {
 
     @Override
     public synchronized void close() {
-        if (state == AppState.STOPPED) return;
+        // Once shutdown has been attempted, repeated close() is a no-op even
+        // if the first attempt failed (state FAILED) — re-running it would
+        // republish lifecycle events and double-close the container.
+        if (state == AppState.STOPPED || shutdownAttempted) return;
+        shutdownAttempted = true;
         var previous = state;
         state = AppState.STOPPING;
         RuntimeException failure = null;

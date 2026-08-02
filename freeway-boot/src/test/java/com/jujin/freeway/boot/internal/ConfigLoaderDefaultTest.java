@@ -106,6 +106,44 @@ class ConfigLoaderDefaultTest {
     }
 
     @Test
+    void rejectsOversizedJsonResource() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            ConfigLoaderDefault.loadLayers(new OversizedJsonLoader()));
+
+        assertTrue(ex.getMessage().contains("Unable to load application.json"));
+        Throwable parserCause = ex.getCause();
+        assertTrue(parserCause != null
+                && parserCause.getMessage().contains("Unable to read JSON input"));
+        assertTrue(parserCause.getCause() != null
+                && parserCause.getCause().getMessage().contains("exceeds"));
+    }
+
+    @Test
+    void propertyStyleAndShortFlagsFollowPrefixingRules() {
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+            "-Dverbose",
+            "-p", "dev",
+            "-Dserver.port=9090"
+        );
+
+        assertEquals("true", args.get("freeway.verbose"));
+        assertEquals("dev", args.get("freeway.p"));
+        assertEquals("9090", args.get("server.port"));
+        assertEquals(3, args.size());
+    }
+
+    @Test
+    void nonNumericNegativeArgumentIsNotConsumedAsValue() {
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+            "--port", "-1x"
+        );
+
+        assertEquals("true", args.get("freeway.port"),
+            "a non-numeric dash argument must turn the key into a boolean");
+        assertEquals(1, args.size());
+    }
+
+    @Test
     void rejectsProfileNamesThatCanAddressOtherResources() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
             ConfigLoaderDefault.loadLayers(ConfigLoaderDefaultTest.class.getClassLoader(), "--freeway.profile=../secret"));
@@ -117,6 +155,16 @@ class ConfigLoaderDefaultTest {
         @Override
         public InputStream getResourceAsStream(String name) {
             if ("application.properties".equals(name)) {
+                return new RepeatingInputStream(16L * 1024 * 1024 + 1);
+            }
+            return null;
+        }
+    }
+
+    private static final class OversizedJsonLoader extends ClassLoader {
+        @Override
+        public InputStream getResourceAsStream(String name) {
+            if ("application.json".equals(name)) {
                 return new RepeatingInputStream(16L * 1024 * 1024 + 1);
             }
             return null;

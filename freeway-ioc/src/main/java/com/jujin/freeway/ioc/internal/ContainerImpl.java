@@ -193,6 +193,11 @@ public final class ContainerImpl implements Container {
 
     @Override
     public void close() {
+        // Idempotent: repeated close() must not re-run shutdown or PreDestroy
+        // on services that were already released.
+        if (closed) {
+            return;
+        }
         LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
         closed = true;
         RuntimeException failure = shutdown.close();
