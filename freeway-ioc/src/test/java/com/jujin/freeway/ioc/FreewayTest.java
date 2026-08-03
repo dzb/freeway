@@ -757,6 +757,60 @@ class FreewayTest {
     }
 
     @Test
+    void extensionOrderingIgnoresMissingIds() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(AppFeature.class)
+                .add("first", new AppFeature("first"))
+                .after("missing")
+                .after("second"),
+            binder -> binder.contribute(AppFeature.class)
+                .add("second", new AppFeature("second"))
+        );
+
+        ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
+        assertEquals(List.of("second", "first"), config.featureNames(),
+            "a missing id must be ignored, not fail ordering");
+    }
+
+    @Test
+    void extensionOrderingWarnsOnMissingIds() {
+        var records = new ArrayList<java.util.logging.LogRecord>();
+        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
+            "com.jujin.freeway.ioc.extension.Extension");
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        jul.addHandler(handler);
+        try {
+            Container container = Freeway.create(
+                binder -> binder.contribute(AppFeature.class)
+                    .add("first", new AppFeature("first"))
+                    .after("missing")
+            );
+            container.extension(AppFeature.class).all();
+
+            assertTrue(records.stream().anyMatch(r ->
+                    r.getLevel() == java.util.logging.Level.WARNING
+                        && r.getMessage() != null
+                        && r.getMessage().contains("missing")),
+                "missing ordering ids must produce a warning");
+        } finally {
+            jul.removeHandler(handler);
+        }
+    }
+
+    @Test
     void extensionOrderingRejectsCycles() {
         Container container = Freeway.create(
             binder -> binder.contribute(AppFeature.class)

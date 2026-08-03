@@ -403,6 +403,8 @@ handle used by framework modules. Application code uses `List<V>` or
 
 The entry type itself (e.g., `Route.class`) is the extension point identifier. Contributions are ordered via `add(id, value)` with `before/after`.
 
+Missing ids in `before/after` are ignored with a WARN (the reference may be a typo, or the contributing module may not be installed). Cycles between resolved references still fail fast.
+
 The three `add` variants are deliberately distinct, not an API gap waiting for a unifying default:
 
 - `add(value)` — unnamed, insertion order. No id. Not in `asMap()`. Use when only iteration order matters (routing, filters) and id-based lookup is irrelevant.

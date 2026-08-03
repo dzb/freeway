@@ -1,5 +1,8 @@
 package com.jujin.freeway.ioc.extension;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -30,6 +33,7 @@ import java.util.Set;
  * @param <V> the entry type (extension point type)
  */
 public final class Extension<V> {
+    private static final Logger LOG = LoggerFactory.getLogger(Extension.class);
 
     private final List<Entry> entries = new ArrayList<>();
     private final Set<String> ids = new LinkedHashSet<>();
@@ -174,18 +178,16 @@ public final class Extension<V> {
             for (String id : entry.afterIds) {
                 Entry dep = byId.get(id);
                 if (dep == null) {
-                    throw new IllegalArgumentException(
-                        "Unknown id '" + id + "' in after() — referenced by '"
-                            + entry.id + "'");
+                    warnMissing(id, "after()", entry);
+                    continue;
                 }
                 addEdge(dep, entry, outgoing, indegree);
             }
             for (String id : entry.beforeIds) {
                 Entry target = byId.get(id);
                 if (target == null) {
-                    throw new IllegalArgumentException(
-                        "Unknown id '" + id + "' in before() — referenced by '"
-                            + entry.id + "'");
+                    warnMissing(id, "before()", entry);
+                    continue;
                 }
                 addEdge(entry, target, outgoing, indegree);
             }
@@ -229,6 +231,19 @@ public final class Extension<V> {
         if (outgoing.get(from).add(to)) indegree.put(to, indegree.get(to) + 1);
     }
 
+    private void warnMissing(String id, String method, Entry entry) {
+        String owner = entry.id != null ? "'" + entry.id + "'" : "<unnamed>";
+        LOG.warn(
+            "Ordering reference to unknown id '{}' in {} of contribution {} "
+                + "for extension {} is ignored. Check for a typo, or a module "
+                + "that is not installed.",
+            id,
+            method,
+            owner,
+            entryType.getSimpleName()
+        );
+    }
+
     private static String normalizeOptionalId(String id) {
         if (id == null) return null;
         String v = id.trim();
@@ -263,5 +278,6 @@ public final class Extension<V> {
                 afterIds.add(Objects.requireNonNull(s, "id").trim());
             return this;
         }
+
     }
 }
