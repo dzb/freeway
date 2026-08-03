@@ -175,6 +175,11 @@ freeway.log.level=INFO
 freeway.log.console.enabled=true
 freeway.log.console.level=INFO
 freeway.log.file=auto                    # logs/{app.name}.log, rotation + GZIP
+freeway.log.file.max-size=104857600      # 100 MB before size-based rotation
+freeway.log.file.max-history=30          # days kept
+freeway.log.file.compress=true           # GZIP rotated archives
+freeway.log.file.flush-interval=250      # ms; 0 = flush per record
+# (the four values above are the auto defaults — omit to keep, override to change)
 ```
 
 **Multi-file logging** — declare named files with independent paths, rotation settings, and logger binding:

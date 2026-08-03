@@ -546,6 +546,11 @@ Logging works **out of the box** with sensible defaults: ANSI-colored console ou
 ```properties
 freeway.log.level=INFO
 freeway.log.file=auto                    # logs/{app.name}.log, rotation + GZIP
+freeway.log.file.max-size=104857600      # 100 MB before size-based rotation
+freeway.log.file.max-history=30          # days kept
+freeway.log.file.compress=true           # GZIP rotated archives
+freeway.log.file.flush-interval=250      # ms; 0 = flush per record
+# (the four values above are the auto defaults — omit to keep, override to change)
 ```
 
 For multi-file logging, per-logger levels, env var support, and the full config reference, see [Commons Reference](freeway-commons.md#logging).

@@ -74,6 +74,8 @@ freeway.log.file=auto                      # logs/{app.name}.log
 freeway.log.file.max-size=104857600         # 100 MB
 freeway.log.file.max-history=30             # days
 freeway.log.file.compress=true              # GZIP
+freeway.log.file.flush-interval=250         # 批量刷盘间隔（毫秒）；0 = 每条日志立即刷盘
+# （以上四项为 auto 默认值——不写即用这些值，覆盖即调整）
 ```
 
 ### Multi-File Logging
