@@ -79,6 +79,7 @@ public final class ContainerImpl implements Container {
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
     private final Set<ModuleEx> installedModules = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Class<?>> installedClasses = ConcurrentHashMap.newKeySet();
     private final List<ModuleEx> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 
@@ -139,18 +140,33 @@ public final class ContainerImpl implements Container {
     }
 
     void installModule(ModuleEx module, Binder binder) {
-        if (installedModules.add(module)) {
-            LOG.debug("Installing module: {}", module.getClass().getSimpleName());
-            loadedModules.add(module);
-            BinderImpl binderImpl = (BinderImpl) binder;
-            Class<?> previousModule = binderImpl.currentModule();
-            binderImpl.setCurrentModule(module.getClass());
-            module.bind(binder);
-            binderImpl.restoreCurrentModule(previousModule);
-            binderImpl.flushPending();
+        if (!installedModules.add(module)) {
+            LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
             return;
         }
-        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
+        Class<?> moduleClass = module.getClass();
+        // Fail fast when two distinct instances of the same module class are
+        // installed — typically an explicit install plus SPI auto-discovery.
+        // Lambda/anonymous modules keep identity-based semantics (they have no
+        // meaningful class identity).
+        if (!moduleClass.isAnonymousClass()
+                && !moduleClass.isSynthetic()
+                && !installedClasses.add(moduleClass)) {
+            throw new IllegalStateException(
+                "Module " + moduleClass.getName() + " installed twice. "
+                    + "Likely cause: an explicit install plus SPI auto-discovery "
+                    + "both loaded it. Fix: remove one of them, disable "
+                    + "autoDiscovery, or use FreewayApp (which deduplicates by class)."
+            );
+        }
+        LOG.debug("Installing module: {}", moduleClass.getSimpleName());
+        loadedModules.add(module);
+        BinderImpl binderImpl = (BinderImpl) binder;
+        Class<?> previousModule = binderImpl.currentModule();
+        binderImpl.setCurrentModule(moduleClass);
+        module.bind(binder);
+        binderImpl.restoreCurrentModule(previousModule);
+        binderImpl.flushPending();
     }
 
     private void loadAll(Collection<? extends ModuleEx> modules) {

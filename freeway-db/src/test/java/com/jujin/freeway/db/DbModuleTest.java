@@ -22,6 +22,18 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DbModuleTest {
+
+    @Test
+    void duplicateDbModuleInstancesFailFast() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> Freeway.create(new DbModule(), new DbModule()));
+
+        assertTrue(ex.getMessage().contains("installed twice"),
+            "explicit install + SPI auto-discovery duplicate must fail fast: "
+                + ex.getMessage());
+        assertTrue(ex.getMessage().contains("DbModule"));
+    }
+
     private static final String URL_KEY = DbConfigKeys.URL;
     private static final String USER_KEY = DbConfigKeys.USERNAME;
     private static final String PASS_KEY = DbConfigKeys.PASSWORD;
