@@ -14,6 +14,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -92,11 +94,24 @@ public final class PoolDefault implements Pool {
                     recordBorrow(waitStart);
                     return conn;
                 }
-                destroy(conn);
+                // Replace the stale connection BEFORE destroying it, so the
+                // pool never transiently drops to zero connections. Databases
+                // that drop state when their last connection closes (e.g. H2
+                // in-memory without DB_CLOSE_DELAY=-1) would lose the database.
+                PooledConnectionDefault stale = conn;
+                try {
+                    conn = createConnection();
+                } catch (RuntimeException e) {
+                    // Do not leak the stale connection if the replacement fails.
+                    destroy(stale);
+                    throw e;
+                }
+                total.incrementAndGet();
+                destroy(stale);
+            } else {
+                conn = createConnection();
+                total.incrementAndGet();
             }
-
-            conn = createConnection();
-            total.incrementAndGet();
             success = true;
             conn.markBorrowed();
             active.add(conn);
@@ -266,35 +281,63 @@ public final class PoolDefault implements Pool {
 
     private void clean() {
         Instant now = Instant.now();
-        var it = idle.iterator();
-        while (it.hasNext()) {
-            PooledConnectionDefault conn = it.next();
-            if (
-                conn.isExpired(now, config.maxLifetime(), config.maxIdleTime())
-            ) {
-                it.remove();
+        List<PooledConnectionDefault> expired = new ArrayList<>();
+        for (PooledConnectionDefault conn : idle) {
+            if (conn.isExpired(now, config.maxLifetime(), config.maxIdleTime())) {
+                expired.add(conn);
+            }
+        }
+
+        if (!expired.isEmpty()) {
+            int healthyIdle = idle.size() - expired.size();
+            int active = Math.max(0, total.get() - idle.size());
+            int capacity = Math.max(0, config.maxSize() - active - healthyIdle);
+            int replacements = Math.min(
+                Math.max(0, config.minIdle() - healthyIdle),
+                capacity
+            );
+
+            // Create replacements BEFORE closing the expired connections.
+            // Closing them all first leaves a zero-connection window; databases
+            // that drop state when their last connection closes (e.g. H2
+            // in-memory without DB_CLOSE_DELAY=-1) would lose the database
+            // during idle cleanup.
+            for (int i = 0; i < replacements; i++) {
+                if (!createIdleConnection()) {
+                    break;
+                }
+            }
+
+            for (PooledConnectionDefault conn : expired) {
+                idle.remove(conn);
                 closePhysical(conn);
                 total.decrementAndGet();
             }
         }
 
-        int needed = config.minIdle() - idle.size();
-        for (int i = 0; i < needed; i++) {
-            if (total.get() >= config.maxSize()) {
+        // Top up to minIdle with remaining capacity — also covers the case
+        // where connections were borrowed while the cleaner was running.
+        while (idle.size() < config.minIdle() && total.get() < config.maxSize()) {
+            if (!createIdleConnection()) {
                 break;
             }
-            if (!semaphore.tryAcquire()) {
-                break;
-            }
-            try {
-                PooledConnectionDefault conn = createConnection();
-                total.incrementAndGet();
-                idle.offerFirst(conn);
-                semaphore.release();
-            } catch (Exception e) {
-                semaphore.release();
-                break;
-            }
+        }
+    }
+
+    private boolean createIdleConnection() {
+        if (!semaphore.tryAcquire()) {
+            return false;
+        }
+        try {
+            PooledConnectionDefault conn = createConnection();
+            total.incrementAndGet();
+            idle.offerFirst(conn);
+            return true;
+        } catch (Exception e) {
+            LOG.debug("Failed to create idle connection", e);
+            return false;
+        } finally {
+            semaphore.release();
         }
     }
 

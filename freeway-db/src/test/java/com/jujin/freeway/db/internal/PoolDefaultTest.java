@@ -13,6 +13,7 @@ import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,6 +28,50 @@ import static org.junit.jupiter.api.Assertions.*;
  * 连接池泄露检测集成测试 — 验证 active 追踪和 stats 上报。
  */
 class PoolDefaultTest {
+
+    @Test
+    void idleCleanupDoesNotDropH2InMemoryDatabase() throws Exception {
+        String dbName = "freeway_pool_idle_cleanup_"
+            + UUID.randomUUID().toString().replace('-', '_');
+        // No DB_CLOSE_DELAY: H2 drops the in-memory database when the last
+        // connection closes. The pool must never transiently drop to zero
+        // connections during idle cleanup.
+        var config = new PoolConfig(
+            "jdbc:h2:mem:" + dbName, "sa", "",
+            4, 1,
+            Duration.ofSeconds(5),
+            Duration.ofMinutes(30),
+            Duration.ofMillis(100), // maxIdleTime — expire quickly
+            Duration.ofMillis(50),  // cleanInterval
+            null,
+            Duration.ofSeconds(5),
+            Duration.ofSeconds(15)
+        );
+        PoolDefault pool = new PoolDefault(config);
+        try {
+            PooledConnection setup = pool.borrow();
+            try (var stmt = setup.connection().createStatement()) {
+                stmt.execute("create table t (id int)");
+                stmt.execute("insert into t values (1)");
+            }
+            pool.release(setup);
+
+            // Let the cleaner evict the idle connection and refill several
+            // times. Before the fix this dropped the H2 in-memory database.
+            Thread.sleep(600);
+
+            PooledConnection check = pool.borrow();
+            try (var stmt = check.connection().createStatement();
+                 var rs = stmt.executeQuery("select count(*) from t")) {
+                assertTrue(rs.next());
+                assertEquals(1, rs.getInt(1),
+                    "idle cleanup must not drop the H2 in-memory database");
+            }
+            pool.release(check);
+        } finally {
+            pool.close();
+        }
+    }
 
     @Test
     void physicallyClosedConnectionIsNotReused() throws Exception {
