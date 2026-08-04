@@ -209,12 +209,9 @@ final class HttpSession implements Runnable {
                 if (!h2conn.hasProperPreface(true))
                     throw new IOException("Invalid HTTP/2 TLS preface");
             }
-            // Server connection preface (RFC 7540 §3.5) — must be sent before
-            // any frame, for both h2c and h2-over-TLS.
-            connection.outputStream().write(
-                Http2Connection.PREFACE.getBytes(StandardCharsets.US_ASCII)
-            );
-            connection.outputStream().flush();
+            // Server connection preface (RFC 7540 §3.5) — the first SETTINGS
+            // frame sent below is the preface; the PRI magic belongs to the
+            // client only and must never be echoed back.
             h2conn.sendMySettings();
             h2conn.handle();
         } catch (IOException e) {

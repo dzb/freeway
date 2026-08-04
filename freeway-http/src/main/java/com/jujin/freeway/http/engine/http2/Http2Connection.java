@@ -73,9 +73,7 @@ public final class Http2Connection {
     private final ReentrantLock lock = new ReentrantLock();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    private int maxConcurrentStreams = -1;
     private int lastSeenStreamId;
-    private int highWaterMark;
 
     public Http2Connection(Socket socket, InputStream inputStream, OutputStream outputStream,
                            ExecutorService executor, StreamHandler handler) {
@@ -259,11 +257,6 @@ public final class Http2Connection {
 
             var target = streams.get(streamId);
             if (target == null && lastSeenStreamId < streamId) {
-                int currentSize = streams.size();
-                if (maxConcurrentStreams != -1 && currentSize >= maxConcurrentStreams)
-                    throw new Http2Exception(Http2ErrorCode.REFUSED_STREAM);
-                highWaterMark = Math.max(highWaterMark, currentSize);
-
                 byte[] headerBlock = BinUtils.combine(headerBlockFragments);
                 var fields = new HeaderFields();
                 for (var field : hpack.decode(headerBlock)) fields.add(field);
@@ -309,8 +302,6 @@ public final class Http2Connection {
                     throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
                 for (var stream : streams.values())
                     stream.sendWindow.addAndGet(parameter.value - oldWindow);
-            } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_CONCURRENT_STREAMS) {
-                maxConcurrentStreams = (int) Math.min(parameter.value, Integer.MAX_VALUE);
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_FRAME_SIZE) {
                 maxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
             }

@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.engine;
 
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpServerConfig;
@@ -20,8 +21,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -35,12 +37,17 @@ import java.net.http.WebSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -61,6 +68,11 @@ class FreewayHttpEngineTest {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(HttpConfigKeys.SERVER_HOST);
         System.clearProperty(HttpConfigKeys.MAX_BODY_SIZE);
+        System.clearProperty(HttpConfigKeys.SSL_ENABLED);
+        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE);
+        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
+        System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE);
+        System.clearProperty(HttpConfigKeys.SSL_HTTP2);
         System.clearProperty("freeway.web.server.port");
         System.clearProperty("freeway.web.server.host");
     }
@@ -543,6 +555,67 @@ class FreewayHttpEngineTest {
         }
     }
 
+    private static void readFully(InputStream in, byte[] buffer) throws IOException {
+        int off = 0;
+        while (off < buffer.length) {
+            int n = in.read(buffer, off, buffer.length - off);
+            if (n < 0) {
+                throw new IOException(
+                    "EOF after " + off + " of " + buffer.length + " bytes");
+            }
+            off += n;
+        }
+    }
+
+    private static Path generateKeyStore(Path dir) throws Exception {
+        Path keystore = dir.resolve("test.p12");
+        Process keytool = new ProcessBuilder(
+                System.getProperty("java.home") + "/bin/keytool",
+                "-genkeypair", "-alias", "test",
+                "-keyalg", "RSA", "-keysize", "2048",
+                "-keystore", keystore.toString(),
+                "-storetype", "PKCS12", "-storepass", "changeit",
+                "-dname", "CN=localhost", "-validity", "1",
+                "-ext", "SAN=dns:localhost")
+            .redirectErrorStream(true).start();
+        keytool.getInputStream().readAllBytes();
+        assertTrue(keytool.waitFor(30, TimeUnit.SECONDS) && keytool.exitValue() == 0,
+            "keytool should generate a keystore");
+        return keystore;
+    }
+
+    private static SSLContext serverSslContext(Path keystore) throws Exception {
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        try (var in = Files.newInputStream(keystore)) {
+            ks.load(in, "changeit".toCharArray());
+        }
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, "changeit".toCharArray());
+        SSLContext serverSsl = SSLContext.getInstance("TLS");
+        serverSsl.init(kmf.getKeyManagers(), null, null);
+        return serverSsl;
+    }
+
+    private static SSLContext trustAllSslContext() throws Exception {
+        SSLContext trustAll = SSLContext.getInstance("TLS");
+        trustAll.init(null, new TrustManager[]{
+            new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            }
+        }, new SecureRandom());
+        return trustAll;
+    }
+
     static final class PingModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
@@ -763,7 +836,7 @@ class FreewayHttpEngineTest {
     // ── HTTP/2 h2c prior-knowledge ─────────────────────────────────
 
     @Test
-    void h2cPriorKnowledgeGetsServerPrefaceAndSettings() throws Exception {
+    void h2cPriorKnowledgeGetsServerSettingsFirst() throws Exception {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
@@ -776,19 +849,32 @@ class FreewayHttpEngineTest {
                 socket.setSoTimeout(3000);
                 socket.getOutputStream().write(preface);
                 socket.getOutputStream().flush();
-                byte[] buf = new byte[64];
-                int off = 0;
-                while (off < 24) {
-                    int n = socket.getInputStream().read(buf, off, buf.length - off);
-                    if (n < 0) break;
-                    off += n;
-                }
-                assertTrue(off >= 24,
-                    "server must respond with its HTTP/2 preface, got " + off + " bytes");
-                byte[] got = new byte[24];
-                System.arraycopy(buf, 0, got, 0, 24);
-                assertArrayEquals(preface, got,
-                    "server connection preface must be sent before any frame");
+
+                // RFC 7540 §3.5: the server connection preface is a SETTINGS
+                // frame — the PRI magic belongs to the client and must never
+                // be echoed back.
+                byte[] header = new byte[9];
+                readFully(socket.getInputStream(), header);
+                int length = ((header[0] & 0xff) << 16)
+                    | ((header[1] & 0xff) << 8)
+                    | (header[2] & 0xff);
+                int type = header[3] & 0xff;
+                int flags = header[4] & 0xff;
+                int streamId = ((header[5] & 0x7f) << 24)
+                    | ((header[6] & 0xff) << 16)
+                    | ((header[7] & 0xff) << 8)
+                    | (header[8] & 0xff);
+
+                assertEquals(0x4, type,
+                    "server connection preface must be a SETTINGS frame");
+                assertEquals(0, flags, "first SETTINGS frame must not be an ACK");
+                assertEquals(0, streamId,
+                    "SETTINGS must be a connection-level frame");
+                assertTrue(length > 0 && length <= 6 * 6,
+                    "SETTINGS payload length must fit at least one parameter, got " + length);
+
+                byte[] payload = new byte[length];
+                readFully(socket.getInputStream(), payload);
             }
         } finally {
             server.stop();
@@ -870,29 +956,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void httpsRequestReportsSecureAndSslSession(@TempDir Path tempDir) throws Exception {
-        Path keystore = tempDir.resolve("test.p12");
-        Process keytool = new ProcessBuilder(
-                System.getProperty("java.home") + "/bin/keytool",
-                "-genkeypair", "-alias", "test",
-                "-keyalg", "RSA", "-keysize", "2048",
-                "-keystore", keystore.toString(),
-                "-storetype", "PKCS12", "-storepass", "changeit",
-                "-dname", "CN=localhost", "-validity", "1",
-                "-ext", "SAN=dns:localhost")
-            .redirectErrorStream(true).start();
-        keytool.getInputStream().readAllBytes();
-        assertTrue(keytool.waitFor(30, TimeUnit.SECONDS) && keytool.exitValue() == 0,
-            "keytool should generate a keystore");
-
-        KeyStore ks = KeyStore.getInstance("PKCS12");
-        try (var in = Files.newInputStream(keystore)) {
-            ks.load(in, "changeit".toCharArray());
-        }
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
-            KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(ks, "changeit".toCharArray());
-        javax.net.ssl.SSLContext serverSsl = javax.net.ssl.SSLContext.getInstance("TLS");
-        serverSsl.init(kmf.getKeyManagers(), null, null);
+        Path keystore = generateKeyStore(tempDir);
+        SSLContext serverSsl = serverSslContext(keystore);
 
         FreewayHttpEngine engine = new FreewayHttpEngine(
             new com.jujin.freeway.commons.json.JsonCodecDefault(),
@@ -909,18 +974,7 @@ class FreewayHttpEngineTest {
                     ? ctx.sslSession().getProtocol() : ""))
         );
         try {
-            javax.net.ssl.SSLContext trustAll = javax.net.ssl.SSLContext.getInstance("TLS");
-            trustAll.init(null, new javax.net.ssl.TrustManager[]{
-                new javax.net.ssl.X509TrustManager() {
-                    @Override public void checkClientTrusted(
-                        java.security.cert.X509Certificate[] chain, String authType) {}
-                    @Override public void checkServerTrusted(
-                        java.security.cert.X509Certificate[] chain, String authType) {}
-                    @Override public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                        return new java.security.cert.X509Certificate[0];
-                    }
-                }
-            }, new java.security.SecureRandom());
+            SSLContext trustAll = trustAllSslContext();
 
             var client = java.net.http.HttpClient.newBuilder()
                 .sslContext(trustAll).build();
@@ -939,6 +993,87 @@ class FreewayHttpEngineTest {
                 "TLS protocol must be negotiated: " + resp.body());
         } finally {
             handle.close();
+        }
+    }
+
+    @Test
+    void httpsModuleLoadsKeyStoreFromConfig(@TempDir Path tempDir) throws Exception {
+        Path keystore = generateKeyStore(tempDir);
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(HttpConfigKeys.SSL_HTTP2, "true");
+
+        app = FreewayApp.run(new String[0], binder ->
+            binder.contribute(Route.class).add(
+                Route.get("/tls-module", ctx -> ctx.sendJson(200, Map.of(
+                    "secure", ctx.isSecure(),
+                    "session", ctx.sslSession() != null,
+                    "protocol", ctx.sslSession() != null
+                        ? ctx.sslSession().getProtocol() : "")))
+            ));
+        assertTrue(app.get(WebServer.class).isRunning(),
+            "HttpModule must start an HTTPS server when freeway.http.ssl.* is configured");
+
+        var client = HttpClient.newBuilder()
+            .sslContext(trustAllSslContext())
+            .version(HttpClient.Version.HTTP_2)
+            .build();
+        var resp = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("https://localhost:" + port + "/tls-module"))
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp.statusCode(), resp.body());
+
+        var body = JsonUtils.parseObject(resp.body());
+        assertTrue(body.getBoolean("secure"),
+            "HTTPS via HttpModule must report isSecure() == true: " + resp.body());
+        assertTrue(body.getBoolean("session"),
+            "HTTPS via HttpModule must expose the TLS session: " + resp.body());
+        assertFalse(body.getString("protocol").isBlank(),
+            "TLS protocol must be negotiated: " + resp.body());
+        assertEquals(HttpClient.Version.HTTP_2, resp.version(),
+            "HttpModule HTTPS must negotiate HTTP/2 over TLS by default");
+    }
+
+    @Test
+    void httpsNegotiatesHttp2OverTls(@TempDir Path tempDir) throws Exception {
+        Path keystore = generateKeyStore(tempDir);
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .sslContext(serverSslContext(keystore), true)
+            .route(Route.get("/h2-tls", ctx -> ctx.sendJson(200, Map.of(
+                "secure", ctx.isSecure(),
+                "protocol", ctx.sslSession() != null
+                    ? ctx.sslSession().getProtocol() : ""))))
+            .build();
+        server.start();
+        try {
+            var client = HttpClient.newBuilder()
+                .sslContext(trustAllSslContext())
+                .version(HttpClient.Version.HTTP_2)
+                .build();
+            var resp = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("https://localhost:" + server.port() + "/h2-tls"))
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode(), resp.body());
+            assertEquals(HttpClient.Version.HTTP_2, resp.version(),
+                "ALPN must negotiate HTTP/2 over TLS");
+
+            var body = JsonUtils.parseObject(resp.body());
+            assertTrue(body.getBoolean("secure"),
+                "h2-over-TLS requests must report isSecure() == true: " + resp.body());
+            assertFalse(body.getString("protocol").isBlank(),
+                "TLS protocol must be negotiated: " + resp.body());
+        } finally {
+            server.stop();
         }
     }
 
