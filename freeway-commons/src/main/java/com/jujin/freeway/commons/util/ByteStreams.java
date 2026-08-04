@@ -99,6 +99,12 @@ public final class ByteStreams {
      */
     public static byte[] readBytes(InputStream in, long maxBytes, String label)
         throws IOException {
+        Objects.requireNonNull(in, "in");
+        if (maxBytes < 0) {
+            throw new IllegalArgumentException(
+                "maxBytes must be non-negative: " + maxBytes
+            );
+        }
         var out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         long total = 0;

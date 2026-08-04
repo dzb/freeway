@@ -12,7 +12,7 @@
 
     <artifactId>freeway-ioc</artifactId>
     <name>Freeway :: IoC</name>
-    <description>Clean-slate IoC container draft</description>
+    <description>Dependency injection container: bindings, scopes, events, extensions, and advisors</description>
 
     <dependencies>
         <dependency>

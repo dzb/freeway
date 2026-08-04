@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import javax.net.ssl.SSLSession;
 
 /**
  * {@link HttpContext} implementation backed by a raw socket connection.
@@ -36,7 +37,7 @@ final class HttpContextDefault extends HttpContext {
     Http2ResponseBridge h2Bridge; // non-null → HTTP/2 path
     private byte[] cachedBody;
     private boolean secure;
-    private javax.net.ssl.SSLSession sslSession;
+    private SSLSession sslSession;
     // Shared drain buffer — reused across drainUnreadBody calls
     private byte[] drainBuf;
 
@@ -55,7 +56,7 @@ final class HttpContextDefault extends HttpContext {
     }
 
     /** Attaches the TLS session for this request. */
-    void setSslSession(javax.net.ssl.SSLSession sslSession) {
+    void setSslSession(SSLSession sslSession) {
         this.sslSession = sslSession;
     }
 
@@ -65,7 +66,7 @@ final class HttpContextDefault extends HttpContext {
     }
 
     @Override
-    public javax.net.ssl.SSLSession sslSession() {
+    public SSLSession sslSession() {
         return sslSession;
     }
 

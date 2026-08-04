@@ -13,7 +13,7 @@
 
     <artifactId>freeway-commons</artifactId>
     <name>Freeway :: Commons</name>
-    <description>Minimal shared utilities for freeway boot and logging</description>
+    <description>Core shared utilities: JSON, coercion, bean introspection, validation, scoped values, and logging</description>
 
     <dependencies>
         <dependency>

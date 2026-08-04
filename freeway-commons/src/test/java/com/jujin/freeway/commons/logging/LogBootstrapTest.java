@@ -15,7 +15,15 @@ import java.util.logging.FileHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for {@link LogBootstrap} and {@link JULLoggerServiceProvider} classpath config loading.
@@ -159,9 +167,6 @@ class LogBootstrapTest {
                     "文件应含异常类名: " + fileContent);
             assertTrue(fileContent.contains("[main]"),
                     "文件应含线程名 [main]: " + fileContent);
-
-            System.out.println("=== 文件日志输出 ===");
-            System.out.println(fileContent);
         } finally {
             System.clearProperty("freeway.log.file");
             System.clearProperty("app.name");

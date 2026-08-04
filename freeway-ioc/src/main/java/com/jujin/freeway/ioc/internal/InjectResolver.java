@@ -24,7 +24,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class InjectResolver {
     private static final Logger LOG = LoggerFactory.getLogger(InjectResolver.class);
@@ -79,9 +81,8 @@ final class InjectResolver {
 
     private static AnnotationLookup annotations(AnnotatedElement element) {
         return new AnnotationLookup() {
-            @SuppressWarnings("unchecked")
-            public <A extends Annotation> java.util.Optional<A> annotation(Class<A> type) {
-                return java.util.Optional.ofNullable(element.getAnnotation(type));
+            public <A extends Annotation> Optional<A> annotation(Class<A> type) {
+                return Optional.ofNullable(element.getAnnotation(type));
             }
 
             public Annotation[] annotations() {
@@ -137,8 +138,7 @@ final class InjectResolver {
 
     private static AnnotationLookup annotations(BeanProperty property) {
         return new AnnotationLookup() {
-            @SuppressWarnings("unchecked")
-            public <A extends Annotation> java.util.Optional<A> annotation(Class<A> type) {
+            public <A extends Annotation> Optional<A> annotation(Class<A> type) {
                 return property.annotation(type);
             }
 
@@ -150,8 +150,7 @@ final class InjectResolver {
 
     private static AnnotationLookup annotations(BeanParameter parameter) {
         return new AnnotationLookup() {
-            @SuppressWarnings("unchecked")
-            public <A extends Annotation> java.util.Optional<A> annotation(Class<A> type) {
+            public <A extends Annotation> Optional<A> annotation(Class<A> type) {
                 return parameter.annotation(type);
             }
 
@@ -217,8 +216,8 @@ final class InjectResolver {
         }
     }
 
-    private static final java.util.concurrent.ConcurrentHashMap.KeySetView<String, Boolean> MARKER_WARNED =
-        java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final ConcurrentHashMap.KeySetView<String, Boolean> MARKER_WARNED =
+        ConcurrentHashMap.newKeySet();
 
     private Object resolveValue(
         Class<?> ownerType,

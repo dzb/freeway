@@ -10,7 +10,6 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import java.io.RandomAccessFile;
 import java.net.URLClassLoader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

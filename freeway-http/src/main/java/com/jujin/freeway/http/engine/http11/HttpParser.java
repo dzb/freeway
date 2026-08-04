@@ -282,13 +282,6 @@ public final class HttpParser {
         headerValBuf.setLength(0);
     }
 
-    private static boolean containsIgnoreCase(String haystack, String needle) {
-        int hl = haystack.length(), nl = needle.length();
-        for (int i = 0; i <= hl - nl; i++)
-            if (haystack.regionMatches(true, i, needle, 0, nl)) return true;
-        return false;
-    }
-
     /**
      * Returns an {@code InputStream} for reading the request body.
      * Includes any bytes already buffered past the header boundary,

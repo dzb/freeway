@@ -1,12 +1,20 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.db.schema.*;
+import com.jujin.freeway.db.schema.Column;
+import com.jujin.freeway.db.schema.Generated;
+import com.jujin.freeway.db.schema.Id;
+import com.jujin.freeway.db.schema.Schema;
+import com.jujin.freeway.db.schema.Table;
+import com.jujin.freeway.db.schema.Transient;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OrmTest {
 

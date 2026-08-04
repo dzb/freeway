@@ -1,4 +1,5 @@
 package com.jujin.freeway.http.engine.http11;
+
 import com.jujin.freeway.http.engine.SessionBufferedInputStream;
 import com.jujin.freeway.http.engine.SessionBufferedOutputStream;
 
@@ -35,7 +36,6 @@ public final class Http11Connection {
         this.bufferedIn = new SessionBufferedInputStream(socket.getInputStream());
         this.bufferedOut = new SessionBufferedOutputStream(socket.getOutputStream(), bufferSize);
     }
-
 
     /** Returns the TLS session for this connection, or null for plain HTTP. */
     public SSLSession getSSLSession() {

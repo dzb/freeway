@@ -3,20 +3,20 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.ConfigLoader;
-import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.json.JsonObject;
-import com.jujin.freeway.commons.util.Maps;
+import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.util.ByteStreams;
+import com.jujin.freeway.commons.util.Maps;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
-import java.util.Locale;
 
 /**
  * Default {@link ConfigLoader} implementation. Loads configuration from

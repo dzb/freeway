@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
+/** Default {@link Container} implementation: bindings, markers, extensions, scopes, and lifecycle. */
 public final class ContainerImpl implements Container {
 
     private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
@@ -116,8 +117,6 @@ public final class ContainerImpl implements Container {
     BindingIndex bindingIndex() {
         return bindingIndex;
     }
-
-
 
     LoggerSource loggerSource() {
         return loggerSource;

@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Aggregates contributed values of a given entry type and provides ordered
@@ -39,8 +40,7 @@ public final class Extension<V> {
     private final Set<String> ids = new LinkedHashSet<>();
     private final Class<V> entryType;
     private volatile List<V> sorted;
-    private final java.util.concurrent.atomic.AtomicLong version =
-        new java.util.concurrent.atomic.AtomicLong();
+    private final AtomicLong version = new AtomicLong();
 
     public Extension(Class<V> entryType) {
         this.entryType = Objects.requireNonNull(entryType, "entryType");

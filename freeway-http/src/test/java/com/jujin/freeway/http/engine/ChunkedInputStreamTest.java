@@ -2,7 +2,7 @@ package com.jujin.freeway.http.engine;
 
 import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ChunkedInputStreamTest {
 

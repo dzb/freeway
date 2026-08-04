@@ -2,7 +2,6 @@ package com.jujin.freeway.db;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -16,7 +15,11 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.schema.Column;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RowMapperTest {
 

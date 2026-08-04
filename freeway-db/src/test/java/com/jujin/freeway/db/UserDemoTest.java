@@ -8,7 +8,9 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ===========================================================
@@ -68,11 +70,6 @@ class UserDemoTest {
     void step01_showDDL() {
         // ★ 展示 Schema.define() 生成的 DDL 语句
         String ddl = Schema.define(new PostgresDialect(), User.class);
-        System.out.println("=== Schema.define(new PostgresDialect(), User.class) ===");
-        System.out.println(ddl);
-        System.out.println();
-
-        System.out.println(ddl);
         assertTrue(ddl.contains("CREATE TABLE"));
         assertTrue(ddl.contains("t_user"));
         assertTrue(ddl.contains("id"));
@@ -114,28 +111,23 @@ class UserDemoTest {
             ExecuteResult r1 = orm.insert(new User("闪电", 3));
             assertTrue(r1.hasKey(), "INSERT 应返回自增 ID");
             long id1 = r1.longKey();
-            System.out.println("INSERT 闪电 → id=" + id1);
 
             ExecuteResult r2 = orm.insert(new User("煤球", 5));
             long id2 = r2.longKey();
-            System.out.println("INSERT 煤球 → id=" + id2);
 
             // ----- R: Read (findById) -----
             User found = orm.findById(User.class, id1).orElseThrow();
             assertEquals("闪电", found.name());
             assertEquals(3, found.age());
-            System.out.println("findById(" + id1 + ") → " + found);
 
             // ----- R: Read (findAll) -----
             List<User> all = orm.findAll(User.class);
             assertEquals(2, all.size());
-            System.out.println("findAll → " + all);
 
             // ----- R: Read (findAll with order & limit) -----
             List<User> ordered = orm.findAll(User.class, "age ASC", 1, 0);
             assertEquals(1, ordered.size());
             assertEquals("闪电", ordered.get(0).name());
-            System.out.println("findAll(orderBy=age ASC, limit=1) → " + ordered);
 
             // ----- U: Update (使用 Bean 风格) -----
             // Record 是不可变的，update 用 Bean
@@ -145,22 +137,18 @@ class UserDemoTest {
             UserBean bean = new UserBean("闪电", 3);
             ormBean.insert(bean);
             assertNotNull(bean.id);
-            System.out.println("Bean INSERT → id=" + bean.id + ", name=" + bean.name);
 
             bean.age = 4;  // 涨一岁
             ExecuteResult ur = ormBean.update(bean);
             assertEquals(1, ur.rows());
-            System.out.println("UPDATE age=4 → rows=" + ur.rows());
 
             UserBean reloaded = ormBean.findById(UserBean.class, bean.id).orElseThrow();
             assertEquals(4, reloaded.age.intValue());
-            System.out.println("findById 验证 → age=" + reloaded.age);
 
             // ----- D: Delete -----
             ExecuteResult dr = ormBean.deleteById(UserBean.class, bean.id);
             assertEquals(1, dr.rows());
             assertTrue(ormBean.findById(UserBean.class, bean.id).isEmpty());
-            System.out.println("DELETE → 已删除，查找为空");
         }
     }
 
@@ -178,7 +166,6 @@ class UserDemoTest {
             ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "闪电", 3);
             assertTrue(r.hasKey());
             long id = r.longKey();
-            System.out.println("Raw INSERT → id=" + id);
 
             // SELECT → Row
             List<Row> rows = db.query("SELECT * FROM t_user WHERE id = ?", id).list(Row.class);
@@ -186,13 +173,11 @@ class UserDemoTest {
             Row row = rows.get(0);
             assertEquals("闪电", row.string("name"));
             assertEquals(3, row.integer("age").intValue());
-            System.out.println("Raw SELECT → Row columns=" + row.columns() + ", values: " + row);
 
             // SELECT → Record 映射
             User user = db.query("SELECT * FROM t_user WHERE id = ?", id)
                 .one(User.class).orElseThrow();
             assertEquals("闪电", user.name());
-            System.out.println("Raw SELECT → Record: " + user);
         }
     }
 
@@ -217,7 +202,6 @@ class UserDemoTest {
             assertEquals(2, adults.size());
             assertEquals("煤球", adults.get(0).name());  // age=5
             assertEquals("闪电", adults.get(1).name());  // age=3
-            System.out.println("SQL Builder 条件查询 → " + adults);
         }
     }
 
@@ -236,7 +220,6 @@ class UserDemoTest {
             });
 
             assertEquals(2, orm.findAll(User.class).size());
-            System.out.println("事务内 INSERT 2 条 → findAll size=" + orm.findAll(User.class).size());
 
             // 事务回滚演示
             try {
@@ -250,7 +233,6 @@ class UserDemoTest {
 
             // 回滚后依然是 2 条
             assertEquals(2, orm.findAll(User.class).size());
-            System.out.println("事务回滚后 → findAll size=" + orm.findAll(User.class).size());
         }
     }
 
@@ -270,14 +252,12 @@ class UserDemoTest {
             orm.save(u);
             assertNotNull(u.id);
             assertEquals("闪电", u.name);
-            System.out.println("save(id=null) → INSERT, id=" + u.id);
 
             // UPDATE 验证
             u.age = 4;
             orm.update(u);
             UserBean reloaded = orm.findById(UserBean.class, u.id).orElseThrow();
             assertEquals(4, reloaded.age.intValue());
-            System.out.println("update age=4 → 验证通过, age=" + reloaded.age);
         }
     }
 }

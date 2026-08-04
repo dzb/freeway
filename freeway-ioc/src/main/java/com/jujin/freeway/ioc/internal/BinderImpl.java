@@ -3,6 +3,7 @@ package com.jujin.freeway.ioc.internal;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Binding;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
 import com.jujin.freeway.ioc.extension.Extension;
@@ -87,8 +88,8 @@ final class BinderImpl implements Binder {
             public Contribution add(Class<? extends V> implClass) {
                 // Canonical id: snake_case_simple_name@package — unique and readable,
                 // no dependency on Class.forName.
-                String id = com.jujin.freeway.commons.util.Strings.camelToSnake(
-                    implClass.getSimpleName()) + "@" + implClass.getPackageName();
+                String id = Strings.camelToSnake(implClass.getSimpleName())
+                    + "@" + implClass.getPackageName();
                 var deferred = new DeferredContribution();
                 pendingCreates.add(() -> {
                     V instance = container.create(implClass);

@@ -17,7 +17,6 @@ import java.util.WeakHashMap;
  * <p>Usage:
  * <pre>{@code
  * BeanPlan plan = BeanIntrospector.plan(User.class);
- * plan.properties().forEach(p -> System.out.println(p.name()));
  * Object user = plan.constructor().newInstance("Alice", 30);
  * }</pre>
  */

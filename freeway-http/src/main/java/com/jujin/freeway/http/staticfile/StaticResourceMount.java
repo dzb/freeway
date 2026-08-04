@@ -1,7 +1,10 @@
 package com.jujin.freeway.http.staticfile;
 
-import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.commons.util.ByteStreams;
+import com.jujin.freeway.commons.util.Strings;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpStatus;
+import com.jujin.freeway.http.route.PathPattern;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -15,12 +18,8 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.Base64;
 import java.util.Locale;
 import java.util.Objects;
-import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpStatus;
-import com.jujin.freeway.http.route.PathPattern;
 
 public final class StaticResourceMount {
     private static final long DEFAULT_CACHE_MAX_AGE_SECONDS = 86_400L;
@@ -101,7 +100,7 @@ public final class StaticResourceMount {
      * Handles a static resource request.
      *
      * @return true if the request was handled (file sent or 404 returned);
-     * *         false if the file was not found and {@link #fallthrough} is on, so the request should continue
+     *         false if the file was not found and {@link #fallthrough} is on, so the request should continue
      */
     public boolean serve(HttpContext ctx) throws IOException {
         String relative = relativePath(ctx.path());

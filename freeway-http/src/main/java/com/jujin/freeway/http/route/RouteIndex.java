@@ -4,11 +4,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import java.util.Locale;
 
 /**
  * Trie-based HTTP route index.
@@ -18,7 +18,8 @@ import java.util.Locale;
  * ({name:\\d+}), and wildcards ({path:.*}).
  * <p>
  * Match complexity is O(L) where L is the number of segments in the request path,
- * independent of the total route count. */
+ * independent of the total route count.
+ */
 public final class RouteIndex {
 
     private static final int MAX_REGEX_LENGTH = PathPattern.MAX_REGEX_LENGTH;

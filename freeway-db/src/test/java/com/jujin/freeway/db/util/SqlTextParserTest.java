@@ -3,7 +3,8 @@ package com.jujin.freeway.db.util;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * SqlTextParser 纯单元测试 — 不依赖数据库，仅测试 SQL 文本解析逻辑。

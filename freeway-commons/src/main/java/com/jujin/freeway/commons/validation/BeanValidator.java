@@ -16,6 +16,7 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
+/** Declarative validation for beans annotated with {@code @NotNull}, {@code @NotBlank}, {@code @Size}, etc. */
 public final class BeanValidator {
 
     private static final Logger LOG = LoggerFactory.getLogger(BeanValidator.class);

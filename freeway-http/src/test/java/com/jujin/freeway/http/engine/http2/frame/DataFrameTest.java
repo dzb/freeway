@@ -1,7 +1,8 @@
 package com.jujin.freeway.http.engine.http2.frame;
 
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class DataFrameTest {
 

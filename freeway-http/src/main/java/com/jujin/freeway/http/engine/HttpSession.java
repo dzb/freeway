@@ -25,7 +25,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import javax.net.ssl.SSLSession;
 
 /**
  * Per-connection handler. Handles plain HTTP, HTTPS with ALPN, WebSocket upgrade,
@@ -45,7 +47,7 @@ final class HttpSession implements Runnable {
     private final int socketBufferSize;
     private final long maxBodySize;
     private final ConnectionRegistry registry;
-    private java.util.concurrent.ExecutorService h2Executor;
+    private ExecutorService h2Executor;
 
     public HttpSession(Socket socket, HttpRequestHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
@@ -232,7 +234,7 @@ final class HttpSession implements Runnable {
     private void handleHttp2Stream(Http2Stream stream, InputStream in,
                                     OutputStream out,
                                     Map<String, List<String>> reqHeaders,
-                                    javax.net.ssl.SSLSession sslSession) {
+                                    SSLSession sslSession) {
         try {
             String method = headerValue(reqHeaders, ":method");
             String fullPath = headerValue(reqHeaders, ":path");

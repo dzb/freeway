@@ -6,6 +6,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
@@ -34,6 +35,8 @@ import java.util.Map;
  */
 @Marker(Builtin.class)
 public class FlowModule implements ModuleEx {
+
+    private static final Logger LOG = LoggerFactory.getLogger(FlowModule.class);
 
     @Override
     public void bind(Binder binder) {
@@ -84,5 +87,4 @@ public class FlowModule implements ModuleEx {
         }
     }
 
-    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(FlowModule.class);
 }

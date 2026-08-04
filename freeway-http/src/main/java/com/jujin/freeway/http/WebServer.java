@@ -26,6 +26,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+/**
+ * Orchestrates HTTP request handling: filter chain, route dispatch, static
+ * files, WebSocket upgrades, error mapping, and event publishing.
+ */
 public final class WebServer implements AutoCloseable {
 
     // Pre-computed error response bodies (UTF-8)
@@ -314,7 +318,6 @@ public final class WebServer implements AutoCloseable {
             String.valueOf(exception.getMessage())
         );
         try {
-            ctx.status(HttpStatus.INTERNAL_ERROR);
             ctx.status(500).headerSet("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY);
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);

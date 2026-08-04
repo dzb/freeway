@@ -26,7 +26,7 @@ public record AppConfigDefault(
             });
         }
         values = Map.copyOf(cleaned);
-        profiles = List.copyOf(profiles);
+        profiles = profiles == null ? List.of() : List.copyOf(profiles);
     }
 
     @Override

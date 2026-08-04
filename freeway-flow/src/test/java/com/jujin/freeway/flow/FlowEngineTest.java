@@ -14,7 +14,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 流引擎核心测试
@@ -177,7 +183,6 @@ class FlowEngineTest {
         assertTrue(puml.contains("测试图"));
         assertTrue(puml.contains("s --> a"));
         assertTrue(puml.contains("<<choice>>"));
-        System.out.println(puml);
     }
 
     // --- 子图调用 ---

@@ -1,7 +1,7 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
 import com.jujin.freeway.boot.internal.BootConfigModule;
+import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;

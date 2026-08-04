@@ -5,6 +5,7 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import java.lang.reflect.Type;
 import java.util.Objects;
 
+/** Default {@link JsonCodec} implementation backed by {@link JsonUtils} and a {@link Coercer}. */
 public final class JsonCodecDefault implements JsonCodec {
 
     private final Coercer coercer;

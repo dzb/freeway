@@ -13,7 +13,7 @@
 
     <artifactId>freeway-http</artifactId>
     <name>Freeway :: HTTP</name>
-    <description>Thin HTTP layer for freeway</description>
+    <description>Built-in HTTP engine: routing, filters, WebSocket, SSE, and static files</description>
 
     <dependencies>
         <dependency>

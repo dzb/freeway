@@ -2,7 +2,8 @@ package com.jujin.freeway.http.engine.http2.frame;
 
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WindowUpdateFrameTest {
 

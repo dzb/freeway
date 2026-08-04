@@ -18,6 +18,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
+/**
+ * In-process event bus with class-based and string-topic subscriptions,
+ * optional {@code Defer}-scoped buffering, async dispatch, and an optional
+ * external event bridge.
+ */
 public final class EventBus implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(EventBus.class);

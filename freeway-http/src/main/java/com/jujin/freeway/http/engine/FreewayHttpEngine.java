@@ -66,19 +66,19 @@ public final class FreewayHttpEngine implements HttpEngine {
         // parks when idle (blocking I/O). The acceptor itself stays on a platform
         // thread to avoid virtual-thread pinning during accept().
         var acceptor = new Thread(() -> {
-                while (!finished.get()) {
-                    try {
-                        var socket = ss.accept();
-                        Thread.ofVirtual()
-                            .name("http-" + socket.getRemoteSocketAddress())
-                            .start(new HttpSession(socket, handler, jsonCodec, coercer, this,
-                                config.socketBufferSize(), config.maxBodySize(), registry));
-                    } catch (IOException e) {
-                        if (!finished.get()) LOG.error("Accept failed", e);
-                        break;
-                    }
+            while (!finished.get()) {
+                try {
+                    var socket = ss.accept();
+                    Thread.ofVirtual()
+                        .name("http-" + socket.getRemoteSocketAddress())
+                        .start(new HttpSession(socket, handler, jsonCodec, coercer, this,
+                            config.socketBufferSize(), config.maxBodySize(), registry));
+                } catch (IOException e) {
+                    if (!finished.get()) LOG.error("Accept failed", e);
+                    break;
                 }
-            }, "freeway-http-acceptor");
+            }
+        }, "freeway-http-acceptor");
         acceptor.start();
 
         String scheme = sslContext != null ? "https" : "http";

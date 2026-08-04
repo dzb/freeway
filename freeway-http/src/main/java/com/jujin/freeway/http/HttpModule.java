@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 @Marker(Builtin.class)
+/** Freeway HTTP module: wires routes, filters, engine, WebSocket, SSE, and the server runtime hook. */
 public final class HttpModule implements ModuleEx {
     private static final Logger LOG = LoggerFactory.getLogger(HttpModule.class);
     public static final String SERVER_HOOK = "freeway.http.server";

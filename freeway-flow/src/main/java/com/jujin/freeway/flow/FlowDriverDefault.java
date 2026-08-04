@@ -6,8 +6,8 @@ import java.util.concurrent.ExecutorService;
 /**
  * 默认流驱动器
  *
- *  @author noear
- *  @since 3.0
+ * @author noear
+ * @since 3.0
  *
  * <p>任务描述符解析规则（与 solon-flow 一致）：
  * <ul>
