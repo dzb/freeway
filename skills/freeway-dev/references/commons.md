@@ -31,7 +31,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 Freeway bundles a JUL-backed SLF4J 2 provider. Adding Logback to the classpath switches automatically — no code changes.
 
-**Configuration file:** `freeway-log.properties` on classpath root (not bundled in JAR). All logging keys also work as `-D` flags or `FREEWAY_*` env vars.
+**Configuration file:** `freeway-log.properties` on classpath root (not bundled in JAR). All logging keys also work as `-D` flags or env vars (prefix from `freeway.env.prefix`, default `FREEWAY_`).
 
 ```properties
 freeway.log.level=INFO
@@ -56,7 +56,7 @@ freeway.log.file.flush-interval=250       # ms; 0 = flush per record
 
 **Late re-attach:** `LogBootstrap.applyNamedFileLoggers()` after `FreewayApp.run()` if named file handlers are missing.
 
-**Priority:** `-D` > `FREEWAY_` env > `freeway-log.properties` > code default.
+**Priority:** `-D` > env var (prefix per `freeway.env.prefix`) > `freeway-log.properties` > code default.
 
 ## Canonical Snippets
 

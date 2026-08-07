@@ -292,9 +292,9 @@ Freeway-db is **independently usable** outside of the IoC container — only `fr
 
 A lightweight graph workflow engine for orchestrating multi-step processes:
 
-- **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. V2 format (`nodes`+`links`) is the native dialect; v1 (solon-flow compatible) is auto-converted on load.
+- **Graph definition** — JSON-based DAGs with 7 node types: `START`, `END`, `ACTIVITY`, `EXCLUSIVE`, `INCLUSIVE`, `PARALLEL`, `LOOP`. Canonical v2 format (`nodes`+`links`); cyclic graphs are rejected at build time.
 - **Task resolution** — nodes specify what to execute via a prefix syntax. `!markerName` matches a `TaskComponent` by `@FlowMarker` intersection (most specific wins). `@beanName` looks up a `TaskComponent` from the IoC container. `#graphId` calls another loaded graph as a subflow. `$metaKey` reads graph metadata into the execution context. Conditions also support `@beanName` (resolving to `ConditionComponent`) in addition to inline expressions.
-- **Validation at build time** — `normalize()` checks link references, entry node uniqueness, and reachability before execution.
+- **Validation at build time** — `normalize()` checks link references, entry node uniqueness, reachability, and rejects cycles.
 - **Tracing** — pause/resume execution with step-by-step trace records.
 - **PlantUML export** — visualize any graph definition as a PlantUML diagram.
 - **Interceptor chain** — wrap task execution with custom logic.
@@ -351,7 +351,7 @@ Configuration flows in a layered cascade, from lowest to highest priority:
 2. `application.json`
 3. `application-{profile}.properties`
 4. `application-{profile}.json`
-5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url`, `FREEWAY_HTTP_SERVER_PORT` → `freeway.http.server.port` (prefix stripped, `_` → `.`, `freeway.` prepended)
+5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url`, `FREEWAY_HTTP_SERVER_PORT` → `freeway.http.server.port` (prefix stripped, `_` → `.`, `freeway.` prepended). The prefix is replaceable: `-Dfreeway.env.prefix=APP_` hands the whole mapping to the app (`APP_SERVER_PORT` → `server.port`, `APP_FREEWAY_HTTP_PORT` → `freeway.http.port`).
 6. CLI arguments (`--key=value`, `-Dkey=value`)
 
 Activate profiles with:

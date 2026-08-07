@@ -30,7 +30,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `run(...)` already starts the runtime.
 - `close()` shuts down hooks, then closes the container.
 - `AppStartedEvent` is published after successful startup.
-- `AppStoppingEvent` is published before shutdown.
+- `AppStoppingEvent` is published before shutdown (only for a runtime that actually ran, not a startup-failed one).
 - Shutdown hook registration is enabled by default.
 - Auto-discovery is enabled by default.
 

@@ -58,7 +58,7 @@ Freeway bundles a JUL-backed SLF4J 2 provider. Adding Logback to the classpath s
 
 Logging is configured through `freeway-log.properties` at the classpath root. The file is **not bundled in the JAR** — create it in your project's `src/main/resources/` only when needed. All defaults are built into code.
 
-**Config cascade:** `-D` flag > `FREEWAY_` env var > `freeway-log.properties` > code default.
+**Config cascade:** `-D` flag > env var > `freeway-log.properties` > code default. The env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix.
 
 ```properties
 # ── Global ──
@@ -102,7 +102,7 @@ Any key ending with `.level` sets the corresponding JUL logger. Accepts SLF4J na
 
 ### Env Var Support
 
-All `freeway.log.*` keys support `FREEWAY_*` env vars: `FREEWAY_LOG_LEVEL=DEBUG` equals `-Dfreeway.log.level=DEBUG`.
+All `freeway.log.*` keys support env vars via the configurable prefix (`freeway.env.prefix`, default `FREEWAY_`): `FREEWAY_LOG_LEVEL=DEBUG` equals `-Dfreeway.log.level=DEBUG`; under a custom prefix `APP_`, use `APP_FREEWAY_LOG_LEVEL=DEBUG`.
 
 ### Late Re-attachment
 

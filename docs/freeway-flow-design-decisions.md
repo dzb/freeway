@@ -198,7 +198,7 @@ RouteHandler resolve(Container container) {
 
 **Decision:** A lightweight `DeferredContribution` stores `before/after` ordering constraints during `bind()` and applies them post-instantiation.
 
-**Why:** `add(Class)` defers instantiation to `flushPending()`, but the caller specifies ordering at `bind()` time. `DeferredContribution` captures those ordering constraints eagerly and replays them onto the real `Contribution` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists).
+**Why:** `add(Class)` defers instantiation until after all modules have bound (`flushPendingCreates()`), but the caller specifies ordering at `bind()` time. `DeferredContribution` captures those ordering constraints eagerly and replays them onto the real `Contribution` (from `ext.add(id, instance)`) once the instance is created. This matches `Extension.Entry`'s behavior (append-only `before`/`after` lists).
 
 **See also:** `BinderImpl.DeferredContribution`
 

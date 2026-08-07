@@ -89,7 +89,7 @@ Primary resolution uses `binding.primary()` on the binding DSL, not an annotatio
 ## Config Cascade (high to low priority)
 
 1. CLI args (`--key=value`, `-Dkey=value`)
-2. Env vars (`FREEWAY_` prefix)
+2. Env vars (`FREEWAY_` prefix by default; replaceable via `freeway.env.prefix` — a custom prefix passes through verbatim, `APP_SERVER_PORT` → `server.port`)
 3. `application-{profile}.json`
 4. `application-{profile}.properties`
 5. `application.json`
@@ -105,6 +105,14 @@ Activate profiles: `--profile=dev`
 - Never include `Co-Authored-By`, AI tool names, or any form of AI attribution in commit messages.
 - Commit messages describe the change itself, never the process or tooling used.
 - All commits appear under the user's name only.
+
+## Lifecycle notes
+
+- `Container.close()` runs `@PreDestroy` before sealing the container, so
+  cleanup code can still resolve services; only realized singletons are
+  cleaned up (a never-invoked lazy proxy gets no `@PreDestroy`).
+- Thread-scope values stay registered after close so scope-exit hooks still
+  clean them up.
 
 ## Further Reading
 
