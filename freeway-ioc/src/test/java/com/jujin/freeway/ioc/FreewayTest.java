@@ -18,8 +18,12 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -720,6 +724,55 @@ class FreewayTest {
         ListFeatureCatalog config = container.create(ListFeatureCatalog.class);
 
         assertEquals(List.of("core", "web"), config.featureNames());
+    }
+
+    @Test
+    void extensionConcurrentReadsSurviveCacheInvalidation() throws Exception {
+        // all()/asMap()/get() are lock-free after warm-up (volatile double-check).
+        // A mid-flight add() must invalidate the caches without corrupting
+        // concurrent readers.
+        Extension<AppFeature> ext = new Extension<>(AppFeature.class);
+        ext.add("core", new AppFeature("core"));
+        ext.add("web", new AppFeature("web"));
+
+        int threads = 16;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        AtomicInteger added = new AtomicInteger();
+        try {
+            for (int i = 0; i < threads; i++) {
+                pool.submit(() -> {
+                    try {
+                        start.await();
+                        for (int j = 0; j < 500; j++) {
+                            int size = ext.all().size();
+                            assertTrue(size >= 2 && size <= 3,
+                                "size must stay in [2,3] during mutation, got " + size);
+                            assertTrue(ext.asMap().containsKey("core"));
+                            assertTrue(ext.get("core").isPresent());
+                            assertTrue(ext.get("web").isPresent());
+                            if (j == 250 && added.getAndIncrement() == 0) {
+                                ext.add("db", new AppFeature("db")); // invalidate mid-flight
+                            }
+                        }
+                    } catch (Throwable t) {
+                        error.compareAndSet(null, t);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS),
+                "concurrent extension reads must complete within 10s");
+        } finally {
+            pool.shutdownNow();
+        }
+        assertNull(error.get(), "concurrent read failure: " + error.get());
+        assertEquals(List.of("core", "web", "db"), ext.all().stream()
+            .map(AppFeature::name).toList(), "final state must include the mid-flight addition");
     }
 
     @Test
@@ -1993,6 +2046,227 @@ class FreewayTest {
         @Override
         public void bind(Binder binder) {
             binder.bind(Cache.class).to(FastCache.class);
+        }
+    }
+
+    @Test
+    void classContributionCanDependOnLaterModuleBinding() {
+        // Module A contributes an implementation class whose constructor needs
+        // a service declared by module B. Class contributions are instantiated
+        // only after every module has bound, so declaration order must not
+        // matter — the contributed class resolves across modules.
+        Container container = Freeway.create(
+            binder -> binder.contribute(LaterDepConsumer.class).add(LaterDepConsumerImpl.class),
+            binder -> binder.bind(LaterDep.class).to(LaterDepImpl.class)
+        );
+        var consumers = container.extension(LaterDepConsumer.class).all();
+        assertEquals(1, consumers.size());
+        assertTrue(consumers.getFirst() instanceof LaterDepConsumerImpl);
+        // Constructor dependency resolved from the later module's binding.
+        assertSame(container.get(LaterDep.class),
+            ((LaterDepConsumerImpl) consumers.getFirst()).dep);
+    }
+
+    @Test
+    void nestedInstallClassContributionResolvesOuterBindings() {
+        // A module installed NESTED inside another module's bind() contributes
+        // a class whose constructor needs a service bound by the outer module
+        // AFTER the nested install. Class contributions run only after every
+        // module (nested included) has bound, so this must resolve.
+        Container container = Freeway.create(outer -> {
+            outer.install(new ModuleEx() {
+                @Override
+                public void bind(Binder inner) {
+                    inner.contribute(NestedDepConsumer.class).add(NestedDepConsumerImpl.class);
+                }
+            });
+            outer.bind(NestedDep.class).to(NestedDepImpl.class);
+        });
+        var consumers = container.extension(NestedDepConsumer.class).all();
+        assertEquals(1, consumers.size());
+        assertTrue(consumers.getFirst() instanceof NestedDepConsumerImpl);
+        assertSame(container.get(NestedDep.class),
+            ((NestedDepConsumerImpl) consumers.getFirst()).dep);
+    }
+
+    interface NestedDep {
+    }
+
+    static class NestedDepImpl implements NestedDep {
+    }
+
+    interface NestedDepConsumer {
+    }
+
+    static class NestedDepConsumerImpl implements NestedDepConsumer {
+        final NestedDep dep;
+
+        @Inject
+        NestedDepConsumerImpl(NestedDep dep) {
+            this.dep = dep;
+        }
+    }
+
+    interface LaterDep {
+    }
+
+    static class LaterDepImpl implements LaterDep {
+    }
+
+    interface LaterDepConsumer {
+    }
+
+    static class LaterDepConsumerImpl implements LaterDepConsumer {
+        final LaterDep dep;
+
+        @Inject
+        LaterDepConsumerImpl(LaterDep dep) {
+            this.dep = dep;
+        }
+    }
+
+    @Test
+    void concurrentFirstGetCreatesSingletonExactlyOnce() throws Exception {
+        // Concurrent first resolution must construct the singleton exactly
+        // once and return the same instance to every caller — the realize
+        // lock (single reentrant lock, not per-key stripes) must serialize
+        // first-time creation without deadlocking.
+        AtomicInteger constructed = new AtomicInteger();
+        Container container = Freeway.create(binder ->
+            // Concrete class binding: resolution goes straight to realize()
+            // (interface bindings return a lazy proxy, which would defer the
+            // provider until a method call and defeat the test).
+            binder.bind(ConcurrentServiceImpl.class)
+                .to(c -> {
+                    constructed.incrementAndGet();
+                    return new ConcurrentServiceImpl();
+                })
+                .scope(Scope.SINGLETON)
+        );
+        int threads = 16;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        List<ConcurrentServiceImpl> results = Collections.synchronizedList(new ArrayList<>());
+        try {
+            for (int i = 0; i < threads; i++) {
+                pool.submit(() -> {
+                    try {
+                        start.await();
+                        results.add(container.get(ConcurrentServiceImpl.class));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS),
+                "concurrent resolution must complete within 10s");
+        } finally {
+            pool.shutdownNow();
+            container.close();
+        }
+        assertEquals(1, constructed.get(), "singleton must be constructed exactly once");
+        ConcurrentServiceImpl first = results.getFirst();
+        assertTrue(results.stream().allMatch(r -> r == first),
+            "all callers must observe the same singleton instance");
+    }
+
+    static class ConcurrentServiceImpl {
+    }
+
+    // --- audit gap tests ---
+
+    @Test
+    void constructorCycleFailsFast() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(CycleA.class).to(CycleA.class);
+            binder.bind(CycleB.class).to(CycleB.class);
+        });
+        // InstanceFactory wraps the realize-time error in RuntimeException;
+        // the cause chain must surface the circular-dependency diagnostic.
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.get(CycleA.class));
+        Throwable t = ex;
+        boolean found = false;
+        while (t != null) {
+            if (t.getMessage() != null && t.getMessage().contains("Circular dependency")) {
+                found = true;
+                break;
+            }
+            t = t.getCause();
+        }
+        assertTrue(found, "expected circular dependency in cause chain, got: " + ex);
+    }
+
+    @Test
+    void eventBusConcurrentPublishAndSubscribe() throws Exception {
+        Container container = Freeway.create(binder -> {
+            binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(String.class, e -> {}));
+        });
+        EventBus bus = container.get(EventBus.class);
+        int threads = 8;
+        int perThread = 200;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        try {
+            for (int t = 0; t < threads; t++) {
+                final int threadId = t;
+                pool.submit(() -> {
+                    try {
+                        start.await();
+                        for (int i = 0; i < perThread; i++) {
+                            bus.publish("evt-" + threadId + "-" + i);
+                            if (i % 50 == 0) {
+                                var sub = bus.subscribe(String.class, e -> {});
+                                bus.unsubscribe(sub);
+                            }
+                        }
+                    } catch (Throwable ex) {
+                        error.compareAndSet(null, ex);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS),
+                "concurrent pub/sub must complete within 10s");
+        } finally {
+            pool.shutdownNow();
+            container.close();
+        }
+        assertNull(error.get(), "concurrent pub/sub failure: " + error.get());
+    }
+
+    @Test
+    void symbolExpansionDepthLimitFailsLoudly() {
+        // A self-referencing SymbolProvider must hit the depth guard with a
+        // clear error, not a StackOverflowError.
+        Container container = Freeway.create(binder ->
+            binder.contribute(SymbolProvider.class).add(name -> "${" + name + "}")
+        );
+        SymbolSource symbols = container.get(SymbolSource.class);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> symbols.resolve("loop"));
+        assertTrue(ex.getMessage().contains("depth"),
+            "expected depth-limit error, got: " + ex.getMessage());
+    }
+
+    static class CycleA {
+        @Inject
+        CycleA(CycleB b) {
+        }
+    }
+
+    static class CycleB {
+        @Inject
+        CycleB(CycleA a) {
         }
     }
 }

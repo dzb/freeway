@@ -26,7 +26,7 @@ final class BindingIndex {
         typeIndex.clear();
     }
 
-    <T> void register(BindingImpl<T> binding) {
+    synchronized <T> void register(BindingImpl<T> binding) {
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
         if (bindings.putIfAbsent(key, binding) != null) {
             throw duplicateMessage(binding.type().getName(), binding.id());

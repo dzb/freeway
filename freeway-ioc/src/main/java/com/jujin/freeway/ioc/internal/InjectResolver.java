@@ -248,10 +248,10 @@ final class InjectResolver {
         if (!parameterMode) {
             return null;
         }
-        if (targetType == String.class) {
-            return container.get(String.class);
-        }
-        // Constructor parameters may carry marker annotations without @Inject
+        // Constructor parameters may carry marker annotations without @Inject.
+        // A plain String parameter resolves container.get(String.class) via the
+        // same marker/scope path as every other type — no special case that
+        // would skip scope-compatibility validation.
         Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
         Object service;
         if (!markers.isEmpty()) {

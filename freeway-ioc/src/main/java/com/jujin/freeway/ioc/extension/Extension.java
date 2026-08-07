@@ -40,6 +40,7 @@ public final class Extension<V> {
     private final Set<String> ids = new LinkedHashSet<>();
     private final Class<V> entryType;
     private volatile List<V> sorted;
+    private volatile Map<String, V> mapCache;
     private final AtomicLong version = new AtomicLong();
 
     public Extension(Class<V> entryType) {
@@ -68,6 +69,7 @@ public final class Extension<V> {
         Entry entry = new Entry(normalizedId, value);
         entries.add(entry);
         sorted = null;
+        mapCache = null;
         version.incrementAndGet();
         return entry;
     }
@@ -101,13 +103,10 @@ public final class Extension<V> {
      * @param id the contribution id
      * @return the contributed value, or empty if not found
      */
-    public synchronized Optional<V> get(String id) {
+    public Optional<V> get(String id) {
         String normalized = normalizeOptionalId(id);
         if (normalized == null) return Optional.empty();
-        for (Entry e : entries) {
-            if (normalized.equals(e.id)) return Optional.of(e.value);
-        }
-        return Optional.empty();
+        return Optional.ofNullable(asMap().get(normalized));
     }
 
     /**
@@ -116,12 +115,22 @@ public final class Extension<V> {
      *
      * @return an ordered map of named contributions
      */
-    public synchronized Map<String, V> asMap() {
-        Map<String, V> result = new LinkedHashMap<>();
-        for (Entry e : entries) {
-            if (e.id != null) result.put(e.id, e.value);
+    public Map<String, V> asMap() {
+        Map<String, V> cached = mapCache;
+        if (cached != null) {
+            return cached;
         }
-        return Collections.unmodifiableMap(result);
+        synchronized (this) {
+            cached = mapCache;
+            if (cached == null) {
+                Map<String, V> result = new LinkedHashMap<>();
+                for (Entry e : entries) {
+                    if (e.id != null) result.put(e.id, e.value);
+                }
+                mapCache = cached = Collections.unmodifiableMap(result);
+            }
+            return cached;
+        }
     }
 
     /**
@@ -131,11 +140,18 @@ public final class Extension<V> {
      *
      * @return an unmodifiable list of contributed values
      */
-    public synchronized List<V> all() {
-        if (sorted == null) {
-            sorted = order();
+    public List<V> all() {
+        List<V> s = sorted;
+        if (s != null) {
+            return s;
         }
-        return sorted;
+        synchronized (this) {
+            s = sorted;
+            if (s == null) {
+                sorted = s = order();
+            }
+            return s;
+        }
     }
 
     @Override

@@ -37,16 +37,20 @@ public final class ContainerImpl implements Container {
     private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
 
     /**
-     * Thread-scope values realized by this container. The {@link ScopedCache}
-     * close hook only runs container lifecycle for these — values cached by
-     * standalone {@code ScopedCache} users are left untouched.
+     * Thread-scope values realized by containers, mapped to their owning
+     * container. The {@link ScopedCache} close hook runs container lifecycle
+     * only for these — values cached by standalone {@code ScopedCache} users
+     * are left untouched. Values stay registered until their scope exits
+     * (even if the owning container closes first), so the hook always cleans
+     * them up.
      */
-    private static final Set<Object> MANAGED_SCOPE_VALUES =
-        Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+    private static final Map<Object, ContainerImpl> MANAGED_SCOPE_VALUES =
+        Collections.synchronizedMap(new IdentityHashMap<>());
 
     static {
         ScopedCache.onClose(v -> {
-            if (!MANAGED_SCOPE_VALUES.remove(v)) {
+            ContainerImpl owner = MANAGED_SCOPE_VALUES.remove(v);
+            if (owner == null) {
                 return;
             }
             Lifecycle.invokePreDestroy(v);
@@ -60,9 +64,9 @@ public final class ContainerImpl implements Container {
         });
     }
 
-    /** Marks a value as container-managed so scope exit runs its lifecycle. */
-    static void manageScopeValue(Object value) {
-        MANAGED_SCOPE_VALUES.add(value);
+    /** Marks a value as owned by {@code owner} so scope exit runs its lifecycle. */
+    static void manageScopeValue(ContainerImpl owner, Object value) {
+        MANAGED_SCOPE_VALUES.put(value, owner);
     }
 
     private volatile boolean closed;
@@ -103,7 +107,7 @@ public final class ContainerImpl implements Container {
         this.instanceFactory = new InstanceFactory(this);
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(serviceCache, targetCache, bindingIndex, coercer);
-        this.serviceRuntime = new ServiceRuntime(proxyFactory, serviceCache, targetCache);
+        this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
@@ -173,6 +177,10 @@ public final class ContainerImpl implements Container {
         for (ModuleEx module : modules == null ? List.<ModuleEx>of() : List.copyOf(modules)) {
             installModule(module, binder);
         }
+        // Instantiate class contributions only now — every module's bindings
+        // are registered, so a contributed class may depend on services from
+        // any module regardless of declaration order.
+        binder.flushPendingCreates();
     }
 
     /**
@@ -209,19 +217,30 @@ public final class ContainerImpl implements Container {
     @Override
     public void close() {
         // Idempotent: repeated close() must not re-run shutdown or PreDestroy
-        // on services that were already released.
+        // on services that were already released. The closed flag is set only
+        // AFTER shutdown so @PreDestroy callbacks may still look services up
+        // via get()/extension() while the container is draining.
         if (closed) {
             return;
         }
-        LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
-        closed = true;
-        RuntimeException failure = shutdown.close();
-        extensions.clear();
-        if (failure != null) {
-            LOG.error("Container close failed", failure);
-            throw failure;
+        synchronized (this) {
+            if (closed) {
+                return;
+            }
+            LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
+            RuntimeException failure = shutdown.close();
+            closed = true;
+            extensions.clear();
+            // Thread-scope values are deliberately NOT unregistered here: their
+            // lifecycle is bound to the scope, not the container. The global
+            // ScopedCache close hook still runs PreDestroy/close when those
+            // scopes exit — unregistering on close would leak them.
+            if (failure != null) {
+                LOG.error("Container close failed", failure);
+                throw failure;
+            }
+            LOG.info("Container closed — {} module(s) unloaded", loadedModules.size());
         }
-        LOG.info("Container closed — {} module(s) unloaded", loadedModules.size());
     }
 
     @Override

@@ -96,6 +96,20 @@ public interface Container extends AutoCloseable {
      */
     <T> T create(Class<T> type);
 
+    /**
+     * Closes the container: runs {@code @PreDestroy} and {@code AutoCloseable}
+     * on every realized singleton, then clears the caches. Idempotent —
+     * repeated calls are no-ops.
+     *
+     * <p>{@code @PreDestroy} callbacks run BEFORE the container is sealed,
+     * so cleanup code may still resolve services via {@link #get(Class)} /
+     * {@link #extension(Class)}.</p>
+     *
+     * <p>Only <em>realized</em> singletons are cleaned up. A lazy proxy for an
+     * interface binding that was never invoked is not instantiated at close,
+     * so its target never receives {@code @PreDestroy} — instantiate the
+     * service (or call a proxy method) if it must be destroyed explicitly.</p>
+     */
     @Override
     void close();
 }

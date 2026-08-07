@@ -55,11 +55,23 @@ final class BinderImpl implements Binder {
         return binding;
     }
 
+    /** Registers this module's declared bindings. Called after each module's
+     *  {@code bind()} so later modules see earlier ones. */
     void flushPending() {
         for (BindingImpl<?> binding : pending) {
             container.register(binding);
         }
         pending.clear();
+    }
+
+    /**
+     * Instantiates class contributions ({@code contribute(X).add(Impl.class)}).
+     * Deliberately deferred until ALL modules have bound: the contributed class
+     * may depend on services declared by a later module, and running the
+     * creation at each module's flush would fail on that unregistered binding
+     * (module-order coupling).
+     */
+    void flushPendingCreates() {
         for (var action : pendingCreates) {
             action.run();
         }

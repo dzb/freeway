@@ -12,25 +12,34 @@ import java.util.Set;
  * contention while preventing duplicate realization of the same binding.
  */
 final class ServiceRuntime {
-    private static final int STRIPE_BITS = 6; // 64 stripes
-    private static final int STRIPE_MASK = (1 << STRIPE_BITS) - 1;
+    /**
+     * Serializes first-time realization of singleton targets. A single lock
+     * (not per-key stripes) prevents cross-stripe deadlock when two singletons
+     * whose constructors depend on each other are first resolved concurrently
+     * (A holds stripe X and waits for Y while B holds stripe Y and waits for X).
+     * {@code synchronized} is reentrant, so recursive realization on the same
+     * thread is safe, and the ThreadLocal realizeStack catches genuine cycles.
+     * The lock only guards first-time construction — cached lookups are lock-free.
+     */
+    private static final Object REALIZE_LOCK = new Object();
 
     private final ProxyFactory proxyFactory;
     private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
-    private final Object[] lockStripes = new Object[1 << STRIPE_BITS];
     private final ThreadLocal<Set<ServiceKey>> realizeStack =
         ThreadLocal.withInitial(HashSet::new);
+    private final ContainerImpl container;
 
     ServiceRuntime(
+        ContainerImpl container,
         ProxyFactory proxyFactory,
         Map<ServiceKey, Object> serviceCache,
         Map<ServiceKey, Object> targetCache
     ) {
+        this.container = container;
         this.proxyFactory = proxyFactory;
         this.serviceCache = serviceCache;
         this.targetCache = targetCache;
-        for (int i = 0; i < lockStripes.length; i++) lockStripes[i] = new Object();
     }
 
     <T> T get(BindingImpl<T> binding) {
@@ -84,8 +93,7 @@ final class ServiceRuntime {
             throw new IllegalStateException("Circular dependency detected: " + key);
         }
         try {
-            Object lock = lockStripes[key.hashCode() & STRIPE_MASK];
-            synchronized (lock) {
+            synchronized (REALIZE_LOCK) {
                 Object cached = targetCache.get(key);
                 if (cached == null) {
                     cached = binding.directInstance();
@@ -112,7 +120,7 @@ final class ServiceRuntime {
         try {
             return binding.type().cast(ScopedCache.get(key, () -> {
                 Object created = binding.directInstance();
-                ContainerImpl.manageScopeValue(created);
+                ContainerImpl.manageScopeValue(container, created);
                 return created;
             }));
         } finally {

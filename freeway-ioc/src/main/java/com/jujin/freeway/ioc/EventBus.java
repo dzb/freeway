@@ -32,9 +32,8 @@ public final class EventBus implements AutoCloseable {
     private volatile EventBridge bridge;
     private volatile Executor asyncExecutor;
     private volatile ExecutorService defaultAsyncExecutor;
-    private volatile Map<Class<?>, List<Consumer<Object>>> moduleClassIndex;
-    private volatile Map<String, List<Consumer<Object>>> moduleTopicIndex;
-    private volatile long moduleIndexVersion = -1;
+    /** Atomic snapshot of the module-contributed subscriber index. */
+    private volatile ModuleIndex moduleIndex;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
         new ConcurrentHashMap<>();
     private final Map<String, List<Subscription<?>>> runtimeTopicSubs =
@@ -187,13 +186,18 @@ public final class EventBus implements AutoCloseable {
         this.asyncExecutor = Objects.requireNonNull(executor, "executor");
     }
 
-    private synchronized Executor executor() {
+    private Executor executor() {
         Executor e = asyncExecutor;
         if (e != null) return e;
-        if (defaultAsyncExecutor == null) {
-            defaultAsyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        Executor d = defaultAsyncExecutor;
+        if (d != null) return d;
+        synchronized (this) {
+            d = defaultAsyncExecutor;
+            if (d == null) {
+                d = defaultAsyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
+            }
+            return d;
         }
-        return defaultAsyncExecutor;
     }
 
     /** Async version of {@link #publish(Object)}. */
@@ -262,9 +266,7 @@ public final class EventBus implements AutoCloseable {
         closed = true;
         runtimeSubs.clear();
         runtimeTopicSubs.clear();
-        moduleClassIndex = null;
-        moduleTopicIndex = null;
-        moduleIndexVersion = -1;
+        moduleIndex = null;
         if (defaultAsyncExecutor != null) {
             try {
                 defaultAsyncExecutor.close();
@@ -285,41 +287,62 @@ public final class EventBus implements AutoCloseable {
 
     private List<Consumer<Object>> classSubscribers(Class<?> eventType) {
         ensureIndexed();
-        List<Consumer<Object>> subs = moduleClassIndex.get(eventType);
+        ModuleIndex idx = moduleIndex;
+        List<Consumer<Object>> subs = idx != null ? idx.classIdx().get(eventType) : null;
         return subs != null ? subs : List.of();
     }
 
     private List<Consumer<Object>> topicSubscribers(String topic) {
         ensureIndexed();
-        List<Consumer<Object>> subs = moduleTopicIndex.get(topic);
+        ModuleIndex idx = moduleIndex;
+        List<Consumer<Object>> subs = idx != null ? idx.topicIdx().get(topic) : null;
         return subs != null ? subs : List.of();
     }
 
-    private synchronized void ensureIndexed() {
+    /**
+     * Rebuilds the module-subscriber index when the contribution version
+     * changes. Double-checked: the publish hot path reads the volatile
+     * snapshot lock-free and only enters the synchronized block when the
+     * index is stale.
+     */
+    private void ensureIndexed() {
         Extension<?> ext = container.extension(EventSubscriber.class);
         long version = ext.version();
-        if (moduleClassIndex != null && moduleIndexVersion == version) {
+        ModuleIndex idx = moduleIndex;
+        if (idx != null && idx.version() == version) {
             return;
         }
-        var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
-        var topicIdx = new HashMap<String, List<Consumer<Object>>>();
-        for (Object entry : ext.all()) {
-            if (!(entry instanceof EventSubscriber<?> sub)) continue;
-            Consumer<Object> handler = adapt(sub);
-            if (sub.topic() == null) {
-                classIdx
-                    .computeIfAbsent(sub.eventType(), k -> new ArrayList<>())
-                    .add(handler);
-            } else {
-                topicIdx
-                    .computeIfAbsent(sub.topic(), k -> new ArrayList<>())
-                    .add(handler);
+        synchronized (this) {
+            idx = moduleIndex;
+            version = ext.version();
+            if (idx != null && idx.version() == version) {
+                return;
             }
+            var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
+            var topicIdx = new HashMap<String, List<Consumer<Object>>>();
+            for (Object entry : ext.all()) {
+                if (!(entry instanceof EventSubscriber<?> sub)) continue;
+                Consumer<Object> handler = adapt(sub);
+                if (sub.topic() == null) {
+                    classIdx
+                        .computeIfAbsent(sub.eventType(), k -> new ArrayList<>())
+                        .add(handler);
+                } else {
+                    topicIdx
+                        .computeIfAbsent(sub.topic(), k -> new ArrayList<>())
+                        .add(handler);
+                }
+            }
+            moduleIndex = new ModuleIndex(classIdx, topicIdx, version);
         }
-        moduleClassIndex = classIdx;
-        moduleTopicIndex = topicIdx;
-        moduleIndexVersion = version;
     }
+
+    /** Immutable snapshot of the module-subscriber index. */
+    private record ModuleIndex(
+        Map<Class<?>, List<Consumer<Object>>> classIdx,
+        Map<String, List<Consumer<Object>>> topicIdx,
+        long version
+    ) {}
 
     private static <E> Consumer<Object> adapt(EventSubscriber<E> sub) {
         Class<E> eventType = sub.eventType();
