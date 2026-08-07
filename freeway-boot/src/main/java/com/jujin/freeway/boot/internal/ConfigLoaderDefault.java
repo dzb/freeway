@@ -78,18 +78,38 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadEnvironment() {
-        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_");
+        // Single configurable prefix. Default FREEWAY_ maps into the freeway.*
+        // namespace (backwards compatible); a custom prefix replaces it and
+        // passes through verbatim (prefix stripped, `_` → `.`), so the app
+        // owns the whole env-to-config mapping — e.g. prefix APP_ gives
+        // APP_SERVER_PORT → server.port and APP_FREEWAY_HTTP_PORT →
+        // freeway.http.port.
+        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
+        if (prefix.isEmpty()) {
+            prefix = "FREEWAY_";
+        }
+        boolean freewayNamespace = "FREEWAY_".equals(prefix);
         Map<String, String> values = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
             String key = entry.getKey();
             if (key.startsWith(prefix)) {
-                String converted = "freeway." + key.substring(prefix.length())
-                    .toLowerCase(Locale.ROOT)
-                    .replace('_', '.');
-                values.put(converted, entry.getValue());
+                values.put(convertEnvKey(key, prefix, freewayNamespace), entry.getValue());
             }
         }
         return values;
+    }
+
+    /**
+     * Converts a prefixed env var name to a config key.
+     * The default {@code FREEWAY_} prefix maps into the {@code freeway.*}
+     * namespace ({@code "FREEWAY_SERVER_PORT"} → {@code "freeway.server.port"});
+     * a custom prefix passes through ({@code "APP_SERVER_PORT"} → {@code "server.port"}).
+     */
+    static String convertEnvKey(String envKey, String prefix, boolean freewayNamespace) {
+        String base = envKey.substring(prefix.length())
+            .toLowerCase(Locale.ROOT)
+            .replace('_', '.');
+        return freewayNamespace ? "freeway." + base : base;
     }
 
     private static Map<String, String> loadProperties(ClassLoader loader, String resourceName) {

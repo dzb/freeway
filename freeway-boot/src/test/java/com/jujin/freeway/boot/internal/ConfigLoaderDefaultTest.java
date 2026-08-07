@@ -151,6 +151,54 @@ class ConfigLoaderDefaultTest {
         assertTrue(ex.getMessage().contains("Invalid freeway.profile value"));
     }
 
+    @Test
+    void envVarNamesConvertToFreewayConfigKeys() {
+        // Default FREEWAY_ prefix maps into the freeway.* namespace.
+        assertEquals("freeway.server.port",
+            ConfigLoaderDefault.convertEnvKey("FREEWAY_SERVER_PORT", "FREEWAY_", true));
+        assertEquals("freeway.log.level",
+            ConfigLoaderDefault.convertEnvKey("FREEWAY_LOG_LEVEL", "FREEWAY_", true));
+        assertEquals("freeway.db.url",
+            ConfigLoaderDefault.convertEnvKey("FREEWAY_DB_URL", "FREEWAY_", true));
+        // Underscores inside a key segment become dots.
+        assertEquals("freeway.log.file.max.size",
+            ConfigLoaderDefault.convertEnvKey("FREEWAY_LOG_FILE_MAX_SIZE", "FREEWAY_", true));
+    }
+
+    @Test
+    void customEnvPrefixPassesThroughToAppNamespace() {
+        // Replacing the prefix hands the whole env-to-config mapping to the
+        // app: prefix stripped, `_` → `.`, no namespace inference. The app
+        // can reach freeway.* keys too (APP_FREEWAY_HTTP_PORT →
+        // freeway.http.port) and its own keys directly (APP_SERVER_PORT →
+        // server.port).
+        assertEquals("server.port",
+            ConfigLoaderDefault.convertEnvKey("APP_SERVER_PORT", "APP_", false));
+        assertEquals("name",
+            ConfigLoaderDefault.convertEnvKey("APP_NAME", "APP_", false),
+            "passthrough strips only the prefix — no namespace inference");
+        assertEquals("freeway.http.port",
+            ConfigLoaderDefault.convertEnvKey("APP_FREEWAY_HTTP_PORT", "APP_", false),
+            "freeway.* keys remain reachable under a custom prefix");
+        // The freeway.* namespace is bound to the FREEWAY_ prefix itself.
+        assertEquals("freeway.server.port",
+            ConfigLoaderDefault.convertEnvKey("APP_SERVER_PORT", "APP_", true),
+            "namespace choice is explicit, not inferred from the prefix");
+    }
+
+    @Test
+    void multipleProfilesParseInOrder() {
+        ConfigLoaderDefault.BootConfigLayers layers = ConfigLoaderDefault.loadLayers(
+            Thread.currentThread().getContextClassLoader(),
+            "--freeway.profile=dev,prod"
+        );
+        assertEquals(List.of("dev", "prod"), layers.profiles(),
+            "comma-separated profiles must be parsed in order");
+        // dev profile resources exist in the test classpath; prod does not —
+        // the missing profile must be skipped, not fail the load.
+        assertTrue(layers.merged().containsKey("app.name"));
+    }
+
     private static final class OversizedPropertiesLoader extends ClassLoader {
         @Override
         public InputStream getResourceAsStream(String name) {

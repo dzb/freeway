@@ -66,6 +66,15 @@ final class AppRuntimeDefault implements AppRuntime {
         }
     }
 
+    /**
+     * Stops the application: publishes {@link AppStoppingEvent}, stops
+     * runtime hooks in reverse order, closes the container.
+     *
+     * <p>Design: shutdown is attempted at most once. Even if the first
+     * attempt fails (state {@code FAILED}), a repeated {@code close()} is a
+     * no-op — re-running it would republish lifecycle events and
+     * double-close the container. Resolve shutdown failures at the source.</p>
+     */
     @Override
     public synchronized void close() {
         // Once shutdown has been attempted, repeated close() is a no-op even
@@ -77,11 +86,15 @@ final class AppRuntimeDefault implements AppRuntime {
         state = AppState.STOPPING;
         RuntimeException failure = null;
         LOG.info("Application stopping");
-        try {
-            container.get(EventBus.class).publish(new AppStoppingEvent(container));
-        } catch (Exception ex) {
-            failure = accumulate(failure, "Failed to publish AppStoppingEvent", ex);
-            LOG.warn("Failed to publish AppStoppingEvent", ex);
+        // Lifecycle events only make sense for an application that actually
+        // ran — a FAILED (startup-aborted) runtime gets no AppStoppingEvent.
+        if (previous == AppState.RUNNING || previous == AppState.STARTING) {
+            try {
+                container.get(EventBus.class).publish(new AppStoppingEvent(container));
+            } catch (Exception ex) {
+                failure = accumulate(failure, "Failed to publish AppStoppingEvent", ex);
+                LOG.warn("Failed to publish AppStoppingEvent", ex);
+            }
         }
         if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
             try {

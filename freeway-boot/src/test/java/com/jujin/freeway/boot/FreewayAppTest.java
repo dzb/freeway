@@ -2,6 +2,7 @@ package com.jujin.freeway.boot;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.EventSubscriber;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Value;
@@ -358,5 +359,33 @@ class FreewayAppTest {
                 public void start(Container container) {}
             }).after("first");
         }
+    }
+
+    @Test
+    void startAfterStopIsRejected() {
+        AppRuntime app = FreewayApp.of(new TestBootApp()).start();
+        app.close();
+        assertEquals(AppState.STOPPED, app.state());
+        assertThrows(IllegalStateException.class, app::start,
+            "a stopped application must not restart");
+    }
+
+    @Test
+    void lifecycleEventsArePublished() {
+        var events = new java.util.concurrent.CopyOnWriteArrayList<Object>();
+        AppRuntime app = FreewayApp.of(new ModuleEx() {
+            @Override
+            public void bind(Binder binder) {
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of(AppStartedEvent.class, events::add))
+                    .add(EventSubscriber.of(AppStoppingEvent.class, events::add));
+            }
+        }).start();
+        app.close();
+
+        assertTrue(events.stream().anyMatch(e -> e instanceof AppStartedEvent),
+            "AppStartedEvent must be published on start");
+        assertTrue(events.stream().anyMatch(e -> e instanceof AppStoppingEvent),
+            "AppStoppingEvent must be published before shutdown");
     }
 }
