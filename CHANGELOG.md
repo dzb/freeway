@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`HttpContext.headerSet(...)` renamed to `setHeader(...)`** — aligns the
+  response-header setter with the chainable `status(...)`/`maxBodySize(...)`
+  style and the `header(...)` getter (breaking rename; `headerSet` is gone).
+
 ## [1.3.6] — 2026-08-07
 
 ### Added

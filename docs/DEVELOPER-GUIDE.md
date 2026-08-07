@@ -769,7 +769,7 @@ ctx.requestContext().correlationId()  // unique request id
 
 ```java
 ctx.status(201);
-ctx.headerSet("X-Custom", "value");
+ctx.setHeader("X-Custom", "value");
 ctx.send(200, "plain text");
 ctx.sendJson(200, object);
 ctx.output("text".getBytes());
