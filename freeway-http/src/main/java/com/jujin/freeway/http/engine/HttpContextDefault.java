@@ -22,19 +22,21 @@ import javax.net.ssl.SSLSession;
  * {@link HttpContext} implementation backed by a raw socket connection.
  * Writes HTTP/1.1 response wire format directly to the output stream.
  */
-final class HttpContextDefault extends HttpContext {
+public class HttpContextDefault extends HttpContext {
 
     private String method, path, rawQuery;
     private Map<String, List<String>> requestHeaders, queryParams;
     private InputStream bodyStream;
     private long contentLength;
     private boolean chunked, http10, keepAlive;
-    private OutputStream rawOut;
+    OutputStream rawOut;
     private RequestContext requestContext;
     private final Map<String, String> responseHeaders = new LinkedHashMap<>();
     private int responseStatus = 200;
     private boolean responded;
-    Http2ResponseBridge h2Bridge; // non-null → HTTP/2 path
+    /** Transport-specific response writer. Defaults to HTTP/1.1; the HTTP/2
+     *  session replaces it per stream (each stream gets a fresh context). */
+    private HttpResponseWriter writer = Http11ResponseWriter.INSTANCE;
     private byte[] cachedBody;
     private boolean secure;
     private SSLSession sslSession;
@@ -43,6 +45,11 @@ final class HttpContextDefault extends HttpContext {
 
     public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer) {
         super(jsonCodec, coercer);
+    }
+
+    /** Routes responses through the given transport writer (HTTP/2 stream). */
+    void setWriter(HttpResponseWriter writer) {
+        this.writer = writer;
     }
 
     /** Sets the maximum request body size. Called after reset() or construction. */
@@ -184,111 +191,34 @@ final class HttpContextDefault extends HttpContext {
     public int status() { return responseStatus; }
 
     @Override
-    public HttpContext headerSet(String name, String value) {
+    public HttpContext setHeader(String name, String value) {
         if (responded) return this;
         validateHeaderName(name);
         validateHeaderValue(value);
+        // Single source of truth — response writers read this in writeHead().
         responseHeaders.put(name, value);
-        if (h2Bridge != null) {
-            h2Bridge.headers().put(name, List.of(value));
-        }
         return this;
     }
-
-    // Pre-encoded constants for hot-path headers
-    private static final byte[] HTTP11 = "HTTP/1.1 ".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] CRLF = "\r\n".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] COLSP = ": ".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] CONN_KA = "Connection: keep-alive\r\n".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] CONN_CLOSE = "Connection: close\r\n".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] CL_PREFIX = "Content-Length: ".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] SPACE = " ".getBytes(StandardCharsets.ISO_8859_1);
 
     @Override
     public HttpContext output(byte[] data) throws IOException {
         if (responded) return this;
         responded = true;
-
-        if (h2Bridge != null) {
-            h2Bridge.headers().putIfAbsent(":status",
-                    List.of(String.valueOf(responseStatus)));
-            boolean headRequest = "HEAD".equalsIgnoreCase(method);
-            if (!headRequest && allowsResponseBody() && data.length > 0) {
-                rawOut.write(data);
-                rawOut.flush();
-            }
-            return this;
-        }
-
-        boolean headRequest = "HEAD".equalsIgnoreCase(method);
-        boolean bodyAllowed = allowsResponseBody();
-        // HEAD response must report the same Content-Length as GET (RFC 7231 §4.3.2)
-        int length = bodyAllowed ? data.length : 0;
-
-        // Status line: "HTTP/1.1 {code} {reason}\r\n"
-        rawOut.write(HTTP11);
-        rawOut.write(statusCodeBytes(responseStatus));
-        rawOut.write(SPACE);
-        rawOut.write(reasonBytes(responseStatus));
-        rawOut.write(CRLF);
-
-        // Response headers
-        for (var entry : responseHeaders.entrySet()) {
-            rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
-            rawOut.write(COLSP);
-            rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
-            rawOut.write(CRLF);
-        }
-
-        // Content-Length
-        if (bodyAllowed && !hasHeaderIgnoreCase("Content-Length")) {
-            rawOut.write(CL_PREFIX);
-            rawOut.write(contentLengthBytes(length));
-            rawOut.write(CRLF);
-        }
-        // Connection
-        if (!hasHeaderIgnoreCase("Connection")) {
-            rawOut.write(keepAlive ? CONN_KA : CONN_CLOSE);
-        }
-
-        rawOut.write(CRLF); // end headers
-
-        // Body
-        if (bodyAllowed && !headRequest && data.length > 0) {
-            rawOut.write(data);
-        }
-
-        rawOut.flush();
+        writer.writeHead(this);
+        writer.writeBody(this, data);
+        writer.end(this);
         return this;
     }
 
     @Override
     public SseEmitter sse() throws IOException {
-        if (h2Bridge != null) {
-            h2Bridge.headers().put("content-type",
-                    List.of("text/event-stream; charset=utf-8"));
-            h2Bridge.headers().put("cache-control", List.of("no-cache"));
-            h2Bridge.headers().putIfAbsent(":status", List.of("200"));
-            responded = true;
-            return new SseEmitter(rawOut);
-        }
-        // SSE terminates the HTTP/1.1 exchange: SseEmitter.complete() closes the
-        // shared buffered output stream, so this connection must not be reused.
-        this.keepAlive = false;
+        // Mark responded only after the writer opened the stream — the writer
+        // still needs setHeader() while assembling the SSE head (e.g. the
+        // HTTP/1.1 Connection: close override).
         setupSseHeaders();
-        headerSet("Connection", "close");
-        writeLine("HTTP/1.1 200 OK");
-        for (var entry : responseHeaders.entrySet()) {
-            writeLine(entry.getKey() + ": " + entry.getValue());
-        }
-        writeLine("Transfer-encoding: chunked");
-        if (!responseHeaders.containsKey("Connection")) {
-            writeLine("Connection: " + (keepAlive ? "keep-alive" : "close"));
-        }
-        writeLine("");
-        rawOut.flush();
+        SseEmitter emitter = writer.openSse(this);
         responded = true;
-        return new SseEmitter(new ChunkedOutputStream(rawOut));
+        return emitter;
     }
 
     // --- package-private helpers for Session ---
@@ -334,12 +264,6 @@ final class HttpContextDefault extends HttpContext {
         return bodyStream;
     }
 
-    private void writeLine(String line) throws IOException {
-        rawOut.write(line.getBytes(StandardCharsets.ISO_8859_1));
-        rawOut.write('\r');
-        rawOut.write('\n');
-    }
-
     // Pre-encoded reason phrases indexed by status code
     private static final byte[][] REASON_BYTES = new byte[600][];
     static {
@@ -361,7 +285,7 @@ final class HttpContextDefault extends HttpContext {
         REASON_BYTES[500] = "Internal Server Error".getBytes(StandardCharsets.ISO_8859_1);
     }
 
-    private static byte[] reasonBytes(int status) {
+    static byte[] reasonBytes(int status) {
         if (status >= 0 && status < REASON_BYTES.length) {
             byte[] b = REASON_BYTES[status];
             if (b != null) return b;
@@ -377,7 +301,7 @@ final class HttpContextDefault extends HttpContext {
         }
     }
 
-    private static byte[] statusCodeBytes(int status) {
+    static byte[] statusCodeBytes(int status) {
         if (status >= 0 && status < STATUS_CODE_BYTES.length) {
             return STATUS_CODE_BYTES[status];
         }
@@ -394,14 +318,23 @@ final class HttpContextDefault extends HttpContext {
         }
     }
 
-    private boolean hasHeaderIgnoreCase(String name) {
+    boolean hasResponseHeaderIgnoreCase(String name) {
         for (String key : responseHeaders.keySet()) {
             if (key.equalsIgnoreCase(name)) return true;
         }
         return false;
     }
 
-    private static byte[] contentLengthBytes(int length) {
+    /** Unmodifiable view of the response headers — consumed by response writers. */
+    public Map<String, String> responseHeaders() {
+        return Collections.unmodifiableMap(responseHeaders);
+    }
+
+    void setKeepAlive(boolean keepAlive) {
+        this.keepAlive = keepAlive;
+    }
+
+    static byte[] contentLengthBytes(int length) {
         if (length >= 0 && length < CL_BYTES.length) {
             byte[] b = CL_BYTES[length];
             if (b != null) return b;
@@ -417,7 +350,7 @@ final class HttpContextDefault extends HttpContext {
      * Writes each chunk as {@code hex-length\r\n} + data + {@code \r\n},
      * and sends the terminating chunk {@code 0\r\n\r\n} on close.
      */
-    private static final class ChunkedOutputStream extends OutputStream {
+    static final class ChunkedOutputStream extends OutputStream {
         private final OutputStream out;
         private static final byte[] CRLF = {'\r', '\n'};
         private static final byte[] TERMINAL_CHUNK = {'0', '\r', '\n', '\r', '\n'};

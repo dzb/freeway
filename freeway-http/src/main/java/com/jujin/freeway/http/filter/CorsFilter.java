@@ -67,16 +67,16 @@ public final class CorsFilter implements HttpFilter {
         String requestOrigin = ctx.header("Origin").orElse(null);
         String acao = resolveAllowedOrigin(requestOrigin);
         if (acao != null) {
-            ctx.headerSet("Access-Control-Allow-Origin", acao);
+            ctx.setHeader("Access-Control-Allow-Origin", acao);
             if (!"*".equals(acao)) {
-                ctx.headerSet("Vary", "Origin");
+                ctx.setHeader("Vary", "Origin");
             }
         }
         if (allowCredentials) {
-            ctx.headerSet("Access-Control-Allow-Credentials", "true");
+            ctx.setHeader("Access-Control-Allow-Credentials", "true");
         }
         if (exposedHeaders != null) {
-            ctx.headerSet("Access-Control-Expose-Headers", exposedHeaders);
+            ctx.setHeader("Access-Control-Expose-Headers", exposedHeaders);
         }
 
         // Intercept only genuine CORS preflight (Origin + Access-Control-Request-Method).
@@ -89,13 +89,13 @@ public final class CorsFilter implements HttpFilter {
                 return;
             }
             if (allowedMethods != null) {
-                ctx.headerSet("Access-Control-Allow-Methods", allowedMethods);
+                ctx.setHeader("Access-Control-Allow-Methods", allowedMethods);
             }
             if (allowedHeaders != null) {
-                ctx.headerSet("Access-Control-Allow-Headers", allowedHeaders);
+                ctx.setHeader("Access-Control-Allow-Headers", allowedHeaders);
             }
             if (maxAge != null) {
-                ctx.headerSet("Access-Control-Max-Age", maxAge);
+                ctx.setHeader("Access-Control-Max-Age", maxAge);
             }
             ctx.send(204, "");
             return;

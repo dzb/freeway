@@ -139,13 +139,13 @@ final class HttpSession implements Runnable {
                 ctx.reset(req.method(), req.path(), req.queryString(),
                     req.headers(), bodyStream, bodyLength, req.isChunked(),
                     out, requestContext, req.isHttp10(), req.keepAlive());
-                ctx.headerSet("X-Request-Id", requestContext.correlationId());
+                ctx.setHeader("X-Request-Id", requestContext.correlationId());
 
                 try { handler.handle(ctx); }
                 catch (Exception e) {
                     LOG.debug("Handler exception for {} {}", req.method(), req.path(), e);
                     if (!ctx.isResponded()) {
-                        try { ctx.status(500).headerSet("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY); }
+                        try { ctx.status(500).setHeader("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY); }
                         catch (IOException ignored) {}
                     }
                 }
@@ -260,8 +260,8 @@ final class HttpSession implements Runnable {
             ctx.setSecure(sslSession != null);
             ctx.setSslSession(sslSession);
             ctx.reset(method, path, rawQuery, headers, in, -1, false, out, rc, false, false);
-            ctx.h2Bridge = stream;
-            ctx.headerSet("X-Request-Id", rc.correlationId());
+            ctx.setWriter(stream);
+            ctx.setHeader("X-Request-Id", rc.correlationId());
             handler.handle(ctx);
             stream.close();
         } catch (Exception e) {

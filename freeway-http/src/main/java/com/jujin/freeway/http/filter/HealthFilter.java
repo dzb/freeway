@@ -42,7 +42,7 @@ public final class HealthFilter implements HttpFilter {
         if (enabled && "GET".equalsIgnoreCase(ctx.method())
                 && healthPath.equals(PathPattern.normalizePath(ctx.path()))) {
             if (healthCheck instanceof HealthCheck.Default) {
-                ctx.status(200).headerSet("Content-Type", "application/json; charset=utf-8")
+                ctx.status(200).setHeader("Content-Type", "application/json; charset=utf-8")
                     .output(DEFAULT_RESPONSE);
             } else {
                 ctx.sendJson(200, healthCheck.check());

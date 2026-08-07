@@ -1,10 +1,12 @@
 package com.jujin.freeway.http.engine;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.jujin.freeway.http.sse.SseEmitter;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,124 +21,127 @@ class HttpContextDefaultTest {
     private static final com.jujin.freeway.commons.coercion.Coercer COERCER =
             new com.jujin.freeway.commons.coercion.CoercerDefault();
 
-    /** Simulates an H2 stream's header map without needing a full Http2Connection. */
-    private static Http2ResponseBridge mockBridge() {
-        Map<String, List<String>> headers = new LinkedHashMap<>();
-        return () -> headers;
+    /** Records writer calls without needing a real transport. */
+    private static final class RecordingWriter implements HttpResponseWriter {
+        int headStatus;
+        final Map<String, String> headHeaders = new LinkedHashMap<>();
+        final List<byte[]> bodies = new ArrayList<>();
+        boolean ended;
+        SseEmitter sse;
+
+        @Override
+        public void writeHead(HttpContextDefault ctx) {
+            headStatus = ctx.status();
+            headHeaders.putAll(ctx.responseHeaders());
+        }
+
+        @Override
+        public void writeBody(HttpContextDefault ctx, byte[] data) {
+            bodies.add(data);
+        }
+
+        @Override
+        public void end(HttpContextDefault ctx) {
+            ended = true;
+        }
+
+        @Override
+        public SseEmitter openSse(HttpContextDefault ctx) throws java.io.IOException {
+            sse = new SseEmitter(new ByteArrayOutputStream());
+            return sse;
+        }
+    }
+
+    private static HttpContextDefault context(RecordingWriter writer) {
+        var ctx = new HttpContextDefault(CODEC, COERCER);
+        ctx.setWriter(writer);
+        return ctx;
     }
 
     @Test
-    void h2BodyOnlyNoWireFormat() throws Exception {
-        var out = new ByteArrayOutputStream();
-        var ctx = new HttpContextDefault(CODEC, COERCER);
-        ctx.h2Bridge = mockBridge();
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+    void outputOrchestratesWriterHeadBodyEnd() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
 
-        ctx.status(200);
         ctx.send(200, "hello");
 
-        String wire = out.toString();
-        assertFalse(wire.contains("HTTP/1.1"),
-                "H2 mode must not write HTTP/1.1 status line: " + wire);
-        assertFalse(wire.contains("Content-Length"),
-                "H2 mode must not write Content-Length: " + wire);
-        assertEquals("hello", wire, "H2 mode writes body only");
+        assertEquals(200, writer.headStatus, "head must carry the status");
+        assertFalse(writer.bodies.isEmpty(), "body must be written");
+        assertEquals("hello", new String(writer.bodies.getLast()));
+        assertTrue(writer.ended, "end must be called after output");
     }
 
     @Test
-    void h2HeaderSetRoutesToBridge() {
-        var ctx = new HttpContextDefault(CODEC, COERCER);
-        var bridge = mockBridge();
-        ctx.h2Bridge = bridge;
-
-        ctx.headerSet("X-Custom", "abc");
-
-        assertEquals(List.of("abc"), bridge.headers().get("X-Custom"),
-                "headerSet must route to H2 bridge headers");
+    void setHeaderIsSingleSourceOfTruth() {
+        var ctx = context(new RecordingWriter());
+        ctx.setHeader("X-Custom", "abc");
+        assertEquals(Map.of("X-Custom", "abc"), ctx.responseHeaders(),
+                "setHeader must write the context's response headers");
     }
 
     @Test
-    void headerSetRejectsCRLFInName() {
-        var ctx = new HttpContextDefault(CODEC, COERCER);
+    void writeHeadConsumesResponseHeaders() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
+
+        ctx.status(201);
+        ctx.setHeader("X-Custom", "abc");
+        ctx.send(201, "created");
+
+        assertEquals(201, writer.headStatus);
+        assertEquals("abc", writer.headHeaders.get("X-Custom"),
+                "writeHead must see the response headers set on the context");
+    }
+
+    @Test
+    void setHeaderRejectsCRLFInName() {
+        var ctx = context(new RecordingWriter());
         assertThrows(IllegalArgumentException.class, () ->
-            ctx.headerSet("X-Test\r\nInjected", "yes"),
+            ctx.setHeader("X-Test\r\nInjected", "yes"),
                 "Header name with CRLF must be rejected");
         assertThrows(IllegalArgumentException.class, () ->
-            ctx.headerSet("X:Test", "yes"),
+            ctx.setHeader("X:Test", "yes"),
                 "Header name with colon must be rejected");
     }
 
     @Test
-    void h2SseIncludesContentType() throws Exception {
-        var out = new java.io.ByteArrayOutputStream();
-        var bridge = mockBridge();
-        var ctx = new HttpContextDefault(CODEC, COERCER);
-        ctx.h2Bridge = bridge;
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+    void sseOpensOnWriter() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
 
         try (var emitter = ctx.sse()) {
             emitter.send("ok");
         }
 
-        assertTrue(bridge.headers().containsKey("content-type"),
-                "H2 SSE should set Content-Type: " + bridge.headers());
-        assertEquals(List.of("text/event-stream; charset=utf-8"),
-                bridge.headers().get("content-type"));
-        assertTrue(bridge.headers().containsKey("cache-control"),
-                "H2 SSE should set Cache-Control: " + bridge.headers());
+        assertTrue(writer.sse != null, "sse() must open the emitter via the writer");
+        assertTrue(ctx.responseHeaders().containsKey("Content-Type"),
+                "SSE Content-Type must be set on the context");
     }
 
     @Test
-    void h2SseSkipsHttp1Framing() throws Exception {
-        var out = new ByteArrayOutputStream();
-        var bridge = mockBridge();
-        var ctx = new HttpContextDefault(CODEC, COERCER);
-        ctx.h2Bridge = bridge;
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
-
-        try (var emitter = ctx.sse()) {
-            emitter.send("ok");
-        }
-
-        String wire = out.toString();
-        assertFalse(wire.contains("HTTP/1.1"),
-                "H2 SSE must not write HTTP/1.1 status line: " + wire);
-        assertFalse(wire.contains("chunked"),
-                "H2 SSE must not write Transfer-encoding: " + wire);
-        assertTrue(wire.contains("data: ok"),
-                "H2 SSE should write event data directly: " + wire);
-    }
-
-    @Test
-    void h2OutputRespectsNoBodyStatus() throws Exception {
-        var out = new ByteArrayOutputStream();
-        var bridge = mockBridge();
-        var ctx = new HttpContextDefault(CODEC, COERCER);
-        ctx.h2Bridge = bridge;
-        ctx.reset("POST", "/", null, Map.of(), null, -1, false, out, null, false, false);
+    void noBodyStatusStillEndsResponse() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("POST", "/", null, Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
 
         ctx.status(204);
-        ctx.send(204, "should-not-appear");
+        ctx.output("should-be-ignored".getBytes());
 
-        String wire = out.toString();
-        assertEquals("", wire, "H2 204 should write no body, got: " + wire);
+        assertEquals(204, writer.headStatus);
+        assertEquals(1, writer.bodies.size(), "writeBody is called once with the data");
+        assertTrue(writer.ended);
+        assertFalse(ctx.allowsResponseBody(), "204 must not allow a body");
     }
 
     @Test
-    void queryParamsAreDeeplyUnmodifiable() {
-        var ctx = new HttpContextDefault(CODEC, COERCER);
-        ctx.reset("GET", "/path", "a=1&a=2", Map.of(), null, -1, false,
-                new java.io.ByteArrayOutputStream(), null, false, false);
-
-        var params = ctx.queryParams();
-        assertThrows(UnsupportedOperationException.class, () -> params.put("b", List.of()),
-                "Top-level map must be unmodifiable");
-        assertThrows(UnsupportedOperationException.class, () -> params.get("a").add("3"),
-                "Inner value list must be unmodifiable");
-    }
-
-    @Test
-    void h2DefaultsToHttp1WhenNoBridge() throws Exception {
+    void defaultsToHttp1Writer() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextDefault(CODEC, COERCER);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
@@ -144,7 +149,36 @@ class HttpContextDefaultTest {
         ctx.send(200, "ok");
 
         String wire = out.toString();
-        assertTrue(wire.contains("HTTP/1.1"),
-                "Without H2 bridge, should write HTTP/1.1 wire format");
+        assertTrue(wire.startsWith("HTTP/1.1 200"), "default writer must emit HTTP/1.1: " + wire);
+        assertTrue(wire.contains("Content-Length: 2"));
+        assertTrue(wire.endsWith("ok"), "body must be written: " + wire);
+    }
+
+    @Test
+    void queryParamsAreDeeplyUnmodifiable() throws Exception {
+        var ctx = context(new RecordingWriter());
+        ctx.reset("GET", "/path", "a=1&a=2", Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
+
+        Map<String, List<String>> params = ctx.queryParams();
+        assertThrows(UnsupportedOperationException.class, () ->
+            params.put("b", List.of("3")));
+        assertThrows(UnsupportedOperationException.class, () ->
+            params.get("a").add("3"));
+    }
+
+    @Test
+    void repeatedOutputIsIgnoredAfterResponse() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
+
+        ctx.send(200, "first");
+        ctx.send(200, "second");
+
+        assertEquals(1, writer.bodies.size(),
+            "a second output after the response must be a no-op");
+        assertEquals("first", new String(writer.bodies.getFirst()));
     }
 }

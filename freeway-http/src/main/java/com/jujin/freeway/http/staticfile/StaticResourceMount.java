@@ -120,10 +120,10 @@ public final class StaticResourceMount {
             // No body needed — report the headers (and real size) without
             // reading the file contents.
             ctx.status(HttpStatus.OK);
-            ctx.headerSet("Content-Type", contentType(meta.name()));
-            ctx.headerSet("X-Content-Type-Options", "nosniff");
+            ctx.setHeader("Content-Type", contentType(meta.name()));
+            ctx.setHeader("X-Content-Type-Options", "nosniff");
             if (meta.size() >= 0) {
-                ctx.headerSet("Content-Length", Long.toString(meta.size()));
+                ctx.setHeader("Content-Length", Long.toString(meta.size()));
             }
             ctx.output(new byte[0]);
             return true;
@@ -133,8 +133,8 @@ public final class StaticResourceMount {
             return notFound(ctx);
         }
         ctx.status(HttpStatus.OK);
-        ctx.headerSet("Content-Type", contentType(asset.meta().name()));
-        ctx.headerSet("X-Content-Type-Options", "nosniff");
+        ctx.setHeader("Content-Type", contentType(asset.meta().name()));
+        ctx.setHeader("X-Content-Type-Options", "nosniff");
         ctx.output(asset.bytes());
         return true;
     }
@@ -143,7 +143,7 @@ public final class StaticResourceMount {
         if (fallthrough) {
             return false;
         }
-        ctx.status(404).headerSet("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
+        ctx.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
         return true;
     }
 
@@ -190,11 +190,11 @@ public final class StaticResourceMount {
         if (immutable) {
             cacheControl.append(", immutable");
         }
-        ctx.headerSet("Cache-Control", cacheControl.toString());
+        ctx.setHeader("Cache-Control", cacheControl.toString());
         if (meta.lastModifiedMillis() > 0) {
-            ctx.headerSet("Last-Modified", httpDate(meta.lastModifiedMillis()));
+            ctx.setHeader("Last-Modified", httpDate(meta.lastModifiedMillis()));
         }
-        ctx.headerSet("ETag", meta.etag());
+        ctx.setHeader("ETag", meta.etag());
     }
 
     private boolean isNotModified(HttpContext ctx, AssetMeta meta) {

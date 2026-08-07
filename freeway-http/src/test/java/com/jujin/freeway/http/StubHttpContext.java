@@ -168,7 +168,7 @@ public final class StubHttpContext extends HttpContext {
     }
 
     @Override
-    public HttpContext headerSet(String name, String value) {
+    public HttpContext setHeader(String name, String value) {
         validateHeaderValue(value);
         responseHeaders.put(name, value);
         return this;

@@ -246,7 +246,7 @@ public abstract class HttpContext {
      *
      * @return this context for chaining
      */
-    public abstract HttpContext headerSet(String name, String value);
+    public abstract HttpContext setHeader(String name, String value);
 
     /**
      * Validates that a header value does not contain CR or LF characters,
@@ -292,9 +292,9 @@ public abstract class HttpContext {
 
     /** Sets up standard SSE response headers. */
     protected void setupSseHeaders() {
-        headerSet("Content-Type", "text/event-stream; charset=utf-8");
-        headerSet("Cache-Control", "no-cache");
-        headerSet("Connection", "keep-alive");
+        setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        setHeader("Cache-Control", "no-cache");
+        setHeader("Connection", "keep-alive");
     }
 
     /**
@@ -306,7 +306,7 @@ public abstract class HttpContext {
     public HttpContext output(String text) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
         if (blankToNull(responseHeader("Content-Type")) == null) {
-            headerSet("Content-Type", "text/plain; charset=utf-8");
+            setHeader("Content-Type", "text/plain; charset=utf-8");
         }
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;
@@ -321,7 +321,7 @@ public abstract class HttpContext {
     public HttpContext outputJson(Object value) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
         if (blankToNull(responseHeader("Content-Type")) == null) {
-            headerSet("Content-Type", "application/json; charset=utf-8");
+            setHeader("Content-Type", "application/json; charset=utf-8");
         }
         output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
         return this;
@@ -383,7 +383,8 @@ public abstract class HttpContext {
     }
 
     /** Returns true if the response status allows a body. */
-    protected final boolean allowsResponseBody() {
+    /** Returns true if the response status allows a body. */
+    public final boolean allowsResponseBody() {
         int status = status();
         return status != 204 && status != 205 && status != 304;
     }

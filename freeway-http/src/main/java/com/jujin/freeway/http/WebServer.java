@@ -290,7 +290,7 @@ public final class WebServer implements AutoCloseable {
             request.path()
         );
         if (match == null) {
-            request.status(404).headerSet("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
+            request.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
             return;
         }
         request.pathVars(match.pathVariables());
@@ -318,7 +318,7 @@ public final class WebServer implements AutoCloseable {
             String.valueOf(exception.getMessage())
         );
         try {
-            ctx.status(500).headerSet("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY);
+            ctx.status(500).setHeader("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY);
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
         }
