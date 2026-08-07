@@ -248,8 +248,7 @@ class PoolDefaultTest {
     void warmUpFailureClosesAlreadyCreatedConnections() throws Exception {
         AtomicInteger opens = new AtomicInteger();
         AtomicInteger closes = new AtomicInteger();
-        Driver driver = new Driver() {
-            @Override
+        Driver driver = new Driver() {            @Override
             public Connection connect(String url, Properties info)
                 throws SQLException {
                 if (!acceptsURL(url)) {
@@ -349,5 +348,34 @@ class PoolDefaultTest {
             new Class<?>[] { Connection.class },
             handler
         );
+    }
+
+    @Test
+    void borrowBeyondMaxSizeTimesOutWithSqlException() throws Exception {
+        var config = new PoolConfig(
+            "jdbc:h2:mem:pool_exhaust_"
+                + UUID.randomUUID().toString().replace('-', '_')
+                + ";DB_CLOSE_DELAY=-1",
+            "sa", "",
+            1, 0,
+            Duration.ofMillis(300), // connectionTimeout
+            Duration.ofMinutes(30),
+            Duration.ofMinutes(10),
+            Duration.ofMinutes(2),
+            null, Duration.ofSeconds(5), Duration.ofSeconds(15)
+        );
+        PoolDefault pool = new PoolDefault(config);
+        try {
+            PooledConnection held = pool.borrow();
+            assertNotNull(held);
+            long start = System.nanoTime();
+            SqlException ex = assertThrows(SqlException.class, pool::borrow);
+            assertTrue(ex.getMessage().contains("exhausted"),
+                "expected exhaustion error, got: " + ex.getMessage());
+            assertTrue(System.nanoTime() - start >= Duration.ofMillis(300).toNanos() / 2,
+                "borrow must wait for the connection timeout before failing");
+        } finally {
+            pool.close();
+        }
     }
 }

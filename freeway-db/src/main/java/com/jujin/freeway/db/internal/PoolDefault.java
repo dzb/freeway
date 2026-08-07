@@ -54,6 +54,11 @@ public final class PoolDefault implements Pool {
         startCleaner();
     }
 
+    /**
+     * Borrows a pooled connection, waiting up to {@code connectionTimeout}.
+     * Design: the pool fails fast with {@link SqlException} when exhausted —
+     * no queueing or degradation — matching Freeway's explicit-failure style.
+     */
     @Override
     public PooledConnectionDefault borrow() {
         ensureOpen();

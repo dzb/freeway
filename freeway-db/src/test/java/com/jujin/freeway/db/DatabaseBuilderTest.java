@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DatabaseBuilderTest {
     @Test
@@ -32,6 +33,28 @@ class DatabaseBuilderTest {
 
         try (db) {
             assertEquals(6, db.stats().maxSize());
+        }
+    }
+
+    @Test
+    void zeroQueryTimeoutMeansNoTimeout() {
+        String dbName = "freeway_builder_qt_" + UUID.randomUUID().toString().replace('-', '_');
+        PoolConfig base = PoolConfig.defaults(
+            "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+            "sa", ""
+        );
+        // queryTimeout=0 → JDBC setQueryTimeout(0) = no timeout.
+        PoolConfig modified = new PoolConfig(
+            base.url(), base.username(), base.password(),
+            base.maxSize(), base.minIdle(),
+            base.connectionTimeout(), base.maxLifetime(), base.maxIdleTime(),
+            base.cleanInterval(), base.healthCheckQuery(), base.healthCheckTimeout(),
+            java.time.Duration.ZERO
+        );
+
+        Database db = new DatabaseBuilder().config(modified).build();
+        try (db) {
+            assertTrue(db.ping(), "zero query timeout must be accepted and usable");
         }
     }
 
