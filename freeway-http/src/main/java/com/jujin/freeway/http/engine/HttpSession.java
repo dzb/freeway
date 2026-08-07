@@ -8,6 +8,7 @@ import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.engine.http11.Http11Connection;
 import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
+import com.jujin.freeway.http.engine.http2.Http2ResponseWriter;
 import com.jujin.freeway.http.engine.http2.Http2Stream;
 import com.jujin.freeway.http.engine.ws.WebSocket;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
@@ -260,7 +261,7 @@ final class HttpSession implements Runnable {
             ctx.setSecure(sslSession != null);
             ctx.setSslSession(sslSession);
             ctx.reset(method, path, rawQuery, headers, in, -1, false, out, rc, false, false);
-            ctx.setWriter(stream);
+            ctx.setWriter(new Http2ResponseWriter(stream));
             ctx.setHeader("X-Request-Id", rc.correlationId());
             handler.handle(ctx);
             stream.close();

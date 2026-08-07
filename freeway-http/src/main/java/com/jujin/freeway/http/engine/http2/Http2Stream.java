@@ -1,9 +1,6 @@
 package com.jujin.freeway.http.engine.http2;
 
-import com.jujin.freeway.http.engine.HttpContextDefault;
-import com.jujin.freeway.http.engine.HttpResponseWriter;
 import com.jujin.freeway.http.engine.http2.frame.BaseFrame;
-import com.jujin.freeway.http.sse.SseEmitter;
 import com.jujin.freeway.http.engine.http2.frame.DataFrame;
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
@@ -30,9 +27,9 @@ import java.util.concurrent.locks.LockSupport;
 /**
  * HTTP/2 stream processor. Represents a single HTTP/2 request/response stream,
  * managing stream state, flow control, I/O adapters, and async request processing.
- * Acts as the {@link HttpResponseWriter} for the transport: HEADERS/DATA frames.
+ * Response framing is delegated to {@link Http2ResponseWriter}.
  */
-public final class Http2Stream implements HttpResponseWriter {
+public final class Http2Stream {
     private static final Logger LOG = LoggerFactory.getLogger(Http2Stream.class);
     private static final FrameFlag.FlagSet END_STREAM = FrameFlag.FlagSet.of(FrameFlag.END_STREAM);
 
@@ -43,41 +40,9 @@ public final class Http2Stream implements HttpResponseWriter {
     private final Http2Connection connection;
     private final Map<String, List<String>> requestHeaders;
     private final DataIn dataIn;
-    private final OutputStream outputStream;
+    final OutputStream outputStream;
     private final Http2Connection.StreamHandler handler;
-    private final Map<String, List<String>> responseHeaders = new LinkedHashMap<>(16);
-
-    // --- HttpResponseWriter: response head is assembled from the context's
-    // single source of truth; frames go out on first body write / end / SSE.
-
-    @Override
-    public void writeHead(HttpContextDefault ctx) {
-        responseHeaders.clear();
-        responseHeaders.put(":status", List.of(String.valueOf(ctx.status())));
-        for (var entry : ctx.responseHeaders().entrySet()) {
-            responseHeaders.put(entry.getKey().toLowerCase(java.util.Locale.ROOT),
-                List.of(entry.getValue()));
-        }
-    }
-
-    @Override
-    public void writeBody(HttpContextDefault ctx, byte[] data) throws IOException {
-        boolean headRequest = "HEAD".equalsIgnoreCase(ctx.method());
-        if (!headRequest && ctx.allowsResponseBody() && data.length > 0) {
-            outputStream.write(data);
-        }
-    }
-
-    @Override
-    public void end(HttpContextDefault ctx) throws IOException {
-        outputStream.close();
-    }
-
-    @Override
-    public SseEmitter openSse(HttpContextDefault ctx) throws IOException {
-        writeResponseHeaders(false);
-        return new SseEmitter(outputStream);
-    }
+    final Map<String, List<String>> responseHeaders = new LinkedHashMap<>(16);
 
     private final AtomicLong receiveWindow = new AtomicLong(65535);
     private final AtomicBoolean handlingRequest = new AtomicBoolean();
