@@ -294,6 +294,27 @@ class HttpParserTest {
                 "pipelined second request should be parsed, not lost");
     }
 
+    @Test
+    void pipelinedBodyStreamConsumesOnlyOwnedBytes() throws Exception {
+        // A POST whose body sits in the same buffer as the next request: the
+        // body stream must stop exactly at Content-Length so the following
+        // pipelined request survives in the parser buffer.
+        byte[] raw = ("POST /a HTTP/1.1\r\nContent-Length: 4\r\n\r\n"
+                + "bodyGET /b HTTP/1.1\r\n\r\n")
+                .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+
+        var req1 = parser.parse();
+        assertEquals("/a", req1.path());
+        assertEquals(4, req1.contentLength());
+        try (var body = parser.bodyStream(req1.contentLength())) {
+            assertEquals("body", new String(body.readAllBytes(), StandardCharsets.ISO_8859_1));
+        }
+        var req2 = parser.parse();
+        assertEquals("/b", req2.path(),
+                "pipelined request after a body must survive the body read");
+    }
+
     private static String headerValue(HttpParser.ParsedRequest req, String name) {
         for (var e : req.headers().entrySet()) {
             if (e.getKey().equalsIgnoreCase(name)) {

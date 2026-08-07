@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.engine.http2.hpack;
 
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -8,6 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -21,6 +24,21 @@ class HPackContextTest {
         assertThrows(ArrayIndexOutOfBoundsException.class,
                 () -> HPackContext.readInt(new byte[]{(byte) 0xFF}, 0, 1),
                 "Truncated HPACK block should throw, not silently return");
+    }
+
+    @Test
+    void readIntOverflowThrowsCompressionError() {
+        // Prefix byte 0x1F (mask 31) followed by continuation bytes that push
+        // the value past 2^31-1: 31 + 127 + 127<<7 + 127<<14 + 127<<21 + 15<<28
+        // = 4_294_967_326 > Integer.MAX_VALUE. Must fail with COMPRESSION_ERROR
+        // instead of wrapping around (RFC 7541 §5.1: "This implies that values
+        // must be less than 2^31").
+        byte[] block = {
+            (byte) 0x1F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x0F
+        };
+        var ex = assertThrows(Http2Exception.class,
+            () -> HPackContext.readInt(block, 0, 5));
+        assertEquals(Http2ErrorCode.COMPRESSION_ERROR, ex.errorCode());
     }
 
     @Test

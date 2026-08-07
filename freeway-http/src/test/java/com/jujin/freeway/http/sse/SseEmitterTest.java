@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
@@ -88,5 +89,35 @@ class SseEmitterTest {
             emitter.send((SseEvent) null)
         );
         assertThrows(NullPointerException.class, () -> new SseEvent(null));
+    }
+
+    @Test
+    void writeFailureClosesEmitter() throws Exception {
+        // A broken stream must flip the emitter closed: the IOException is
+        // rethrown to the caller, and subsequent sends become no-ops instead
+        // of hammering the dead stream.
+        var counting = new java.io.OutputStream() {
+            int writes;
+            @Override
+            public void write(int b) throws IOException {
+                throw new IOException("connection reset");
+            }
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                writes++;
+                throw new IOException("connection reset");
+            }
+            @Override
+            public void flush() throws IOException {
+                throw new IOException("connection reset");
+            }
+        };
+        var emitter = new SseEmitter(counting);
+
+        assertThrows(java.io.IOException.class, () -> emitter.send("boom"));
+        // Second send must not touch the stream at all (closed short-circuit).
+        emitter.send("ignored");
+        assertEquals(1, counting.writes,
+            "after a write failure the emitter must stop writing to the stream");
     }
 }

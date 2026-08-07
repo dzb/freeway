@@ -2,7 +2,9 @@ package com.jujin.freeway.http.engine;
 
 import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ChunkedInputStreamTest {
 
@@ -20,5 +22,31 @@ class ChunkedInputStreamTest {
         // After body, read should return -1 (EOF) without IOException
         assertEquals(-1, in.read(buf, 0, 10),
                 "Trailers should be consumed, not cause IOException");
+    }
+
+    @Test
+    void singleByteReadsWalkChunkedBody() throws Exception {
+        byte[] raw = "5\r\nhello\r\n0\r\n\r\n".getBytes();
+        var in = new ChunkedInputStream(new ByteArrayInputStream(raw));
+
+        StringBuilder sb = new StringBuilder();
+        int b;
+        while ((b = in.read()) != -1) {
+            sb.append((char) b);
+        }
+        assertEquals("hello", sb.toString(),
+                "read() must deliver body bytes one at a time through the chunk parser");
+    }
+
+    @Test
+    void chunkLengthOverflowThrowsIOException() {
+        // "80000000" hex = 2^31 — one past Integer.MAX_VALUE. The parser must
+        // fail loudly instead of wrapping around to a small int (which would
+        // desynchronize the chunk framing).
+        byte[] raw = "80000000\r\nabc\r\n0\r\n\r\n".getBytes();
+        var in = new ChunkedInputStream(new ByteArrayInputStream(raw));
+
+        assertThrows(IOException.class, () -> in.read(new byte[10], 0, 10),
+                "Chunk size beyond 2^31-1 must raise IOException");
     }
 }

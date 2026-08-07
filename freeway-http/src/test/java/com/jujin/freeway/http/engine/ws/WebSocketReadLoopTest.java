@@ -5,12 +5,14 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketReadLoopTest {
 
@@ -50,6 +52,49 @@ class WebSocketReadLoopTest {
 
         assertFalse(session.isOpen(),
             "Invalid reassembled UTF-8 must close the session");
+    }
+
+    @Test
+    void serverCloseWakesBlockingReadLoop() throws Exception {
+        // A server-initiated close while the read loop is parked on a live
+        // (blocking) stream must wake the loop: close() closes the input,
+        // the blocked read throws, and readLoop returns instead of hanging
+        // until the peer responds.
+        var blockingIn = new java.io.InputStream() {
+            volatile boolean closed;
+            @Override
+            public int read() throws IOException {
+                while (!closed) {
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("interrupted");
+                    }
+                }
+                throw new IOException("stream closed");
+            }
+            @Override
+            public void close() {
+                closed = true;
+            }
+        };
+        var out = new ByteArrayOutputStream();
+        var session = new WebSocketSessionImpl(
+            "GET", "/", null, Map.of(), blockingIn, out, Map.of());
+
+        var loopDone = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread loop = Thread.startVirtualThread(() -> {
+            WebSocket.readLoop(blockingIn, out, session, WebSocketListener.NOOP);
+            loopDone.set(true);
+        });
+
+        // Give the loop time to park on read(), then close from "another thread".
+        Thread.sleep(100);
+        session.close(1000, "server shutdown");
+        loop.join(3000);
+        assertTrue(loopDone.get(),
+            "readLoop must return when the session is closed, not hang on the blocked read");
     }
 
     private static byte[] maskedFrame(int opcode, boolean fin, byte[] payload) {

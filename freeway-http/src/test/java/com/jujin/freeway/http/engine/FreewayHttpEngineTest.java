@@ -50,6 +50,7 @@ import javax.net.ssl.X509TrustManager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -933,6 +934,306 @@ class FreewayHttpEngineTest {
                 }
                 assertTrue(rejected,
                     "stream 201 must be rejected with RST_STREAM(REFUSED_STREAM)");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cAcceptsTrailersWithoutKillingConnection() throws Exception {
+        // A trailer HEADERS block after the request body is legitimate
+        // (RFC 7540 §8.1.2.2). It must be consumed (HPACK state stays in
+        // sync), discarded, and must NOT tear down the connection: a second
+        // request on the same connection must still succeed.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> {
+                ctx.body();
+                ctx.send(200, "ok");
+            }))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
+                java.nio.charset.StandardCharsets.US_ASCII);
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(5000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+
+                // consume the server SETTINGS preface
+                byte[] settingsHeader = new byte[9];
+                readFully(socket.getInputStream(), settingsHeader);
+                int settingsLen = ((settingsHeader[0] & 0xff) << 16)
+                    | ((settingsHeader[1] & 0xff) << 8)
+                    | (settingsHeader[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                // Request header block: indexed :method GET, :path /, :scheme
+                // http, literal :authority "localhost".
+                byte[] headerBlock = new byte[] {
+                    (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41, 0x09,
+                    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                // Trailer block: literal without indexing, new name "x: v"
+                // (0x00 = name index 0 → new name, then 8-bit length prefixes).
+                byte[] trailerBlock = new byte[] {
+                    0x00, 0x01, 'x', 0x01, 'v'
+                };
+
+                // Stream 1: HEADERS (no END_STREAM) + DATA "hi" + trailer
+                // HEADERS (END_HEADERS | END_STREAM).
+                writeFrame(out, headerBlock.length, 0x1, 0x4, 1, headerBlock);
+                writeFrame(out, 2, 0x0, 0x0, 1, "hi".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                writeFrame(out, trailerBlock.length, 0x1, 0x5, 1, trailerBlock);
+
+                // First response must be 200 on stream 1 and the connection
+                // must survive (no GOAWAY): a second request on stream 3
+                // must also get 200.
+                assertTrue(waitForStatus200(socket.getInputStream(), 1, 5000),
+                    "stream 1 must complete with 200 despite trailers");
+                writeFrame(out, headerBlock.length, 0x1, 0x5, 3, headerBlock);
+                assertTrue(waitForStatus200(socket.getInputStream(), 3, 5000),
+                    "connection must survive trailers — stream 3 must get 200");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    private static void writeFrame(OutputStream out, int len, int type, int flags,
+            int streamId, byte[] payload) throws IOException {
+        out.write(new byte[] {
+            (byte) ((len >> 16) & 0xff),
+            (byte) ((len >> 8) & 0xff),
+            (byte) (len & 0xff),
+            (byte) type,
+            (byte) flags,
+            (byte) ((streamId >> 24) & 0x7f),
+            (byte) ((streamId >> 16) & 0xff),
+            (byte) ((streamId >> 8) & 0xff),
+            (byte) (streamId & 0xff)
+        });
+        out.write(payload);
+        out.flush();
+    }
+
+    /** Reads frames until a HEADERS response on {@code streamId} decodes to :status 200. */
+    private static boolean waitForStatus200(InputStream in, int streamId, long timeoutMs) throws IOException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            byte[] frameHeader = new byte[9];
+            if (!readFullyOrEof(in, frameHeader)) return false;
+            int len = ((frameHeader[0] & 0xff) << 16)
+                | ((frameHeader[1] & 0xff) << 8)
+                | (frameHeader[2] & 0xff);
+            int type = frameHeader[3] & 0xff;
+            int frameStreamId = ((frameHeader[5] & 0x7f) << 24)
+                | ((frameHeader[6] & 0xff) << 16)
+                | ((frameHeader[7] & 0xff) << 8)
+                | (frameHeader[8] & 0xff);
+            byte[] payload = new byte[len];
+            readFully(in, payload);
+            if (type == 0x7) return false; // GOAWAY — connection killed
+            if (type == 0x1 && frameStreamId == streamId && len >= 1
+                    && payload[0] == (byte) 0x88) { // indexed :status 200
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Test
+    void h2cRespectsPeerMaxFrameSizeForOutboundSplitting() throws Exception {
+        // The peer advertises SETTINGS_MAX_FRAME_SIZE=32768 (> our default
+        // 16384): outbound DATA frames must be split to at most the peer's
+        // size, and larger than the default when the peer allows it
+        // (RFC 7540 §6.5.2 requires the value to be ≥ 16384).
+        String big = "x".repeat(50000);
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, big)))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(5000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+
+                // Consume the server SETTINGS preface.
+                byte[] settingsHeader = new byte[9];
+                readFully(socket.getInputStream(), settingsHeader);
+                int settingsLen = ((settingsHeader[0] & 0xff) << 16)
+                    | ((settingsHeader[1] & 0xff) << 8)
+                    | (settingsHeader[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                // SETTINGS with MAX_FRAME_SIZE=32768 (identifier 0x5).
+                byte[] settingsPayload = new byte[] {
+                    0x00, 0x05, 0x00, 0x00, (byte) 0x80, 0x00
+                };
+                writeFrame(out, settingsPayload.length, 0x4, 0x0, 0, settingsPayload);
+
+                byte[] headerBlock = new byte[] {
+                    (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41, 0x09,
+                    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                writeFrame(out, headerBlock.length, 0x1, 0x5, 1, headerBlock);
+
+                // Collect DATA frames until END_STREAM; every frame ≤ 32768,
+                // and at least one frame must exceed our default 16384.
+                var in = socket.getInputStream();
+                int total = 0;
+                int maxData = 0;
+                boolean done = false;
+                long deadline = System.currentTimeMillis() + 5000;
+                while (System.currentTimeMillis() < deadline && !done) {
+                    byte[] frameHeader = new byte[9];
+                    if (!readFullyOrEof(in, frameHeader)) break;
+                    int len = ((frameHeader[0] & 0xff) << 16)
+                        | ((frameHeader[1] & 0xff) << 8)
+                        | (frameHeader[2] & 0xff);
+                    int type = frameHeader[3] & 0xff;
+                    int flags = frameHeader[4] & 0xff;
+                    byte[] payload = new byte[len];
+                    readFully(in, payload);
+                    if (type == 0x0) { // DATA
+                        maxData = Math.max(maxData, len);
+                        total += len;
+                        done = (flags & 0x1) != 0; // END_STREAM
+                    }
+                }
+                assertEquals(50000, total, "full response body must arrive");
+                assertTrue(maxData > 16384 && maxData <= 32768,
+                    "outbound DATA must follow the peer's advertised max frame size 32768, got " + maxData);
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cRejectsHeaderBlockOverMaxInbound() throws Exception {
+        // A header block larger than the 64 KiB inbound cap must fail the
+        // connection with COMPRESSION_ERROR (GOAWAY code 9) instead of being
+        // buffered without bound.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(5000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+                byte[] settingsHeader = new byte[9];
+                readFully(socket.getInputStream(), settingsHeader);
+                int settingsLen = ((settingsHeader[0] & 0xff) << 16)
+                    | ((settingsHeader[1] & 0xff) << 8)
+                    | (settingsHeader[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                // 5 frames × 16384 bytes = 81920 > 65536 cap. Payload content
+                // is irrelevant — the size check fires during collection.
+                byte[] chunk = new byte[16384];
+                writeFrame(out, chunk.length, 0x1, 0x0, 1, chunk); // HEADERS, no END_HEADERS
+                for (int i = 0; i < 3; i++) {
+                    writeFrame(out, chunk.length, 0x9, 0x0, 1, chunk); // CONTINUATION
+                }
+                writeFrame(out, chunk.length, 0x9, 0x4, 1, chunk); // END_HEADERS
+                out.flush();
+
+                var in = socket.getInputStream();
+                long deadline = System.currentTimeMillis() + 5000;
+                while (System.currentTimeMillis() < deadline) {
+                    byte[] frameHeader = new byte[9];
+                    if (!readFullyOrEof(in, frameHeader)) break;
+                    int len = ((frameHeader[0] & 0xff) << 16)
+                        | ((frameHeader[1] & 0xff) << 8)
+                        | (frameHeader[2] & 0xff);
+                    int type = frameHeader[3] & 0xff;
+                    byte[] payload = new byte[len];
+                    readFully(in, payload);
+                    if (type == 0x7) { // GOAWAY
+                        int errorCode = len >= 8 ? ((payload[4] & 0xff) << 24)
+                            | ((payload[5] & 0xff) << 16)
+                            | ((payload[6] & 0xff) << 8) | (payload[7] & 0xff) : -1;
+                        assertEquals(0x9, errorCode,
+                            "oversized header block must fail with COMPRESSION_ERROR");
+                        return;
+                    }
+                }
+                fail("expected GOAWAY(COMPRESSION_ERROR) for oversized header block");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cResetStreamWithNoErrorReleasesHandler() throws Exception {
+        // RST_STREAM with NO_ERROR must still terminate the stream: a handler
+        // blocked reading the request body is released, and the connection
+        // survives for the next request.
+        var active = new java.util.concurrent.atomic.AtomicInteger();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> {
+                active.incrementAndGet();
+                try {
+                    ctx.body();
+                } catch (IOException ignored) {
+                    // RST closes the body stream — expected.
+                } finally {
+                    active.decrementAndGet();
+                }
+                ctx.send(200, "ok");
+            }))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(5000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+                byte[] settingsHeader = new byte[9];
+                readFully(socket.getInputStream(), settingsHeader);
+                int settingsLen = ((settingsHeader[0] & 0xff) << 16)
+                    | ((settingsHeader[1] & 0xff) << 8)
+                    | (settingsHeader[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                byte[] headerBlock = new byte[] {
+                    (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41, 0x09,
+                    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                // Request without END_STREAM: handler parks reading the body.
+                writeFrame(out, headerBlock.length, 0x1, 0x4, 1, headerBlock);
+                // Let the handler start, then RST with NO_ERROR (code 0).
+                Thread.sleep(200);
+                writeFrame(out, 4, 0x3, 0x0, 1, new byte[]{0, 0, 0, 0});
+                out.flush();
+
+                long deadline = System.currentTimeMillis() + 3000;
+                while (active.get() > 0 && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(10);
+                }
+                assertEquals(0, active.get(),
+                    "RST_STREAM(NO_ERROR) must release the blocked handler");
+                writeFrame(out, headerBlock.length, 0x1, 0x5, 3, headerBlock);
+                out.flush();
+                assertTrue(waitForStatus200(socket.getInputStream(), 3, 5000),
+                    "connection must survive RST_STREAM(NO_ERROR)");
             }
         } finally {
             server.stop();

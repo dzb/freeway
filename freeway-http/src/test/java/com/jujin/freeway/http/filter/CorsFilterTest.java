@@ -22,4 +22,22 @@ class CorsFilterTest {
         assertEquals("*", ctx.responseHeader("Access-Control-Allow-Origin"));
         assertEquals("GET, POST, PUT, DELETE, PATCH, OPTIONS", ctx.responseHeader("Access-Control-Allow-Methods"));
     }
+
+    @Test
+    void noCorsHeadersOnPlainRequest() throws Exception {
+        // A request without an Origin header is not a CORS request: the
+        // filter must pass through without stamping CORS response headers.
+        CorsFilter filter = CorsFilter.builder()
+            .allowedOrigins("https://example.com")
+            .allowCredentials(true)
+            .build();
+        StubHttpContext ctx = new StubHttpContext("GET", "/api");
+
+        filter.doFilter(ctx, next -> next.send(200, "ok"));
+
+        assertEquals(200, ctx.status());
+        assertEquals(null, ctx.responseHeader("Access-Control-Allow-Origin"));
+        assertEquals(null, ctx.responseHeader("Access-Control-Allow-Credentials"),
+            "Credentials header must not leak onto non-CORS responses");
+    }
 }
