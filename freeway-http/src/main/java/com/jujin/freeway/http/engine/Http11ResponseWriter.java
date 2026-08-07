@@ -101,7 +101,7 @@ final class Http11ResponseWriter implements HttpResponseWriter {
             rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
             rawOut.write(CRLF);
         }
-        rawOut.write("Transfer-encoding: chunked".getBytes(StandardCharsets.ISO_8859_1));
+        rawOut.write("Transfer-Encoding: chunked".getBytes(StandardCharsets.ISO_8859_1));
         rawOut.write(CRLF);
         rawOut.write(CRLF);
         rawOut.flush();

@@ -90,30 +90,9 @@ public final class WebServer implements AutoCloseable {
             chain = ctx -> corsFilter.doFilter(ctx, next);
         }
         RouteHandler inner = chain;
-
-        RouteHandler timedChain;
-        if (publishEvents) {
-            timedChain = ctx -> {
-                try {
-                    inner.handle(ctx);
-                } catch (Exception ex) {
-                    WebServer.this.handleException(ctx, ex);
-                    publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
-                }
-                long elapsed = Duration.between(
-                    ctx.requestContext().startTime(), Instant.now()).toMillis();
-                publish(new HttpRequestEvent(
-                    ctx.method(), ctx.path(), ctx.status(), elapsed));
-            };
-        } else {
-            timedChain = ctx -> {
-                try {
-                    inner.handle(ctx);
-                } catch (Exception ex) {
-                    WebServer.this.handleException(ctx, ex);
-                }
-            };
-        }
+        RouteHandler timedChain = publishEvents
+            ? wrapWithEvents(inner)
+            : wrapWithErrorHandling(inner);
 
         this.requestHandler = new HttpRequestHandler() {
             @Override
@@ -137,6 +116,33 @@ public final class WebServer implements AutoCloseable {
                     return null;
                 }
                 return websocketIndex.match(method, path);
+            }
+        };
+    }
+
+    /** Wraps the chain with error handling + request/error events. */
+    private RouteHandler wrapWithEvents(RouteHandler inner) {
+        return ctx -> {
+            try {
+                inner.handle(ctx);
+            } catch (Exception ex) {
+                WebServer.this.handleException(ctx, ex);
+                publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
+            }
+            long elapsed = Duration.between(
+                ctx.requestContext().startTime(), Instant.now()).toMillis();
+            publish(new HttpRequestEvent(
+                ctx.method(), ctx.path(), ctx.status(), elapsed));
+        };
+    }
+
+    /** Wraps the chain with error handling only (no event publishing). */
+    private RouteHandler wrapWithErrorHandling(RouteHandler inner) {
+        return ctx -> {
+            try {
+                inner.handle(ctx);
+            } catch (Exception ex) {
+                WebServer.this.handleException(ctx, ex);
             }
         };
     }

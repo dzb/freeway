@@ -42,7 +42,12 @@ public final class HPackContext {
      * @param bits the number of prefix bits
      * @return the parse result (new position and integer value)
      */
-    static IntR readInt(byte[] b, int p, int bits) {
+    /**
+     * Decodes an HPACK integer (RFC 7541 §5.1). Values beyond 2^31-1 must be
+     * rejected with COMPRESSION_ERROR — the int accumulator would otherwise
+     * silently wrap and desynchronize the header block.
+     */
+    static IntR readInt(byte[] b, int p, int bits) throws IOException {
         int mask = (1 << bits) - 1;
         int value = b[p] & mask;
         p++;
@@ -54,6 +59,13 @@ public final class HPackContext {
         do {
             if (p >= b.length) throw new ArrayIndexOutOfBoundsException("Truncated HPACK integer");
             x = b[p] & 0xFF;
+            // value += (x & 0x7F) << shift must stay within int range:
+            // shift 29+ always overflows; shift == 28 allows up to 7<<28.
+            if (shift > 28 || (shift == 28 && (x & 0x7F) > 7)
+                    || value > (Integer.MAX_VALUE - (x & 0x7F))) {
+                throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                    "HPACK integer exceeds 2^31-1");
+            }
             value += (x & 0x7F) << shift;
             shift += 7;
             p++;
@@ -181,8 +193,10 @@ public final class HPackContext {
     }
 
     private static long headerFieldSize(Http2HeaderField f) {
-        return (f.name != null ? f.name.length() : 0)
-                + (f.value != null ? f.value.length() : 0) + 32;
+        // RFC 7541 §4.1: size is measured in bytes (name + value + 32).
+        long nameBytes = f.name != null ? f.name.getBytes(java.nio.charset.StandardCharsets.UTF_8).length : 0;
+        long valueBytes = f.value != null ? f.value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length : 0;
+        return nameBytes + valueBytes + 32;
     }
 
     /**

@@ -13,6 +13,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   response-header setter with the chainable `status(...)`/`maxBodySize(...)`
   style and the `header(...)` getter (breaking rename; `headerSet` is gone).
 
+### Fixed
+
+- **HTTP/2 trailers no longer kill the connection** — trailer HEADERS blocks
+  (RFC 7540 §8.1.2.2) are decoded to keep HPACK state in sync and discarded;
+  previously a trailer raised a connection-level STREAM_CLOSED that sent GOAWAY
+  and tore down every active stream.
+- **RST_STREAM with NO_ERROR releases the stream** — the target stream is
+  closed even when the error code is 0; previously the handler and stream state
+  leaked.
+- **Connection-level flow-control starvation** — response writes now park until
+  BOTH the stream and connection send windows have capacity; previously a
+  stream with an open window busy-spun while the shared connection window was
+  exhausted by other streams.
+- **HPACK integer overflow** — integers past 2^31-1 now fail with
+  COMPRESSION_ERROR instead of wrapping around and desynchronizing the decoder.
+- **Inbound header block size cap** — HEADERS/CONTINUATION blocks over 64 KiB
+  fail with COMPRESSION_ERROR instead of buffering without bound.
+- **Outbound frame size follows the peer** — SETTINGS_MAX_FRAME_SIZE from the
+  peer drives outbound DATA splitting; the inbound cap stays at the advertised
+  16384.
+- **Pipelined bytes after a request body preserved** — the parser's body
+  stream stops exactly at Content-Length, leaving the next request in the same
+  buffer intact.
+- **Chunked transfer overflow** — chunk sizes past 2^31-1 raise IOException
+  instead of wrapping around and desynchronizing the chunk framing.
+- **WebSocket server-side close wakes the read loop** — closing a session now
+  closes the input stream so the blocked reader returns promptly instead of
+  parking until the peer responds.
+- **SSL handshake failure no longer leaks a socket fd** — a failed handshake
+  closes the raw socket; previously every failed handshake leaked a descriptor.
+- **CORS headers only on CORS responses** — Allow-Credentials/Expose-Headers
+  are no longer stamped on requests without an Origin header.
+- **SSE write failure closes the emitter** — a failed write marks the emitter
+  closed and rethrows; subsequent sends become no-ops.
+- **Standalone `WebServerBuilder` fast-fails `LazyHandler` routes** — class
+  routes require the IoC HttpModule; standalone builds throw at `build()` with
+  a clear message instead of failing at request time. Default exception mappers
+  (413/400 JSON) match the IoC path.
+
+### Changed
+
+- **Multipart parse failures log at WARN** instead of DEBUG — client-sent
+  malformed multipart bodies are now visible in production logs.
+- **Chunked/Fixed-length input streams reuse buffers** for single-byte reads
+  and chunk draining instead of allocating per call.
+
 ## [1.3.6] — 2026-08-07
 
 ### Added

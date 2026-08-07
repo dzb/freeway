@@ -55,10 +55,14 @@ public final class Http2Connection {
 
     private static final int DEFAULT_WINDOW_SIZE = 65535;
     private static final int DEFAULT_MAX_FRAME_SIZE = 16384;
-    /** Server-side cap on open streams (RFC 7540 §5.1.2). Excess streams are
-     *  rejected with RST_STREAM(REFUSED_STREAM) instead of opening unbounded
-     *  per-stream state. */
+    /**
+     * Server-side cap on open streams (RFC 7540 §5.1.2). Excess streams are
+     * rejected with RST_STREAM(REFUSED_STREAM) instead of opening unbounded
+     * per-stream state. */
     private static final int MAX_CONCURRENT_STREAMS = 100;
+    /** Cap on a single inbound header block (across HEADERS + CONTINUATION
+     *  fragments) before HPACK decode — bounds memory under a malicious peer. */
+    private static final int MAX_INBOUND_HEADER_BLOCK = 64 * 1024;
 
     public final AtomicLong sendWindow = new AtomicLong(DEFAULT_WINDOW_SIZE);
     public final AtomicInteger receiveWindow = new AtomicInteger(DEFAULT_WINDOW_SIZE);
@@ -71,7 +75,10 @@ public final class Http2Connection {
     private final StreamHandler handler;
     private final HPackContext hpack = new HPackContext();
     final ConcurrentHashMap<Integer, Http2Stream> streams = new ConcurrentHashMap<>();
-    volatile int maxFrameSize = 16384;
+    /** Our advertised SETTINGS_MAX_FRAME_SIZE — caps INBOUND frame payloads (RFC 7540 §4.2). */
+    final int maxFrameSize = 16384;
+    /** Peer's advertised SETTINGS_MAX_FRAME_SIZE — caps our OUTBOUND DATA chunking. */
+    volatile int peerMaxFrameSize = 16384;
     private final SettingsMap remoteSettings = new SettingsMap();
     private final SettingsMap localSettings = new SettingsMap();
 
@@ -170,6 +177,7 @@ public final class Http2Connection {
         boolean headersEndStream = false;
         int openStreamId = 0;
         var headerBlockFragments = new ArrayList<byte[]>();
+        int headerBlockSize = 0;
 
         while (!closed.get()) {
             var frame = FrameSerializer.deserialize(inputStream, maxFrameSize);
@@ -228,13 +236,35 @@ public final class Http2Connection {
 
                     var existing = streams.get(streamId);
                     if (existing != null) {
-                        if (!existing.isOpen() || existing.isHalfClosed())
-                            throw new Http2Exception(Http2ErrorCode.STREAM_CLOSED);
-                        throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    }
+                        // Any HEADERS on an already-created stream is a trailer
+                        // block (RFC 7540 §8.1.2.2) — the request pseudo-headers
+                        // arrived with the first HEADERS. The stream is still
+                        // "open" here because END_STREAM on this very frame has
+                        // not been applied yet, so state cannot drive the check.
+                        // Collect the block; the shared header handling decodes
+                        // it to keep HPACK state in sync and discards the fields.
+                        // Duplicate pseudo-headers inside are rejected by
+                        // HeaderFields.validate().
+                        var trailersFrame = (HeadersFrame) frame;
+                        if (headerBlockSize + trailersFrame.headerBlock().length > MAX_INBOUND_HEADER_BLOCK)
+                            throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                                "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK + " bytes");
+                        headerBlockFragments.add(trailersFrame.headerBlock());
+                        headerBlockSize += trailersFrame.headerBlock().length;
+                        if (!trailersFrame.header().flags().contains(FrameFlag.END_HEADERS)) {
+                            inHeaders = true;
+                            openStreamId = streamId;
+                            continue;
+                        }
+                        // END_HEADERS set — fall through to shared handling below.
+                    } else {
 
                     var headersFrame = (HeadersFrame) frame;
+                    if (headerBlockSize + headersFrame.headerBlock().length > MAX_INBOUND_HEADER_BLOCK)
+                        throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                            "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK + " bytes");
                     headerBlockFragments.add(headersFrame.headerBlock());
+                    headerBlockSize += headersFrame.headerBlock().length;
                     if (headersFrame.header().flags().contains(FrameFlag.END_STREAM)) {
                         headersEndStream = true;
                     }
@@ -243,13 +273,18 @@ public final class Http2Connection {
                         openStreamId = streamId;
                         continue;
                     }
+                    }
                 }
                 case CONTINUATION -> {
                     if (inHeaders && streamId != openStreamId)
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (!inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     var continuationFrame = (ContinuationFrame) frame;
+                    if (headerBlockSize + continuationFrame.headerBlock().length > MAX_INBOUND_HEADER_BLOCK)
+                        throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                            "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK + " bytes");
                     headerBlockFragments.add(continuationFrame.headerBlock());
+                    headerBlockSize += continuationFrame.headerBlock().length;
                     if (!continuationFrame.header().flags().contains(FrameFlag.END_HEADERS))
                         continue;
                 }
@@ -262,11 +297,17 @@ public final class Http2Connection {
                     throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }
                 case RST_STREAM -> {
-                    var resetFrame = (ResetStreamFrame) frame;
-                    if (resetFrame.errorCode == Http2ErrorCode.NO_ERROR) continue;
+                    // Any RST_STREAM (even error code 0) terminates the target
+                    // stream — close it so the handler and stream state are
+                    // released instead of leaking.
                     if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    if (streams.get(streamId) == null && streamId > lastSeenStreamId)
+                    var resetTarget = streams.get(streamId);
+                    if (resetTarget != null) {
+                        resetTarget.close();
+                    } else if (streamId > lastSeenStreamId) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    }
+                    continue;
                 }
             }
 
@@ -278,6 +319,7 @@ public final class Http2Connection {
                 if (streams.size() >= MAX_CONCURRENT_STREAMS) {
                     lastSeenStreamId = streamId;
                     headerBlockFragments.clear();
+                    headerBlockSize = 0;
                     inHeaders = false;
                     headersEndStream = false;
                     sendResetStream(Http2ErrorCode.REFUSED_STREAM, streamId);
@@ -295,6 +337,7 @@ public final class Http2Connection {
                 }
 
                 headerBlockFragments.clear();
+                headerBlockSize = 0;
                 inHeaders = false;
                 target = new Http2Stream(streamId, this, requestHeaders, handler);
                 streams.put(streamId, target);
@@ -305,6 +348,34 @@ public final class Http2Connection {
                 }
                 target.startRequest(executor);
                 // header block assembled — this frame consumed, skip dispatch
+                continue;
+            } else if (target != null
+                    && (frame.header().type() == FrameType.HEADERS
+                        || frame.header().type() == FrameType.CONTINUATION)) {
+                // Trailer header block (RFC 7540 §8.1.2.2) on a stream that
+                // already received its request headers — open or half-closed,
+                // since END_STREAM on the trailer frame applies only after
+                // this frame is processed. Decode it so the HPACK dynamic
+                // table stays in sync with the peer, then discard — trailers
+                // carry no request semantics we expose. add() still rejects
+                // pseudo-headers and connection-specific fields inside the
+                // block; the REQUIRED pseudo-header check in validate() only
+                // applies to request header blocks.
+                byte[] headerBlock = BinUtils.combine(headerBlockFragments);
+                var fields = new HeaderFields();
+                for (var field : hpack.decode(headerBlock)) fields.add(field);
+                headerBlockFragments.clear();
+                headerBlockSize = 0;
+                inHeaders = false;
+                headersEndStream = false;
+                if (frame.header().flags().contains(FrameFlag.END_STREAM)) {
+                    // END_STREAM on the trailer ends the request body: wake
+                    // the body reader so handler body() returns EOF naturally.
+                    // The stream itself stays open until the response side
+                    // finishes and closes it (Http2OutputStream.close).
+                    target.markHalfClosed();
+                    target.wakeupBodyReader();
+                }
                 continue;
             } else if (target == null) {
                 if (streamId <= lastSeenStreamId) {
@@ -329,7 +400,7 @@ public final class Http2Connection {
                 for (var stream : streams.values())
                     stream.sendWindow.addAndGet(parameter.value - oldWindow);
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_FRAME_SIZE) {
-                maxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
+                peerMaxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
             }
             remoteSettings.set(parameter);
         }

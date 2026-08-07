@@ -19,6 +19,10 @@ final class ChunkedInputStream extends InputStream {
     private boolean needToReadHeader = true;
     private boolean closed;
     private boolean eof;
+    // Reusable scratch buffers — no per-call allocation on the hot path.
+    private final byte[] oneByte = new byte[1];
+    private final char[] headerBuf = new char[16];
+    private final byte[] drainBuf = new byte[2048];
 
     public ChunkedInputStream(InputStream in) {
         this.in = in;
@@ -28,9 +32,8 @@ final class ChunkedInputStream extends InputStream {
     public int read() throws IOException {
         if (closed) throw new IOException("Stream closed");
         if (eof) return -1;
-        byte[] one = new byte[1];
-        int n = read(one, 0, 1);
-        return n == -1 ? -1 : one[0] & 0xFF;
+        int n = read(oneByte, 0, 1);
+        return n == -1 ? -1 : oneByte[0] & 0xFF;
     }
 
     @Override
@@ -78,8 +81,7 @@ final class ChunkedInputStream extends InputStream {
             // drain remaining chunk data
             try {
                 while (!eof) {
-                    byte[] buf = new byte[2048];
-                    int n = read(buf, 0, buf.length);
+                    int n = read(drainBuf, 0, drainBuf.length);
                     if (n < 0) break;
                 }
             } catch (IOException ignored) { /* best-effort drain */ }
@@ -88,7 +90,7 @@ final class ChunkedInputStream extends InputStream {
 
     private int readChunkHeader() throws IOException {
         boolean gotCR = false;
-        char[] lenArr = new char[16];
+        char[] lenArr = headerBuf;
         int lenSize = 0;
         boolean endOfLen = false;
         int read = 0;
@@ -122,7 +124,7 @@ final class ChunkedInputStream extends InputStream {
     }
 
     private static int parseHex(char[] arr, int nchars) throws IOException {
-        int len = 0;
+        long len = 0;
         for (int i = 0; i < nchars; i++) {
             char c = arr[i];
             int val;
@@ -133,8 +135,11 @@ final class ChunkedInputStream extends InputStream {
                 default -> throw new IOException("Invalid chunk length character: " + c);
             }
             len = len * 16 + val;
+            if (len > Integer.MAX_VALUE) {
+                throw new IOException("Chunk size exceeds 2^31-1");
+            }
         }
-        return len;
+        return (int) len;
     }
 
     private void consumeCRLF() throws IOException {

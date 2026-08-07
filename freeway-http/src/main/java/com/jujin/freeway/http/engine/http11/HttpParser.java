@@ -284,15 +284,26 @@ public final class HttpParser {
     }
 
     /**
-     * Returns an {@code InputStream} for reading the request body.
-     * Includes any bytes already buffered past the header boundary,
-     * followed by the remaining raw socket input.
-     * Call this once after {@link #parse()}.
+     * Returns an {@code InputStream} for reading the request body: any bytes
+     * already buffered past the header boundary, followed by the remaining
+     * raw socket input.
+     *
+     * <p>When {@code bodyLength} is known (Content-Length, not chunked) only
+     * that many buffered bytes are handed to the body — bytes belonging to a
+     * pipelined next request stay in the parser buffer and are parsed next.
+     * Call this once after {@link #parse()}.</p>
      */
-    public InputStream bodyStream() {
+    public InputStream bodyStream(long bodyLength) {
         if (pos >= end) return in;
-        var prefix = new ByteArrayInputStream(buf, pos, end - pos);
-        pos = end; // consumed
+        int available = end - pos;
+        int prefixLen = bodyLength >= 0 ? (int) Math.min(available, bodyLength) : available;
+        var prefix = new ByteArrayInputStream(buf, pos, prefixLen);
+        pos += prefixLen;
+        if (pos < end) {
+            // Body is shorter than what was buffered: the rest belongs to a
+            // pipelined next request — keep it for the next parse().
+            return prefix;
+        }
         return new SequenceInputStream(prefix, in);
     }
 

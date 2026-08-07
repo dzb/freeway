@@ -83,6 +83,11 @@ public final class Http2Stream {
         halfClosed = true;
     }
 
+    /** Wakes a handler blocked in body() so it observes EOF once the request body ends. */
+    void wakeupBodyReader() {
+        dataIn.wakeupReader();
+    }
+
     public void close() {
         streamOpen = false;
         connection.streams.remove(streamId);
@@ -177,7 +182,7 @@ public final class Http2Stream {
             if (streamOutputClosed) throw new IOException("output closed");
 
             while (length > 0) {
-                int chunkSize = (int) Math.min(Math.min(length, connection.maxFrameSize),
+                int chunkSize = (int) Math.min(Math.min(length, connection.peerMaxFrameSize),
                     Math.min(connection.sendWindow.get(), sendWindow.get()));
                 if (chunkSize <= 0) {
                     connection.lock();
@@ -202,15 +207,20 @@ public final class Http2Stream {
         }
 
         /**
-         * Blocks until the connection-level send window has capacity (or the
-         * connection closes). Event-driven: parks instead of polling, and is
-         * unparked by WINDOW_UPDATE frames or by connection close.
+         * Blocks until BOTH the stream and connection send windows have
+         * capacity (or the connection closes). Event-driven: parks instead of
+         * polling, unparked by WINDOW_UPDATE (connection-level updates wake
+         * windowWaiters too) or by connection close. Checking the connection
+         * window here prevents a busy spin when other streams have consumed
+         * the shared connection window while this stream's own window is open.
          */
         private void waitForSendWindow() {
-            while (sendWindow.get() <= 0 && !connection.isClosed()) {
+            while ((sendWindow.get() <= 0 || connection.sendWindow.get() <= 0)
+                    && !connection.isClosed()) {
                 connection.windowWaiters.add(Thread.currentThread());
                 try {
-                    if (sendWindow.get() > 0 || connection.isClosed()) return;
+                    if ((sendWindow.get() > 0 && connection.sendWindow.get() > 0)
+                            || connection.isClosed()) return;
                     LockSupport.park();
                 } finally {
                     connection.windowWaiters.remove(Thread.currentThread());

@@ -135,7 +135,7 @@ final class HttpSession implements Runnable {
                 // there actually is a body. Otherwise pipelined bytes for the
                 // next request would be stranded in the body prefix and lost.
                 InputStream bodyStream = req.isChunked() || req.contentLength() > 0
-                    ? parser.bodyStream()
+                    ? parser.bodyStream(bodyLength)
                     : in;
                 ctx.reset(req.method(), req.path(), req.queryString(),
                     req.headers(), bodyStream, bodyLength, req.isChunked(),
@@ -164,6 +164,13 @@ final class HttpSession implements Runnable {
             if (connection != null) {
                 registry.unregister(connection);
                 connection.close();
+            } else if (!rawSocket.isClosed()) {
+                // SSL handshake or connection setup failed before the
+                // Http11Connection was created — the raw socket would
+                // otherwise leak an fd per failed handshake.
+                try {
+                    rawSocket.close();
+                } catch (IOException ignored) {}
             }
         }
     }
@@ -181,7 +188,7 @@ final class HttpSession implements Runnable {
             // "\r\nSM\r\n\r\n" from there so the bytes are not lost.
             InputStream in = ssl
                 ? connection.inputStream()
-                : parser.bodyStream();
+                : parser.bodyStream(-1); // all buffered bytes — the preface continues the request line
             if (!ssl) {
                 byte[] preface = new byte[Http2Connection.PARTIAL_PREFACE.length()];
                 int off = 0;

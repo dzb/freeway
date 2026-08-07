@@ -131,7 +131,7 @@ public abstract class HttpContext {
                 try {
                     return Optional.of(MultipartForm.parse(ct, body()));
                 } catch (IOException e) {
-                    LOG.debug("Failed to parse multipart body", e);
+                    LOG.warn("Failed to parse multipart body", e);
                     return Optional.empty();
                 }
             });
@@ -305,9 +305,7 @@ public abstract class HttpContext {
      */
     public HttpContext output(String text) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
-        if (blankToNull(responseHeader("Content-Type")) == null) {
-            setHeader("Content-Type", "text/plain; charset=utf-8");
-        }
+        ensureContentType("text/plain; charset=utf-8");
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -320,9 +318,7 @@ public abstract class HttpContext {
      */
     public HttpContext outputJson(Object value) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
-        if (blankToNull(responseHeader("Content-Type")) == null) {
-            setHeader("Content-Type", "application/json; charset=utf-8");
-        }
+        ensureContentType("application/json; charset=utf-8");
         output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -387,6 +383,13 @@ public abstract class HttpContext {
     public final boolean allowsResponseBody() {
         int status = status();
         return status != 204 && status != 205 && status != 304;
+    }
+
+    /** Sets Content-Type if not already present (text/json output helpers). */
+    private void ensureContentType(String contentType) {
+        if (blankToNull(responseHeader("Content-Type")) == null) {
+            setHeader("Content-Type", contentType);
+        }
     }
 
     /** Returns the charset from the Content-Type header, defaulting to UTF-8. */

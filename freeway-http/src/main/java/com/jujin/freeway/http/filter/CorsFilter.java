@@ -71,12 +71,12 @@ public final class CorsFilter implements HttpFilter {
             if (!"*".equals(acao)) {
                 ctx.setHeader("Vary", "Origin");
             }
-        }
-        if (allowCredentials) {
-            ctx.setHeader("Access-Control-Allow-Credentials", "true");
-        }
-        if (exposedHeaders != null) {
-            ctx.setHeader("Access-Control-Expose-Headers", exposedHeaders);
+            if (allowCredentials) {
+                ctx.setHeader("Access-Control-Allow-Credentials", "true");
+            }
+            if (exposedHeaders != null) {
+                ctx.setHeader("Access-Control-Expose-Headers", exposedHeaders);
+            }
         }
 
         // Intercept only genuine CORS preflight (Origin + Access-Control-Request-Method).

@@ -14,6 +14,8 @@ final class FixedLengthInputStream extends InputStream {
     private long remaining;
     private boolean closed;
     private boolean eof;
+    private final byte[] oneByte = new byte[1];
+    private final byte[] drainBuf = new byte[2048];
 
     public FixedLengthInputStream(InputStream in, long contentLength) {
         this.in = in;
@@ -25,9 +27,8 @@ final class FixedLengthInputStream extends InputStream {
     public int read() throws IOException {
         if (closed) throw new IOException("Stream closed");
         if (eof) return -1;
-        byte[] one = new byte[1];
-        int n = read(one, 0, 1);
-        return n == -1 ? -1 : one[0] & 0xFF;
+        int n = read(oneByte, 0, 1);
+        return n == -1 ? -1 : oneByte[0] & 0xFF;
     }
 
     @Override
@@ -68,14 +69,13 @@ final class FixedLengthInputStream extends InputStream {
     }
 
     private void drain(long n) throws IOException {
-        byte[] buf = new byte[2048];
         while (n > 0) {
             long skipped = in.skip(n);
             if (skipped > 0) {
                 n -= skipped;
             } else {
-                int len = (int) Math.min(n, buf.length);
-                int r = in.read(buf, 0, len);
+                int len = (int) Math.min(n, drainBuf.length);
+                int r = in.read(drainBuf, 0, len);
                 if (r < 0) break;
                 n -= r;
             }

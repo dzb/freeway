@@ -30,38 +30,43 @@ public class SseEmitter implements AutoCloseable {
         Objects.requireNonNull(event, "event");
         if (closed) return;
 
-        if (event.id() != null) {
-            write("id: ");
-            write(event.id());
-            write("\n");
-        }
-        if (event.event() != null) {
-            write("event: ");
-            write(event.event());
-            write("\n");
-        }
-        if (event.retry() != null) {
-            write("retry: ");
-            write(Long.toString(event.retry()));
-            write("\n");
-        }
-        String data = event.data();
-        int start = 0;
-        for (int i = 0; i < data.length(); i++) {
-            char c = data.charAt(i);
-            if (c == '\n' || c == '\r') {
-                write("data: ");
-                write(data.substring(start, i));
+        try {
+            if (event.id() != null) {
+                write("id: ");
+                write(event.id());
                 write("\n");
-                // skip \n after \r (CRLF)
-                if (c == '\r' && i + 1 < data.length() && data.charAt(i + 1) == '\n') i++;
-                start = i + 1;
             }
+            if (event.event() != null) {
+                write("event: ");
+                write(event.event());
+                write("\n");
+            }
+            if (event.retry() != null) {
+                write("retry: ");
+                write(Long.toString(event.retry()));
+                write("\n");
+            }
+            String data = event.data();
+            int start = 0;
+            for (int i = 0; i < data.length(); i++) {
+                char c = data.charAt(i);
+                if (c == '\n' || c == '\r') {
+                    write("data: ");
+                    write(data.substring(start, i));
+                    write("\n");
+                    // skip \n after \r (CRLF)
+                    if (c == '\r' && i + 1 < data.length() && data.charAt(i + 1) == '\n') i++;
+                    start = i + 1;
+                }
+            }
+            write("data: ");
+            write(data.substring(start));
+            write("\n\n");
+            outputStream.flush();
+        } catch (IOException e) {
+            closed = true; // the stream is broken — stop further sends
+            throw e;
         }
-        write("data: ");
-        write(data.substring(start));
-        write("\n\n");
-        outputStream.flush();
     }
 
     /** Sends a simple SSE event with the given data and no additional metadata. */

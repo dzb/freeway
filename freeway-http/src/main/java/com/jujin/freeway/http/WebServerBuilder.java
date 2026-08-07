@@ -4,11 +4,13 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
+import com.jujin.freeway.http.route.LazyHandler;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteGroup;
 import com.jujin.freeway.http.route.RouteIndex;
@@ -20,6 +22,7 @@ import javax.net.ssl.SSLContext;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -144,14 +147,57 @@ public final class WebServerBuilder {
                 ? new FreewayHttpEngine(jsonCodec, coercer, sslContext, http2OverSsl)
                 : new FreewayHttpEngine(jsonCodec, coercer);
         }
+        // Class-based routes resolve via container.create() — they need the IoC
+        // HttpModule. Fail fast here instead of blowing up on the first request.
+        for (Route r : routes) {
+            if (r.handler() instanceof LazyHandler) {
+                throw new IllegalStateException(
+                    "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
+                        + "which instantiates handler classes with constructor injection. "
+                        + "In standalone WebServerBuilder mode use lambda handlers instead.");
+            }
+        }
+        for (RouteGroup group : routeGroups) {
+            for (Route r : group.expand()) {
+                if (r.handler() instanceof LazyHandler) {
+                    throw new IllegalStateException(
+                        "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
+                            + "which instantiates handler classes with constructor injection. "
+                            + "In standalone WebServerBuilder mode use lambda handlers instead.");
+                }
+            }
+        }
         var routeIndex = new RouteIndex(routes, routeGroups);
         var wsIndex = new WebSocketIndex(webSocketRoutes, webSocketGroups);
+        List<ExceptionMapper> mappers = exceptionMappers.isEmpty()
+            ? defaultMappers()
+            : List.copyOf(exceptionMappers);
         var pipeline = new RequestPipeline(
             routeIndex, wsIndex, corsFilter, healthFilter,
             List.copyOf(staticMounts),
             List.copyOf(filters),
-            List.copyOf(exceptionMappers)
+            mappers
         );
         return new WebServer(engine, config, eventSink, pipeline);
+    }
+
+    /** Default exception mapping, matching the IoC HttpModule's built-ins. */
+    private static List<ExceptionMapper> defaultMappers() {
+        return List.of((ctx, ex) -> {
+            if (ex instanceof BodyTooLargeException) {
+                ctx.sendJson(413, Map.of(
+                    "error", "Payload Too Large",
+                    "message", ex.getMessage()));
+                return true;
+            }
+            if (ex instanceof ValidationException ve) {
+                var errors = ve.result().getErrors().stream()
+                    .map(e -> Map.of("field", e.field(), "message", e.message()))
+                    .toList();
+                ctx.sendJson(400, Map.of("error", "Validation Failed", "details", errors));
+                return true;
+            }
+            return false;
+        });
     }
 }

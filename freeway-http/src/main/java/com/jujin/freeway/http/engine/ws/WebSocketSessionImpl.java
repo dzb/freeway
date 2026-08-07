@@ -134,6 +134,11 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         var closePayload = buildClosePayload(code, reason);
         WebSocket.writeFrame(out,
             new WebSocketFrame(OpCode.Close, true, closePayload));
+        // Wake the blocking read loop so a server-initiated close does not
+        // leave the session thread parked until the peer responds.
+        try {
+            in.close();
+        } catch (IOException ignored) {}
     }
 
     // --- package-private ---
