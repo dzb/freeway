@@ -29,10 +29,4 @@ public final class ResetStreamFrame extends BaseFrame {
         BinUtils.writeInt(outputStream, errorCode.value);
         outputStream.flush();
     }
-
-    public byte[] encode() {
-        byte[] buffer = new byte[4];
-        BinUtils.writeInt(buffer, 0, errorCode.value);
-        return buffer;
-    }
 }

@@ -2,11 +2,14 @@ package com.jujin.freeway.http.engine.http2.hpack;
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
  * HPACK Huffman codec (RFC 7541 Appendix B).
- * Decodes Huffman-encoded strings using a table-driven lookup.
+ * Decodes Huffman-encoded strings using a table-driven lookup and encodes
+ * via the same canonical table (symbol → code + bit length).
  */
 public final class Huffman {
     private static final int[][] CODE_TABLE = new int[257][];
@@ -273,6 +276,41 @@ public final class Huffman {
     }
 
     private Huffman() {}
+
+    /**
+     * Encodes a string into its HPACK Huffman representation
+     * (RFC 7541 Appendix B), EOS excluded.
+     */
+    public static byte[] encode(String value) {
+        return encode(value.getBytes(StandardCharsets.ISO_8859_1));
+    }
+
+    /**
+     * Encodes raw bytes into HPACK Huffman coding. Longest code is 30 bits,
+     * so the bit accumulator never exceeds 37 bits (7 leftover + 30) — a long
+     * is sufficient. Trailing bits are padded with 1s per RFC 7541 §5.2.
+     */
+    public static byte[] encode(byte[] data) {
+        long buffer = 0;
+        int bitsInBuffer = 0;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(data.length);
+        for (byte b : data) {
+            int[] entry = CODE_TABLE[b & 0xFF];
+            int code = entry[0];
+            int bits = entry[1];
+            buffer = (buffer << bits) | code;
+            bitsInBuffer += bits;
+            while (bitsInBuffer >= 8) {
+                bitsInBuffer -= 8;
+                out.write((int) ((buffer >> bitsInBuffer) & 0xFF));
+            }
+        }
+        if (bitsInBuffer > 0) {
+            int pad = 8 - bitsInBuffer;
+            out.write((int) ((buffer << pad) & 0xFF) | ((1 << pad) - 1));
+        }
+        return out.toByteArray();
+    }
 
     /**
      * Decodes a Huffman-encoded byte array into a string.

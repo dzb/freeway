@@ -32,10 +32,4 @@ public final class WindowUpdateFrame extends BaseFrame {
         header().writeTo(outputStream);
         BinUtils.writeInt(outputStream, windowSizeIncrement);
     }
-
-    public byte[] encode() {
-        byte[] buffer = new byte[4];
-        BinUtils.writeInt(buffer, 0, windowSizeIncrement);
-        return buffer;
-    }
 }

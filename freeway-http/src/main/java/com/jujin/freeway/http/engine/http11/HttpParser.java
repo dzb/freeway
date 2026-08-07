@@ -7,7 +7,6 @@ import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -119,7 +118,9 @@ public final class HttpParser {
         boolean connectionUpgrade = false, upgradeWebsocket = false;
 
         for (var entry : headers.entrySet()) {
-            switch (entry.getKey().toLowerCase(Locale.ROOT)) {
+            // Keys are already lowercased by parseHeaders (RFC 7230 §3.2) —
+            // toLowerCase here would allocate a new String per header.
+            switch (entry.getKey()) {
                 case "content-length" -> {
                     if (contentLength >= 0) throw new IOException("Duplicate Content-Length header");
                     String v = entry.getValue().getFirst();

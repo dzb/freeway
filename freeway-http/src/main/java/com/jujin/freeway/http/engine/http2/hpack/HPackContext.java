@@ -10,6 +10,7 @@ import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -72,8 +73,8 @@ public final class HPackContext {
 
         Integer nameIndex = StaticHeaderTable.nameIndex(name);
         byte[] prefix = nameIndex != null ? encodeIntValue(nameIndex, 4) : encodeIntValue(0, 4);
-        byte[] nameBytes = nameIndex != null ? null : encodeString(name.getBytes());
-        byte[] valueBytes = encodeString(value.getBytes());
+        byte[] nameBytes = nameIndex != null ? null : encodeStringHuffman(name.getBytes(StandardCharsets.UTF_8));
+        byte[] valueBytes = encodeStringHuffman(value.getBytes(StandardCharsets.UTF_8));
 
         return nameBytes == null ? BinUtils.combine(prefix, valueBytes) : BinUtils.combine(prefix, nameBytes, valueBytes);
     }
@@ -98,10 +99,49 @@ public final class HPackContext {
     }
 
     /**
-     * Encodes a string (with Huffman flag support).
+     * Encodes a string WITHOUT the Huffman flag (H bit clear): length prefix
+     * plus raw bytes. Retained for decode tests and symmetric coverage —
+     * outbound response headers use {@link #encodeStringHuffman(byte[])}.
      */
     static byte[] encodeString(byte[] value) {
         return encodeString(value, 7);
+    }
+
+    /**
+     * Encodes a string with the Huffman flag set: length prefix (with the
+     * high bit of the prefix byte set) followed by Huffman-encoded bytes.
+     */
+    static byte[] encodeStringHuffman(byte[] value) {
+        return encodeStringHuffman(value, 7);
+    }
+
+    static byte[] encodeStringHuffman(byte[] value, int prefixBits) {
+        byte[] huffman = Huffman.encode(value);
+        int prefixMask = (1 << prefixBits) - 1;
+        int huffmanFlag = 1 << prefixBits;
+        int length = huffman.length;
+        if (length < prefixMask) {
+            byte[] result = new byte[1 + length];
+            result[0] = (byte) (huffmanFlag | length);
+            System.arraycopy(huffman, 0, result, 1, length);
+            return result;
+        }
+        // HPACK integer encoding: prefix holds all 1s, remainder in continuation
+        int remaining = length - prefixMask;
+        int contBytes = 1;
+        while (remaining >= 128) { remaining >>= 7; contBytes++; }
+        byte[] result = new byte[1 + contBytes + length];
+        result[0] = (byte) (huffmanFlag | prefixMask);
+        int pos = 1;
+        remaining = length - prefixMask;
+        do {
+            int b = remaining & 0x7F;
+            remaining >>= 7;
+            if (remaining > 0) b |= 0x80;
+            result[pos++] = (byte) b;
+        } while (remaining > 0);
+        System.arraycopy(huffman, 0, result, pos, length);
+        return result;
     }
 
     static byte[] encodeString(byte[] value, int prefixBits) {
@@ -265,7 +305,7 @@ public final class HPackContext {
                 throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
             String name = huffmanEncoded
                 ? Huffman.decode(block, result.position, result.value)
-                : new String(block, result.position, result.value);
+                : new String(block, result.position, result.value, StandardCharsets.UTF_8);
             if (!name.equals(name.toLowerCase())) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             field.name = name;
             field.normalizedName = Http2HeaderField.normalize(name);
@@ -286,9 +326,16 @@ public final class HPackContext {
         boolean huffmanEncoded = (block[pos] & 0x80) != 0;
         var result = readInt(block, pos, 7);
         if (result.position + result.value > block.length) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
-        field.value = huffmanEncoded ? Huffman.decode(block, result.position, result.value) : new String(block, result.position, result.value);
+        field.value = huffmanEncoded ? Huffman.decode(block, result.position, result.value) : new String(block, result.position, result.value, StandardCharsets.UTF_8);
         return result.position + result.value;
     }
+
+    /**
+     * Upper bound for the encoded size of one response's headers. Without it,
+     * application code setting oversized header values would grow the
+     * ByteArrayOutputStream without limit.
+     */
+    private static final int MAX_RESPONSE_HEADER_BYTES = 64 * 1024;
 
     /**
      * Writes response headers to the output stream.
@@ -303,14 +350,14 @@ public final class HPackContext {
 
         // Write :status pseudo-header
         String status = headers.getOrDefault(":status", List.of("200")).getFirst();
-        buffer.write(encodeLiteral(":status", status));
+        writeChecked(buffer, ":status", status);
 
         // Write remaining header fields
         for (var entry : headers.entrySet()) {
             if (entry.getKey().startsWith(":")) continue;  // skip pseudo-headers
             String key = entry.getKey().toLowerCase(java.util.Locale.ROOT);
             for (String value : entry.getValue()) {
-                buffer.write(encodeLiteral(key, value));
+                writeChecked(buffer, key, value);
             }
         }
 
@@ -320,6 +367,24 @@ public final class HPackContext {
             : FrameFlag.FlagSet.of(FrameFlag.END_HEADERS);
         FrameHeader.writeTo(out, buffer.size(), FrameType.HEADERS, flags, streamId);
         buffer.writeTo(out);
+    }
+
+    /**
+     * Encodes one header field into {@code buffer} unless the encoded size
+     * budget is exceeded. The budget check runs BEFORE encoding so an
+     * oversized value is rejected before the encoder allocates its block.
+     */
+    private static void writeChecked(ByteArrayOutputStream buffer, String key, String value) throws IOException {
+        // Upper bound of encodeLiteral: 1 (Huffman flag) + 5 (length prefix)
+        // + key length + value length.
+        long budget = buffer.size() + (long) key.length() + value.length() + 8;
+        if (budget > MAX_RESPONSE_HEADER_BYTES) {
+            throw new IOException(
+                "Response headers exceed " + MAX_RESPONSE_HEADER_BYTES
+                    + " bytes (at header '" + key + "')"
+            );
+        }
+        buffer.write(encodeLiteral(key, value));
     }
 
     private record IntR(int position, int value) {

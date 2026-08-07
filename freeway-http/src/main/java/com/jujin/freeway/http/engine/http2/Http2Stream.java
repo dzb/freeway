@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
@@ -129,6 +128,8 @@ public final class Http2Stream implements Http2ResponseBridge {
                     connection.sendResetStream(Http2ErrorCode.FLOW_CONTROL_ERROR, streamId);
                     close();
                 }
+                // Writers blocked on this stream's window re-check after wake.
+                connection.unparkWindowWaiters();
             }
             default -> {}
         }
@@ -173,8 +174,7 @@ public final class Http2Stream implements Http2ResponseBridge {
 
         @Override
         public void write(byte[] data, int offset, int length) throws IOException {
-            while (sendWindow.get() <= 0 && !connection.isClosed())
-                LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+            waitForSendWindow();
             writeResponseHeaders(false);
             if (streamOutputClosed) throw new IOException("output closed");
 
@@ -184,7 +184,7 @@ public final class Http2Stream implements Http2ResponseBridge {
                 if (chunkSize <= 0) {
                     connection.lock();
                     try { connection.outputStream().flush(); } finally { connection.unlock(); }
-                    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+                    waitForSendWindow();
                     if (connection.isClosed()) throw new IOException("closed");
                     continue;
                 }
@@ -200,6 +200,23 @@ public final class Http2Stream implements Http2ResponseBridge {
                 offset += chunkSize;
                 length -= chunkSize;
                 sendWindow.addAndGet(-chunkSize);
+            }
+        }
+
+        /**
+         * Blocks until the connection-level send window has capacity (or the
+         * connection closes). Event-driven: parks instead of polling, and is
+         * unparked by WINDOW_UPDATE frames or by connection close.
+         */
+        private void waitForSendWindow() {
+            while (sendWindow.get() <= 0 && !connection.isClosed()) {
+                connection.windowWaiters.add(Thread.currentThread());
+                try {
+                    if (sendWindow.get() > 0 || connection.isClosed()) return;
+                    LockSupport.park();
+                } finally {
+                    connection.windowWaiters.remove(Thread.currentThread());
+                }
             }
         }
 

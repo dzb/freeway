@@ -361,8 +361,8 @@ public abstract class HttpContext {
      * Values are URL-decoded. Malformed percent-encoding is left as-is.
      */
     public static Map<String, List<String>> parseQueryParams(String rawQuery) {
+        if (rawQuery == null || rawQuery.isEmpty()) return Map.of();
         LinkedHashMap<String, List<String>> params = new LinkedHashMap<>();
-        if (rawQuery == null || rawQuery.isEmpty()) return params;
         for (String pair : rawQuery.split("&")) {
             int eq = pair.indexOf('=');
             String name = eq >= 0 ? urlDecode(pair.substring(0, eq)) : urlDecode(pair);

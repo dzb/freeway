@@ -32,11 +32,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -53,6 +55,10 @@ public final class Http2Connection {
 
     private static final int DEFAULT_WINDOW_SIZE = 65535;
     private static final int DEFAULT_MAX_FRAME_SIZE = 16384;
+    /** Server-side cap on open streams (RFC 7540 §5.1.2). Excess streams are
+     *  rejected with RST_STREAM(REFUSED_STREAM) instead of opening unbounded
+     *  per-stream state. */
+    private static final int MAX_CONCURRENT_STREAMS = 100;
 
     public final AtomicLong sendWindow = new AtomicLong(DEFAULT_WINDOW_SIZE);
     public final AtomicInteger receiveWindow = new AtomicInteger(DEFAULT_WINDOW_SIZE);
@@ -71,6 +77,12 @@ public final class Http2Connection {
 
     private final int connectionWindowSize = DEFAULT_WINDOW_SIZE;
     private final ReentrantLock lock = new ReentrantLock();
+    /** Threads blocked on connection/stream flow control, unparked on WINDOW_UPDATE. */
+    final Set<Thread> windowWaiters = ConcurrentHashMap.newKeySet();
+
+    void unparkWindowWaiters() {
+        for (Thread t : windowWaiters) LockSupport.unpark(t);
+    }
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private int lastSeenStreamId;
@@ -116,6 +128,8 @@ public final class Http2Connection {
 
     public void close() {
         if (closed.compareAndSet(false, true)) {
+            // Wake writers blocked on flow control — they re-check closed and exit.
+            unparkWindowWaiters();
             for (var stream : streams.values()) stream.close();
             try {
                 socket.close();
@@ -189,6 +203,7 @@ public final class Http2Connection {
                         int increment = ((WindowUpdateFrame) frame).increment();
                         if (sendWindow.addAndGet(increment) > Integer.MAX_VALUE)
                             throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                        unparkWindowWaiters();
                         continue;
                     }
                 }
@@ -257,6 +272,17 @@ public final class Http2Connection {
 
             var target = streams.get(streamId);
             if (target == null && lastSeenStreamId < streamId) {
+                // Enforce the concurrent-stream cap. Http2Stream.close()
+                // removes itself from the map, so streams.size() is the number
+                // of currently open streams.
+                if (streams.size() >= MAX_CONCURRENT_STREAMS) {
+                    lastSeenStreamId = streamId;
+                    headerBlockFragments.clear();
+                    inHeaders = false;
+                    headersEndStream = false;
+                    sendResetStream(Http2ErrorCode.REFUSED_STREAM, streamId);
+                    continue;
+                }
                 byte[] headerBlock = BinUtils.combine(headerBlockFragments);
                 var fields = new HeaderFields();
                 for (var field : hpack.decode(headerBlock)) fields.add(field);

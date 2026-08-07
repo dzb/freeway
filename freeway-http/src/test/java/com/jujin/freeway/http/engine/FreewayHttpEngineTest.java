@@ -567,6 +567,17 @@ class FreewayHttpEngineTest {
         }
     }
 
+    /** Like {@link #readFully} but returns false on EOF instead of throwing. */
+    private static boolean readFullyOrEof(InputStream in, byte[] buffer) throws IOException {
+        int off = 0;
+        while (off < buffer.length) {
+            int n = in.read(buffer, off, buffer.length - off);
+            if (n < 0) return false;
+            off += n;
+        }
+        return true;
+    }
+
     private static Path generateKeyStore(Path dir) throws Exception {
         Path keystore = dir.resolve("test.p12");
         Process keytool = new ProcessBuilder(
@@ -834,6 +845,99 @@ class FreewayHttpEngineTest {
     }
 
     // ── HTTP/2 h2c prior-knowledge ─────────────────────────────────
+
+    @Test
+    void h2cRejectsStreamsBeyondConcurrentCap() throws Exception {
+        // MAX_CONCURRENT_STREAMS (100): the 101st concurrent stream must be
+        // rejected with RST_STREAM(REFUSED_STREAM). Handlers hold streams open
+        // so the cap is actually reached.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                ctx.send(200, "ok");
+            }))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
+                java.nio.charset.StandardCharsets.US_ASCII);
+            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(5000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+
+                // consume the server SETTINGS preface
+                byte[] settingsHeader = new byte[9];
+                readFully(socket.getInputStream(), settingsHeader);
+                int settingsLen = ((settingsHeader[0] & 0xff) << 16)
+                    | ((settingsHeader[1] & 0xff) << 8)
+                    | (settingsHeader[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                // HPACK block: indexed :method GET, :path /, :scheme http,
+                // literal :authority "localhost" (name-indexed, 4-bit prefix).
+                // HPACK block: indexed :method GET (0x82), :path / (0x84),
+                // :scheme http (0x86), literal :authority "localhost".
+                byte[] headerBlock = new byte[] {
+                    (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41, 0x09,
+                    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                // 101 HEADERS frames — stream 201 is the one beyond the cap.
+                for (int streamId = 1; streamId <= 201; streamId += 2) {
+                    out.write(new byte[] {
+                        (byte) ((headerBlock.length >> 16) & 0xff),
+                        (byte) ((headerBlock.length >> 8) & 0xff),
+                        (byte) (headerBlock.length & 0xff),
+                        0x1,  // HEADERS
+                        0x5,  // END_HEADERS | END_STREAM
+                        (byte) ((streamId >> 24) & 0x7f),
+                        (byte) ((streamId >> 16) & 0xff),
+                        (byte) ((streamId >> 8) & 0xff),
+                        (byte) (streamId & 0xff)
+                    });
+                    out.write(headerBlock);
+                }
+                out.flush();
+
+                // Read frames until the rejection arrives: RST_STREAM (type 3)
+                // on stream 201 with REFUSED_STREAM (0x7).
+                var in = socket.getInputStream();
+                boolean rejected = false;
+                long deadline = System.currentTimeMillis() + 4000;
+                while (System.currentTimeMillis() < deadline && !rejected) {
+                    byte[] frameHeader = new byte[9];
+                    if (!readFullyOrEof(in, frameHeader)) break;
+                    int len = ((frameHeader[0] & 0xff) << 16)
+                        | ((frameHeader[1] & 0xff) << 8)
+                        | (frameHeader[2] & 0xff);
+                    int type = frameHeader[3] & 0xff;
+                    int streamId = ((frameHeader[5] & 0x7f) << 24)
+                        | ((frameHeader[6] & 0xff) << 16)
+                        | ((frameHeader[7] & 0xff) << 8)
+                        | (frameHeader[8] & 0xff);
+                    byte[] payload = new byte[len];
+                    readFully(in, payload);
+                    if (type == 0x3 && streamId == 201 && len == 4) {
+                        int errorCode = ((payload[0] & 0xff) << 24)
+                            | ((payload[1] & 0xff) << 16)
+                            | ((payload[2] & 0xff) << 8)
+                            | (payload[3] & 0xff);
+                        rejected = errorCode == 0x7; // REFUSED_STREAM
+                    }
+                }
+                assertTrue(rejected,
+                    "stream 201 must be rejected with RST_STREAM(REFUSED_STREAM)");
+            }
+        } finally {
+            server.stop();
+        }
+    }
 
     @Test
     void h2cPriorKnowledgeGetsServerSettingsFirst() throws Exception {
@@ -1106,6 +1210,35 @@ class FreewayHttpEngineTest {
     }
 
     // ── X-Request-Id propagation ──────────────────────────────────
+
+    @Test
+    void generatedCorrelationIdIs32CharLowercaseHex() throws Exception {
+        // The fast id (ThreadLocalRandom + HexFormat) must keep the same
+        // wire contract as the old UUID.randomUUID().toString().replace("-",""):
+        // 32 lowercase hex chars, no hyphens.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/whoami", ctx ->
+                ctx.send(200, ctx.requestContext().correlationId())))
+            .build();
+        server.start();
+        try {
+            var client = java.net.http.HttpClient.newHttpClient();
+            var resp = client.send(
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                    .GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            String id = resp.body();
+            assertEquals(32, id.length(),
+                "auto-generated correlation id must be 32 chars, got: " + id);
+            assertTrue(id.matches("[0-9a-f]{32}"),
+                "auto-generated correlation id must be lowercase hex, got: " + id);
+        } finally {
+            server.stop();
+        }
+    }
 
     @Test
     void propagatesClientXRequestId() throws Exception {
