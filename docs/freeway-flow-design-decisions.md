@@ -119,7 +119,7 @@ This keeps the IoC dependency boundary at the Module level, identical to the `fr
 
 **Decision:** `binder.contribute(T).add(MyImpl.class)` defers instantiation and injection until after all bindings are registered.
 
-**Why:** When `add(Class)` is called during `bind()`, the container's bindings are not yet fully registered — so `container.create(implClass)` would fail if `MyImpl` depends on bindings from the same module. The solution defers instantiation to `flushPending()` (after all module `bind()` methods have run):
+**Why:** When `add(Class)` is called during `bind()`, the container's bindings are not yet fully registered — so `container.create(implClass)` would fail if `MyImpl` depends on bindings from the same module. The solution defers instantiation until after **every** module's `bind()` has run — a contributed class may depend on services declared by any module regardless of declaration order:
 
 ```java
 List<Runnable> pendingCreates = new ArrayList<>();
@@ -130,7 +130,8 @@ pendingCreates.add(() -> {
     deferred.apply(ext.add(id, instance));
 });
 
-// In flushPending():
+// Bindings are registered per module (flushPending), then after the last
+// module's bind() the class contributions run together (flushPendingCreates):
 for (var action : pendingCreates) action.run();
 ```
 

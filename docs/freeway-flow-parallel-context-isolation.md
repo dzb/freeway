@@ -1,5 +1,17 @@
 # freeway-flow 并行分支上下文隔离方案
 
+## 现状(2026-08)
+
+当前实现:PARALLEL 分支**共享**同一个 `FlowContext` 与 `ExecState`。
+
+- 数据区(`FlowContext.data`)是 `ConcurrentHashMap` — 单键读写线程安全。
+- 执行态(`ExecState` 计数/栈)的复合操作已原子化 — 并发分支汇合到同一
+  INCLUSIVE/LOOP 节点时,`peek→count→compare→pop` 在共享栈锁内执行,
+  消除结构性竞态。
+- **仍存在的限制**:并发写同一个 data key 时,最终值依赖线程调度
+  (无事务性);回放/排障在多分支竞争场景下可能不稳定。
+- 下文描述的 fork/overlay/join 完全隔离模型是设计提案,尚未实现。
+
 ## 背景
 
 `freeway-flow` 当前在并行分支中共享同一个 `FlowContext`。虽然底层使用了并发容器，但这只能保证容器层面的线程安全，不能保证流程语义上的一致性。

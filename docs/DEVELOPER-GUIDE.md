@@ -543,7 +543,7 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 `freeway-commons` provides a JUL-backed SLF4J 2 provider — zero-dependency, enabled by default. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Adding Logback switches seamlessly without code changes.
 
-Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Configuration is through `freeway-log.properties` on the classpath root (not bundled in the JAR). System properties (`-D`) and `FREEWAY_` env vars override file values.
+Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Configuration is through `freeway-log.properties` on the classpath root (not bundled in the JAR). System properties (`-D`) and env vars override file values — the env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix.
 
 ```properties
 freeway.log.level=INFO
@@ -618,6 +618,22 @@ CLI keys without a dot (e.g. `--profile=dev`) auto-receive the `freeway.`
 prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
 Dotted keys (`--app.name=foo`) pass through unchanged.
 Activate profiles: `--profile=dev` or `--freeway.profile=dev`.
+
+**Environment variables and namespaces:** The `FREEWAY_` prefix maps into the
+`freeway.*` namespace (`FREEWAY_LOG_FILE_MAX_SIZE` → `freeway.log.file.max.size`).
+A single configurable prefix, `freeway.env.prefix` (default `FREEWAY_`), can
+**replace** it entirely: set `-Dfreeway.env.prefix=APP_` and the app owns the
+mapping — prefix stripped, `_` → `.`, no namespace inference:
+
+```bash
+-Dfreeway.env.prefix=APP_
+APP_SERVER_PORT       → server.port
+APP_FREEWAY_HTTP_PORT → freeway.http.port
+```
+
+With a custom prefix, `FREEWAY_*` variables are no longer read by the config
+cascade (logging's own `FREEWAY_LOG_*` env support is a separate mechanism and
+is unaffected).
 
 ---
 
