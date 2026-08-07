@@ -44,7 +44,9 @@ public final class DeferScope {
         for (Runnable action : ordered) {
             try {
                 action.run();
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
+                // Errors included: deferred cleanup must always run to
+                // completion — one failing action must not skip the rest.
                 LOG.warn("Deferred action failed", ex);
             }
         }

@@ -14,6 +14,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -311,6 +312,14 @@ public final class CoercerDefault implements Coercer {
 
     private static Duration coerceToDuration(Object value) {
         String text = String.valueOf(value).trim();
+        // ISO-8601 first (e.g. "PT1H30M" from Duration.toString()) — multi-unit
+        // values would otherwise be misread by the single-suffix branches below
+        // (and "PT1H30M" ends with 'm', hitting Long.parseLong("PT1H30")).
+        try {
+            return Duration.parse(text);
+        } catch (DateTimeParseException ignored) {
+            // fall through to the legacy single-suffix / raw-millis forms
+        }
         if (text.endsWith("ms")) return Duration.ofMillis(
             Long.parseLong(text.substring(0, text.length() - 2).trim())
         );
@@ -367,12 +376,19 @@ public final class CoercerDefault implements Coercer {
         if (n instanceof Float f && (f.isNaN() || f.isInfinite())) {
             throw new IllegalArgumentException("Cannot coerce " + n + " to " + targetType.getSimpleName());
         }
-        // Guard against BigInteger/BigDecimal overflow for integral targets
+        // Guard against overflow for integral targets — every source type,
+        // not just BigInteger/BigDecimal. Long/Double/Float sources silently
+        // wrap via intValue()/shortValue()/byteValue(), corrupting data
+        // (e.g. 3_000_000_000L → int must fail loudly, not become -1294967296).
+        // Non-exact sources route through their decimal representation so
+        // fractional values truncate exactly like the string path does.
         if (targetType != Double.class && targetType != Float.class) {
             if (n instanceof BigInteger bi) {
                 checkRange(bi, targetType);
             } else if (n instanceof BigDecimal bd) {
                 checkRange(bd, targetType);
+            } else {
+                checkRange(new BigDecimal(String.valueOf(n)), targetType);
             }
         }
         if (targetType == Integer.class) return n.intValue();
@@ -445,19 +461,26 @@ public final class CoercerDefault implements Coercer {
     }
 
     private static Number parseShort(String text) {
-        long value = Long.parseLong(text);
-        if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
-            throw new IllegalArgumentException("Cannot coerce '" + text + "' to Short: out of range");
+        try {
+            return Short.parseShort(text);
+        } catch (NumberFormatException e) {
+            // Decimal string or out-of-range literal — match the Integer/Long
+            // path: range-check before truncating so oversized values fail
+            // loudly and fractional values truncate consistently.
+            BigDecimal bd = new BigDecimal(text);
+            checkRange(bd, Short.class);
+            return bd.shortValue();
         }
-        return (short) value;
     }
 
     private static Number parseByte(String text) {
-        long value = Long.parseLong(text);
-        if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
-            throw new IllegalArgumentException("Cannot coerce '" + text + "' to Byte: out of range");
+        try {
+            return Byte.parseByte(text);
+        } catch (NumberFormatException e) {
+            BigDecimal bd = new BigDecimal(text);
+            checkRange(bd, Byte.class);
+            return bd.byteValue();
         }
-        return (byte) value;
     }
 
     // ==================================================================

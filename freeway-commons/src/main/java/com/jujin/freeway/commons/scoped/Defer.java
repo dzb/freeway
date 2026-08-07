@@ -179,7 +179,7 @@ public final class Defer {
             this.callable = callable;
         }
 
-        void compute() {
+        synchronized void compute() {
             if (computed) return; // get() already resolved it
             try {
                 value = callable.call();
@@ -193,7 +193,7 @@ public final class Defer {
         }
 
         @Override
-        public T get() {
+        public synchronized T get() {
             if (computed) return value;
             try {
                 T v = callable.call();

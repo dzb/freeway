@@ -10,10 +10,12 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
+import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 /**
  * Configures JUL with Freeway's console and file logging enhancements.
@@ -112,10 +114,30 @@ final class JULEnhancer {
     }
 
     /**
+     * Maps a {@code freeway.*} config key to its environment variable name,
+     * honoring the configurable env prefix ({@code freeway.env.prefix},
+     * default {@code FREEWAY_}) — consistent with
+     * {@code ConfigLoaderDefault}'s cascade mapping.
+     *
+     * <p>Default prefix: {@code "freeway.log.level"} → {@code "FREEWAY_LOG_LEVEL"}.
+     * Custom prefix {@code "APP_"}: {@code "freeway.log.level"} →
+     * {@code "APP_FREEWAY_LOG_LEVEL"} (the cascade maps that back to
+     * {@code freeway.log.level}).</p>
+     */
+    static String envKeyFor(String configKey) {
+        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
+        if (prefix.isEmpty()) {
+            prefix = "FREEWAY_";
+        }
+        String upper = configKey.toUpperCase(Locale.ROOT).replace('.', '_');
+        return "FREEWAY_".equals(prefix) ? upper : prefix + upper;
+    }
+
+    /**
      * Reads a config value with cascading fallback:
      * <ol>
      *   <li>System property ({@code -Dkey=value}) — highest priority
-     *   <li>Environment variable ({@code FREEWAY_} prefix) — for {@code freeway.*} keys
+     *   <li>Environment variable (prefix from {@link #envKeyFor}) — for {@code freeway.*} keys
      *   <li>{@code freeway-log.properties} key
      *   <li>{@code defaultValue}
      * </ol>
@@ -129,13 +151,10 @@ final class JULEnhancer {
             String stripped = sysVal.strip();
             if (!stripped.isEmpty()) return stripped;
         }
-        // 2. Environment variable (FREEWAY_ → freeway., underscore → dot)
+        // 2. Environment variable (freeway.log.level → FREEWAY_LOG_LEVEL,
+        //    or APP_FREEWAY_LOG_LEVEL under a custom prefix)
         if (key.startsWith("freeway.")) {
-            String envKey = "FREEWAY_"
-                + key.substring("freeway.".length())
-                    .toUpperCase(Locale.ROOT)
-                    .replace('.', '_');
-            String envVal = System.getenv(envKey);
+            String envVal = System.getenv(envKeyFor(key));
             if (envVal != null) {
                 String stripped = envVal.strip();
                 if (!stripped.isEmpty()) return stripped;
@@ -274,6 +293,7 @@ final class JULEnhancer {
 
         if (!hasConsole) {
             ConsoleHandler ch = new ConsoleHandler();
+            freewayHandlers.add(ch);
             String level = readProperty(
                 fileConfig, "freeway.log.console.level", "INFO"
             );
@@ -294,10 +314,30 @@ final class JULEnhancer {
             // Opt out: leave JUL's native SimpleFormatter in place.
             return;
         }
-        // Auto (default): install Freeway's JUL formatters.
+        // Auto (default): install Freeway's JUL formatters on handlers the
+        // framework created itself — never on user-configured handlers.
         JULConsoleFormatter consoleFmt = new JULConsoleFormatter();
         JULFileFormatter fileFmt = new JULFileFormatter();
+        for (Handler h : freewayHandlers) {
+            if (h instanceof FileHandler || h instanceof JULFileHandler) {
+                h.setFormatter(fileFmt);
+            } else {
+                h.setFormatter(consoleFmt);
+            }
+        }
+        // Also upgrade JUL's stock root handlers (e.g. the JVM default console
+        // handler): their formatter is the unmodified SimpleFormatter, so the
+        // user has not customized it. Handlers carrying a non-default
+        // formatter are left untouched.
         for (Handler h : Logger.getLogger("").getHandlers()) {
+            if (freewayHandlers.contains(h)) {
+                continue;
+            }
+            Formatter fmt = h.getFormatter();
+            boolean stock = fmt == null || fmt instanceof SimpleFormatter;
+            if (!stock) {
+                continue;
+            }
             if (h instanceof FileHandler || h instanceof JULFileHandler) {
                 h.setFormatter(fileFmt);
             } else {
@@ -331,6 +371,7 @@ final class JULEnhancer {
         configured = false;
         namedFilesApplied = false;
         namedFileConfigs.clear();
+        freewayHandlers.clear();
         LogManager logManager = LogManager.getLogManager();
         var names = logManager.getLoggerNames();
         while (names.hasMoreElements()) {
@@ -357,6 +398,14 @@ final class JULEnhancer {
     private static boolean namedFilesApplied;
 
     /**
+     * Handlers created by Freeway itself. Formatter installation only touches
+     * these — a user-configured JUL handler (via logging.properties or code)
+     * keeps its own formatter instead of being silently replaced.
+     */
+    private static final Set<Handler> freewayHandlers =
+        java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
      * Re-applies all named file handler configurations. A no-op after
      * the first call — an internal guard prevents duplicate handlers.
      *
@@ -366,7 +415,7 @@ final class JULEnhancer {
      * (or a {@code RuntimeHook}) calls this after the runtime is fully
      * started to ensure named loggers have their file handlers present.
      */
-    static void applyNamedFileConfigs() {
+    static synchronized void applyNamedFileConfigs() {
         if (namedFilesApplied) return;
         namedFilesApplied = true;
         for (NamedFileConfig cfg : namedFileConfigs) {
@@ -393,6 +442,7 @@ final class JULEnhancer {
                 cfg.compress,
                 cfg.flushIntervalMs
             );
+            freewayHandlers.add(handler);
             if (cfg.level != null) handler.setLevel(cfg.level);
 
             Logger target = (cfg.loggerName != null)
@@ -467,6 +517,7 @@ final class JULEnhancer {
                         JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS
                     )
                 );
+                freewayHandlers.add(fh);
                 Logger.getLogger("").addHandler(fh);
             } catch (IOException | RuntimeException e) {
                 logEarly(

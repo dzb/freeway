@@ -29,7 +29,7 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
     private static boolean loadCallerInfoFlag() {
         String value = System.getProperty(
             "freeway.log.caller-info",
-            System.getenv("FREEWAY_LOG_CALLER_INFO")
+            System.getenv(JULEnhancer.envKeyFor("freeway.log.caller-info"))
         );
         if (value != null) {
             return !("false".equalsIgnoreCase(value) || "0".equals(value));

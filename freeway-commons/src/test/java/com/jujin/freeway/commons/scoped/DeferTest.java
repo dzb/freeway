@@ -86,6 +86,23 @@ class DeferTest {
         assertEquals(List.of("before", "after"), log);
     }
 
+    @Test
+    void deferredActionThrowingErrorDoesNotBlockOthers() {
+        // Errors too: deferred cleanup must always run to completion.
+        List<String> log = new ArrayList<>();
+
+        assertDoesNotThrow(() -> {
+            Defer.within(() -> {
+                Defer.defer(() -> log.add("before"));
+                Defer.defer(() -> { throw new AssertionError("boom"); });
+                Defer.defer(() -> log.add("after"));
+            });
+        });
+
+        assertEquals(List.of("before", "after"), log,
+            "an Error from one deferred action must not skip the remaining ones");
+    }
+
     // ==================== nested scopes ====================
 
     @Test

@@ -21,6 +21,10 @@ import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class CoercerDefaultTest {
@@ -107,6 +111,33 @@ class CoercerDefaultTest {
     }
 
     @Test
+    void coerceNonExactNumberOverflowThrows() {
+        // Long/Double/Float sources must fail loudly, not silently wrap.
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(3_000_000_000L, Integer.class),
+            "Long beyond Integer range must throw, not wrap");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(3_000_000_000L, Short.class),
+            "Long beyond Short range must throw, not wrap");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(9_000_000_000L, Byte.class),
+            "Long beyond Byte range must throw, not wrap");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(1e30, Integer.class),
+            "double beyond Integer range must throw, not wrap");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(1e30, Long.class),
+            "double beyond Long range must throw, not wrap");
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(Float.MAX_VALUE, Short.class),
+            "float beyond Short range must throw, not wrap");
+        // In-range fractional sources still truncate like the string path.
+        assertEquals(Integer.valueOf(3), coercer.coerce(3.9, Integer.class));
+        assertEquals(Integer.valueOf(0), coercer.coerce(0.5, Integer.class));
+        assertEquals(Long.valueOf(-2L), coercer.coerce(-2.9, Long.class));
+    }
+
+    @Test
     void coerceStringOverflowThrows() {
         assertThrows(IllegalArgumentException.class,
             () -> coercer.coerce("2147483648", Integer.class),
@@ -123,6 +154,20 @@ class CoercerDefaultTest {
     void coerceInRangeDecimalTruncates() {
         assertEquals(Integer.valueOf(1), coercer.coerce("1.5", Integer.class));
         assertEquals(Long.valueOf(-2L), coercer.coerce("-2.9", Long.class));
+    }
+
+    @Test
+    void shortAndByteMatchIntegerDecimalSemantics() {
+        // Fractional strings truncate consistently across all integral types
+        // (previously Short/Byte threw on "1.5" while Integer returned 1).
+        assertEquals(Short.valueOf((short) 1), coercer.coerce("1.5", Short.class));
+        assertEquals(Byte.valueOf((byte) 1), coercer.coerce("1.5", Byte.class));
+        assertEquals(Short.valueOf((short) -2), coercer.coerce("-2.9", Short.class));
+        // Out-of-range fractional values fail loudly, not wrap.
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("32768.9", Short.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("128.5", Byte.class));
     }
 
     @Test
@@ -240,6 +285,20 @@ class CoercerDefaultTest {
         assertEquals(Duration.ofSeconds(10), coercer.coerce("10s", Duration.class));
         assertEquals(Duration.ofMinutes(5), coercer.coerce("5m", Duration.class));
         assertEquals(Duration.ofHours(2), coercer.coerce("2h", Duration.class));
+        assertEquals(Duration.ofMillis(1000), coercer.coerce("1000", Duration.class));
+    }
+
+    @Test
+    void coercesDurationIso8601RoundTrip() {
+        // Duration.toString() produces ISO-8601 ("PT1H30M"); multi-unit values
+        // must round-trip instead of being misread by the single-suffix path.
+        assertEquals(Duration.ofHours(1).plusMinutes(30),
+            coercer.coerce("PT1H30M", Duration.class));
+        assertEquals(Duration.ofMinutes(5), coercer.coerce("PT5M", Duration.class));
+        assertEquals(Duration.ofSeconds(90), coercer.coerce("PT1M30S", Duration.class));
+        assertEquals(Duration.ofDays(2), coercer.coerce("P2D", Duration.class));
+        // Legacy single-suffix forms still work.
+        assertEquals(Duration.ofMinutes(5), coercer.coerce("5m", Duration.class));
         assertEquals(Duration.ofMillis(1000), coercer.coerce("1000", Duration.class));
     }
 
@@ -376,6 +435,44 @@ class CoercerDefaultTest {
 
         assertEquals(1, coercer.coerce("x", Integer.class),
             "an existing exact rule must keep priority");
+    }
+
+    @Test
+    void concurrentRegisterAndCoerce() throws Exception {
+        CoercerDefault c = new CoercerDefault();
+        int threads = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        try {
+            for (int t = 0; t < threads; t++) {
+                pool.submit(() -> {
+                    try {
+                        start.await();
+                        for (int i = 0; i < 500; i++) {
+                            c.register(new CoerceRule<>(
+                                String.class, Integer.class, Integer::parseInt));
+                            c.registerIfAbsent(new CoerceRule<>(
+                                String.class, Long.class, Long::parseLong));
+                            assertEquals(Integer.valueOf(42), c.coerce("42", Integer.class));
+                        }
+                    } catch (Throwable ex) {
+                        error.compareAndSet(null, ex);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS),
+                "concurrent register/coerce must complete within 10s");
+        } finally {
+            pool.shutdownNow();
+        }
+        assertNull(error.get(), "concurrent register/coerce failure: " + error.get());
+        assertEquals(Integer.valueOf(42), c.coerce("42", Integer.class),
+            "rules registered concurrently must all be visible");
     }
 
     @Test

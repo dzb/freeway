@@ -101,6 +101,38 @@ class JsonUtilsTest {
     }
 
     @Test
+    void parsesUnicodeEscapeNul() {
+        Object result = JsonUtils.parse("\"\\u0000\"");
+        assertEquals("\u0000", result.toString());
+        // NUL adjacent to regular text survives round-trip.
+        Object mixed = JsonUtils.parse("\"a\\u0000b\"");
+        assertEquals("a\u0000b", mixed.toString());
+    }
+
+    @Test
+    void stringLengthBoundaryIsParsedLength() {
+        // The limit counts parsed characters, so an escape sequence counts as
+        // one char. Exactly MAX is accepted; MAX+1 is rejected — in both the
+        // fast path (no escapes) and the slow path (escapes present).
+        // Matches JsonParser.MAX_STRING_LENGTH (private).
+        int max = 10 * 1024 * 1024;
+
+        Object fast = JsonUtils.parse("\"" + "a".repeat(max) + "\"");
+        assertEquals(max, fast.toString().length());
+
+        assertThrows(IllegalArgumentException.class,
+            () -> JsonUtils.parse("\"" + "a".repeat(max + 1) + "\""));
+
+        // Slow path: MAX-6 plain + \n (1 char) + 5 plain = MAX parsed chars.
+        Object slow = JsonUtils.parse("\"" + "a".repeat(max - 6) + "\\n" + "aaaaa" + "\"");
+        assertEquals(max, slow.toString().length());
+
+        assertThrows(IllegalArgumentException.class,
+            () -> JsonUtils.parse("\"" + "a".repeat(max - 5) + "\\n" + "aaaaa" + "\""),
+            "parsed length MAX+1 must be rejected");
+    }
+
+    @Test
     void parsesArray() {
         JsonArray array = JsonUtils.parseArray("[1, \"two\", true]");
 

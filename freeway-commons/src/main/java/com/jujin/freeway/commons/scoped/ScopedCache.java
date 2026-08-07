@@ -114,9 +114,21 @@ public final class ScopedCache {
      * each registered callback is applied to every distinct
      * cached value (identity-deduplicated).
      */
+    /**
+     * Registers a global close handler invoked with every cached value when a
+     * scope exits. Handlers accumulate process-wide; use
+     * {@link #removeOnClose(Consumer)} to unregister, or keep registration to
+     * startup-time one-time calls.
+     */
     public static void onClose(Consumer<Object> handler) {
         Objects.requireNonNull(handler, "handler");
         ON_CLOSE.add(handler);
+    }
+
+    /** Unregisters a previously registered close handler. */
+    public static void removeOnClose(Consumer<Object> handler) {
+        Objects.requireNonNull(handler, "handler");
+        ON_CLOSE.remove(handler);
     }
 
     static void resetCleanups() {

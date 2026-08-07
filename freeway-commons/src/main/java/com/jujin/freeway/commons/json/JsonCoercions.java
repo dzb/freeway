@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.util.Types;
+import java.lang.ClassValue;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
@@ -18,7 +19,6 @@ import java.lang.reflect.WildcardType;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -28,13 +28,13 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.WeakHashMap;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -486,15 +486,12 @@ final class JsonCoercions {
     }
 
     private static Object instantiate(Class<?> targetType) {
-        MethodHandle constructorHandle = EMPTY_CONSTRUCTORS.computeIfAbsent(
-            targetType,
-            JsonCoercions::emptyConstructor
-        );
-        if (constructorHandle == null) {
+        Optional<MethodHandle> handle = EMPTY_CONSTRUCTORS.get(targetType);
+        if (handle.isEmpty()) {
             return null;
         }
         try {
-            return constructorHandle.invoke();
+            return handle.get().invoke();
         } catch (Error e) {
             throw e;
         } catch (Throwable ex) {
@@ -502,9 +499,19 @@ final class JsonCoercions {
         }
     }
 
-    /** No-arg constructor handle per concrete class; null entry means "no such constructor". */
-    private static final Map<Class<?>, MethodHandle> EMPTY_CONSTRUCTORS =
-        Collections.synchronizedMap(new WeakHashMap<>());
+    /**
+     * No-arg constructor handle per concrete class. {@link ClassValue} gives
+     * lock-free reads and weak class association (no classloader leak); the
+     * empty {@link Optional} caches the negative case so classes without a
+     * no-arg constructor are not re-introspected on every instantiation —
+     * type-safe, no casts at the call site.
+     */
+    private static final ClassValue<Optional<MethodHandle>> EMPTY_CONSTRUCTORS = new ClassValue<>() {
+        @Override
+        protected Optional<MethodHandle> computeValue(Class<?> type) {
+            return Optional.ofNullable(emptyConstructor(type));
+        }
+    };
 
     private static MethodHandle emptyConstructor(Class<?> targetType) {
         try {
