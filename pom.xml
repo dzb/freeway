@@ -6,7 +6,7 @@
 
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-parent</artifactId>
-    <version>1.3.6</version>
+    <version>1.3.7-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>Freeway Framework</name>
@@ -193,6 +193,7 @@
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
+                    <ignorePublishedComponents>true</ignorePublishedComponents>
                 </configuration>
             </plugin>
         </plugins>
