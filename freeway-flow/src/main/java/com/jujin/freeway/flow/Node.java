@@ -26,8 +26,12 @@ public class Node {
     private final TaskDesc task;
     private final List<Link> nextLinks;
 
-    private List<Node> prevNodes, nextNodes;
-    private List<Link> prevLinks;
+    // Lazily computed graph topology views. Volatile: a shared graph may be
+    // executed by multiple threads (PARALLEL branches), so first access must
+    // publish the computed list across threads instead of silently
+    // recomputing per thread.
+    private volatile List<Node> prevNodes, nextNodes;
+    private volatile List<Link> prevLinks;
     public Object attachment;
 
     public Node(Graph graph, NodeSpec spec, List<Link> links) {

@@ -87,6 +87,15 @@ public interface FlowEngine {
 
     // --- eval by graphId ---
 
+    /**
+     * Evaluates a loaded graph.
+     *
+     * @throws FlowException runtime execution errors
+     * @throws IllegalArgumentException configuration errors (e.g. an
+     *         ambiguous {@code !marker} resolution or an unknown driver) —
+     *         intentionally propagated with their original type so callers
+     *         can distinguish misconfiguration from execution failure
+     */
     default void eval(String graphId) throws FlowException {
         eval(graphId, -1, FlowContext.of());
     }

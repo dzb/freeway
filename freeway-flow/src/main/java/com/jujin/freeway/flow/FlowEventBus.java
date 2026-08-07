@@ -60,7 +60,20 @@ public class FlowEventBus {
         List<Subscription> subs = topicSubs.get(sub.topic);
         if (subs != null) {
             subs.remove(sub);
+            if (subs.isEmpty()) {
+                topicSubs.remove(sub.topic, subs);
+            }
         }
+    }
+
+    /**
+     * 清空所有主题的订阅。
+     *
+     * <p>当一次 flow 执行结束、而 {@link FlowContext} 会被复用(暂停/恢复、
+     * 多次 eval)时调用,防止订阅者跨运行累积。</p>
+     */
+    public void clear() {
+        topicSubs.clear();
     }
 
     /**

@@ -12,6 +12,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -159,6 +162,22 @@ class FlowEngineTest {
         assertTrue(ExprEvaluator.evalCondition("score > 95 || active == true", ctx));
         assertFalse(ExprEvaluator.evalCondition("!active", ctx));
         assertTrue(ExprEvaluator.evalCondition("!(score < 50)", ctx));
+    }
+
+    @Test
+    void testExprEvaluatorDepthGuard() {
+        var ctx = new ConcurrentHashMap<String, Object>();
+        ctx.put("score", 90);
+        // Deeply nested parens must fail with FlowException, not a raw
+        // StackOverflowError.
+        String deep = "(".repeat(100) + "true" + ")".repeat(100);
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition(deep, ctx));
+        // Unary recursion is guarded too.
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition("!".repeat(100) + "true", ctx));
+        // Moderate nesting within the limit still works.
+        assertTrue(ExprEvaluator.evalCondition("((((score > 80))))", ctx));
     }
 
     // --- PlantUML ---
@@ -349,6 +368,22 @@ class FlowEngineTest {
         bus.unsubscribe(sub);
         bus.publish("order.created", "after_unsubscribe");
         assertEquals(1, received.size()); // 取消订阅后不再收到
+    }
+
+    @Test
+    void testEventBusClear() {
+        List<String> received = new ArrayList<>();
+        FlowEventBus bus = new FlowEventBus();
+        bus.subscribe("t1", event -> received.add("t1:" + event));
+        bus.subscribe("t2", event -> received.add("t2:" + event));
+
+        bus.publish("t1", "a");
+        assertEquals(List.of("t1:a"), received);
+
+        bus.clear();
+        bus.publish("t1", "b");
+        bus.publish("t2", "c");
+        assertEquals(1, received.size()); // 清空后所有 topic 均不再派发
     }
 
     @Test
@@ -935,6 +970,31 @@ class FlowEngineTest {
     }
 
     @Test
+    void loopIterationLimitFailsFast() {
+        // A misconfigured/oversized $in must not spin forever — the engine
+        // enforces a hard iteration cap and fails with a clear error.
+        List<Integer> huge = new java.util.ArrayList<>(FlowEngineImpl.MAX_LOOP_ITERATIONS + 1);
+        for (int i = 0; i < FlowEngineImpl.MAX_LOOP_ITERATIONS + 1; i++) {
+            huge.add(i);
+        }
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> {})
+            .build());
+        Graph g = GraphSpec.create("loop", spec -> {
+            spec.entry("l");
+            spec.addLoop("l").metaPut("$for", "item")
+                .metaPut("$in", huge)
+                .task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        FlowException ex = assertThrows(FlowException.class,
+            () -> engine.eval("loop", FlowContext.of()));
+        assertTrue(ex.getMessage().contains("LOOP iteration limit"),
+            "expected iteration limit error, got: " + ex.getMessage());
+    }
+
+    @Test
     void standaloneDriverErrorMessageIsGeneric() {
         FlowEngine engine = FlowEngine.newInstance(Map.of("a", new FlowDriverDefault(null, null)));
         Graph g = graphWithDriver("nonexistent");
@@ -991,5 +1051,264 @@ class FlowEngineTest {
         assertTrue(executed.contains("gw"));
         assertTrue(executed.contains("default_path"));
         assertFalse(executed.contains("false_path"));
+    }
+
+    @Test
+    void stepperHalfOpenIntervalSemantics() {
+        // [start, end) — end is exclusive, documented in Stepper's javadoc.
+        var s1 = Stepper.from("1...9");
+        var collected = new ArrayList<Integer>();
+        while (s1.hasNext()) collected.add(s1.next());
+        assertEquals(List.of(1, 2, 3, 4, 5, 6, 7, 8), collected);
+
+        // Explicit step.
+        var s2 = Stepper.from("1:10:2");
+        var collected2 = new ArrayList<Integer>();
+        while (s2.hasNext()) collected2.add(s2.next());
+        assertEquals(List.of(1, 3, 5, 7, 9), collected2);
+
+        // Non-divisible step stops before end.
+        var s3 = Stepper.from("1:10:4");
+        var collected3 = new ArrayList<Integer>();
+        while (s3.hasNext()) collected3.add(s3.next());
+        assertEquals(List.of(1, 5, 9), collected3);
+
+        // Empty range.
+        assertFalse(Stepper.from("5...5").hasNext());
+        assertThrows(IllegalArgumentException.class, () -> Stepper.from("1:9:0"));
+        assertThrows(IllegalArgumentException.class, () -> Stepper.from("1:9"));
+        assertThrows(IllegalArgumentException.class, () -> Stepper.from("a...b"));
+    }
+
+    @Test
+    void parallelGatewayFansOutAcrossExecutor() throws Exception {
+        // PARALLEL branches must run concurrently on the driver's executor.
+        // The PARALLEL node itself runs on the calling thread (no-op task);
+        // only branch tasks block on the barrier.
+        int branches = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(branches);
+        try {
+            var maxConcurrent = new AtomicInteger(0);
+            var active = new AtomicInteger(0);
+            var barrier = new CountDownLatch(branches);
+            var executed = new java.util.concurrent.ConcurrentLinkedQueue<String>();
+            FlowEngine engine = newEngine(FlowDriverDefault.builder()
+                .executor(executor)
+                .container(name -> {
+                    if ("noop".equals(name)) {
+                        return (TaskComponent) (ctx, node) -> {};
+                    }
+                    return (TaskComponent) (ctx, node) -> {
+                        int cur = active.incrementAndGet();
+                        maxConcurrent.accumulateAndGet(cur, Math::max);
+                        executed.add(node.getId());
+                        barrier.countDown();
+                        // Hold the branch open until all branches are inside —
+                        // proves concurrent execution rather than sequential.
+                        barrier.await();
+                        active.decrementAndGet();
+                    };
+                })
+                .build());
+            Graph g = GraphSpec.create("par", spec -> {
+                spec.entry("s");
+                spec.addStart("s").linkAdd("p");
+                spec.addParallel("p").task("@noop").linkAdd("a").linkAdd("b")
+                    .linkAdd("c").linkAdd("d").linkAdd("e").linkAdd("f")
+                    .linkAdd("g").linkAdd("h");
+                spec.addActivity("a").task("@dummy").linkAdd("end");
+                spec.addActivity("b").task("@dummy").linkAdd("end");
+                spec.addActivity("c").task("@dummy").linkAdd("end");
+                spec.addActivity("d").task("@dummy").linkAdd("end");
+                spec.addActivity("e").task("@dummy").linkAdd("end");
+                spec.addActivity("f").task("@dummy").linkAdd("end");
+                spec.addActivity("g").task("@dummy").linkAdd("end");
+                spec.addActivity("h").task("@dummy").linkAdd("end");
+                spec.addEnd("end");
+            }).create();
+            engine.load(g);
+            engine.eval("par", FlowContext.of());
+        assertEquals(branches, executed.size());
+        assertEquals(8, maxConcurrent.get(),
+            "branches must overlap in time (concurrent execution)");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    // --- audit gap tests ---
+
+    @Test
+    void pauseAndResumeContinuesFromTrace() {
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec.create("chain", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a"); // START carries no task
+            spec.addActivity("a").task("@dummy").linkAdd("b");
+            spec.addActivity("b").task("@dummy").linkAdd("c");
+            spec.addActivity("c").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+
+        FlowContext ctx = FlowContext.of();
+        // steps=3: s(START,1) a(2) b(3) — c is recorded but its task does not
+        // run (nextStep stops it). Two task-carrying nodes executed.
+        engine.eval("chain", 3, ctx);
+        assertEquals(2, executed.size(), "steps=3 must stop after two task nodes");
+
+        executed.clear();
+        engine.eval("chain", -1, ctx); // resume from the last traced node (c)
+        assertEquals(List.of("c"), executed,
+            "resume must continue from the last traced node");
+    }
+
+    @Test
+    void markerResolutionRejectsAmbiguousSpecificity() {
+        FlowMarkerIndex index = new FlowMarkerIndex();
+        index.register(comp("one"), Set.of("a"));
+        index.register(comp("two"), Set.of("a"));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> index.resolve(Set.of("a")));
+        assertTrue(ex.getMessage().contains("equal specificity"),
+            "expected ambiguity error, got: " + ex.getMessage());
+    }
+
+    @Test
+    void inclusiveGatewayJoinsMultipleIncomingBranches() {
+        var executed = new java.util.concurrent.ConcurrentLinkedQueue<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec.create("incjoin", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("p");
+            spec.addParallel("p").task("@dummy").linkAdd("a").linkAdd("b");
+            spec.addActivity("a").task("@dummy").linkAdd("gw");
+            spec.addActivity("b").task("@dummy").linkAdd("gw");
+            spec.addInclusive("gw").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        engine.eval("incjoin", FlowContext.of());
+        assertTrue(executed.contains("gw"), "inclusive gateway must execute");
+        assertTrue(executed.contains("a") && executed.contains("b"),
+            "both branches must reach the gateway");
+    }
+
+    @Test
+    void metaTaskReadsGraphMetadata() {
+        // $meta tasks write the resolved value into the context under
+        // _meta_<key>; a downstream @beanName task reads it back.
+        var seen = new java.util.concurrent.atomic.AtomicReference<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> {
+                if ("check".equals(name)) {
+                    return (TaskComponent) (ctx, node) ->
+                        seen.set(ctx.getAs("_meta_endpoint"));
+                }
+                return (TaskComponent) (ctx, node) -> {};
+            })
+            .build());
+        Graph g = GraphSpec.create("meta", spec -> {
+            spec.metaPut("endpoint", "http://example.com");
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("$endpoint").linkAdd("b");
+            spec.addActivity("b").task("@check").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        engine.eval("meta", FlowContext.of());
+        assertEquals("http://example.com", seen.get(),
+            "$meta task must expose the graph metadata via _meta_<key>");
+    }
+
+    @Test
+    void subgraphTaskInvokesLoadedGraph() {
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph child = GraphSpec.create("child", spec -> {
+            spec.entry("cs");
+            spec.addStart("cs").linkAdd("ca");
+            spec.addActivity("ca").task("@dummy").linkAdd("ce");
+            spec.addEnd("ce");
+        }).create();
+        Graph parent = GraphSpec.create("parent", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("#child").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(child);
+        engine.load(parent);
+        engine.eval("parent", FlowContext.of());
+        assertTrue(executed.contains("ca"),
+            "#graph subgraph call must execute the child graph, got " + executed);
+    }
+
+    private static TaskComponent comp(String name) {
+        // Captures name: a capturing lambda creates a fresh instance per call,
+        // so two registrations are distinct components (a stateless lambda
+        // would be interned by the JVM and collapse to one Entry).
+        return (ctx, node) -> { String tag = name; if (tag == null) throw new IllegalStateException(); };
+    }
+
+    @Test
+    void parallelBranchesConvergeOnInclusiveGatewayOnce() throws Exception {
+        // The ExecState atomic-join fix: PARALLEL branches converging on the
+        // same INCLUSIVE gateway must execute it exactly once, never twice or
+        // zero times, regardless of interleaving.
+        int branches = 6;
+        ExecutorService executor = Executors.newFixedThreadPool(branches);
+        try {
+            var gatewayExecutions = new AtomicInteger();
+            FlowEngine engine = newEngine(FlowDriverDefault.builder()
+                .executor(executor)
+                .container(name -> (TaskComponent) (ctx, node) -> {
+                    if ("gw".equals(node.getId())) gatewayExecutions.incrementAndGet();
+                })
+                .build());
+            Graph g = GraphSpec.create("parinc", spec -> {
+                spec.entry("s");
+                spec.addStart("s").linkAdd("p");
+                spec.addParallel("p").task("@noop").linkAdd("a").linkAdd("b")
+                    .linkAdd("c").linkAdd("d").linkAdd("e").linkAdd("f");
+                spec.addActivity("a").task("@dummy").linkAdd("gw");
+                spec.addActivity("b").task("@dummy").linkAdd("gw");
+                spec.addActivity("c").task("@dummy").linkAdd("gw");
+                spec.addActivity("d").task("@dummy").linkAdd("gw");
+                spec.addActivity("e").task("@dummy").linkAdd("gw");
+                spec.addActivity("f").task("@dummy").linkAdd("gw");
+                spec.addInclusive("gw").task("@dummy").linkAdd("end");
+                spec.addEnd("end");
+            }).create();
+            engine.load(g);
+            engine.eval("parinc", FlowContext.of());
+            assertEquals(1, gatewayExecutions.get(),
+                "inclusive gateway must join concurrent branches exactly once");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void flowContextJsonRoundTrip() {
+        FlowContext ctx = FlowContext.of();
+        ctx.data().put("name", "alice");
+        ctx.data().put("count", 42);
+        ctx.stop();
+
+        String json = ctx.toJson();
+        FlowContext restored = FlowContextImpl.fromJson(json);
+
+        assertEquals("alice", restored.data().get("name"));
+        assertEquals(42, restored.data().get("count"));
+        assertTrue(restored.isStopped(), "stopped flag must survive serialization");
     }
 }

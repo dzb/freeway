@@ -123,6 +123,9 @@ public class FlowContextImpl implements FlowContext {
         if (exchanger != null) {
             exchanger.stop();
         }
+        // Serialization reads the field directly — keep it in sync even when
+        // this context is used standalone (no exchanger attached).
+        stopped = true;
     }
 
     @Override

@@ -78,10 +78,18 @@ public class FlowModule implements ModuleEx {
 
         @Override
         public Object getComponent(String componentName) {
+            // TaskComponent first (most common), then ConditionComponent —
+            // a @beanName condition reference must resolve components bound
+            // as ConditionComponent, not only TaskComponent.
             try {
                 return fwContainer.get(TaskComponent.class, componentName);
             } catch (IllegalArgumentException e) {
-                LOG.debug("Failed to resolve @beanName '{}'", componentName, e);
+                LOG.debug("Failed to resolve @beanName '{}' as TaskComponent", componentName, e);
+            }
+            try {
+                return fwContainer.get(ConditionComponent.class, componentName);
+            } catch (IllegalArgumentException e) {
+                LOG.debug("Failed to resolve @beanName '{}' as ConditionComponent", componentName, e);
                 return null;
             }
         }

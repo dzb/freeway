@@ -9,8 +9,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Stack;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 流引擎实现。
@@ -28,6 +31,8 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class FlowEngineImpl implements FlowEngine {
 
+    private static final Logger LOG = LoggerFactory.getLogger(FlowEngineImpl.class);
+
     /**
      * Maximum node recursion depth during evaluation. The executor walks the
      * graph recursively (one frame per node), so pathologically deep chains
@@ -37,6 +42,13 @@ public class FlowEngineImpl implements FlowEngine {
      */
     static final int MAX_EXECUTION_DEPTH = 1000;
 
+    /**
+     * Upper bound for LOOP node iterations driven by {@code $in}. Iterations
+     * run sequentially inside a single frame, so the recursion depth guard
+     * offers no protection against an oversized or unbounded collection.
+     */
+    static final int MAX_LOOP_ITERATIONS = 100_000;
+
     protected final Map<String, Graph> graphMap;
     protected final Map<String, FlowDriver> drivers;
     protected final FlowMarkerIndex markerIndex = new FlowMarkerIndex();
@@ -44,7 +56,8 @@ public class FlowEngineImpl implements FlowEngine {
 
     public FlowEngineImpl(Map<String, FlowDriver> drivers) {
         this.drivers = new HashMap<>(Objects.requireNonNull(drivers, "drivers"));
-        this.graphMap = new HashMap<>();
+        // Concurrent: load()/unload() may run while other threads evaluate.
+        this.graphMap = new ConcurrentHashMap<>();
         this.interceptorList = new ArrayList<>();
     }
 
@@ -322,6 +335,12 @@ public class FlowEngineImpl implements FlowEngine {
         Link defLine = null;
         for (Link l : node.getNextLinks()) {
             if (l.getWhen().isEmpty()) {
+                if (defLine != null) {
+                    LOG.warn(
+                        "EXCLUSIVE node '{}/{}' has multiple default (unconditional) links — using the last one",
+                        node.getGraph().getId(), node.getId()
+                    );
+                }
                 defLine = l;
             } else if (condition_test(exchanger, l.getWhen(), false)) {
                 node_run(exchanger, options, l.getNextNode(), startNode);
@@ -330,6 +349,11 @@ public class FlowEngineImpl implements FlowEngine {
         }
         if (defLine != null) {
             node_run(exchanger, options, defLine.getNextNode(), startNode);
+        } else {
+            LOG.warn(
+                "EXCLUSIVE node '{}/{}' matched no condition and has no default link — execution stops at this node",
+                node.getGraph().getId(), node.getId()
+            );
         }
     }
 
@@ -343,13 +367,16 @@ public class FlowEngineImpl implements FlowEngine {
 
     @SuppressWarnings("unchecked")
     protected boolean inclusive_run_in(FlowExchanger exchanger, Node node) {
-        Stack<Integer> stack = exchanger.execState().stack(node.getGraph(), "inclusive_run");
         if (node.getPrevLinks().size() > 1) {
-            if (!stack.isEmpty()) {
-                int startSize = stack.peek();
-                int inSize = exchanger.execState().countIncr(node.getGraph(), node.getId());
-                if (startSize > inSize) return false;
-                stack.pop();
+            // Join semantics: the gateway activates exactly once, when every
+            // incoming branch has arrived (standard BPMN inclusive-join).
+            // countIncr is per-eval (ExecState is fresh per evaluation), so
+            // the Nth arrival activates it and earlier ones park. Branches
+            // whose condition does not route them to the gateway would leave
+            // the join incomplete — same limitation as before, now explicit.
+            synchronized (exchanger.execState().stack(node.getGraph(), "inclusive_run")) {
+                int arrived = exchanger.execState().countIncr(node.getGraph(), node.getId());
+                return arrived >= node.getPrevLinks().size();
             }
         }
         return true;
@@ -357,15 +384,11 @@ public class FlowEngineImpl implements FlowEngine {
 
     @SuppressWarnings("unchecked")
     protected void inclusive_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        Stack<Integer> stack = exchanger.execState().stack(node.getGraph(), "inclusive_run");
         List<Link> matched = new ArrayList<>();
         for (Link l : node.getNextLinks()) {
             if (condition_test(exchanger, l.getWhen(), true)) matched.add(l);
         }
-        if (!matched.isEmpty()) {
-            stack.push(matched.size());
-            for (Link l : matched) node_run(exchanger, options, l.getNextNode(), startNode);
-        }
+        for (Link l : matched) node_run(exchanger, options, l.getNextNode(), startNode);
     }
 
     // ==================== PARALLEL ====================
@@ -433,10 +456,14 @@ public class FlowEngineImpl implements FlowEngine {
     @SuppressWarnings("unchecked")
     protected boolean loop_run_in(FlowExchanger exchanger, Node node) {
         Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run");
-        if (!stack.isEmpty()) {
-            Iterator<?> iter = stack.peek();
-            if (iter.hasNext()) return false;
-            stack.pop();
+        // Atomic peek→hasNext→pop: a LOOP node reachable from concurrent
+        // PARALLEL branches shares this stack.
+        synchronized (stack) {
+            if (!stack.isEmpty()) {
+                Iterator<?> iter = stack.peek();
+                if (iter.hasNext()) return false;
+                stack.pop();
+            }
         }
         return true;
     }
@@ -467,7 +494,20 @@ public class FlowEngineImpl implements FlowEngine {
         Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run");
         stack.push(iter);
 
+        // Guard against unbounded iteration: a misconfigured or malicious
+        // $in (e.g. a multi-million-element list) would otherwise spin here
+        // forever — the recursion depth guard does not help because LOOP body
+        // iterations run sequentially in a single frame.
+        int iterations = 0;
         while (iter.hasNext()) {
+            if (++iterations > MAX_LOOP_ITERATIONS) {
+                throw new FlowException(
+                    "LOOP iteration limit exceeded (max " + MAX_LOOP_ITERATIONS
+                        + ") at graph '" + node.getGraph().getId()
+                        + "' / node '" + node.getId()
+                        + "' — check '$in' for an oversized or unbounded collection"
+                );
+            }
             Object item = iter.next();
             exchanger.context().put(forKey, item);
             activity_run_out(exchanger, options, node, startNode);

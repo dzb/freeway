@@ -455,6 +455,19 @@ public class GraphSpec {
             }
         }
 
+        // 1.5 Reject cycles — a cyclic graph recurses forever at runtime and
+        //     the execution depth guard is a passive backstop, not validation.
+        //     LOOP iteration is driven by the engine's $in loop, never by a
+        //     link back to the loop node, so no cycle is legitimate here.
+        List<String> cycle = findCycle();
+        if (cycle != null) {
+            throw new IllegalStateException(
+                "Cycle detected in graph '" + id + "': " + String.join(" -> ", cycle)
+                + ". Flow graphs must be acyclic (LOOP iteration is driven by $in,"
+                + " not by link back-edges)."
+            );
+        }
+
         // 2. Validate entry — v2 requires exactly one entry point.
         //    The entry node keeps its original type in the runtime graph;
         //    execution starts from that node regardless of type.
@@ -512,6 +525,52 @@ public class GraphSpec {
         }
 
         return this;
+    }
+
+    private List<String> findCycle() {
+        // Three-color DFS: 0 = unvisited, 1 = on current path, 2 = fully explored.
+        Map<String, Integer> state = new LinkedHashMap<>();
+        Deque<String> path = new ArrayDeque<>();
+        for (String nodeId : nodes.keySet()) {
+            if (dfsCycle(nodeId, state, path)) {
+                return cycleDescription(path);
+            }
+        }
+        return null;
+    }
+
+    private boolean dfsCycle(
+        String nodeId,
+        Map<String, Integer> state,
+        Deque<String> path
+    ) {
+        int s = state.getOrDefault(nodeId, 0);
+        if (s == 2) {
+            return false;
+        }
+        if (s == 1) {
+            // Back-edge: nodeId is already on the current path.
+            path.addLast(nodeId);
+            return true;
+        }
+        state.put(nodeId, 1);
+        path.addLast(nodeId);
+        for (LinkSpec link : links) {
+            if (link.from.equals(nodeId) && dfsCycle(link.to, state, path)) {
+                return true;
+            }
+        }
+        path.removeLast();
+        state.put(nodeId, 2);
+        return false;
+    }
+
+    /** Extracts the cyclic segment from the DFS path (ends with the repeated node). */
+    private List<String> cycleDescription(Deque<String> path) {
+        List<String> list = new ArrayList<>(path);
+        String closing = list.getLast();
+        int start = list.indexOf(closing);
+        return List.copyOf(list.subList(start, list.size()));
     }
 
     private List<NodeSpec> nodesInCompileOrder() {

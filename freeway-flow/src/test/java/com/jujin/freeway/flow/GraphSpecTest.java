@@ -287,9 +287,10 @@ class GraphSpecTest {
     }
 
     @Test
-    void testCyclicGraphCreatesNormally() {
+    void testCyclicGraphRejected() {
         // a → b → a forms a cycle; both nodes are reachable from entry 'a'.
-        // c is unreachable — normalize() logs a warning, create() succeeds.
+        // Cyclic graphs must fail fast at build time — the runtime depth
+        // guard is a passive backstop, not validation.
         GraphSpec bp = GraphSpec.create("cycle", spec -> {
             spec.entry("a");
             spec.addActivity("a").task("@t1").linkAdd("b");
@@ -297,12 +298,22 @@ class GraphSpecTest {
             spec.addActivity("c").task("@t3").linkAdd("end");
             spec.addEnd("end");
         });
-        Graph g = bp.create();
-        assertEquals("cycle", g.getId());
-        assertNotNull(g.getNode("a"));
-        assertNotNull(g.getNode("b"));
-        assertNotNull(g.getNode("c")); // created even though unreachable
-        assertEquals(4, g.getNodes().size());
+        IllegalStateException ex = assertThrows(IllegalStateException.class, bp::create);
+        assertTrue(ex.getMessage().contains("Cycle detected"),
+            "expected cycle rejection, got: " + ex.getMessage());
+    }
+
+    @Test
+    void testSelfLinkRejected() {
+        // A node linking to itself is a degenerate cycle and must be rejected.
+        GraphSpec bp = GraphSpec.create("self", spec -> {
+            spec.entry("a");
+            spec.addActivity("a").task("@t1").linkAdd("a");
+            spec.addEnd("e");
+        });
+        IllegalStateException ex = assertThrows(IllegalStateException.class, bp::create);
+        assertTrue(ex.getMessage().contains("Cycle detected"),
+            "expected cycle rejection, got: " + ex.getMessage());
     }
 
     @Test

@@ -128,9 +128,11 @@ public final class ExprEvaluator {
     // ======================== 编译（解析 → AST，只执行一次） ========================
 
     private static final class Compiler {
+        private static final int MAX_NESTING_DEPTH = 64;
         private final String expr;
         private int pos;
         private final int len;
+        private int depth;
 
         static AstNode compile(String expr) {
             Compiler c = new Compiler(expr);
@@ -196,28 +198,57 @@ public final class ExprEvaluator {
 
         private AstNode unaryExpr() {
             skipSpaces();
-            if (match("!")) return new UnaryOp("!", unaryExpr());
+            if (match("!")) {
+                // Unary chains recurse without passing through primary(),
+                // so count them against the same nesting budget.
+                if (++depth > MAX_NESTING_DEPTH) {
+                    throw new FlowException(
+                        "Expression nested too deeply (max " + MAX_NESTING_DEPTH
+                            + ") in '" + expr + "'"
+                    );
+                }
+                try {
+                    return new UnaryOp("!", unaryExpr());
+                } finally {
+                    depth--;
+                }
+            }
             return primary();
         }
 
         private AstNode primary() {
-            skipSpaces();
-            if (pos >= len) throw new FlowException("Unexpected end of expression: '" + expr + "'");
-            char c = expr.charAt(pos);
-            if (c == '-' || c == '+' || (c >= '0' && c <= '9')) return new Literal(number());
-            if (c == '\'' || c == '"') return new Literal(string());
-            if (c == '(') { pos++; var val = orExpr(); skipSpaces(); require(')'); return val; }
-            if (isIdentStart(c)) {
-                String id = ident();
-                return switch (id) {
-                    case "true" -> new Literal(true);
-                    case "false" -> new Literal(false);
-                    case "null" -> new Literal(null);
-                    case "not" -> new UnaryOp("not", unaryExpr());
-                    default -> new Ident(id, null);
-                };
+            // Depth guard: parenthesized and unary (`!`/`not`) expressions
+            // recurse, and a pathological input (e.g. thousands of nested
+            // parens) would otherwise blow the JVM stack with a raw
+            // StackOverflowError during compilation. All recursive paths
+            // funnel through primary(), so counting here covers them all.
+            if (++depth > MAX_NESTING_DEPTH) {
+                throw new FlowException(
+                    "Expression nested too deeply (max " + MAX_NESTING_DEPTH
+                        + ") in '" + expr + "'"
+                );
             }
-            throw new FlowException("Unexpected character '" + c + "' at position " + pos + " in '" + expr + "'");
+            try {
+                skipSpaces();
+                if (pos >= len) throw new FlowException("Unexpected end of expression: '" + expr + "'");
+                char c = expr.charAt(pos);
+                if (c == '-' || c == '+' || (c >= '0' && c <= '9')) return new Literal(number());
+                if (c == '\'' || c == '"') return new Literal(string());
+                if (c == '(') { pos++; var val = orExpr(); skipSpaces(); require(')'); return val; }
+                if (isIdentStart(c)) {
+                    String id = ident();
+                    return switch (id) {
+                        case "true" -> new Literal(true);
+                        case "false" -> new Literal(false);
+                        case "null" -> new Literal(null);
+                        case "not" -> new UnaryOp("not", unaryExpr());
+                        default -> new Ident(id, null);
+                    };
+                }
+                throw new FlowException("Unexpected character '" + c + "' at position " + pos + " in '" + expr + "'");
+            } finally {
+                depth--;
+            }
         }
 
         private void require(char expected) {
