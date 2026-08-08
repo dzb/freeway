@@ -514,4 +514,34 @@ class DeferTest {
         assertSame(first, second,
             "the cached failure must be rethrown, never a silent null");
     }
+
+    @Test
+    void propagatingExecutorRestoresScopeOnWorker() throws Exception {
+        // Defer.propagating(...) must restore the submitting thread's scope
+        // on the worker — the plain-executor default (no propagation) is
+        // covered by ContextualExecutorTest.
+        var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            var executor = Defer.propagating(pool);
+            java.util.concurrent.atomic.AtomicBoolean workerInScope =
+                new java.util.concurrent.atomic.AtomicBoolean();
+            java.util.concurrent.CountDownLatch done =
+                new java.util.concurrent.CountDownLatch(1);
+
+            Defer.within(() -> {
+                executor.execute(() -> {
+                    workerInScope.set(Defer.isActive());
+                    done.countDown();
+                });
+            });
+
+            assertTrue(done.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                "the worker task must run");
+            assertTrue(workerInScope.get(),
+                "the Defer scope binding must reach the worker via propagating()");
+        } finally {
+            pool.close();
+        }
+    }
 }
+
