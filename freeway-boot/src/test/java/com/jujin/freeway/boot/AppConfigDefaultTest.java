@@ -60,8 +60,25 @@ class AppConfigDefaultTest {
     }
 
     @Test
-    void requiredKeyFailsFastWhenAbsentOrBlank() {
-        ConfigSpec<String> password = ConfigSpec.required(
+    void coercerParsedSpecResolvesContainerTypes() {
+        // No per-key parser: the container Coercer resolves the value —
+        // "2s" duration syntax and user-registered rules apply.
+        ConfigSpec<java.time.Duration> timeout = ConfigSpec.of(
+            "pool.timeout", java.time.Duration.class,
+            java.time.Duration.ofSeconds(5));
+        com.jujin.freeway.commons.coercion.Coercer coercer =
+            new com.jujin.freeway.commons.coercion.CoercerDefault();
+
+        assertEquals(java.time.Duration.ofSeconds(2),
+            timeout.parse("2s", coercer),
+            "the coercer resolves duration syntax");
+        assertEquals(java.time.Duration.ofSeconds(5),
+            timeout.parse("", coercer),
+            "blank input falls back to the default");
+    }
+
+    @Test
+    void requiredKeyFailsFastWhenAbsentOrBlank() {        ConfigSpec<String> password = ConfigSpec.required(
             "db.password", String.class, String::valueOf);
         AppConfig absent = new AppConfigDefault(
             new LinkedHashMap<>(), List.of());

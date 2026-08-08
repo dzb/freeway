@@ -137,6 +137,26 @@ public final class DbModule implements ModuleEx {
     private static final ConfigSpec<Integer> POOL_MIN_IDLE =
         ConfigSpec.of(DbConfigKeys.POOL_MIN_IDLE, Integer.class,
             PoolConfig.DEFAULT_MIN_IDLE, Integer::parseInt);
+    // Duration keys: no per-key parser — resolved by the container Coercer
+    // ("2s" syntax, user-registered rules) via parse(raw, coercer).
+    private static final ConfigSpec<Duration> POOL_CONNECTION_TIMEOUT =
+        ConfigSpec.of(DbConfigKeys.POOL_CONNECTION_TIMEOUT, Duration.class,
+            PoolConfig.DEFAULT_CONNECTION_TIMEOUT);
+    private static final ConfigSpec<Duration> POOL_MAX_LIFETIME =
+        ConfigSpec.of(DbConfigKeys.POOL_MAX_LIFETIME, Duration.class,
+            PoolConfig.DEFAULT_MAX_LIFETIME);
+    private static final ConfigSpec<Duration> POOL_MAX_IDLE_TIME =
+        ConfigSpec.of(DbConfigKeys.POOL_MAX_IDLE_TIME, Duration.class,
+            PoolConfig.DEFAULT_MAX_IDLE_TIME);
+    private static final ConfigSpec<Duration> POOL_CLEAN_INTERVAL =
+        ConfigSpec.of(DbConfigKeys.POOL_CLEAN_INTERVAL, Duration.class,
+            PoolConfig.DEFAULT_CLEAN_INTERVAL);
+    private static final ConfigSpec<Duration> POOL_HEALTH_CHECK_TIMEOUT =
+        ConfigSpec.of(DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, Duration.class,
+            PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT);
+    private static final ConfigSpec<Duration> QUERY_TIMEOUT =
+        ConfigSpec.of(DbConfigKeys.QUERY_TIMEOUT, Duration.class,
+            PoolConfig.DEFAULT_QUERY_TIMEOUT);
 
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
@@ -147,19 +167,14 @@ public final class DbModule implements ModuleEx {
             s.resolve(DbConfigKeys.PASSWORD, ""),
             POOL_MAX_SIZE.parse(s.resolve(DbConfigKeys.POOL_MAX_SIZE, "")),
             POOL_MIN_IDLE.parse(s.resolve(DbConfigKeys.POOL_MIN_IDLE, "")),
-            resolveDuration(coercer, s, DbConfigKeys.POOL_CONNECTION_TIMEOUT, PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
-            resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_LIFETIME, PoolConfig.DEFAULT_MAX_LIFETIME),
-            resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_IDLE_TIME, PoolConfig.DEFAULT_MAX_IDLE_TIME),
-            resolveDuration(coercer, s, DbConfigKeys.POOL_CLEAN_INTERVAL, PoolConfig.DEFAULT_CLEAN_INTERVAL),
+            POOL_CONNECTION_TIMEOUT.parse(s.resolve(DbConfigKeys.POOL_CONNECTION_TIMEOUT, ""), coercer),
+            POOL_MAX_LIFETIME.parse(s.resolve(DbConfigKeys.POOL_MAX_LIFETIME, ""), coercer),
+            POOL_MAX_IDLE_TIME.parse(s.resolve(DbConfigKeys.POOL_MAX_IDLE_TIME, ""), coercer),
+            POOL_CLEAN_INTERVAL.parse(s.resolve(DbConfigKeys.POOL_CLEAN_INTERVAL, ""), coercer),
             s.resolve(DbConfigKeys.POOL_HEALTH_CHECK_QUERY, null),
-            resolveDuration(coercer, s, DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
-            resolveDuration(coercer, s, DbConfigKeys.QUERY_TIMEOUT, PoolConfig.DEFAULT_QUERY_TIMEOUT)
+            POOL_HEALTH_CHECK_TIMEOUT.parse(s.resolve(DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, ""), coercer),
+            QUERY_TIMEOUT.parse(s.resolve(DbConfigKeys.QUERY_TIMEOUT, ""), coercer)
         );
-    }
-
-    private static Duration resolveDuration(Coercer coercer, SymbolSource s, String key, Duration def) {
-        String raw = s.resolve(key, "");
-        return raw.isBlank() ? def : coercer.coerce(raw, Duration.class);
     }
 
     private static Database buildDatabase(Container container) {

@@ -36,6 +36,30 @@ public record ConfigSpec<T>(
     boolean required
 ) {
 
+    /**
+     * Creates an optional key whose value is parsed by the container
+     * {@code Coercer} (no per-key parser needed — Duration, Boolean, List and
+     * user-registered {@code CoerceRule} targets all work). Consume via
+     * {@link #parse(String, Coercer)}.
+     */
+    public static <T> ConfigSpec<T> of(
+        String key,
+        Class<T> type,
+        T defaultValue
+    ) {
+        return of(key, type, defaultValue, null, "");
+    }
+
+    /** Coercer-parsed optional key with a human-readable description. */
+    public static <T> ConfigSpec<T> of(
+        String key,
+        Class<T> type,
+        T defaultValue,
+        String description
+    ) {
+        return of(key, type, defaultValue, null, description);
+    }
+
     /** Creates an optional key with a default; absent/blank falls back. */
     public static <T> ConfigSpec<T> of(
         String key,
@@ -73,6 +97,14 @@ public record ConfigSpec<T>(
         return required(key, type, parser, "");
     }
 
+    /** Coercer-parsed required key: absent/blank input fails fast. */
+    public static <T> ConfigSpec<T> required(
+        String key,
+        Class<T> type
+    ) {
+        return required(key, type, null, "");
+    }
+
     /** Required key with a human-readable description. */
     public static <T> ConfigSpec<T> required(
         String key,
@@ -99,7 +131,8 @@ public record ConfigSpec<T>(
             throw new IllegalArgumentException("Config key must not be blank");
         }
         Objects.requireNonNull(type, "type");
-        Objects.requireNonNull(parser, "parser");
+        // parser may be null — the coercer-parsed form (of/required without a
+        // parser) resolves via parse(raw, Coercer) instead.
         return key;
     }
 
@@ -110,6 +143,20 @@ public record ConfigSpec<T>(
      * — errors carry enough context to fix the config without a stack crawl.
      */
     public T parse(String raw) {
+        if (parser == null) {
+            throw new IllegalStateException(
+                "ConfigSpec '" + key + "' has no parser — resolve it via "
+                    + "parse(raw, Coercer) with a container Coercer");
+        }
+        return parse(raw, null);
+    }
+
+    /**
+     * Parses a raw value using the container {@code Coercer} when the spec
+     * has no per-key parser (the {@code of(key, type, default)} form). A
+     * spec with an explicit parser uses it regardless of the coercer.
+     */
+    public T parse(String raw, com.jujin.freeway.commons.coercion.Coercer coercer) {
         if (raw == null || raw.isBlank()) {
             if (required) {
                 throw new IllegalArgumentException(
@@ -119,7 +166,10 @@ public record ConfigSpec<T>(
         }
         String stripped = raw.strip();
         try {
-            return parser.apply(stripped);
+            T value = parser != null
+                ? parser.apply(stripped)
+                : coercer.coerce(stripped, type);
+            return value;
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(
                 "Invalid value for config key '" + key + "': '" + stripped + "'",

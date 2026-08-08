@@ -97,8 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   容器 builtin 默认 NoopMetrics、可 primary 覆盖）——EventBus 接入
   （published/delivered/subscriber_failures/dead_events 镜像计数）；
   `ConfigSpec<T>` 类型化配置（解析 + 默认 + 含 key 上下文的错误消息，
-  `AppConfig.get(ConfigSpec)` 统一入口——替代分散 parseInt；DbModule 池配置
-  已适配（URL/USERNAME required + 池大小 parseInt，手写 helper 删除）。
+  `AppConfig.get(ConfigSpec)` 统一入口——替代分散 parseInt；**无 parser
+  形式（Coercer 默认解析）**：`of(key, type, default)` + `parse(raw, Coercer)`
+  支持 Duration/"2s"/用户 CoerceRule——DbModule 池配置全量适配（URL/USERNAME
+  required、池大小 parseInt、6 个 Duration 键走 Coercer，手写 helper 删除）。
   **移至 commons.config**（http/db 等模块不依赖 boot 也可声明类型化键）；
   新增 `required()` 工厂（命名经评估：ConfigKey → ConfigSpec，区分裸 key 常量族）（缺失/空白 fail-fast，不再静默回默认）。+10 测试。
 
