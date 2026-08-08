@@ -2,6 +2,7 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
@@ -30,6 +31,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * IoC module that integrates {@code freeway-db} with the Freeway container.
@@ -125,15 +127,26 @@ public final class DbModule implements ModuleEx {
             .before("freeway.http.server");
     }
 
+    private static final ConfigSpec<String> URL =
+        ConfigSpec.required(DbConfigKeys.URL, String.class, Function.identity());
+    private static final ConfigSpec<String> USERNAME =
+        ConfigSpec.required(DbConfigKeys.USERNAME, String.class, Function.identity());
+    private static final ConfigSpec<Integer> POOL_MAX_SIZE =
+        ConfigSpec.of(DbConfigKeys.POOL_MAX_SIZE, Integer.class,
+            PoolConfig.DEFAULT_MAX_SIZE, Integer::parseInt);
+    private static final ConfigSpec<Integer> POOL_MIN_IDLE =
+        ConfigSpec.of(DbConfigKeys.POOL_MIN_IDLE, Integer.class,
+            PoolConfig.DEFAULT_MIN_IDLE, Integer::parseInt);
+
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
         Coercer coercer = container.get(Coercer.class);
         return new PoolConfig(
-            Objects.requireNonNull(s.resolve(DbConfigKeys.URL), DbConfigKeys.URL + " is required"),
-            Objects.requireNonNull(s.resolve(DbConfigKeys.USERNAME), DbConfigKeys.USERNAME + " is required"),
+            URL.parse(s.resolve(DbConfigKeys.URL, null)),
+            USERNAME.parse(s.resolve(DbConfigKeys.USERNAME, null)),
             s.resolve(DbConfigKeys.PASSWORD, ""),
-            parseInt(s, DbConfigKeys.POOL_MAX_SIZE, PoolConfig.DEFAULT_MAX_SIZE),
-            parseInt(s, DbConfigKeys.POOL_MIN_IDLE, PoolConfig.DEFAULT_MIN_IDLE),
+            POOL_MAX_SIZE.parse(s.resolve(DbConfigKeys.POOL_MAX_SIZE, "")),
+            POOL_MIN_IDLE.parse(s.resolve(DbConfigKeys.POOL_MIN_IDLE, "")),
             resolveDuration(coercer, s, DbConfigKeys.POOL_CONNECTION_TIMEOUT, PoolConfig.DEFAULT_CONNECTION_TIMEOUT),
             resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_LIFETIME, PoolConfig.DEFAULT_MAX_LIFETIME),
             resolveDuration(coercer, s, DbConfigKeys.POOL_MAX_IDLE_TIME, PoolConfig.DEFAULT_MAX_IDLE_TIME),
@@ -142,17 +155,6 @@ public final class DbModule implements ModuleEx {
             resolveDuration(coercer, s, DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT),
             resolveDuration(coercer, s, DbConfigKeys.QUERY_TIMEOUT, PoolConfig.DEFAULT_QUERY_TIMEOUT)
         );
-    }
-
-    private static int parseInt(SymbolSource s, String key, int defaultValue) {
-        String raw = s.resolve(key, "");
-        if (raw.isBlank()) return defaultValue;
-        try {
-            return Integer.parseInt(raw);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                key + " must be an integer, got: '" + raw + "'", e);
-        }
     }
 
     private static Duration resolveDuration(Coercer coercer, SymbolSource s, String key, Duration def) {
