@@ -1,6 +1,6 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.commons.config.ConfigProperty;
+import com.jujin.freeway.commons.config.ConfigSpec;
 
 import java.util.List;
 import java.util.Map;
@@ -16,7 +16,7 @@ public interface AppConfig {
      * (missing required key, malformed value) are reported by the key itself
      * with the key name in the message.
      */
-    default <T> T get(ConfigProperty<T> key) {
+    default <T> T get(ConfigSpec<T> key) {
         return key.parse(get(key.key()));
     }
 
