@@ -53,9 +53,14 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         Map<String, String> parsedArgs = parseArgs(args);
 
         Map<String, String> base = new LinkedHashMap<>();
-        base.putAll(environment);
+        // Non-profile layers in merged() priority order (properties → json →
+        // environment → args). profile.* layers cannot participate here —
+        // their file names ARE the profile selection. Environment must
+        // outrank files: FREEWAY_PROFILE driving profile selection would
+        // otherwise silently lose to a freeway.profile key in a file.
         base.putAll(properties);
         base.putAll(json);
+        base.putAll(environment);
         base.putAll(parsedArgs);
 
         List<String> profiles = parseProfiles(base.get("freeway.profile"));
@@ -167,10 +172,19 @@ public final class ConfigLoaderDefault implements ConfigLoader {
      * unchanged.
      */
     static Map<String, String> parseArgs(String... args) {
+        if (args != null) {
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] == null) {
+                    throw new IllegalArgumentException(
+                        "Command-line argument at index " + i
+                            + " must not be null");
+                }
+            }
+        }
         List<String> list = args == null ? List.of() : List.of(args);
         Map<String, String> values = new LinkedHashMap<>();
         for (int i = 0; i < list.size(); i++) {
-            String arg = Objects.requireNonNull(list.get(i), "arg");
+            String arg = list.get(i);
             if (arg.startsWith("--")) {
                 String raw = arg.substring(2);
                 int eq = raw.indexOf('=');

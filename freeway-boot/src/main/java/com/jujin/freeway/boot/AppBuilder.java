@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,7 @@ public final class AppBuilder {
     private boolean autoDiscovery = true;
     private boolean shutdownHook = true;
     private ClassLoader classLoader;
+    private boolean started;
 
     AppBuilder() {
     }
@@ -87,6 +89,13 @@ public final class AppBuilder {
 
     /** Build and start the application. */
     public AppRuntime start() {
+        if (started) {
+            throw new IllegalStateException(
+                "AppBuilder.start() has already been called — a builder is "
+                    + "single-use (reuse would register a second shutdown "
+                    + "hook and build an independent container)");
+        }
+        started = true;
         long startNanos = System.nanoTime();
 
         ClassLoader effectiveLoader = resolveClassLoader();
@@ -102,7 +111,15 @@ public final class AppBuilder {
         }
         if (autoDiscovery) {
             for (ModuleEx module : ServiceLoader.load(ModuleEx.class, effectiveLoader)) {
-                addModule(allModules, module, false);
+                try {
+                    addModule(allModules, module, false);
+                } catch (ServiceConfigurationError ex) {
+                    throw new IllegalStateException(
+                        "Failed to load a ServiceLoader-discovered ModuleEx "
+                            + "provider (classloader: " + effectiveLoader + ")",
+                        ex
+                    );
+                }
             }
         }
         List<ModuleEx> moduleList = List.copyOf(allModules.values());

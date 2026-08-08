@@ -133,6 +133,19 @@ class FreewayAppTest {
     }
 
     @Test
+    void builderIsSingleUse() {
+        // Regression: a second start() silently registered another shutdown
+        // hook and built an independent container — no guard existed.
+        AppBuilder builder = FreewayApp.of().shutdownHook(false);
+        AppRuntime first = builder.start();
+        first.close();
+        IllegalStateException ex = assertThrows(
+            IllegalStateException.class, builder::start);
+        assertTrue(ex.getMessage().contains("single-use"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
     void autoDiscoveryCanStartWithoutExplicitModules() {
         AppRuntime app = FreewayApp.of().start();
         try {

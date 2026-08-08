@@ -86,6 +86,15 @@ class ConfigLoaderDefaultTest {
     }
 
     @Test
+    void rejectsNullArgument() {
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> ConfigLoaderDefault.parseArgs(new String[]{"--ok=1", null}));
+        assertTrue(ex.getMessage().contains("must not be null"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
     void followingFlagTurnsKeyIntoBoolean() {
         Map<String, String> args = ConfigLoaderDefault.parseArgs(
             "--port", "--verbose"
