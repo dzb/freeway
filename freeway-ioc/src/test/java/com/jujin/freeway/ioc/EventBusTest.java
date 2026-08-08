@@ -554,6 +554,33 @@ class EventBusTest {
         bus.close();
     }
 
+    @Test
+    void publishAsyncWithDeferWrappedExecutorStillDelivers() throws Exception {
+        // Defer.with(pool) on the async executor does not change publishAsync
+        // semantics: the deferred submission drains AFTER the scope binding is
+        // released (Defer.within calls drain() outside the ScopedValue run),
+        // so the worker sees no scope and the event dispatches normally.
+        // Defer.with's actual propagation scenario is direct execute() calls
+        // made INSIDE the scope, not EventBus async dispatch.
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(String.class, e -> log.add((String) e)))
+        );
+        EventBus bus = new EventBus(container);
+        var pool = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            bus.setAsyncExecutor(Defer.with(pool));
+            Defer.within(() -> bus.publishAsync("evt"));
+            awaitUntil(2000, () -> log.size() == 1);
+            assertEquals(List.of("evt"), log,
+                "commit-then-dispatch must be preserved with a Defer-wrapped executor");
+        } finally {
+            bus.close();
+            pool.close();
+        }
+    }
+
     // ==================== Defer integration ====================
 
     @Test
