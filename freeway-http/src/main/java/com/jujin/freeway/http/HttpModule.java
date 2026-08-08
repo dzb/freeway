@@ -247,6 +247,15 @@ public final class HttpModule implements ModuleEx {
         }
         Class<T> targetType = (Class<T>) (defaultValue != null
             ? defaultValue.getClass() : String.class);
-        return coercer.coerce(raw, targetType);
+        try {
+            return coercer.coerce(raw, targetType);
+        } catch (IllegalArgumentException ex) {
+            // Same error shape as ConfigSpec.parse: the message names the key
+            // and value so a bad http config is fixable without a stack crawl.
+            throw new IllegalArgumentException(
+                "Invalid value for config key '" + key + "': '" + raw + "'",
+                ex
+            );
+        }
     }
 }
