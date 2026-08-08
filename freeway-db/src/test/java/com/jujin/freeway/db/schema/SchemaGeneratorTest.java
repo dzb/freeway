@@ -2,7 +2,6 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.commons.validation.Size;
-import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.dialect.H2Dialect;
 import com.jujin.freeway.db.dialect.MySqlDialect;
 import com.jujin.freeway.db.dialect.PostgresDialect;

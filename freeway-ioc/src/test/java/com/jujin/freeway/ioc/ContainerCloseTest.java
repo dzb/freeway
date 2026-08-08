@@ -1,7 +1,6 @@
 package com.jujin.freeway.ioc;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 
-import com.jujin.freeway.ioc.extension.Extension;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
