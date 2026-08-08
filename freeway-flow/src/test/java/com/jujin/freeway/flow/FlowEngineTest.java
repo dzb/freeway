@@ -1327,6 +1327,42 @@ class FlowEngineTest {
             "a flat chain beyond the term limit must be rejected at compile time");
     }
 
+    @Test
+    void exprEvaluatorIsThreadSafeUnderConcurrentEvaluation() throws Exception {
+        // The compiled AST is shared via the static cache: concurrent
+        // evaluation of the same expression and concurrent compilation of
+        // distinct expressions must both be safe (cache hits, cache misses,
+        // and the synchronizedMap access-order relink all race here).
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put("score", 90);
+        ctx.put("name", "freeway");
+        int threads = 8;
+        int iterations = 2000;
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        try {
+            var tasks = new java.util.ArrayList<java.util.concurrent.Callable<Boolean>>();
+            for (int t = 0; t < threads; t++) {
+                int seed = t;
+                tasks.add(() -> {
+                    for (int i = 0; i < iterations; i++) {
+                        // Mix of shared (cached) and distinct (compiled) expressions.
+                        String expr = "score > 80 && name == \"freeway\""
+                            + (i % 2 == 0 ? "" : " && " + seed + " < 100");
+                        if (!ExprEvaluator.evalCondition(expr, ctx)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }
+            for (var f : pool.invokeAll(tasks)) {
+                assertTrue(f.get(), "every concurrent evaluation must return the expected result");
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     private static TaskComponent comp(String name) {
         // Captures name: a capturing lambda creates a fresh instance per call,
         // so two registrations are distinct components (a stateless lambda

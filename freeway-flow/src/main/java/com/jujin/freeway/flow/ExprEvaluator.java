@@ -79,8 +79,14 @@ public final class ExprEvaluator {
         @Override public Object eval(Map<String, Object> ctx) { return value; }
     }
 
-    private record Ident(String name, String[] parts) implements AstNode {
-        private Ident { if (parts == null) parts = name.split("\\."); }
+    private record Ident(String name, List<String> parts) implements AstNode {
+        private Ident {
+            // List.copyOf: the compiled AST is shared via the expression
+            // cache, so the split must not be externally mutable — a record
+            // array component would expose the internal array through its
+            // accessor and allow cache poisoning.
+            parts = parts == null ? List.of(name.split("\\.")) : List.copyOf(parts);
+        }
         @Override public Object eval(Map<String, Object> ctx) {
             Object cur = ctx;
             for (String p : parts) {
