@@ -51,29 +51,6 @@ public final class Defer {
     private Defer() {}
 
     // ==================== scope ====================
-
-    /**
-     * Wraps an executor so tasks submitted inside a {@link #within} scope
-     * run on the worker with the submitting thread's Defer scope restored —
-     * the scope-binding (and thus the pending deferred actions) is visible
-     * on the worker, so a task can e.g. call {@link #isActive()} or register
-     * further deferred work.
-     *
-     * <p>Opt-in by design: async work does NOT inherit the scope on a plain
-     * executor (see {@link com.jujin.freeway.commons.util.ContextExecutor}).
-     *
-     * <pre>{@code
-     * Executor txExecutor = Defer.with(myPool);
-     * Defer.within(() -> txExecutor.execute(() -> stillInScope()));
-     * }</pre>
-     */
-    public static java.util.concurrent.Executor with(
-        java.util.concurrent.Executor delegate
-    ) {
-        return com.jujin.freeway.commons.util.ContextExecutor.wrapping(
-            delegate, CURRENT);
-    }
-
     /** Returns true if called inside a {@link #within} block. */
     public static boolean isActive() {
         return CURRENT.isBound();
