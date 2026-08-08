@@ -17,7 +17,7 @@ class LazyTest {
     @Test
     void computesExactlyOnce() {
         AtomicInteger calls = new AtomicInteger();
-        Lazy<String> lazy = Lazy.of(() -> "v" + calls.incrementAndGet());
+        LazyValue<String> lazy = LazyValue.of(() -> "v" + calls.incrementAndGet());
 
         assertFalse(lazy.isComputed());
         assertNull(lazy.peek());
@@ -31,7 +31,7 @@ class LazyTest {
     @Test
     void concurrentReadersShareOneComputation() throws Exception {
         AtomicInteger calls = new AtomicInteger();
-        Lazy<String> lazy = Lazy.of(() -> {
+        LazyValue<String> lazy = LazyValue.of(() -> {
             calls.incrementAndGet();
             try {
                 Thread.sleep(20);
@@ -58,7 +58,7 @@ class LazyTest {
     @Test
     void throwingSupplierRetriesOnNextCall() {
         AtomicInteger calls = new AtomicInteger();
-        Lazy<String> lazy = Lazy.of(() -> {
+        LazyValue<String> lazy = LazyValue.of(() -> {
             if (calls.incrementAndGet() == 1) {
                 throw new IllegalStateException("first attempt fails");
             }
@@ -70,7 +70,7 @@ class LazyTest {
 
     @Test
     void nullSupplierResultRejected() {
-        Lazy<String> lazy = Lazy.of(() -> null);
+        LazyValue<String> lazy = LazyValue.of(() -> null);
         assertThrows(NullPointerException.class, lazy::get,
             "a null supplier result is a contract violation — it would "
                 + "otherwise re-compute forever");

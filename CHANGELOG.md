@@ -84,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   注入 `@NotThreadSafe` 具体类被拒绝（原型/线程作用域持有者无共享、允许）；
   同标 `@ThreadSafe`+`@NotThreadSafe` 绑定期拒绝。声明非证明——未标注服务
   不校验，渐进采用。+4 测试。
-- **框架原语（freeway-commons/ioc/boot）** — `Lazy<T>` 线程安全惰性值
+- **框架原语（freeway-commons/ioc/boot）** — `LazyValue<T>` 线程安全惰性值
   （volatile 双检、恰好一次计算、失败重试、null 拒绝——取代各模块手写
   双检）；`ContextualExecutor.wrapping(executor, keys…)` 显式跨线程传播
   ScopedValue 绑定（JDK Snapshot API 包私有，key 显式设计——事务/Defer

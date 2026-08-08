@@ -10,7 +10,7 @@ import java.util.function.Supplier;
  * (a volatile field + synchronized double-check + no rebuild after close):
  * hand-rolled variants have repeatedly drifted into races — readers
  * creating fresh state after a close, structural writes under read locks,
- * or duplicated initialization. Use {@link Lazy} instead of writing another
+ * or duplicated initialization. Use {@link LazyValue} instead of writing another
  * double-check.
  *
  * <p>Semantics:
@@ -28,18 +28,18 @@ import java.util.function.Supplier;
  *
  * @param <T> the value type
  */
-public final class Lazy<T> {
+public final class LazyValue<T> {
 
     private final Supplier<T> supplier;
     private volatile T value;
 
-    private Lazy(Supplier<T> supplier) {
+    private LazyValue(Supplier<T> supplier) {
         this.supplier = Objects.requireNonNull(supplier, "supplier");
     }
 
     /** Creates a lazy value computed from {@code supplier} on first access. */
-    public static <T> Lazy<T> of(Supplier<T> supplier) {
-        return new Lazy<>(supplier);
+    public static <T> LazyValue<T> of(Supplier<T> supplier) {
+        return new LazyValue<>(supplier);
     }
 
     /**
@@ -59,7 +59,7 @@ public final class Lazy<T> {
                 v = supplier.get();
                 if (v == null) {
                     throw new NullPointerException(
-                        "Lazy supplier returned null for " + supplier);
+                        "LazyValue supplier returned null for " + supplier);
                 }
                 value = v;
             }
