@@ -6,22 +6,37 @@ import com.jujin.freeway.ioc.extension.Extension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /**
  * In-process event bus with class-based and string-topic subscriptions,
  * optional {@code Defer}-scoped buffering, async dispatch, and an optional
  * external event bridge.
+ *
+ * <p><b>Delivery semantics:</b> at-most-once, best-effort. A throwing
+ * subscriber is isolated (other subscribers still receive the event) and
+ * counted in {@link #stats()}; the event is not retried. A failing bridge is
+ * similarly isolated. Inside a {@code Defer} scope (e.g. a DB transaction),
+ * events are buffered and dispatched only after the scope commits — a
+ * rollback discards them. Async dispatch ({@link #publishAsync}) has no
+ * ordering guarantee; {@link #publishOrdered} provides a globally ordered
+ * channel. Runtime subscribers live until {@link #close()} or explicit
+ * {@link #unsubscribe}.
  */
 public final class EventBus implements AutoCloseable {
 
@@ -32,6 +47,12 @@ public final class EventBus implements AutoCloseable {
     private volatile EventBridge bridge;
     private volatile Executor asyncExecutor;
     private volatile ExecutorService defaultAsyncExecutor;
+    /** Globally ordered dispatch channel for {@link #publishOrdered}. */
+    private volatile ExecutorService orderedExecutor;
+    private final LongAdder published = new LongAdder();
+    private final LongAdder delivered = new LongAdder();
+    private final LongAdder subscriberFailures = new LongAdder();
+    private final LongAdder deadEvents = new LongAdder();
     /** Atomic snapshot of the module-contributed subscriber index. */
     private volatile ModuleIndex moduleIndex;
     private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
@@ -79,11 +100,22 @@ public final class EventBus implements AutoCloseable {
     }
 
     private <E> void dispatchEvent(E event) {
+        // Events buffered in a Defer scope before close() may drain after
+        // close: delivering to module subscribers only (runtime lists are
+        // cleared) would be partial, and the zero-subscriber DeadEvent
+        // publish would throw requireOpen. Silent no-op is the cleanest
+        // post-close semantics.
+        if (closed) {
+            return;
+        }
+        if (!(event instanceof DeadEvent)) {
+            published.increment();
+        }
         Class<?> eventType = event.getClass();
         List<Consumer<Object>> moduleHandlers = classSubscribers(eventType);
-        List<Subscription<?>> runtimeHandlers = runtimeSubs.getOrDefault(
-            eventType,
-            List.of()
+        List<Subscription<?>> runtimeHandlers = matchingSubscriptions(
+            runtimeSubs,
+            eventType
         );
         boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
 
@@ -91,7 +123,9 @@ public final class EventBus implements AutoCloseable {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
                 handler.accept(event);
+                delivered.increment();
             } catch (Exception ex) {
+                subscriberFailures.increment();
                 LOG.warn(
                     "Event subscriber failed for {}",
                     eventType.getSimpleName(),
@@ -104,7 +138,9 @@ public final class EventBus implements AutoCloseable {
             if (event instanceof Stoppable s && s.isStopped()) break;
             try {
                 sub.dispatch(event);
+                delivered.increment();
             } catch (Exception ex) {
+                subscriberFailures.increment();
                 LOG.warn(
                     "Runtime event subscriber failed for {}",
                     eventType.getSimpleName(),
@@ -114,11 +150,25 @@ public final class EventBus implements AutoCloseable {
         }
 
         if (!hasSubscribers && !(event instanceof DeadEvent)) {
+            deadEvents.increment();
             publish(new DeadEvent(this, event));
         }
 
         if (bridge != null && !(event instanceof DeadEvent)) {
-            bridge.send(resolveTopic(eventType), event);
+            // A stopped event was short-circuited by its subscribers — it must
+            // not leave the process via the bridge.
+            if (event instanceof Stoppable s && s.isStopped()) {
+                return;
+            }
+            try {
+                bridge.send(resolveTopic(eventType), event);
+            } catch (Exception ex) {
+                LOG.warn(
+                    "Event bridge failed for {}",
+                    eventType.getSimpleName(),
+                    ex
+                );
+            }
         }
     }
 
@@ -128,6 +178,9 @@ public final class EventBus implements AutoCloseable {
      * Publish a payload on a string topic. Subscribers registered via
      * {@code EventSubscriber.of("topic", handler)} or
      * {@code bus.subscribe("topic", handler)} receive it.
+     *
+     * <p>The payload may be {@code null} (signal semantics — the topic
+     * itself carries the meaning); the topic must not be null.
      *
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
@@ -142,6 +195,10 @@ public final class EventBus implements AutoCloseable {
     }
 
     private void dispatchTopic(String topic, Object payload) {
+        if (closed) {
+            return;
+        }
+        published.increment();
         List<Consumer<Object>> moduleHandlers = topicSubscribers(topic);
         List<Subscription<?>> runtimeHandlers = runtimeTopicSubs.getOrDefault(
             topic,
@@ -152,7 +209,9 @@ public final class EventBus implements AutoCloseable {
         for (Consumer<Object> handler : moduleHandlers) {
             try {
                 handler.accept(payload);
+                delivered.increment();
             } catch (Exception ex) {
+                subscriberFailures.increment();
                 LOG.warn("Event subscriber failed for topic '{}'", topic, ex);
             }
         }
@@ -160,7 +219,9 @@ public final class EventBus implements AutoCloseable {
         for (Subscription<?> sub : runtimeHandlers) {
             try {
                 sub.dispatch(payload);
+                delivered.increment();
             } catch (Exception ex) {
+                subscriberFailures.increment();
                 LOG.warn(
                     "Runtime event subscriber failed for topic '{}'",
                     topic,
@@ -170,11 +231,16 @@ public final class EventBus implements AutoCloseable {
         }
 
         if (!hasSubscribers) {
+            deadEvents.increment();
             publish(new DeadEvent(this, payload));
         }
 
         if (bridge != null) {
-            bridge.send(topic, payload);
+            try {
+                bridge.send(topic, payload);
+            } catch (Exception ex) {
+                LOG.warn("Event bridge failed for topic '{}'", topic, ex);
+            }
         }
     }
 
@@ -194,6 +260,9 @@ public final class EventBus implements AutoCloseable {
         synchronized (this) {
             d = defaultAsyncExecutor;
             if (d == null) {
+                // A publishAsync that passed requireOpen() before close() must
+                // not create a fresh executor after close() nulled the field.
+                requireOpen();
                 d = defaultAsyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
             }
             return d;
@@ -204,6 +273,13 @@ public final class EventBus implements AutoCloseable {
     public <E> void publishAsync(E event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
+        // Defer.isActive() must be evaluated on THIS thread: the executor
+        // thread does not inherit the Defer ScopedValue binding, so the guard
+        // inside publish() would see no scope and dispatch before commit.
+        if (Defer.isActive()) {
+            Defer.defer(() -> executor().execute(() -> publish(event)));
+            return;
+        }
         executor().execute(() -> publish(event));
     }
 
@@ -211,7 +287,87 @@ public final class EventBus implements AutoCloseable {
     public void publishAsync(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
+        if (Defer.isActive()) {
+            Defer.defer(() -> executor().execute(() -> publish(topic, payload)));
+            return;
+        }
         executor().execute(() -> publish(topic, payload));
+    }
+
+    // ==================== ordered publish ====================
+
+    /**
+     * Publishes an event on the globally ordered channel: events submitted
+     * here are dispatched strictly in submission order (single-threaded
+     * FIFO), so a sequence of ordered events observes a total order. This is
+     * the channel for transaction-outbox-style ordering — events published
+     * inside one {@code Defer} scope drain in call order and are dispatched
+     * in that same order after the scope commits.
+     *
+     * <p>{@code key} names the ordering domain (e.g. the aggregate id) for
+     * documentation and future per-key parallelism; the current
+     * implementation is globally serialized, so any two ordered events are
+     * ordered regardless of key. Subscriber failures are isolated and
+     * counted, never propagated to the submitter.
+     */
+    public void publishOrdered(Object key, Object event) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(event, "event");
+        requireOpen();
+        if (Defer.isActive()) {
+            Defer.defer(() -> orderedExecutor().execute(() -> publish(event)));
+            return;
+        }
+        orderedExecutor().execute(() -> publish(event));
+    }
+
+    private ExecutorService orderedExecutor() {
+        ExecutorService e = orderedExecutor;
+        if (e != null) {
+            return e;
+        }
+        synchronized (this) {
+            e = orderedExecutor;
+            if (e == null) {
+                requireOpen();
+                e = orderedExecutor = Executors.newSingleThreadExecutor(
+                    Thread.ofVirtual().factory()
+                );
+            }
+            return e;
+        }
+    }
+
+    // ==================== stats ====================
+
+    /**
+     * Immutable snapshot of cumulative dispatch counters.
+     *
+     * @param published          user-initiated dispatch attempts (DeadEvent
+     *                           diagnostics are counted separately, see below;
+     *                           post-close silent no-ops are excluded)
+     * @param delivered          successful subscriber deliveries (one per subscriber)
+     * @param subscriberFailures throwing subscriber executions
+     * @param deadEvents         DeadEvent diagnostics emitted for zero-subscriber events
+     */
+    public record EventBusStats(
+        long published,
+        long delivered,
+        long subscriberFailures,
+        long deadEvents
+    ) {}
+
+    /**
+     * Snapshot of cumulative dispatch counters. Useful for operational
+     * observability (e.g. "subscriberFailures &gt; 0 for the last N events").
+     */
+    public EventBusStats stats() {
+        return new EventBusStats(
+            published.sum(),
+            delivered.sum(),
+            subscriberFailures.sum(),
+            deadEvents.sum()
+        );
     }
 
     // ==================== class-based runtime subscribe ====================
@@ -267,13 +423,26 @@ public final class EventBus implements AutoCloseable {
         runtimeSubs.clear();
         runtimeTopicSubs.clear();
         moduleIndex = null;
-        if (defaultAsyncExecutor != null) {
-            try {
-                defaultAsyncExecutor.close();
-            } catch (RuntimeException e) {
-                LOG.warn("Failed to close default async executor", e);
+        // Same lock as the lazy init in executor(): prevents a publishAsync
+        // that passed requireOpen() from creating a fresh default executor
+        // after this method observed null and skipped shutdown.
+        synchronized (this) {
+            if (defaultAsyncExecutor != null) {
+                try {
+                    defaultAsyncExecutor.close();
+                } catch (RuntimeException e) {
+                    LOG.warn("Failed to close default async executor", e);
+                }
+                defaultAsyncExecutor = null;
             }
-            defaultAsyncExecutor = null;
+            if (orderedExecutor != null) {
+                try {
+                    orderedExecutor.close();
+                } catch (RuntimeException e) {
+                    LOG.warn("Failed to close ordered executor", e);
+                }
+                orderedExecutor = null;
+            }
         }
     }
 
@@ -288,9 +457,67 @@ public final class EventBus implements AutoCloseable {
     private List<Consumer<Object>> classSubscribers(Class<?> eventType) {
         ensureIndexed();
         ModuleIndex idx = moduleIndex;
-        List<Consumer<Object>> subs = idx != null ? idx.classIdx().get(eventType) : null;
-        return subs != null ? subs : List.of();
+        if (idx == null) {
+            return List.of();
+        }
+        return matchingSubscriptions(idx.classIdx(), eventType);
     }
+
+    /**
+     * Returns subscriptions for {@code eventType} and every supertype
+     * (superclasses and interfaces, excluding {@code Object}): a subscriber
+     * declared on a parent type receives events of any subtype, but a
+     * subscriber declared on a subtype never receives parent events.
+     */
+    private static <T> List<T> matchingSubscriptions(
+        Map<Class<?>, List<T>> index,
+        Class<?> eventType
+    ) {
+        List<T> direct = index.get(eventType);
+        List<T> result = direct != null ? new ArrayList<>(direct) : null;
+        for (Class<?> sup : SUPER_TYPES.get(eventType)) {
+            List<T> subs = index.get(sup);
+            if (subs != null) {
+                if (result == null) {
+                    result = new ArrayList<>();
+                }
+                result.addAll(subs);
+            }
+        }
+        return result != null ? result : List.of();
+    }
+
+    /**
+     * Supertype chain (superclasses + interfaces, transitive, excluding
+     * {@code Object} and the type itself), cached per event class. A
+     * subscriber on {@code Object.class} receives nothing — subscribing to
+     * every event requires an explicit marker type.
+     */
+    private static final ClassValue<List<Class<?>>> SUPER_TYPES =
+        new ClassValue<>() {
+            @Override
+            protected List<Class<?>> computeValue(Class<?> type) {
+                List<Class<?>> result = new ArrayList<>();
+                Set<Class<?>> seen = new HashSet<>();
+                Deque<Class<?>> queue = new ArrayDeque<>();
+                queue.add(type);
+                while (!queue.isEmpty()) {
+                    Class<?> c = queue.poll();
+                    Class<?> sup = c.getSuperclass();
+                    if (sup != null && sup != Object.class && seen.add(sup)) {
+                        result.add(sup);
+                        queue.add(sup);
+                    }
+                    for (Class<?> iface : c.getInterfaces()) {
+                        if (seen.add(iface)) {
+                            result.add(iface);
+                            queue.add(iface);
+                        }
+                    }
+                }
+                return List.copyOf(result);
+            }
+        };
 
     private List<Consumer<Object>> topicSubscribers(String topic) {
         ensureIndexed();

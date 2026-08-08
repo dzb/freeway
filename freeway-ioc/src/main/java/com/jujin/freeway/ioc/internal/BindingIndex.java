@@ -26,6 +26,11 @@ final class BindingIndex {
         typeIndex.clear();
     }
 
+    /** True when {@code binding} is registered under its current type+id key. */
+    boolean contains(BindingImpl<?> binding) {
+        return bindings.containsValue(binding);
+    }
+
     synchronized <T> void register(BindingImpl<T> binding) {
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
         if (bindings.putIfAbsent(key, binding) != null) {

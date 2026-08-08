@@ -22,6 +22,13 @@ import java.util.function.Consumer;
  * binder.contribute(EventSubscriber.class)
  *     .add(EventSubscriber.of("order.placed", payload -> process(payload)));
  * }</pre>
+ *
+ * <p><b>Filtering convention:</b> subscribers receive every event of the
+ * declared type (or a subtype, via hierarchy dispatch) and filter inside the
+ * handler. There is deliberately no predicate-based subscription API —
+ * filtering logic would only move, not disappear, at the cost of extra API
+ * surface and interaction rules. If filtering must be observable (e.g.
+ * counted), track it in the handler via {@code EventBus.stats()} deltas.
  */
 public final class EventSubscriber<E> {
 

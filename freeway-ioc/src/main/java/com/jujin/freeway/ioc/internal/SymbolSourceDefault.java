@@ -90,6 +90,29 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     /**
+     * Finds the closing {@code }} for the expression starting at
+     * {@code ${} at {@code from}-1. Nested {@code ${...}} references inside
+     * a default value are tracked by depth, so {@code ${a:${b}}} parses as
+     * symbol {@code a} with default {@code ${b}} instead of ending at the
+     * inner brace.
+     */
+    private static int closingBrace(String input, int from) {
+        int depth = 0;
+        for (int i = from; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '{' && i > 0 && input.charAt(i - 1) == '$') {
+                depth++;
+            } else if (c == '}') {
+                if (depth == 0) {
+                    return i;
+                }
+                depth--;
+            }
+        }
+        return -1;
+    }
+
+    /**
      * Recursively expands {@code ${...}} symbol references with a depth limit
      * to prevent stack overflow.
      * <p>
@@ -137,7 +160,7 @@ final class SymbolSourceDefault implements SymbolSource {
                 continue;
             }
             out.append(input, i, start);
-            int end = input.indexOf('}', start + 2);
+            int end = closingBrace(input, start + 2);
             if (end < 0) {
                 throw new IllegalArgumentException("Unclosed symbol expression in: " + input);
             }

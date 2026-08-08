@@ -45,7 +45,15 @@ public interface SymbolSource {
             try {
                 return resolve(name);
             } catch (IllegalArgumentException e) {
-                return null;
+                // Only a missing top-level symbol maps to null. Expansion
+                // errors (depth limit, nested unknown symbol, unclosed
+                // expression) must propagate — swallowing them would silently
+                // treat a broken config chain as "absent".
+                if (e.getMessage() != null
+                        && e.getMessage().equals("Unknown symbol: " + name)) {
+                    return null;
+                }
+                throw e;
             }
         }
         return expand("${" + name + ":" + defaultValue + "}");

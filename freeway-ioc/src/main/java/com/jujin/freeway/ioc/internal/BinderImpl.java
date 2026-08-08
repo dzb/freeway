@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
 import com.jujin.freeway.ioc.extension.Extension;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +17,6 @@ import java.util.Set;
 final class BinderImpl implements Binder {
     private final ContainerImpl container;
     private final List<BindingImpl<?>> pending = new ArrayList<>();
-    /** Classes registered via {@link Contributions#create} — instantiated after pending bindings flush. */
     private final List<Runnable> pendingCreates = new ArrayList<>();
     private Class<?> currentModule;
 
@@ -70,6 +70,12 @@ final class BinderImpl implements Binder {
      * may depend on services declared by a later module, and running the
      * creation at each module's flush would fail on that unregistered binding
      * (module-order coupling).
+     *
+     * <p>No ordering pass is needed: infrastructure extensions whose consumers
+     * may be constructed earlier ({@code SymbolProvider}) are wired on demand
+     * at declaration time via a lazy facade (see
+     * {@link ContainerImpl#isOnDemandContribution}), so declaration order can
+     * never break construction.
      */
     void flushPendingCreates() {
         for (var action : pendingCreates) {
@@ -102,6 +108,27 @@ final class BinderImpl implements Binder {
                 // no dependency on Class.forName.
                 String id = Strings.camelToSnake(implClass.getSimpleName())
                     + "@" + implClass.getPackageName();
+                if (container.isOnDemandContribution(entryType)) {
+                    // On-demand wiring: register a lazy facade into the built-in
+                    // consumer IMMEDIATELY — no ordering pass needed. The real
+                    // instance is created on first lookup (e.g. a @Value
+                    // resolution in a consumer declared earlier) and reused by
+                    // the flush below, so declaration order cannot break
+                    // construction.
+                    @SuppressWarnings("unchecked")
+                    LazySymbolProvider lazy = new LazySymbolProvider(
+                        () -> (SymbolProvider) container.create(implClass)
+                    );
+                    container.wireContribution(entryType, lazy);
+                    var deferred = new DeferredContribution();
+                    pendingCreates.add(() -> {
+                        @SuppressWarnings("unchecked")
+                        V instance = (V) lazy.force();
+                        Contribution real = ext.add(id, instance);
+                        deferred.apply(real);
+                    });
+                    return deferred;
+                }
                 var deferred = new DeferredContribution();
                 pendingCreates.add(() -> {
                     V instance = container.create(implClass);

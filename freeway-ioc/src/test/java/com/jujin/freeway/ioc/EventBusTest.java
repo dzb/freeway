@@ -30,6 +30,11 @@ class EventBusTest {
         @Override public boolean isStopped() { return stopped.get(); }
     }
 
+    /** Subtype used to verify hierarchy dispatch. */
+    static class SpecialPostCreatedEvent extends PostCreatedEvent {
+        SpecialPostCreatedEvent(Post post) { super(post); }
+    }
+
     record Post(String title) {}
 
     record CommentAddedEvent(Long postId, String text) {}
@@ -152,6 +157,58 @@ class EventBusTest {
 
         new EventBus(container).publish(new PostCreatedEvent(new Post("x")));
         assertEquals(1, deads.size());
+    }
+
+    @Test
+    void subclassEventReachesSuperclassSubscribers() {
+        // A subscriber declared on a parent type receives subtype events.
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(PostCreatedEvent.class, e -> log.add("parent")))
+        );
+        EventBus bus = new EventBus(container);
+
+        bus.publish(new SpecialPostCreatedEvent(new Post("x")));
+
+        assertEquals(List.of("parent"),
+            log, "a subtype event must be delivered to superclass subscribers");
+        bus.close();
+    }
+
+    @Test
+    void superclassEventDoesNotReachSubclassSubscribers() {
+        // A subscriber declared on a subtype must NOT receive parent events.
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(SpecialPostCreatedEvent.class, e -> log.add("child")))
+        );
+        EventBus bus = new EventBus(container);
+
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(0, log.size(),
+            "a parent event must not reach subtype subscribers");
+        bus.close();
+    }
+
+    @Test
+    void superclassSubscriberSuppressesDeadEventForSubclass() {
+        // Regression: exact-match dispatch reported DeadEvent for subtype
+        // events even when a superclass subscriber existed.
+        List<Object> received = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(PostCreatedEvent.class, e -> received.add("event")))
+        );
+        EventBus bus = new EventBus(container);
+
+        bus.publish(new SpecialPostCreatedEvent(new Post("x")));
+
+        assertEquals(List.of("event"), received,
+            "a superclass subscriber must suppress the DeadEvent for a subtype event");
+        bus.close();
     }
 
     @Test
@@ -339,6 +396,130 @@ class EventBusTest {
         assertEquals(1, log.size());
     }
 
+    @Test
+    void publishAsyncInsideDeferScopeDefersUntilScopeEnds() throws Exception {
+        // Regression: publishAsync submitted to the executor directly — the
+        // executor thread does NOT inherit the Defer ScopedValue binding, so
+        // the guard inside publish() saw no scope and dispatched before the
+        // scope ended (and on rollback). The submission itself must defer.
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+        );
+        EventBus bus = new EventBus(container);
+
+        Defer.within(() -> {
+            bus.publishAsync(new PostCreatedEvent(new Post("x")));
+            assertTrue(log.isEmpty(),
+                "async publish inside a Defer scope must not deliver before the scope ends");
+
+        });
+        awaitUntil(2000, () -> log.size() == 1);
+
+        assertEquals(List.of("event"), log,
+            "the deferred async event must be delivered after the scope commits");
+        bus.close();
+    }
+
+    @Test
+    void bridgeFailureDoesNotEscapePublish() {
+        // Regression: bridge.send sat outside any try/catch, so a failing
+        // bridge escaped publish() to the caller in the immediate path while
+        // the Defer path only warn-logged it — asymmetric behavior.
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
+        );
+        EventBus bus = new EventBus(container);
+        bus.setEventBridge((topic, event) -> {
+            throw new IllegalStateException("mq down");
+        });
+
+        assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))),
+            "a failing bridge must be isolated like a failing subscriber");
+        bus.close();
+    }
+
+    @Test
+    void stoppedEventIsNotBridged() {
+        // A Stoppable event short-circuited by its subscribers must not leave
+        // the process via the bridge.
+        List<String> bridged = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> e.stop()))
+        );
+        EventBus bus = new EventBus(container);
+        bus.setEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
+
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(0, bridged.size(),
+            "a stopped event must not reach the bridge");
+        bus.close();
+    }
+
+    @Test
+    void statsCountPublishDeliveriesAndFailures() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("ok")))
+        );
+        EventBus bus = new EventBus(container);
+        bus.subscribe(PostCreatedEvent.class, e -> {
+            throw new IllegalStateException("boom");
+        });
+
+        bus.publish(new PostCreatedEvent(new Post("x")));
+        bus.publish(new CommentAddedEvent(1L, "y")); // zero subscribers -> DeadEvent
+
+        EventBus.EventBusStats stats = bus.stats();
+        assertEquals(2, stats.published(), "one dispatch per publish");
+        assertEquals(1, stats.delivered(), "only the healthy subscriber delivery");
+        assertEquals(1, stats.subscriberFailures(), "the throwing runtime subscriber");
+        assertEquals(1, stats.deadEvents(), "zero-subscriber event emits a DeadEvent");
+        bus.close();
+    }
+
+    @Test
+    void publishOrderedDispatchesInSubmissionOrder() throws Exception {
+        List<Integer> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        bus.subscribe(Integer.class, log::add);
+
+        for (int i = 0; i < 50; i++) {
+            bus.publishOrdered("key", i);
+        }
+        awaitUntil(5000, () -> log.size() == 50);
+        for (int i = 0; i < 50; i++) {
+            assertEquals(Integer.valueOf(i), log.get(i),
+                "ordered events must dispatch in submission order");
+        }
+        bus.close();
+    }
+
+    @Test
+    void publishOrderedInsideDeferScopeKeepsOrder() throws Exception {
+        List<Integer> log = new ArrayList<>();
+        EventBus bus = new EventBus(Freeway.create());
+        bus.subscribe(Integer.class, log::add);
+
+        Defer.within(() -> {
+            bus.publishOrdered("key", 1);
+            bus.publishOrdered("key", 2);
+            bus.publishOrdered("key", 3);
+            assertEquals(0, log.size(),
+                "ordered events inside a Defer scope must wait for the scope end");
+        });
+        awaitUntil(2000, () -> log.size() == 3);
+
+        assertEquals(List.of(1, 2, 3), log,
+            "ordered events must drain in call order after the scope commits");
+        bus.close();
+    }
+
     // ==================== Defer integration ====================
 
     @Test
@@ -375,6 +556,41 @@ class EventBusTest {
         });
 
         assertTrue(log.isEmpty(), "deferred event should be discarded on rollback");
+    }
+
+    @Test
+    void deferredEventsDrainingAfterCloseAreSilentNoOps() {
+        // Regression: events buffered before close() drained after close,
+        // delivering to module subscribers only (runtime lists were cleared)
+        // — a partial delivery of an accepted event.
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+        );
+        EventBus bus = new EventBus(container);
+
+        Defer.within(() -> {
+            bus.publish(new PostCreatedEvent(new Post("x")));
+            bus.close();
+
+        });
+
+        assertEquals(0, log.size(),
+            "an event draining after close must not be partially delivered to module subscribers only");
+    }
+
+    @Test
+    void zeroSubscriberDeferredEventAfterCloseDoesNotThrow() {
+        // Regression: the zero-subscriber DeadEvent publish during a post-close
+        // drain hit requireOpen() and threw inside DeferScope.drain().
+        EventBus bus = new EventBus(Freeway.create());
+
+        assertDoesNotThrow(() -> Defer.within(() -> {
+            bus.publish(new PostCreatedEvent(new Post("x")));
+            bus.close();
+
+        }), "a post-close drain must be a silent no-op, not a spurious failure");
     }
 
     @Test
@@ -499,5 +715,17 @@ class EventBusTest {
         });
 
         assertFalse(log.isEmpty(), "DeadEvent must fire immediately, not be deferred");
+    }
+
+    /** Polls until the condition holds, bounding CI flakiness from fixed sleeps. */
+    private static void awaitUntil(long timeoutMs, java.util.function.BooleanSupplier condition)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (!condition.getAsBoolean()) {
+            if (System.currentTimeMillis() > deadline) {
+                throw new AssertionError("Condition not met within " + timeoutMs + " ms");
+            }
+            Thread.sleep(10);
+        }
     }
 }

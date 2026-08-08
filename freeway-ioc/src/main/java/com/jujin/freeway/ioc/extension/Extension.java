@@ -283,16 +283,38 @@ public final class Extension<V> {
 
         @Override
         public Contribution before(String... ids) {
-            for (String s : ids)
-                beforeIds.add(Objects.requireNonNull(s, "id").trim());
+            synchronized (Extension.this) {
+                for (String s : ids) {
+                    beforeIds.add(Objects.requireNonNull(s, "id").trim());
+                }
+                invalidateOrder();
+            }
             return this;
         }
 
         @Override
         public Contribution after(String... ids) {
-            for (String s : ids)
-                afterIds.add(Objects.requireNonNull(s, "id").trim());
+            synchronized (Extension.this) {
+                for (String s : ids) {
+                    afterIds.add(Objects.requireNonNull(s, "id").trim());
+                }
+                invalidateOrder();
+            }
             return this;
+        }
+
+        /**
+         * Ordering declared via before()/after() after the {@code sorted}
+         * cache was already built must invalidate it — otherwise the stale
+         * order is silently served forever. Runs under the same lock as the
+         * cache rebuild in {@link #all()}, so the constraint lists and the
+         * cache pointer stay consistent.
+         */
+        private void invalidateOrder() {
+            if (Extension.this.sorted != null) {
+                Extension.this.sorted = null;
+                Extension.this.version.incrementAndGet();
+            }
         }
 
     }

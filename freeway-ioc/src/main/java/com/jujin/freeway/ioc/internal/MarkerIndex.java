@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Maintains a reverse index from marker annotation classes to bindings
@@ -24,13 +25,6 @@ import java.util.concurrent.ConcurrentHashMap;
 final class MarkerIndex {
 
     private final Map<Class<?>, List<BindingImpl<?>>> markerToBindings = new ConcurrentHashMap<>();
-
-    /**
-     * All known marker annotation classes (keys in the index).
-     */
-    Set<Class<?>> knownMarkers() {
-        return Set.copyOf(markerToBindings.keySet());
-    }
 
     /**
      * Returns true if the given class is a known marker annotation.
@@ -50,7 +44,22 @@ final class MarkerIndex {
         }
         for (Class<?> marker : markers) {
             validateMarkerAnnotation(marker);
-            markerToBindings.computeIfAbsent(marker, k -> new ArrayList<>()).add(binding);
+            markerToBindings.computeIfAbsent(marker, k -> new CopyOnWriteArrayList<>()).add(binding);
+        }
+    }
+
+    /**
+     * Adds markers that were declared on an already-registered binding
+     * (via {@code .marker(...)}/{@code .primary()} after flush). Does not
+     * duplicate entries; removing markers is not supported.
+     */
+    void sync(BindingImpl<?> binding) {
+        for (Class<?> marker : binding.markers()) {
+            List<BindingImpl<?>> bindings =
+                markerToBindings.computeIfAbsent(marker, k -> new CopyOnWriteArrayList<>());
+            if (!bindings.contains(binding)) {
+                bindings.add(binding);
+            }
         }
     }
 
@@ -66,8 +75,11 @@ final class MarkerIndex {
      * @throws IllegalArgumentException if multiple bindings match and none is primary
      */
     @SuppressWarnings("unchecked")
-    <T> BindingImpl<T> findByMarker(Class<T> type, Set<Class<? extends Annotation>> markers) {
-        if (markers.isEmpty()) {
+    <T> BindingImpl<T> findByMarker(
+        Class<T> type,
+        Class<? extends Annotation>[] markers
+    ) {
+        if (markers.length == 0) {
             return null;
         }
 
@@ -181,10 +193,18 @@ final class MarkerIndex {
         );
     }
 
-    private static String markerNames(Set<Class<? extends Annotation>> markers) {
-        return markers.stream()
-            .map(Class::getSimpleName)
-            .toList()
-            .toString();
+    private static String markerNames(Class<? extends Annotation>[] markers) {
+        if (markers.length == 0) {
+            return "[]";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < markers.length; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append('@').append(markers[i].getSimpleName());
+        }
+        return sb.append(']').toString();
     }
+
 }

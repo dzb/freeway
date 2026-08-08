@@ -149,6 +149,7 @@ final class BindingImpl<T> implements Binding<T> {
     public Binding<T> primary() {
         this.primary = true;
         this.markers.add(Primary.class);
+        container.syncMarkers(this);
         return this;
     }
 
@@ -158,6 +159,7 @@ final class BindingImpl<T> implements Binding<T> {
             MarkerIndex.validateMarkerAnnotation(m);
             this.markers.add(m);
         }
+        container.syncMarkers(this);
         return this;
     }
 

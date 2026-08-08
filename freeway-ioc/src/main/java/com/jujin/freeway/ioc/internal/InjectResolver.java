@@ -109,6 +109,13 @@ final class InjectResolver {
         if (!(memberType instanceof ParameterizedType pt)) {
             return null;
         }
+        // An @Value/@Symbol on a List/Map injection point means "coerce the
+        // configured value", not "consume contributions" — otherwise
+        // @Value List<String> would silently inject an empty contribution
+        // list and drop the configuration.
+        if (hasConfiguredValueAnnotation(lookup)) {
+            return null;
+        }
         Type[] typeArgs = pt.getActualTypeArguments();
         if (!parameterMode && !hasInjectionAnnotation(lookup)) {
             return null;
@@ -254,6 +261,11 @@ final class InjectResolver {
         // would skip scope-compatibility validation.
         Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
         Object service;
+        // Validate before realization: a singleton owner directly injecting a
+        // thread-scoped concrete class must get the dedicated diagnostic even
+        // when no scope is open (otherwise "No open scope" from realize() masks
+        // the real contract violation).
+        validateScopeBeforeResolution(ownerType, targetType);
         if (!markers.isEmpty()) {
             @SuppressWarnings("unchecked")
             Class<? extends Annotation>[] markerArr =
@@ -262,7 +274,6 @@ final class InjectResolver {
         } else {
             service = container.get(targetType);
         }
-        validateScopeCompatibility(ownerType, targetType, service);
         return service;
     }
 
@@ -281,13 +292,14 @@ final class InjectResolver {
         }
         String id = resolveId(lookup);
         if (id != null) {
+            validateScopeBeforeResolution(ownerType, targetType);
             Object service = container.get(targetType, id);
-            validateScopeCompatibility(ownerType, targetType, service);
-            return service;
+                return service;
         }
         // No explicit id — try marker-based resolution
         Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
         Object service;
+        validateScopeBeforeResolution(ownerType, targetType);
         if (!markers.isEmpty()) {
             @SuppressWarnings("unchecked")
             Class<? extends Annotation>[] markerArr =
@@ -296,7 +308,6 @@ final class InjectResolver {
         } else {
             service = container.get(targetType);
         }
-        validateScopeCompatibility(ownerType, targetType, service);
         return service;
     }
 
@@ -366,19 +377,16 @@ final class InjectResolver {
         return null;
     }
 
-    private void validateScopeCompatibility(Class<?> ownerType, Class<?> targetType, Object service) {
-        if (service == null) {
-            return;
-        }
-        BindingImpl<?> ownerBinding = findOwnerBinding(ownerType);
-        if (ownerBinding == null || ownerBinding.scope() != Scope.SINGLETON) {
+    private void validateScopeBeforeResolution(Class<?> ownerType, Class<?> targetType) {
+        if (targetType.isInterface()) {
             return;
         }
         BindingImpl<?> targetBinding = container.bindingIndex().findUnique(targetType);
         if (targetBinding == null || targetBinding.scope() != Scope.THREAD) {
             return;
         }
-        if (targetType.isInterface()) {
+        BindingImpl<?> ownerBinding = findOwnerBinding(ownerType);
+        if (ownerBinding == null || ownerBinding.scope() != Scope.SINGLETON) {
             return;
         }
         throw new IllegalStateException(

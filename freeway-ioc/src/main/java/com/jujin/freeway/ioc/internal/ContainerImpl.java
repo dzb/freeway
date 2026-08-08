@@ -23,12 +23,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Default {@link Container} implementation: bindings, markers, extensions, scopes, and lifecycle. */
@@ -72,6 +74,11 @@ public final class ContainerImpl implements Container {
     private volatile boolean closed;
     private final BindingIndex bindingIndex = new BindingIndex();
     private final MarkerIndex markerIndex = new MarkerIndex();
+
+    /** Package-private access for the realization closed re-check. */
+    boolean isClosed() {
+        return closed;
+    }
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
     private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
     private final SymbolSourceDefault symbolSource;
@@ -87,6 +94,17 @@ public final class ContainerImpl implements Container {
     private final Set<Class<?>> installedClasses = ConcurrentHashMap.newKeySet();
     private final List<ModuleEx> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
+
+    /**
+     * Contribution entry types that extend a built-in service, keyed to the
+     * wiring action. Single source of truth for the wiring itself
+     * ({@link #wireContribution}): an entry type listed here is an
+     * infrastructure extension whose consumers may be constructed at any
+     * point. (On-demand declaration handling in {@link BinderImpl} currently
+     * covers {@code SymbolProvider} only — see {@link #isOnDemandContribution}.)
+     */
+    private final Map<Class<?>, Consumer<Object>> infrastructureWiring =
+        new HashMap<>();
 
     public ContainerImpl(Collection<? extends ModuleEx> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
@@ -108,6 +126,10 @@ public final class ContainerImpl implements Container {
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(serviceCache, targetCache, bindingIndex, coercer);
         this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);
+        infrastructureWiring.put(SymbolProvider.class,
+            v -> symbolSource.register((SymbolProvider) v));
+        infrastructureWiring.put(CoerceRule.class,
+            v -> coercer.register((CoerceRule) v));
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
@@ -184,19 +206,27 @@ public final class ContainerImpl implements Container {
     }
 
     /**
-     * Registers a built-in extension consumer as soon as the contribution is
-     * added — independent of module order. Without this, contributions made
-     * through {@code contribute(...).add(Class)} in the same module as their
-     * consumers were never registered (wiring ran before deferred creates
-     * flushed).
+     * Wires a contributed value into its built-in consumer as soon as the
+     * contribution is added — independent of module order. Without this,
+     * contributions made through {@code contribute(...).add(Class)} in the
+     * same module as their consumers were never registered (wiring ran before
+     * deferred creates flushed).
      */
-    @SuppressWarnings("rawtypes")
     void wireContribution(Class<?> entryType, Object value) {
-        if (entryType == SymbolProvider.class) {
-            symbolSource.register((SymbolProvider) value);
-        } else if (entryType == CoerceRule.class) {
-            coercer.register((CoerceRule) value);
+        Consumer<Object> wire = infrastructureWiring.get(entryType);
+        if (wire != null) {
+            wire.accept(value);
         }
+    }
+
+    /**
+     * True for infrastructure extension types whose class contributions are
+     * wired on demand: {@link BinderImpl} registers a lazy facade at
+     * declaration time and the real instance is created on first lookup, so
+     * declaration order cannot break construction of earlier consumers.
+     */
+    boolean isOnDemandContribution(Class<?> entryType) {
+        return entryType == SymbolProvider.class;
     }
 
     private <T> T scopedWithin(Supplier<T> work) {
@@ -228,6 +258,16 @@ public final class ContainerImpl implements Container {
                 return;
             }
             LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
+            // Note: shutdown order of container-managed services is
+            // unspecified — the EventBus may be closed before another
+            // service's close()/@PreDestroy runs, so publishing events
+            // during the drain is not reliable (a closed bus rejects them).
+            // Deliberately NOT holding ServiceRuntime.REALIZE_LOCK across the
+            // drain: user lifecycle callbacks may join worker threads that
+            // realize services, and holding the global lock there would
+            // deadlock. Realization during the drain is handled by the
+            // re-snapshot loop; realization after close is rejected inside
+            // realize() (it re-checks the closed flag under the lock).
             RuntimeException failure = shutdown.close();
             closed = true;
             extensions.clear();
@@ -262,6 +302,11 @@ public final class ContainerImpl implements Container {
         if (closed) {
             throw new IllegalStateException("Container is closed");
         }
+        if (id == null) {
+            throw new IllegalArgumentException(
+                "Service id must not be null for type " + type.getName()
+            );
+        }
         BindingImpl<T> binding = bindingIndex.find(type, ServiceIds.normalize(id));
         if (binding == null) {
             throw new IllegalArgumentException(
@@ -280,8 +325,7 @@ public final class ContainerImpl implements Container {
         if (markers == null || markers.length == 0) {
             return get(type);
         }
-        Set<Class<? extends Annotation>> markerSet = new HashSet<>(Arrays.asList(markers));
-        BindingImpl<T> binding = markerIndex.findByMarker(type, markerSet);
+        BindingImpl<T> binding = markerIndex.findByMarker(type, markers);
         if (binding == null) {
             throw new IllegalArgumentException(
                     "No service registered for type " + type.getName()
@@ -294,6 +338,18 @@ public final class ContainerImpl implements Container {
     <T> void register(BindingImpl<T> binding) {
         bindingIndex.register(binding);
         markerIndex.register(binding);
+    }
+
+    /**
+     * Reflects markers added after the binding was already flushed (e.g. a
+     * module holding a {@code Binding} handle across a nested
+     * {@code binder.install(...)}) into the marker index. No-op when the
+     * binding is not yet registered — {@link #register} covers that path.
+     */
+    synchronized void syncMarkers(BindingImpl<?> binding) {
+        if (bindingIndex.contains(binding)) {
+            markerIndex.sync(binding);
+        }
     }
 
     MarkerIndex markerIndex() {

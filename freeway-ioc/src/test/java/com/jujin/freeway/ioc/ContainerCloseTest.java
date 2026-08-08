@@ -50,6 +50,46 @@ class ContainerCloseTest {
     }
 
     @Test
+    void servicesRealizedDuringDrainReceiveLifecycle() {
+        // Regression: Shutdown snapshot the target cache ONCE before the
+        // @PreDestroy phase, so a service realized inside a callback (the
+        // documented drain pattern) was orphaned — its @PreDestroy/AutoCloseable
+        // never ran and the instance leaked.
+        drainRealized = false;
+        drainClosed = false;
+        containerRef = Freeway.create(binder -> {
+            binder.bind(DrainService.class).to(DrainService.class);      // stays lazy
+            binder.bind(DrainTrigger.class).to(DrainTrigger.class);
+        });
+        containerRef.get(DrainTrigger.class); // realize the trigger only
+        containerRef.close();
+        assertTrue(drainRealized,
+            "a service realized inside @PreDestroy must receive its own @PreDestroy on close");
+        assertTrue(drainClosed,
+            "a service realized inside @PreDestroy must be closed on container close");
+    }
+
+    @Test
+    void failingPreDestroyDoesNotBlockOtherServices() {
+        // A throwing @PreDestroy must not prevent other services from
+        // receiving their own @PreDestroy; the failure accumulates into the
+        // close() exception.
+        preDestroyFailureObserved = false;
+        containerRef = Freeway.create(binder -> {
+            binder.bind(FailingCleanup.class).to(FailingCleanup.class);
+            binder.bind(ObservingCleanup.class).to(ObservingCleanup.class);
+        });
+        containerRef.get(FailingCleanup.class);
+        containerRef.get(ObservingCleanup.class);
+
+        RuntimeException ex = assertThrows(RuntimeException.class, containerRef::close);
+        assertTrue(preDestroyFailureObserved,
+            "the other service's @PreDestroy must still run after a failure");
+        assertTrue(ex.getMessage().contains("Unable to invoke @PreDestroy"),
+            "the failure must surface via the close() exception, got: " + ex.getMessage());
+    }
+
+    @Test
     void threadScopedValueCleanedUpAfterContainerClose() {
         // A THREAD-scope value realized inside an open scope, then the
         // container closes while the scope is still open: scope exit must
@@ -81,6 +121,9 @@ class ContainerCloseTest {
 
     private static Container containerRef;
     private static boolean preDestroyAccessed;
+    private static boolean drainRealized;
+    private static boolean drainClosed;
+    private static boolean preDestroyFailureObserved;
 
     interface Greeter {
         String greet();
@@ -97,6 +140,39 @@ class ContainerCloseTest {
         void cleanup() {
             containerRef.get(OtherService.class); // must not throw "Container is closed"
             preDestroyAccessed = true;
+        }
+    }
+
+    static class DrainTrigger {
+        @com.jujin.freeway.ioc.annotation.PreDestroy
+        void cleanup() {
+            containerRef.get(DrainService.class); // realizes a NEW service during drain
+        }
+    }
+
+    static class DrainService implements AutoCloseable {
+        @com.jujin.freeway.ioc.annotation.PreDestroy
+        void cleanup() {
+            drainRealized = true;
+        }
+
+        @Override
+        public void close() {
+            drainClosed = true;
+        }
+    }
+
+    static class FailingCleanup {
+        @com.jujin.freeway.ioc.annotation.PreDestroy
+        void cleanup() {
+            throw new IllegalStateException("cleanup failed");
+        }
+    }
+
+    static class ObservingCleanup {
+        @com.jujin.freeway.ioc.annotation.PreDestroy
+        void cleanup() {
+            preDestroyFailureObserved = true;
         }
     }
 

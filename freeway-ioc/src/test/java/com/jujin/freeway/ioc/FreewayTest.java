@@ -3,7 +3,9 @@ package com.jujin.freeway.ioc;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.scoped.ScopedCache;
+import com.jujin.freeway.ioc.advisor.MethodInvocation;
 import com.jujin.freeway.ioc.annotation.*;
+import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -43,6 +45,10 @@ class FreewayTest {
     private static final String NAME_KEY = "freeway.test.name";
     private static final String ENDPOINT_KEY = "freeway.test.endpoint";
     private static final String TIMEOUT_KEY = "freeway.test.timeout";
+    private static final String NEST_KEY = "freeway.test.nested";
+    private static final String LIST_KEY = "freeway.test.list";
+    private static final AtomicReference<Contribution> postReadHandle =
+        new AtomicReference<>();
     private static final String APP_NAME_KEY = "freeway.test.app.name";
     private String previousPort;
     private String previousName;
@@ -295,6 +301,12 @@ class FreewayTest {
     }
 
     public static class SpecialSymbolProvider implements SymbolProvider {
+        static final AtomicInteger instances = new AtomicInteger();
+
+        SpecialSymbolProvider() {
+            instances.incrementAndGet();
+        }
+
         @Override
         public String lookup(String name) {
             return IocKeys.SPECIAL.equals(name) ? "special-value" : null;
@@ -327,6 +339,39 @@ class FreewayTest {
 
         Object consumer = container.extension(SpecialConsumer.class).all().get(0);
         assertEquals("special-value", ((SpecialConsumer) consumer).value());
+        container.close();
+    }
+
+    @Test
+    void symbolProviderDeclaredAfterConsumerInSameModuleIsWired() {
+        // Regression: deferred class contributions flushed FIFO, so a
+        // SymbolProvider declared after its consumer in the same module failed
+        // construction with "Unknown symbol". Providers must flush first.
+        Container container = Freeway.create(binder -> {
+            binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class);
+            binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class);
+        });
+
+        Object consumer = container.extension(SpecialConsumer.class).all().get(0);
+        assertEquals("special-value", ((SpecialConsumer) consumer).value(),
+            "provider declared after its consumer must still be wired before the consumer is created");
+        container.close();
+    }
+
+    @Test
+    void onDemandProviderFacadeCreatesExactlyOnce() {
+        // The on-demand facade (wired at declaration) and the flush must share
+        // one instance: the first lookup triggers creation, force() reuses it.
+        SpecialSymbolProvider.instances.set(0);
+        Container container = Freeway.create(binder -> {
+            binder.contribute(SymbolProvider.class).add(SpecialSymbolProvider.class);
+            binder.contribute(SpecialConsumer.class).add(SpecialConsumerImpl.class);
+        });
+
+        Object consumer = container.extension(SpecialConsumer.class).all().get(0);
+        assertEquals("special-value", ((SpecialConsumer) consumer).value());
+        assertEquals(1, SpecialSymbolProvider.instances.get(),
+            "facade lookup and flush must not create two provider instances");
         container.close();
     }
 
@@ -455,6 +500,12 @@ class FreewayTest {
     }
 
     static class PrototypeGreeterImpl implements PrototypeGreeter {
+        static final AtomicInteger created = new AtomicInteger();
+
+        PrototypeGreeterImpl() {
+            created.incrementAndGet();
+        }
+
         @Override public String greet() { return "hello"; }
     }
 
@@ -520,6 +571,7 @@ class FreewayTest {
     @Test
     void prototypeBindingHonorsAdvice() {
         List<String> calls = new ArrayList<>();
+        PrototypeGreeterImpl.created.set(0);
         Container container = Freeway.create(binder ->
             binder.bind(PrototypeGreeter.class)
                   .to(PrototypeGreeterImpl.class)
@@ -539,6 +591,47 @@ class FreewayTest {
         assertEquals(List.of("advised", "advised"), calls,
                 "advice should fire on every PROTOTYPE resolution");
         assertNotSame(g1, g2, "PROTOTYPE should create new instance each time");
+        assertEquals(2, PrototypeGreeterImpl.created.get(),
+            "PROTOTYPE+advice proxies must not share one cached target");
+    }
+
+    @Test
+    void proxyObjectSemanticsAreIdentityBased() {
+        // Singleton: every get() returns the SAME proxy.
+        Container container = Freeway.create(binder ->
+            binder.bind(Greeter.class).to(GreeterImpl.class));
+        Greeter g1 = container.get(Greeter.class);
+        Greeter g2 = container.get(Greeter.class);
+        assertSame(g1, g2, "singleton proxies are cached");
+
+        assertEquals(g1, g1, "a proxy equals itself");
+        assertNotEquals(g1, new GreeterImpl(), "a proxy never equals the real implementation");
+        assertEquals(System.identityHashCode(g1), g1.hashCode(),
+            "hashCode is identity-based");
+        assertTrue(g1.toString().contains("Greeter"),
+            "toString describes the proxied type, got: " + g1);
+        // Proxies extend java.lang.reflect.Proxy (which is Serializable), so
+        // instanceof Serializable is true — but serialization fails because
+        // the invocation handler is not serializable.
+        assertTrue(g1 instanceof java.io.Serializable,
+            "the Proxy base class is Serializable");
+        assertThrows(java.io.NotSerializableException.class, () -> {
+            try (var out = new java.io.ObjectOutputStream(new java.io.ByteArrayOutputStream())) {
+                out.writeObject(g1);
+            }
+        }, "serializing a proxy must fail on the non-serializable handler");
+        container.close();
+
+        // PROTOTYPE+advice: every get() returns a DISTINCT proxy.
+        Container proto = Freeway.create(binder ->
+            binder.bind(PrototypeGreeter.class)
+                  .to(PrototypeGreeterImpl.class)
+                  .scope(Scope.PROTOTYPE)
+                  .advise(advisor -> advisor.wrap(inv -> true, MethodInvocation::proceed)));
+        PrototypeGreeter p1 = proto.get(PrototypeGreeter.class);
+        PrototypeGreeter p2 = proto.get(PrototypeGreeter.class);
+        assertNotEquals(p1, p2, "distinct proxies are not equal");
+        proto.close();
     }
 
     @Test
@@ -1506,6 +1599,9 @@ class FreewayTest {
 
         RuntimeException ex = assertThrows(RuntimeException.class, () -> container.get(ScopedSingleton.class));
         assertInstanceOf(IllegalStateException.class, ex.getCause());
+        assertTrue(ex.getCause().getMessage().contains("cannot directly inject thread-scoped concrete"),
+            "the dedicated scope-compat diagnostic must be reachable even when no scope is open "
+                + "(not masked by 'No open scope' from realization)");
     }
 
     @Test
@@ -1558,6 +1654,25 @@ class FreewayTest {
     }
 
     @Test
+    void nestedDefaultValueExpands() {
+        // Regression: the closing-brace search stopped at the FIRST '}', so
+        // ${a:${b}} parsed the default as "${b" and threw "Unclosed symbol
+        // expression" despite the documented nested-default support.
+        System.setProperty(NEST_KEY, "nested-value");
+        try {
+            Container container = Freeway.create();
+            SymbolSource symbols = container.get(SymbolSource.class);
+
+            assertEquals("nested-value",
+                symbols.expand("${missing:${" + NEST_KEY + "}}"),
+                "a nested ${...} inside a default value must expand");
+            container.close();
+        } finally {
+            System.clearProperty(NEST_KEY);
+        }
+    }
+
+    @Test
     void configuredValueCoercionErrorIncludesContext() {
         System.setProperty(APP_NAME_KEY, "not-a-list");
         Container container = Freeway.create();
@@ -1593,6 +1708,27 @@ class FreewayTest {
     }
 
     @Test
+    void configuredListParameterNotSwallowedByContributionMechanism() {
+        // Regression: constructor parameters resolved contributed types
+        // (List<Foo>) BEFORE checking @Value/@Symbol, so a
+        // @Value List<String> parameter silently injected an EMPTY
+        // contribution list and dropped the configuration.
+        System.setProperty(LIST_KEY, "a,b");
+        try {
+            Container container = Freeway.create(binder ->
+                binder.bind(ConfiguredListConsumer.class).to(ConfiguredListConsumer.class));
+
+            RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> container.get(ConfiguredListConsumer.class));
+            assertTrue(ex.getCause().getMessage().contains("Cannot coerce"),
+                "@Value List<String> must reach the coercer, not be replaced by an empty contribution list");
+            container.close();
+        } finally {
+            System.clearProperty(LIST_KEY);
+        }
+    }
+
+    @Test
     void rejectsAdvisorOnNonInterfaceType() {
         Container container = Freeway.create(binder ->
             binder.bind(GreeterImpl.class)
@@ -1625,6 +1761,11 @@ class FreewayTest {
         @Inject
         @Value("${some.path}")
         private PaymentGateway gateway;
+    }
+
+    public static final class ConfiguredListConsumer {
+        @SuppressWarnings("unused")
+        ConfiguredListConsumer(@Value("${" + LIST_KEY + "}") List<String> values) {}
     }
 
     // ========== @PostConstruct / @PreDestroy tests ==========
@@ -1942,7 +2083,31 @@ class FreewayTest {
         assertEquals(List.of("core", "web"), labels);
     }
 
-    // ──── Marker annotation tests ────
+    @Test
+    void orderingDeclaredAfterFirstReadIsHonored() {
+        // Regression: before()/after() applied after the sorted cache was
+        // built were silently dropped — the stale order was served forever.
+        postReadHandle.set(null);
+        Container container = Freeway.create(binder -> {
+            binder.contribute(Labeled.class).add("first", new CoreBean());
+            postReadHandle.set(binder.contribute(Labeled.class).add("second", new WebBean()));
+        });
+        Extension<Labeled> ext = container.extension(Labeled.class);
+
+        // Warm the cache first (insertion order, no constraints yet).
+        assertEquals(List.of("core", "web"),
+            ext.all().stream().map(Labeled::label).toList());
+
+        // Declare the ordering constraint after the first read.
+        postReadHandle.get().before("first");
+
+        assertEquals(List.of("web", "core"),
+            ext.all().stream().map(Labeled::label).toList(),
+            "ordering declared after the first all() must invalidate the cached order");
+        container.close();
+    }
+
+    // ── Marker annotation tests ────
 
     @Test
     void markerAnnotationResolvesCorrectService() {
@@ -1970,6 +2135,22 @@ class FreewayTest {
         // .primary() should add @Primary as a marker, so get(type, Primary.class) works
         Cache cache = container.get(Cache.class, Primary.class);
         assertEquals("fast", cache.name());
+    }
+
+    @Test
+    void markerDeclaredAfterFlushStillResolves() {
+        // Regression: a binding flushed by a nested install, then receiving
+        // .marker() afterwards, was invisible to marker-based resolution —
+        // the MarkerIndex was never updated for the late declaration.
+        Container container = Freeway.create(binder -> {
+            Binding<Cache> binding = binder.bind(Cache.class).to(FastCache.class);
+            binder.install(ignored -> {});  // flush triggers registration
+            binding.marker(Fast.class);      // late marker on a registered binding
+        });
+
+        Cache cache = container.get(Cache.class, Fast.class);
+        assertEquals("fast", cache.name());
+        container.close();
     }
 
     @Test
