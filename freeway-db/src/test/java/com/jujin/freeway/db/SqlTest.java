@@ -1,4 +1,8 @@
 package com.jujin.freeway.db;
+import com.jujin.freeway.db.dialect.MySqlDialect;
+import com.jujin.freeway.db.dialect.PostgresDialect;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.Test;
 
@@ -356,17 +360,17 @@ class SqlTest {
     void returningValidatedAgainstDialect() {
         Sql q = Sql.insert("users").set("name", "john").returning("id");
         assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id",
-            q.sql(new com.jujin.freeway.db.dialect.PostgresDialect()));
+            q.sql(new PostgresDialect()));
         assertThrows(SqlException.class, () ->
-            q.sql(new com.jujin.freeway.db.dialect.MySqlDialect()));
+            q.sql(new MySqlDialect()));
     }
 
     @Test
     void onConflictValidatedAgainstDialect() {
         Sql q = Sql.insert("users").set("id", 1).onConflict("id").doNothing();
-        q.sql(new com.jujin.freeway.db.dialect.PostgresDialect());
+        q.sql(new PostgresDialect());
         assertThrows(SqlException.class, () ->
-            q.sql(new com.jujin.freeway.db.dialect.MySqlDialect()));
+            q.sql(new MySqlDialect()));
     }
 
     @Test
@@ -461,7 +465,7 @@ class SqlTest {
     void selectWithTypeCastAndNamedParam() {
         // PostgreSQL :: type cast must not be confused with :name
         Sql q = Sql.select("*").from("events")
-            .where("created_at::date = :d", java.time.LocalDate.of(2024, 1, 15));
+            .where("created_at::date = :d", LocalDate.of(2024, 1, 15));
         assertEquals("SELECT * FROM events WHERE created_at::date = ?", q.sql());
         assertEquals(1, q.args().length);
     }
@@ -470,7 +474,7 @@ class SqlTest {
     void selectWithTypeCastAndMultipleNamedParams() {
         Sql q = Sql.select("*").from("events")
             .where("created_at::timestamp > :t AND id = :id",
-                java.time.LocalDateTime.of(2024, 6, 1, 0, 0), 1L);
+                LocalDateTime.of(2024, 6, 1, 0, 0), 1L);
         assertEquals(
             "SELECT * FROM events WHERE created_at::timestamp > ? AND id = ?",
             q.sql());
@@ -482,7 +486,7 @@ class SqlTest {
         // ? positional + :: type cast — :: handling should not break ?
         Sql q = Sql.select("*").from("events")
             .where("created_at::date > ? AND status = :s",
-                java.time.LocalDate.of(2024, 1, 1), "active");
+                LocalDate.of(2024, 1, 1), "active");
         assertEquals(
             "SELECT * FROM events WHERE created_at::date > ? AND status = ?",
             q.sql());

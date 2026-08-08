@@ -1,4 +1,5 @@
 package com.jujin.freeway.ioc;
+import com.jujin.freeway.ioc.annotation.PreDestroy;
 
 import com.jujin.freeway.ioc.extension.Extension;
 import org.junit.jupiter.api.Test;
@@ -113,7 +114,7 @@ class ContainerCloseTest {
     static class ScopeValue {
         static int destroyed = 0;
 
-        @com.jujin.freeway.ioc.annotation.PreDestroy
+        @PreDestroy
         void destroy() {
             destroyed++;
         }
@@ -136,7 +137,7 @@ class ContainerCloseTest {
     }
 
     static class CleanupService {
-        @com.jujin.freeway.ioc.annotation.PreDestroy
+        @PreDestroy
         void cleanup() {
             containerRef.get(OtherService.class); // must not throw "Container is closed"
             preDestroyAccessed = true;
@@ -144,14 +145,14 @@ class ContainerCloseTest {
     }
 
     static class DrainTrigger {
-        @com.jujin.freeway.ioc.annotation.PreDestroy
+        @PreDestroy
         void cleanup() {
             containerRef.get(DrainService.class); // realizes a NEW service during drain
         }
     }
 
     static class DrainService implements AutoCloseable {
-        @com.jujin.freeway.ioc.annotation.PreDestroy
+        @PreDestroy
         void cleanup() {
             drainRealized = true;
         }
@@ -163,14 +164,14 @@ class ContainerCloseTest {
     }
 
     static class FailingCleanup {
-        @com.jujin.freeway.ioc.annotation.PreDestroy
+        @PreDestroy
         void cleanup() {
             throw new IllegalStateException("cleanup failed");
         }
     }
 
     static class ObservingCleanup {
-        @com.jujin.freeway.ioc.annotation.PreDestroy
+        @PreDestroy
         void cleanup() {
             preDestroyFailureObserved = true;
         }

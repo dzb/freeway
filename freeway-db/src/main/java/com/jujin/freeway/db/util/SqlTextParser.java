@@ -1,4 +1,5 @@
 package com.jujin.freeway.db.util;
+import com.jujin.freeway.db.SqlException;
 
 import com.jujin.freeway.db.dialect.Dialect;
 import java.util.ArrayList;
@@ -356,7 +357,7 @@ public final class SqlTextParser {
             hasNamedPlaceholders(sql, config) &&
             !paramIndexes(sql, config).isEmpty()
         ) {
-            throw new com.jujin.freeway.db.SqlException(
+            throw new SqlException(
                 "Cannot mix named and positional placeholders in SQL: " + sql);
         }
     }

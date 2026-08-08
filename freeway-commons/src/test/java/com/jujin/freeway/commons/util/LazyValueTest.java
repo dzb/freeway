@@ -1,4 +1,6 @@
 package com.jujin.freeway.commons.util;
+import java.util.Collections;
+import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.Test;
 
@@ -40,8 +42,8 @@ class LazyTest {
             }
             return "shared";
         });
-        var results = java.util.concurrent.Executors.newFixedThreadPool(8)
-            .invokeAll(java.util.Collections.nCopies(8, lazy::get))
+        var results = Executors.newFixedThreadPool(8)
+            .invokeAll(Collections.nCopies(8, lazy::get))
             .stream()
             .map(f -> {
                 try {

@@ -358,8 +358,8 @@ class JULFileHandlerTest {
                 logFile.toString(), 100, 1, false);
 
         // Create fake old archive files
-        String oldDate = java.time.LocalDate.now().minusDays(5)
-                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String oldDate = LocalDate.now().minusDays(5)
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         Path oldFile = logFile.getParent().resolve("purge." + oldDate + ".log");
         Files.writeString(oldFile, "old");
 

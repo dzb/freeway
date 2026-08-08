@@ -1,4 +1,6 @@
 package com.jujin.freeway.http.engine.ws;
+import java.io.InputStream;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import org.junit.jupiter.api.Test;
@@ -60,7 +62,7 @@ class WebSocketReadLoopTest {
         // (blocking) stream must wake the loop: close() closes the input,
         // the blocked read throws, and readLoop returns instead of hanging
         // until the peer responds.
-        var blockingIn = new java.io.InputStream() {
+        var blockingIn = new InputStream() {
             volatile boolean closed;
             @Override
             public int read() throws IOException {
@@ -83,7 +85,7 @@ class WebSocketReadLoopTest {
         var session = new WebSocketSessionImpl(
             "GET", "/", null, Map.of(), blockingIn, out, Map.of());
 
-        var loopDone = new java.util.concurrent.atomic.AtomicBoolean();
+        var loopDone = new AtomicBoolean();
         Thread loop = Thread.startVirtualThread(() -> {
             WebSocket.readLoop(blockingIn, out, session, WebSocketListener.NOOP);
             loopDone.set(true);

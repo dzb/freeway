@@ -1,4 +1,6 @@
 package com.jujin.freeway.http.route;
+import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.annotation.Value;
 
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.websocket.WebSocketListener;
@@ -136,8 +138,8 @@ class RouteIndexTest {
 
     static class InjectedHandler implements RouteHandler {
         final String greeting;
-        @com.jujin.freeway.ioc.annotation.Inject
-        InjectedHandler(@com.jujin.freeway.ioc.annotation.Value("${greeting:Hello}") String greeting) {
+        @Inject
+        InjectedHandler(@Value("${greeting:Hello}") String greeting) {
             this.greeting = greeting;
         }
         @Override public void handle(HttpContext ctx) throws Exception {

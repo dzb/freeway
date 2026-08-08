@@ -1,4 +1,7 @@
 package com.jujin.freeway.boot;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+import java.time.Duration;
 
 import com.jujin.freeway.commons.config.ConfigSpec;
 import org.junit.jupiter.api.Test;
@@ -63,16 +66,16 @@ class AppConfigDefaultTest {
     void coercerParsedSpecResolvesContainerTypes() {
         // No per-key parser: the container Coercer resolves the value —
         // "2s" duration syntax and user-registered rules apply.
-        ConfigSpec<java.time.Duration> timeout = ConfigSpec.of(
-            "pool.timeout", java.time.Duration.class,
-            java.time.Duration.ofSeconds(5));
-        com.jujin.freeway.commons.coercion.Coercer coercer =
-            new com.jujin.freeway.commons.coercion.CoercerDefault();
+        ConfigSpec<Duration> timeout = ConfigSpec.of(
+            "pool.timeout", Duration.class,
+            Duration.ofSeconds(5));
+        Coercer coercer =
+            new CoercerDefault();
 
-        assertEquals(java.time.Duration.ofSeconds(2),
+        assertEquals(Duration.ofSeconds(2),
             timeout.parse("2s", coercer),
             "the coercer resolves duration syntax");
-        assertEquals(java.time.Duration.ofSeconds(5),
+        assertEquals(Duration.ofSeconds(5),
             timeout.parse("", coercer),
             "blank input falls back to the default");
     }

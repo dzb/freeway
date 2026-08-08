@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.metrics;
+import java.util.function.Supplier;
 
 /**
  * No-op {@link Metrics}: all counters stay at zero, gauges are ignored.
@@ -22,7 +23,7 @@ public final class NoopMetrics implements Metrics {
     }
 
     @Override
-    public void gauge(String name, java.util.function.Supplier<Number> value) {
+    public void gauge(String name, Supplier<Number> value) {
         // ignored
     }
 }

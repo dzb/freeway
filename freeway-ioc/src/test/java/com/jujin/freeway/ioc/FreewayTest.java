@@ -1,4 +1,12 @@
 package com.jujin.freeway.ioc;
+import com.jujin.freeway.ioc.annotation.Inject;
+import java.io.ByteArrayOutputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.LinkedHashMap;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
@@ -611,13 +619,13 @@ class FreewayTest {
             "hashCode is identity-based");
         assertTrue(g1.toString().contains("Greeter"),
             "toString describes the proxied type, got: " + g1);
-        // Proxies extend java.lang.reflect.Proxy (which is Serializable), so
+        // Proxies extend Proxy (which is Serializable), so
         // instanceof Serializable is true — but serialization fails because
         // the invocation handler is not serializable.
-        assertTrue(g1 instanceof java.io.Serializable,
+        assertTrue(g1 instanceof Serializable,
             "the Proxy base class is Serializable");
-        assertThrows(java.io.NotSerializableException.class, () -> {
-            try (var out = new java.io.ObjectOutputStream(new java.io.ByteArrayOutputStream())) {
+        assertThrows(NotSerializableException.class, () -> {
+            try (var out = new ObjectOutputStream(new ByteArrayOutputStream())) {
                 out.writeObject(g1);
             }
         }, "serializing a proxy must fail on the non-serializable handler");
@@ -745,7 +753,7 @@ class FreewayTest {
 
     @Test
     void adviceChainSupportsMultipleAdvisorsAndShortCircuit() {
-        java.util.List<String> log = new java.util.ArrayList<>();
+        List<String> log = new ArrayList<>();
 
         Container container = Freeway.create(binder ->
             binder.bind(Greeter.class)
@@ -774,7 +782,7 @@ class FreewayTest {
         Greeter service = container.get(Greeter.class);
         assertEquals("short-circuited", service.greet());
         // after-first fires because first advisor's proceed() returned after second short-circuited
-        assertEquals(java.util.List.of("before-first", "short-circuit", "after-first"), log);
+        assertEquals(List.of("before-first", "short-circuit", "after-first"), log);
         assertEquals(1, GreeterImpl.created.get());
     }
 
@@ -930,12 +938,12 @@ class FreewayTest {
 
     @Test
     void extensionOrderingWarnsOnMissingIds() {
-        var records = new ArrayList<java.util.logging.LogRecord>();
+        var records = new ArrayList<LogRecord>();
         java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
             "com.jujin.freeway.ioc.extension.Extension");
-        java.util.logging.Handler handler = new java.util.logging.Handler() {
+        Handler handler = new Handler() {
             @Override
-            public void publish(java.util.logging.LogRecord record) {
+            public void publish(LogRecord record) {
                 records.add(record);
             }
 
@@ -1200,7 +1208,7 @@ class FreewayTest {
     public static final class LoggerCtorHolder {
         private final Logger logger;
 
-        @com.jujin.freeway.ioc.annotation.Inject
+        @Inject
         public LoggerCtorHolder(Logger logger) {
             this.logger = logger;
         }
@@ -1271,7 +1279,7 @@ class FreewayTest {
 
         public MixedExtensionCatalog(List<AppFeature> features, Map<String, AppFlagEntry> flagEntries) {
             this.features = List.copyOf(features);
-            Map<String, AppFlag> map = new java.util.LinkedHashMap<>();
+            Map<String, AppFlag> map = new LinkedHashMap<>();
             for (Map.Entry<String, AppFlagEntry> e : flagEntries.entrySet())
                 map.put(e.getKey(), e.getValue().flag());
             this.flags = Map.copyOf(map);
@@ -1290,7 +1298,7 @@ class FreewayTest {
         private final Map<String, AppFlag> flags;
 
         public EnumKeyExtensionCatalog(Map<String, EnumAppFlagEntry> flagEntries) {
-            Map<String, AppFlag> map = new java.util.LinkedHashMap<>();
+            Map<String, AppFlag> map = new LinkedHashMap<>();
             for (Map.Entry<String, EnumAppFlagEntry> e : flagEntries.entrySet())
                 map.put(e.getKey(), e.getValue().flag());
             this.flags = Map.copyOf(map);
@@ -1798,7 +1806,7 @@ class FreewayTest {
 
     public static final class UncoercibleListService {
         @Value("${" + APP_NAME_KEY + "}")
-        private java.util.List<String> values;
+        private List<String> values;
     }
 
     public static final class UnclosedSymbolService {
@@ -1940,7 +1948,7 @@ class FreewayTest {
     }
 
     public static final class LifecycleOrderBean implements AutoCloseable {
-        final java.util.List<String> events = new java.util.ArrayList<>();
+        final List<String> events = new ArrayList<>();
 
         @PreDestroy
         void preDestroy() {
@@ -2244,7 +2252,7 @@ class FreewayTest {
     void builtinMarkerPropagatesToCoreServices() {
         Container container = Freeway.create();
         // Core services registered via registerBuiltin() should carry @Builtin
-        var symbols = container.get(com.jujin.freeway.ioc.symbol.SymbolSource.class, Builtin.class);
+        var symbols = container.get(SymbolSource.class, Builtin.class);
         assertNotNull(symbols);
     }
 

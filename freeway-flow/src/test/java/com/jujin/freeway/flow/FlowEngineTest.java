@@ -1,4 +1,7 @@
 package com.jujin.freeway.flow;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
@@ -973,7 +976,7 @@ class FlowEngineTest {
     void loopIterationLimitFailsFast() {
         // A misconfigured/oversized $in must not spin forever — the engine
         // enforces a hard iteration cap and fails with a clear error.
-        List<Integer> huge = new java.util.ArrayList<>(FlowEngineImpl.MAX_LOOP_ITERATIONS + 1);
+        List<Integer> huge = new ArrayList<>(FlowEngineImpl.MAX_LOOP_ITERATIONS + 1);
         for (int i = 0; i < FlowEngineImpl.MAX_LOOP_ITERATIONS + 1; i++) {
             huge.add(i);
         }
@@ -1091,7 +1094,7 @@ class FlowEngineTest {
             var maxConcurrent = new AtomicInteger(0);
             var active = new AtomicInteger(0);
             var barrier = new CountDownLatch(branches);
-            var executed = new java.util.concurrent.ConcurrentLinkedQueue<String>();
+            var executed = new ConcurrentLinkedQueue<String>();
             FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .executor(executor)
                 .container(name -> {
@@ -1179,7 +1182,7 @@ class FlowEngineTest {
 
     @Test
     void inclusiveGatewayJoinsMultipleIncomingBranches() {
-        var executed = new java.util.concurrent.ConcurrentLinkedQueue<String>();
+        var executed = new ConcurrentLinkedQueue<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
             .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
             .build());
@@ -1203,7 +1206,7 @@ class FlowEngineTest {
     void metaTaskReadsGraphMetadata() {
         // $meta tasks write the resolved value into the context under
         // _meta_<key>; a downstream @beanName task reads it back.
-        var seen = new java.util.concurrent.atomic.AtomicReference<String>();
+        var seen = new AtomicReference<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
             .container(name -> {
                 if ("check".equals(name)) {
@@ -1338,9 +1341,9 @@ class FlowEngineTest {
         ctx.put("name", "freeway");
         int threads = 8;
         int iterations = 2000;
-        var pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        var pool = Executors.newFixedThreadPool(threads);
         try {
-            var tasks = new java.util.ArrayList<java.util.concurrent.Callable<Boolean>>();
+            var tasks = new ArrayList<Callable<Boolean>>();
             for (int t = 0; t < threads; t++) {
                 int seed = t;
                 tasks.add(() -> {

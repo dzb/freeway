@@ -1,4 +1,5 @@
 package com.jujin.freeway.db;
+import java.time.Duration;
 
 import com.jujin.freeway.db.PooledConnection;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
@@ -50,7 +51,7 @@ class DatabaseBuilderTest {
             base.maxSize(), base.minIdle(),
             base.connectionTimeout(), base.maxLifetime(), base.maxIdleTime(),
             base.cleanInterval(), base.healthCheckQuery(), base.healthCheckTimeout(),
-            java.time.Duration.ZERO
+            Duration.ZERO
         );
 
         Database db = new DatabaseBuilder().config(modified).build();

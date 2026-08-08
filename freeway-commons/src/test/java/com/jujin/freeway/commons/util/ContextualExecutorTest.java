@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.util;
+import java.util.NoSuchElementException;
 
 import org.junit.jupiter.api.Test;
 
@@ -51,7 +52,7 @@ class ContextualExecutorTest {
                 pool.execute(() -> {
                     try {
                         seen.set(CTX.get());
-                    } catch (java.util.NoSuchElementException e) {
+                    } catch (NoSuchElementException e) {
                         seen.set(null); // no binding on the worker
                     }
                     done.countDown();

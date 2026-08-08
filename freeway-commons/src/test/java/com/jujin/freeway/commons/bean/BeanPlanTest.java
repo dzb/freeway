@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.bean;
+import java.util.ArrayList;
 
 import org.junit.jupiter.api.Test;
 
@@ -191,7 +192,7 @@ class BeanPlanTest {
         assertTrue(object.isConstructable());
         assertEquals(0, object.properties().size());
 
-        BeanPlan arrayList = BeanIntrospector.plan(java.util.ArrayList.class);
+        BeanPlan arrayList = BeanIntrospector.plan(ArrayList.class);
         assertTrue(arrayList.isConstructable(),
             "public no-arg constructor must be reachable via publicLookup");
         assertEquals(0, arrayList.properties().size(),

@@ -1,4 +1,6 @@
 package com.jujin.freeway.commons.logging;
+import java.util.ArrayList;
+import java.util.logging.LogRecord;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -426,7 +428,7 @@ class LogBootstrapTest {
 
             java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
             boolean found = false;
-            for (java.util.logging.Handler h : root.getHandlers()) {
+            for (Handler h : root.getHandlers()) {
                 if (h instanceof JULFileHandler) {
                     found = true;
                     h.close();
@@ -510,15 +512,15 @@ class LogBootstrapTest {
 
     @Test
     void sfl4jLoggerHasCorrectCallerInfo() {
-        var records = new java.util.ArrayList<java.util.logging.LogRecord>();
+        var records = new ArrayList<LogRecord>();
 
         java.util.logging.Logger testLogger =
             java.util.logging.Logger.getLogger("caller.test");
         testLogger.setUseParentHandlers(false);
         testLogger.setLevel(Level.ALL);
-        testLogger.addHandler(new java.util.logging.Handler() {
+        testLogger.addHandler(new Handler() {
             { setLevel(Level.ALL); }
-            @Override public void publish(java.util.logging.LogRecord r) {
+            @Override public void publish(LogRecord r) {
                 records.add(r);
             }
             @Override public void flush() {}
@@ -529,7 +531,7 @@ class LogBootstrapTest {
         slf4j.info("test caller info");
 
         assertEquals(1, records.size(), "Should have captured one record");
-        java.util.logging.LogRecord record = records.getFirst();
+        LogRecord record = records.getFirst();
 
         assertEquals("caller.test", record.getLoggerName());
         assertEquals(Level.INFO, record.getLevel());

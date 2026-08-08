@@ -428,7 +428,7 @@ final class InjectResolver {
     }
 
     private interface AnnotationLookup {
-        <A extends Annotation> java.util.Optional<A> annotation(Class<A> type);
+        <A extends Annotation> Optional<A> annotation(Class<A> type);
 
         default Annotation[] annotations() {
             return new Annotation[0];

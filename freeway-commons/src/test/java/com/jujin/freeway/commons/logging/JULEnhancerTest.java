@@ -1,4 +1,8 @@
 package com.jujin.freeway.commons.logging;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Handler;
+import java.util.logging.LogManager;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -96,7 +100,7 @@ class JULEnhancerTest {
 
     private static int countFileHandlers(Logger logger) {
         int count = 0;
-        for (java.util.logging.Handler h : logger.getHandlers()) {
+        for (Handler h : logger.getHandlers()) {
             if (h instanceof JULFileHandler) {
                 count++;
             }
@@ -130,8 +134,8 @@ class JULEnhancerTest {
         try {
             JULEnhancer.resetForTest();
             JULEnhancer.configure();
-            java.util.logging.LogManager lm = java.util.logging.LogManager.getLogManager();
-            java.util.List<String> names = new java.util.ArrayList<>();
+            LogManager lm = LogManager.getLogManager();
+            List<String> names = new ArrayList<>();
             var it = lm.getLoggerNames();
             while (it.hasMoreElements()) {
                 names.add(it.nextElement());

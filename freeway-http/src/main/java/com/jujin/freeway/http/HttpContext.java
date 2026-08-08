@@ -1,4 +1,5 @@
 package com.jujin.freeway.http;
+import javax.net.ssl.SSLSession;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
@@ -109,7 +110,7 @@ public abstract class HttpContext {
      * Returns the TLS session for this request (negotiated protocol, cipher
      * suite, peer certificates), or {@code null} for plain HTTP.
      */
-    public javax.net.ssl.SSLSession sslSession() {
+    public SSLSession sslSession() {
         return null;
     }
 

@@ -1,4 +1,5 @@
 package com.jujin.freeway.db;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -66,8 +67,8 @@ class BatchQueryTest {
 
             var results = db.batch("insert into t (id, label) values ($id, $label)")
                 .named(List.of(
-                    java.util.Map.of("id", 10L, "label", "x"),
-                    java.util.Map.of("id", 20L, "label", "y")
+                    Map.of("id", 10L, "label", "x"),
+                    Map.of("id", 20L, "label", "y")
                 ))
                 .execute();
             assertEquals(2, results.size());

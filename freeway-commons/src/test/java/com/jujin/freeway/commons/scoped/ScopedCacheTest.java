@@ -1,4 +1,6 @@
 package com.jujin.freeway.commons.scoped;
+import java.util.logging.Handler;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -311,10 +313,10 @@ class ScopedCacheTest {
     @Test
     void warnsWhenOpenedInsideActiveDeferScope() {
         List<LogRecord> records = new ArrayList<>();
-        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
+        Logger jul = Logger.getLogger(
             ScopedCache.class.getName()
         );
-        java.util.logging.Handler capturing = new java.util.logging.Handler() {
+        Handler capturing = new Handler() {
             @Override
             public void publish(LogRecord record) {
                 records.add(record);
@@ -345,10 +347,10 @@ class ScopedCacheTest {
     @Test
     void noWarningForSafeNesting() {
         List<LogRecord> records = new ArrayList<>();
-        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
+        Logger jul = Logger.getLogger(
             ScopedCache.class.getName()
         );
-        java.util.logging.Handler capturing = new java.util.logging.Handler() {
+        Handler capturing = new Handler() {
             @Override
             public void publish(LogRecord record) {
                 records.add(record);

@@ -1,4 +1,5 @@
 package com.jujin.freeway.http.engine;
+import java.util.Base64;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
@@ -301,7 +302,7 @@ final class HttpSession implements Runnable {
             }
             // RFC 6455 §4.2.1: key must be base64 of 16-byte nonce
             try {
-                if (java.util.Base64.getDecoder().decode(wsKey).length != 16) {
+                if (Base64.getDecoder().decode(wsKey).length != 16) {
                     sendUpgradeError(connection.outputStream(), 400, "Invalid Sec-WebSocket-Key");
                     return;
                 }

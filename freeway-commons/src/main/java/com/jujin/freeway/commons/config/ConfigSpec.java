@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.config;
+import com.jujin.freeway.commons.coercion.Coercer;
 
 import java.util.Objects;
 import java.util.function.Function;
@@ -156,7 +157,7 @@ public record ConfigSpec<T>(
      * has no per-key parser (the {@code of(key, type, default)} form). A
      * spec with an explicit parser uses it regardless of the coercer.
      */
-    public T parse(String raw, com.jujin.freeway.commons.coercion.Coercer coercer) {
+    public T parse(String raw, Coercer coercer) {
         if (raw == null || raw.isBlank()) {
             if (required) {
                 throw new IllegalArgumentException(

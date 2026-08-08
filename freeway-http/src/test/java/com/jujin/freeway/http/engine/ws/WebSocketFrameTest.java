@@ -1,4 +1,5 @@
 package com.jujin.freeway.http.engine.ws;
+import java.io.ByteArrayOutputStream;
 
 import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
@@ -40,7 +41,7 @@ class WebSocketFrameTest {
         byte[] payload = new byte[70000];
         payload[0] = 'A';
         var frame = new WebSocketFrame(OpCode.Text, true, payload);
-        var out = new java.io.ByteArrayOutputStream();
+        var out = new ByteArrayOutputStream();
         frame.write(out);
         byte[] wire = out.toByteArray();
         // First byte: FIN+Text opcode
@@ -54,7 +55,7 @@ class WebSocketFrameTest {
         assertEquals(0x11, wire[8] & 0xFF);
         assertEquals(0x70, wire[9] & 0xFF);
         // Verify round-trip
-        var readBack = WebSocketFrame.read(new java.io.ByteArrayInputStream(wire));
+        var readBack = WebSocketFrame.read(new ByteArrayInputStream(wire));
         assertEquals(70000, readBack.payload().length);
         assertEquals('A', readBack.payload()[0]);
     }

@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.logging;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -124,7 +125,7 @@ class JULMDCAdapterTest {
     void threadsHaveIsolatedContext() throws Exception {
         adapter.put("key", "main");
 
-        java.util.concurrent.atomic.AtomicReference<String> otherValue = new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicReference<String> otherValue = new AtomicReference<>();
         Thread t = new Thread(() -> {
             adapter.put("key", "other");
             otherValue.set(adapter.get("key"));

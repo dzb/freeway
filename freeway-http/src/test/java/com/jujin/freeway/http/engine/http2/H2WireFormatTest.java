@@ -1,4 +1,8 @@
 package com.jujin.freeway.http.engine.http2;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
@@ -80,11 +84,11 @@ class H2WireFormatTest {
         sf.params.add(new SettingParameter(SettingIdentifier.SETTINGS_INITIAL_WINDOW_SIZE, 65535));
         byte[] encoded = sf.encode();
         // len=12 (2 params), type=0x04, flags=0x00, stream=0
-        assertEquals("00000c040000000000", HEX.formatHex(java.util.Arrays.copyOf(encoded, 9)));
+        assertEquals("00000c040000000000", HEX.formatHex(Arrays.copyOf(encoded, 9)));
         // param 1: id=0x0005 (MAX_FRAME_SIZE), value=0x00004000
-        assertEquals("000500004000", HEX.formatHex(java.util.Arrays.copyOfRange(encoded, 9, 15)));
+        assertEquals("000500004000", HEX.formatHex(Arrays.copyOfRange(encoded, 9, 15)));
         // param 2: id=0x0004 (INITIAL_WINDOW_SIZE), value=0x0000FFFF
-        assertEquals("00040000ffff", HEX.formatHex(java.util.Arrays.copyOfRange(encoded, 15, 21)));
+        assertEquals("00040000ffff", HEX.formatHex(Arrays.copyOfRange(encoded, 15, 21)));
     }
 
     @Test
@@ -101,14 +105,14 @@ class H2WireFormatTest {
         // codec — this would catch any asymmetric literal/indexed encoding.
         var out = new ByteArrayOutputStream();
         var hpack = new HPackContext();
-        java.util.Map<String, java.util.List<String>> headers = new java.util.LinkedHashMap<>();
-        headers.put(":status", java.util.List.of("200"));
-        headers.put("content-type", java.util.List.of("application/json; charset=utf-8"));
-        headers.put("x-custom", java.util.List.of("value-1", "value-2"));
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        headers.put(":status", List.of("200"));
+        headers.put("content-type", List.of("application/json; charset=utf-8"));
+        headers.put("x-custom", List.of("value-1", "value-2"));
         hpack.writeResponseHeaders(headers, out, 7, false);
 
         // strip the 9-byte HEADERS frame header, decode the block
-        byte[] block = java.util.Arrays.copyOfRange(out.toByteArray(), 9, out.size());
+        byte[] block = Arrays.copyOfRange(out.toByteArray(), 9, out.size());
         var decoded = new HPackContext().decode(block);
         assertEquals("200", decoded.get(0).value, ":status via indexed 0x88");
         assertEquals("content-type", decoded.get(1).name);

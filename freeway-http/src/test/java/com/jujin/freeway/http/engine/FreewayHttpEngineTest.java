@@ -1,4 +1,15 @@
 package com.jujin.freeway.http.engine;
+import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.websocket.WebSocketEndpoint;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.Base64;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Locale;
 
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.commons.json.JsonUtils;
@@ -58,7 +69,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FreewayHttpEngineTest {
-    private com.jujin.freeway.boot.AppRuntime app;
+    private AppRuntime app;
 
     @AfterEach
     void tearDown() {
@@ -277,7 +288,7 @@ class FreewayHttpEngineTest {
         String headers = head.toString(StandardCharsets.ISO_8859_1);
         int contentLength = 0;
         for (String line : headers.split("\r\n")) {
-            if (line.toLowerCase(java.util.Locale.ROOT)
+            if (line.toLowerCase(Locale.ROOT)
                     .startsWith("content-length:")) {
                 contentLength = Integer.parseInt(line.substring(15).trim());
             }
@@ -376,7 +387,7 @@ class FreewayHttpEngineTest {
         app = FreewayApp.run(new String[0], new PingModule());
         assertTrue(app.get(WebServer.class).isRunning());
 
-        try (var sock = new java.net.Socket("127.0.0.1", port)) {
+        try (var sock = new Socket("127.0.0.1", port)) {
             var out = sock.getOutputStream();
             // Send upgrade with invalid key (not base64 of 16 bytes)
             out.write("GET /api/ws/lobby HTTP/1.1\r\n".getBytes());
@@ -389,7 +400,7 @@ class FreewayHttpEngineTest {
             out.flush();
 
             // Read response status line
-            var in = new java.io.BufferedReader(new java.io.InputStreamReader(sock.getInputStream()));
+            var in = new BufferedReader(new InputStreamReader(sock.getInputStream()));
             String line = in.readLine();
             assertNotNull(line);
             assertTrue(line.contains("400"), "Invalid key should get 400, got: " + line);
@@ -656,11 +667,11 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             String body = "x".repeat(2048);
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/check"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + server.port() + "/check"))
                     .header("Content-Type", "application/json")
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
                     .build(),
@@ -677,26 +688,26 @@ class FreewayHttpEngineTest {
     void webSocketSubprotocolIsNegotiated() throws Exception {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
-            .webSocketRoute(WebSocketRoute.of("/ws/sub", new com.jujin.freeway.http.websocket.WebSocketEndpoint() {
+            .webSocketRoute(WebSocketRoute.of("/ws/sub", new WebSocketEndpoint() {
                 @Override
-                public com.jujin.freeway.http.websocket.WebSocketListener open(
-                        com.jujin.freeway.http.websocket.WebSocketSession session) {
-                    return new com.jujin.freeway.http.websocket.WebSocketListener() {
+                public WebSocketListener open(
+                        WebSocketSession session) {
+                    return new WebSocketListener() {
                         @Override public void onText(String text) throws Exception {}
                     };
                 }
 
                 @Override
-                public java.util.Set<String> subprotocols() {
-                    return java.util.Set.of("chat");
+                public Set<String> subprotocols() {
+                    return Set.of("chat");
                 }
             }))
             .build();
         server.start();
         try {
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(3000);
-                String key = java.util.Base64.getEncoder().encodeToString(
+                String key = Base64.getEncoder().encodeToString(
                     new byte[16]); // valid 16-byte nonce
                 String req = "GET /ws/sub HTTP/1.1\r\n"
                     + "Host: x\r\n"
@@ -706,12 +717,12 @@ class FreewayHttpEngineTest {
                     + "Sec-WebSocket-Version: 13\r\n"
                     + "Sec-WebSocket-Protocol: chat, superchat\r\n\r\n";
                 socket.getOutputStream().write(req.getBytes(
-                    java.nio.charset.StandardCharsets.ISO_8859_1));
+                    StandardCharsets.ISO_8859_1));
                 socket.getOutputStream().flush();
                 byte[] buf = new byte[1024];
                 int n = socket.getInputStream().read(buf);
                 String response = new String(buf, 0, Math.max(n, 0),
-                    java.nio.charset.StandardCharsets.ISO_8859_1);
+                    StandardCharsets.ISO_8859_1);
                 assertTrue(response.startsWith("HTTP/1.1 101"), response);
                 assertTrue(response.contains("Sec-WebSocket-Protocol: chat"),
                     "server must select the first client protocol the endpoint supports: " + response);
@@ -730,16 +741,16 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(3000);
                 socket.getOutputStream().write(
                     "\r\nGET / HTTP/1.1\r\nHost: x\r\n\r\n".getBytes(
-                        java.nio.charset.StandardCharsets.ISO_8859_1));
+                        StandardCharsets.ISO_8859_1));
                 socket.getOutputStream().flush();
                 byte[] buf = new byte[256];
                 int n = socket.getInputStream().read(buf);
                 String response = new String(buf, 0, Math.max(n, 0),
-                    java.nio.charset.StandardCharsets.ISO_8859_1);
+                    StandardCharsets.ISO_8859_1);
                 assertTrue(response.startsWith("HTTP/1.1 200"),
                     "a leading empty line must be ignored, got: " + response);
             }
@@ -756,11 +767,11 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(3000);
                 socket.getOutputStream().write(
                     "GET / HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\n".getBytes(
-                        java.nio.charset.StandardCharsets.ISO_8859_1));
+                        StandardCharsets.ISO_8859_1));
                 socket.getOutputStream().flush();
                 int read = socket.getInputStream().read();
                 assertEquals(-1, read,
@@ -779,10 +790,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/healthz/"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + server.port() + "/healthz/"))
                     .GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
             assertEquals(200, resp.statusCode(),
@@ -808,10 +819,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/secure"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + server.port() + "/secure"))
                     .GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
             assertEquals(200, resp.statusCode());
@@ -831,10 +842,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://127.0.0.1:" + server.port() + "/session"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + server.port() + "/session"))
                     .GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
             assertEquals(200, resp.statusCode());
@@ -866,8 +877,8 @@ class FreewayHttpEngineTest {
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
-                java.nio.charset.StandardCharsets.US_ASCII);
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                StandardCharsets.US_ASCII);
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(5000);
                 var out = socket.getOutputStream();
                 out.write(preface);
@@ -956,8 +967,8 @@ class FreewayHttpEngineTest {
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
-                java.nio.charset.StandardCharsets.US_ASCII);
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                StandardCharsets.US_ASCII);
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(5000);
                 var out = socket.getOutputStream();
                 out.write(preface);
@@ -986,7 +997,7 @@ class FreewayHttpEngineTest {
                 // Stream 1: HEADERS (no END_STREAM) + DATA "hi" + trailer
                 // HEADERS (END_HEADERS | END_STREAM).
                 writeFrame(out, headerBlock.length, 0x1, 0x4, 1, headerBlock);
-                writeFrame(out, 2, 0x0, 0x0, 1, "hi".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                writeFrame(out, 2, 0x0, 0x0, 1, "hi".getBytes(StandardCharsets.US_ASCII));
                 writeFrame(out, trailerBlock.length, 0x1, 0x5, 1, trailerBlock);
 
                 // First response must be 200 on stream 1 and the connection
@@ -1059,7 +1070,7 @@ class FreewayHttpEngineTest {
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(5000);
                 var out = socket.getOutputStream();
                 out.write(preface);
@@ -1129,7 +1140,7 @@ class FreewayHttpEngineTest {
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(5000);
                 var out = socket.getOutputStream();
                 out.write(preface);
@@ -1183,7 +1194,7 @@ class FreewayHttpEngineTest {
         // RST_STREAM with NO_ERROR must still terminate the stream: a handler
         // blocked reading the request body is released, and the connection
         // survives for the next request.
-        var active = new java.util.concurrent.atomic.AtomicInteger();
+        var active = new AtomicInteger();
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/", ctx -> {
@@ -1201,7 +1212,7 @@ class FreewayHttpEngineTest {
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(5000);
                 var out = socket.getOutputStream();
                 out.write(preface);
@@ -1249,8 +1260,8 @@ class FreewayHttpEngineTest {
         server.start();
         try {
             byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
-                java.nio.charset.StandardCharsets.US_ASCII);
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+                StandardCharsets.US_ASCII);
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(3000);
                 socket.getOutputStream().write(preface);
                 socket.getOutputStream().flush();
@@ -1296,10 +1307,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            try (var socket = new java.net.Socket("127.0.0.1", server.port())) {
+            try (var socket = new Socket("127.0.0.1", server.port())) {
                 socket.setSoTimeout(3000);
                 String line = "GET /" + "A".repeat(9000) + " HTTP/1.1\r\n\r\n";
-                socket.getOutputStream().write(line.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+                socket.getOutputStream().write(line.getBytes(StandardCharsets.ISO_8859_1));
                 socket.getOutputStream().flush();
                 int read = socket.getInputStream().read();
                 assertEquals(-1, read,
@@ -1314,8 +1325,8 @@ class FreewayHttpEngineTest {
 
     @Test
     void closeWaitsForInFlightRequestWithinGrace() throws Exception {
-        var handlerStarted = new java.util.concurrent.CountDownLatch(1);
-        var releaseHandler = new java.util.concurrent.CountDownLatch(1);
+        var handlerStarted = new CountDownLatch(1);
+        var releaseHandler = new CountDownLatch(1);
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/slow", ctx -> {
@@ -1326,11 +1337,11 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var socket = new java.net.Socket("127.0.0.1", server.port());
+            var socket = new Socket("127.0.0.1", server.port());
             socket.setSoTimeout(3000);
             socket.getOutputStream().write(
                 "GET /slow HTTP/1.1\r\nHost: x\r\n\r\n".getBytes(
-                    java.nio.charset.StandardCharsets.ISO_8859_1));
+                    StandardCharsets.ISO_8859_1));
             socket.getOutputStream().flush();
             assertTrue(handlerStarted.await(3, TimeUnit.SECONDS));
 
@@ -1347,7 +1358,7 @@ class FreewayHttpEngineTest {
             byte[] buf = new byte[256];
             int n = socket.getInputStream().read(buf);
             String response = n > 0
-                ? new String(buf, 0, n, java.nio.charset.StandardCharsets.ISO_8859_1)
+                ? new String(buf, 0, n, StandardCharsets.ISO_8859_1)
                 : "";
             assertTrue(response.contains("200") && response.contains("slow-done"),
                 "the in-flight request must complete before the connection closes: " + response);
@@ -1365,14 +1376,14 @@ class FreewayHttpEngineTest {
         SSLContext serverSsl = serverSslContext(keystore);
 
         FreewayHttpEngine engine = new FreewayHttpEngine(
-            new com.jujin.freeway.commons.json.JsonCodecDefault(),
-            new com.jujin.freeway.commons.coercion.CoercerDefault(),
+            new JsonCodecDefault(),
+            new CoercerDefault(),
             serverSsl,
             false
         );
         var handle = engine.start(
             new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)),
-            ctx -> ctx.sendJson(200, java.util.Map.of(
+            ctx -> ctx.sendJson(200, Map.of(
                 "secure", ctx.isSecure(),
                 "session", ctx.sslSession() != null,
                 "protocol", ctx.sslSession() != null
@@ -1381,15 +1392,15 @@ class FreewayHttpEngineTest {
         try {
             SSLContext trustAll = trustAllSslContext();
 
-            var client = java.net.http.HttpClient.newBuilder()
+            var client = HttpClient.newBuilder()
                 .sslContext(trustAll).build();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("https://localhost:" + handle.port() + "/tls"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("https://localhost:" + handle.port() + "/tls"))
                     .GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
             assertEquals(200, resp.statusCode(), resp.body());
-            var body = com.jujin.freeway.commons.json.JsonUtils.parseObject(resp.body());
+            var body = JsonUtils.parseObject(resp.body());
             assertTrue(body.getBoolean("secure"),
                 "HTTPS requests must report isSecure() == true: " + resp.body());
             assertTrue(body.getBoolean("session"),
@@ -1493,10 +1504,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/data"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + server.port() + "/data"))
                     .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
                     .build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
@@ -1524,10 +1535,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + server.port() + "/whoami"))
                     .GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
             assertEquals(200, resp.statusCode());
@@ -1550,10 +1561,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + server.port() + "/whoami"))
                     .header("X-Request-Id", "client-supplied-id")
                     .GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
@@ -1573,10 +1584,10 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = java.net.http.HttpClient.newHttpClient();
+            var client = HttpClient.newHttpClient();
             var resp = client.send(
-                java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("http://localhost:" + server.port() + "/whoami"))
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + server.port() + "/whoami"))
                     .header("x-request-id", "lowercase-client-id")
                     .GET().build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());

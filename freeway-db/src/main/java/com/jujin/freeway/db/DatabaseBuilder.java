@@ -1,4 +1,5 @@
 package com.jujin.freeway.db;
+import java.sql.Date;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
@@ -132,7 +133,7 @@ public final class DatabaseBuilder {
             effective = cd;
         } else if (effective instanceof CoercerDefault cd) {
             // A custom CoercerDefault must not silently lose the JDBC rules
-            // (java.sql.Date/Timestamp/Time → java.time) that the IoC path
+            // (Date/Timestamp/Time → java.time) that the IoC path
             // always contributes. Caller-registered rules keep priority.
             for (var rule : Coercions.jdbcDefaults()) {
                 cd.registerIfAbsent(rule);

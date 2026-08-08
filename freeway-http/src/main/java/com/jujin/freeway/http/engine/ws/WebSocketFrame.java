@@ -1,4 +1,5 @@
 package com.jujin.freeway.http.engine.ws;
+import java.nio.charset.CharacterCodingException;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -100,7 +101,7 @@ public final class WebSocketFrame {
         decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
         try {
             return decoder.decode(ByteBuffer.wrap(data, offset, length)).toString();
-        } catch (java.nio.charset.CharacterCodingException e) {
+        } catch (CharacterCodingException e) {
             throw new WebSocketException(CloseCode.InvalidFramePayloadData, "Invalid UTF-8");
         }
     }

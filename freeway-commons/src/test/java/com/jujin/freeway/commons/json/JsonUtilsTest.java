@@ -1,4 +1,20 @@
 package com.jujin.freeway.commons.json;
+import java.io.File;
+import java.io.InputStream;
+import java.net.URI;
+import java.time.Duration;
+import java.time.LocalTime;
+import java.util.Date;
+import java.util.Locale;
+import java.util.OptionalInt;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.LinkedTransferQueue;
+import java.util.concurrent.TransferQueue;
 
 import java.io.ByteArrayInputStream;
 import java.lang.reflect.ParameterizedType;
@@ -482,13 +498,13 @@ class JsonUtilsTest {
 
     @Test
     void transferQueueReturnsLinkedTransferQueue() {
-        Type type = new TypeRef<java.util.concurrent.TransferQueue<String>>() {}.type();
+        Type type = new TypeRef<TransferQueue<String>>() {}.type();
         @SuppressWarnings("unchecked")
-        java.util.concurrent.TransferQueue<String> queue =
-            (java.util.concurrent.TransferQueue<String>) JsonUtils.coerce(
+        TransferQueue<String> queue =
+            (TransferQueue<String>) JsonUtils.coerce(
                 JsonUtils.parse("[\"alpha\"]"), type, COERCER);
         assertNotNull(queue);
-        assertTrue(queue instanceof java.util.concurrent.LinkedTransferQueue,
+        assertTrue(queue instanceof LinkedTransferQueue,
             "TransferQueue should return LinkedTransferQueue, got: " + queue.getClass());
     }
 
@@ -500,39 +516,39 @@ class JsonUtilsTest {
 
     @Test
     void longValueRejectsBigIntegerOutOfRange() {
-        BigInteger huge = new java.math.BigInteger("99999999999999999999");
+        BigInteger huge = new BigInteger("99999999999999999999");
         JsonObject obj = JsonUtils.object().put("x", huge);
         assertThrows(IllegalArgumentException.class, () -> obj.getLong("x"));
     }
 
     @Test
     void nullMapKeyThrows() {
-        java.util.Map<Object, String> map = new java.util.HashMap<>();
+        Map<Object, String> map = new HashMap<>();
         map.put(null, "value");
         assertThrows(IllegalArgumentException.class, () -> JsonUtils.stringify(map));
     }
 
     @Test
     void stringifyDuration() {
-        String json = JsonUtils.stringify(java.time.Duration.ofMinutes(5));
+        String json = JsonUtils.stringify(Duration.ofMinutes(5));
         assertEquals("\"PT5M\"", json);
     }
 
     @Test
     void stringifyDate() {
-        String json = JsonUtils.stringify(new java.util.Date(0));
+        String json = JsonUtils.stringify(new Date(0));
         assertEquals("\"1970-01-01T00:00:00Z\"", json);
     }
 
     @Test
     void stringifyOptionalInt() {
-        String json = JsonUtils.stringify(java.util.OptionalInt.of(3));
+        String json = JsonUtils.stringify(OptionalInt.of(3));
         assertEquals("3", json);
     }
 
     @Test
     void stringifyHandlesURI() {
-        String json = JsonUtils.stringify(java.net.URI.create("https://example.com"));
+        String json = JsonUtils.stringify(URI.create("https://example.com"));
         assertEquals("\"https://example.com\"", json);
     }
 
@@ -560,7 +576,7 @@ class JsonUtilsTest {
     @Test
     void parseNumberAcceptsBigInteger() {
         Object result = JsonUtils.parse("9223372036854775808"); // > Long.MAX_VALUE
-        assertEquals(new java.math.BigInteger("9223372036854775808"), result);
+        assertEquals(new BigInteger("9223372036854775808"), result);
     }
 
     @Test
@@ -571,37 +587,37 @@ class JsonUtilsTest {
 
     @Test
     void concurrentNavigableMapReturnsConcurrentSkipListMap() {
-        Type type = new TypeRef<java.util.concurrent.ConcurrentNavigableMap<Integer, String>>() {}.type();
+        Type type = new TypeRef<ConcurrentNavigableMap<Integer, String>>() {}.type();
         @SuppressWarnings("unchecked")
-        java.util.concurrent.ConcurrentNavigableMap<Integer, String> map =
-            (java.util.concurrent.ConcurrentNavigableMap<Integer, String>) JsonUtils.coerce(
+        ConcurrentNavigableMap<Integer, String> map =
+            (ConcurrentNavigableMap<Integer, String>) JsonUtils.coerce(
                 JsonUtils.parse("{\"1\":\"alpha\"}"), type, COERCER);
         assertNotNull(map);
-        assertTrue(map instanceof java.util.concurrent.ConcurrentSkipListMap,
+        assertTrue(map instanceof ConcurrentSkipListMap,
             "ConcurrentNavigableMap should return ConcurrentSkipListMap, got: " + map.getClass());
     }
 
     @Test
     void blockingQueueReturnsLinkedBlockingQueue() {
-        Type type = new TypeRef<java.util.concurrent.BlockingQueue<String>>() {}.type();
+        Type type = new TypeRef<BlockingQueue<String>>() {}.type();
         @SuppressWarnings("unchecked")
-        java.util.concurrent.BlockingQueue<String> queue =
-            (java.util.concurrent.BlockingQueue<String>) JsonUtils.coerce(
+        BlockingQueue<String> queue =
+            (BlockingQueue<String>) JsonUtils.coerce(
                 JsonUtils.parse("[\"alpha\"]"), type, COERCER);
         assertNotNull(queue);
-        assertTrue(queue instanceof java.util.concurrent.LinkedBlockingQueue,
+        assertTrue(queue instanceof LinkedBlockingQueue,
             "BlockingQueue should return LinkedBlockingQueue, got: " + queue.getClass());
     }
 
     @Test
     void blockingDequeReturnsLinkedBlockingDeque() {
-        Type type = new TypeRef<java.util.concurrent.BlockingDeque<String>>() {}.type();
+        Type type = new TypeRef<BlockingDeque<String>>() {}.type();
         @SuppressWarnings("unchecked")
-        java.util.concurrent.BlockingDeque<String> deque =
-            (java.util.concurrent.BlockingDeque<String>) JsonUtils.coerce(
+        BlockingDeque<String> deque =
+            (BlockingDeque<String>) JsonUtils.coerce(
                 JsonUtils.parse("[\"alpha\"]"), type, COERCER);
         assertNotNull(deque);
-        assertTrue(deque instanceof java.util.concurrent.LinkedBlockingDeque,
+        assertTrue(deque instanceof LinkedBlockingDeque,
             "BlockingDeque should return LinkedBlockingDeque, got: " + deque.getClass());
     }
 
@@ -761,13 +777,13 @@ class JsonUtilsTest {
     }
 
     private static class LeafBean {
-        public java.util.Date date = new java.util.Date(0);
-        public java.io.File file = new java.io.File("tmp/leaf.txt");
-        public java.util.Locale locale = java.util.Locale.CHINA;
-        public java.time.Duration duration = java.time.Duration.ofSeconds(5);
-        public java.time.LocalTime time = java.time.LocalTime.NOON;
-        public java.util.UUID uuid =
-            java.util.UUID.fromString("00000000-0000-0000-0000-000000000001");
+        public Date date = new Date(0);
+        public File file = new File("tmp/leaf.txt");
+        public Locale locale = Locale.CHINA;
+        public Duration duration = Duration.ofSeconds(5);
+        public LocalTime time = LocalTime.NOON;
+        public UUID uuid =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
         public Color color = Color.RED;
         public Optional<String> maybe = Optional.of("v");
     }
@@ -785,7 +801,7 @@ class JsonUtilsTest {
         RED
     }
 
-    private static final class CountingInputStream extends java.io.InputStream {
+    private static final class CountingInputStream extends InputStream {
         private long remaining;
         private boolean closed;
 

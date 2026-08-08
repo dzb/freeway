@@ -1,4 +1,5 @@
 package com.jujin.freeway.http.sse;
+import java.io.OutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -96,7 +97,7 @@ class SseEmitterTest {
         // A broken stream must flip the emitter closed: the IOException is
         // rethrown to the caller, and subsequent sends become no-ops instead
         // of hammering the dead stream.
-        var counting = new java.io.OutputStream() {
+        var counting = new OutputStream() {
             int writes;
             @Override
             public void write(int b) throws IOException {
@@ -114,7 +115,7 @@ class SseEmitterTest {
         };
         var emitter = new SseEmitter(counting);
 
-        assertThrows(java.io.IOException.class, () -> emitter.send("boom"));
+        assertThrows(IOException.class, () -> emitter.send("boom"));
         // Second send must not touch the stream at all (closed short-circuit).
         emitter.send("ignored");
         assertEquals(1, counting.writes,

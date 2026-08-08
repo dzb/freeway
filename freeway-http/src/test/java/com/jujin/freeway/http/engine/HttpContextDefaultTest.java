@@ -1,4 +1,9 @@
 package com.jujin.freeway.http.engine;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
+import java.io.IOException;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
@@ -16,10 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpContextDefaultTest {
 
-    private static final com.jujin.freeway.commons.json.JsonCodec CODEC =
-            new com.jujin.freeway.commons.json.JsonCodecDefault();
-    private static final com.jujin.freeway.commons.coercion.Coercer COERCER =
-            new com.jujin.freeway.commons.coercion.CoercerDefault();
+    private static final JsonCodec CODEC =
+            new JsonCodecDefault();
+    private static final Coercer COERCER =
+            new CoercerDefault();
 
     /** Records writer calls without needing a real transport. */
     private static final class RecordingWriter implements HttpResponseWriter {
@@ -46,7 +51,7 @@ class HttpContextDefaultTest {
         }
 
         @Override
-        public SseEmitter openSse(HttpContextDefault ctx) throws java.io.IOException {
+        public SseEmitter openSse(HttpContextDefault ctx) throws IOException {
             sse = new SseEmitter(new ByteArrayOutputStream());
             return sse;
         }

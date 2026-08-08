@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.metrics;
+import java.util.function.Supplier;
 
 /**
  * Minimal observable-counters SPI for framework components.
@@ -37,5 +38,5 @@ public interface Metrics {
      * Registers a named sampled value; {@link #sample()} is invoked by the
      * consumer when it reads the value.
      */
-    void gauge(String name, java.util.function.Supplier<Number> value);
+    void gauge(String name, Supplier<Number> value);
 }

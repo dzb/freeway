@@ -1,4 +1,5 @@
 package com.jujin.freeway.http;
+import java.util.Optional;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
@@ -95,10 +96,10 @@ public final class StubHttpContext extends HttpContext {
     }
 
     @Override
-    public java.util.Optional<String> queryParam(String name) {
+    public Optional<String> queryParam(String name) {
         List<String> values = queryParams.get(name);
         return (values != null && !values.isEmpty())
-                ? java.util.Optional.of(values.get(0)) : java.util.Optional.empty();
+                ? Optional.of(values.get(0)) : Optional.empty();
     }
 
     @Override
@@ -122,10 +123,10 @@ public final class StubHttpContext extends HttpContext {
     }
 
     @Override
-    public java.util.Optional<String> header(String name) {
+    public Optional<String> header(String name) {
         List<String> values = requestHeaders.get(name);
         return (values != null && !values.isEmpty())
-                ? java.util.Optional.of(values.get(0)) : java.util.Optional.empty();
+                ? Optional.of(values.get(0)) : Optional.empty();
     }
 
     @Override

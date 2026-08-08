@@ -1,4 +1,6 @@
 package com.jujin.freeway.db;
+import java.net.URL;
+import java.sql.Timestamp;
 
 import com.jujin.freeway.db.schema.Id;
 import com.jujin.freeway.db.schema.Schema;
@@ -117,8 +119,8 @@ class DbModuleTest {
 
             db.batch("insert into ledger (id, name, amount_cents, created_at) values (?, ?, ?, ?)")
                 .rows(
-                    new Object[] { 1L, "alpha", 1250L, java.sql.Timestamp.from(Instant.parse("2025-01-01T00:00:00Z")) },
-                    new Object[] { 2L, "beta", 2250L, java.sql.Timestamp.from(Instant.parse("2025-01-02T00:00:00Z")) }
+                    new Object[] { 1L, "alpha", 1250L, Timestamp.from(Instant.parse("2025-01-01T00:00:00Z")) },
+                    new Object[] { 2L, "beta", 2250L, Timestamp.from(Instant.parse("2025-01-02T00:00:00Z")) }
                 )
                 .execute();
 
@@ -291,7 +293,7 @@ class DbModuleTest {
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(
-                new java.net.URL[] { tempDir.toUri().toURL() },
+                new URL[] { tempDir.toUri().toURL() },
                 previous)) {
             Thread.currentThread().setContextClassLoader(loader);
 
@@ -353,7 +355,7 @@ class DbModuleTest {
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(
-                new java.net.URL[] { tempDir.toUri().toURL() },
+                new URL[] { tempDir.toUri().toURL() },
                 previous)) {
             Thread.currentThread().setContextClassLoader(loader);
 

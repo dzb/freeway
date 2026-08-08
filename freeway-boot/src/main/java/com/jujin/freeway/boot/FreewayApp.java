@@ -1,4 +1,5 @@
 package com.jujin.freeway.boot;
+import com.jujin.freeway.commons.logging.LogBootstrap;
 
 import com.jujin.freeway.ioc.ModuleEx;
 
@@ -29,7 +30,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 public final class FreewayApp {
 
     static {
-        com.jujin.freeway.commons.logging.LogBootstrap.ensureProvider();
+        LogBootstrap.ensureProvider();
     }
 
     private FreewayApp() {

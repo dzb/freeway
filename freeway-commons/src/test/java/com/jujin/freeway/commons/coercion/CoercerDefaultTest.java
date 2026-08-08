@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.coercion;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -90,8 +91,8 @@ class CoercerDefaultTest {
 
     @Test
     void cannotCoerceUnsupported() {
-        assertFalse(coercer.supports(Integer.class, java.util.regex.Pattern.class));
-        assertFalse(coercer.supports(Color.class, java.util.regex.Pattern.class));
+        assertFalse(coercer.supports(Integer.class, Pattern.class));
+        assertFalse(coercer.supports(Color.class, Pattern.class));
     }
 
     @Test
@@ -104,7 +105,7 @@ class CoercerDefaultTest {
 
     @Test
     void coerceNumberRejectsOversized() {
-        java.math.BigInteger huge = new java.math.BigInteger("99999999999999999999");
+        BigInteger huge = new BigInteger("99999999999999999999");
         assertThrows(IllegalArgumentException.class,
             () -> coercer.coerce(huge, Integer.class));
         assertThrows(IllegalArgumentException.class,

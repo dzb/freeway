@@ -1,4 +1,5 @@
 package com.jujin.freeway.db.migration;
+import java.net.URL;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.DatabaseBuilder;
@@ -106,7 +107,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_natural_order")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -146,7 +147,7 @@ class MigrationRunnerTest {
         }
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = new DatabaseBuilder()
                  .config(PoolConfig.defaults(
                      "jdbc:h2:mem:freeway_migration_large_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
@@ -174,7 +175,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_cs")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -205,7 +206,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_badver")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -232,7 +233,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_dupver")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -260,7 +261,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_numdup")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -287,7 +288,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_missing_file")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -312,7 +313,7 @@ class MigrationRunnerTest {
         Files.writeString(migrationDir.resolve("V001__empty.sql"), "");
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_empty")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -336,7 +337,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_comment_only")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -365,7 +366,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_multi")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
@@ -396,7 +397,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_lock")) {
             Thread.currentThread().setContextClassLoader(loader);
             // Ensure the tracking table exists before inserting a fake lock
@@ -431,7 +432,7 @@ class MigrationRunnerTest {
         );
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_disabled")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(db, false, "db/migration", "_migrations");
@@ -454,7 +455,7 @@ class MigrationRunnerTest {
 
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         try (URLClassLoader loader = new URLClassLoader(
-                 new java.net.URL[] { tempDir.toUri().toURL() }, null);
+                 new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_rename")) {
             Thread.currentThread().setContextClassLoader(loader);
             MigrationRunner runner = new MigrationRunner(

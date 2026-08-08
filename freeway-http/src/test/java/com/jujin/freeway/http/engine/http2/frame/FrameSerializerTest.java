@@ -1,4 +1,5 @@
 package com.jujin.freeway.http.engine.http2.frame;
+import java.io.EOFException;
 
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ class FrameSerializerTest {
             FrameSerializer.deserialize(new ByteArrayInputStream(header), 65535);
         } catch (Http2Exception e) {
             fail("Frame below negotiated max should not be rejected: " + e.getMessage());
-        } catch (java.io.EOFException ignored) {
+        } catch (EOFException ignored) {
             // Expected: body bytes not provided, but frame size check passed
         }
     }

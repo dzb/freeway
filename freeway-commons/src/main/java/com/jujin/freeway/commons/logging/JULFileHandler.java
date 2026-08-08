@@ -1,4 +1,6 @@
 package com.jujin.freeway.commons.logging;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
@@ -203,7 +205,7 @@ public final class JULFileHandler extends StreamHandler {
             try {
                 LocalDate fileDate = LocalDate.ofInstant(
                     Files.getLastModifiedTime(basePath).toInstant(),
-                    java.time.ZoneId.systemDefault()
+                    ZoneId.systemDefault()
                 );
                 if (fileDate.isBefore(currentLocalDate)) {
                     Path archived = archivedPath(DATE_FMT.format(fileDate), 0);
@@ -542,7 +544,7 @@ public final class JULFileHandler extends StreamHandler {
     // ── helpers ─────────────────────────────────────────────────────
 
     private static long computeNextMidnight() {
-        return java.time.ZonedDateTime.now()
+        return ZonedDateTime.now()
             .plusDays(1)
             .truncatedTo(java.time.temporal.ChronoUnit.DAYS)
             .toInstant()

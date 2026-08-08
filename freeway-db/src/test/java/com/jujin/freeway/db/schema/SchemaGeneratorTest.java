@@ -556,7 +556,7 @@ class SchemaGeneratorTest {
 
     public record PrecisionDecimalEntity(
         @Id Long id,
-        @Column(precision = 10) java.math.BigDecimal amount
+        @Column(precision = 10) BigDecimal amount
     ) {}
 
     public record WithTransient(

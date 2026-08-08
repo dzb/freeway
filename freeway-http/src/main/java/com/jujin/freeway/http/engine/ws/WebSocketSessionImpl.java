@@ -64,7 +64,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     @Override
     public Map<String, List<String>> queryParams() {
         Map<String, List<String>> m = ensureQueryParams();
-        Map<String, List<String>> copy = new java.util.LinkedHashMap<>();
+        Map<String, List<String>> copy = new LinkedHashMap<>();
         m.forEach((k, v) -> copy.put(k, List.copyOf(v)));
         return Collections.unmodifiableMap(copy);
     }

@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.bean;
+import java.lang.reflect.ParameterizedType;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
@@ -13,7 +14,7 @@ public interface BeanProperty {
     /** Returns the property name. */
     String name();
 
-    /** Returns the property type (may be a {@link java.lang.reflect.ParameterizedType}). */
+    /** Returns the property type (may be a {@link ParameterizedType}). */
     Type type();
 
     /** Returns the annotations declared on this property. */

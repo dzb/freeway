@@ -1,4 +1,5 @@
 package com.jujin.freeway.commons.logging;
+import java.util.concurrent.ConcurrentHashMap;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -207,7 +208,7 @@ final class JULEnhancer {
                 fileConfig.containsKey(configKey) ||
                 System.getProperties().containsKey(configKey)
             ) {
-                collectLevelKeys(levelKeys, java.util.List.of(configKey));
+                collectLevelKeys(levelKeys, List.of(configKey));
             }
         }
 
@@ -455,7 +456,7 @@ final class JULEnhancer {
      * keeps its own formatter instead of being silently replaced.
      */
     private static final Set<Handler> freewayHandlers =
-        java.util.concurrent.ConcurrentHashMap.newKeySet();
+        ConcurrentHashMap.newKeySet();
 
     /**
      * Re-applies all named file handler configurations. Safe to call any

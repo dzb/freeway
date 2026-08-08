@@ -6,6 +6,7 @@ import com.jujin.freeway.http.engine.http2.util.BinUtils;
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
+import java.util.Locale;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -194,8 +195,8 @@ public final class HPackContext {
 
     private static long headerFieldSize(Http2HeaderField f) {
         // RFC 7541 §4.1: size is measured in bytes (name + value + 32).
-        long nameBytes = f.name != null ? f.name.getBytes(java.nio.charset.StandardCharsets.UTF_8).length : 0;
-        long valueBytes = f.value != null ? f.value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length : 0;
+        long nameBytes = f.name != null ? f.name.getBytes(StandardCharsets.UTF_8).length : 0;
+        long valueBytes = f.value != null ? f.value.getBytes(StandardCharsets.UTF_8).length : 0;
         return nameBytes + valueBytes + 32;
     }
 
@@ -369,7 +370,7 @@ public final class HPackContext {
         // Write remaining header fields
         for (var entry : headers.entrySet()) {
             if (entry.getKey().startsWith(":")) continue;  // skip pseudo-headers
-            String key = entry.getKey().toLowerCase(java.util.Locale.ROOT);
+            String key = entry.getKey().toLowerCase(Locale.ROOT);
             for (String value : entry.getValue()) {
                 writeChecked(buffer, key, value);
             }

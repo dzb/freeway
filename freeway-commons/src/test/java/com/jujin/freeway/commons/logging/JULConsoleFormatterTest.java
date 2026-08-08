@@ -1,4 +1,7 @@
 package com.jujin.freeway.commons.logging;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,10 +26,10 @@ class JULConsoleFormatterTest {
         String output = formatter.format(record);
 
         // full timestamp: yyyy-MM-dd HH:mm:ss.SSS
-        String expectedDate = java.time.format.DateTimeFormatter
+        String expectedDate = DateTimeFormatter
                 .ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
-                .withZone(java.time.ZoneId.systemDefault())
-                .format(java.time.Instant.ofEpochMilli(0));
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.ofEpochMilli(0));
         assertTrue(output.startsWith(expectedDate), "should start with full timestamp: " + output);
         assertTrue(output.contains("INFO   "), "level should be padded to 7: " + output);
         assertTrue(output.contains("Hello world"), "should contain message: " + output);

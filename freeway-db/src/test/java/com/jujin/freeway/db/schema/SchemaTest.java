@@ -1,4 +1,5 @@
 package com.jujin.freeway.db.schema;
+import com.jujin.freeway.commons.validation.Size;
 
 import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.dialect.H2Dialect;
@@ -533,7 +534,7 @@ class SchemaTest {
     @Table("sized_user")
     public record SizedUser(
         @Id Long id,
-        @com.jujin.freeway.commons.validation.Size(min = 1, max = 200) String bio
+        @Size(min = 1, max = 200) String bio
     ) {}
 
     @Table("posts")

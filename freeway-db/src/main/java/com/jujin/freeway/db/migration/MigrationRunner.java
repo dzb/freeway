@@ -1,4 +1,5 @@
 package com.jujin.freeway.db.migration;
+import java.sql.SQLException;
 
 import com.jujin.freeway.commons.util.Digests;
 import com.jujin.freeway.commons.util.ByteStreams;
@@ -280,7 +281,7 @@ public final class MigrationRunner {
             }
         }
         // fallback: SQL standard state codes (driver-agnostic)
-        if (e.getCause() instanceof java.sql.SQLException se) {
+        if (e.getCause() instanceof SQLException se) {
             String state = se.getSQLState();
             if (state != null && (state.startsWith("23") || "40001".equals(state))) {
                 return true;

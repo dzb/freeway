@@ -1,4 +1,5 @@
 package com.jujin.freeway.boot;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -385,7 +386,7 @@ class FreewayAppTest {
 
     @Test
     void lifecycleEventsArePublished() {
-        var events = new java.util.concurrent.CopyOnWriteArrayList<Object>();
+        var events = new CopyOnWriteArrayList<Object>();
         AppRuntime app = FreewayApp.of(new ModuleEx() {
             @Override
             public void bind(Binder binder) {

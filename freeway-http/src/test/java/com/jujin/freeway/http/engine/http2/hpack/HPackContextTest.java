@@ -1,4 +1,5 @@
 package com.jujin.freeway.http.engine.http2.hpack;
+import java.util.HexFormat;
 
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
@@ -109,7 +110,7 @@ class HPackContextTest {
         byte[] encoded = Huffman.encode("www.example.com");
         assertEquals(12, encoded.length);
         assertEquals("f1e3c2e5f23a6ba0ab90f4ff",
-            java.util.HexFormat.of().formatHex(encoded));
+            HexFormat.of().formatHex(encoded));
     }
 
     @Test
@@ -137,14 +138,14 @@ class HPackContextTest {
         // H=1, len=12 (RFC 7541 C.4.1 Huffman output is 12 bytes)
         assertEquals(0x8C, huffman[0] & 0xFF, "H=1, len=12");
         assertEquals("f1e3c2e5f23a6ba0ab90f4ff",
-            java.util.HexFormat.of().formatHex(
-                java.util.Arrays.copyOfRange(huffman, 1, huffman.length)),
+            HexFormat.of().formatHex(
+                Arrays.copyOfRange(huffman, 1, huffman.length)),
             "RFC 7541 C.4.1 canonical Huffman bytes");
     }
 
     @Test
     void huffmanEncodeDecodeRoundTrip() throws IOException {
-        for (String s : java.util.List.of(
+        for (String s : List.of(
                 "www.example.com", "custom-key", "custom-value",
                 "Hello World! %~+/#", "abcdefghijklmnopqrstuvwxyz0123456789",
                 "×", "", "a", "path/to/resource?q=1&x=2")) {

@@ -1,4 +1,5 @@
 package com.jujin.freeway.boot.internal;
+import java.util.Arrays;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -250,7 +251,7 @@ class ConfigLoaderDefaultTest {
                 return -1;
             }
             int read = (int) Math.min(len, remaining);
-            java.util.Arrays.fill(bytes, off, off + read, (byte) 'a');
+            Arrays.fill(bytes, off, off + read, (byte) 'a');
             remaining -= read;
             return read;
         }

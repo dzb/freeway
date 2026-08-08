@@ -1,4 +1,6 @@
 package com.jujin.freeway.commons.validation;
+import java.util.ArrayList;
+import java.util.Map;
 
 import java.util.List;
 import java.util.Optional;
@@ -102,7 +104,7 @@ class BeanValidatorTest {
         // 100+ cyclic siblings would push the counter past MAX_DEPTH and
         // spuriously reject a later sibling with a depth error.
         NodeList root = new NodeList();
-        root.nodes = new java.util.ArrayList<>();
+        root.nodes = new ArrayList<>();
         for (int i = 0; i < 120; i++) {
             CyclicNode node = new CyclicNode();
             node.name = "n" + i;
@@ -129,7 +131,7 @@ class BeanValidatorTest {
         Address bad = new Address();  // city is @NotBlank null
         Address good = new Address();
         good.city = "Shanghai";
-        holder.addresses = java.util.List.of(good, bad);
+        holder.addresses = List.of(good, bad);
         ValidationResult result = BeanValidator.validate(holder);
         assertTrue(result.hasErrors());
         assertTrue(result.getErrors().stream()
@@ -357,7 +359,7 @@ class BeanValidatorTest {
     }
 
     static class MapOrder {
-        @Valid java.util.Map<String, OrderItem> entries;
+        @Valid Map<String, OrderItem> entries;
     }
 
     static class ArrayOrder {
@@ -381,7 +383,7 @@ class BeanValidatorTest {
     @Test
     void validatesMapValues() {
         MapOrder order = new MapOrder();
-        order.entries = java.util.Map.of("a", new OrderItem() {{ name = ""; quantity = 0; }});
+        order.entries = Map.of("a", new OrderItem() {{ name = ""; quantity = 0; }});
 
         var result = BeanValidator.validate(order);
         assertTrue(result.hasErrors());
@@ -400,7 +402,7 @@ class BeanValidatorTest {
 
     static class MapSized {
         @Size(min = 1, max = 3)
-        java.util.Map<String, String> entries;
+        Map<String, String> entries;
     }
 
     static class NonFiniteMinMax {
@@ -423,13 +425,13 @@ class BeanValidatorTest {
     @Test
     void sizeValidatesMapSize() {
         MapSized obj = new MapSized();
-        obj.entries = java.util.Map.of();
+        obj.entries = Map.of();
 
         var result = BeanValidator.validate(obj);
         assertTrue(result.hasErrors(),
                 "empty Map should fail @Size(min=1): " + result.getErrors());
 
-        obj.entries = java.util.Map.of("a", "1", "b", "2", "c", "3", "d", "4");
+        obj.entries = Map.of("a", "1", "b", "2", "c", "3", "d", "4");
         result = BeanValidator.validate(obj);
         assertTrue(result.hasErrors(),
                 "4-entry Map should fail @Size(max=3): " + result.getErrors());
@@ -438,7 +440,7 @@ class BeanValidatorTest {
     @Test
     void skipsNullElementsInContainers() {
         OrderWithNullItems order = new OrderWithNullItems();
-        order.items = new java.util.ArrayList<>();
+        order.items = new ArrayList<>();
         order.items.add(null);
         order.items.add(new OrderItem() {{ name = "ok"; quantity = 1; }});
 

@@ -1,4 +1,8 @@
 package com.jujin.freeway.ioc;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
 
@@ -488,18 +492,18 @@ class EventBusTest {
     void metricsCountersMirrorDispatchStats() {
         // The container's Metrics builtin (NoopMetrics) must be observable
         // through a contributed implementation — counters mirror stats().
-        var counters = new java.util.concurrent.ConcurrentHashMap<String, Metrics.Counter>();
+        var counters = new ConcurrentHashMap<String, Metrics.Counter>();
         Metrics metrics = new Metrics() {
             @Override public Counter counter(String name) {
                 return counters.computeIfAbsent(name, n -> new Counter() {
-                    final java.util.concurrent.atomic.LongAdder adder =
-                        new java.util.concurrent.atomic.LongAdder();
+                    final LongAdder adder =
+                        new LongAdder();
                     @Override public void increment() { adder.increment(); }
                     @Override public void add(long delta) { adder.add(delta); }
                     @Override public long value() { return adder.sum(); }
                 });
             }
-            @Override public void gauge(String name, java.util.function.Supplier<Number> v) { }
+            @Override public void gauge(String name, Supplier<Number> v) { }
         };
         Container container = Freeway.create(binder ->
             binder.bind(Metrics.class).to(metrics).primary());
@@ -748,7 +752,7 @@ class EventBusTest {
     }
 
     /** Polls until the condition holds, bounding CI flakiness from fixed sleeps. */
-    private static void awaitUntil(long timeoutMs, java.util.function.BooleanSupplier condition)
+    private static void awaitUntil(long timeoutMs, BooleanSupplier condition)
             throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (!condition.getAsBoolean()) {
