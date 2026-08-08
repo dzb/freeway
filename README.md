@@ -214,7 +214,7 @@ The IoC module provides the framework core:
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`. Inject as `List<V>` (all contributions, ordered) or `Map<String, V>` (named contributions, keyed by id). `Extension<V>` is a framework-internal handle, not injectable.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
-- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, and `publishAsync`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
+- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, `publishAsync`, a globally ordered `publishOrdered(key, …)` channel, and cumulative `stats()`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
 
 ### Boot (`freeway-boot`)
 

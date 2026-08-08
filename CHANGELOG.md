@@ -9,55 +9,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **依赖升级** — JUnit Jupiter 5.12.0 → 6.1.3（JUnit 6），SLF4J 2.0.17 →
+  2.0.18（2.0 线最新稳定版；2.1 仍是 alpha），H2 2.3.232 → 2.4.240（测试依赖）。
+  JMH 1.37 已是最新。
 - **`HttpContext.headerSet(...)` renamed to `setHeader(...)`** — aligns the
   response-header setter with the chainable `status(...)`/`maxBodySize(...)`
   style and the `header(...)` getter (breaking rename; `headerSet` is gone).
+- **SQL 解析改为方言驱动** — `Dialect` 声明词法能力（标识符引号、`#` 注释、
+  `$tag$`/`E'...'` 字面量），`SqlTextParser` 收敛为单一 `scan()` 原语；查询与
+  迁移按目标数据库画像解析，扫描器不再硬编码数据库语法。
+- **`Dialect` 提取为独立包、DDL 装配移出接口** — `com.jujin.freeway.db.dialect`
+  自包含（只依赖 `db.Database`）；CREATE TABLE/INDEX/ALTER/DROP 由
+  `Schema`/`SchemaGenerator` 基于方言原语组装，`Dialect` 只声明语法特性
+  （inline PK、DROP CASCADE、ALTER 约束能力等）。
 
 ### Fixed
 
-- **HTTP/2 trailers no longer kill the connection** — trailer HEADERS blocks
-  (RFC 7540 §8.1.2.2) are decoded to keep HPACK state in sync and discarded;
-  previously a trailer raised a connection-level STREAM_CLOSED that sent GOAWAY
-  and tore down every active stream.
-- **RST_STREAM with NO_ERROR releases the stream** — the target stream is
-  closed even when the error code is 0; previously the handler and stream state
-  leaked.
-- **Connection-level flow-control starvation** — response writes now park until
-  BOTH the stream and connection send windows have capacity; previously a
-  stream with an open window busy-spun while the shared connection window was
-  exhausted by other streams.
-- **HPACK integer overflow** — integers past 2^31-1 now fail with
-  COMPRESSION_ERROR instead of wrapping around and desynchronizing the decoder.
-- **Inbound header block size cap** — HEADERS/CONTINUATION blocks over 64 KiB
-  fail with COMPRESSION_ERROR instead of buffering without bound.
-- **Outbound frame size follows the peer** — SETTINGS_MAX_FRAME_SIZE from the
-  peer drives outbound DATA splitting; the inbound cap stays at the advertised
-  16384.
-- **Pipelined bytes after a request body preserved** — the parser's body
-  stream stops exactly at Content-Length, leaving the next request in the same
-  buffer intact.
-- **Chunked transfer overflow** — chunk sizes past 2^31-1 raise IOException
-  instead of wrapping around and desynchronizing the chunk framing.
-- **WebSocket server-side close wakes the read loop** — closing a session now
-  closes the input stream so the blocked reader returns promptly instead of
-  parking until the peer responds.
-- **SSL handshake failure no longer leaks a socket fd** — a failed handshake
-  closes the raw socket; previously every failed handshake leaked a descriptor.
-- **CORS headers only on CORS responses** — Allow-Credentials/Expose-Headers
-  are no longer stamped on requests without an Origin header.
-- **SSE write failure closes the emitter** — a failed write marks the emitter
-  closed and rethrows; subsequent sends become no-ops.
-- **Standalone `WebServerBuilder` fast-fails `LazyHandler` routes** — class
-  routes require the IoC HttpModule; standalone builds throw at `build()` with
-  a clear message instead of failing at request time. Default exception mappers
-  (413/400 JSON) match the IoC path.
+- **事务语义** — 事务内抛 `Error` 正确回滚（此前 restore 连接状态会静默提交失败
+  事务）；事务绑定改为按连接身份（并发事务互不误杀对方在途查询）；一个 Database
+  的事务不再泄漏到另一 Database（跨库查询此前静默跑在错误连接上）。
+- **连接池生命周期** — 修复 cleaner 与 borrow 竞态（连接双销毁、计数漂移）、
+  release 与 close 竞态（连接滞留已关闭池）、借用超 maxIdleTime 的活跃连接被
+  误销毁、创建失败泄漏物理连接；close 唤醒排队等待者并区分错误消息。
+- **ORM/Schema** — `Orm.save()` 带非空自增 id 不再静默插入重复行（ON CONFLICT
+  真正生效）；`@Index` 配合 `@Column` 改名生成正确列；无 LIMIT 的 OFFSET 按方言
+  输出；向既有表加主键/自增列显式拒绝；零属性类型映射显式报错。
+- **SQL 解析与构建** — 反引号/方括号标识符、MySQL `#` 注释、`E'...'` 转义串、
+  dollar-quote 按方言正确跳过；INSERT 检测只认语句头部；`Sql` 构建器的空
+  insert/update、子句乱序、INSERT 表达式误用均 fail-fast。
+- **迁移** — `V1` 与 `V01` 等数字等值版本判重；已应用但文件缺失的迁移启动即报
+  错；版本身份归一化（文件重命名不再重放或误报缺失）。
+- **HTTP/2 与 HTTP 资源** — trailers、RST_STREAM、连接级流控、HPACK 溢出、帧
+  大小边界按 RFC 7540 加固；WebSocket 关闭唤醒读循环、SSL 握手失败不再泄漏
+  fd、SSE 写失败关闭 emitter。
+- **数值转换正确性** — `BigInteger` 饱和、`1e400 → Double/Float` 溢出、
+  `getLong` 越界静默截断、char 数字源低位回绕均显式拒绝；Optional 目标
+  null → `empty()` 且防溢出。
+- **JSON 与反射** — 具体集合/Map 目标（ArrayList/HashMap）可反序列化；JDK 超类
+  类型不再因模块访问崩溃（方法句柄查找统一 publicLookup 回退）。
+- **日志** — `applyNamedFileLoggers()` 不再重复挂载命名文件 handler；轮转不再
+  丢失缓冲记录、GZIP 原子写入、启动即清理过期归档；无关 `*_LEVEL` 环境变量
+  不再创建幻影 logger。
+- **校验与作用域** — `@Valid` 支持 Optional/Iterable 且限深 100（防
+  StackOverflow）；`Defer.supply` 失败显式重抛且 Error 同样缓存；`ScopedCache`
+  与 `Defer` 嵌套契约文档化并运行时告警。
+- **IoC 容器** — PROTOTYPE+advice 不再共享缓存 target；关闭 drain 期间新
+  实例化的服务获得完整 @PreDestroy/close（此前快照后 realize 的服务泄漏）；
+  `publishAsync` 尊重活动 Defer 作用域（事务内异步事件延迟到提交后派发，
+  回滚即丢弃）；关闭与 realize 互斥（孤儿实例化竞态与死锁向量一并消除）；
+  `SymbolProvider` 类贡献按需接线（声明即注册惰性门面，声明顺序不再影响
+  构造）；注册后再声明的 `.marker()`/`.primary()` 生效；`@Value List<...>`
+  参数与嵌套 `${a:${b}}` 默认值解析修复；单例注入 THREAD 具体类在无作用域
+  时也给出专用诊断。
+- **EventBus** — 事件派发层级匹配（子类事件送达父类订阅者，不再误报
+  DeadEvent）；`stats()` 派发统计；`publishOrdered(key, …)` 全局有序通道
+  （事务内 outbox 顺序场景）；Stoppable 事件短路 bridge；失败模型显式
+  文档化（at-most-once：订阅者异常隔离并计数，不重试）。
+- **工作流引擎（freeway-flow）** — 表达式求值修复并发缓存竞态、超长表达式
+  编译期拒绝（此前 eval 栈溢出且毒化缓存）、long≥2⁵³ 比较不再失真、布尔
+  字符串（"false"/"0"）按值解释且与 `==` 一致；interrupt 改为全局语义；
+  resume 重放无法到达恢复点时显式失败（此前静默跳过全部任务）；子图每次
+  调用重新执行 body（此前第二次调用静默跳过）、trace 关闭不再破坏子图调用；
+  INCLUSIVE join 计数激活时重置；LOOP 栈按节点隔离；`$in` 含 null 不再残留
+  上一轮循环变量；图模型拒绝 UNKNOWN 类型、显式 entry 与 START 共存、
+  无条件重复链接拒绝、PlantUML 输出转义、trace 恢复位经 JSON round-trip
+  保留。
+- **启动装配（freeway-boot）** — profile 选择优先级修正（此前 `FREEWAY_PROFILE`
+  静默输给文件里的 `freeway.profile`，违反文档级联）；ServiceLoader 发现模块
+  失败时给出带 classloader 上下文的明确错误；`AppBuilder` 单次使用（重复
+  start() 此前会注册第二个 shutdown hook 并构建独立容器）。
 
-### Changed
+### Docs
 
-- **Multipart parse failures log at WARN** instead of DEBUG — client-sent
-  malformed multipart bodies are now visible in production logs.
-- **Chunked/Fixed-length input streams reuse buffers** for single-byte reads
-  and chunk draining instead of allocating per call.
+- **Defer 文档补全** — `docs/freeway-defer-summary.md`：DB 事务场景的三方接线、
+  提交/派发时序图（mermaid）、时序契约与语义边界；新增与 `ScopedCache` 的
+  嵌套契约章节。
 
 ## [1.3.6] — 2026-08-07
 

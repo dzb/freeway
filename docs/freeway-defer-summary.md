@@ -72,6 +72,8 @@ Defer.defer("prep", () → prepare()).before("index");      // 必须在 index �
 - 缺省目标（引用了不存在的 id）→ 静默忽略，不报错
 - 重复 id → `IllegalStateException`
 - 循环依赖 → `IllegalStateException`
+- 执行分组：受约束命名（拓扑序）→ 无约束命名（注册序）→ 匿名（注册序）——
+  命名动作整体先于匿名动作，即使匿名更早注册；需要严格注册序时全部用匿名或全部用命名
 
 ### 手动回滚
 
@@ -160,7 +162,45 @@ db.transaction(() → {
 bus.publish(new SomeOtherEvent());              // 立即发布
 ```
 
-原理：`DatabaseImpl.transaction()` 内部用 `Defer.within()` 包裹了提交/回滚。`EventBus.publish()` 检查 `Defer.isActive()`→是→入列。三方协作，用户只写 `bus.publish()`。
+#### 三方接线（代码级）
+
+三个组件通过 commons 的 `Defer` 解耦协作，db 不依赖 ioc，ioc 也不依赖 db：
+
+```java
+// freeway-db · DatabaseImpl.transaction() —— 打开 Defer 作用域，提交在作用域内
+Defer.within(() -> {
+    ScopedValue.where(tx, binding).run(() -> work.run());   // ① work 执行
+    raw.commit();                                            // ② 提交
+});                                                          // ③ 出作用域 → drain → 事件派发
+
+// freeway-ioc · EventBus.publish() —— 探测作用域，活动则入列
+if (Defer.isActive() && !(event instanceof DeadEvent)) {
+    Defer.defer(() -> dispatchEvent(event));
+}
+```
+
+#### 时序
+
+```mermaid
+sequenceDiagram
+    participant W as work.run()
+    participant D as Defer 缓冲
+    participant DB as JDBC 连接
+    participant B as EventBus 派发
+    W->>D: publish(event) → defer()
+    W->>DB: SQL 执行
+    W-->>D: 正常返回
+    D->>DB: commit()
+    D->>B: drain → 逐个 dispatchEvent
+    Note over D,B: 回滚路径：work 抛异常 → discard → 事件全部丢弃
+```
+
+#### 时序契约与语义边界
+
+- **提交在 drain 之前**——事件只在提交成功后派发；回滚时 `Defer` discard，事件整体丢弃。**事件与事务同生共死**，不会出现"回滚了但事件发了"。
+- **`Error` 路径**：work 抛 `Error`（如 `AssertionError`）→ `Defer.within` 的 `catch(Throwable)` discard + rethrow → `transaction()` 的 `catch(Throwable)` 执行 rollback。修复前只 catch `Exception`，`Error` 漏过回滚、恢复连接状态时的 `setAutoCommit(true)` 反而把失败事务提交了。
+- **drain 失败边界（已知，未改）**：事件处理器抛异常发生在 commit **之后**——`Defer.within` discard + rethrow → `transaction()` 再尝试 rollback（已提交，无效果）并 rethrow。结果是"事务已提交但调用方看到失败"，事件部分派发。这是可辩护的语义（事件是工作单元的一部分），保持现状。
+- **跨线程**：`ScopedValue` 绑定在当前线程，不传播到子线程。子线程里 `Defer.isActive()` 为 false，`publish()` 立即派发、不受事务保护；`publishAsync` 也因此保留立即语义（不参与 Defer）。
 
 ### 场景二：DB 事务 + 缓存失效（手动 defer）
 
@@ -243,6 +283,34 @@ Defer 本身是通用的。任何有"成功 / 回滚"语义的边界都可以用
 | Kafka 消费 | Consumer 循环 | `commitSync()` 后 | 处理异常 |
 | 批处理 Job | Job 执行器 | 全部批次写完 | 任意步骤失败 |
 | 自定义业务 | 你自己的 Service 层 | lambda 正常返回 | 抛异常或手动 `rollback()` |
+
+## 与 ScopedCache 的嵌套契约
+
+Defer 与 ScopedCache 是**独立的两个 scoped 原语**（各自独立的 `ScopedValue`），互相不知道对方存在——因此嵌套时**没有强制顺序**，只有一条约定：
+
+**安全方向：`ScopedCache.within` 在外、`Defer.within` 在内。**
+
+```java
+ScopedCache.within(() -> {
+    Defer.within(() -> {
+        Object v = ScopedCache.get(k, factory);
+        Defer.defer(() -> use(v));   // drain 时 cache session 仍打开 → v 可用 ✓
+    });
+});
+```
+
+**危险方向：`Defer.within` 在外、`ScopedCache.within` 在内。** 内层 cache 作用域退出时清理缓存值，而外层 Defer 的延迟动作**之后**才执行——延迟动作触碰缓存资源时它已关闭（use-after-close，静默或最坏时机抛错）：
+
+```java
+Defer.within(() -> {
+    ScopedCache.within(() -> {
+        Object v = ScopedCache.get(k, factory);
+        Defer.defer(() -> use(v));   // drain 时 v 已被 cache 清理 → 已关闭 ✗
+    });
+});
+```
+
+`ScopedCache.within` 会在检测到危险嵌套时**输出一次 WARN**（每 JVM 一次），提示改为安全方向。框架自身不嵌套这两个原语（事务边界用 Defer、`container.scoped()` 用 ScopedCache，互不嵌套）——此契约只约束用户组合。
 
 ## 何时不用
 
