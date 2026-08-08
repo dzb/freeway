@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **移除 `freeway.web.*` 配置键回退（freeway-http）** — v1.2.1 曾使用
+  `freeway.web.*` 前缀，v1.2.2 起改为 `freeway.http.*` 并保留旧键回退兼容。
+  现移除 legacy 回退（`HttpConfigKeys.LEGACY_PREFIX` 与
+  `config(...)` helper 的 legacyKey 参数）：仅 `freeway.http.*` 生效，
+  仍使用 `freeway.web.*` 配置的应用需改为新前缀。
 - **依赖升级** — JUnit Jupiter 5.12.0 → 6.1.3（JUnit 6），SLF4J 2.0.17 →
   2.0.18（2.0 线最新稳定版；2.1 仍是 alpha），H2 2.3.232 → 2.4.240（测试依赖）。
   JMH 1.37 已是最新。

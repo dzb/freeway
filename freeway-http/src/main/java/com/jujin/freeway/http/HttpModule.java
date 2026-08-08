@@ -71,21 +71,21 @@ public final class HttpModule implements ModuleEx {
             var symbols = container.get(SymbolSource.class);
             var coercer = container.get(Coercer.class);
             boolean enabled = config(symbols, coercer,
-                HttpConfigKeys.CORS_ENABLED, HttpConfigKeys.LEGACY_PREFIX + ".cors.enabled", true);
+                HttpConfigKeys.CORS_ENABLED, true);
             String origins = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOWED_ORIGINS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-origins", "*");
+                HttpConfigKeys.CORS_ALLOWED_ORIGINS, "*");
             String methods = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOWED_METHODS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-methods",
+                HttpConfigKeys.CORS_ALLOWED_METHODS,
                 "GET, POST, PUT, DELETE, PATCH, OPTIONS");
             String headers = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOWED_HEADERS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allowed-headers",
+                HttpConfigKeys.CORS_ALLOWED_HEADERS,
                 "Content-Type, Authorization");
             String exposed = config(symbols, coercer,
-                HttpConfigKeys.CORS_EXPOSED_HEADERS, HttpConfigKeys.LEGACY_PREFIX + ".cors.exposed-headers", "");
+                HttpConfigKeys.CORS_EXPOSED_HEADERS, "");
             String maxAge = config(symbols, coercer,
-                HttpConfigKeys.CORS_MAX_AGE, HttpConfigKeys.LEGACY_PREFIX + ".cors.max-age", "3600");
+                HttpConfigKeys.CORS_MAX_AGE, "3600");
             boolean credentials = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOW_CREDENTIALS, HttpConfigKeys.LEGACY_PREFIX + ".cors.allow-credentials", false);
+                HttpConfigKeys.CORS_ALLOW_CREDENTIALS, false);
             return new CorsFilter(enabled, origins, methods, headers,
                 exposed.isBlank() ? null : exposed, maxAge, credentials);
         });
@@ -97,14 +97,14 @@ public final class HttpModule implements ModuleEx {
             var symbols = container.get(SymbolSource.class);
 
             boolean sslEnabled = config(symbols, coercer,
-                HttpConfigKeys.SSL_ENABLED, null, false);
+                HttpConfigKeys.SSL_ENABLED, false);
             if (!sslEnabled) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(json, coercer);
             }
 
-            String ksPath = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE, null, null);
-            String ksPwd = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE_PASSWORD, null, null);
+            String ksPath = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE, null);
+            String ksPwd = config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE_PASSWORD, null);
             if (ksPath == null || ksPwd == null) {
                 LOG.error("SSL enabled ({} = true) but {} and {} are not configured",
                     HttpConfigKeys.SSL_ENABLED,
@@ -116,9 +116,9 @@ public final class HttpModule implements ModuleEx {
                     + " are required");
             }
             String ksType = config(symbols, coercer,
-                HttpConfigKeys.SSL_KEY_STORE_TYPE, null, "PKCS12");
+                HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
             boolean http2 = config(symbols, coercer,
-                HttpConfigKeys.SSL_HTTP2, null, true);
+                HttpConfigKeys.SSL_HTTP2, true);
 
             LOG.info("Initializing HTTPS engine from keystore {} (type={}, http2={})",
                 ksPath, ksType, http2);
@@ -138,16 +138,16 @@ public final class HttpModule implements ModuleEx {
             var coercer = container.get(Coercer.class);
 
             String host = config(symbols, coercer,
-                HttpConfigKeys.SERVER_HOST, HttpConfigKeys.LEGACY_PREFIX + ".server.host", "127.0.0.1");
+                HttpConfigKeys.SERVER_HOST, "127.0.0.1");
             int port = config(symbols, coercer,
-                HttpConfigKeys.SERVER_PORT, HttpConfigKeys.LEGACY_PREFIX + ".server.port", 8080);
+                HttpConfigKeys.SERVER_PORT, 8080);
             int backlog = config(symbols, coercer,
-                HttpConfigKeys.SERVER_BACKLOG, HttpConfigKeys.LEGACY_PREFIX + ".server.backlog", 0);
+                HttpConfigKeys.SERVER_BACKLOG, 0);
             Duration shutdownGrace = config(symbols, coercer,
-                HttpConfigKeys.SERVER_SHUTDOWN_GRACE, HttpConfigKeys.LEGACY_PREFIX + ".server.shutdown-grace",
+                HttpConfigKeys.SERVER_SHUTDOWN_GRACE,
                 Duration.ofSeconds(2));
             long maxBodySize = config(symbols, coercer,
-                HttpConfigKeys.MAX_BODY_SIZE, null, HttpServerConfig.DEFAULT_MAX_BODY_SIZE);
+                HttpConfigKeys.MAX_BODY_SIZE, HttpServerConfig.DEFAULT_MAX_BODY_SIZE);
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
@@ -188,9 +188,9 @@ public final class HttpModule implements ModuleEx {
             var symbols = container.get(SymbolSource.class);
             var coercer = container.get(Coercer.class);
             boolean enabled = config(symbols, coercer,
-                HttpConfigKeys.HEALTH_ENABLED, HttpConfigKeys.LEGACY_PREFIX + ".health.enabled", true);
+                HttpConfigKeys.HEALTH_ENABLED, true);
             String path = config(symbols, coercer,
-                HttpConfigKeys.HEALTH_PATH, HttpConfigKeys.LEGACY_PREFIX + ".health.path", "/healthz");
+                HttpConfigKeys.HEALTH_PATH, "/healthz");
             HealthCheck check = container.get(HealthCheck.class);
             return new HealthFilter(enabled, path, check);
         });
@@ -240,11 +240,8 @@ public final class HttpModule implements ModuleEx {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T> T config(SymbolSource symbols, Coercer coercer, String key, String legacyKey, T defaultValue) {
+    private static <T> T config(SymbolSource symbols, Coercer coercer, String key, T defaultValue) {
         String raw = symbols.resolve(key, null);
-        if (raw == null && legacyKey != null) {
-            raw = symbols.resolve(legacyKey, null);
-        }
         if (raw == null) {
             return defaultValue;
         }

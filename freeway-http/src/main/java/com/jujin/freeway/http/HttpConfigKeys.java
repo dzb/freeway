@@ -8,7 +8,6 @@ public final class HttpConfigKeys {
     private HttpConfigKeys() {}
 
     static final String PREFIX = "freeway.http";
-    static final String LEGACY_PREFIX = "freeway.web";
 
     // ── Server ────────────────────────────────────────────────
 
