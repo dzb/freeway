@@ -22,6 +22,8 @@ import java.util.WeakHashMap;
  */
 public final class MethodHandleUtils {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+    private static final MethodHandles.Lookup PUBLIC =
+        MethodHandles.publicLookup();
     /**
      * Weakly keyed caches: entries are dropped when the reflection objects
      * (and their declaring classes / classloaders) become unreachable, so
@@ -136,40 +138,56 @@ public final class MethodHandleUtils {
 
     // -- private factories --
 
+    /**
+     * Best available lookup for {@code declaringClass}: a private lookup when
+     * the module is open to us (application classes, open JDK modules),
+     * falling back to {@link MethodHandles#publicLookup()} for public members
+     * of non-open modules (e.g. {@code java.base}). Private members of
+     * non-open modules are unreachable by any lookup — there is no further
+     * fallback (setAccessible fails there too).
+     */
+    private static MethodHandles.Lookup lookupFor(Class<?> declaringClass) {
+        try {
+            return MethodHandles.privateLookupIn(declaringClass, LOOKUP);
+        } catch (IllegalAccessException e) {
+            return PUBLIC;
+        }
+    }
+
     private static MethodHandle createMethodHandle(Method method) {
         try {
-            MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(method.getDeclaringClass(), LOOKUP);
-            return lookup.unreflect(method).asFixedArity();
+            return lookupFor(method.getDeclaringClass())
+                .unreflect(method)
+                .asFixedArity();
         } catch (IllegalAccessException ex) {
-            // Module system blocked privateLookupIn (e.g. javax.sql.DataSource
-            // from java.sql module). Fall back to setAccessible + reflection.
-            try {
-                method.setAccessible(true);
-                return LOOKUP.unreflect(method).asFixedArity();
-            } catch (RuntimeException | IllegalAccessException e) {
-                throw new RuntimeException("Cannot access method: " + method, e);
-            }
+            throw new RuntimeException("Cannot access method: " + method, ex);
         }
     }
 
     private static VarHandle createVarHandle(Field field) {
         try {
-            MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(field.getDeclaringClass(), LOOKUP);
-            return lookup.findVarHandle(field.getDeclaringClass(), field.getName(), field.getType());
+            return lookupFor(field.getDeclaringClass()).findVarHandle(
+                field.getDeclaringClass(),
+                field.getName(),
+                field.getType()
+            );
         } catch (ReflectiveOperationException ex) {
-            throw new RuntimeException("Cannot create VarHandle for field: " + field, ex);
+            throw new RuntimeException(
+                "Cannot create VarHandle for field: " + field,
+                ex
+            );
         }
     }
 
     private static MethodHandle createConstructorHandle(Constructor<?> constructor) {
         try {
-            MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(
-                constructor.getDeclaringClass(),
-                LOOKUP
-            );
-            return lookup.unreflectConstructor(constructor);
+            return lookupFor(constructor.getDeclaringClass())
+                .unreflectConstructor(constructor);
         } catch (IllegalAccessException ex) {
-            throw new RuntimeException("Cannot access constructor: " + constructor, ex);
+            throw new RuntimeException(
+                "Cannot access constructor: " + constructor,
+                ex
+            );
         }
     }
 }

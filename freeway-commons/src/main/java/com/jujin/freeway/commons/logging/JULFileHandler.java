@@ -95,6 +95,18 @@ public final class JULFileHandler extends StreamHandler {
     private int currentIndex;
     private long bytesWritten;
 
+    /**
+     * True while the underlying stream is closed because a rotation failed
+     * to reopen it. publish() keeps retrying while set, so the failure stays
+     * visible (the default ErrorManager prints the first error per handler)
+     * and the pool recovers automatically; records published during the
+     * outage are not written.
+     */
+    private boolean openFailed;
+
+    /** The raw stream currently handed to StreamHandler; closed directly on rotation. */
+    private OutputStream currentStream;
+
     /** Daemon thread performing periodic flushes; null when {@code flushIntervalMs <= 0}. */
     private final Thread flusher;
     private volatile boolean closed;
@@ -106,12 +118,33 @@ public final class JULFileHandler extends StreamHandler {
     public JULFileHandler() throws IOException {
         this(
             requiredProperty("freeway.log.file"),
-            longProperty("freeway.log.file.max-size", DEFAULT_MAX_SIZE),
-            intProperty("freeway.log.file.max-history", DEFAULT_MAX_HISTORY),
-            booleanProperty("freeway.log.file.compress", DEFAULT_COMPRESS),
-            longProperty(
+            LogConfig.propertyValue(
+                "freeway.log.file.max-size",
+                DEFAULT_MAX_SIZE,
+                System::getProperty,
+                Long::parseLong,
+                false
+            ),
+            LogConfig.propertyValue(
+                "freeway.log.file.max-history",
+                DEFAULT_MAX_HISTORY,
+                System::getProperty,
+                Integer::parseInt,
+                false
+            ),
+            LogConfig.propertyValue(
+                "freeway.log.file.compress",
+                DEFAULT_COMPRESS,
+                System::getProperty,
+                LogConfig::strictBoolean,
+                false
+            ),
+            LogConfig.propertyValue(
                 "freeway.log.file.flush-interval",
-                DEFAULT_FLUSH_INTERVAL_MS
+                DEFAULT_FLUSH_INTERVAL_MS,
+                System::getProperty,
+                Long::parseLong,
+                false
             )
         );
     }
@@ -166,26 +199,32 @@ public final class JULFileHandler extends StreamHandler {
 
     /** If the log file exists and was last modified before today, archive it. */
     private void rotateStaleFileOnStartup() {
-        if (!Files.exists(basePath) || fileSize(basePath) == 0) return;
-        try {
-            LocalDate fileDate = LocalDate.ofInstant(
-                Files.getLastModifiedTime(basePath).toInstant(),
-                java.time.ZoneId.systemDefault()
-            );
-            if (fileDate.isBefore(currentLocalDate)) {
-                Path archived = archivedPath(DATE_FMT.format(fileDate), 0);
-                Files.move(
-                    basePath,
-                    archived,
-                    StandardCopyOption.REPLACE_EXISTING
+        if (Files.exists(basePath) && fileSize(basePath) > 0) {
+            try {
+                LocalDate fileDate = LocalDate.ofInstant(
+                    Files.getLastModifiedTime(basePath).toInstant(),
+                    java.time.ZoneId.systemDefault()
                 );
-                if (compress) {
-                    COMPRESSOR.execute(() -> compressFile(archived));
+                if (fileDate.isBefore(currentLocalDate)) {
+                    Path archived = archivedPath(DATE_FMT.format(fileDate), 0);
+                    Files.move(
+                        basePath,
+                        archived,
+                        StandardCopyOption.REPLACE_EXISTING
+                    );
+                    if (compress) {
+                        COMPRESSOR.execute(() -> compressFile(archived));
+                    }
                 }
+            } catch (IOException e) {
+                // best-effort — open the existing file if rotation fails
             }
-        } catch (IOException e) {
-            // best-effort — open the existing file if rotation fails
         }
+        // Enforce the retention window even when nothing was rotated:
+        // daily-restart workloads would otherwise accumulate archives forever.
+        // purgeOldFiles() is idempotent and safe to call here (parent dir is
+        // guaranteed to exist by the constructor).
+        purgeOldFiles();
     }
 
     private static long fileSize(Path path) {
@@ -208,24 +247,6 @@ public final class JULFileHandler extends StreamHandler {
         return val;
     }
 
-    private static long longProperty(String key, long defaultValue) {
-        String val = System.getProperty(key);
-        if (val == null || val.isBlank()) return defaultValue;
-        return Long.parseLong(val.strip());
-    }
-
-    private static int intProperty(String key, int defaultValue) {
-        String val = System.getProperty(key);
-        if (val == null || val.isBlank()) return defaultValue;
-        return Integer.parseInt(val.strip());
-    }
-
-    private static boolean booleanProperty(String key, boolean defaultValue) {
-        String val = System.getProperty(key);
-        if (val == null || val.isBlank()) return defaultValue;
-        return Boolean.parseBoolean(val.strip());
-    }
-
     // ── publish ─────────────────────────────────────────────────────
 
     @Override
@@ -233,18 +254,53 @@ public final class JULFileHandler extends StreamHandler {
         if (!isLoggable(record)) return;
 
         try {
-            if (needsRotation()) {
+            if (openFailed) {
+                // A previous rotation closed the stream and failed to reopen
+                // it; keep retrying until the failure clears so records
+                // resume automatically instead of being silently dropped.
+                if (!reopenAfterFailure()) {
+                    return; // error already reported loudly
+                }
+            } else if (needsRotation()) {
                 rotate();
             }
         } catch (IOException e) {
+            // rotate() closed the current stream before throwing, so every
+            // subsequent record would be silently discarded by the closed
+            // StreamHandler. Attempt one reopen right away.
             reportError("Rotation failed", e, ErrorManager.WRITE_FAILURE);
-            return;
+            if (!reopenAfterFailure()) {
+                return; // error already reported loudly
+            }
         }
 
         super.publish(record);
         bytesWritten += estimateSize(record);
         if (flushIntervalMs <= 0) {
             flush(); // eager mode — maximum durability
+        }
+    }
+
+    /**
+     * Reopens the current log file after a rotation failure. Sets
+     * {@link #openFailed} on failure so subsequent publishes keep retrying
+     * and reporting rather than silently dropping records.
+     *
+     * @return true if the stream is usable again, false otherwise
+     */
+    private boolean reopenAfterFailure() {
+        try {
+            openCurrentFile();
+            openFailed = false;
+            return true;
+        } catch (IOException e) {
+            openFailed = true;
+            reportError(
+                "Failed to reopen log file",
+                e,
+                ErrorManager.WRITE_FAILURE
+            );
+            return false;
         }
     }
 
@@ -359,25 +415,72 @@ public final class JULFileHandler extends StreamHandler {
         OutputStream out = new BufferedOutputStream(
             new FileOutputStream(basePath.toFile(), true)
         );
+        currentStream = out;
         setOutputStream(out);
         bytesWritten = fileSize(basePath);
     }
 
     private void closeOutputStream() {
-        super.close();
+        // Flush the StreamHandler writer FIRST — it holds records published
+        // since the last background flush. Flushing after the stream is
+        // closed (as setOutputStream's flushAndClose would do) hits the
+        // closed FileOutputStream and drops them. Then close ONLY the raw
+        // stream: StreamHandler.close() would null the internal writer and
+        // make isLoggable() return false forever, defeating rotation
+        // recovery.
+        try {
+            flush();
+        } catch (Exception ignored) {
+            // best-effort; a failing flush surfaces on the next publish
+        }
+        OutputStream out = currentStream;
+        currentStream = null;
+        if (out != null) {
+            try {
+                out.flush();
+            } catch (IOException ignored) {
+                // best-effort; errors surface on the next publish
+            }
+            try {
+                out.close();
+            } catch (IOException ignored) {
+            }
+        }
     }
 
+    /**
+     * GZIPs {@code file} into {@code <file>.gz} atomically: the archive is
+     * written to a {@code .gz.tmp} staging path first and moved into place
+     * only once fully written, so a crash mid-write can never leave a
+     * truncated {@code .gz} that looks valid. The staging file is removed
+     * on any failure.
+     */
     private void compressFile(Path file) {
         Path gzFile = file.getParent().resolve(file.getFileName() + ".gz");
+        Path tmpFile = file.getParent().resolve(file.getFileName() + ".gz.tmp");
         try (
             FileInputStream fin = new FileInputStream(file.toFile());
-            FileOutputStream fos = new FileOutputStream(gzFile.toFile());
+            FileOutputStream fos = new FileOutputStream(tmpFile.toFile());
             OutputStream gout = new GZIPOutputStream(fos)
         ) {
             fin.transferTo(gout);
+            // closing GZIPOutputStream writes the gzip trailer, so the staging
+            // file is complete by the time we exit this block
         } catch (IOException e) {
+            deleteQuietly(tmpFile);
             reportError(
                 "Failed to compress " + file.getFileName(),
+                e,
+                ErrorManager.GENERIC_FAILURE
+            );
+            return;
+        }
+        try {
+            Files.move(tmpFile, gzFile, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            deleteQuietly(tmpFile);
+            reportError(
+                "Failed to move compressed " + file.getFileName() + " into place",
                 e,
                 ErrorManager.GENERIC_FAILURE
             );
@@ -391,6 +494,14 @@ public final class JULFileHandler extends StreamHandler {
                 e,
                 ErrorManager.GENERIC_FAILURE
             );
+        }
+    }
+
+    private static void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // best-effort cleanup of the staging file
         }
     }
 
@@ -472,6 +583,14 @@ public final class JULFileHandler extends StreamHandler {
             }
         }
         return size;
+    }
+
+    /**
+     * Absolute base path of the current log file. Package-visible so
+     * {@link JULEnhancer} can deduplicate named-file handlers by path.
+     */
+    Path basePath() {
+        return basePath;
     }
 
     // Visible for testing

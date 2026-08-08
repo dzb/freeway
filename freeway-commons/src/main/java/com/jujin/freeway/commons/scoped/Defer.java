@@ -70,6 +70,15 @@ public final class Defer {
      * Opens a deferred-execution scope with a {@link DeferScope} handle for
      * manual {@link DeferScope#rollback()}. Actions drain on normal return
      * (unless rollback was called), discard on exception.
+     *
+     * <p><b>Nesting with {@link ScopedCache}:</b> the cache scope must wrap
+     * this Defer scope ({@code ScopedCache.within(() -> Defer.within(...))})
+     * so deferred actions run while cached values are still open. The reverse
+     * nesting ({@code Defer.within(() -> ScopedCache.within(...))}) cleans up
+     * cached values when the inner cache scope exits — before any deferred
+     * action registered in this scope runs — so such actions must not touch
+     * cached resources. {@link ScopedCache} detects that nesting at runtime
+     * and warns.
      */
     public static void within(Consumer<DeferScope> work) {
         Objects.requireNonNull(work, "work");
@@ -174,35 +183,52 @@ public final class Defer {
         private final Callable<T> callable;
         private T value;
         private boolean computed;
+        private RuntimeException failure;
+
+        private static final String FAILURE_MESSAGE = "Defer supply computation failed";
 
         DeferredSupplier(Callable<T> callable) {
             this.callable = callable;
         }
 
         synchronized void compute() {
-            if (computed) return; // get() already resolved it
+            if (computed) {
+                return;
+            }
+            if (failure != null) {
+                throw failure;
+            }
             try {
                 value = callable.call();
                 computed = true;
-            } catch (Exception e) {
-                throw new RuntimeException(
-                    "Defer supply computation failed",
-                    e
-                );
+            } catch (Throwable t) {
+                // Errors are cached too: a supply whose callable throws an
+                // Error must not re-execute the side-effecting callable on
+                // the next access.
+                failure = new RuntimeException(FAILURE_MESSAGE, t);
+                throw failure;
             }
         }
 
         @Override
         public synchronized T get() {
-            if (computed) return value;
+            if (computed) {
+                return value;
+            }
+            if (failure != null) {
+                throw failure;
+            }
             try {
                 T v = callable.call();
                 value = v;
+                computed = true; // drain must not re-execute after get() succeeded
                 return v;
-            } catch (Exception e) {
-                throw new RuntimeException("Defer.supply failed", e);
-            } finally {
-                computed = true; // drain must not re-execute after get() attempted
+            } catch (Throwable t) {
+                // Cache the failure so every subsequent access (and the
+                // drain) rethrows it — a failed supply must not silently
+                // degrade to null.
+                failure = new RuntimeException(FAILURE_MESSAGE, t);
+                throw failure;
             }
         }
     }

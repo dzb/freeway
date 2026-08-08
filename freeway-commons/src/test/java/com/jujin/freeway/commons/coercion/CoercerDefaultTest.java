@@ -18,6 +18,10 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.time.ZonedDateTime;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -540,5 +544,79 @@ class CoercerDefaultTest {
         assertEquals(0d, coercer.coerce(null, double.class));
         assertEquals('\0', coercer.coerce(null, char.class));
         assertEquals(false, coercer.coerce(null, boolean.class));
+    }
+
+    // ====================== regression fixes ======================
+
+    @Test
+    void floatingToBigIntegerRejectsNonFiniteAndOverflow() {
+        // longValue() used to silently saturate: 1e30 → Long.MAX_VALUE,
+        // Infinity → Long.MAX_VALUE, NaN → 0. Finite floats now convert
+        // exactly through the decimal representation.
+        BigInteger tenPow30 = new BigInteger("1000000000000000000000000000000");
+        assertEquals(BigInteger.valueOf(5), coercer.coerce(5.5, BigInteger.class));
+        assertEquals(tenPow30, coercer.coerce(1e30, BigInteger.class));
+        assertEquals(tenPow30, coercer.coerce("1e30", BigInteger.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(Double.POSITIVE_INFINITY, BigInteger.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(Double.NaN, BigInteger.class));
+    }
+
+    @Test
+    void doubleFloatOverflowLiteralsRejected() {
+        // parseDouble("1e400") → Infinity was returned silently; now it fails
+        // loudly like the integral overflow paths do.
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("1e400", Double.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("1e400", Float.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(new BigDecimal("1e400"), Double.class));
+    }
+
+    @Test
+    void optionalPrimitivesNullAndOverflow() {
+        // null → empty() (the entry's dead v == null branch showed intent);
+        // oversized values must not wrap through intValue()/longValue().
+        assertEquals(OptionalInt.empty(), coercer.coerce(null, OptionalInt.class));
+        assertEquals(OptionalLong.empty(), coercer.coerce(null, OptionalLong.class));
+        assertEquals(OptionalDouble.empty(), coercer.coerce(null, OptionalDouble.class));
+        assertEquals(Optional.empty(), coercer.coerce(null, Optional.class));
+        assertEquals(OptionalInt.of(5), coercer.coerce(5, OptionalInt.class));
+        assertEquals(OptionalLong.of(5L), coercer.coerce("5", OptionalLong.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(3_000_000_000L, OptionalInt.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("not-a-number", OptionalLong.class));
+    }
+
+    @Test
+    void numericStringsAreTrimmed() {
+        // Consistent with Boolean/Duration, which trim their inputs.
+        assertEquals(12, coercer.coerce(" 12 ", Integer.class));
+        assertEquals(12L, coercer.coerce(" 12 ", Long.class));
+        assertEquals(1.5d, coercer.coerce(" 1.5 ", Double.class));
+        assertEquals(new BigDecimal("12.5"), coercer.coerce(" 12.5 ", BigDecimal.class));
+        assertEquals(BigInteger.valueOf(12), coercer.coerce(" 12 ", BigInteger.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(" 12x ", Integer.class));
+    }
+
+    @Test
+    void characterCoercionUsesCodePointForNumbers() {
+        // Numeric sources follow the (char) cast semantics: 65 → 'A', not
+        // the decimal string's first character '6'. String sources keep the
+        // first-character behavior.
+        assertEquals('A', coercer.coerce(65, Character.class));
+        assertEquals('\u0005', coercer.coerce(5.5, Character.class));
+        assertEquals('a', coercer.coerce("ab", Character.class));
+        assertEquals('a', coercer.coerce('a', Character.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(70_000, Character.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(-1, Character.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce(Double.NaN, Character.class));
     }
 }

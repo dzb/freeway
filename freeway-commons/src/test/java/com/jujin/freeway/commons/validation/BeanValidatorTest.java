@@ -1,6 +1,7 @@
 package com.jujin.freeway.commons.validation;
 
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -53,6 +54,105 @@ class BeanValidatorTest {
     static class SizeBean {
         @Size(min = 2)
         String name;
+    }
+
+    // ====================== regression fixes ======================
+
+    static class OptionalHolder {
+        @Valid
+        Optional<Address> address;
+    }
+
+    static class IterableHolder {
+        @Valid
+        Iterable<Address> addresses;
+    }
+
+    static class DeepNode {
+        @NotBlank
+        String name;
+
+        @Valid
+        DeepNode child;
+    }
+
+    static class NonMeasurableHolder {
+        @Size(min = 2)
+        Integer count;
+    }
+
+    @Test
+    void sizeIgnoredForNonMeasurableTypes() {
+        // @Size on an Integer (no length) must skip, mirroring @Min/@Max's
+        // silent skip on non-Number — not always fail the min bound.
+        NonMeasurableHolder holder = new NonMeasurableHolder();
+        holder.count = 1;
+        assertFalse(BeanValidator.validate(holder).hasErrors());
+    }
+
+    static class NodeList {
+        @Valid
+        List<CyclicNode> nodes;
+    }
+
+    @Test
+    void manyCycleCutsDoNotInflateDepthCounter() {
+        // Regression: enter() incremented the depth counter even when the
+        // cycle guard cut the recursion, and the cut path never decremented —
+        // 100+ cyclic siblings would push the counter past MAX_DEPTH and
+        // spuriously reject a later sibling with a depth error.
+        NodeList root = new NodeList();
+        root.nodes = new java.util.ArrayList<>();
+        for (int i = 0; i < 120; i++) {
+            CyclicNode node = new CyclicNode();
+            node.name = "n" + i;
+            node.next = node; // self-loop — cut on revisit
+            root.nodes.add(node);
+        }
+        assertFalse(BeanValidator.validate(root).hasErrors(),
+            "cycle cuts must not inflate the depth counter");
+    }
+
+    @Test
+    void validUnwrapsOptional() {
+        OptionalHolder holder = new OptionalHolder();
+        holder.address = Optional.of(new Address());  // city is @NotBlank null
+        ValidationResult result = BeanValidator.validate(holder);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream()
+            .anyMatch(e -> e.field().equals("address.city")));
+    }
+
+    @Test
+    void validValidatesCustomIterableElements() {
+        IterableHolder holder = new IterableHolder();
+        Address bad = new Address();  // city is @NotBlank null
+        Address good = new Address();
+        good.city = "Shanghai";
+        holder.addresses = java.util.List.of(good, bad);
+        ValidationResult result = BeanValidator.validate(holder);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream()
+            .anyMatch(e -> e.field().equals("addresses[1].city")));
+        assertTrue(result.getErrors().stream()
+            .noneMatch(e -> e.field().equals("addresses[0].city")));
+    }
+
+    @Test
+    void deepNestingFailsWithErrorInsteadOfStackOverflow() {
+        DeepNode root = new DeepNode();
+        root.name = "root";
+        DeepNode current = root;
+        for (int i = 0; i < 500; i++) {
+            DeepNode child = new DeepNode();
+            child.name = "node-" + i;
+            current.child = child;
+            current = child;
+        }
+        ValidationResult result = BeanValidator.validate(root);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream()
+            .anyMatch(e -> e.message().contains("depth")));
     }
 
     // --- Tests ---

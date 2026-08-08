@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /** Declarative validation for beans annotated with {@code @NotNull}, {@code @NotBlank}, {@code @Size}, etc. */
@@ -64,6 +65,14 @@ public final class BeanValidator {
         ValidationResult result,
         ValidationContext context
     ) {
+        if (!context.withinDepth()) {
+            result.addError(
+                prefix.isEmpty() ? "(root)" : prefix,
+                "maximum validation depth exceeded (nested @Valid chain too deep)",
+                null
+            );
+            return;
+        }
         if (!context.enter(bean)) {
             return;
         }
@@ -103,7 +112,9 @@ public final class BeanValidator {
                         // @Size follows Bean Validation conventions: null is
                         // valid here — nullness belongs to @NotNull.
                         int len = lengthOf(value);
-                        if (len < size.min() || len > size.max()) {
+                        // Non-measurable types (-1) skip the constraint,
+                        // mirroring @Min/@Max's silent skip on non-Number.
+                        if (len >= 0 && (len < size.min() || len > size.max())) {
                             result.addError(
                                 fieldPath,
                                 size.message()
@@ -136,15 +147,7 @@ public final class BeanValidator {
                 }
 
                 if (value != null && hasAnnotation(annotations, Valid.class)) {
-                    if (value instanceof Collection<?> c) {
-                        int i = 0;
-                        for (Object element : c) {
-                            if (element != null) {
-                                validateBean(element, fieldPath + "[" + i + "]", result, context);
-                            }
-                            i++;
-                        }
-                    } else if (value instanceof Map<?, ?> m) {
+                    if (value instanceof Map<?, ?> m) {
                         for (Map.Entry<?, ?> entry : m.entrySet()) {
                             Object val = entry.getValue();
                             if (val != null) {
@@ -159,6 +162,23 @@ public final class BeanValidator {
                             if (element != null) {
                                 validateBean(element, fieldPath + "[" + i + "]", result, context);
                             }
+                        }
+                    } else if (value instanceof Optional<?> opt) {
+                        if (opt.isPresent()) {
+                            Object inner = opt.get();
+                            if (inner != null) {
+                                validateBean(inner, fieldPath, result, context);
+                            }
+                        }
+                    } else if (value instanceof Iterable<?> it) {
+                        // Collections and any other Iterable (custom, Set,
+                        // Queue) — validated element-wise.
+                        int i = 0;
+                        for (Object element : it) {
+                            if (element != null) {
+                                validateBean(element, fieldPath + "[" + i + "]", result, context);
+                            }
+                            i++;
                         }
                     } else {
                         validateBean(value, fieldPath, result, context);
@@ -177,12 +197,12 @@ public final class BeanValidator {
     }
 
     private static int lengthOf(Object value) {
-        if (value == null) return 0;
+        // value != null by contract (the caller guards @Size on null).
         if (value instanceof CharSequence s) return s.length();
         if (value instanceof Collection<?> c) return c.size();
         if (value instanceof Map<?,?> m) return m.size();
         if (value.getClass().isArray()) return Array.getLength(value);
-        return 0;
+        return -1; // non-measurable — @Size is ignored for this type
     }
 
     private static boolean hasValidationAnnotation(BeanProperty property) {
@@ -227,13 +247,27 @@ public final class BeanValidator {
     }
 
     private static final class ValidationContext {
+        /** Cap on nested {@code @Valid} depth — deep acyclic chains must fail
+         *  with a validation error, not StackOverflowError. */
+        private static final int MAX_DEPTH = 100;
+
         private final Set<Object> active = Collections.newSetFromMap(new IdentityHashMap<>());
+        private int depth;
+
+        boolean withinDepth() {
+            return depth < MAX_DEPTH;
+        }
 
         boolean enter(Object value) {
-            return active.add(value);
+            if (!active.add(value)) {
+                return false; // cycle — no depth increment, caller returns balanced
+            }
+            depth++;
+            return true;
         }
 
         void exit(Object value) {
+            depth--;
             active.remove(value);
         }
     }

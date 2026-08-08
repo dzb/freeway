@@ -18,14 +18,18 @@ public final class Strings {
             if (Character.isUpperCase(c)) {
                 // Split before an uppercase letter when the previous char is
                 // lowercase/digit, or when it ends an acronym ("HTTPServer" →
-                // "http_server", not "h_t_t_p_server").
+                // "http_server", not "h_t_t_p_server"). Never double a
+                // separator the identifier already contains ("user_Name" →
+                // "user_name", not "user__name").
                 if (i > 0) {
                     char prev = name.charAt(i - 1);
                     boolean prevLower =
                         Character.isLowerCase(prev) || Character.isDigit(prev);
                     boolean nextLower = i + 1 < name.length()
                         && Character.isLowerCase(name.charAt(i + 1));
-                    if (prevLower || nextLower) sb.append('_');
+                    if ((prevLower || nextLower) && prev != '_') {
+                        sb.append('_');
+                    }
                 }
                 sb.append(Character.toLowerCase(c));
             } else {

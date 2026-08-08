@@ -6,6 +6,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.ErrorManager;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
@@ -378,5 +385,140 @@ class JULFileHandlerTest {
         assertFalse(Files.exists(oldFile), "Old file should be purged: " + oldFile);
         assertFalse(Files.exists(oldCompressed), "Old compressed file should be purged");
         assertTrue(Files.exists(otherFile), "Other app's files should NOT be purged");
+    }
+
+    // ── regression: startup rotation enforces max-history ──────────
+
+    @Test
+    void startupRotationPurgesOldArchives(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("startup-purge.log");
+        Files.writeString(logFile, "stale content from yesterday");
+
+        // Yesterday's modification time so startup rotation archives it.
+        long yesterdayMillis = LocalDate.now().minusDays(1)
+                .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        Files.setLastModifiedTime(logFile, FileTime.fromMillis(yesterdayMillis));
+
+        // An archive older than the retention window (maxHistory=2).
+        String oldDate = LocalDate.now().minusDays(5)
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        Path oldArchive = logFile.getParent()
+                .resolve("startup-purge." + oldDate + ".log");
+        Files.writeString(oldArchive, "old");
+
+        JULFileHandler handler = new JULFileHandler(
+                logFile.toString(), 10 * 1024 * 1024, 2, false);
+
+        assertFalse(Files.exists(oldArchive),
+                "Archive older than maxHistory should be purged at startup");
+
+        String yesterday = LocalDate.now().minusDays(1)
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        Path rotatedArchive = logFile.getParent()
+                .resolve("startup-purge." + yesterday + ".log");
+        assertTrue(Files.exists(rotatedArchive),
+                "Stale current file should be archived at startup");
+        assertTrue(Files.exists(logFile),
+                "A fresh current file should be opened after startup rotation");
+        handler.close();
+    }
+
+    // ── regression: atomic gzip via .gz.tmp staging file ───────────
+
+    @Test
+    void compressionLeavesNoTmpFileAfterSuccess(@TempDir Path tempDir)
+            throws IOException, InterruptedException {
+        Path logFile = tempDir.resolve("atomic-gzip.log");
+        JULFileHandler handler = new JULFileHandler(
+                logFile.toString(), 150, 30, true);
+
+        LogRecord record = new LogRecord(Level.INFO,
+                "data that triggers rotation and async compression");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("test");
+        for (int i = 0; i < 30; i++) {
+            handler.publish(record);
+        }
+        handler.close();
+
+        // Wait for compression to finish; the .gz.tmp staging file must be
+        // gone afterwards (moved into place atomically or deleted on error).
+        Path parent = logFile.getParent();
+        boolean compressed = false;
+        for (int attempt = 0; attempt < 40 && !compressed; attempt++) {
+            try (var gzStream = Files.list(parent)) {
+                boolean hasGz = gzStream
+                        .anyMatch(p -> p.getFileName().toString().endsWith(".gz"));
+                boolean hasTmp;
+                try (var tmpStream = Files.list(parent)) {
+                    hasTmp = tmpStream
+                            .anyMatch(p -> p.getFileName().toString().endsWith(".gz.tmp"));
+                }
+                compressed = hasGz && !hasTmp;
+            }
+            if (!compressed) Thread.sleep(50);
+        }
+        assertTrue(compressed,
+                "Compression should complete with no leftover .gz.tmp in " + parent);
+
+        // The surviving .gz is complete and valid (gzip magic bytes).
+        Path gzFile;
+        try (var gzStream = Files.list(parent)) {
+            gzFile = gzStream
+                    .filter(p -> p.getFileName().toString().endsWith(".gz"))
+                    .findFirst().orElse(null);
+        }
+        assertNotNull(gzFile, "Should have a .gz file after compression");
+        byte[] header = Files.readAllBytes(gzFile);
+        assertEquals((byte) 0x1F, header[0], "GZIP magic byte 0");
+        assertEquals((byte) 0x8B, header[1], "GZIP magic byte 1");
+    }
+
+    // ── regression: failed rotation reports instead of silently dropping ──
+
+    @Test
+    void recoversAfterRotationFailure(@TempDir Path tempDir) throws IOException {
+        Path logDir = tempDir.resolve("logs");
+        Path logFile = logDir.resolve("app.log");
+        JULFileHandler handler = new JULFileHandler(
+                logFile.toString(), 200, 30, false, 0);
+
+        List<Exception> reported = new ArrayList<>();
+        handler.setErrorManager(new ErrorManager() {
+            @Override
+            public void error(String msg, Exception ex, int code) {
+                reported.add(ex);
+            }
+        });
+
+        LogRecord big = new LogRecord(Level.INFO, "x".repeat(1200));
+        big.setMillis(System.currentTimeMillis());
+        big.setLoggerName("test");
+
+        // Sabotage: replace the parent directory with a plain file so
+        // Files.createDirectories() fails when rotation reopens the stream.
+        Files.delete(logFile);   // unlink while the stream is open (Linux)
+        Files.delete(logDir);
+        Files.writeString(logDir, "not a directory");
+
+        // First publish writes (to the unlinked inode); the second triggers
+        // rotation whose reopen fails — must be reported, not silent.
+        handler.publish(big);
+        handler.publish(big);
+        assertFalse(reported.isEmpty(),
+                "Rotation failure must be reported, not silently dropped");
+
+        // Restore the directory; the next publish must recover automatically.
+        Files.delete(logDir);
+        Files.createDirectory(logDir);
+        LogRecord after = new LogRecord(Level.INFO, "recovered record");
+        after.setMillis(System.currentTimeMillis());
+        after.setLoggerName("test");
+        handler.publish(after);
+        handler.close();
+
+        String content = Files.readString(logFile);
+        assertTrue(content.contains("recovered record"),
+                "Record after recovery should be written: " + content);
     }
 }

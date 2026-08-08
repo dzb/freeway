@@ -94,15 +94,32 @@ final class JsonAccessors {
                 }
                 return bd.longValue();
             }
-            if (number instanceof Double d && (d.isNaN() || d.isInfinite())) {
-                throw new IllegalArgumentException(
-                    "Cannot convert " + number + " to Long"
-                );
+            if (number instanceof Double d) {
+                if (d.isNaN() || d.isInfinite()) {
+                    throw new IllegalArgumentException(
+                        "Cannot convert " + number + " to Long"
+                    );
+                }
+                // (long) silently saturates out-of-range doubles to
+                // Long.MAX/MIN — reject like the BigDecimal branch does.
+                // 0x1p63 = 2^63, the double Long.MAX_VALUE rounds to.
+                if (d >= 0x1p63 || d < -0x1p63) {
+                    throw new IllegalArgumentException(
+                        "Number " + number + " is out of Long range"
+                    );
+                }
             }
-            if (number instanceof Float f && (f.isNaN() || f.isInfinite())) {
-                throw new IllegalArgumentException(
-                    "Cannot convert " + number + " to Long"
-                );
+            if (number instanceof Float f) {
+                if (f.isNaN() || f.isInfinite()) {
+                    throw new IllegalArgumentException(
+                        "Cannot convert " + number + " to Long"
+                    );
+                }
+                if (f >= 0x1p63f || f < -0x1p63f) {
+                    throw new IllegalArgumentException(
+                        "Number " + number + " is out of Long range"
+                    );
+                }
             }
             return number.longValue();
         }

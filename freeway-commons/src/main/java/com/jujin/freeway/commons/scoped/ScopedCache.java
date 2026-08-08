@@ -78,9 +78,20 @@ public final class ScopedCache {
      * Opens a scoped cache with a {@link Session} handle for
      * advanced use (tracking, manual close). Cached values are
      * cleaned up when the scope exits.
+     *
+     * <p><b>Nesting with {@link Defer}:</b> this cache scope must wrap the
+     * Defer scope ({@code ScopedCache.within(() -> Defer.within(...))}) —
+     * deferred actions then run while cached values are still open. The
+     * reverse nesting ({@code Defer.within(() -> ScopedCache.within(...))})
+     * cleans up cached values when this scope exits, <em>before</em> outer
+     * Defer actions run; such actions must not touch cached resources. The
+     * reverse nesting is detected at runtime and reported with a warning.
      */
     public static <T> T within(Function<Session, T> work) {
         Objects.requireNonNull(work, "work");
+        if (Defer.isActive()) {
+            warnDeferNesting();
+        }
         Session session = new Session();
         try {
             return ScopedValue.where(CURRENT, session).call(() -> work.apply(session));
@@ -89,12 +100,42 @@ public final class ScopedCache {
         }
     }
 
+    /**
+     * ScopedCache and Defer are independent scoped primitives with no ordering
+     * contract between them. The safe nesting is cache-outer / Defer-inner:
+     * deferred actions then run while cached values are still open. With
+     * Defer-outer / cache-inner the cache cleanup runs when this scope exits,
+     * before the outer Defer drain, so deferred actions may see closed
+     * resources. Warn once per JVM — the nesting is a structural error the
+     * caller should fix, and repeated warnings would only add noise.
+     */
+    private static volatile boolean deferNestingWarned;
+
+    private static void warnDeferNesting() {
+        if (deferNestingWarned) {
+            return;
+        }
+        deferNestingWarned = true;
+        LOG.warn(
+            "ScopedCache.within() opened inside an active Defer scope: cached values are "
+                + "cleaned up when this cache scope exits, BEFORE deferred actions in the "
+                + "outer Defer scope run — such actions may see the resources already closed. "
+                + "Nest ScopedCache OUTSIDE Defer.within instead."
+        );
+    }
+
+    static void resetDeferNestingWarning() {
+        deferNestingWarned = false;
+    }
+
     // ==================== get ====================
 
     /**
      * Inside a scope, returns the cached value for {@code key},
      * creating it via {@code factory} on first access.
-     * Outside a scope, creates and returns without caching.
+     * Outside a scope — including other threads, since {@link ScopedValue}
+     * does not propagate — creates and returns without caching and without
+     * cleanup registration; the caller owns the value and its lifecycle.
      */
     @SuppressWarnings("unchecked")
     public static <V> V get(Object key, Supplier<V> factory) {
@@ -180,7 +221,10 @@ public final class ScopedCache {
                 for (Consumer<Object> handler : ON_CLOSE) {
                     try {
                         handler.accept(value);
-                    } catch (Exception ex) {
+                    } catch (Throwable ex) {
+                        // Errors included: cleanup must always run to
+                        // completion — one failing handler must not skip
+                        // the rest (matches DeferScope.drain).
                         LOG.warn("ScopedCache cleanup handler failed", ex);
                     }
                 }

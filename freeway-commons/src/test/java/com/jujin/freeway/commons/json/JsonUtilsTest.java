@@ -821,6 +821,27 @@ class JsonUtilsTest {
         }
     }
 
+    // ====================== regression fixes ======================
+
+    @Test
+    void concreteCollectionAndMapTargets() {
+        // Regression: privateLookupIn failed for java.base classes, so
+        // ArrayList/HashMap targets threw "Cannot instantiate collection/map".
+        JsonCodec codec = new JsonCodecDefault();
+        assertEquals(List.of(1, 2), codec.fromJson("[1,2]", ArrayList.class));
+        Map<?, ?> map = codec.fromJson("{\"k\":1}", HashMap.class);
+        assertEquals(1, map.get("k"));
+    }
+
+    @Test
+    void getLongRejectsOutOfRangeDouble() {
+        // (long)1e300 saturates to Long.MAX_VALUE silently; the BigDecimal
+        // branch rejects the same magnitude.
+        JsonObject obj = JsonUtils.object();
+        obj.put("x", 1e300);
+        assertThrows(IllegalArgumentException.class, () -> obj.getLong("x"));
+    }
+
     private abstract static class TypeRef<T> {
         private final Type type;
 

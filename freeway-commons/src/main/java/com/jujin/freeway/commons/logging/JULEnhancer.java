@@ -2,12 +2,15 @@ package com.jujin.freeway.commons.logging;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Formatter;
@@ -114,12 +117,13 @@ final class JULEnhancer {
     }
 
     /**
-     * Maps a {@code freeway.*} config key to its environment variable name,
-     * honoring the configurable env prefix ({@code freeway.env.prefix},
-     * default {@code FREEWAY_}) — consistent with
-     * {@code ConfigLoaderDefault}'s cascade mapping.
+     * Maps a config key to its environment variable name, honoring the
+     * configurable env prefix ({@code freeway.env.prefix}, default
+     * {@code FREEWAY_}) — consistent with {@code ConfigLoaderDefault}'s
+     * cascade mapping.
      *
-     * <p>Default prefix: {@code "freeway.log.level"} → {@code "FREEWAY_LOG_LEVEL"}.
+     * <p>Default prefix: {@code "freeway.log.level"} → {@code "FREEWAY_LOG_LEVEL"},
+     * {@code "com.myapp.level"} → {@code "COM_MYAPP_LEVEL"}.
      * Custom prefix {@code "APP_"}: {@code "freeway.log.level"} →
      * {@code "APP_FREEWAY_LOG_LEVEL"} (the cascade maps that back to
      * {@code freeway.log.level}).</p>
@@ -152,13 +156,12 @@ final class JULEnhancer {
             if (!stripped.isEmpty()) return stripped;
         }
         // 2. Environment variable (freeway.log.level → FREEWAY_LOG_LEVEL,
-        //    or APP_FREEWAY_LOG_LEVEL under a custom prefix)
-        if (key.startsWith("freeway.")) {
-            String envVal = System.getenv(envKeyFor(key));
-            if (envVal != null) {
-                String stripped = envVal.strip();
-                if (!stripped.isEmpty()) return stripped;
-            }
+        //    or APP_FREEWAY_LOG_LEVEL under a custom prefix; per-logger keys
+        //    like com.myapp.level → COM_MYAPP_LEVEL)
+        String envVal = System.getenv(envKeyFor(key));
+        if (envVal != null) {
+            String stripped = envVal.strip();
+            if (!stripped.isEmpty()) return stripped;
         }
         // 3. Config file
         String fileVal = fileConfig.getProperty(key);
@@ -182,16 +185,29 @@ final class JULEnhancer {
             logEarly("Invalid root level '" + rootLevel + "': " + e.getMessage());
         }
 
-        // Collect all .level keys from file config and system properties
+        // Collect all .level keys from file config, system properties, and
+        // environment variables. Framework keys (freeway.log.*) are excluded —
+        // they configure the framework itself, not JUL loggers, and treating
+        // them as logger levels would create phantom loggers
+        // (e.g. "freeway.log.console").
         Set<String> levelKeys = new HashSet<>();
-        for (String key : fileConfig.stringPropertyNames()) {
-            if (key.endsWith(".level") && !key.equals("freeway.log.level")) {
-                levelKeys.add(key);
+        collectLevelKeys(levelKeys, fileConfig.stringPropertyNames());
+        collectLevelKeys(levelKeys, System.getProperties().stringPropertyNames());
+        for (String envName : System.getenv().keySet()) {
+            String configKey = envToConfigKey(envName);
+            if (configKey == null) {
+                continue;
             }
-        }
-        for (String key : System.getProperties().stringPropertyNames()) {
-            if (key.endsWith(".level") && !key.equals("freeway.log.level")) {
-                levelKeys.add(key);
+            // Only honor env vars whose key is ALSO configured in the file or
+            // system properties: an unrelated *_LEVEL variable (LOG_LEVEL,
+            // CI_LEVEL, ...) must not create a phantom logger or silently
+            // override a logger's level. The env value itself still wins via
+            // readProperty's cascade.
+            if (
+                fileConfig.containsKey(configKey) ||
+                System.getProperties().containsKey(configKey)
+            ) {
+                collectLevelKeys(levelKeys, java.util.List.of(configKey));
             }
         }
 
@@ -211,6 +227,42 @@ final class JULEnhancer {
                 );
             }
         }
+    }
+
+    /** Adds per-logger level keys from a key collection, filtering framework keys. */
+    private static void collectLevelKeys(Set<String> target, Iterable<String> keys) {
+        for (String key : keys) {
+            if (
+                key.endsWith(".level")
+                    && !key.equals("freeway.log.level")
+                    && !key.startsWith("freeway.log.")
+            ) {
+                target.add(key);
+            }
+        }
+    }
+
+    /**
+     * Inverse of {@link #envKeyFor}: maps an environment variable name back to
+     * its config key ({@code FREEWAY_LOG_LEVEL} → {@code freeway.log.level},
+     * or {@code APP_FREEWAY_LOG_LEVEL} under a custom prefix {@code APP_}).
+     * Returns {@code null} for environment variables outside the prefix.
+     */
+    static String envToConfigKey(String envName) {
+        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
+        if (prefix.isEmpty()) {
+            prefix = "FREEWAY_";
+        }
+        String candidate;
+        if ("FREEWAY_".equals(prefix)) {
+            candidate = envName;
+        } else {
+            if (!envName.startsWith(prefix)) {
+                return null;
+            }
+            candidate = envName.substring(prefix.length());
+        }
+        return candidate.toLowerCase(Locale.ROOT).replace('_', '.');
     }
 
     /**
@@ -406,8 +458,10 @@ final class JULEnhancer {
         java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
-     * Re-applies all named file handler configurations. A no-op after
-     * the first call — an internal guard prevents duplicate handlers.
+     * Re-applies all named file handler configurations. Safe to call any
+     * number of times — {@link #attachNamedFile(NamedFileConfig)} skips
+     * files whose handler is already attached to the target logger, so no
+     * duplicate handlers are ever created.
      *
      * <p>Intended for late-stage re-attachment when handlers configured
      * during {@link #configure()} may have been cleared by
@@ -435,6 +489,24 @@ final class JULEnhancer {
 
     private static void attachNamedFile(NamedFileConfig cfg) {
         try {
+            Logger target = (cfg.loggerName != null)
+                ? Logger.getLogger(cfg.loggerName)
+                : Logger.getLogger(""); // root
+            Path configuredPath = Paths.get(cfg.path).toAbsolutePath();
+
+            // Dedup: the same named file is attached once at configure()
+            // time and re-attached by applyNamedFileConfigs() after the
+            // runtime is up. Without this check the second pass would add a
+            // second handler writing to the same file — doubling records and
+            // giving the two handlers independent rotation states on one
+            // file (records lost into archives). Skip when already present.
+            for (Handler h : target.getHandlers()) {
+                if (h instanceof JULFileHandler fh
+                        && fh.basePath().equals(configuredPath)) {
+                    return;
+                }
+            }
+
             JULFileHandler handler = new JULFileHandler(
                 cfg.path,
                 cfg.maxSize,
@@ -445,9 +517,6 @@ final class JULEnhancer {
             freewayHandlers.add(handler);
             if (cfg.level != null) handler.setLevel(cfg.level);
 
-            Logger target = (cfg.loggerName != null)
-                ? Logger.getLogger(cfg.loggerName)
-                : Logger.getLogger(""); // root
             target.addHandler(handler);
             if (target.getParent() != null) {
                 target.setUseParentHandlers(false);
@@ -484,6 +553,7 @@ final class JULEnhancer {
      */
     private static void activateFileLogging(Properties fileConfig) {
         String raw = readProperty(fileConfig, "freeway.log.file", "auto");
+        Function<String, String> reader = cascadeReader(fileConfig);
 
         if (!"off".equalsIgnoreCase(raw)) {
             String path;
@@ -496,25 +566,33 @@ final class JULEnhancer {
             try {
                 JULFileHandler fh = new JULFileHandler(
                     path,
-                    longProperty(
-                        fileConfig,
+                    LogConfig.propertyValue(
                         "freeway.log.file.max-size",
-                        JULFileHandler.DEFAULT_MAX_SIZE
+                        JULFileHandler.DEFAULT_MAX_SIZE,
+                        reader,
+                        Long::parseLong,
+                        true
                     ),
-                    intProperty(
-                        fileConfig,
+                    LogConfig.propertyValue(
                         "freeway.log.file.max-history",
-                        JULFileHandler.DEFAULT_MAX_HISTORY
+                        JULFileHandler.DEFAULT_MAX_HISTORY,
+                        reader,
+                        Integer::parseInt,
+                        true
                     ),
-                    booleanProperty(
-                        fileConfig,
+                    LogConfig.propertyValue(
                         "freeway.log.file.compress",
-                        JULFileHandler.DEFAULT_COMPRESS
+                        JULFileHandler.DEFAULT_COMPRESS,
+                        reader,
+                        LogConfig::strictBoolean,
+                        true
                     ),
-                    longProperty(
-                        fileConfig,
+                    LogConfig.propertyValue(
                         "freeway.log.file.flush-interval",
-                        JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS
+                        JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
+                        reader,
+                        Long::parseLong,
+                        true
                     )
                 );
                 freewayHandlers.add(fh);
@@ -564,15 +642,36 @@ final class JULEnhancer {
         }
 
         String loggerName = readProperty(fileConfig, prefix + ".logger", null);
+        Function<String, String> reader = cascadeReader(fileConfig);
         NamedFileConfig cfg = new NamedFileConfig(
             path,
-            longProperty(fileConfig, prefix + ".max-size", JULFileHandler.DEFAULT_MAX_SIZE),
-            intProperty(fileConfig, prefix + ".max-history", JULFileHandler.DEFAULT_MAX_HISTORY),
-            booleanProperty(fileConfig, prefix + ".compress", JULFileHandler.DEFAULT_COMPRESS),
-            longProperty(
-                fileConfig,
+            LogConfig.propertyValue(
+                prefix + ".max-size",
+                JULFileHandler.DEFAULT_MAX_SIZE,
+                reader,
+                Long::parseLong,
+                true
+            ),
+            LogConfig.propertyValue(
+                prefix + ".max-history",
+                JULFileHandler.DEFAULT_MAX_HISTORY,
+                reader,
+                Integer::parseInt,
+                true
+            ),
+            LogConfig.propertyValue(
+                prefix + ".compress",
+                JULFileHandler.DEFAULT_COMPRESS,
+                reader,
+                LogConfig::strictBoolean,
+                true
+            ),
+            LogConfig.propertyValue(
                 prefix + ".flush-interval",
-                JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS
+                JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
+                reader,
+                Long::parseLong,
+                true
             ),
             level,
             loggerName
@@ -583,35 +682,14 @@ final class JULEnhancer {
 
     // ── property helpers ────────────────────────────────────────
 
-    private static long longProperty(
-        Properties fileConfig, String key, long defaultValue
-    ) {
-        String val = readProperty(fileConfig, key, null);
-        if (val == null) return defaultValue;
-        try {
-            return Long.parseLong(val);
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
-    }
-
-    private static int intProperty(
-        Properties fileConfig, String key, int defaultValue
-    ) {
-        String val = readProperty(fileConfig, key, null);
-        if (val == null) return defaultValue;
-        try {
-            return Integer.parseInt(val);
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
-    }
-
-    private static boolean booleanProperty(
-        Properties fileConfig, String key, boolean defaultValue
-    ) {
-        String val = readProperty(fileConfig, key, null);
-        if (val == null) return defaultValue;
-        return Boolean.parseBoolean(val);
+    /**
+     * The cascade reader used for every {@code freeway.log.*} lookup —
+     * {@code -D} > env > file > default (see {@link #readProperty}).
+     * Parse helpers live in {@link LogConfig}; the cascade parses leniently
+     * (an unparseable value falls back to its default instead of failing the
+     * whole configuration).
+     */
+    private static Function<String, String> cascadeReader(Properties fileConfig) {
+        return k -> readProperty(fileConfig, k, null);
     }
 }

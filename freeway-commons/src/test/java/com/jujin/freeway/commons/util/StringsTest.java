@@ -18,4 +18,12 @@ class StringsTest {
         assertEquals("", Strings.camelToSnake(""));
         assertNull(Strings.camelToSnake(null));
     }
+
+    @Test
+    void camelToSnakeDoesNotDoubleUnderscoreSeparators() {
+        // Regression: a separator was inserted before an uppercase letter even
+        // when the previous character was already '_'.
+        assertEquals("user_name", Strings.camelToSnake("user_Name"));
+        assertEquals("foo_bar", Strings.camelToSnake("foo_Bar"));
+    }
 }

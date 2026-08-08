@@ -49,6 +49,8 @@ import java.util.concurrent.TransferQueue;
 final class JsonCoercions {
 
     private static final CoercerDefault DEFAULT_COERCER = new CoercerDefault();
+    private static final MethodHandles.Lookup PUBLIC =
+        MethodHandles.publicLookup();
 
     private JsonCoercions() {}
 
@@ -523,7 +525,16 @@ final class JsonCoercions {
                 targetType.getDeclaredConstructor()
             );
         } catch (ReflectiveOperationException ex) {
-            return null;
+            // privateLookupIn fails for non-open modules (e.g. every class in
+            // java.base like ArrayList/HashMap). Public no-arg constructors
+            // of public classes stay reachable via publicLookup.
+            try {
+                return PUBLIC.unreflectConstructor(
+                    targetType.getConstructor()
+                );
+            } catch (ReflectiveOperationException ex2) {
+                return null;
+            }
         } catch (Error e) {
             throw e;
         } catch (Throwable ex) {

@@ -221,16 +221,16 @@ public final class CoercerDefault implements Coercer {
             entry(Locale.class, v -> Locale.forLanguageTag(String.valueOf(v))),
 
             // -- optional primitives --
-            entry(OptionalInt.class, v -> v == null
-                ? OptionalInt.empty()
-                : OptionalInt.of(((Number) v).intValue())),
-            entry(OptionalLong.class, v -> v == null
-                ? OptionalLong.empty()
-                : OptionalLong.of(((Number) v).longValue())),
-            entry(OptionalDouble.class, v -> v == null
-                ? OptionalDouble.empty()
-                : OptionalDouble.of(((Number) v).doubleValue())),
-            entry(Optional.class, v -> Optional.ofNullable(v)),
+            entry(OptionalInt.class, v -> OptionalInt.of(
+                coerceNumber(v, Integer.class).intValue()
+            )),
+            entry(OptionalLong.class, v -> OptionalLong.of(
+                coerceNumber(v, Long.class).longValue()
+            )),
+            entry(OptionalDouble.class, v -> OptionalDouble.of(
+                coerceNumber(v, Double.class).doubleValue()
+            )),
+            entry(Optional.class, v -> Optional.of(v)),
 
             // -- duration --
             entry(Duration.class, CoercerDefault::coerceToDuration)
@@ -245,6 +245,10 @@ public final class CoercerDefault implements Coercer {
     private static <T> T coerceInternal(Object value, Class<T> targetType) {
         Objects.requireNonNull(targetType, "targetType");
         if (value == null) {
+            if (targetType == OptionalInt.class) return (T) OptionalInt.empty();
+            if (targetType == OptionalLong.class) return (T) OptionalLong.empty();
+            if (targetType == OptionalDouble.class) return (T) OptionalDouble.empty();
+            if (targetType == Optional.class) return (T) Optional.empty();
             return (T) defaultValue(targetType);
         }
         if (targetType.isInstance(value)) {
@@ -292,6 +296,36 @@ public final class CoercerDefault implements Coercer {
     }
 
     private static Character coerceToCharacter(Object value) {
+        if (value instanceof Number n) {
+            // Numeric sources follow the Java (char) cast semantics — code
+            // point, not the decimal string's first character. 65 → 'A',
+            // and out-of-range values fail loudly instead of truncating.
+            if (
+                (n instanceof Double d && (d.isNaN() || d.isInfinite())) ||
+                (n instanceof Float f && (f.isNaN() || f.isInfinite()))
+            ) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce " + n + " to Character"
+                );
+            }
+            // longValue() narrows BigInteger/BigDecimal to the low 64 bits,
+            // so the range check must run on the exact value first.
+            BigInteger bi = n instanceof BigDecimal bd
+                ? bd.toBigInteger() // truncate the fraction, like (char)
+                : n instanceof BigInteger i
+                    ? i
+                    : BigInteger.valueOf(n.longValue());
+            if (
+                bi.compareTo(BigInteger.ZERO) < 0 ||
+                bi.compareTo(BigInteger.valueOf(Character.MAX_VALUE)) > 0
+            ) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce " + n + " to Character: out of range 0.."
+                        + (int) Character.MAX_VALUE
+                );
+            }
+            return (char) bi.intValue();
+        }
         String text = String.valueOf(value);
         return text.isEmpty() ? '\0' : text.charAt(0);
     }
@@ -300,14 +334,34 @@ public final class CoercerDefault implements Coercer {
         if (value instanceof BigDecimal d) return d;
         if (value instanceof BigInteger i) return new BigDecimal(i);
         if (value instanceof Number n) return new BigDecimal(String.valueOf(n));
-        return new BigDecimal(String.valueOf(value));
+        return new BigDecimal(String.valueOf(value).strip());
     }
 
     private static BigInteger coerceToBigInteger(Object value) {
         if (value instanceof BigInteger i) return i;
         if (value instanceof BigDecimal d) return d.toBigInteger();
-        if (value instanceof Number n) return BigInteger.valueOf(n.longValue());
-        return new BigInteger(String.valueOf(value));
+        if (value instanceof Number n) {
+            if (
+                (n instanceof Double d && (d.isNaN() || d.isInfinite())) ||
+                (n instanceof Float f && (f.isNaN() || f.isInfinite()))
+            ) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce " + n + " to BigInteger"
+                );
+            }
+            // Route through the decimal representation: longValue() would
+            // silently saturate out-of-range floats (1e30 → Long.MAX_VALUE).
+            return new BigDecimal(String.valueOf(n)).toBigInteger();
+        }
+        String text = String.valueOf(value).strip();
+        try {
+            return new BigInteger(text);
+        } catch (NumberFormatException e) {
+            // Decimal or exponent notation ("1e30", "5.5") — the BigInteger
+            // constructor rejects it; route through BigDecimal like the
+            // Number path so the magnitudes match.
+            return new BigDecimal(text).toBigInteger();
+        }
     }
 
     private static Duration coerceToDuration(Object value) {
@@ -395,8 +449,26 @@ public final class CoercerDefault implements Coercer {
         if (targetType == Long.class) return n.longValue();
         if (targetType == Short.class) return n.shortValue();
         if (targetType == Byte.class) return n.byteValue();
-        if (targetType == Double.class) return n.doubleValue();
-        if (targetType == Float.class) return n.floatValue();
+        if (targetType == Double.class) {
+            // BigDecimal and other non-float sources can overflow to Infinity
+            // (e.g. 1e400 → Double) — reject instead of returning Infinity.
+            double d = n.doubleValue();
+            if (Double.isInfinite(d)) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce " + n + " to Double: out of range"
+                );
+            }
+            return d;
+        }
+        if (targetType == Float.class) {
+            float f = n.floatValue();
+            if (Float.isInfinite(f)) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce " + n + " to Float: out of range"
+                );
+            }
+            return f;
+        }
         return null;
     }
 
@@ -429,56 +501,56 @@ public final class CoercerDefault implements Coercer {
         String text,
         Class<?> targetType
     ) {
-        if (targetType == Integer.class) return parseInteger(text);
-        if (targetType == Long.class) return parseLong(text);
-        if (targetType == Short.class) return parseShort(text);
-        if (targetType == Byte.class) return parseByte(text);
-        if (targetType == Double.class) return Double.parseDouble(text);
-        if (targetType == Float.class) return Float.parseFloat(text);
+        // Trim like the Boolean/Duration paths do — " 12 " is a number.
+        text = text.strip();
+        if (
+            targetType == Integer.class ||
+            targetType == Long.class ||
+            targetType == Short.class ||
+            targetType == Byte.class
+        ) {
+            return parseIntegral(text, targetType);
+        }
+        if (targetType == Double.class) {
+            double d = Double.parseDouble(text);
+            if (Double.isInfinite(d)) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce '" + text + "' to Double: out of range"
+                );
+            }
+            return d;
+        }
+        if (targetType == Float.class) {
+            float f = Float.parseFloat(text);
+            if (Float.isInfinite(f)) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce '" + text + "' to Float: out of range"
+                );
+            }
+            return f;
+        }
         return null;
     }
 
-    private static Number parseInteger(String text) {
+    /**
+     * Parses an integral target from a string. Plain parse first; on a
+     * {@link NumberFormatException} (decimal string or out-of-range literal)
+     * route through {@link BigDecimal} with a range check so oversized values
+     * fail loudly instead of wrapping, and fractional values truncate
+     * consistently across all four integral targets.
+     */
+    private static Number parseIntegral(String text, Class<?> targetType) {
         try {
-            return Integer.parseInt(text);
-        } catch (NumberFormatException e) {
-            // Decimal string or out-of-range literal — range-check before
-            // truncating so oversized values fail loudly instead of wrapping.
-            BigDecimal bd = new BigDecimal(text);
-            checkRange(bd, Integer.class);
-            return bd.intValue();
-        }
-    }
-
-    private static Number parseLong(String text) {
-        try {
-            return Long.parseLong(text);
-        } catch (NumberFormatException e) {
-            BigDecimal bd = new BigDecimal(text);
-            checkRange(bd, Long.class);
-            return bd.longValue();
-        }
-    }
-
-    private static Number parseShort(String text) {
-        try {
-            return Short.parseShort(text);
-        } catch (NumberFormatException e) {
-            // Decimal string or out-of-range literal — match the Integer/Long
-            // path: range-check before truncating so oversized values fail
-            // loudly and fractional values truncate consistently.
-            BigDecimal bd = new BigDecimal(text);
-            checkRange(bd, Short.class);
-            return bd.shortValue();
-        }
-    }
-
-    private static Number parseByte(String text) {
-        try {
+            if (targetType == Integer.class) return Integer.parseInt(text);
+            if (targetType == Long.class) return Long.parseLong(text);
+            if (targetType == Short.class) return Short.parseShort(text);
             return Byte.parseByte(text);
         } catch (NumberFormatException e) {
             BigDecimal bd = new BigDecimal(text);
-            checkRange(bd, Byte.class);
+            checkRange(bd, targetType);
+            if (targetType == Integer.class) return bd.intValue();
+            if (targetType == Long.class) return bd.longValue();
+            if (targetType == Short.class) return bd.shortValue();
             return bd.byteValue();
         }
     }

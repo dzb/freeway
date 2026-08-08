@@ -8,7 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.LogRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -236,6 +239,20 @@ class ScopedCacheTest {
     }
 
     @Test
+    void onCloseHandlerErrorDoesNotBlockOthers() {
+        AtomicInteger secondFired = new AtomicInteger();
+        ScopedCache.onClose(v -> { throw new Error("fail"); });
+        ScopedCache.onClose(v -> secondFired.incrementAndGet());
+
+        ScopedCache.within(() -> {
+            ScopedCache.get("k", () -> "v");
+            return null;
+        });
+
+        assertEquals(1, secondFired.get());
+    }
+
+    @Test
     void identityDedupOnClose() {
         AtomicInteger cleaned = new AtomicInteger();
         ScopedCache.onClose(v -> cleaned.incrementAndGet());
@@ -287,5 +304,73 @@ class ScopedCacheTest {
             ScopedCache.get("nullVal", () -> null);
         });
         // should not throw NPE
+    }
+
+    // ====================== Defer nesting contract ======================
+
+    @Test
+    void warnsWhenOpenedInsideActiveDeferScope() {
+        List<LogRecord> records = new ArrayList<>();
+        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
+            ScopedCache.class.getName()
+        );
+        java.util.logging.Handler capturing = new java.util.logging.Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {}
+
+            @Override
+            public void close() {}
+        };
+        jul.setLevel(java.util.logging.Level.ALL);
+        jul.addHandler(capturing);
+        ScopedCache.resetDeferNestingWarning();
+        try {
+            Defer.within(() ->
+                ScopedCache.within(() -> ScopedCache.get("k", () -> "v")));
+        } finally {
+            jul.removeHandler(capturing);
+        }
+        assertFalse(records.isEmpty(),
+            "unsafe Defer-outer / cache-inner nesting must warn");
+        assertTrue(records.stream()
+            .anyMatch(r -> r.getMessage() != null
+                && r.getMessage().contains("ScopedCache.within")));
+    }
+
+    @Test
+    void noWarningForSafeNesting() {
+        List<LogRecord> records = new ArrayList<>();
+        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(
+            ScopedCache.class.getName()
+        );
+        java.util.logging.Handler capturing = new java.util.logging.Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {}
+
+            @Override
+            public void close() {}
+        };
+        jul.setLevel(java.util.logging.Level.ALL);
+        jul.addHandler(capturing);
+        ScopedCache.resetDeferNestingWarning();
+        try {
+            ScopedCache.within(() ->
+                Defer.within(() -> ScopedCache.get("k", () -> "v")));
+        } finally {
+            jul.removeHandler(capturing);
+        }
+        assertTrue(records.stream()
+            .noneMatch(r -> r.getMessage() != null
+                && r.getMessage().contains("ScopedCache.within")));
     }
 }

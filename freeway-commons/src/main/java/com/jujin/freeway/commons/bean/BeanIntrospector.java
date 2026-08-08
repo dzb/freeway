@@ -1,6 +1,7 @@
 package com.jujin.freeway.commons.bean;
 
 import java.lang.annotation.Annotation;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.util.Collections;
 import java.util.Map;
@@ -13,6 +14,16 @@ import java.util.WeakHashMap;
  * <p>Produces {@link BeanPlan} metadata (properties, constructor, annotations)
  * for any class. Results are cached via {@link ClassValue} and
  * {@link ConcurrentHashMap}.
+ *
+ * <p><b>Module-access contract:</b> application classes (unnamed module) are
+ * fully introspectable — private constructors, fields and setters are reached
+ * via a private lookup. JDK classes live in non-open modules, so only their
+ * public members are reachable (via {@link MethodHandles#publicLookup()});
+ * {@code BeanPlan.plan} on a JDK type therefore succeeds with a zero-property
+ * or non-constructable plan instead of failing. If deeper JDK reflection is
+ * ever required, the JVM must be started with the matching
+ * {@code --add-opens} flag — the framework does not and cannot do this for
+ * the application.
  *
  * <p>Usage:
  * <pre>{@code
@@ -51,13 +62,9 @@ public final class BeanIntrospector {
      */
     public static BeanConstructor constructor(Constructor<?> constructor) {
         Objects.requireNonNull(constructor, "constructor");
-        BeanConstructor cached = CONSTRUCTORS.get(constructor);
-        if (cached != null) {
-            return cached;
-        }
-        BeanConstructor created = BeanConstructor.of(constructor);
-        CONSTRUCTORS.put(constructor, created);
-        return created;
+        // Atomic check-and-create: a race must not produce two wrappers for
+        // the same Constructor.
+        return CONSTRUCTORS.computeIfAbsent(constructor, BeanConstructor::of);
     }
 
     /**

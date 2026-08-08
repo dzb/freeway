@@ -4,12 +4,18 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
@@ -421,5 +427,91 @@ class DeferTest {
             assertNull(handle.value(),
                 "plain defer() handles must not expose a value");
         });
+    }
+
+    // ====================== regression fixes ======================
+
+    @Test
+    void noopHandleIgnoresOrderingConstraints() {
+        // Outside a scope, defer(id, ...) returns the shared NOOP singleton;
+        // ordering constraints on it are meaningless and must not mutate the
+        // shared state (before/after sets would cross-contaminate callers).
+        DeferAction noop = Defer.defer("x", () -> {});
+        noop.before("a").after("b");
+        noop.before("c");
+        assertTrue(noop.before().isEmpty(),
+            "NOOP must not accumulate before() constraints");
+        assertTrue(noop.after().isEmpty(),
+            "NOOP must not accumulate after() constraints");
+    }
+
+    @Test
+    void concurrentSupplierGetComputesOnce() throws Exception {
+        // Regression guard for the AGENTS invariant "deferred suppliers
+        // synchronized against duplicate computation": concurrent get() calls
+        // on the same in-scope supplier must compute exactly once.
+        AtomicInteger computations = new AtomicInteger();
+        AtomicReference<Supplier<String>> holder = new AtomicReference<>();
+        Defer.within(() -> holder.set(
+            Defer.supply(() -> {
+                computations.incrementAndGet();
+                return "value";
+            })
+        ));
+        Supplier<String> supplier = holder.get();
+        int threads = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<String>> futures = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                futures.add(pool.submit(supplier::get));
+            }
+            for (Future<String> f : futures) {
+                assertEquals("value", f.get());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, computations.get(),
+            "concurrent get() must compute the deferred value exactly once");
+    }
+
+    @Test
+    void deferFromSpawnedThreadRunsImmediately() throws Exception {
+        // ScopedValue does not propagate to child threads: a defer() issued
+        // from a spawned thread inside a scope must run immediately (the
+        // thread sees no active scope), never buffer into the scope's drain.
+        AtomicInteger runs = new AtomicInteger();
+        Defer.within(() -> {
+            try {
+                Thread.ofVirtual()
+                    .start(() -> Defer.defer(runs::incrementAndGet))
+                    .join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertEquals(1, runs.get(),
+            "cross-thread defer() must run immediately, not at drain");
+    }
+
+    @Test
+    void failedSupplyRethrowsOnEveryAccess() {
+        // Regression: a failed in-scope supply used to degrade to a silent
+        // null forever (computed=true in finally); it must cache the failure
+        // and rethrow it on every access instead.
+        AtomicReference<Supplier<String>> holder = new AtomicReference<>();
+        Defer.within(() -> holder.set(
+            Defer.supply(() -> {
+                throw new IllegalStateException("boom");
+            })
+        ));
+        Supplier<String> supplier = holder.get();
+        RuntimeException first = assertThrows(RuntimeException.class, supplier::get);
+        assertTrue(first.getCause() != null
+            && "boom".equals(first.getCause().getMessage()));
+        RuntimeException second = assertThrows(RuntimeException.class, supplier::get);
+        assertSame(first, second,
+            "the cached failure must be rethrown, never a silent null");
     }
 }

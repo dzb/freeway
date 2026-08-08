@@ -57,9 +57,15 @@ public final class DeferScope {
     }
 
     /**
-     * Topologically sorts actions by before/after constraints.
-     * Unnamed actions and named actions without constraints float
-     * freely (no edges) and run in registration order where possible.
+     * Sorts actions for drain. Result order:
+     * <ol>
+     *   <li>constrained named actions — topological order by before/after</li>
+     *   <li>unconstrained named actions — registration order</li>
+     *   <li>unnamed actions — registration order</li>
+     * </ol>
+     * Named actions therefore run as a group ahead of unnamed ones even when
+     * an unnamed action was registered earlier — if strict registration order
+     * across named/unnamed matters, keep all actions unnamed or all named.
      */
     static List<Runnable> sort(List<DeferAction> actions) {
         // Collect all ids referenced by before/after constraints

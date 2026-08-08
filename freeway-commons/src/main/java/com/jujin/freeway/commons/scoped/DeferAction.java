@@ -35,12 +35,20 @@ public final class DeferAction {
 
     /** Declare that this action must run before the named action(s). */
     public DeferAction before(String... ids) {
+        // NOOP (the outside-scope handle) is a shared singleton — ordering
+        // constraints on it are meaningless and must not mutate shared state.
+        if (id == null) {
+            return this;
+        }
         for (String id : ids) before.add(Objects.requireNonNull(id, "id"));
         return this;
     }
 
     /** Declare that this action must run after the named action(s). */
     public DeferAction after(String... ids) {
+        if (id == null) {
+            return this;
+        }
         for (String id : ids) after.add(Objects.requireNonNull(id, "id"));
         return this;
     }

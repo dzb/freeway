@@ -110,6 +110,21 @@ public final class BeanPlan {
         }
     }
 
+    /** JDK classes are never bean property sources (and their modules are not
+     *  open to VarHandle creation) — the superclass walk stops here.
+     *  Bootstrap-loaded packages outside java./javax./jdk. (e.g.
+     *  org.xml.sax.helpers, com.sun.net.httpserver) live in non-open modules
+     *  too — their private fields are equally unreachable via publicLookup. */
+    private static boolean isJdkClass(Class<?> type) {
+        if (type.getClassLoader() == null) {
+            return true;
+        }
+        String pkg = type.getPackageName();
+        return pkg.startsWith("java.")
+            || pkg.startsWith("javax.")
+            || pkg.startsWith("jdk.");
+    }
+
     /**
      * Collect annotations from both the record component and the backing field.
      * <p>
@@ -167,7 +182,13 @@ public final class BeanPlan {
         }
         Map<String, BeanProperty> unique = new LinkedHashMap<>();
         Class<?> current = type;
-        while (current != null && current != Object.class) {
+        // Stop at JDK classes: their fields live in non-open modules
+        // (java.base etc.) where no VarHandle can be created, and they are
+        // not bean properties anyway. Custom exceptions / ArrayList subclasses
+        // keep their own app-class fields.
+        while (current != null
+                && current != Object.class
+                && !isJdkClass(current)) {
             for (Field field : current.getDeclaredFields()) {
                 if (field.isSynthetic() || Modifier.isStatic(field.getModifiers()) || Modifier.isTransient(field.getModifiers())) {
                     continue;

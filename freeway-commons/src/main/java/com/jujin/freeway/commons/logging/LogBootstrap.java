@@ -32,8 +32,11 @@ public final class LogBootstrap {
      * runtime. JUL's {@link java.util.logging.LogManager} may clear handlers
      * during its lazy initialization; this method re-attaches them.
      *
-     * <p>Safe to call at any time and multiple times — handlers are not
-     * deduplicated, so typical usage is once after {@code FreewayApp.run()}.
+     * <p>Applies the configured named-file loggers exactly once per JVM:
+     * a guard flag makes subsequent calls no-ops (re-attachment after a
+     * {@code LogManager.reset()} is not performed). Files whose handler is
+     * already attached to the target logger (same absolute path) are skipped
+     * within that single pass, so no duplicate handlers are created.
      */
     public static void applyNamedFileLoggers() {
         JULEnhancer.applyNamedFileConfigs();

@@ -31,16 +31,27 @@ public final class Maps {
 
     private static void flatten(String prefix, String delimiter, Map<String, Object> source,
                                 Map<String, String> target, Set<Object> visited) {
+        // The set tracks the current ancestry path only (added on entry,
+        // removed on exit), so shared subtrees reached under sibling keys are
+        // still flattened and only true cycles — revisiting an ancestor — cut.
         if (!visited.add(source)) return; // cycle guard
-        source.forEach((key, value) ->
-            flattenValue(childKey(prefix, delimiter, key), delimiter, value, target, visited));
+        try {
+            source.forEach((key, value) ->
+                flattenValue(childKey(prefix, delimiter, key), delimiter, value, target, visited));
+        } finally {
+            visited.remove(source);
+        }
     }
 
     private static void flatten(String prefix, String delimiter, List<?> source,
                                 Map<String, String> target, Set<Object> visited) {
-        if (!visited.add(source)) return;
-        for (int i = 0; i < source.size(); i++) {
-            flattenValue(prefix + delimiter + i, delimiter, source.get(i), target, visited);
+        if (!visited.add(source)) return; // cycle guard
+        try {
+            for (int i = 0; i < source.size(); i++) {
+                flattenValue(prefix + delimiter + i, delimiter, source.get(i), target, visited);
+            }
+        } finally {
+            visited.remove(source);
         }
     }
 
