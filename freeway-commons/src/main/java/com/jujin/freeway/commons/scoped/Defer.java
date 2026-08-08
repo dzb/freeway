@@ -60,7 +60,7 @@ public final class Defer {
      * further deferred work.
      *
      * <p>Opt-in by design: async work does NOT inherit the scope on a plain
-     * executor (see {@link com.jujin.freeway.commons.util.ContextualExecutor}).
+     * executor (see {@link com.jujin.freeway.commons.util.ContextExecutor}).
      *
      * <pre>{@code
      * Executor txExecutor = Defer.with(myPool);
@@ -70,7 +70,7 @@ public final class Defer {
     public static java.util.concurrent.Executor with(
         java.util.concurrent.Executor delegate
     ) {
-        return com.jujin.freeway.commons.util.ContextualExecutor.wrapping(
+        return com.jujin.freeway.commons.util.ContextExecutor.wrapping(
             delegate, CURRENT);
     }
 

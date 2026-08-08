@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-class ContextualExecutorTest {
+class ContextExecutorTest {
 
     private static final ScopedValue<String> CTX = ScopedValue.newInstance();
 
@@ -22,7 +22,7 @@ class ContextualExecutorTest {
     void taskRunsWithSubmittingThreadSnapshot() throws Exception {
         ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
         try {
-            var executor = ContextualExecutor.wrapping(pool, CTX);
+            var executor = ContextExecutor.wrapping(pool, CTX);
             AtomicReference<String> seen = new AtomicReference<>();
             CountDownLatch done = new CountDownLatch(1);
 

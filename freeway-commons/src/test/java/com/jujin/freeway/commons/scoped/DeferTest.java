@@ -519,7 +519,7 @@ class DeferTest {
     void propagatingExecutorRestoresScopeOnWorker() throws Exception {
         // Defer.with(...) must restore the submitting thread's scope
         // on the worker — the plain-executor default (no propagation) is
-        // covered by ContextualExecutorTest.
+        // covered by ContextExecutorTest.
         var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
         try {
             var executor = Defer.with(pool);

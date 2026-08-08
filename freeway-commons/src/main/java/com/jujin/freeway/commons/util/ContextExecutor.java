@@ -16,7 +16,7 @@ import java.util.concurrent.Executor;
  * who DO want a context value to reach the worker name the keys once:
  *
  * <pre>{@code
- * Executor ctxExecutor = ContextualExecutor.wrapping(pool, TX_ID);
+ * Executor ctxExecutor = ContextExecutor.wrapping(pool, TX_ID);
  * // inside ScopedValue.where(TX_ID, "tx-1", ...):
  * ctxExecutor.execute(() -> workerSees("tx-1"));
  * }</pre>
@@ -26,9 +26,9 @@ import java.util.concurrent.Executor;
  * task then runs with those bindings restored. Nested submissions from a
  * worker re-capture the worker's own (possibly empty) bindings.
  */
-public final class ContextualExecutor {
+public final class ContextExecutor {
 
-    private ContextualExecutor() {}
+    private ContextExecutor() {}
 
     /**
      * Returns an executor that restores the submitting thread's bindings for
