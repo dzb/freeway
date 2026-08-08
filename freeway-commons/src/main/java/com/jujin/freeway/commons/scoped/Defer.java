@@ -63,11 +63,11 @@ public final class Defer {
      * executor (see {@link com.jujin.freeway.commons.util.ContextualExecutor}).
      *
      * <pre>{@code
-     * Executor txExecutor = Defer.propagating(myPool);
+     * Executor txExecutor = Defer.with(myPool);
      * Defer.within(() -> txExecutor.execute(() -> stillInScope()));
      * }</pre>
      */
-    public static java.util.concurrent.Executor propagating(
+    public static java.util.concurrent.Executor with(
         java.util.concurrent.Executor delegate
     ) {
         return com.jujin.freeway.commons.util.ContextualExecutor.wrapping(
