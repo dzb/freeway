@@ -78,6 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   静默输给文件里的 `freeway.profile`，违反文档级联）；ServiceLoader 发现模块
   失败时给出带 classloader 上下文的明确错误；`AppBuilder` 单次使用（重复
   start() 此前会注册第二个 shutdown hook 并构建独立容器）。
+- **并发契约标记（freeway-ioc）** — 新增 `@ThreadSafe`/`@NotThreadSafe`
+  标记注解，复用现有 @Marker 机制：标注在实现类上（`to(Class)` 绑定自动
+  携带）、可经 `container.get(type, ThreadSafe.class)` 解析；单例持有者
+  注入 `@NotThreadSafe` 具体类被拒绝（原型/线程作用域持有者无共享、允许）；
+  同标 `@ThreadSafe`+`@NotThreadSafe` 绑定期拒绝。声明非证明——未标注服务
+  不校验，渐进采用。+4 测试。
 
 ### Docs
 

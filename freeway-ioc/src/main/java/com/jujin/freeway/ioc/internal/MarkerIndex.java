@@ -1,7 +1,9 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.annotation.NotThreadSafe;
 import com.jujin.freeway.ioc.annotation.Primary;
+import com.jujin.freeway.ioc.annotation.ThreadSafe;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -178,6 +180,21 @@ final class MarkerIndex {
         // Also pick up @Primary on the class
         if (implClass.getAnnotation(Primary.class) != null) {
             result.add(Primary.class);
+        }
+        // Concurrency-contract markers (same direct-annotation style as
+        // @Primary): the container rejects @NotThreadSafe into a singleton.
+        boolean threadSafe = implClass.getAnnotation(ThreadSafe.class) != null;
+        boolean notThreadSafe = implClass.getAnnotation(NotThreadSafe.class) != null;
+        if (threadSafe && notThreadSafe) {
+            throw new IllegalArgumentException(
+                "Implementation " + implClass.getName()
+                    + " is annotated with both @ThreadSafe and @NotThreadSafe");
+        }
+        if (threadSafe) {
+            result.add(ThreadSafe.class);
+        }
+        if (notThreadSafe) {
+            result.add(NotThreadSafe.class);
         }
         return Collections.unmodifiableSet(result);
     }

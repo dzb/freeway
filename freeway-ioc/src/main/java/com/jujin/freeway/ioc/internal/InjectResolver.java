@@ -9,6 +9,7 @@ import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
+import com.jujin.freeway.ioc.annotation.NotThreadSafe;
 import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.extension.Extension;
@@ -382,19 +383,31 @@ final class InjectResolver {
             return;
         }
         BindingImpl<?> targetBinding = container.bindingIndex().findUnique(targetType);
-        if (targetBinding == null || targetBinding.scope() != Scope.THREAD) {
+        if (targetBinding == null) {
             return;
         }
         BindingImpl<?> ownerBinding = findOwnerBinding(ownerType);
         if (ownerBinding == null || ownerBinding.scope() != Scope.SINGLETON) {
             return;
         }
-        throw new IllegalStateException(
-            "Singleton service " + ownerType.getName()
-                + " cannot directly inject thread-scoped concrete class "
-                + targetType.getName()
-                + ". Use an interface with proxy support instead."
-        );
+        if (targetBinding.scope() == Scope.THREAD) {
+            throw new IllegalStateException(
+                "Singleton service " + ownerType.getName()
+                    + " cannot directly inject thread-scoped concrete class "
+                    + targetType.getName()
+                    + ". Use an interface with proxy support instead."
+            );
+        }
+        if (targetBinding.markers().contains(NotThreadSafe.class)) {
+            throw new IllegalStateException(
+                "Singleton service " + ownerType.getName()
+                    + " cannot inject @NotThreadSafe concrete class "
+                    + targetType.getName() + " — the singleton shares it "
+                    + "across threads. Declare the implementation "
+                    + "@ThreadSafe, use an interface (proxy), or inject it "
+                    + "into a prototype/thread-scoped holder."
+            );
+        }
     }
 
     private static String normalizedId(Annotation annotation) {

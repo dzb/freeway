@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -1605,6 +1606,54 @@ class FreewayTest {
     }
 
     @Test
+    void singletonRejectsInjectionOfNotThreadSafeConcrete() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(UnsafeShared.class).to(UnsafeShared.class);
+            binder.bind(SingletonHoldingUnsafe.class).to(SingletonHoldingUnsafe.class);
+        });
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.get(SingletonHoldingUnsafe.class));
+        assertInstanceOf(IllegalStateException.class, ex.getCause());
+        assertTrue(ex.getCause().getMessage().contains("@NotThreadSafe"),
+            "a singleton holder must be rejected for @NotThreadSafe deps, got: "
+                + ex.getCause().getMessage());
+    }
+
+    @Test
+    void prototypeHolderMayInjectNotThreadSafeConcrete() {
+        Container container = Freeway.create(binder -> {
+            binder.bind(UnsafeShared.class).to(UnsafeShared.class);
+            binder.bind(PrototypeHoldingUnsafe.class)
+                .to(PrototypeHoldingUnsafe.class)
+                .scope(Scope.PROTOTYPE);
+        });
+
+        assertDoesNotThrow(() -> container.get(PrototypeHoldingUnsafe.class),
+            "a prototype holder gets its own instance per resolution — no sharing");
+    }
+
+    @Test
+    void conflictingConcurrencyMarkersRejected() {
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> Freeway.create(binder ->
+                binder.bind(ConflictingContract.class).to(ConflictingContract.class)));
+        assertTrue(ex.getMessage().contains("both @ThreadSafe and @NotThreadSafe"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
+    void threadSafeMarkerResolvesByMarker() {
+        Container container = Freeway.create(binder ->
+            binder.bind(Greeter.class).to(ThreadSafeGreeterImpl.class));
+
+        Greeter g = container.get(Greeter.class, ThreadSafe.class);
+        assertNotNull(g);
+        assertEquals("safe", g.greet());
+    }
+
+    @Test
     void rejectsDuplicateBinding() {
         Container container = Freeway.create(binder -> {
             binder.bind(Greeter.class).to(GreeterImpl.class);
@@ -1959,6 +2008,33 @@ class FreewayTest {
     public static final class ScopedSingleton {
         @Inject
         private ScopedCounter counter;
+    }
+
+    @NotThreadSafe
+    public static final class UnsafeShared {
+    }
+
+    public static final class SingletonHoldingUnsafe {
+        @Inject
+        private UnsafeShared shared;
+    }
+
+    public static final class PrototypeHoldingUnsafe {
+        @Inject
+        private UnsafeShared shared;
+    }
+
+    @ThreadSafe
+    @NotThreadSafe
+    public static final class ConflictingContract {
+    }
+
+    @ThreadSafe
+    public static final class ThreadSafeGreeterImpl implements Greeter {
+        @Override
+        public String greet() {
+            return "safe";
+        }
     }
 
     public static class ParentPostConstructBean {
