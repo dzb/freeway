@@ -140,6 +140,11 @@ public final class Http2Stream {
 
     public void writeResponseHeaders(boolean closeStream) throws IOException {
         if (!headersSent.compareAndSet(false, true)) return;
+        // The connection may have been closed (peer disconnect) while this
+        // stream's handler was still running — writing into the dead
+        // connection would throw from an already-closed stream. Surface a
+        // clean IOException so the handler unwinds normally.
+        if (connection.isClosed()) throw new IOException("connection closed");
         connection.lock();
         try {
             connection.hpack().writeResponseHeaders(responseHeaders, connection.outputStream(), streamId, closeStream);
@@ -178,6 +183,7 @@ public final class Http2Stream {
         @Override
         public void write(byte[] data, int offset, int length) throws IOException {
             waitForSendWindow();
+            if (connection.isClosed()) throw new IOException("connection closed");
             writeResponseHeaders(false);
             if (streamOutputClosed) throw new IOException("output closed");
 

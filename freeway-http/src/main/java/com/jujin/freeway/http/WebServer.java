@@ -316,6 +316,19 @@ public final class WebServer implements AutoCloseable {
                 );
             }
         }
+        if (exception instanceof IOException && ctx.isResponded()) {
+            // The response was already committed when the transport failed —
+            // the peer disconnected mid-write. A 500 cannot be delivered and
+            // this is an expected lifecycle event under concurrency (client
+            // aborts, keep-alive races), not an application error. Keep it
+            // quiet; the session layer still traces it. An IOException raised
+            // before the response commits is still an application error.
+            LOG.debug("Connection error for {} {}: {}: {}",
+                ctx.method(), ctx.path(),
+                exception.getClass().getSimpleName(),
+                String.valueOf(exception.getMessage()));
+            return;
+        }
         LOG.error(
             "Unhandled exception for {} {}: {}: {}",
             ctx.method(),

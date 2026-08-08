@@ -681,7 +681,6 @@ class FlowEngineTest {
         assertEquals("sms", ctx.getAs("handler"));
     }
 
-    @Test
     private static FlowEngine newEngine(FlowDriver driver) {
         return FlowEngine.newInstance(Map.of("default", driver));
     }

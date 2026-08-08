@@ -183,6 +183,7 @@ final class HttpSession implements Runnable {
         boolean ssl,
         HttpParser parser
     ) {
+        Http2Connection h2conn = null;
         try {
             // For h2c the request-line parser has already bulk-read the rest
             // of the magic preface into its own buffer — read the remaining
@@ -203,7 +204,7 @@ final class HttpSession implements Runnable {
             }
 
             this.h2Executor = Executors.newVirtualThreadPerTaskExecutor();
-            var h2conn = new Http2Connection(connection.socket(), in,
+            h2conn = new Http2Connection(connection.socket(), in,
                     connection.outputStream(), h2Executor,
                 (stream, streamIn, streamOut, reqHeaders) ->
                     handleHttp2Stream(
@@ -226,14 +227,21 @@ final class HttpSession implements Runnable {
         } catch (IOException e) {
             LOG.trace("HTTP/2 error: {}", e.getMessage());
         } finally {
-            // Close the connection first: it closes all streams and interrupts
-            // handlers blocked waiting for request body DATA. Closing the
-            // executor first would wait forever on those parked handlers.
-            connection.close();
+            // Close the HTTP/2 layer first: it marks the connection closed,
+            // closes every stream (waking handlers blocked on request body
+            // DATA via dataIn.close()) and interrupts their threads, so the
+            // executor close below cannot wait forever. Only then close the
+            // buffered streams — a handler may still be writing its response
+            // when the peer disconnected mid-request, and it must observe a
+            // closed connection (IOException) instead of writing into an
+            // already-closed SessionBufferedOutputStream, which would NPE on
+            // a null buf.
+            if (h2conn != null) h2conn.close();
             if (h2Executor != null) {
                 h2Executor.close();
                 h2Executor = null;
             }
+            connection.close();
         }
     }
 

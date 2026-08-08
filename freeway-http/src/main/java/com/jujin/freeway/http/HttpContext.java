@@ -285,6 +285,15 @@ public abstract class HttpContext {
     public abstract HttpContext output(byte[] data) throws IOException;
 
     /**
+     * Whether the response has been committed (headers or body have started
+     * being written to the transport). Once committed, a subsequent transport
+     * failure (peer disconnect) can no longer be turned into an error response.
+     */
+    public boolean isResponded() {
+        return false;
+    }
+
+    /**
      * Opens an SSE (Server-Sent Events) emitter on this response.
      * The response headers must be set before calling this method.
      */

@@ -227,7 +227,8 @@ public class HttpContextDefault extends HttpContext {
 
     boolean isHttp10() { return http10; }
 
-    boolean isResponded() { return responded; }
+    @Override
+    public boolean isResponded() { return responded; }
 
     /**
      * Drains any unread request body bytes so the connection

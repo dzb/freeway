@@ -23,6 +23,12 @@ public final class HeadersFrame extends BaseFrame {
         var frame = new HeadersFrame(header);
         int pos = 0;
         if (header.flags().contains(FrameFlag.PADDED)) {
+            // A PADDED frame must carry at least the pad-length byte — an
+            // empty payload with the PADDED flag is a protocol error, not an
+            // index-underflow crash in readInt.
+            if (payload.length < 1)
+                throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR,
+                    "PADDED frame with no pad-length byte");
             frame.padLength = BinUtils.readInt(payload, pos, 1);
             if (frame.padLength >= header.length()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             pos++;

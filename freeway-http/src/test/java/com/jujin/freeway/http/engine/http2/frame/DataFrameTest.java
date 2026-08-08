@@ -1,8 +1,11 @@
 package com.jujin.freeway.http.engine.http2.frame;
 
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DataFrameTest {
 
@@ -27,5 +30,16 @@ class DataFrameTest {
         byte[] result = ((DataFrame) frame).body;
         assertArrayEquals(new byte[]{'A', 'B'}, result,
                 "Pad length byte (index 0) must not be in body");
+    }
+
+    @Test
+    void paddedFrameWithEmptyBodyIsProtocolError() {
+        // PADDED flag with no payload at all (no pad-length byte) must be
+        // rejected as a protocol error, not crash with an index underflow.
+        var header = new FrameHeader(0, FrameType.DATA,
+                FrameFlag.FlagSet.of(FrameFlag.PADDED), 1);
+        Http2Exception ex = assertThrows(Http2Exception.class,
+            () -> DataFrame.parse(new byte[0], header));
+        assertEquals(Http2ErrorCode.PROTOCOL_ERROR, ex.errorCode());
     }
 }
