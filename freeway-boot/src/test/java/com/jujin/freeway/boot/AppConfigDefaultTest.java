@@ -1,6 +1,6 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.commons.config.ConfigKey;
+import com.jujin.freeway.commons.config.ConfigProperty;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -29,14 +29,14 @@ class AppConfigDefaultTest {
 
     @Test
     void typedGetParsesWithDefaultAndErrors() {
-        ConfigKey<Integer> port = ConfigKey.of(
+        ConfigProperty<Integer> port = ConfigProperty.of(
             "server.port", Integer.class, 8080, Integer::parseInt);
         AppConfig config = new AppConfigDefault(
             new LinkedHashMap<>(Map.of("server.port", "9090")), List.of());
 
         assertEquals(9090, config.get(port), "raw value parsed to the typed form");
         assertEquals(8080, config.get(
-            ConfigKey.of("missing.port", Integer.class, 8080, Integer::parseInt)),
+            ConfigProperty.of("missing.port", Integer.class, 8080, Integer::parseInt)),
             "absent key falls back to the default");
 
         AppConfig blank = new AppConfigDefault(
@@ -47,7 +47,7 @@ class AppConfigDefaultTest {
 
     @Test
     void typedGetReportsMalformedValueWithKeyContext() {
-        ConfigKey<Integer> port = ConfigKey.of(
+        ConfigProperty<Integer> port = ConfigProperty.of(
             "server.port", Integer.class, 8080, Integer::parseInt);
         AppConfig config = new AppConfigDefault(
             new LinkedHashMap<>(Map.of("server.port", "not-a-number")), List.of());
@@ -61,7 +61,7 @@ class AppConfigDefaultTest {
 
     @Test
     void requiredKeyFailsFastWhenAbsentOrBlank() {
-        ConfigKey<String> password = ConfigKey.required(
+        ConfigProperty<String> password = ConfigProperty.required(
             "db.password", String.class, String::valueOf);
         AppConfig absent = new AppConfigDefault(
             new LinkedHashMap<>(), List.of());

@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 /**
  * A typed configuration key: key name, target type, default value, and a
- * parser from the raw string. Pairs with {@code AppConfig.get(ConfigKey)}
+ * parser from the raw string. Pairs with {@code AppConfig.get(ConfigProperty)}
  * for type-safe config access with centralized parsing and defaults — the
  * alternative to scattered {@code Integer.parseInt(...)} at each use site
  * with inconsistent error messages.
@@ -16,10 +16,10 @@ import java.util.function.Function;
  *
  * <p>Example:
  * <pre>{@code
- * public static final ConfigKey<Integer> HTTP_PORT =
- *     ConfigKey.of("server.port", Integer.class, 8080, Integer::parseInt);
- * public static final ConfigKey<String> DB_PASSWORD =
- *     ConfigKey.required("db.password", String.class, Function.identity());
+ * public static final ConfigProperty<Integer> HTTP_PORT =
+ *     ConfigProperty.of("server.port", Integer.class, 8080, Integer::parseInt);
+ * public static final ConfigProperty<String> DB_PASSWORD =
+ *     ConfigProperty.required("db.password", String.class, Function.identity());
  *
  * int port = config.get(HTTP_PORT);       // typed, defaulted, parsed once
  * String pw = config.get(DB_PASSWORD);    // fails fast when absent
@@ -27,7 +27,7 @@ import java.util.function.Function;
  *
  * @param <T> the value type
  */
-public record ConfigKey<T>(
+public record ConfigProperty<T>(
     String key,
     Class<T> type,
     T defaultValue,
@@ -37,7 +37,7 @@ public record ConfigKey<T>(
 ) {
 
     /** Creates an optional key with a default; absent/blank falls back. */
-    public static <T> ConfigKey<T> of(
+    public static <T> ConfigProperty<T> of(
         String key,
         Class<T> type,
         T defaultValue,
@@ -47,14 +47,14 @@ public record ConfigKey<T>(
     }
 
     /** Optional key with a human-readable description (docs/registry use). */
-    public static <T> ConfigKey<T> of(
+    public static <T> ConfigProperty<T> of(
         String key,
         Class<T> type,
         T defaultValue,
         Function<String, T> parser,
         String description
     ) {
-        return new ConfigKey<>(
+        return new ConfigProperty<>(
             validate(key, type, parser),
             type,
             defaultValue,
@@ -65,7 +65,7 @@ public record ConfigKey<T>(
     }
 
     /** Creates a required key: absent/blank input fails fast on parse. */
-    public static <T> ConfigKey<T> required(
+    public static <T> ConfigProperty<T> required(
         String key,
         Class<T> type,
         Function<String, T> parser
@@ -74,13 +74,13 @@ public record ConfigKey<T>(
     }
 
     /** Required key with a human-readable description. */
-    public static <T> ConfigKey<T> required(
+    public static <T> ConfigProperty<T> required(
         String key,
         Class<T> type,
         Function<String, T> parser,
         String description
     ) {
-        return new ConfigKey<>(
+        return new ConfigProperty<>(
             validate(key, type, parser),
             type,
             null,
