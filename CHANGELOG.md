@@ -93,7 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   （volatile 双检、恰好一次计算、失败重试、null 拒绝——取代各模块手写
   双检）；`ContextualExecutor.wrapping(executor, keys…)` 显式跨线程传播
   ScopedValue 绑定（JDK Snapshot API 包私有，key 显式设计——事务/Defer
-  上下文按需到达异步线程）；`Metrics` 观测 SPI（counter/gauge，零依赖，
+  上下文按需到达异步线程）；`Defer.with(executor)` 打通框架上下文传播
+  （CURRENT key 原本私有使该原语对 Defer 场景不可用——现在事务作用域
+  可按选择到达自定义 executor）；`Metrics` 观测 SPI（counter/gauge，零依赖，
   容器 builtin 默认 NoopMetrics、可 primary 覆盖）——EventBus 接入
   （published/delivered/subscriber_failures/dead_events 镜像计数）；
   `ConfigSpec<T>` 类型化配置（解析 + 默认 + 含 key 上下文的错误消息，
