@@ -1,5 +1,6 @@
 package com.jujin.freeway.boot;
 
+import com.jujin.freeway.commons.config.ConfigKey;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -56,5 +57,28 @@ class AppConfigDefaultTest {
         org.junit.jupiter.api.Assertions.assertTrue(
             ex.getMessage().contains("server.port"),
             "the error must name the offending key, got: " + ex.getMessage());
+    }
+
+    @Test
+    void requiredKeyFailsFastWhenAbsentOrBlank() {
+        ConfigKey<String> password = ConfigKey.required(
+            "db.password", String.class, String::valueOf);
+        AppConfig absent = new AppConfigDefault(
+            new LinkedHashMap<>(), List.of());
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class, () -> absent.get(password));
+        org.junit.jupiter.api.Assertions.assertTrue(
+            ex.getMessage().contains("Missing required") && ex.getMessage().contains("db.password"),
+            "got: " + ex.getMessage());
+
+        AppConfig blank = new AppConfigDefault(
+            new LinkedHashMap<>(Map.of("db.password", " ")), List.of());
+        org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class, () -> blank.get(password),
+            "a blank required value is equally missing");
+
+        AppConfig present = new AppConfigDefault(
+            new LinkedHashMap<>(Map.of("db.password", "s3cret")), List.of());
+        assertEquals("s3cret", present.get(password));
     }
 }

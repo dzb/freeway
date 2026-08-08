@@ -1,5 +1,7 @@
 package com.jujin.freeway.boot;
 
+import com.jujin.freeway.commons.config.ConfigKey;
+
 import java.util.List;
 import java.util.Map;
 
@@ -10,21 +12,12 @@ public interface AppConfig {
 
     /**
      * Returns the typed value for {@code key}: parsed from the raw string
-     * with the key's parser, or the key's default when absent/blank. A
-     * malformed raw value throws {@link IllegalArgumentException} naming the
-     * key and value.
+     * with the key's parser, or the key's default when absent/blank. Errors
+     * (missing required key, malformed value) are reported by the key itself
+     * with the key name in the message.
      */
     default <T> T get(ConfigKey<T> key) {
-        String raw = get(key.key());
-        try {
-            return key.parse(raw);
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException(
-                "Invalid value for config key '" + key.key() + "': "
-                    + (raw == null ? "null" : "'" + raw + "'"),
-                ex
-            );
-        }
+        return key.parse(get(key.key()));
     }
 
     /** Returns the active profiles in priority order, as an unmodifiable list. */
