@@ -31,9 +31,13 @@ public class FlowMarkerIndex {
         if (markers.isEmpty()) {
             return;
         }
-        for (String marker : markers) {
+        // Defensive copy: the caller's set may be mutated after registration,
+        // which would desync the reverse index (stale marker lists while the
+        // specificity count drifts).
+        Set<String> snapshot = new HashSet<>(markers);
+        for (String marker : snapshot) {
             markerToEntries.computeIfAbsent(marker, k -> new ArrayList<>())
-                .add(new Entry(component, markers));
+                .add(new Entry(component, snapshot));
         }
     }
 

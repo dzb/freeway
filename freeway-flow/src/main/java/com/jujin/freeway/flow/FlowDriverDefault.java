@@ -4,21 +4,21 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /**
- * 默认流驱动器
+ * Default flow driver
  *
  * @author noear
  * @since 3.0
  *
- * <p>任务描述符解析规则（与 solon-flow 一致）：
+ * <p>Task descriptor resolution rules (consistent with solon-flow):
  * <ul>
- *   <li>内联 TaskComponent/ConditionComponent → 直接执行</li>
- *   <li>{@code @beanName} → 从 FlowContainer 查找组件</li>
- *   <li>{@code #graphId} → 执行子图</li>
- *   <li>{@code $metaKey} → 从 Graph meta 取值</li>
- *   <li>{@code !markerName} → 按 {@link FlowMarkerIndex} 标记交集解析</li>
+ *   <li>Inline TaskComponent/ConditionComponent → executed directly</li>
+ *   <li>{@code @beanName} → look up the component from the FlowContainer</li>
+ *   <li>{@code #graphId} → run the sub-graph</li>
+ *   <li>{@code $metaKey} → read the value from the Graph meta</li>
+ *   <li>{@code !markerName} → resolved by marker intersection via {@link FlowMarkerIndex}</li>
  * </ul>
- * <p>任务描述符只支持上述前缀；裸表达式仅用于条件（{@code ExprEvaluator}）。
- * 任务描述符无法识别时抛 {@link FlowException}。
+ * <p>Task descriptors only support the prefixes above; bare expressions are only used for conditions ({@code ExprEvaluator}).
+ * Unrecognized task descriptors throw {@link FlowException}.
  */
 public class FlowDriverDefault implements FlowDriver {
     private static final FlowDriverDefault INSTANCE = new FlowDriverDefault(null, null);
@@ -64,17 +64,17 @@ public class FlowDriverDefault implements FlowDriver {
     }
 
     protected boolean handleConditionDo(FlowExchanger exchanger, ConditionDesc condition, String description) throws Throwable {
-        // 内联组件
+        // inline component
         if (condition.getComponent() != null) {
             return condition.getComponent().test(exchanger.context());
         }
 
-        // @beanName 组件引用
+        // @beanName component reference
         if (isComponent(description)) {
             return tryAsComponentCondition(exchanger, description);
         }
 
-        // 表达式求值
+        // expression evaluation
         return tryAsExprCondition(exchanger, description);
     }
 
@@ -105,31 +105,31 @@ public class FlowDriverDefault implements FlowDriver {
 
     protected void handleTaskDo(FlowExchanger exchanger, TaskDesc task) throws Throwable {
         try {
-            // 内联组件
+            // inline component
             if (task.getComponent() != null) {
                 task.getComponent().run(exchanger.context(), task.getNode());
                 return;
             }
 
-            // !markerName 标记匹配
+            // !markerName marker matching
             if (task.isMarkerRef()) {
                 tryAsMarkerTask(exchanger, task);
                 return;
             }
 
-            // #graphId 子图调用
+            // #graphId sub-graph call
             if (isGraph(task.getDescription())) {
                 tryAsGraphTask(exchanger, task, task.getDescription());
                 return;
             }
 
-            // @beanName 组件引用
+            // @beanName component reference
             if (isComponent(task.getDescription())) {
                 tryAsComponentTask(exchanger, task, task.getDescription());
                 return;
             }
 
-            // $metaKey 元数据引用
+            // $metaKey meta reference
             if (task.getDescription().startsWith("$")) {
                 tryAsMetaTask(exchanger, task, task.getDescription());
                 return;
@@ -182,7 +182,7 @@ public class FlowDriverDefault implements FlowDriver {
         Object val = getDepthMeta(task.getNode().getGraph().getMetas(), metaName);
 
         if (val instanceof String strVal && !strVal.isEmpty()) {
-            // 如果是字符串，当作简单值设置到上下文
+            // if it is a string, set it as a simple value on the context
             exchanger.context().put("_meta_" + metaName, strVal);
         } else if (val != null) {
             exchanger.context().put("_meta_" + metaName, val);

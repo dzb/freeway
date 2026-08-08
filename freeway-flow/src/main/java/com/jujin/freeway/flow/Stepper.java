@@ -4,7 +4,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
- * 步进器迭代器 (区间：[start, end)，步长：step)
+ * Stepper iterator (range: [start, end), step: step)
  *
  * @author noear 2025/10/19 created
  * @since 3.6
@@ -12,11 +12,11 @@ import java.util.NoSuchElementException;
 public class Stepper implements Iterator<Integer> {
 
     /**
-     * 从字符串解析并创建步进器
+     * Parses a string and creates a stepper
      *
-     * @param str 支持两种格式:
-     *            1. "start...end" (步长默认为 1，例如 "1...9")
-     *            2. "start:end:step" (显式步长，例如 "1:10:2")
+     * @param str supports two formats:
+     *            1. "start...end" (step defaults to 1, e.g. "1...9")
+     *            2. "start:end:step" (explicit step, e.g. "1:10:2")
      */
     public static Stepper from(String str) {
         int ellipsisIdx = str.indexOf("...");

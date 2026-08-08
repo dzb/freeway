@@ -5,14 +5,16 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 流执行选项
+ * Flow execution options
  *
  * @author noear
  * @since 3.8.1
  */
 public class FlowOptions {
-    public static final FlowOptions DEFAULT = new FlowOptions();
-
+    // NOTE: no shared DEFAULT instance on purpose — a mutable static would
+    // let interceptorAdd() silently mutate process-global state. Create a
+    // fresh instance per evaluation instead (all public eval() overloads
+    // build one internally).
     private final List<RankedInterceptor> interceptorList = new ArrayList<>();
 
     public List<RankedInterceptor> getInterceptorList() {
@@ -39,7 +41,7 @@ public class FlowOptions {
     }
 
     /**
-     * 带优先级的拦截器包装（替代 solon 的 RankEntity）
+     * Interceptor wrapper with priority (replaces solon's RankEntity)
      */
     public record RankedInterceptor(FlowInterceptor interceptor, int index)
             implements Comparable<RankedInterceptor> {

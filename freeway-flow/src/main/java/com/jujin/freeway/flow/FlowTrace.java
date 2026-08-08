@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 流痕迹（轻量级跟踪，支持持久化恢复）
+ * Flow trace (lightweight tracking, supports persistence-based resume)
  *
  * @author noear
  * @since 3.8.1
@@ -28,6 +28,18 @@ public class FlowTrace implements Serializable {
     public void clear() {
         rootGraphId = null;
         lastRecords.clear();
+    }
+
+    /**
+     * Restores a per-graph record during deserialization. {@code lastRecords}
+     * is a final field that bean-coercion cannot populate, so JSON restore
+     * must feed it explicitly — without this, a paused run's resume position
+     * silently resets to the graph start after a round-trip.
+     */
+    public void restoreRecord(String graphId, NodeRecord record) {
+        if (record != null) {
+            lastRecords.put(graphId, record);
+        }
     }
 
     public void recordNodeId(Graph graph, String nodeId) {

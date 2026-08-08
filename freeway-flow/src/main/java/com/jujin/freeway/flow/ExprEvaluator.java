@@ -1,14 +1,14 @@
 package com.jujin.freeway.flow;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * 极简条件表达式求值器（零外部依赖，递归下降解析）
+ * Minimal conditional expression evaluator (zero external dependencies, recursive-descent parsing)
  *
- * <p>支持语法：
+ * <p>Supported syntax:
  * <pre>
  * expression  → or_expr
  * or_expr     → and_expr ("||" and_expr)*
@@ -17,10 +17,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * add_expr    → unary_expr (("+"|"-") unary_expr)*
  * unary_expr  → "!" unary_expr | primary
  * primary     → NUMBER | STRING | "true" | "false" | "null" | IDENT | "(" expression ")"
- * IDENT       → [a-zA-Z_][a-zA-Z0-9_.]*  (支持 data.name 路径访问)
+ * IDENT       → [a-zA-Z_][a-zA-Z0-9_.]*  (supports data.name path access)
  * </pre>
  *
- * 表达式在首次使用时编译为 AST（抽象语法树），后续相同表达式直接求值，避免重复解析。
+ * Expressions are compiled to an AST (abstract syntax tree) on first use; later the same
+ * expression is evaluated directly, avoiding repeated parsing.
  *
  * @author noear (solon-flow), adapted for freeway
  */
@@ -28,43 +29,47 @@ public final class ExprEvaluator {
 
     private static final int CACHE_MAX = 512;
 
-    private static final Map<String, AstNode> CACHE = new LinkedHashMap<>(CACHE_MAX, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, AstNode> eldest) {
-            return size() > CACHE_MAX;
-        }
-    };
-    private static final ReentrantReadWriteLock CACHE_LOCK = new ReentrantReadWriteLock();
+    /**
+     * accessOrder=true makes every get() a structural write (afterNodeAccess
+     * relinks the internal list), so plain read-locking is unsafe: concurrent
+     * gets can corrupt the linkage. synchronizedMap serializes get AND put
+     * (and thus the access-order relink) atomically; the double-checked
+     * lookup below keeps compilation out of the common path.
+     */
+    private static final Map<String, AstNode> CACHE = Collections.synchronizedMap(
+        new LinkedHashMap<>(CACHE_MAX, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, AstNode> eldest) {
+                return size() > CACHE_MAX;
+            }
+        });
 
     private ExprEvaluator() {}
 
     /**
-     * 求值条件表达式，返回布尔值
+     * Evaluates a condition expression, returning a boolean
      */
     public static boolean evalCondition(String expr, Map<String, Object> context) {
         if (expr == null || expr.isBlank()) return true;
         String key = expr.trim();
-        AstNode node;
-        CACHE_LOCK.readLock().lock();
-        try {
-            node = CACHE.get(key);
-        } finally {
-            CACHE_LOCK.readLock().unlock();
-        }
+        AstNode node = CACHE.get(key);
         if (node == null) {
-            node = Compiler.compile(key);
-            CACHE_LOCK.writeLock().lock();
-            try {
-                CACHE.put(key, node);
-            } finally {
-                CACHE_LOCK.writeLock().unlock();
+            synchronized (CACHE) {
+                node = CACHE.get(key);
+                if (node == null) {
+                    node = Compiler.compile(key);
+                    CACHE.put(key, node);
+                }
             }
         }
         Object val = node.eval(context);
-        return val instanceof Boolean b ? b : val != null;
+        // Top-level expressions must use the same truthiness as operators:
+        // a bare "flag" holding "false" would otherwise be truthy while
+        // "flag && true" is falsy.
+        return toBool(val);
     }
 
-    // ======================== AST 节点类型 ========================
+    // ======================== AST node types ========================
 
     private interface AstNode {
         Object eval(Map<String, Object> ctx);
@@ -84,7 +89,7 @@ public final class ExprEvaluator {
                 } else if (cur instanceof List<?> list) {
                     try {
                         cur = list.get(Integer.parseInt(p));
-                    } catch (NumberFormatException e) {
+                    } catch (NumberFormatException | IndexOutOfBoundsException e) {
                         return null;
                     }
                 } else {
@@ -125,14 +130,24 @@ public final class ExprEvaluator {
         }
     }
 
-    // ======================== 编译（解析 → AST，只执行一次） ========================
+    // ======================== Compilation (parse → AST, runs once) ========================
 
     private static final class Compiler {
         private static final int MAX_NESTING_DEPTH = 64;
+        /**
+         * Upper bound on expression terms. Flat operator chains (a && a && …)
+         * build left-leaning BinaryOp trees iteratively — the nesting guard
+         * never fires for them — but eval recurses once per term, so a very
+         * long chain would overflow the stack at evaluation time (and poison
+         * the AST cache). Every term passes through primary(), so counting
+         * there covers all shapes.
+         */
+        private static final int MAX_TERMS = 2048;
         private final String expr;
         private int pos;
         private final int len;
         private int depth;
+        private int terms;
 
         static AstNode compile(String expr) {
             Compiler c = new Compiler(expr);
@@ -148,6 +163,10 @@ public final class ExprEvaluator {
             this.expr = expr;
             this.pos = 0;
             this.len = expr.length();
+        }
+
+        private static String shorten(String s) {
+            return s.length() > 80 ? s.substring(0, 80) + "…" : s;
         }
 
         private AstNode orExpr() {
@@ -217,6 +236,12 @@ public final class ExprEvaluator {
         }
 
         private AstNode primary() {
+            if (++terms > MAX_TERMS) {
+                throw new FlowException(
+                    "Expression too complex (more than " + MAX_TERMS
+                        + " terms) in '" + shorten(expr) + "'"
+                );
+            }
             // Depth guard: parenthesized and unary (`!`/`not`) expressions
             // recurse, and a pathological input (e.g. thousands of nested
             // parens) would otherwise blow the JVM stack with a raw
@@ -309,7 +334,8 @@ public final class ExprEvaluator {
             skipSpaces();
             if (expr.startsWith(token, pos)) {
                 int end = pos + token.length();
-                // 算子可能紧跟标识符（如 "!active"），此时不做 ident part 检查
+                // an operator may immediately follow an identifier (e.g. "!active");
+                // in that case the ident-part check is skipped
                 if (end == len || !isIdentStart(token.charAt(0)) || !isIdentPart(expr.charAt(end))) {
                     pos = end; return true;
                 }
@@ -337,7 +363,28 @@ public final class ExprEvaluator {
         }
     }
 
-    // ======================== 工具方法 ========================
+    // ======================== Utility methods ========================
+
+    /**
+     * Compares two numbers without losing long precision: the compiler
+     * produces Integer/Long/Double, and context values may add Float. Routing
+     * through doubleValue() collapses distinct longs at/above 2^53, silently
+     * picking the wrong branch for large ids/timestamps — so integral types
+     * compare pairwise first.
+     */
+    private static int compareNumbers(Number a, Number b) {
+        if (a instanceof Long la) {
+            if (b instanceof Long lb) return Long.compare(la, lb);
+            if (b instanceof Integer ib) return Long.compare(la, ib.longValue());
+        } else if (a instanceof Integer ia) {
+            if (b instanceof Integer ib) return Integer.compare(ia, ib);
+            if (b instanceof Long lb) return Long.compare(ia.longValue(), lb);
+        }
+        if (a instanceof Float fa && b instanceof Float fb) {
+            return Float.compare(fa, fb);
+        }
+        return Double.compare(a.doubleValue(), b.doubleValue());
+    }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static int cmp(Object a, Object b) {
@@ -345,7 +392,7 @@ public final class ExprEvaluator {
         if (a == null) return -1;
         if (b == null) return 1;
         if (a instanceof Number an && b instanceof Number bn)
-            return Double.compare(an.doubleValue(), bn.doubleValue());
+            return compareNumbers(an, bn);
         if (a instanceof Comparable ca && b instanceof Comparable cb) {
             try { return ca.compareTo(b); } catch (Exception ignored) {}
         }
@@ -355,15 +402,32 @@ public final class ExprEvaluator {
     private static boolean eq(Object a, Object b) {
         if (a == b) return true;
         if (a == null || b == null) return false;
-        if (a instanceof Number an && b instanceof Number bn) return an.doubleValue() == bn.doubleValue();
+        if (a instanceof Number an && b instanceof Number bn)
+            return compareNumbers(an, bn) == 0;
+        // Boolean strings compare by value: "false" == false is true,
+        // matching truthiness (toBool) so equality and bare-flag routing agree.
+        if (a instanceof Boolean ba && b instanceof String sb) return ba == toBool(sb);
+        if (a instanceof String sa && b instanceof Boolean bb) return toBool(sa) == bb;
         return a.equals(b);
     }
 
+    /**
+     * Boolean coercion. JSON-derived values are interpreted by value:
+     * "true"/"1" are truthy, "false"/"0" are falsy (previously any non-empty
+     * string was truthy, so a context flag holding "false" routed the true
+     * branch while {@code flag == false} compared equal — inverted and
+     * inconsistent). Other non-empty strings stay truthy for compatibility.
+     */
     private static boolean toBool(Object v) {
         if (v == null) return false;
         if (v instanceof Boolean b) return b;
         if (v instanceof Number n) return n.doubleValue() != 0;
-        if (v instanceof String s) return !s.isEmpty();
+        if (v instanceof String s) {
+            if (s.isEmpty()) return false;
+            if (s.equalsIgnoreCase("true") || s.equals("1")) return true;
+            if (s.equalsIgnoreCase("false") || s.equals("0")) return false;
+            return true;
+        }
         return true;
     }
 

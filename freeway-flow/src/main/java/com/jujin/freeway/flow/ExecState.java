@@ -23,7 +23,7 @@ public class ExecState {
     private final Map<String, Object> vars = new ConcurrentHashMap<>();
 
     /**
-     * 栈获取
+     * Gets a stack
      */
     @SuppressWarnings("unchecked")
     public <T> Stack<T> stack(Graph graph, String key) {
@@ -31,7 +31,7 @@ public class ExecState {
     }
 
     /**
-     * 计数获取
+     * Gets a count
      */
     public int count(Graph graph, String key) {
         return counts.computeIfAbsent(graph.getId() + "/" + key, k -> new AtomicInteger(0)).get();
@@ -42,7 +42,7 @@ public class ExecState {
     }
 
     /**
-     * 计数设置
+     * Sets a count
      */
     public void countSet(Graph graph, String key, int value) {
         counts.computeIfAbsent(graph.getId() + "/" + key, k -> new AtomicInteger(0)).set(value);
@@ -53,7 +53,7 @@ public class ExecState {
     }
 
     /**
-     * 计数增量
+     * Increments a count
      */
     public int countIncr(Graph graph, String key) {
         return counts.computeIfAbsent(graph.getId() + "/" + key, k -> new AtomicInteger(0)).incrementAndGet();

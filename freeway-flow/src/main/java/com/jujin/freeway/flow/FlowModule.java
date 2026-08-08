@@ -13,24 +13,24 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Flow 引擎的 Freeway IoC 适配模块。
+ * Freeway IoC adapter module for the Flow engine.
  *
- * <p>安装此模块后，容器内：
+ * <p>After installing this module, inside the container:
  * <ul>
- *   <li>{@link FlowContainer} 绑定为单例，供 {@link FlowDriverDefault}
- *       解析 {@code @beanName} 引用</li>
- *   <li>{@link FlowDriverDefault} 在引擎创建时自动组装，
- *       以 id {@code "default"} 注入 driver map</li>
- *   <li>用户可通过 {@code binder.contribute(FlowDriver.class).add("custom", myDriver)}
- *       或 {@code .add(MyDriver.class)}（自动调用 {@code container.create()} 注入）
- *       注册自定义驱动器，图定义中 {@code "driver":"custom"} 即使用之</li>
- *   <li>{@link FlowEngine} 作为单例绑定，driver map 由模块组装后传入，
- *       引擎本体不感知 IoC</li>
- *   <li>通过 {@code binder.contribute(TaskComponent.class)} 贡献的
- *       handler 自动注册到引擎的 {@link FlowMarkerIndex}，
- *       可通过 {@code !markerName} 引用</li>
- *   <li>{@code @beanName} 引用走 {@code container.get(TaskComponent.class, name)}
- *       ——适用于显式绑定了 id 的场景</li>
+ *   <li>{@link FlowContainer} is bound as a singleton, used by {@link FlowDriverDefault}
+ *       to resolve {@code @beanName} references</li>
+ *   <li>{@link FlowDriverDefault} is assembled automatically when the engine is created,
+ *       injected into the driver map with id {@code "default"}</li>
+ *   <li>Users can register custom drivers via {@code binder.contribute(FlowDriver.class).add("custom", myDriver)}
+ *       or {@code .add(MyDriver.class)} (which automatically calls {@code container.create()} to inject),
+ *       and {@code "driver":"custom"} in a graph definition then uses it</li>
+ *   <li>{@link FlowEngine} is bound as a singleton; the driver map is assembled by the module and passed in,
+ *       and the engine itself is unaware of IoC</li>
+ *   <li>Handlers contributed via {@code binder.contribute(TaskComponent.class)} are
+ *       automatically registered in the engine's {@link FlowMarkerIndex} and can be
+ *       referenced with {@code !markerName}</li>
+ *   <li>{@code @beanName} references go through {@code container.get(TaskComponent.class, name)}
+ *       — suitable for components explicitly bound with an id</li>
  * </ul>
  */
 @Marker(Builtin.class)

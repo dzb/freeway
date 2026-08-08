@@ -5,7 +5,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 任务描述（表达式参考：'@beanName' / '#graphId' / '$metaKey' / '!markerName'）
+ * Task description (expression reference: '@beanName' / '#graphId' / '$metaKey' / '!markerName')
  *
  * @author noear
  * @since 3.0
@@ -45,7 +45,11 @@ public class TaskDesc {
      * (starts with {@code !}).
      */
     public boolean isMarkerRef() {
-        return description != null && description.startsWith("!");
+        if (description == null || !description.startsWith("!")) {
+            return false;
+        }
+        validateMarkerSyntax();
+        return true;
     }
 
     /**
@@ -53,6 +57,7 @@ public class TaskDesc {
      * Markers are space-separated and each starts with {@code !}.
      * Example: {@code "!channel:notification !priority:high"} →
      * {@code {"channel:notification", "priority:high"}}
+     * Syntax was already validated by {@link #isMarkerRef()}.
      */
     public Set<String> getMarkerNames() {
         if (!isMarkerRef()) {
@@ -60,11 +65,26 @@ public class TaskDesc {
         }
         Set<String> names = new HashSet<>();
         for (String part : description.split("\\s+")) {
-            if (part.startsWith("!") && part.length() > 1) {
+            if (!part.isEmpty()) {
                 names.add(part.substring(1));
             }
         }
         return Collections.unmodifiableSet(names);
+    }
+
+    private void validateMarkerSyntax() {
+        for (String part : description.split("\\s+")) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (!part.startsWith("!") || part.length() < 2 || part.indexOf('!', 1) >= 0) {
+                throw new IllegalArgumentException(
+                    "Invalid task description '" + description + "': marker "
+                        + "references must be '!name' tokens only — every "
+                        + "space-separated token must start with '!' "
+                        + "(e.g. \"!channel !priority:high\")");
+            }
+        }
     }
 
     @Override

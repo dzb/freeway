@@ -1,7 +1,7 @@
 package com.jujin.freeway.flow;
 
 /**
- * PlantUML 输出选项
+ * PlantUML output options
  *
  * @author noear
  * @since 3.10

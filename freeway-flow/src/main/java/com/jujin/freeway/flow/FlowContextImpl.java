@@ -10,15 +10,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
- * 流上下文实现。
+ * Flow context implementation.
  *
- * <p>迁移说明：
+ * <p>Migration notes:
  * <ul>
- *   <li>把上下文收敛为单次 flow 执行期对象，不再把它当成可跨运行持久化的状态容器。</li>
- *   <li>{@code exchanger}、{@code eventBus}、{@code trace} 都只保存执行态，方便回放和调试，但不作为稳定 JSON 协议的一部分。</li>
- *   <li>序列化时显式排除 {@code context} 自引用，并兼容 {@code trace} 的对象/字符串两种历史格式。</li>
+ *   <li>The context is narrowed to a per-flow-execution object; it is no longer treated as a state container persisted across runs.</li>
+ *   <li>{@code exchanger}, {@code eventBus} and {@code trace} only hold execution state for replay and debugging; they are not part of the stable JSON protocol.</li>
+ *   <li>Serialization explicitly excludes the {@code context} self-reference and supports both historical {@code trace} formats (object and string).</li>
  * </ul>
- * 这样做是为了保留受控恢复能力，同时避免把运行时对象写进稳定协议。</p>
+ * This preserves controlled resume capability while keeping runtime objects out of the stable protocol.</p>
  *
  * @author noear
  * @since 3.5
@@ -53,6 +53,27 @@ public class FlowContextImpl implements FlowContext {
 
     // --- serialization ---
 
+    /**
+     * Coerces a trace object then restores the per-graph records, which
+     * bean-coercion cannot populate (final field).
+     */
+    private static FlowTrace restoreTrace(JsonObject traceObj) {
+        FlowTrace trace = JsonUtils.coerce(traceObj, FlowTrace.class);
+        JsonObject records = traceObj.getObject("lastRecords");
+        if (records != null) {
+            for (Map.Entry<String, Object> e : records.toMap().entrySet()) {
+                // toMap() yields plain LinkedHashMaps for nested objects
+                if (e.getValue() instanceof Map<?, ?> recordMap) {
+                    trace.restoreRecord(
+                        e.getKey(),
+                        JsonUtils.coerce(recordMap, NodeRecord.class)
+                    );
+                }
+            }
+        }
+        return trace;
+    }
+
     @SuppressWarnings("unchecked")
     public static FlowContext fromJson(String json) {
         FlowContextImpl ctx = new FlowContextImpl();
@@ -71,12 +92,11 @@ public class FlowContextImpl implements FlowContext {
                 // try object first (current format), then string (legacy)
                 JsonObject traceObj = oNode.getObject("trace");
                 if (traceObj != null) {
-                    ctx.trace = JsonUtils.coerce(traceObj, FlowTrace.class);
+                    ctx.trace = restoreTrace(traceObj);
                 } else {
                     String traceStr = oNode.getString("trace");
                     if (traceStr != null && !traceStr.isEmpty()) {
-                        ctx.trace = JsonUtils.coerce(
-                            JsonUtils.parseObject(traceStr), FlowTrace.class);
+                        ctx.trace = restoreTrace(JsonUtils.parseObject(traceStr));
                     }
                 }
             }

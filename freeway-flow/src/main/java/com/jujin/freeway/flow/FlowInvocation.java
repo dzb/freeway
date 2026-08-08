@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.function.BiConsumer;
 
 /**
- * 流调用者（责任链模式，依次调用拦截器，最后到达引擎的 evalDo）
+ * Flow invocation (chain-of-responsibility: invokes interceptors in turn, finally reaching the engine's evalDo)
  *
  * @author noear
  * @since 3.1
@@ -27,20 +27,20 @@ public class FlowInvocation {
         this.index = 0;
     }
 
-    /** 获取交换器 */
+    /** Gets the exchanger */
     public FlowExchanger getExchanger() { return exchanger; }
 
-    /** 获取上下文 */
+    /** Gets the context */
     public FlowContext getContext() { return exchanger.context(); }
 
-    /** 获取图 */
+    /** Gets the graph */
     public Graph getGraph() { return startNode.getGraph(); }
 
-    /** 获取起始节点（或恢复节点） */
+    /** Gets the start node (or the resume node) */
     public Node getStartNode() { return startNode; }
 
     /**
-     * 调用下一个拦截器；如果是最后一个，则执行真正的 evalDo
+     * Invokes the next interceptor; if it is the last one, runs the actual evalDo
      */
     public void invoke() throws FlowException {
         if (index < interceptorList.size()) {

@@ -3,7 +3,7 @@ package com.jujin.freeway.flow;
 import java.io.Serializable;
 
 /**
- * 节点记录
+ * Node record
  *
  * @author noear
  * @since 3.8.1
@@ -16,7 +16,7 @@ public class NodeRecord implements Serializable {
     private long timestamp;
 
     public NodeRecord() {
-        // 用于反序列化
+        // for deserialization
     }
 
     public NodeRecord(Node node) {

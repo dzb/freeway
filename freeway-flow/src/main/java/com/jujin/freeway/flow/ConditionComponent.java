@@ -1,7 +1,7 @@
 package com.jujin.freeway.flow;
 
 /**
- * 条件组件
+ * Condition component
  *
  * @author noear
  * @since 3.7
@@ -9,9 +9,9 @@ package com.jujin.freeway.flow;
 @FunctionalInterface
 public interface ConditionComponent {
     /**
-     * 检测
+     * Tests
      *
-     * @param context 流上下文
+     * @param context the flow context
      */
     boolean test(FlowContext context) throws Throwable;
 }

@@ -1252,6 +1252,81 @@ class FlowEngineTest {
             "#graph subgraph call must execute the child graph, got " + executed);
     }
 
+    @Test
+    void repeatedSubgraphInvocationExecutesBodyEachTime() {
+        // Regression: the trace held the child's END node after the first
+        // call, so a second call replayed in reverting mode and silently
+        // skipped the body.
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph child = GraphSpec.create("child2", spec -> {
+            spec.entry("cs");
+            spec.addStart("cs").linkAdd("ca");
+            spec.addActivity("ca").task("@dummy").linkAdd("ce");
+            spec.addEnd("ce");
+        }).create();
+        Graph parent = GraphSpec.create("parent2", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("#child2").linkAdd("b");
+            spec.addActivity("b").task("#child2").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(child);
+        engine.load(parent);
+        engine.eval("parent2", FlowContext.of());
+        assertEquals(2, executed.stream().filter("ca"::equals).count(),
+            "each #graph call must execute the child body, got " + executed);
+    }
+
+    @Test
+    void exprEvaluatorHandlesLargeNumbersExactly() {
+        // Regression: comparisons routed through doubleValue() collapsed
+        // distinct longs at/above 2^53.
+        Map<String, Object> ctx = Map.of();
+        assertFalse(ExprEvaluator.evalCondition(
+            "9223372036854775807 == 9223372036854775806", ctx),
+            "adjacent longs above 2^53 must compare unequal");
+        assertTrue(ExprEvaluator.evalCondition(
+            "9007199254740993 > 9007199254740992", ctx),
+            "longs above 2^53 must order correctly");
+    }
+
+    @Test
+    void exprEvaluatorInterpretsBooleanStringsByValue() {
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put("flag", "false");
+        ctx.put("zero", "0");
+        assertFalse(ExprEvaluator.evalCondition("flag", ctx),
+            "a \"false\" string must be falsy");
+        assertFalse(ExprEvaluator.evalCondition("zero", ctx),
+            "a \"0\" string must be falsy");
+        assertTrue(ExprEvaluator.evalCondition("flag == false", ctx),
+            "truthiness and equality must agree for boolean strings");
+    }
+
+    @Test
+    void exprEvaluatorHandlesOutOfRangeListIndex() {
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put("items", List.of("a", "b"));
+        assertTrue(ExprEvaluator.evalCondition("items.99 == null", ctx),
+            "an out-of-range index must resolve to null, not throw");
+        assertTrue(ExprEvaluator.evalCondition("items.0 == \"a\"", ctx),
+            "an in-range index still resolves");
+    }
+
+    @Test
+    void exprEvaluatorRejectsPathologicallyLongFlatChains() {
+        // Regression: "a && a && ..." built a left-leaning tree that evaded
+        // the nesting guard and overflowed the stack at eval time.
+        String flat = "true && ".repeat(3000) + "true";
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition(flat, Map.of()),
+            "a flat chain beyond the term limit must be rejected at compile time");
+    }
+
     private static TaskComponent comp(String name) {
         // Captures name: a capturing lambda creates a fresh instance per call,
         // so two registrations are distinct components (a stateless lambda
@@ -1310,5 +1385,29 @@ class FlowEngineTest {
         assertEquals("alice", restored.data().get("name"));
         assertEquals(42, restored.data().get("count"));
         assertTrue(restored.isStopped(), "stopped flag must survive serialization");
+    }
+
+    @Test
+    void traceResumePositionSurvivesJsonRoundTrip() {
+        // The trace's last-node-per-graph position is the resume point for a
+        // paused run — losing it across a JSON round-trip silently restarts
+        // the graph from START on resume.
+        Graph graph = Graph.create("trace_roundtrip", spec -> {
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@noop").linkAdd("e");
+            spec.addEnd("e");
+        });
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> { })
+            .build());
+
+        FlowContext ctx = FlowContext.of();
+        engine.eval(graph, ctx);
+        assertFalse(ctx.lastNodeId() == null || ctx.lastNodeId().isEmpty(),
+            "eval must record the last node");
+
+        FlowContext restored = FlowContextImpl.fromJson(ctx.toJson());
+        assertEquals(ctx.lastNodeId(), restored.lastNodeId(),
+            "the resume position must survive the JSON round-trip");
     }
 }

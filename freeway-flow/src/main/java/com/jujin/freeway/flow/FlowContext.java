@@ -5,7 +5,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * 流上下文，表示一个流实例的上下文数据
+ * Flow context, representing the context data of a flow instance
  *
  * @author noear
  * @since 3.0
@@ -22,22 +22,22 @@ public interface FlowContext {
 
     // --- serialization ---
 
-    /** 转为 json（用于持久化） */
+    /** Converts to JSON (for persistence) */
     String toJson();
 
     // --- flow control ---
 
-        /**
-     * 中断当前分支（如果有其它分支，仍会执行）。
-     * 中断标志在下一个节点边界被消费并清除——当前分支停止推进，
-     * 但不会使整个执行永久终止。
+    /**
+     * Interrupts this execution (global semantics): once the flag is set, all parallel
+     * branches stop advancing at their next node boundary; the flag lasts until this eval
+     * ends (never cleared midway, so every branch observes it). Not branch-local — the whole run stops after this call.
      */
     void interrupt();
 
-    /** 停止执行（即结束运行） */
+    /** Stops execution (i.e. ends the run) */
     void stop();
 
-    /** 是否已停止 */
+    /** Whether execution is stopped */
     boolean isStopped();
 
     // --- trace ---
@@ -52,15 +52,15 @@ public interface FlowContext {
 
     // --- event bus ---
 
-    /** 获取事件总线（topic 主题式 pub/sub，作用域限定在本次执行内） */
+    /** Gets the event bus (topic-based pub/sub, scoped to this execution) */
     FlowEventBus eventBus();
 
     // --- data ---
 
-    /** 数据 */
+    /** Data */
     Map<String, Object> data();
 
-    /** 获取流实例id */
+    /** Gets the flow instance id */
     default String getInstanceId() {
         return getAs("instanceId");
     }
@@ -118,12 +118,12 @@ public interface FlowContext {
 
     // --- internal (package-private usage by engine) ---
 
-    /** @hidden 由引擎内部使用 */
+    /** @hidden used internally by the engine */
     FlowExchanger exchanger();
 
-    /** @hidden 由引擎内部使用 */
+    /** @hidden used internally by the engine */
     void exchanger(FlowExchanger exchanger);
 
-    /** @hidden 由引擎内部使用 */
+    /** @hidden used internally by the engine */
     void stopped(boolean stopped);
 }

@@ -326,4 +326,80 @@ class GraphSpecTest {
         String json = bp.toJson();
         assertTrue(json.contains("\"version\":2"));
     }
+
+    @Test
+    void testUnknownNodeTypeRejected() {
+        // Regression: "UNKNOWN" passed fromDom and the engine switch silently
+        // dropped the node (task never ran, links never traversed).
+        String json = "{\"id\":\"g\",\"version\":2,\"nodes\":["
+            + "{\"id\":\"n\",\"type\":\"UNKNOWN\"}],\"links\":[]}";
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> GraphSpec.fromText(json));
+        assertTrue(ex.getMessage().contains("UNKNOWN"),
+            "unknown type must be rejected at parse, got: " + ex.getMessage());
+    }
+
+    @Test
+    void testExplicitEntryCoexistsWithStartNodes() {
+        // Regression: an explicit entry plus any START-typed node was
+        // rejected, and the error's remedy ("use 'entry'") was impossible
+        // because the entry was already set.
+        GraphSpec bp = GraphSpec.create("ok", spec -> {
+            spec.entry("a");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@t").linkAdd("e");
+            spec.addEnd("e");
+        });
+        Graph graph = bp.create();
+        assertEquals("a", graph.getStart().getId(),
+            "the explicit entry must be the runtime start");
+    }
+
+    @Test
+    void testNonObjectArrayEntriesRejected() {
+        // Regression: scalar entries in nodes/links arrays were silently
+        // skipped, building a graph with fewer elements than authored.
+        String json = "{\"id\":\"g\",\"version\":2,"
+            + "\"nodes\":[42,{\"id\":\"n\",\"type\":\"ACTIVITY\"}],\"links\":[]}";
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> GraphSpec.fromText(json));
+        assertTrue(ex.getMessage().contains("must be an object"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
+    void testUnconditionalDuplicateLinksRejected() {
+        // Regression: two identical A->B edges executed B twice.
+        GraphSpec bp = GraphSpec.create("dup", spec -> {
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@t")
+                .linkAdd("e").linkAdd("e"); // duplicate unconditional edge
+            spec.addEnd("e");
+        });
+        IllegalStateException ex = assertThrows(IllegalStateException.class, bp::create);
+        assertTrue(ex.getMessage().contains("Duplicate unconditional link"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
+    void testInlineTaskComponentCannotBeSerialized() {
+        // Regression: component-backed tasks silently vanished from toJson.
+        GraphSpec bp = GraphSpec.create("inline", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a")
+                .task(new NamedTaskComponent() {
+                    @Override public String name() { return "inline"; }
+                    @Override public String title() { return null; }
+                    @Override public void run(FlowContext ctx, Node node) { }
+                })
+                .linkAdd("e");
+            spec.addEnd("e");
+        });
+        IllegalStateException ex = assertThrows(IllegalStateException.class, bp::toJson);
+        assertTrue(ex.getMessage().contains("cannot be serialized"),
+            "got: " + ex.getMessage());
+    }
 }

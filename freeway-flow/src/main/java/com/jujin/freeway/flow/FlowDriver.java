@@ -3,32 +3,32 @@ package com.jujin.freeway.flow;
 import java.util.concurrent.ExecutorService;
 
 /**
- * 流驱动器
+ * Flow driver
  *
  * @author noear
  * @since 3.0
  */
 public interface FlowDriver {
 
-    /** 异步执行器（用于 PARALLEL 节点并发） */
+    /** Async executor (for PARALLEL node concurrency) */
     default ExecutorService getExecutor() {
         return null;
     }
 
-    /** 节点运行开始时 */
+    /** When a node run starts */
     default void onNodeStart(FlowExchanger exchanger, Node node) {}
 
-    /** 节点运行结束时 */
+    /** When a node run ends */
     default void onNodeEnd(FlowExchanger exchanger, Node node) {}
 
-    /** 处理条件检测 */
+    /** Handles condition evaluation */
     boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) throws Throwable;
 
-    /** 处理执行任务 */
+    /** Handles a task */
     default void handleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
         postHandleTask(exchanger, task);
     }
 
-    /** 提交处理任务 */
+    /** Post-handles a task */
     void postHandleTask(FlowExchanger exchanger, TaskDesc task) throws Throwable;
 }

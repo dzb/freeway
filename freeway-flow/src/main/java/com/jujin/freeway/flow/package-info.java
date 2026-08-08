@@ -1,36 +1,36 @@
 /**
- * 轻量级图编排引擎，移植自 solon-flow 4.0.2。
+ * Lightweight graph orchestration engine, ported from solon-flow 4.0.2.
  *
- * <p>源项目：<a href="https://github.com/opensolon/solon-flow">opensolon/solon-flow</a>
- * <br>原始作者：noear (西东)
- * <br>原始许可：Apache License 2.0</p>
+ * <p>Source project: <a href="https://github.com/opensolon/solon-flow">opensolon/solon-flow</a>
+ * <br>Original author: noear (Xidong)
+ * <br>Original license: Apache License 2.0</p>
  *
- * <p>移植适配为 freeway 框架模块，保持核心编排能力的同时做到零新增三方依赖。
- * 详见模块根目录 {@code README.md}。</p>
+ * <p>Ported and adapted as a freeway framework module, keeping the core orchestration capabilities while adding zero new third-party dependencies.
+ * See {@code README.md} in the module root for details.</p>
  *
- * <h3>核心入口</h3>
+ * <h3>Core entry points</h3>
  * <ul>
- *   <li>{@link com.jujin.freeway.flow.FlowEngine} — 引擎，创建实例并执行图</li>
- *   <li>{@link com.jujin.freeway.flow.Graph} — 图，从 JSON 解析或编程构建</li>
- *   <li>{@link com.jujin.freeway.flow.FlowContext} — 上下文，携带执行变量</li>
- *   <li>{@link com.jujin.freeway.flow.FlowDriverDefault} — 默认驱动器</li>
- *   <li>{@link com.jujin.freeway.flow.FlowModule} — Freeway IoC 模块入口</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowEngine} — the engine; create an instance and execute graphs</li>
+ *   <li>{@link com.jujin.freeway.flow.Graph} — the graph; parsed from JSON or built programmatically</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowContext} — the context; carries execution variables</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowDriverDefault} — the default driver</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowModule} — the Freeway IoC module entry point</li>
  * </ul>
  *
- * <h3>拦截器与事件</h3>
+ * <h3>Interceptors and events</h3>
  * <ul>
- *   <li>{@link com.jujin.freeway.flow.FlowInterceptor} / {@link com.jujin.freeway.flow.FlowInvocation} — 拦截器链</li>
- *   <li>{@link com.jujin.freeway.flow.FlowEventBus} — 执行级事件总线</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowInterceptor} / {@link com.jujin.freeway.flow.FlowInvocation} — the interceptor chain</li>
+ *   <li>{@link com.jujin.freeway.flow.FlowEventBus} — the execution-level event bus</li>
  * </ul>
  *
- * <h3>表达式</h3>
+ * <h3>Expressions</h3>
  * <ul>
- *   <li>{@link com.jujin.freeway.flow.ExprEvaluator} — 极简条件表达式求值器</li>
+ *   <li>{@link com.jujin.freeway.flow.ExprEvaluator} — the minimal conditional expression evaluator</li>
  * </ul>
  *
- * <h3>PlantUML 导出</h3>
+ * <h3>PlantUML export</h3>
  * <ul>
- *   <li>{@link com.jujin.freeway.flow.Graph#toPlantuml()} — 生成 PlantUML 状态图文本</li>
+ *   <li>{@link com.jujin.freeway.flow.Graph#toPlantuml()} — generates PlantUML state diagram text</li>
  *   <li>{@link com.jujin.freeway.flow.PlantumlOptions} / {@link com.jujin.freeway.flow.PlantumlDisplayContext} / {@link com.jujin.freeway.flow.PlantumlDisplayResult}</li>
  * </ul>
  *

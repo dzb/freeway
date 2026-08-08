@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 连接
+ * Link
  *
  * @author noear
  * @since 3.0
@@ -73,7 +73,7 @@ public class Link implements Comparable<Link> {
 
     @Override
     public int compareTo(Link o) {
-        return Integer.compare(o.priority, this.priority); // 大的在前
+        return Integer.compare(o.priority, this.priority); // larger first
     }
 
     @Override

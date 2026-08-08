@@ -1,12 +1,16 @@
 package com.jujin.freeway.flow;
 
 /**
- * 流异常
+ * Flow exception
  *
  * @author noear
  * @since 3.0
  */
 public class FlowException extends RuntimeException {
+
+    /** Shared message template for task-handling failures. */
+    public static final String TASK_FAILED = "The task handle failed";
+
     public FlowException(String message) {
         super(message);
     }

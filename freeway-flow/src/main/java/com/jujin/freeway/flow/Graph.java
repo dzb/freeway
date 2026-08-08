@@ -12,7 +12,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * 图（不可变运行时模型）
+ * Graph (immutable runtime model)
  *
  * @author noear
  * @since 3.0
@@ -27,6 +27,12 @@ public class Graph {
     private Node start;
 
     public Graph(GraphSpec blueprint) {
+        // Same validation as GraphSpec.create(): link references, cycles,
+        // duplicate unconditional links and entry resolution must not differ
+        // between the two construction paths.
+        blueprint.drainNodeLinks();
+        blueprint.normalize();
+
         this.id = blueprint.getId();
         this.title = blueprint.getTitle();
         this.driver = blueprint.getDriver();
@@ -138,18 +144,22 @@ public class Graph {
                 .append("}\n");
 
         if (title != null && !title.isEmpty()) {
+            String safeTitle = escapePlantumlText(title);
             if (options.isShowIdInTitle()) {
-                sb.append("title ").append(title).append(" (").append(id).append(")\n");
+                sb.append("title ").append(safeTitle).append(" (").append(id).append(")\n");
             } else {
-                sb.append("title ").append(title).append("\n");
+                sb.append("title ").append(safeTitle).append("\n");
             }
         } else if (options.isShowIdInTitle()) {
-            sb.append("title ").append(id).append("\n");
+            sb.append("title ").append(escapePlantumlText(id)).append("\n");
         }
 
-        // 声明节点
+        // declare nodes
         for (Node node : nodes.values()) {
             String nodeId = node.getId();
+            // PlantUML state ids must be bare identifiers — a raw id with
+            // spaces or special chars produces an invalid/ambiguous diagram.
+            requirePlantumlId(nodeId);
             switch (node.getType()) {
                 case START:
                     sb.append("state ").append(nodeId).append(" <<start>>\n");
@@ -174,7 +184,7 @@ public class Graph {
             }
         }
 
-        // 声明连接
+        // declare links
         for (Link link : links) {
             sb.append(link.getPrevId()).append(" --> ").append(link.getNextId());
             List<String> labels = new ArrayList<>();
@@ -195,9 +205,28 @@ public class Graph {
         return sb.toString();
     }
 
+    private static void requirePlantumlId(String nodeId) {
+        if (!nodeId.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException(
+                "Node id '" + nodeId + "' is not a valid PlantUML identifier "
+                    + "(letters, digits, underscore, not starting with a digit)");
+        }
+    }
+
+    /**
+     * Neutralizes PlantUML syntax in label text: a title/task/when containing
+     * a newline would otherwise inject diagram statements, and an unescaped
+     * quote breaks the label.
+     */
+    private static String escapePlantumlText(String s) {
+        return s.replace("\r", " ")
+                .replace("\n", "\\n")
+                .replace("\"", "\\\"");
+    }
+
     private void appendNodeTitle(StringBuilder sb, String nodeId, String title) {
         if (title != null && !title.isEmpty()) {
-            sb.append(nodeId).append(" : ").append(title).append("\n");
+            sb.append(nodeId).append(" : ").append(escapePlantumlText(title)).append("\n");
         }
     }
 
@@ -212,17 +241,17 @@ public class Graph {
                 if (result != null) {
                     if (!result.isVisible()) return;
                     if (result.isUseDefault()) {
-                        sb.append(nodeId).append(" : ").append(task).append("\n");
+                        sb.append(nodeId).append(" : ").append(escapePlantumlText(task)).append("\n");
                     } else {
-                        sb.append(nodeId).append(" : ").append(result.getText()).append("\n");
+                        sb.append(nodeId).append(" : ").append(escapePlantumlText(result.getText())).append("\n");
                     }
                     return;
                 }
             } catch (Exception ignored) {
-                // 异常时使用默认处理
+                // on exception, fall back to default handling
             }
         }
-        sb.append(nodeId).append(" : ").append(task).append("\n");
+        sb.append(nodeId).append(" : ").append(escapePlantumlText(task)).append("\n");
     }
 
     private String buildLinkWhenText(Link link,
@@ -235,14 +264,14 @@ public class Graph {
                 PlantumlDisplayResult result = displayMappingFunc.apply(PlantumlDisplayContext.ofLink(link));
                 if (result != null) {
                     if (!result.isVisible()) return null;
-                    if (result.isUseDefault()) return when;
-                    return result.getText();
+                    if (result.isUseDefault()) return escapePlantumlText(when);
+                    return escapePlantumlText(result.getText());
                 }
             } catch (Exception ignored) {
-                // 异常时使用默认处理
+                // on exception, fall back to default handling
             }
         }
-        return when;
+        return escapePlantumlText(when);
     }
 
     // --- static factories ---

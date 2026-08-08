@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 流引擎（通用图编排引擎）
+ * Flow engine (general-purpose graph orchestration engine)
  *
  * <pre>{@code
  * FlowEngine engine = FlowEngine.newInstance();

@@ -1,14 +1,13 @@
 package com.jujin.freeway.flow;
 
 /**
- * 节点类型。
+ * Node types.
  *
- * <p>迁移说明：
+ * <p>Migration notes:
  * <ul>
- *   <li>未知类型仍回退到 {@link #ACTIVITY}，这是为了兼容旧图和缺省图定义。</li>
- *   <li>新图建议显式声明类型；这里的兜底只是一种迁移兼容策略，不是新的建模默认。</li>
+ *   <li>Missing/empty type names fall back to {@link #ACTIVITY} (migration compatibility); unknown type names throw an error.</li>
+ *   <li>{@link #UNKNOWN} is an internal migration value; explicitly declaring UNKNOWN in a v2 graph definition is rejected.</li>
  * </ul>
- * 这样可以减少历史数据导入时的失败面，同时保持行为可预测。</p>
  *
  * @author noear
  * @since 3.0
@@ -34,11 +33,11 @@ public enum NodeType {
     }
 
     /**
-     * 根据名称获取类型（不区分大小写）
+     * Gets the type by name (case-insensitive)
      */
     public static NodeType nameOf(String name) {
         if (name == null || name.isEmpty()) {
-            return ACTIVITY; // 默认为活动节点
+            return ACTIVITY; // defaults to an activity node
         }
 
         for (NodeType v : values()) {

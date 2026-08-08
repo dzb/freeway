@@ -10,15 +10,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * 流执行级事件总线。
+ * Flow execution-level event bus.
  *
- * <p>迁移说明：
+ * <p>Migration notes:
  * <ul>
- *   <li>从 Solon 的全局 DamiBus 语义迁移为绑定在 {@link FlowContext} 上的本地 pub/sub。</li>
- *   <li>订阅回调异常只隔离在当前订阅者，不向外扩散，也不影响同 topic 的其他订阅者。</li>
- *   <li>保留 topic 级发布/退订能力，目的是支持同一次 flow 执行中的通知、回放和调试。</li>
+ *   <li>Migrated from Solon's global DamiBus semantics to a local pub/sub bound to {@link FlowContext}.</li>
+ *   <li>Exceptions in subscription callbacks are isolated to the current subscriber — they do not propagate outward or affect other subscribers of the same topic.</li>
+ *   <li>Topic-level publish/unsubscribe capability is kept to support notification, replay and debugging within the same flow execution.</li>
  * </ul>
- * 这样可以避免引入全局消息面，同时保持原有流内事件模型。</p>
+ * This avoids introducing a global message surface while preserving the original in-flow event model.</p>
  *
  * @since 1.2.2
  */
@@ -29,7 +29,7 @@ public class FlowEventBus {
     private final Map<String, List<Subscription>> topicSubs = new ConcurrentHashMap<>();
 
     /**
-     * 发布事件到指定主题
+     * Publishes an event to the given topic
      */
     public void publish(String topic, Object event) {
         List<Subscription> subs = topicSubs.get(topic);
@@ -39,13 +39,15 @@ public class FlowEventBus {
             try {
                 sub.handler.accept(event);
             } catch (Exception e) {
-                LOG.warn("Subscriber failed for topic '{}': {}", topic, e.toString());
+                // Isolation is deliberate, but the stack trace is essential
+                // for diagnosing where the subscriber failed.
+                LOG.warn("Subscriber failed for topic '{}'", topic, e);
             }
         }
     }
 
     /**
-     * 订阅主题，返回句柄用于取消
+     * Subscribes to a topic, returning a handle for cancellation
      */
     public Subscription subscribe(String topic, Consumer<Object> handler) {
         Subscription sub = new Subscription(topic, handler);
@@ -54,7 +56,7 @@ public class FlowEventBus {
     }
 
     /**
-     * 取消订阅
+     * Unsubscribes
      */
     public void unsubscribe(Subscription sub) {
         List<Subscription> subs = topicSubs.get(sub.topic);
@@ -67,17 +69,17 @@ public class FlowEventBus {
     }
 
     /**
-     * 清空所有主题的订阅。
+     * Clears subscriptions of all topics.
      *
-     * <p>当一次 flow 执行结束、而 {@link FlowContext} 会被复用(暂停/恢复、
-     * 多次 eval)时调用,防止订阅者跨运行累积。</p>
+     * <p>Called when a flow execution ends and the {@link FlowContext} will be reused
+     * (pause/resume, multiple evals), preventing subscribers from accumulating across runs.</p>
      */
     public void clear() {
         topicSubs.clear();
     }
 
     /**
-     * 订阅句柄
+     * Subscription handle
      */
     public static class Subscription {
         private final String topic;

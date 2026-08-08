@@ -186,7 +186,7 @@ public class GraphSpec {
     }
 
     /** Flushes pending links from all nodes into top-level links list. */
-    private void drainNodeLinks() {
+    void drainNodeLinks() {
         for (NodeSpec node : nodes.values()) {
             for (var pending : node.drainPendingLinks()) {
                 LinkSpec link = link(node.getId(), pending.to());
@@ -235,8 +235,20 @@ public class GraphSpec {
             if (node.when != null && !node.when.isEmpty()) {
                 domNode.put("when", node.when);
             }
+            if (node.whenComponent != null) {
+                throw new IllegalStateException(
+                    "Node '" + node.id + "' uses an inline ConditionComponent "
+                        + "which cannot be serialized — bind it via the "
+                        + "container and reference it by name");
+            }
             if (node.task != null && !node.task.isEmpty()) {
                 domNode.put("task", node.task);
+            }
+            if (node.taskComponent != null) {
+                throw new IllegalStateException(
+                    "Node '" + node.id + "' uses an inline TaskComponent which "
+                        + "cannot be serialized — bind it via the container and "
+                        + "reference it by name");
             }
             domNodes.add(domNode);
         }
@@ -255,6 +267,12 @@ public class GraphSpec {
             }
             if (link.when != null && !link.when.isEmpty()) {
                 domLink.put("when", link.when);
+            }
+            if (link.whenComponent != null) {
+                throw new IllegalStateException(
+                    "Link '" + link.from + "' -> '" + link.to + "' uses an "
+                        + "inline ConditionComponent which cannot be serialized "
+                        + "— bind it via the container and reference it by name");
             }
             if (link.priority != 0) {
                 domLink.put("priority", link.priority);
@@ -298,7 +316,9 @@ public class GraphSpec {
         for (int i = 0; i < nodesDom.size(); i++) {
             Object item = nodesDom.get(i);
             if (!(item instanceof JsonObject nodeDom)) {
-                continue;
+                throw new IllegalArgumentException(
+                    "Node at index " + i + " must be an object, got: "
+                        + (item == null ? "null" : item.getClass().getSimpleName()));
             }
 
             String nodeId = nodeDom.getString("id");
@@ -312,9 +332,12 @@ public class GraphSpec {
                     "Node '" + nodeId + "' is missing required 'type' field");
             }
             NodeType nodeType = NodeType.nameOf(typeStr);
-            if (nodeType == NodeType.ACTIVITY && !"activity".equalsIgnoreCase(typeStr)) {
+            if (nodeType == NodeType.UNKNOWN) {
                 throw new IllegalArgumentException(
-                    "Unknown node type '" + typeStr + "' for node '" + nodeId + "'");
+                    "Unknown node type '" + typeStr + "' for node '" + nodeId
+                        + "'. Valid types: START, END, ACTIVITY, EXCLUSIVE, "
+                        + "INCLUSIVE, PARALLEL, LOOP."
+                );
             }
             NodeSpec node = blueprint.addNode(nodeId, nodeType);
             node.title(nodeDom.getString("title"));
@@ -328,7 +351,9 @@ public class GraphSpec {
             for (int i = 0; i < linksDom.size(); i++) {
                 Object item = linksDom.get(i);
                 if (!(item instanceof JsonObject linkDom)) {
-                    continue;
+                    throw new IllegalArgumentException(
+                        "Link at index " + i + " must be an object, got: "
+                            + (item == null ? "null" : item.getClass().getSimpleName()));
                 }
 
                 String from = linkDom.getString("from");
@@ -439,7 +464,10 @@ public class GraphSpec {
      * entry to determine reachable nodes, and warns about disconnected
      * subgraphs. Idempotent — subsequent calls are no-ops.</p>
      */
-    private GraphSpec normalize() {
+    GraphSpec normalize() {
+        // 0. Explicit entry must exist — fail with the dedicated message
+        //    before entry-candidate resolution.
+        validateEntry();
 
         // 1. Validate all link references resolve
         for (LinkSpec link : links) {
@@ -468,12 +496,45 @@ public class GraphSpec {
             );
         }
 
+        // 1.6 Reject duplicate unconditional links: two edges with the same
+        //     from+to where at least one carries no condition would execute
+        //     the target node twice (double task execution, double trace
+        //     records). Multi-edges are legitimate only when every edge is
+        //     condition-guarded. The scan checks all pairs regardless of
+        //     declaration order — an unconditional edge first or second both
+        //     double-execute.
+        for (int i = 0; i < links.size(); i++) {
+            LinkSpec a = links.get(i);
+            if (a.when == null || a.when.isEmpty()) {
+                for (int j = 0; j < links.size(); j++) {
+                    if (j == i) {
+                        continue;
+                    }
+                    LinkSpec b = links.get(j);
+                    if (b.from.equals(a.from) && b.to.equals(a.to)) {
+                        throw new IllegalStateException(
+                            "Duplicate unconditional link '" + a.from
+                                + "' -> '" + a.to + "' in graph: " + id
+                                + ". Multiple edges between the same nodes must"
+                                + " carry distinct 'when' conditions."
+                        );
+                    }
+                }
+            }
+        }
+
         // 2. Validate entry — v2 requires exactly one entry point.
         //    The entry node keeps its original type in the runtime graph;
         //    execution starts from that node regardless of type.
         String resolvedEntry = resolveEntry();
         List<String> starts = nodes.values().stream()
-            .filter(n -> n.type == NodeType.START || n.id.equals(resolvedEntry))
+            // When entry is explicit, it is the ONLY start candidate: a
+            // stray START node must not reject the graph (the old check
+            // counted every START, making the error's own remedy — "use
+            // 'entry'" — impossible).
+            .filter(n -> entry != null && !entry.isEmpty()
+                ? n.id.equals(resolvedEntry)
+                : n.type == NodeType.START)
             .map(n -> n.id)
             .distinct()
             .toList();

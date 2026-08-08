@@ -10,21 +10,22 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 流引擎实现。
+ * Flow engine implementation.
  *
- * <p>迁移说明：
+ * <p>Migration notes:
  * <ul>
- *   <li>保留节点遍历、条件分支、子图调用和拦截器链逻辑，但把执行态控制显式收敛在引擎实例内。</li>
- *   <li>驱动器通过 {@code Map<String, FlowDriver>} 注入，按 graph 的 driver 名称（null/"" → "default"）匹配。</li>
- *   <li>暂停、终止、回退等标志只属于单次执行状态，方便恢复和短暂中断后继续执行。</li>
+ *   <li>Node traversal, conditional branching, sub-graph calls and interceptor-chain logic are preserved, but execution-state control is explicitly consolidated within the engine instance.</li>
+ *   <li>Drivers are injected via {@code Map<String, FlowDriver>} and matched by the graph's driver name (null/"" → "default").</li>
+ *   <li>Pause, stop and revert flags belong to a single execution's state, enabling resume and continued execution after brief interruptions.</li>
  * </ul>
- * 这样做是为了让移植后的引擎仍保留原行为，同时满足 Freeway 的显式装配模型。</p>
+ * This keeps the ported engine's original behavior while satisfying Freeway's explicit assembly model.</p>
  *
  * @author noear
  * @since 3.0
@@ -58,7 +59,10 @@ public class FlowEngineImpl implements FlowEngine {
         this.drivers = new HashMap<>(Objects.requireNonNull(drivers, "drivers"));
         // Concurrent: load()/unload() may run while other threads evaluate.
         this.graphMap = new ConcurrentHashMap<>();
-        this.interceptorList = new ArrayList<>();
+        // Copy-on-write: addInterceptor/removeInterceptor may run while eval
+        // snapshots the list (plain ArrayList would CME or publish a
+        // partially-sorted list).
+        this.interceptorList = new CopyOnWriteArrayList<>();
     }
 
     @Override
@@ -142,6 +146,30 @@ public class FlowEngineImpl implements FlowEngine {
             exchanger.context().exchanger(exchanger);
             exchanger.context().stopped(false);
             new FlowInvocation(exchanger, opts, lastNode, this::evalDo).invoke();
+            // Completed (non-stopped, non-interrupted) evals release
+            // flow-scoped event subscriptions so a reused FlowContext does
+            // not accumulate stale subscribers across runs. Paused and
+            // interrupted evals keep theirs — the run continues on resume.
+            if (!exchanger.isStopped() && !exchanger.isInterrupted()) {
+                exchanger.context().eventBus().clear();
+            }
+            // Resume replay walks from START with tasks skipped until the
+            // traced node is reached. If gateway conditions changed since the
+            // partial run, the walk may never reach it — silently returning
+            // success with every task skipped would be worse than failing.
+            // Only a genuinely interrupted run (trace holds a non-END node)
+            // counts as resume: a fresh eval whose flow was blocked by an
+            // interceptor legitimately ends with tasks never started.
+            NodeRecord last = exchanger.context().trace().lastRecord(graph.getId());
+            if (last != null && !last.isEnd()
+                    && !exchanger.isStopped() && exchanger.isReverting()) {
+                throw new FlowException(
+                    "Unable to resume graph '" + graph.getId()
+                        + "': the resume point was not reached during replay "
+                        + "(a gateway condition may have changed since the "
+                        + "interrupted run)"
+                );
+            }
         } catch (StackOverflowError e) {
             // Safety net for recursion the depth guard cannot see (e.g. a
             // user TaskComponent recursing) — surface it as a FlowException
@@ -172,7 +200,6 @@ public class FlowEngineImpl implements FlowEngine {
 
         if (exchanger.isStopped()) return false;
         if (exchanger.isInterrupted()) {
-            exchanger.interrupt(false);
             return false;
         }
         return true;
@@ -188,7 +215,6 @@ public class FlowEngineImpl implements FlowEngine {
 
         if (exchanger.isStopped()) return false;
         if (exchanger.isInterrupted()) {
-            exchanger.interrupt(false);
             return false;
         }
         return true;
@@ -213,26 +239,43 @@ public class FlowEngineImpl implements FlowEngine {
         if (exchanger.isReverting()) return true;
 
         if (!onNodeStart(exchanger, options, node)) return false;
+        boolean ended = false;
+        try {
+            if (condition_test(exchanger, node.getWhen(), true)) {
+                try {
+                    exchanger.driver().handleTask(exchanger, node.getTask());
+                } catch (FlowException e) {
+                    throw e;
+                } catch (IllegalStateException | IllegalArgumentException e) {
+                    throw e; // configuration errors — preserve original type
+                } catch (Throwable e) {
+                    throw new FlowException(FlowException.TASK_FAILED + ": " + node.getGraph().getId() + " / " + node.getId(), e);
+                }
+            }
 
-        if (condition_test(exchanger, node.getWhen(), true)) {
-            try {
-                exchanger.driver().handleTask(exchanger, node.getTask());
-            } catch (FlowException e) {
-                throw e;
-            } catch (IllegalStateException | IllegalArgumentException e) {
-                throw e; // configuration errors — preserve original type
-            } catch (Throwable e) {
-                throw new FlowException("The task handle failed: " + node.getGraph().getId() + " / " + node.getId(), e);
+            if (exchanger.isStopped()) return false;
+            if (exchanger.isInterrupted()) return false;
+
+            // Mark BEFORE invoking so a throwing onNodeEnd is not re-invoked
+            // by the failure path below.
+            ended = true;
+            return onNodeEnd(exchanger, options, node);
+        } finally {
+            // Failure path: every onNodeStart must be paired with onNodeEnd,
+            // otherwise interceptors/drivers maintaining per-node state
+            // (e.g. a nesting stack) leak on the first exception. The end
+            // hook failure is logged, never masking the original exception.
+            if (!ended) {
+                try {
+                    onNodeEnd(exchanger, options, node);
+                } catch (Exception ex) {
+                    LOG.warn(
+                        "onNodeEnd failed after task failure at {}/{}",
+                        node.getGraph().getId(), node.getId(), ex
+                    );
+                }
             }
         }
-
-        if (exchanger.isStopped()) return false;
-        if (exchanger.isInterrupted()) {
-            exchanger.interrupt(false);
-            return false;
-        }
-
-        return onNodeEnd(exchanger, options, node);
     }
 
     // ==================== dispatcher ====================
@@ -258,8 +301,10 @@ public class FlowEngineImpl implements FlowEngine {
     /** The recursive traversal body — kept separate so the depth guard wraps every entry. */
     private void nodeRunBody(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) throws FlowException {
         if (exchanger.isStopped()) return;
+        // interrupt() is global for the run: once set it stops every branch at
+        // its next node boundary. Deliberately NOT cleared here — clearing on
+        // first observation made which branches stop scheduling-dependent.
         if (exchanger.isInterrupted()) {
-            exchanger.interrupt(false);
             return;
         }
 
@@ -287,6 +332,11 @@ public class FlowEngineImpl implements FlowEngine {
             case EXCLUSIVE -> exclusive_run(exchanger, options, node, startNode);
             case PARALLEL  -> parallel_run(exchanger, options, node, startNode);
             case LOOP      -> loop_run(exchanger, options, node, startNode);
+            // Defensive: a graph built through a path that bypasses v2
+            // validation must fail loudly instead of silently dead-ending.
+            case UNKNOWN   -> throw new FlowException(
+                "Node '" + node.getId() + "' in graph '"
+                    + node.getGraph().getId() + "' has UNKNOWN type");
         }
     }
 
@@ -306,6 +356,9 @@ public class FlowEngineImpl implements FlowEngine {
 
     protected void end_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
         if (!onNodeStart(exchanger, options, node)) return;
+        // Direct completion signal — independent of the trace (which may be
+        // disabled) and of trace reset semantics for repeated subgraph calls.
+        exchanger.markEnded(node.getGraph());
         onNodeEnd(exchanger, options, node);
     }
 
@@ -374,9 +427,15 @@ public class FlowEngineImpl implements FlowEngine {
             // the Nth arrival activates it and earlier ones park. Branches
             // whose condition does not route them to the gateway would leave
             // the join incomplete — same limitation as before, now explicit.
+            // The counter is reset on activation (like PARALLEL) so a loop
+            // body containing the fork-join re-arms for its next iteration.
             synchronized (exchanger.execState().stack(node.getGraph(), "inclusive_run")) {
                 int arrived = exchanger.execState().countIncr(node.getGraph(), node.getId());
-                return arrived >= node.getPrevLinks().size();
+                if (arrived >= node.getPrevLinks().size()) {
+                    exchanger.execState().countSet(node.getGraph(), node.getId(), 0);
+                    return true;
+                }
+                return false;
             }
         }
         return true;
@@ -433,8 +492,14 @@ public class FlowEngineImpl implements FlowEngine {
                 throw new FlowException("Parallel execution interrupted", e);
             }
             if (errorRef.get() != null) {
-                if (errorRef.get() instanceof FlowException) throw (FlowException) errorRef.get();
-                throw new FlowException(errorRef.get());
+                Throwable ex = errorRef.get();
+                // Match the serial path's exception-type contract: configuration
+                // errors (missing binding, bad marker) stay distinguishable.
+                if (ex instanceof FlowException fe) throw fe;
+                if (ex instanceof IllegalStateException || ex instanceof IllegalArgumentException) {
+                    throw (RuntimeException) ex;
+                }
+                throw new FlowException(ex);
             }
         }
     }
@@ -455,7 +520,7 @@ public class FlowEngineImpl implements FlowEngine {
 
     @SuppressWarnings("unchecked")
     protected boolean loop_run_in(FlowExchanger exchanger, Node node) {
-        Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run");
+        Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run/" + node.getId());
         // Atomic peek→hasNext→pop: a LOOP node reachable from concurrent
         // PARALLEL branches shares this stack.
         synchronized (stack) {
@@ -491,8 +556,15 @@ public class FlowEngineImpl implements FlowEngine {
         else if (inObj instanceof Iterable) iter = ((Iterable<?>) inObj).iterator();
         else throw new FlowException(inKey + " is not a collection");
 
-        Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run");
-        stack.push(iter);
+        // Keyed per node (not per graph) and replaced (not pushed) on every
+        // entry: a $for node re-entered after an exception or a previous run
+        // must not accumulate exhausted iterators, and sibling LOOP nodes in
+        // the same graph must not observe this node's iterator.
+        Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run/" + node.getId());
+        synchronized (stack) {
+            stack.clear();
+            stack.push(iter);
+        }
 
         // Guard against unbounded iteration: a misconfigured or malicious
         // $in (e.g. a multi-million-element list) would otherwise spin here
@@ -509,7 +581,13 @@ public class FlowEngineImpl implements FlowEngine {
                 );
             }
             Object item = iter.next();
-            exchanger.context().put(forKey, item);
+            if (item == null) {
+                // put() silently ignores null — remove instead so a null
+                // element cannot leave the PREVIOUS iteration's value visible.
+                exchanger.context().remove(forKey);
+            } else {
+                exchanger.context().put(forKey, item);
+            }
             activity_run_out(exchanger, options, node, startNode);
         }
     }

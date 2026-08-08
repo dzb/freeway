@@ -1,7 +1,7 @@
 package com.jujin.freeway.flow;
 
 /**
- * 任务组件
+ * Task component
  *
  * @author noear
  * @since 3.0
@@ -9,10 +9,10 @@ package com.jujin.freeway.flow;
 @FunctionalInterface
 public interface TaskComponent {
     /**
-     * 运行
+     * Runs
      *
-     * @param context 流上下文
-     * @param node    当前节点
+     * @param context the flow context
+     * @param node    the current node
      */
     void run(FlowContext context, Node node) throws Throwable;
 }

@@ -1,18 +1,20 @@
 package com.jujin.freeway.flow;
 
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 单次流交换器。
+ * Per-execution flow exchanger.
  *
- * <p>迁移说明：
+ * <p>Migration notes:
  * <ul>
- *   <li>把子图调用共享的执行态、上下文和步数计数器集中到一个运行期对象里，避免散落到图结构本身。</li>
- *   <li>{@code reverting}、{@code stopped}、{@code interrupted} 只表示当前执行过程中的控制信号，不写入图定义。</li>
- *   <li>提供 {@code copy()} 以便在子图跳转时复用同一执行态，但切换到不同的 {@link Graph} 或 {@link FlowContext}。</li>
+ *   <li>The execution state, context and step counter shared across sub-graph calls are consolidated into one runtime object instead of being scattered through the graph structure itself.</li>
+ *   <li>{@code reverting}, {@code stopped} and {@code interrupted} are only control signals of the current execution; they are not written into the graph definition.</li>
+ *   <li>{@code copy()} is provided to reuse the same execution state when switching sub-graphs, but with a different {@link Graph} or {@link FlowContext}.</li>
  * </ul>
- * 这样做是为了让执行态可控、可回放，也避免把运行时控制标志污染到模型层。</p>
+ * This keeps the execution state controllable and replayable, and avoids polluting the model layer with runtime control flags.</p>
  *
  * @author noear
  * @since 3.0
@@ -28,6 +30,8 @@ public class FlowExchanger {
     private final ExecState execState;
     /** Shared recursion depth guard — see {@link FlowEngineImpl#MAX_EXECUTION_DEPTH}. */
     private final AtomicInteger depth;
+    /** Graphs whose END node was reached in this evaluation. */
+    private final Set<String> graphEnded = ConcurrentHashMap.newKeySet();
     private volatile boolean interrupted = false;
     private volatile boolean stopped = false;
     private volatile boolean reverting = true;
@@ -89,15 +93,22 @@ public class FlowExchanger {
     // --- sub-graph ---
 
     public void runGraph(Graph graph) {
-        prevStep(); // 回退步数（子图调用不算步数）
+        prevStep(); // roll back the step count (sub-graph calls do not count as steps)
+        // Reset the subgraph's trace entry BEFORE evaluation: eval resumes
+        // from the traced node, so a second invocation of the same subgraph
+        // would otherwise replay from its recorded END and silently skip the
+        // body.
+        context.trace().recordNode(graph, null);
         // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
         FlowExchanger subEx = new FlowExchanger(graph, engine,
             engine.getDriver(graph), context, steps, stepCount, execState, depth);
         engine.eval(graph, subEx, null);
 
         if (!isStopped()) {
-            if (!context.trace().isEnd(graph.getId())) {
-                interrupt(); // 子图未结束，中断当前分支
+            // Completion is tracked on the exchanger (markEnded), not the
+            // trace: trace may be disabled, and is reset per invocation.
+            if (!subEx.isGraphEnded(graph.getId())) {
+                interrupt(); // sub-graph did not end, interrupt the current branch
             }
         }
     }
@@ -109,8 +120,22 @@ public class FlowExchanger {
         } catch (FlowException e) {
             throw e;
         } catch (Throwable e) {
-            throw new FlowException("The task handle failed: " + node.getGraph().getId() + " / " + node.getId(), e);
+            throw new FlowException(FlowException.TASK_FAILED + ": " + node.getGraph().getId() + " / " + node.getId(), e);
         }
+    }
+
+    /** Marks a graph as having reached its END node (see {@link FlowEngineImpl#end_run}). */
+    void markEnded(Graph graph) {
+        graphEnded.add(graph.getId());
+    }
+
+    /**
+     * True when this evaluation reached the graph's END node. Used instead of
+     * the trace for subgraph completion — the trace may be disabled and is
+     * reset between subgraph invocations.
+     */
+    boolean isGraphEnded(String graphId) {
+        return graphEnded.contains(graphId);
     }
 
     // --- step control ---
@@ -140,8 +165,6 @@ public class FlowExchanger {
     public boolean isInterrupted() { return interrupted; }
 
     public void interrupt() { this.interrupted = true; }
-
-    public void interrupt(boolean interrupted) { this.interrupted = interrupted; }
 
     // --- reverting ---
 
