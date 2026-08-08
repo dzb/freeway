@@ -356,17 +356,17 @@ class SqlTest {
     void returningValidatedAgainstDialect() {
         Sql q = Sql.insert("users").set("name", "john").returning("id");
         assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id",
-            q.sql(new com.jujin.freeway.db.schema.PostgresDialect()));
+            q.sql(new com.jujin.freeway.db.dialect.PostgresDialect()));
         assertThrows(SqlException.class, () ->
-            q.sql(new com.jujin.freeway.db.schema.MySqlDialect()));
+            q.sql(new com.jujin.freeway.db.dialect.MySqlDialect()));
     }
 
     @Test
     void onConflictValidatedAgainstDialect() {
         Sql q = Sql.insert("users").set("id", 1).onConflict("id").doNothing();
-        q.sql(new com.jujin.freeway.db.schema.PostgresDialect());
+        q.sql(new com.jujin.freeway.db.dialect.PostgresDialect());
         assertThrows(SqlException.class, () ->
-            q.sql(new com.jujin.freeway.db.schema.MySqlDialect()));
+            q.sql(new com.jujin.freeway.db.dialect.MySqlDialect()));
     }
 
     @Test
@@ -645,5 +645,61 @@ class SqlTest {
     }
 
     public record IdName(long id, String name) {
+    }
+
+    // ====================== 审计修复回归 ======================
+
+    @Test
+    void dollarQuotedLiteralInFragmentIsPreserved() {
+        Sql q = Sql.select("*").from("t")
+            .where("note = $tag$body :x $tag$");
+        assertEquals(
+            "SELECT * FROM t WHERE note = $tag$body :x $tag$",
+            q.sql()
+        );
+        assertArrayEquals(new Object[0], q.args());
+    }
+
+    @Test
+    void insertWithoutSetThrows() {
+        SqlException ex = assertThrows(SqlException.class, () -> Sql.insert("t").sql());
+        assertTrue(ex.getMessage().contains("at least one column"));
+    }
+
+    @Test
+    void updateWithoutSetThrows() {
+        SqlException ex = assertThrows(SqlException.class,
+            () -> Sql.update("t").where("id = ?", 1).sql());
+        assertTrue(ex.getMessage().contains("at least one SET"));
+    }
+
+    @Test
+    void orderByAfterLimitIsRejected() {
+        assertThrows(IllegalStateException.class,
+            () -> Sql.select("*").from("t").limit(5).orderBy("id"));
+    }
+
+    @Test
+    void offsetWithoutLimitIsRejected() {
+        assertThrows(IllegalStateException.class,
+            () -> Sql.select("*").from("t").offset(5));
+    }
+
+    @Test
+    void insertSetRejectsExpression() {
+        assertThrows(IllegalArgumentException.class,
+            () -> Sql.insert("t").set("name = ?", "x"));
+    }
+
+    @Test
+    void postgresXorFragmentIsDocumentedLimitation() {
+        // SUPERSET treats bare '#' as a MySQL comment (jsonb #> exempted), so
+        // a PostgreSQL XOR fragment with a placeholder after '#' cannot be
+        // normalized at build time — the '?' is swallowed by the comment.
+        SqlException ex = assertThrows(SqlException.class,
+            () -> Sql.select("*").from("t").where("flags # 8 = ?", 1));
+        assertTrue(ex.getMessage().contains("Too many parameter values"),
+            "XOR fragments must fail at build time with a clear count error: "
+                + ex.getMessage());
     }
 }

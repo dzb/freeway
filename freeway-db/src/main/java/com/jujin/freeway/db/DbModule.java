@@ -7,13 +7,13 @@ import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.migration.MigrationRunner;
-import com.jujin.freeway.db.schema.Dialect;
-import com.jujin.freeway.db.schema.H2Dialect;
-import com.jujin.freeway.db.schema.MySqlDialect;
-import com.jujin.freeway.db.schema.PostgresDialect;
+import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.dialect.H2Dialect;
+import com.jujin.freeway.db.dialect.MySqlDialect;
+import com.jujin.freeway.db.dialect.PostgresDialect;
 import com.jujin.freeway.db.schema.Schema;
 import com.jujin.freeway.db.schema.SchemaEntity;
-import com.jujin.freeway.db.schema.SqliteDialect;
+import com.jujin.freeway.db.dialect.SqliteDialect;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -25,7 +25,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -84,9 +86,22 @@ public final class DbModule implements ModuleEx {
             .to(container -> buildDatabase(container));
         binder
             .bind(DatabaseHub.class)
-            .to(container ->
-                new DatabaseHubImpl(container.extension(NamedDatabase.class).all())
-            );
+            .to(container -> {
+                // Auto-register the single configured Database as "primary"
+                // unless a user contribution already owns that name — the
+                // user's database wins.
+                List<NamedDatabase> named =
+                    new ArrayList<>(container.extension(NamedDatabase.class).all());
+                boolean userPrimary = named.stream()
+                    .anyMatch(entry -> "primary".equals(entry.name()));
+                if (!userPrimary) {
+                    named.add(new NamedDatabase(
+                        "primary",
+                        container.get(Database.class)
+                    ));
+                }
+                return new DatabaseHubImpl(named);
+            });
         binder.bind(Orm.class).to(Orm.class);
         binder
             .bind(MigrationRunner.class)
@@ -235,16 +250,7 @@ public final class DbModule implements ModuleEx {
 
     static String detectDialect(SymbolSource s) {
         String url = s.resolve(DbConfigKeys.URL, "");
-        if (url.contains(":postgresql:")) return "postgresql";
-        if (url.contains(":mysql:") || url.contains(":mariadb:")) return "mysql";
-        if (url.contains(":h2:")) {
-            String upper = url.toUpperCase();
-            if (upper.contains("MODE=MYSQL") || upper.contains("MODE=MARIADB")) return "mysql";
-            if (upper.contains("MODE=POSTGRESQL")) return "postgresql";
-            return "h2";
-        }
-        if (url.contains(":sqlite:")) return "sqlite";
-        return "";
+        return DatabaseBuilder.dialectForUrl(url).dialectId();
     }
 
     private static Set<String> parseGroupFilter(String value) {

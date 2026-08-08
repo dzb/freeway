@@ -1,4 +1,4 @@
-package com.jujin.freeway.db.schema;
+package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
 import java.util.HashSet;
@@ -26,6 +26,12 @@ public final class H2Dialect extends PostgresDialect {
     @Override
     public String dialectId() {
         return "h2";
+    }
+
+    @Override
+    public String identifierQuoteChars() {
+        // H2 accepts ANSI double quotes and MySQL-style backticks.
+        return "\"`";
     }
 
     @Override

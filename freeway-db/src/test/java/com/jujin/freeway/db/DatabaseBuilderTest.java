@@ -2,7 +2,8 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.db.PooledConnection;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.db.schema.MySqlDialect;
+import com.jujin.freeway.db.dialect.H2Dialect;
+import com.jujin.freeway.db.dialect.MySqlDialect;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -118,6 +119,40 @@ class DatabaseBuilderTest {
         try (db) {
             assertEquals("mysql", db.dialect().dialectId());
             assertFalse(db.dialect().supportsReturning());
+        }
+    }
+
+    @Test
+    void detectsDialectFromJdbcUrl() {
+        assertDialectForUrl("jdbc:mysql://localhost:3306/app", "mysql");
+        assertDialectForUrl("jdbc:sqlite:/tmp/freeway_builder.db", "sqlite");
+        assertDialectForUrl("jdbc:h2:mem:freeway_builder_plain", "h2");
+        assertDialectForUrl("jdbc:h2:mem:freeway_builder_mysqlmode;MODE=MySQL", "mysql");
+        assertDialectForUrl("jdbc:postgresql://localhost/app", "postgresql");
+    }
+
+    @Test
+    void explicitDialectOverridesUrlDetection() {
+        Database db = new DatabaseBuilder()
+            .config(PoolConfig.defaults("jdbc:mysql://localhost:3306/app", "sa", ""))
+            .dialect(new H2Dialect())
+            .pool(new StubPool())
+            .build();
+        try (db) {
+            assertEquals("h2", db.dialect().dialectId(),
+                "explicit .dialect(...) must win over URL auto-detection");
+        }
+    }
+
+    private static void assertDialectForUrl(String url, String expectedId) {
+        // StubPool: the URL is only a dialect hint here, never a real connection.
+        Database db = new DatabaseBuilder()
+            .config(PoolConfig.defaults(url, "sa", ""))
+            .pool(new StubPool())
+            .build();
+        try (db) {
+            assertEquals(expectedId, db.dialect().dialectId(),
+                "URL '" + url + "' must resolve to dialect '" + expectedId + "'");
         }
     }
 

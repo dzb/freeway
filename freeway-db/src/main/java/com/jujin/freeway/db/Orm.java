@@ -7,7 +7,7 @@ import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.schema.Column;
-import com.jujin.freeway.db.schema.Dialect;
+import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.schema.Generated;
 import com.jujin.freeway.db.schema.Id;
 import com.jujin.freeway.db.schema.SqlTypeMapping;
@@ -87,7 +87,13 @@ public final class Orm {
             sql.append(" LIMIT ").append(limit);
         }
         if (offset > 0) {
-            sql.append(" OFFSET ").append(offset);
+            if (limit > 0) {
+                sql.append(" OFFSET ").append(offset);
+            } else {
+                // No LIMIT — MySQL/SQLite reject a bare OFFSET, so each
+                // dialect supplies its own "unlimited" form.
+                sql.append(" ").append(dialect.offsetOnlyClause(offset));
+            }
         }
         return db.query(sql.toString()).list(type);
     }
@@ -103,6 +109,7 @@ public final class Orm {
         BeanPlan plan = BeanIntrospector.plan(t);
         String table = dialect.quoteName(SqlTypeMapping.tableName(t));
         ColumnInfo columns = insertColumns(plan);
+        ensureInsertable(columns, t);
         Object[] values = extractValues(plan, entity, columns.properties);
 
         ExecuteResult result = db.execute(
@@ -139,7 +146,23 @@ public final class Orm {
             return insert(entity, t);
         }
 
-        ColumnInfo columns = insertColumns(plan);
+        // insertColumns() excludes @Generated properties, so the id column(s)
+        // would be missing from the INSERT and the ON CONFLICT could never fire
+        // (silently creating duplicate rows). Include the id properties as well.
+        ColumnInfo baseColumns = insertColumns(plan);
+        List<String> names = new ArrayList<>(baseColumns.names);
+        List<String> rawNames = new ArrayList<>(baseColumns.rawNames);
+        List<BeanProperty> properties = new ArrayList<>(baseColumns.properties);
+        for (BeanProperty idProp : idProps) {
+            String raw = rawColumnName(idProp);
+            if (!rawNames.contains(raw)) {
+                rawNames.add(raw);
+                names.add(dialect.quoteName(raw));
+                properties.add(idProp);
+            }
+        }
+        ColumnInfo columns = new ColumnInfo(names, rawNames, properties, baseColumns.generated);
+        ensureInsertable(columns, t);
         Object[] insertValues = extractValues(plan, entity, columns.properties);
 
         String sql = "INSERT INTO " + table + " (" + String.join(", ", columns.names) + ") VALUES ("
@@ -278,6 +301,16 @@ public final class Orm {
 
     private static boolean isOrmTransient(BeanProperty prop) {
         return prop.hasAnnotation(Transient.class);
+    }
+
+    /** Rejects an entity with nothing to insert (all properties @Generated/@Transient). */
+    private static void ensureInsertable(ColumnInfo columns, Class<?> type) {
+        if (columns.names.isEmpty()) {
+            throw new SqlException(
+                "No insertable properties on " + type.getName()
+                    + " (all columns are @Generated or @Transient)"
+            );
+        }
     }
 
     private static String rawColumnName(BeanProperty prop) {

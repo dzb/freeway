@@ -1,4 +1,4 @@
-package com.jujin.freeway.db.schema;
+package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
 import java.util.ArrayList;
@@ -21,7 +21,8 @@ public final class MySqlDialect implements Dialect {
     private static final Set<String> RESERVED = buildReserved(
         "status", "show", "describe", "explain", "use", "repeat", "loop", "leave",
         "iterate", "return", "while", "declare", "handler", "condition", "signal",
-        "resignal", "get", "diagnostics", "sqlstate", "call", "do", "if", "for"
+        "resignal", "get", "diagnostics", "sqlstate", "call", "do", "if", "for",
+        "rank", "partition", "system", "groups", "cube", "rollup"
     );
 
     @Override
@@ -32,6 +33,16 @@ public final class MySqlDialect implements Dialect {
     @Override
     public char quoteChar() {
         return '`';
+    }
+
+    @Override
+    public String identifierQuoteChars() {
+        return "\"`";
+    }
+
+    @Override
+    public boolean hashLineComments() {
+        return true;
     }
 
     @Override
@@ -57,6 +68,12 @@ public final class MySqlDialect implements Dialect {
             updates.add(q + " = VALUES(" + q + ")");
         }
         return " ON DUPLICATE KEY UPDATE " + String.join(", ", updates);
+    }
+
+    @Override
+    public String offsetOnlyClause(long offset) {
+        // MySQL rejects a bare OFFSET; LIMIT <max BIGINT UNSIGNED> = "no limit".
+        return "LIMIT 18446744073709551615 OFFSET " + offset;
     }
 
     @Override

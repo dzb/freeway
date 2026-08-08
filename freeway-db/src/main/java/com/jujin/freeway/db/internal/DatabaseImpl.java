@@ -12,24 +12,27 @@ import com.jujin.freeway.db.PooledConnection;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.Transactional;
-import com.jujin.freeway.db.schema.Dialect;
-import com.jujin.freeway.db.schema.PostgresDialect;
+import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.dialect.PostgresDialect;
 import com.jujin.freeway.db.util.SqlTextParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class DatabaseImpl implements Database {
 
     private static final Logger LOG = LoggerFactory.getLogger(
         DatabaseImpl.class
     );
-    private static final ScopedValue<PooledConnection> TX_CONN =
-        ScopedValue.newInstance();
-    /** Bumped whenever a transaction releases its connection back to the pool. */
-    private final AtomicLong txEpoch = new AtomicLong();
+
+    /**
+     * Transaction binding for this Database instance. Instance-scoped so a
+     * transaction on one Database never leaks into another Database's
+     * queries (a static key made {@code db1.transaction(() -> hub.get("audit").query(...))}
+     * silently execute audit's SQL on db1's connection).
+     */
+    private final ScopedValue<TxBinding> tx = ScopedValue.newInstance();
 
     private final Pool pool;
     private final RowMapperResolver rowMapperResolver;
@@ -66,27 +69,33 @@ public final class DatabaseImpl implements Database {
 
     @Override
     public Query query(String sql, Object... params) {
-        return new QueryImpl(this, txConnection(), sql, params, false);
+        return new QueryImpl(
+            this,
+            tx.isBound() ? tx.get() : null,
+            sql,
+            params,
+            false
+        );
     }
 
     @Override
     public ExecuteResult execute(String sql, Object... params) {
         return new QueryImpl(
             this,
-            txConnection(),
+            tx.isBound() ? tx.get() : null,
             sql,
             params,
-            startsWithInsert(sql)
+            startsWithInsert(sql, dialect)
         ).execute();
     }
 
     @Override
     public BatchQuery batch(String sql) {
-        return new BatchQueryImpl(this, txConnection(), sql);
-    }
-
-    private PooledConnection txConnection() {
-        return TX_CONN.isBound() ? TX_CONN.get() : null;
+        return new BatchQueryImpl(
+            this,
+            tx.isBound() ? tx.get() : null,
+            sql
+        );
     }
 
     @Override
@@ -103,7 +112,7 @@ public final class DatabaseImpl implements Database {
      */
     @Override
     public void transaction(IsolationLevel isolation, Transactional work) {
-        if (TX_CONN.isBound()) {
+        if (tx.isBound()) {
             throw new IllegalStateException("Nested transaction not supported");
         }
         PooledConnection conn = pool.borrow();
@@ -115,8 +124,9 @@ public final class DatabaseImpl implements Database {
             if (isolation != null && isolation != IsolationLevel.DEFAULT) {
                 raw.setTransactionIsolation(isolation.jdbcLevel());
             }
+            TxBinding binding = new TxBinding(conn);
             Defer.within(() -> {
-                ScopedValue.where(TX_CONN, conn).run(() -> {
+                ScopedValue.where(tx, binding).run(() -> {
                     try {
                         work.run();
                     } catch (Exception e) {
@@ -132,7 +142,11 @@ public final class DatabaseImpl implements Database {
                 }
                 LOG.trace("Transaction committed");
             });
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            // Catch Throwable, not just Exception: an Error thrown by work
+            // (e.g. AssertionError) must still roll back — the finally's
+            // restoreConnectionState setAutoCommit(true) would otherwise
+            // silently COMMIT the failed transaction.
             LOG.debug("Transaction rolled back", e);
             try {
                 conn.connection().rollback();
@@ -140,11 +154,11 @@ public final class DatabaseImpl implements Database {
                 LOG.warn("Transaction rollback failed", re);
             }
             if (e instanceof RuntimeException re) throw re;
+            if (e instanceof Error err) throw err;
             throw new RuntimeException(e);
         } finally {
             restoreConnectionState(conn, originalIsolation);
             pool.release(conn);
-            txEpoch.incrementAndGet();
         }
     }
 
@@ -177,8 +191,8 @@ public final class DatabaseImpl implements Database {
         }
     }
 
-    static boolean startsWithInsert(String sql) {
-        return SqlTextParser.hasTopLevelInsert(sql);
+    static boolean startsWithInsert(String sql, Dialect dialect) {
+        return SqlTextParser.hasTopLevelInsert(sql, dialect);
     }
 
     @Override
@@ -217,20 +231,37 @@ public final class DatabaseImpl implements Database {
         return pool;
     }
 
-    long txEpoch() {
-        return txEpoch.get();
+    /**
+     * Immutable identity handle for one transaction on this Database. Queries
+     * and batches created inside a transaction capture the binding and are
+     * validated against it at consumption time.
+     */
+    static final class TxBinding {
+
+        private final PooledConnection conn;
+
+        TxBinding(PooledConnection conn) {
+            this.conn = conn;
+        }
+
+        PooledConnection conn() {
+            return conn;
+        }
     }
 
     /**
      * Guards against consuming a Query/BatchQuery created inside a
-     * transaction after that transaction has released its connection.
+     * transaction after that transaction has released its connection, or on
+     * a different thread (ScopedValue does not propagate). Identity-compared
+     * against the current thread's binding, so concurrent transactions on
+     * other threads never invalidate this one.
      */
-    void checkBoundEpoch(long epoch) {
-        if (epoch != txEpoch.get()) {
+    void checkBound(TxBinding binding) {
+        if (!tx.isBound() || tx.get() != binding) {
             throw new SqlException(
                 "Query/BatchQuery created inside a transaction must be consumed "
-                    + "before the transaction ends — the pooled connection has "
-                    + "already been released"
+                    + "on the transaction thread before the transaction ends — "
+                    + "the pooled connection is not bound to this thread"
             );
         }
     }

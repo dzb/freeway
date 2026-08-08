@@ -1,9 +1,13 @@
 package com.jujin.freeway.db.util;
 
+import com.jujin.freeway.db.dialect.MySqlDialect;
+import com.jujin.freeway.db.dialect.PostgresDialect;
+import com.jujin.freeway.db.dialect.SqliteDialect;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -330,5 +334,160 @@ class SqlTextParserTest {
             "insert into t (id, name) values (?, ?)",
             r.sql()
         );
+    }
+
+    // ===================== 标识符 / 注释 / 转义 =====================
+
+    @Test
+    void backtickIdentifierIsNotParsedForParams() {
+        var r = SqlTextParser.parseNamed(
+            "select `a:b` from t where id = :id"
+        );
+        assertEquals(List.of("id"), r.names());
+        assertEquals("select `a:b` from t where id = ?", r.sql());
+    }
+
+    @Test
+    void paramIndexesSkipQuestionMarkInBacktickIdentifier() {
+        // The ? inside `a?b` is identifier text, not a placeholder; only the
+        // trailing ? counts.
+        assertEquals(
+            List.of(30),
+            SqlTextParser.paramIndexes("select `a?b` from t where x = ?")
+        );
+    }
+
+    @Test
+    void bracketIdentifierIsNotParsedForParams() {
+        var r = SqlTextParser.parseNamed(
+            "select [a:b] from t where id = :id"
+        );
+        assertEquals(List.of("id"), r.names());
+        assertEquals("select [a:b] from t where id = ?", r.sql());
+    }
+
+    @Test
+    void hashCommentIsSkipped() {
+        var r = SqlTextParser.parseNamed("select 1 # :x\nfrom t");
+        assertEquals(List.of(), r.names());
+        assertEquals("select 1 # :x\nfrom t", r.sql());
+    }
+
+    @Test
+    void jsonbHashOperatorIsNotAComment() {
+        var r = SqlTextParser.parseNamed("select data #> :path from t");
+        assertEquals(List.of("path"), r.names());
+        assertEquals("select data #> ? from t", r.sql());
+    }
+
+    @Test
+    void escapeStringBackslashQuotesAreSkipped() {
+        var r = SqlTextParser.parseNamed(
+            "select E'it\\'s' from t where x = :x"
+        );
+        assertEquals(List.of("x"), r.names());
+        assertEquals("select E'it\\'s' from t where x = ?", r.sql());
+    }
+
+    @Test
+    void unterminatedDollarQuoteIsLeftAsLiteral() {
+        var r = SqlTextParser.parseNamed("select $$abc");
+        assertEquals(List.of(), r.names());
+        // Regression: the body used to be appended twice ("$$abcabc").
+        assertEquals("select $$abc", r.sql());
+    }
+
+    @Test
+    void splitStatementsIgnoresSemicolonsInHashComments() {
+        var stmts = SqlTextParser.splitStatements(
+            "select 1 # comment; here\n; select 2"
+        );
+        assertEquals(List.of("select 1", "select 2"), stmts);
+    }
+
+    // ===================== 方言画像 =====================
+
+    @Test
+    void postgresProfileTreatsHashAsOperatorNotComment() {
+        // PostgreSQL has no # comments — # is the XOR operator, so a named
+        // parameter inside a "# ..." region is real SQL there.
+        var r = SqlTextParser.parseNamed(
+            "select a # b where x = :x",
+            new PostgresDialect()
+        );
+        assertEquals(List.of("x"), r.names());
+        assertEquals("select a # b where x = ?", r.sql());
+    }
+
+    @Test
+    void postgresProfileKeepsJsonbPathOperators() {
+        var r = SqlTextParser.parseNamed(
+            "select data #> :path from t",
+            new PostgresDialect()
+        );
+        assertEquals(List.of("path"), r.names());
+        assertEquals("select data #> ? from t", r.sql());
+    }
+
+    @Test
+    void postgresProfileDoesNotRecognizeBackticks() {
+        // Backticks are not quoting in PostgreSQL, so :b inside them is a
+        // parameter there (the lenient superset treats them as an identifier).
+        var r = SqlTextParser.parseNamed(
+            "select `a:b` from t where x = :x",
+            new PostgresDialect()
+        );
+        assertEquals(List.of("b", "x"), r.names());
+    }
+
+    @Test
+    void mysqlProfileRecognizesHashCommentsAndBackticks() {
+        var comment = SqlTextParser.parseNamed(
+            "select 1 # :x\nfrom t",
+            new MySqlDialect()
+        );
+        assertEquals(List.of(), comment.names());
+
+        var backtick = SqlTextParser.parseNamed(
+            "select `a:b` from t where id = :id",
+            new MySqlDialect()
+        );
+        assertEquals(List.of("id"), backtick.names());
+        assertEquals("select `a:b` from t where id = ?", backtick.sql());
+    }
+
+    @Test
+    void sqliteProfileRecognizesBackticks() {
+        // SQLite accepts ANSI double quotes and MySQL-style backticks.
+        var r = SqlTextParser.parseNamed(
+            "select `a:b` from t where x = :x",
+            new SqliteDialect()
+        );
+        assertEquals(List.of("x"), r.names());
+        assertEquals("select `a:b` from t where x = ?", r.sql());
+    }
+
+    @Test
+    void supersetDefaultStaysLenient() {
+        // The no-dialect entry points keep the union-of-dialects behavior.
+        var r = SqlTextParser.parseNamed("select `a:b` from t where x = :x");
+        assertEquals(List.of("x"), r.names());
+    }
+
+    // ===================== INSERT 检测 =====================
+
+    @Test
+    void insertDetectionRequiresStatementHead() {
+        assertTrue(SqlTextParser.hasTopLevelInsert("insert into t values (1)"));
+        assertTrue(SqlTextParser.hasTopLevelInsert("INSERT INTO t values (1)"));
+        assertTrue(
+            SqlTextParser.hasTopLevelInsert(
+                "with x as (select 1) insert into t select * from x"
+            )
+        );
+        // Regression: a depth-0 'insert' token inside a SELECT must not match.
+        assertFalse(SqlTextParser.hasTopLevelInsert("select * from insert into"));
+        assertFalse(SqlTextParser.hasTopLevelInsert("delete from t"));
+        assertFalse(SqlTextParser.hasTopLevelInsert("-- comment\nselect 1"));
     }
 }

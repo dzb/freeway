@@ -382,6 +382,29 @@ class RowMapperTest {
         }
     }
 
+    @Test
+    void rejectsZeroPropertyBeanType() {
+        // Regression: JDK lookup fallback made plan() succeed for types with
+        // no writable properties; mapping them must fail loudly instead of
+        // silently producing an empty instance per row.
+        String dbName = uniqueDb("err_zero_props");
+        Database db = builder(dbName).build();
+        try (db) {
+            db.execute("create table t (v int)");
+            db.execute("insert into t values (1)");
+
+            SqlException ex = assertThrows(SqlException.class,
+                () -> db.query("select v from t").one(ZeroProperty.class));
+            assertTrue(ex.getMessage().contains("writable properties"),
+                "expected zero-property rejection, got: " + ex.getMessage());
+        }
+    }
+
+    /** Concrete bean type with no writable properties (all fields final, no setters). */
+    public static class ZeroProperty {
+        public final String marker = "x";
+    }
+
     // ====================== @Column 注解映射 ======================
 
     @Test

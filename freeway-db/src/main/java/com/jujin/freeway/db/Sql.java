@@ -1,7 +1,7 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.db.schema.Dialect;
-import com.jujin.freeway.db.util.Names;
+import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.util.SqlTextParser;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -236,18 +236,21 @@ public final class Sql {
     public Sql orderBy(String clause) {
         requireSelectable("ORDER BY");
         requireNoPendingJoin("ORDER BY");
+        requireBeforeLimit("ORDER BY");
         return withTail(" ORDER BY " + clause);
     }
 
     public Sql groupBy(String columns) {
         requireSimpleSelect("GROUP BY");
         requireNoPendingJoin("GROUP BY");
+        requireBeforeLimit("GROUP BY");
         return withTail(" GROUP BY " + columns);
     }
 
     public Sql having(String expr, Object... values) {
         requireSimpleSelect("HAVING");
         requireNoPendingJoin("HAVING");
+        requireBeforeLimit("HAVING");
         Object[] parsed = normalizeArgs(expr, values);
         String normalized = (String) parsed[0];
         Object[] extraArgs = (Object[]) parsed[1];
@@ -286,6 +289,9 @@ public final class Sql {
         requireSelectable("LIMIT");
         requireNoPendingJoin("LIMIT");
         if (n < 0) throw new IllegalArgumentException("LIMIT must be >= 0, got " + n);
+        if (tail.contains(" OFFSET ")) {
+            throw new IllegalStateException("LIMIT must be called before OFFSET");
+        }
         return withTail(" LIMIT " + n);
     }
 
@@ -293,6 +299,11 @@ public final class Sql {
         requireSelectable("OFFSET");
         requireNoPendingJoin("OFFSET");
         if (n < 0) throw new IllegalArgumentException("OFFSET must be >= 0, got " + n);
+        if (!tail.contains(" LIMIT ")) {
+            throw new IllegalStateException(
+                "OFFSET requires a preceding LIMIT — bare OFFSET is invalid SQL on MySQL and SQLite"
+            );
+        }
         return withTail(" OFFSET " + n);
     }
 
@@ -348,6 +359,19 @@ public final class Sql {
         requireNoPendingJoin("SET");
         if (insertTable != null) {
             // INSERT mode: set("col", value)
+            if (
+                expr.indexOf('?') >= 0 ||
+                expr.indexOf(':') >= 0 ||
+                expr.indexOf('$') >= 0 ||
+                expr.indexOf('=') >= 0 ||
+                expr.indexOf(' ') >= 0 ||
+                expr.indexOf('(') >= 0
+            ) {
+                throw new IllegalArgumentException(
+                    "INSERT set() takes a plain column name, not an expression: \""
+                        + expr + "\" — use set(\"column\", value)"
+                );
+            }
             List<String> newCols = new ArrayList<>(insertColumns);
             List<Object> newVals = new ArrayList<>(insertValues);
             newCols.add(expr);
@@ -406,9 +430,21 @@ public final class Sql {
     private String buildSql() {
         String withClause = renderWithClause();
         if (insertTable != null) {
+            if (insertColumns.isEmpty()) {
+                throw new SqlException(
+                    "INSERT requires at least one column — call set(\"column\", value) before building"
+                );
+            }
             var cols = String.join(", ", insertColumns);
             var placeholders = String.join(", ", insertValues.stream().map(v -> "?").toList());
             return withClause + "INSERT INTO " + insertTable + " (" + cols + ") VALUES (" + placeholders + ")" + tail;
+        }
+        if (updateTable != null && setClauses.isEmpty()) {
+            // Emitting "UPDATE t WHERE ..." without SET would silently touch
+            // every matching row on dialects that tolerate the omission.
+            throw new SqlException(
+                "UPDATE requires at least one SET clause — call set(\"col = ?\", value) before building"
+            );
         }
         var sb = new StringBuilder(head);
 
@@ -632,6 +668,15 @@ public final class Sql {
         }
     }
 
+    /** ORDER BY / GROUP BY / HAVING must be emitted before LIMIT/OFFSET. */
+    private void requireBeforeLimit(String operation) {
+        if (tail.contains(" LIMIT ") || tail.contains(" OFFSET ")) {
+            throw new IllegalStateException(
+                operation + " must be called before LIMIT/OFFSET"
+            );
+        }
+    }
+
     private boolean isSelect() {
         return head != null
             && insertTable == null
@@ -733,95 +778,36 @@ public final class Sql {
     /**
      * Replaces named ({@code :name / $name}) and positional ({@code ?})
      * placeholders with {@code ?} and extracts their values in order.
-     * Skips string literals, quoted identifiers, and comments so placeholders
-     * inside them are not mistaken for parameters. A named parameter repeated
-     * within the same fragment reuses its first value.
+     * String literals, quoted identifiers, and comments are skipped so
+     * placeholders inside them are not mistaken for parameters. A named
+     * parameter repeated within the same fragment reuses its first value.
+     *
+     * <p>Fragments are normalized with the lenient {@link SqlTextParser.LexerConfig#SUPERSET}
+     * profile (no database is bound at build time); execution re-parses the
+     * result against the target database's dialect.
+     *
+     * <p>{@code #} is treated as a line comment (MySQL semantics, with the
+     * {@code #>} / {@code #>>} jsonb operators exempted) — so PostgreSQL's
+     * bare {@code #} XOR operator is not a comment here. A fragment such as
+     * {@code where("flags # 8 = ?", v)} therefore fails the placeholder count
+     * at build time; write the XOR as {@code (flags # 8) = ?} with no
+     * placeholder inside the operator's span, or use the {@code ?} operator's
+     * function form on the target database.
      */
     private static Object[] normalizeArgs(String fragment, Object... values) {
         var sb = new StringBuilder(fragment.length());
         var matched = new ArrayList<>();
         var seen = new HashMap<String, Object>();
-        int vi = 0, len = fragment.length(), i = 0;
+        class Normalizer implements SqlTextParser.TokenSink {
+            int vi;
 
-        while (i < len) {
-            char c = fragment.charAt(i);
-
-            // skip single-quoted string literals to avoid false positives
-            if (c == '\'') {
-                sb.append('\'');
-                i++;
-                while (i < len) {
-                    char sc = fragment.charAt(i);
-                    sb.append(sc);
-                    i++;
-                    if (sc == '\'') {
-                        if (i < len && fragment.charAt(i) == '\'') { sb.append('\''); i++; }
-                        else break;
-                    }
-                }
-                continue;
+            @Override
+            public void text(String sql, int from, int to) {
+                sb.append(sql, from, to);
             }
 
-            // double-quoted identifier — skip (doubled quotes escape)
-            if (c == '"') {
-                sb.append('"');
-                i++;
-                while (i < len) {
-                    char sc = fragment.charAt(i);
-                    sb.append(sc);
-                    i++;
-                    if (sc == '"') {
-                        if (i < len && fragment.charAt(i) == '"') {
-                            sb.append('"');
-                            i++;
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                continue;
-            }
-
-            // -- line comment — skip to end of line
-            if (c == '-' && i + 1 < len && fragment.charAt(i + 1) == '-') {
-                while (i < len && fragment.charAt(i) != '\n') {
-                    sb.append(fragment.charAt(i));
-                    i++;
-                }
-                continue;
-            }
-
-            // /* block comment */ — skip (nested markers are not supported,
-            // matching SqlTextParser)
-            if (c == '/' && i + 1 < len && fragment.charAt(i + 1) == '*') {
-                sb.append("/*");
-                i += 2;
-                while (i < len) {
-                    char cc = fragment.charAt(i);
-                    sb.append(cc);
-                    i++;
-                    if (cc == '*' && i < len && fragment.charAt(i) == '/') {
-                        sb.append('/');
-                        i++;
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            // PostgreSQL :: type cast — must precede :name check
-            if (c == ':' && i + 1 < len && fragment.charAt(i + 1) == ':') {
-                sb.append("::");
-                i += 2;
-                continue;
-            }
-
-            if ((c == ':' || c == '$') && i + 1 < len
-                && Names.isValidParamStart(fragment.charAt(i + 1))) {
-                int start = i + 1;
-                i += 2;
-                while (i < len && Names.isValidParamChar(fragment.charAt(i))) i++;
-                String name = fragment.substring(start, i);
+            @Override
+            public void named(String name, int sourceIndex) {
                 if (seen.containsKey(name)) {
                     // repeated named parameter — reuse the first value
                     appendValue(sb, matched, seen.get(name));
@@ -831,31 +817,28 @@ public final class Sql {
                     appendValue(sb, matched, value);
                 } else {
                     throw new SqlException(
-                        "Missing value for named parameter at position " + start
+                        "Missing value for named parameter at position " + sourceIndex
                             + " in fragment: " + fragment);
                 }
-                continue;
             }
 
-            if (c == '?') {
+            @Override
+            public void positional(int sourceIndex) {
                 if (vi < values.length) {
                     appendValue(sb, matched, values[vi++]);
                 } else {
                     throw new SqlException(
-                        "Missing value for '?' at position " + i + " in fragment: " + fragment);
+                        "Missing value for '?' at position " + sourceIndex + " in fragment: " + fragment);
                 }
-                i++;
-                continue;
             }
-
-            sb.append(c);
-            i++;
         }
+        Normalizer normalizer = new Normalizer();
+        SqlTextParser.scan(fragment, SqlTextParser.LexerConfig.SUPERSET, normalizer);
 
-        if (vi < values.length) {
+        if (normalizer.vi < values.length) {
             throw new SqlException(
                 "Too many parameter values for SQL fragment: " + fragment
-                    + " — " + vi + " placeholder(s) but " + values.length + " value(s) provided");
+                    + " — " + normalizer.vi + " placeholder(s) but " + values.length + " value(s) provided");
         }
 
         return new Object[]{sb.toString(), matched.toArray()};

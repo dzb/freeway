@@ -1,18 +1,18 @@
-package com.jujin.freeway.db.schema;
+package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * SQLite SQL dialect.
  *
  * <p>Uses double-quote quoting, {@code AUTOINCREMENT}, and {@code sqlite_master}
  * for schema introspection. SQLite has no TRUNCATE, so {@link #truncateTable}
- * generates {@code DELETE FROM} and also resets the auto-increment counter
- * via {@code sqlite_sequence}. SQLite has no {@code FOR UPDATE}, so
+ * generates {@code DELETE FROM}, which does <b>not</b> reset the auto-increment
+ * counter (users who need that must delete the row from
+ * {@code sqlite_sequence} manually). SQLite has no {@code FOR UPDATE}, so
  * {@link #forUpdateClause} returns an empty string.
  *
  * <p>SQLite 3.35.0+ supports {@code RETURNING} — {@link #supportsReturning()}
@@ -30,37 +30,22 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
-    public String createTable(TableDef table) {
-        StringBuilder sb = new StringBuilder("CREATE TABLE IF NOT EXISTS ");
-        sb.append(quoteName(table.name())).append(" (\n");
-        List<String> pks = table.primaryKeys();
-        ColumnDef generatedPk = generatedPrimaryKey(table);
-        if (generatedPk != null && pks.size() != 1) {
-            throw new IllegalArgumentException(
-                "SQLite AUTOINCREMENT requires a single primary key column");
-        }
-        for (int i = 0; i < table.columns().size(); i++) {
-            ColumnDef col = table.columns().get(i);
-            sb.append("    ").append(renderColumn(col, generatedPk));
-            if (i < table.columns().size() - 1) {
-                sb.append(",\n");
-            }
-        }
-        if (!pks.isEmpty() && generatedPk == null) {
-            sb.append(",\n    PRIMARY KEY (");
-            sb.append(pks.stream().map(this::quoteName).collect(Collectors.joining(", ")));
-            sb.append(")");
-        }
-        sb.append("\n)");
-        return sb.toString();
+    public String identifierQuoteChars() {
+        // SQLite accepts ANSI double quotes and MySQL-style backticks.
+        return "\"`";
     }
 
     @Override
-    public String addColumn(String tableName, ColumnDef column) {
-        // SQLite ALTER TABLE ADD COLUMN does not support AUTOINCREMENT
-        // or NOT NULL without DEFAULT. Strip both for safety.
-        return "ALTER TABLE " + quoteName(tableName) + " "
-            + column.toAlterSql(this, false, false);
+    public boolean generatedPrimaryKeyInline() {
+        // SQLite requires the generated PK declared on the column itself:
+        // "id" INTEGER PRIMARY KEY AUTOINCREMENT
+        return true;
+    }
+
+    @Override
+    public boolean alterAddColumnNotNull() {
+        // SQLite ALTER TABLE ADD COLUMN cannot add NOT NULL without a DEFAULT.
+        return false;
     }
 
     @Override
@@ -73,6 +58,12 @@ public final class SqliteDialect implements Dialect {
     @Override
     public String forUpdateClause() {
         return "";
+    }
+
+    @Override
+    public String offsetOnlyClause(long offset) {
+        // SQLite rejects a bare OFFSET; LIMIT -1 means "no limit".
+        return "LIMIT -1 OFFSET " + offset;
     }
 
     @Override
@@ -129,33 +120,5 @@ public final class SqliteDialect implements Dialect {
         Set<String> words = new HashSet<>(Dialect.COMMON_RESERVED);
         words.addAll(Set.of(sqliteSpecific));
         return Set.copyOf(words);
-    }
-
-    // ====================== internals ======================
-
-    private String renderColumn(ColumnDef column, ColumnDef generatedPk) {
-        if (column == generatedPk) {
-            return quoteName(column.name()) + " INTEGER PRIMARY KEY " + generatedClause();
-        }
-        return column.toSql(this);
-    }
-
-    private static ColumnDef generatedPrimaryKey(TableDef table) {
-        ColumnDef generatedPk = null;
-        for (ColumnDef column : table.columns()) {
-            if (!column.generated()) {
-                continue;
-            }
-            if (!column.primaryKey()) {
-                throw new IllegalArgumentException(
-                    "SQLite AUTOINCREMENT columns must also be primary keys");
-            }
-            if (generatedPk != null) {
-                throw new IllegalArgumentException(
-                    "SQLite AUTOINCREMENT requires a single generated primary key column");
-            }
-            generatedPk = column;
-        }
-        return generatedPk;
     }
 }

@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.util.Digests;
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.util.SqlTextParser;
 import java.io.IOException;
 import java.io.InputStream;
@@ -72,47 +73,73 @@ public final class MigrationRunner {
     private int doRun() {
 
         List<String> migrations = scanMigrations();
-        if (migrations.isEmpty()) {
-            return 0;
-        }
 
-        // Validate version format before any execution
-        for (String m : migrations) {
-            String v = versionFromPath(m);
-            if (!v.matches(VERSION_PATTERN)) {
-                throw new SqlException(
-                    "Bad migration version '" +
-                        v +
-                        "' in file " +
-                        m +
-                        " — must match pattern " +
-                        VERSION_PATTERN
-                );
+        if (!migrations.isEmpty()) {
+            // Validate version format before any execution
+            for (String m : migrations) {
+                String v = versionFromPath(m);
+                if (!v.matches(VERSION_PATTERN)) {
+                    throw new SqlException(
+                        "Bad migration version '" +
+                            v +
+                            "' in file " +
+                            m +
+                            " — must match pattern " +
+                            VERSION_PATTERN
+                    );
+                }
             }
-        }
 
-        // Reject duplicate versions before any execution
-        Set<String> seen = new HashSet<>();
-        for (String m : migrations) {
-            String v = versionFromPath(m);
-            if (!seen.add(v)) {
-                throw new SqlException(
-                    "Duplicate migration version: " +
-                        v +
-                        " — detected in file " +
-                        m
-                );
+            // Reject duplicate versions before any execution. Versions are
+            // compared numerically (leading zeros stripped per part), so
+            // V1__a.sql and V01__b.sql are the same migration and must not
+            // both be applied.
+            Set<String> seen = new HashSet<>();
+            Map<String, String> seenNormalized = new LinkedHashMap<>();
+            for (String m : migrations) {
+                String v = versionFromPath(m);
+                if (!seen.add(v)) {
+                    throw new SqlException(
+                        "Duplicate migration version: " +
+                            v +
+                            " — detected in file " +
+                            m
+                    );
+                }
+                String normalized = normalizeVersion(v);
+                String previousFile = seenNormalized.putIfAbsent(normalized, m);
+                if (previousFile != null) {
+                    throw new SqlException(
+                        "Duplicate migration version: " +
+                            v +
+                            " — file " +
+                            m +
+                            " is the same version as " +
+                            versionFromPath(previousFile) +
+                            " in " +
+                            previousFile +
+                            " (leading zeros and separators are ignored when comparing versions)"
+                    );
+                }
             }
         }
 
         Map<String, String> existing = loadChecksums();
+        validateAppliedMigrationsPresent(migrations, existing);
+
+        if (migrations.isEmpty()) {
+            return 0;
+        }
+
         validateChecksums(migrations, existing);
 
         int installedRank = loadMaxInstalledRank();
         int ran = 0;
         for (String migration : migrations) {
             String version = versionFromPath(migration);
-            if (existing.containsKey(version)) {
+            // Normalized identity: a renamed file (V01 -> V1) is the same
+            // migration and must not be applied twice.
+            if (existing.containsKey(normalizeVersion(version))) {
                 continue;
             }
             byte[] raw = readResourceBytes(migration);
@@ -123,6 +150,38 @@ public final class MigrationRunner {
         }
         if (ran > 0) LOG.info("Ran {} migration(s)", ran);
         return ran;
+    }
+
+    /**
+     * Fail fast when a previously-applied migration's file is no longer on the
+     * classpath. This catches packaging errors where an artifact ships without
+     * migrations that were already applied; silently skipping them would hide
+     * the mistake until the file is re-added later and surfaces as a confusing
+     * checksum mismatch.
+     */
+    private void validateAppliedMigrationsPresent(
+        List<String> migrations,
+        Map<String, String> existing
+    ) {
+        if (existing.isEmpty()) {
+            return;
+        }
+        Set<String> scanned = new HashSet<>();
+        for (String m : migrations) {
+            scanned.add(normalizeVersion(versionFromPath(m)));
+        }
+        for (String version : existing.keySet()) {
+            if (!scanned.contains(version)) {
+                throw new SqlException(
+                    "Migration V" +
+                        version +
+                        " was applied but its file is missing from the classpath under " +
+                        path +
+                        " — possible packaging error (the migration file was removed " +
+                        "from the deployed artifact)"
+                );
+            }
+        }
     }
 
     /**
@@ -138,7 +197,9 @@ public final class MigrationRunner {
         if (existing.isEmpty()) return;
         for (String m : migrations) {
             String version = versionFromPath(m);
-            String stored = existing.get(version);
+            // Identity is normalized (V01 == V1): a renamed file must still
+            // match its applied checksum instead of being re-applied.
+            String stored = existing.get(normalizeVersion(version));
             if (stored == null) continue;
             byte[] raw = readResourceBytes(m);
             String current = Digests.sha256Hex(raw);
@@ -248,7 +309,7 @@ public final class MigrationRunner {
         int installedRank
     ) {
         String sql = readResource(resourcePath);
-        List<String> statements = splitStatements(sql);
+        List<String> statements = splitStatements(sql, database.dialect());
         if (statements.isEmpty()) {
             throw new SqlException(
                 "Migration file is empty or contains no executable SQL: " +
@@ -275,6 +336,11 @@ public final class MigrationRunner {
 
     static List<String> splitStatements(String sql) {
         return SqlTextParser.splitStatements(sql);
+    }
+
+    /** Splits per the target database's dialect (e.g. MySQL # comments). */
+    static List<String> splitStatements(String sql, Dialect dialect) {
+        return SqlTextParser.splitStatements(sql, dialect);
     }
 
     private List<String> scanMigrations() {
@@ -364,7 +430,10 @@ public final class MigrationRunner {
             .list(ChecksumRow.class);
         for (ChecksumRow row : rows) {
             if (!LOCK_VERSION.equals(row.version())) {
-                map.put(row.version(), row.checksum());
+                // Normalize the version key so legacy raw rows (V001) compare
+                // equal to canonical forms (V1) — every downstream check uses
+                // the same identity.
+                map.put(normalizeVersion(row.version()), row.checksum());
             }
         }
         return map;
@@ -437,6 +506,26 @@ public final class MigrationRunner {
     private static String[] splitVersion(String version) {
         String body = version.startsWith("V") ? version.substring(1) : version;
         return body.split("[._]");
+    }
+
+    /**
+     * Canonical form of a version for duplicate detection: leading zeros are
+     * stripped per dot/underscore part and parts are joined with '.', so
+     * V1 and V01 share a key, and V1_0 and V1.0 share a key. Note V1 ("1")
+     * and V1.0 ("1.0") remain distinct keys — renaming a migration between
+     * them would be treated as a new version.
+     */
+    private static String normalizeVersion(String version) {
+        String body = version.startsWith("V") ? version.substring(1) : version;
+        String[] parts = body.split("[._]");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                sb.append('.');
+            }
+            sb.append(stripLeadingZeros(parts[i]));
+        }
+        return sb.toString();
     }
 
     private static int compareVersionPart(String left, String right) {

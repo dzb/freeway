@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.ref.Cleaner;
+import java.lang.reflect.Array;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -19,6 +20,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -32,8 +34,7 @@ final class QueryImpl implements Query {
 
     private static final Logger LOG = LoggerFactory.getLogger(QueryImpl.class);
     private final DatabaseImpl db;
-    private final PooledConnection boundConnection;
-    private final long boundEpoch;
+    private final DatabaseImpl.TxBinding boundBinding;
     private final String originalSql;
     private final Object[] positionalParams;
     private final Map<String, Object> namedParams;
@@ -46,14 +47,13 @@ final class QueryImpl implements Query {
 
     QueryImpl(
         DatabaseImpl db,
-        PooledConnection boundConnection,
+        DatabaseImpl.TxBinding boundBinding,
         String sql,
         Object[] positionalParams,
         boolean mayHaveGeneratedKeys
     ) {
         this.db = db;
-        this.boundConnection = boundConnection;
-        this.boundEpoch = db.txEpoch();
+        this.boundBinding = boundBinding;
         this.originalSql = sql;
         this.positionalParams = positionalParams;
         this.mayHaveGeneratedKeys = mayHaveGeneratedKeys;
@@ -145,6 +145,19 @@ final class QueryImpl implements Query {
                             "Stream query failed: " + e.getMessage(),
                             e
                         );
+                    } catch (Throwable e) {
+                        // Mapping failures, consumer exceptions, AND Errors
+                        // must release the ResultSet and pooled connection;
+                        // without this the resources linger in the pool's
+                        // active set until the Cleaner runs.
+                        resources.close();
+                        if (e instanceof RuntimeException re) {
+                            throw re;
+                        }
+                        if (e instanceof Error err) {
+                            throw err;
+                        }
+                        throw new RuntimeException(e);
                     }
                 }
             };
@@ -228,7 +241,8 @@ final class QueryImpl implements Query {
     private List<Integer> positionalPlaceholders() {
         if (positionalIndexes == null) {
             positionalIndexes = SqlTextParser.paramIndexes(
-                originalSql
+                originalSql,
+                db.dialect()
             );
         }
         return positionalIndexes;
@@ -254,7 +268,7 @@ final class QueryImpl implements Query {
 
     private SqlTextParser.Result parsed() {
         if (parsed == null) {
-            parsed = SqlTextParser.parseNamed(originalSql);
+            parsed = SqlTextParser.parseNamed(originalSql, db.dialect());
         }
         return parsed;
     }
@@ -279,7 +293,7 @@ final class QueryImpl implements Query {
         if (!namedParams.isEmpty()) {
             rejectMixedPlaceholderStyles();
             expandNamed();
-        } else if (SqlTextParser.hasNamedPlaceholders(originalSql)) {
+        } else if (SqlTextParser.hasNamedPlaceholders(originalSql, db.dialect())) {
             autoBindNamed();
         } else {
             expandPositional();
@@ -288,8 +302,12 @@ final class QueryImpl implements Query {
 
     private void autoBindNamed() {
         rejectMixedPlaceholderStyles();
-        var p = SqlTextParser.parseNamed(originalSql);
-        if (positionalParams.length != p.names().size()) {
+        var p = SqlTextParser.parseNamed(originalSql, db.dialect());
+        var distinct = new LinkedHashSet<>(p.names());
+        if (
+            positionalParams.length != p.names().size() &&
+            positionalParams.length != distinct.size()
+        ) {
             throw new SqlException(
                 "Parameter count mismatch in '" + originalSql + "': " +
                     p.names().size() + " named parameter(s) " + p.names() +
@@ -297,18 +315,35 @@ final class QueryImpl implements Query {
                     "Use .param(\"name\", value) for named parameters."
             );
         }
-        for (int i = 0; i < p.names().size(); i++) {
-            String name = p.names().get(i);
-            Object value = positionalParams[i];
-            if (namedParams.containsKey(name) && !Objects.equals(namedParams.get(name), value)) {
-                throw new SqlException(
-                    "Duplicate named parameter ':" + name +
-                    "' with different positional values in '" +
-                    originalSql + "'. Use .param(\"" + name +
-                    "\", value) for named parameters with repeated placeholders."
-                );
+        if (positionalParams.length == distinct.size() && p.names().size() > distinct.size()) {
+            // Repeated parameter with a single value: assign in first-appearance
+            // order and reuse the value for later occurrences.
+            int idx = 0;
+            for (String name : distinct) {
+                if (namedParams.containsKey(name) && !Objects.equals(namedParams.get(name), positionalParams[idx])) {
+                    throw new SqlException(
+                        "Duplicate named parameter ':" + name +
+                        "' with different positional values in '" +
+                        originalSql + "'. Use .param(\"" + name +
+                        "\", value) for named parameters with repeated placeholders."
+                    );
+                }
+                namedParams.put(name, positionalParams[idx++]);
             }
-            namedParams.put(name, value);
+        } else {
+            for (int i = 0; i < p.names().size(); i++) {
+                String name = p.names().get(i);
+                Object value = positionalParams[i];
+                if (namedParams.containsKey(name) && !Objects.equals(namedParams.get(name), value)) {
+                    throw new SqlException(
+                        "Duplicate named parameter ':" + name +
+                        "' with different positional values in '" +
+                        originalSql + "'. Use .param(\"" + name +
+                        "\", value) for named parameters with repeated placeholders."
+                    );
+                }
+                namedParams.put(name, value);
+            }
         }
         expandNamed();
     }
@@ -380,7 +415,7 @@ final class QueryImpl implements Query {
     }
 
     private void rejectMixedPlaceholderStyles() {
-        SqlTextParser.requireNoMixedPlaceholders(originalSql);
+        SqlTextParser.requireNoMixedPlaceholders(originalSql, db.dialect());
     }
 
     private void validateNamedParameters() {
@@ -430,6 +465,31 @@ final class QueryImpl implements Query {
             appendExpanded(sb, flat, Arrays.asList(arr));
             return true;
         }
+        if (
+            value != null &&
+            value.getClass().isArray() &&
+            !(value instanceof byte[]) &&
+            !(value instanceof char[])
+        ) {
+            // Primitive arrays (int[], long[], ...) expand like Object[];
+            // byte[]/char[] stay scalar for BLOB/TEXT parameters.
+            int length = Array.getLength(value);
+            if (length == 0) {
+                throw new SqlException(
+                    "Cannot expand empty array for SQL: " + originalSql
+                );
+            }
+            boolean first = true;
+            for (int i = 0; i < length; i++) {
+                if (!first) {
+                    sb.append(',');
+                }
+                sb.append('?');
+                flat.add(Array.get(value, i));
+                first = false;
+            }
+            return true;
+        }
         sb.append('?');
         flat.add(value);
         return false;
@@ -467,9 +527,10 @@ final class QueryImpl implements Query {
         int autoKeys = mayHaveKeys
             ? Statement.RETURN_GENERATED_KEYS
             : Statement.NO_GENERATED_KEYS;
-        if (boundConnection != null) {
-            db.checkBoundEpoch(boundEpoch);
-            var stmt = boundConnection
+        if (boundBinding != null) {
+            db.checkBound(boundBinding);
+            var stmt = boundBinding
+                .conn()
                 .connection()
                 .prepareStatement(effectiveSql, autoKeys);
             stmt.setQueryTimeout(db.queryTimeoutSeconds());

@@ -246,6 +246,67 @@ class MigrationRunnerTest {
     }
 
     @Test
+    void rejectsNumericallyDuplicateVersions(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        // V1 and V01 are the same version once leading zeros are stripped —
+        // both would otherwise be applied, double-running the same migration.
+        Files.writeString(
+            migrationDir.resolve("V1__first.sql"),
+            "create table t1 (id bigint)"
+        );
+        Files.writeString(
+            migrationDir.resolve("V01__second.sql"),
+            "create table t2 (id bigint)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_numdup")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("Duplicate migration version"));
+            assertTrue(ex.getMessage().contains("V1__first.sql"));
+            assertTrue(ex.getMessage().contains("V01__second.sql"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void detectsAppliedMigrationMissingFromClasspath(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__create.sql"),
+            "create table missing_file (id bigint primary key)"
+        );
+        Files.writeString(
+            migrationDir.resolve("V002__seed.sql"),
+            "insert into missing_file (id) values (1)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_missing_file")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+
+            assertEquals(2, runner.run());
+
+            // Simulate a packaging mistake: the applied file vanishes from the classpath
+            Files.delete(migrationDir.resolve("V001__create.sql"));
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("V1"));
+            assertTrue(ex.getMessage().contains("missing"));
+            assertTrue(ex.getMessage().contains("packaging"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
     void rejectsEmptyMigrationFile(@TempDir Path tempDir) throws Exception {
         Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
         Files.writeString(migrationDir.resolve("V001__empty.sql"), "");
@@ -376,6 +437,39 @@ class MigrationRunnerTest {
             MigrationRunner runner = new MigrationRunner(db, false, "db/migration", "_migrations");
 
             assertEquals(0, runner.run());
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void renamedMigrationFileIsNotReappliedOrReportedMissing(@TempDir Path tempDir)
+            throws Exception {
+        // V01 and V1 are the same migration. After applying V1__step.sql,
+        // renaming the file to V01__step.sql must neither re-apply it (the
+        // apply loop must use normalized identity) nor report it as missing.
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Path v1 = migrationDir.resolve("V1__step.sql");
+        Files.writeString(v1, "create table t (id int)");
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(
+                 new java.net.URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_rename")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            MigrationRunner runner = new MigrationRunner(
+                db, true, "db/migration", "_migrations");
+
+            assertEquals(1, runner.run(), "first run applies V1__step.sql");
+
+            Files.move(
+                v1,
+                migrationDir.resolve("V01__step.sql"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            );
+
+            assertEquals(0, runner.run(),
+                "renamed file is the same version — must not re-apply");
         } finally {
             Thread.currentThread().setContextClassLoader(previous);
         }

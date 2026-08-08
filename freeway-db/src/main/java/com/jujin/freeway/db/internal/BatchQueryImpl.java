@@ -23,8 +23,7 @@ final class BatchQueryImpl implements BatchQuery {
         BatchQueryImpl.class
     );
     private final DatabaseImpl db;
-    private final PooledConnection boundConnection;
-    private final long boundEpoch;
+    private final DatabaseImpl.TxBinding boundBinding;
     private final String sql;
     private final SqlTextParser.Result parsed;
     private final boolean mayHaveGeneratedKeys;
@@ -34,18 +33,17 @@ final class BatchQueryImpl implements BatchQuery {
 
     BatchQueryImpl(
         DatabaseImpl db,
-        PooledConnection boundConnection,
+        DatabaseImpl.TxBinding boundBinding,
         String sql
     ) {
         this.db = db;
-        this.boundConnection = boundConnection;
-        this.boundEpoch = db.txEpoch();
+        this.boundBinding = boundBinding;
         this.sql = sql;
-        this.parsed = SqlTextParser.parseNamed(sql);
-        this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql);
+        this.parsed = SqlTextParser.parseNamed(sql, db.dialect());
+        this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql, db.dialect());
         this.positionalParameterCount =
-            SqlTextParser.paramIndexes(parsed.sql()).size();
-        SqlTextParser.requireNoMixedPlaceholders(sql);
+            SqlTextParser.paramIndexes(parsed.sql(), db.dialect()).size();
+        SqlTextParser.requireNoMixedPlaceholders(sql, db.dialect());
     }
 
     @Override
@@ -73,13 +71,13 @@ final class BatchQueryImpl implements BatchQuery {
 
     @Override
     public List<ExecuteResult> execute() {
-        if (boundConnection != null) {
-            db.checkBoundEpoch(boundEpoch);
+        if (boundBinding != null) {
+            db.checkBound(boundBinding);
         }
-        boolean ownConnection = boundConnection == null;
+        boolean ownConnection = boundBinding == null;
         PooledConnection conn = ownConnection
             ? db.pool().borrow()
-            : boundConnection;
+            : boundBinding.conn();
         boolean autoCommitChanged = false;
         try {
             var raw = conn.connection();

@@ -198,6 +198,15 @@ public final class RowMapperResolver {
             .stream()
             .filter(BeanProperty::isWritable)
             .toList();
+        if (properties.isEmpty()) {
+            // Zero-property types (e.g. Object.class, marker classes) would
+            // silently map to an empty instance per row. Fail loudly so the
+            // caller registers a custom RowMapper instead.
+            throw new SqlException(
+                "Cannot map " + type.getName()
+                    + ": no writable properties — register a custom RowMapper"
+            );
+        }
         ColumnCache columns = new ColumnCache(properties);
         return (rs, rowNum) -> {
             ResultSetMetaData meta = rs.getMetaData();

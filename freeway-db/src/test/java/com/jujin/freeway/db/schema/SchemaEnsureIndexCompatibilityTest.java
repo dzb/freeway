@@ -7,7 +7,7 @@ import com.jujin.freeway.db.ExecuteResult;
 import com.jujin.freeway.db.IsolationLevel;
 import com.jujin.freeway.db.Query;
 import com.jujin.freeway.db.Transactional;
-import com.jujin.freeway.db.schema.Dialect;
+import com.jujin.freeway.db.dialect.Dialect;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -41,31 +41,6 @@ class SchemaEnsureIndexCompatibilityTest {
         @Override
         public String quoteName(String name) {
             return name;
-        }
-
-        @Override
-        public String createTable(TableDef table) {
-            return "CREATE TABLE " + table.name();
-        }
-
-        @Override
-        public List<String> createIndexes(TableDef table) {
-            return List.of("CREATE INDEX idx_indexed_entity_email ON indexed_entity (email)");
-        }
-
-        @Override
-        public String addColumn(String tableName, ColumnDef column) {
-            return "ALTER TABLE " + tableName + " ADD COLUMN " + column.name();
-        }
-
-        @Override
-        public String dropTable(String tableName) {
-            return "DROP TABLE " + tableName;
-        }
-
-        @Override
-        public String truncateTable(String tableName) {
-            return "DELETE FROM " + tableName;
         }
 
         @Override

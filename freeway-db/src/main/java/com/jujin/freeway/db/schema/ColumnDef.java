@@ -1,5 +1,7 @@
 package com.jujin.freeway.db.schema;
 
+import com.jujin.freeway.db.dialect.Dialect;
+
 /**
  * Single column definition (internal use).
  */
@@ -18,6 +20,12 @@ record ColumnDef(String name, String sqlType, boolean nullable, boolean primaryK
     String toSql(Dialect dialect) {
         StringBuilder sb = new StringBuilder();
         sb.append(dialect.quoteName(name)).append(' ').append(sqlType);
+        if (generated && primaryKey && dialect.generatedPrimaryKeyInline()) {
+            // SQLite declares the generated PK inline on the column:
+            // "id" INTEGER PRIMARY KEY AUTOINCREMENT
+            sb.append(" PRIMARY KEY ").append(dialect.generatedClause());
+            return sb.toString();
+        }
         if (!nullable) {
             sb.append(" NOT NULL");
         }
@@ -25,11 +33,6 @@ record ColumnDef(String name, String sqlType, boolean nullable, boolean primaryK
             sb.append(' ').append(dialect.generatedClause());
         }
         return sb.toString();
-    }
-
-    /** Renders the column definition for ALTER TABLE ADD COLUMN. */
-    String toAlterSql(Dialect dialect) {
-        return toAlterSql(dialect, true, true);
     }
 
     /**

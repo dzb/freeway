@@ -1,6 +1,6 @@
 package com.jujin.freeway.db;
 
-import com.jujin.freeway.db.schema.Dialect;
+import com.jujin.freeway.db.dialect.Dialect;
 
 /**
  * Primary data-access interface. Each {@code Database} wraps a JDBC connection

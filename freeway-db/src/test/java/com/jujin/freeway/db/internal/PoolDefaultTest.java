@@ -23,6 +23,7 @@ import java.util.logging.Logger;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -316,6 +317,214 @@ class PoolDefaultTest {
         }
     }
 
+    @Test
+    void createConnectionClosesPhysicalConnectionWhenValidationThrows() throws Exception {
+        // Regression: setAutoCommit/isValid throwing after a successful
+        // getConnection used to leak the physical connection (the catch only
+        // rethrew). The partial failure must close the JDBC connection.
+        AtomicInteger closes = new AtomicInteger();
+        AtomicInteger opens = new AtomicInteger();
+        Driver driver = new Driver() {
+            @Override
+            public Connection connect(String url, Properties info) throws SQLException {
+                opens.incrementAndGet();
+                return connectionProxyThrowingOnValid(closes);
+            }
+
+            @Override
+            public boolean acceptsURL(String url) {
+                return url != null && url.startsWith("jdbc:freeway-invalid:");
+            }
+
+            @Override
+            public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
+                return new DriverPropertyInfo[0];
+            }
+
+            @Override
+            public int getMajorVersion() {
+                return 1;
+            }
+
+            @Override
+            public int getMinorVersion() {
+                return 0;
+            }
+
+            @Override
+            public boolean jdbcCompliant() {
+                return false;
+            }
+
+            @Override
+            public Logger getParentLogger() {
+                return Logger.getLogger("test");
+            }
+        };
+
+        DriverManager.registerDriver(driver);
+        try {
+            var config = new PoolConfig(
+                "jdbc:freeway-invalid:test", "sa", "",
+                2, 1,
+                Duration.ofSeconds(5),
+                Duration.ofMinutes(30),
+                Duration.ofMinutes(5),
+                Duration.ofSeconds(30),
+                null,
+                Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
+            );
+
+            assertThrows(SqlException.class, () -> new PoolDefault(config));
+            assertEquals(1, opens.get());
+            assertEquals(1, closes.get(),
+                "the physical connection must be closed when validation throws");
+        } finally {
+            DriverManager.deregisterDriver(driver);
+        }
+    }
+
+    @Test
+    void borrowAfterCloseDoesNotCreateConnection() throws Exception {
+        // Regression: a borrow that passed ensureOpen() before close() used to
+        // dial a BRAND-NEW connection after close() completed and hand it out,
+        // leaking it (close()'s drains were already done). The post-acquire
+        // closed re-check must fail it fast and destroy the connection.
+        CountDownLatch createStarted = new CountDownLatch(1);
+        CountDownLatch releaseCreate = new CountDownLatch(1);
+        AtomicInteger opens = new AtomicInteger();
+        AtomicInteger closes = new AtomicInteger();
+        Driver driver = new Driver() {
+            @Override
+            public Connection connect(String url, Properties info) throws SQLException {
+                if (opens.incrementAndGet() >= 2) {
+                    // Second physical connection (the borrower's): park until
+                    // the main thread has finished close(), so borrow()'s
+                    // closed re-check is guaranteed to observe closed=true.
+                    createStarted.countDown();
+                    try {
+                        releaseCreate.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new SQLException("interrupted", e);
+                    }
+                }
+                return connectionProxy(closes);
+            }
+
+            @Override
+            public boolean acceptsURL(String url) {
+                return url != null && url.startsWith("jdbc:freeway-block:");
+            }
+
+            @Override
+            public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
+                return new DriverPropertyInfo[0];
+            }
+
+            @Override
+            public int getMajorVersion() {
+                return 1;
+            }
+
+            @Override
+            public int getMinorVersion() {
+                return 0;
+            }
+
+            @Override
+            public boolean jdbcCompliant() {
+                return false;
+            }
+
+            @Override
+            public Logger getParentLogger() {
+                return Logger.getLogger("test");
+            }
+        };
+
+        DriverManager.registerDriver(driver);
+        try {
+            var config = new PoolConfig(
+                "jdbc:freeway-block:test", "sa", "",
+                2, 0,
+                Duration.ofMillis(200), // connectionTimeout — close() waits this long
+                Duration.ofMinutes(30),
+                Duration.ofMinutes(5),
+                Duration.ofSeconds(30),
+                null,
+                Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
+            );
+            PoolDefault pool = new PoolDefault(config);
+            try {
+                PooledConnection held = pool.borrow();
+                assertNotNull(held);
+
+                AtomicReference<Throwable> borrowError = new AtomicReference<>();
+                Thread borrower = Thread.ofVirtual().start(() -> {
+                    try {
+                        pool.borrow();
+                    } catch (Throwable t) {
+                        borrowError.set(t);
+                    }
+                });
+
+                // Borrower is now inside the driver's connect() — the pool has
+                // already passed ensureOpen and acquired its permit.
+                assertTrue(createStarted.await(5, TimeUnit.SECONDS));
+                pool.close();
+                releaseCreate.countDown();
+                borrower.join(10_000);
+
+                Throwable t = borrowError.get();
+                assertNotNull(t, "borrow after close must fail, not return a connection");
+                assertTrue(t.getMessage().contains("closed"),
+                    "expected 'Database is closed', got: " + t.getMessage());
+                // conn1 force-closed by close(), conn2 destroyed by the re-check.
+                assertEquals(2, closes.get());
+                assertEquals(0, pool.stats().total());
+            } finally {
+                pool.close();
+            }
+        } finally {
+            DriverManager.deregisterDriver(driver);
+        }
+    }
+
+    private static Connection connectionProxyThrowingOnValid(AtomicInteger closes) {
+        InvocationHandler handler = (proxy, method, args) -> {
+            String name = method.getName();
+            if ("setAutoCommit".equals(name)) {
+                return null;
+            }
+            if ("isValid".equals(name)) {
+                throw new SQLException("validation exploded");
+            }
+            if ("close".equals(name)) {
+                closes.incrementAndGet();
+                return null;
+            }
+            if ("isClosed".equals(name)) {
+                return Boolean.FALSE;
+            }
+            if ("unwrap".equals(name)) {
+                throw new SQLException("Not a wrapper");
+            }
+            if ("isWrapperFor".equals(name)) {
+                return Boolean.FALSE;
+            }
+            if ("toString".equals(name)) {
+                return "test-connection";
+            }
+            throw new UnsupportedOperationException(name);
+        };
+        return (Connection) Proxy.newProxyInstance(
+            Connection.class.getClassLoader(),
+            new Class<?>[] { Connection.class },
+            handler
+        );
+    }
+
     private static Connection connectionProxy(AtomicInteger closes) {
         InvocationHandler handler = (proxy, method, args) -> {
             String name = method.getName();
@@ -374,6 +583,83 @@ class PoolDefaultTest {
                 "expected exhaustion error, got: " + ex.getMessage());
             assertTrue(System.nanoTime() - start >= Duration.ofMillis(300).toNanos() / 2,
                 "borrow must wait for the connection timeout before failing");
+        } finally {
+            pool.close();
+        }
+    }
+
+    @Test
+    void connectionBorrowedPastMaxIdleTimeIsRecycledOnRelease() throws Exception {
+        String dbName = "freeway_pool_long_borrow_"
+            + UUID.randomUUID().toString().replace('-', '_');
+        var config = new PoolConfig(
+            "jdbc:h2:mem:" + dbName, "sa", "",
+            2, 1,
+            Duration.ofSeconds(5),
+            Duration.ofMinutes(30),
+            Duration.ofMillis(100), // maxIdleTime — shorter than the borrow below
+            Duration.ofSeconds(5),
+            null,
+            Duration.ofSeconds(5),
+            Duration.ofSeconds(15)
+        );
+        PoolDefault pool = new PoolDefault(config);
+        try {
+            PooledConnection conn = pool.borrow();
+            // Hold the connection well past maxIdleTime; it was never idle,
+            // so release must recycle it rather than destroy it.
+            Thread.sleep(300);
+            pool.release(conn);
+
+            assertEquals(1, pool.stats().idle(),
+                "a connection borrowed longer than maxIdleTime must be recycled, not destroyed");
+            assertEquals(1, pool.stats().total());
+        } finally {
+            pool.close();
+        }
+    }
+
+    @Test
+    void borrowWaiterAfterCloseReportsClosedNotExhausted() throws Exception {
+        // Regression: a borrow parked in tryAcquire when the pool closes used
+        // to burn the full connectionTimeout and report "pool exhausted" —
+        // misleading, since the pool is closed. It must fail with
+        // "Database is closed".
+        var config = new PoolConfig(
+            "jdbc:h2:mem:pool_close_wait_"
+                + UUID.randomUUID().toString().replace('-', '_')
+                + ";DB_CLOSE_DELAY=-1",
+            "sa", "",
+            1, 0,
+            Duration.ofMillis(200), // connectionTimeout
+            Duration.ofMinutes(30),
+            Duration.ofMinutes(10),
+            Duration.ofMinutes(2),
+            null, Duration.ofSeconds(5), Duration.ofSeconds(15)
+        );
+        PoolDefault pool = new PoolDefault(config);
+        try {
+            PooledConnection held = pool.borrow();
+            CountDownLatch borrowerStarted = new CountDownLatch(1);
+            AtomicReference<Throwable> error = new AtomicReference<>();
+            Thread borrower = Thread.ofVirtual().start(() -> {
+                borrowerStarted.countDown();
+                try {
+                    pool.borrow();
+                } catch (Throwable t) {
+                    error.set(t);
+                }
+            });
+            assertTrue(borrowerStarted.await(5, TimeUnit.SECONDS));
+            Thread.sleep(50); // let the borrower park in tryAcquire
+            pool.close();
+            borrower.join(10_000);
+
+            Throwable t = error.get();
+            assertNotNull(t, "borrow must fail after close");
+            assertTrue(t.getMessage().contains("closed"),
+                "waiters must see 'Database is closed', got: " + t.getMessage());
+            assertFalse(t.getMessage().contains("exhausted"));
         } finally {
             pool.close();
         }

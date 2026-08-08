@@ -229,6 +229,50 @@ class DbModuleTest {
     }
 
     @Test
+    void defaultInstallRegistersPrimaryDatabase() {
+        String dbName = "freeway_hub_primary_" + UUID.randomUUID().toString().replace('-', '_');
+        System.setProperty(URL_KEY, "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+
+        try (Container container = Freeway.create(new DbModule())) {
+            DatabaseHub hub = container.get(DatabaseHub.class);
+            assertTrue(hub.all().containsKey("primary"),
+                "default install must auto-register a 'primary' database");
+            Database primary = hub.primary();
+            assertSame(container.get(Database.class), primary,
+                "auto-registered primary must be the container's configured Database");
+            assertEquals("postgresql", primary.dialect().dialectId(),
+                "primary dialect must match the configured JDBC URL");
+            assertTrue(primary.ping(), "primary must be a working database");
+        }
+    }
+
+    @Test
+    void userPrimaryContributionWinsOverAutoRegistration() {
+        String dbName = "freeway_hub_user_primary_" + UUID.randomUUID().toString().replace('-', '_');
+        Database custom = new DatabaseBuilder()
+            .config(PoolConfig.defaults(
+                "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
+            .build();
+
+        try {
+            Container container = Freeway.create(
+                new DbModule(),
+                binder -> binder.contribute(NamedDatabase.class)
+                    .add(new NamedDatabase("primary", custom))
+            );
+            DatabaseHub hub = container.get(DatabaseHub.class);
+            assertSame(custom, hub.primary(),
+                "a user-contributed 'primary' must win over auto-registration");
+            assertEquals(1, hub.all().size(),
+                "auto-registration must not add a second 'primary' when the user already provided one");
+        } finally {
+            custom.close();
+        }
+    }
+
+    @Test
     void schemaEntitiesCreateTablesBeforeMigrations(@TempDir Path tempDir) throws Exception {
         // Use a unique migration path to avoid conflict with classpath test resources
         String migPath = "schema_integration_test/";

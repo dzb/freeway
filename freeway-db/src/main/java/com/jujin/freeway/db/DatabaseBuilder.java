@@ -4,7 +4,11 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.RowMapperResolver;
-import com.jujin.freeway.db.schema.Dialect;
+import com.jujin.freeway.db.dialect.Dialect;
+import com.jujin.freeway.db.dialect.H2Dialect;
+import com.jujin.freeway.db.dialect.MySqlDialect;
+import com.jujin.freeway.db.dialect.PostgresDialect;
+import com.jujin.freeway.db.dialect.SqliteDialect;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -79,6 +83,42 @@ public final class DatabaseBuilder {
         return this;
     }
 
+    /**
+     * Detects the SQL dialect from a JDBC URL, defaulting to
+     * {@link PostgresDialect} when the URL does not identify a known database.
+     *
+     * <p>Single source of truth for URL-based dialect detection — shared by
+     * {@link #build()} (standalone use) and {@link DbModule} (IoC use) so both
+     * resolve the same dialect for the same URL.
+     *
+     * @param url JDBC URL; may be {@code null} (treated as unknown → PostgreSQL)
+     */
+    static Dialect dialectForUrl(String url) {
+        if (url == null) {
+            return new PostgresDialect();
+        }
+        String upper = url.toUpperCase();
+        if (url.contains("jdbc:mysql") || url.contains("jdbc:mariadb")) {
+            return new MySqlDialect();
+        }
+        if (url.contains("jdbc:sqlite")) {
+            return new SqliteDialect();
+        }
+        if (url.contains("jdbc:h2")) {
+            if (
+                upper.contains("MODE=MYSQL") ||
+                upper.contains("MODE=MARIADB")
+            ) {
+                return new MySqlDialect();
+            }
+            if (upper.contains("MODE=POSTGRESQL")) {
+                return new PostgresDialect();
+            }
+            return new H2Dialect();
+        }
+        return new PostgresDialect();
+    }
+
     public Database build() {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
@@ -98,6 +138,9 @@ public final class DatabaseBuilder {
                 cd.registerIfAbsent(rule);
             }
         }
+        Dialect effectiveDialect = dialect != null
+            ? dialect
+            : dialectForUrl(config.url());
         return new DatabaseImpl(
             config,
             new RowMapperResolver(
@@ -106,7 +149,7 @@ public final class DatabaseBuilder {
                 Map.of()
             ),
             pool,
-            dialect
+            effectiveDialect
         );
     }
 }

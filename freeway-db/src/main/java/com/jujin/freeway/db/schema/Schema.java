@@ -2,6 +2,7 @@ package com.jujin.freeway.db.schema;
 
 import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
+import com.jujin.freeway.db.dialect.Dialect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,7 +116,7 @@ public final class Schema {
             String normalizedTableName = tableName.toLowerCase(Locale.ROOT);
 
             if (!existingTables.contains(normalizedTableName)) {
-                String ddl = dialect.createTable(table);
+                String ddl = gen.generateTable(table);
                 LOG.info("Creating table: {}", tableName);
                 db.execute(ddl);
                 existingTables.add(normalizedTableName);
@@ -131,7 +132,34 @@ public final class Schema {
 
             for (ColumnDef col : table.columns()) {
                 if (!existingCols.contains(col.name().toLowerCase(Locale.ROOT))) {
-                    String alter = dialect.addColumn(tableName, col);
+                    // ALTER TABLE ADD COLUMN cannot carry a primary key or an
+                    // identity/generated clause on MySQL (error 1075) or
+                    // SQLite (constraints silently stripped). PostgreSQL/H2
+                    // can ALTER-add identity columns, but the guard is
+                    // uniform: a schema evolution that adds a key column
+                    // deserves an explicit rebuild, not dialect-dependent
+                    // behavior.
+                    if (col.primaryKey() || col.generated()) {
+                        throw new SqlException(
+                            "Cannot add column '" +
+                                col.name() +
+                                "' to existing table " +
+                                tableName +
+                                " — adding key/identity columns to an existing table " +
+                                "requires a table rebuild; only nullable plain columns " +
+                                "can be added via ALTER"
+                        );
+                    }
+                    // SQLite cannot add NOT NULL without a DEFAULT — strip the
+                    // constraint there per the dialect's declaration.
+                    String alter = "ALTER TABLE " +
+                        dialect.quoteName(tableName) +
+                        " " +
+                        col.toAlterSql(
+                            dialect,
+                            dialect.alterAddColumnNotNull(),
+                            true
+                        );
                     LOG.info("Adding column: {}.{}", tableName, col.name());
                     db.execute(alter);
                     executed++;
@@ -182,7 +210,10 @@ public final class Schema {
         for (Class<?> type : entityTypes) {
             TableDef table = gen.define(type);
             LOG.info("Dropping table: {}", table.name());
-            db.execute(dialect.dropTable(table.name()));
+            String ddl = "DROP TABLE IF EXISTS " +
+                dialect.quoteName(table.name()) +
+                (dialect.dropTableCascade() ? " CASCADE" : "");
+            db.execute(ddl);
         }
     }
 

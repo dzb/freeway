@@ -39,12 +39,18 @@ public final class PoolDefault implements Pool {
     private final AtomicInteger total;
     private final AtomicLong borrowCount;
     private final AtomicLong borrowWaitNanos;
+    /**
+     * Serializes release()'s check-and-offer against close()'s drain loops so
+     * a connection released concurrently with shutdown is either recycled
+     * before the drain or destroyed, never stranded in a closed pool.
+     */
+    private final Object lifecycleLock = new Object();
     private volatile boolean closed;
     private Thread cleanThread;
 
     public PoolDefault(PoolConfig config) {
         this.config = config;
-        this.semaphore = new Semaphore(config.maxSize());
+        this.semaphore = new Semaphore(config.maxSize(), true);
         this.idle = new ConcurrentLinkedDeque<>();
         this.active = new ConcurrentLinkedDeque<>();
         this.total = new AtomicInteger();
@@ -71,8 +77,10 @@ public final class PoolDefault implements Pool {
                 )
             ) {
                 throw new SqlException(
-                    "Connection pool exhausted after " +
-                        config.connectionTimeout()
+                    closed
+                        ? "Database is closed"
+                        : "Connection pool exhausted after " +
+                            config.connectionTimeout()
                 );
             }
         } catch (InterruptedException e) {
@@ -85,6 +93,9 @@ public final class PoolDefault implements Pool {
 
         boolean success = false;
         try {
+            if (closed) {
+                throw new SqlException("Database is closed");
+            }
             PooledConnectionDefault conn = idle.pollFirst();
             if (conn != null) {
                 // A freshly returned connection skips the full health check,
@@ -93,6 +104,13 @@ public final class PoolDefault implements Pool {
                     (conn.isFresh(FRESH_IDLE_THRESHOLD) && !isClosed(conn)) ||
                     isValid(conn)
                 ) {
+                    if (closed) {
+                        // Pool shut down while we were validating the idle
+                        // connection — do not hand out a connection from a
+                        // closed pool.
+                        destroy(conn);
+                        throw new SqlException("Database is closed");
+                    }
                     success = true;
                     conn.markBorrowed();
                     active.add(conn);
@@ -112,10 +130,20 @@ public final class PoolDefault implements Pool {
                     throw e;
                 }
                 total.incrementAndGet();
+                if (closed) {
+                    // Pool shut down while we were dialing the replacement.
+                    destroy(conn);
+                    destroy(stale);
+                    throw new SqlException("Database is closed");
+                }
                 destroy(stale);
             } else {
                 conn = createConnection();
                 total.incrementAndGet();
+                if (closed) {
+                    destroy(conn);
+                    throw new SqlException("Database is closed");
+                }
             }
             success = true;
             conn.markBorrowed();
@@ -136,14 +164,20 @@ public final class PoolDefault implements Pool {
             // Already removed (e.g. force-closed during shutdown)
             return;
         }
-        if (closed || !isAlive(pc)) {
-            destroy(pc);
+        // The closed-check and the offer must be atomic with close()'s drain
+        // loops: otherwise a release racing shutdown can offer the connection
+        // to the idle deque after close() drained it, leaking the physical
+        // connection forever.
+        synchronized (lifecycleLock) {
+            if (closed || !isAlive(pc)) {
+                destroy(pc);
+                semaphore.release();
+                return;
+            }
+            pc.markReturned();
+            idle.offerFirst(pc);
             semaphore.release();
-            return;
         }
-        pc.markReturned();
-        idle.offerFirst(pc);
-        semaphore.release();
     }
 
     @Override
@@ -172,27 +206,35 @@ public final class PoolDefault implements Pool {
      * 2. Close all idle connections immediately
      * 3. Wait (up to connectionTimeout) for active connections to return
      * 4. Force-close any remaining active connections
+     *
+     * <p>Drains take {@link #lifecycleLock} so a concurrent release either
+     * completes its offer before a drain (and is closed by it) or sees
+     * {@code closed} and destroys the connection itself — never both, never
+     * neither.
      */
     @Override
     public void close() {
-        closed = true;
+        PooledConnectionDefault conn;
+        synchronized (lifecycleLock) {
+            closed = true;
 
-        if (cleanThread != null && cleanThread != Thread.currentThread()) {
-            cleanThread.interrupt();
-            try {
-                cleanThread.join(config.connectionTimeout().toMillis());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            if (cleanThread != null && cleanThread != Thread.currentThread()) {
+                cleanThread.interrupt();
+                try {
+                    cleanThread.join(config.connectionTimeout().toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            while ((conn = idle.pollFirst()) != null) {
+                closePhysical(conn);
+                total.decrementAndGet();
             }
         }
 
-        PooledConnectionDefault conn;
-        while ((conn = idle.pollFirst()) != null) {
-            closePhysical(conn);
-            total.decrementAndGet();
-        }
-
-        // Wait for active connections to be returned
+        // Wait for active connections to be returned. Releases during this
+        // window see closed==true and destroy+decrement immediately.
         long deadline =
             System.nanoTime() + config.connectionTimeout().toNanos();
         while (total.get() > 0 && System.nanoTime() < deadline) {
@@ -204,16 +246,18 @@ public final class PoolDefault implements Pool {
             }
         }
 
-        // Close any remaining idle connections (may have been returned during wait)
-        while ((conn = idle.pollFirst()) != null) {
-            closePhysical(conn);
-            total.decrementAndGet();
-        }
+        synchronized (lifecycleLock) {
+            // Close any remaining idle connections (returned during the wait)
+            while ((conn = idle.pollFirst()) != null) {
+                closePhysical(conn);
+                total.decrementAndGet();
+            }
 
-        // Force-close any still-active connections
-        while ((conn = active.pollFirst()) != null) {
-            closePhysical(conn);
-            total.decrementAndGet();
+            // Force-close any still-active connections
+            while ((conn = active.pollFirst()) != null) {
+                closePhysical(conn);
+                total.decrementAndGet();
+            }
         }
 
         int remaining = total.get();
@@ -222,6 +266,15 @@ public final class PoolDefault implements Pool {
                 "Database closed with {} connection(s) still tracked",
                 remaining
             );
+        }
+
+        // Wake borrows still parked in tryAcquire (they passed ensureOpen
+        // before we set closed) so they fail fast with "Database is closed"
+        // instead of burning the full connection timeout. Best-effort: a
+        // waiter that starts after this point hits ensureOpen directly.
+        int waiting = semaphore.getQueueLength();
+        if (waiting > 0) {
+            semaphore.release(waiting);
         }
     }
 
@@ -314,9 +367,15 @@ public final class PoolDefault implements Pool {
             }
 
             for (PooledConnectionDefault conn : expired) {
-                idle.remove(conn);
-                closePhysical(conn);
-                total.decrementAndGet();
+                // Only destroy when the connection is still in the idle deque:
+                // a concurrent borrow() may have polled it and be replacing or
+                // reusing it right now. Destroying it anyway would close the
+                // physical connection underneath the borrower and double-count
+                // the total decrement.
+                if (idle.remove(conn)) {
+                    closePhysical(conn);
+                    total.decrementAndGet();
+                }
             }
         }
 
@@ -335,6 +394,13 @@ public final class PoolDefault implements Pool {
         }
         try {
             PooledConnectionDefault conn = createConnection();
+            if (closed) {
+                // Pool shut down while we were dialing (e.g. the cleaner was
+                // mid-create during close()) — do not strand the new
+                // connection in the closed pool's idle deque.
+                closePhysical(conn);
+                return false;
+            }
             total.incrementAndGet();
             idle.offerFirst(conn);
             return true;
@@ -351,14 +417,12 @@ public final class PoolDefault implements Pool {
     }
 
     private PooledConnectionDefault createConnection() {
+        Connection conn = null;
         try {
             Properties properties = new Properties();
             properties.setProperty("user", config.username());
             properties.setProperty("password", config.password());
-            Connection conn = DriverManager.getConnection(
-                config.url(),
-                properties
-            );
+            conn = DriverManager.getConnection(config.url(), properties);
             conn.setAutoCommit(true);
 
             if (!conn.isValid(healthCheckTimeoutSeconds())) {
@@ -372,6 +436,13 @@ public final class PoolDefault implements Pool {
             }
             return new PooledConnectionDefault(conn, Instant.now());
         } catch (SQLException e) {
+            // setAutoCommit/isValid throwing after a successful getConnection
+            // must not leak the physical connection.
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException ignored) {}
+            }
             throw new SqlException(
                 "Failed to create connection: " + e.getMessage(),
                 e
@@ -384,11 +455,13 @@ public final class PoolDefault implements Pool {
     }
 
     private boolean isAlive(PooledConnectionDefault conn) {
-        if (conn.isExpired(
-            Instant.now(),
-            config.maxLifetime(),
-            config.maxIdleTime()
-        )) {
+        // maxIdleTime deliberately does NOT apply here: lastReturned is only
+        // refreshed on release, so a connection legitimately borrowed longer
+        // than maxIdleTime (long transaction, long stream) would be destroyed
+        // on release despite never having been idle. maxIdleTime is enforced
+        // by clean() eviction and borrow()'s stale check, where the
+        // connection really is idle.
+        if (Duration.between(conn.createdAt(), Instant.now()).compareTo(config.maxLifetime()) > 0) {
             return false;
         }
         // The physical connection may have been closed out-of-band (database

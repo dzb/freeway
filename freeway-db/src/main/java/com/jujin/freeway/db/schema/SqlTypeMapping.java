@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.commons.validation.NotBlank;
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.commons.validation.Size;
+import com.jujin.freeway.db.dialect.Dialect;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -84,12 +85,16 @@ public final class SqlTypeMapping {
             if (idx == null) {
                 continue;
             }
+            // Resolve the column name exactly like the rest of the mapping so
+            // that @Column renames are honored (the index must reference the
+            // real column, and the default name follows the real column too).
+            String colName = columnName(property, property.annotation(Column.class).orElse(null));
             String idxName = idx.name().isBlank()
-                ? "idx_" + tableName + "_" + Strings.camelToSnake(property.name())
+                ? "idx_" + tableName + "_" + colName
                 : idx.name().trim();
             groups
                 .computeIfAbsent(idxName, k -> new ArrayList<>())
-                .add(Strings.camelToSnake(property.name()));
+                .add(colName);
             uniqueFlags.put(
                 idxName,
                 uniqueFlags.getOrDefault(idxName, false) || idx.unique()

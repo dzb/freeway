@@ -23,6 +23,10 @@ final class PooledConnectionDefault implements PooledConnection {
         return conn;
     }
 
+    Instant createdAt() {
+        return createdAt;
+    }
+
     void markBorrowed() {
         this.borrowedAt = Instant.now();
     }

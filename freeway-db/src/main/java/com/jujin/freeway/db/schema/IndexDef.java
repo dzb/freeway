@@ -1,5 +1,6 @@
 package com.jujin.freeway.db.schema;
 
+import com.jujin.freeway.db.dialect.Dialect;
 import java.util.List;
 import java.util.Objects;
 

@@ -1,4 +1,4 @@
-package com.jujin.freeway.db.schema;
+package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
 import org.slf4j.Logger;
@@ -12,16 +12,23 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * SQL dialect — responsible for DDL syntax differences and database metadata queries.
- * {@link PostgresDialect} is the primary implementation.
+ * SQL dialect — syntax capabilities, DDL primitives, and database metadata
+ * queries. {@link PostgresDialect} is the primary implementation.
  *
- * <p>Implementors must provide: {@link #reservedWords()}, {@link #generatedClause()},
+ * <p>Implementors must provide: {@link #generatedClause()},
  * {@link #defaultUUIDType()}, {@link #existingTables(Database)},
- * {@link #existingColumns(Database, String)}.
+ * {@link #existingColumns(Database, String)}. ({@link #reservedWords()} has
+ * an empty default; override it when the DB reserves words the framework
+ * would otherwise emit unquoted.)
  *
- * <p>All DDL-generation methods ({@link #createTable}, {@link #dropTable}, etc.) have
- * sensible defaults that produce correct SQL for most databases. Override where the
- * dialect's syntax differs (e.g. SQLite for {@link #createTable}).
+ * <p>This interface declares <em>syntax features</em> only: identifier quoting,
+ * identity/generated clauses, type mapping defaults, single-clause mappings
+ * ({@link #upsertClause}, {@link #forUpdateClause}, {@link #offsetOnlyClause},
+ * {@link #truncateTable}), capability flags, and introspection queries.
+ * Multi-statement DDL <em>assembly</em> (CREATE TABLE, CREATE INDEX, ALTER,
+ * DROP) is the {@code schema} package's responsibility — {@code Schema} and
+ * {@code SchemaGenerator} consume these primitives to produce dialect-correct
+ * DDL.
  */
 public interface Dialect {
 
@@ -51,7 +58,13 @@ public interface Dialect {
      */
     String dialectId();
 
-    /** Returns the quote character for this dialect ({@code "} or {@code `}). */
+    /**
+     * Returns the quote character used for <em>generated</em> DDL
+     * ({@code "} or {@code `}). This is the dialect's primary identifier quote
+     * — distinct from {@link #identifierQuoteChars()}, which declares every
+     * quote character the SQL <em>scanner</em> accepts as input (a superset,
+     * e.g. MySQL's ANSI_QUOTES mode).
+     */
     default char quoteChar() {
         return '"';
     }
@@ -103,46 +116,94 @@ public interface Dialect {
         return false;
     }
 
-    // ====================== DDL generation ======================
+    // ====================== SQL lexing ======================
 
-    /** Generates a CREATE TABLE IF NOT EXISTS statement. */
-    default String createTable(TableDef table) {
-        StringBuilder sb = new StringBuilder("CREATE TABLE IF NOT EXISTS ");
-        sb.append(quoteName(table.name())).append(" (\n");
-        for (int i = 0; i < table.columns().size(); i++) {
-            ColumnDef col = table.columns().get(i);
-            sb.append("    ").append(col.toSql(this));
-            if (i < table.columns().size() - 1) {
-                sb.append(",\n");
-            }
-        }
-        List<String> pks = table.primaryKeys();
-        if (!pks.isEmpty()) {
-            sb.append(",\n    PRIMARY KEY (");
-            sb.append(pks.stream().map(this::quoteName).collect(Collectors.joining(", ")));
-            sb.append(")");
-        }
-        sb.append("\n)");
-        return sb.toString();
+    /**
+     * Quote characters the SQL scanner accepts as identifier quoting (a
+     * doubled character escapes, e.g. {@code ''} or {@code ``}). The scanner
+     * never decides by itself which quoting style a database uses — the
+     * dialect declares it.
+     *
+     * <p>This is the <em>input</em> side of quoting; {@link #quoteChar()} is
+     * the single character used for <em>generated</em> DDL. ANSI default:
+     * {@code "}. MySQL accepts {@code `} (and {@code "} under ANSI_QUOTES), so
+     * {@link MySqlDialect} declares both.
+     */
+    default String identifierQuoteChars() {
+        return "\"";
     }
 
-    /** Generates standalone CREATE INDEX statements. */
-    default List<String> createIndexes(TableDef table) {
-        List<String> ddls = new ArrayList<>();
-        for (IndexDef idx : table.indexes()) {
-            ddls.add(idx.toSql(this, table.name()));
-        }
-        return List.copyOf(ddls);
+    /**
+     * Whether {@code #} starts a line comment. MySQL: yes. PostgreSQL: no —
+     * {@code #} is the XOR operator there (and {@code #>} / {@code #>>} are
+     * the jsonb path operators, which the scanner always exempts).
+     */
+    default boolean hashLineComments() {
+        return false;
     }
 
-    /** Generates an ALTER TABLE ADD COLUMN statement. */
-    default String addColumn(String tableName, ColumnDef column) {
-        return "ALTER TABLE " + quoteName(tableName) + " " + column.toAlterSql(this);
+    /**
+     * Whether {@code [bracket]} identifier quoting is supported (SQL Server).
+     * No built-in dialect uses it; kept for custom dialects.
+     */
+    default boolean bracketQuoting() {
+        return false;
     }
 
-    /** Generates a DROP TABLE IF EXISTS statement. */
-    default String dropTable(String tableName) {
-        return "DROP TABLE IF EXISTS " + quoteName(tableName);
+    /**
+     * Whether {@code $tag$...$tag$} dollar-quoted string literals are
+     * supported (PostgreSQL). When false, {@code $name} is always parsed as a
+     * named parameter.
+     */
+    default boolean dollarQuoting() {
+        return false;
+    }
+
+    /**
+     * Whether {@code E'...'} escape-string literals are supported
+     * (PostgreSQL; backslash escapes the next character).
+     */
+    default boolean escapeStringPrefix() {
+        return false;
+    }
+
+    // ====================== DDL syntax features ======================
+
+    /**
+     * Boolean capabilities on this interface follow two conventions:
+     * <ul>
+     *   <li>{@code supportsX(...)} — whether the database has a SQL feature
+     *       ({@link #supportsIndexIfNotExists()}, {@link #supportsReturning()},
+     *       {@link #supportsOnConflict()}).</li>
+     *   <li>noun-phrase booleans — the <em>shape</em> of a syntax construct
+     *       ({@link #generatedPrimaryKeyInline()}, {@link #dropTableCascade()},
+     *       {@link #alterAddColumnNotNull()}, and the lexer capabilities in
+     *       the next section).</li>
+     * </ul>
+     */
+
+    /**
+     * Whether a generated primary key column is declared inline on the column
+     * itself — SQLite: {@code "id" INTEGER PRIMARY KEY AUTOINCREMENT} — instead
+     * of via a trailing {@code PRIMARY KEY (...)} table clause. DDL assembly
+     * itself lives in {@code schema} (it consumes this capability).
+     */
+    default boolean generatedPrimaryKeyInline() {
+        return false;
+    }
+
+    /** Whether {@code DROP TABLE} appends {@code CASCADE} (PostgreSQL). */
+    default boolean dropTableCascade() {
+        return false;
+    }
+
+    /**
+     * Whether {@code ALTER TABLE ADD COLUMN} may carry a {@code NOT NULL}
+     * constraint. SQLite cannot add NOT NULL columns without a DEFAULT, so it
+     * returns false and the constraint is dropped from the generated DDL.
+     */
+    default boolean alterAddColumnNotNull() {
+        return true;
     }
 
     /**
@@ -195,9 +256,19 @@ public interface Dialect {
         return "FOR UPDATE";
     }
 
+    /**
+     * Returns the pagination clause for an OFFSET without a LIMIT.
+     * MySQL and SQLite reject a bare {@code OFFSET n}, so they override this
+     * with an "unlimited" LIMIT; the default follows the SQL standard
+     * ({@code LIMIT ALL OFFSET n}, accepted by PostgreSQL and H2).
+     */
+    default String offsetOnlyClause(long offset) {
+        return "LIMIT ALL OFFSET " + offset;
+    }
+
     // ====================== type mappings ======================
 
-    /** Returns the auto-increment clause, e.g. {@code "GENERATED ALWAYS AS IDENTITY"}. */
+    /** Returns the auto-increment clause, e.g. {@code "GENERATED BY DEFAULT AS IDENTITY"}. */
     String generatedClause();
 
     /**
