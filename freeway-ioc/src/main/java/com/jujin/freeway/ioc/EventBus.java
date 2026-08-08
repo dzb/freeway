@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
@@ -43,6 +44,11 @@ public final class EventBus implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(EventBus.class);
 
     private final Container container;
+    private final Metrics metrics;
+    private final Metrics.Counter cPublished;
+    private final Metrics.Counter cDelivered;
+    private final Metrics.Counter cSubscriberFailures;
+    private final Metrics.Counter cDeadEvents;
     private volatile boolean closed;
     private volatile EventBridge bridge;
     private volatile Executor asyncExecutor;
@@ -68,6 +74,13 @@ public final class EventBus implements AutoCloseable {
     public EventBus(Container container, EventBridge bridge) {
         this.container = Objects.requireNonNull(container, "container");
         this.bridge = bridge;
+        // Metrics is a container builtin (NoopMetrics by default) — always
+        // resolvable; a contributed/primary implementation observes the bus.
+        this.metrics = container.get(Metrics.class);
+        this.cPublished = metrics.counter("eventbus.published");
+        this.cDelivered = metrics.counter("eventbus.delivered");
+        this.cSubscriberFailures = metrics.counter("eventbus.subscriber_failures");
+        this.cDeadEvents = metrics.counter("eventbus.dead_events");
     }
 
     /** Wire an event bridge (Kafka, RabbitMQ, etc.) after construction. */
@@ -110,6 +123,7 @@ public final class EventBus implements AutoCloseable {
         }
         if (!(event instanceof DeadEvent)) {
             published.increment();
+            cPublished.increment();
         }
         Class<?> eventType = event.getClass();
         List<Consumer<Object>> moduleHandlers = classSubscribers(eventType);
@@ -124,8 +138,10 @@ public final class EventBus implements AutoCloseable {
             try {
                 handler.accept(event);
                 delivered.increment();
+                cDelivered.increment();
             } catch (Exception ex) {
                 subscriberFailures.increment();
+                cSubscriberFailures.increment();
                 LOG.warn(
                     "Event subscriber failed for {}",
                     eventType.getSimpleName(),
@@ -139,8 +155,10 @@ public final class EventBus implements AutoCloseable {
             try {
                 sub.dispatch(event);
                 delivered.increment();
+                cDelivered.increment();
             } catch (Exception ex) {
                 subscriberFailures.increment();
+                cSubscriberFailures.increment();
                 LOG.warn(
                     "Runtime event subscriber failed for {}",
                     eventType.getSimpleName(),
@@ -151,6 +169,7 @@ public final class EventBus implements AutoCloseable {
 
         if (!hasSubscribers && !(event instanceof DeadEvent)) {
             deadEvents.increment();
+            cDeadEvents.increment();
             publish(new DeadEvent(this, event));
         }
 
@@ -199,6 +218,7 @@ public final class EventBus implements AutoCloseable {
             return;
         }
         published.increment();
+        cPublished.increment();
         List<Consumer<Object>> moduleHandlers = topicSubscribers(topic);
         List<Subscription<?>> runtimeHandlers = runtimeTopicSubs.getOrDefault(
             topic,
@@ -210,8 +230,10 @@ public final class EventBus implements AutoCloseable {
             try {
                 handler.accept(payload);
                 delivered.increment();
+                cDelivered.increment();
             } catch (Exception ex) {
                 subscriberFailures.increment();
+                cSubscriberFailures.increment();
                 LOG.warn("Event subscriber failed for topic '{}'", topic, ex);
             }
         }
@@ -220,8 +242,10 @@ public final class EventBus implements AutoCloseable {
             try {
                 sub.dispatch(payload);
                 delivered.increment();
+                cDelivered.increment();
             } catch (Exception ex) {
                 subscriberFailures.increment();
+                cSubscriberFailures.increment();
                 LOG.warn(
                     "Runtime event subscriber failed for topic '{}'",
                     topic,
@@ -232,6 +256,7 @@ public final class EventBus implements AutoCloseable {
 
         if (!hasSubscribers) {
             deadEvents.increment();
+            cDeadEvents.increment();
             publish(new DeadEvent(this, payload));
         }
 

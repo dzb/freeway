@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.commons.util.Lazy;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.Objects;
@@ -15,40 +16,26 @@ import java.util.function.Supplier;
  * factory, and {@link #force()} (called by the flush) returns the same
  * instance, keeping the extension list and the wired chain consistent.
  *
- * <p>Thread-safe: resolution is volatile double-checked; concurrent lookups
- * create the provider exactly once. A failed factory retries on the next
- * access (the failure surfaces during the flush as a startup error).
+ * <p>Thread-safety and failure semantics come from {@link Lazy}: exactly-once
+ * creation, a throwing factory propagates and retries on the next access
+ * (the failure surfaces during the flush as a startup error).
  */
 final class LazySymbolProvider implements SymbolProvider {
 
-    private final Supplier<? extends SymbolProvider> factory;
-    private volatile SymbolProvider resolved;
+    private final Lazy<SymbolProvider> delegate;
 
     LazySymbolProvider(Supplier<? extends SymbolProvider> factory) {
-        this.factory = Objects.requireNonNull(factory, "factory");
+        Objects.requireNonNull(factory, "factory");
+        this.delegate = Lazy.of(() -> factory.get());
     }
 
     @Override
     public String lookup(String name) {
-        return resolved().lookup(name);
+        return delegate.get().lookup(name);
     }
 
     /** Resolves the real provider, creating it on first access. */
     SymbolProvider force() {
-        return resolved();
-    }
-
-    private SymbolProvider resolved() {
-        SymbolProvider r = resolved;
-        if (r == null) {
-            synchronized (this) {
-                r = resolved;
-                if (r == null) {
-                    r = factory.get();
-                    resolved = r;
-                }
-            }
-        }
-        return r;
+        return delegate.get();
     }
 }

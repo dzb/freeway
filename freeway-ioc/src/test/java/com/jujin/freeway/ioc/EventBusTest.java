@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc;
 
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
 
 import java.util.ArrayList;
@@ -480,6 +481,35 @@ class EventBusTest {
         assertEquals(1, stats.delivered(), "only the healthy subscriber delivery");
         assertEquals(1, stats.subscriberFailures(), "the throwing runtime subscriber");
         assertEquals(1, stats.deadEvents(), "zero-subscriber event emits a DeadEvent");
+        bus.close();
+    }
+
+    @Test
+    void metricsCountersMirrorDispatchStats() {
+        // The container's Metrics builtin (NoopMetrics) must be observable
+        // through a contributed implementation — counters mirror stats().
+        var counters = new java.util.concurrent.ConcurrentHashMap<String, Metrics.Counter>();
+        Metrics metrics = new Metrics() {
+            @Override public Counter counter(String name) {
+                return counters.computeIfAbsent(name, n -> new Counter() {
+                    final java.util.concurrent.atomic.LongAdder adder =
+                        new java.util.concurrent.atomic.LongAdder();
+                    @Override public void increment() { adder.increment(); }
+                    @Override public void add(long delta) { adder.add(delta); }
+                    @Override public long value() { return adder.sum(); }
+                });
+            }
+            @Override public void gauge(String name, java.util.function.Supplier<Number> v) { }
+        };
+        Container container = Freeway.create(binder ->
+            binder.bind(Metrics.class).to(metrics).primary());
+        EventBus bus = new EventBus(container);
+        bus.subscribe(PostCreatedEvent.class, e -> { });
+
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(1, counters.get("eventbus.published").value());
+        assertEquals(1, counters.get("eventbus.delivered").value());
         bus.close();
     }
 

@@ -25,4 +25,36 @@ class AppConfigDefaultTest {
         assertNull(config.get("null-value"));
         assertFalse(config.asMap().containsKey("null-value"));
     }
+
+    @Test
+    void typedGetParsesWithDefaultAndErrors() {
+        ConfigKey<Integer> port = ConfigKey.of(
+            "server.port", Integer.class, 8080, Integer::parseInt);
+        AppConfig config = new AppConfigDefault(
+            new LinkedHashMap<>(Map.of("server.port", "9090")), List.of());
+
+        assertEquals(9090, config.get(port), "raw value parsed to the typed form");
+        assertEquals(8080, config.get(
+            ConfigKey.of("missing.port", Integer.class, 8080, Integer::parseInt)),
+            "absent key falls back to the default");
+
+        AppConfig blank = new AppConfigDefault(
+            new LinkedHashMap<>(Map.of("server.port", "  ")), List.of());
+        assertEquals(8080, blank.get(port),
+            "a blank raw value falls back to the default");
+    }
+
+    @Test
+    void typedGetReportsMalformedValueWithKeyContext() {
+        ConfigKey<Integer> port = ConfigKey.of(
+            "server.port", Integer.class, 8080, Integer::parseInt);
+        AppConfig config = new AppConfigDefault(
+            new LinkedHashMap<>(Map.of("server.port", "not-a-number")), List.of());
+
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class, () -> config.get(port));
+        org.junit.jupiter.api.Assertions.assertTrue(
+            ex.getMessage().contains("server.port"),
+            "the error must name the offending key, got: " + ex.getMessage());
+    }
 }

@@ -4,6 +4,8 @@ import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -131,6 +133,7 @@ public final class ContainerImpl implements Container {
         infrastructureWiring.put(CoerceRule.class,
             v -> coercer.register((CoerceRule) v));
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
+        registerBuiltin(Metrics.class, NoopMetrics.INSTANCE, "Metrics");
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
         registerBuiltin(Scoping.class, scoping, "Scoping");
