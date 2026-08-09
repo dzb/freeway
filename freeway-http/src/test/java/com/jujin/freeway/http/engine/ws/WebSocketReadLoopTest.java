@@ -11,12 +11,52 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketReadLoopTest {
+
+    @Test
+    void concurrentSendsProduceValidFrames() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var session = new WebSocketSessionImpl(
+            "GET", "/", null, Map.of(),
+            new ByteArrayInputStream(new byte[0]), out, Map.of());
+        int threads = 8;
+        int messagesPerThread = 50;
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        try {
+            for (int t = 0; t < threads; t++) {
+                int id = t;
+                executor.submit(() -> {
+                    for (int i = 0; i < messagesPerThread; i++) {
+                        session.sendText("t" + id + "-" + i);
+                    }
+                    return null;
+                });
+            }
+        } finally {
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
+                "concurrent senders must finish");
+        }
+
+        var wire = new ByteArrayInputStream(out.toByteArray());
+        List<String> received = new ArrayList<>();
+        while (wire.available() > 0) {
+            var frame = WebSocketFrame.read(wire);
+            received.add(frame.payloadAsString());
+        }
+        assertEquals(threads * messagesPerThread, received.size(),
+            "all frames must be valid and none lost to interleaving");
+        assertTrue(received.contains("t3-7"),
+            "sample message must survive concurrent sends");
+    }
 
     @Test
     void utf8CodePointSplitAcrossFragmentsIsDelivered() throws Exception {

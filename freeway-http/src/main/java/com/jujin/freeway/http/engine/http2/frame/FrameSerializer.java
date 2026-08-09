@@ -17,7 +17,16 @@ public final class FrameSerializer {
     }
 
     public static BaseFrame deserialize(InputStream inputStream, int maxFrameSize) throws IOException {
-        byte[] headerBuffer = new byte[9];
+        return deserialize(inputStream, maxFrameSize, new byte[9]);
+    }
+
+    /**
+     * Deserializes one frame, reusing the caller's 9-byte header buffer so the
+     * per-frame read loop avoids one allocation. The buffer is owned by the
+     * connection's single reader thread — never share it across threads.
+     */
+    public static BaseFrame deserialize(InputStream inputStream, int maxFrameSize,
+                                        byte[] headerBuffer) throws IOException {
         readFully(inputStream, headerBuffer);
         var header = FrameHeader.parse(headerBuffer);
         if (header.length() > maxFrameSize)

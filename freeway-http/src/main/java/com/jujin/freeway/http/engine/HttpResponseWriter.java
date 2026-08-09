@@ -23,6 +23,19 @@ public interface HttpResponseWriter {
     /** Writes response body bytes (no-op for HEAD requests when no body is allowed). */
     void writeBody(HttpContextDefault ctx, byte[] data) throws IOException;
 
+    /** Writes a body slice. Default impl copies; transports override for
+     *  zero-copy streaming. */
+    default void writeBody(HttpContextDefault ctx, byte[] data, int offset, int length)
+            throws IOException {
+        if (offset == 0 && length == data.length) {
+            writeBody(ctx, data);
+            return;
+        }
+        byte[] copy = new byte[length];
+        System.arraycopy(data, offset, copy, 0, length);
+        writeBody(ctx, copy);
+    }
+
     /** Flushes / ends the response (HTTP/1.1 flush, HTTP/2 END_STREAM). */
     void end(HttpContextDefault ctx) throws IOException;
 

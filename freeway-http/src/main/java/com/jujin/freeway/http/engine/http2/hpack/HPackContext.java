@@ -35,6 +35,13 @@ public final class HPackContext {
     private long dynamicTableByteSize;
     private long maxDynamicTableSize = 4096;
 
+    /** Adjusts the decoder's dynamic table cap to the encoder's advertised
+     *  SETTINGS_HEADER_TABLE_SIZE (RFC 7541 §4.2). */
+    public void setMaxDynamicTableSize(long size) {
+        maxDynamicTableSize = size;
+        trimDynamicTable();
+    }
+
     /**
      * Reads a variable-length integer.
      *
@@ -282,7 +289,11 @@ public final class HPackContext {
     /** Decodes a dynamic table size update. */
     private int decodeDynamicTableSize(byte[] block, int pos) throws IOException {
         var result = readInt(block, pos, 5);
-        if (result.value > 4096) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
+        // RFC 7541 §4.2: an in-band size update must not exceed the limit the
+        // encoder advertised via SETTINGS_HEADER_TABLE_SIZE.
+        if (result.value > maxDynamicTableSize) {
+            throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
+        }
         maxDynamicTableSize = result.value;
         trimDynamicTable();
         return result.position;
@@ -361,6 +372,19 @@ public final class HPackContext {
      * @param endStream whether to end the stream
      */
     public void writeResponseHeaders(Map<String, List<String>> headers, OutputStream out, int streamId, boolean endStream) throws IOException {
+        out.write(encodeResponseHeaders(headers, streamId, endStream));
+    }
+
+    /**
+     * Encodes response headers as a complete HEADERS frame (header block +
+     * frame header) so callers can queue the frame onto a batched outbound
+     * path. Must be invoked under the connection lock: the encoder's dynamic
+     * table state advances with each block, so encode order must equal frame
+     * send order.
+     */
+    public byte[] encodeResponseHeaders(
+            Map<String, List<String>> headers, int streamId, boolean endStream)
+            throws IOException {
         var buffer = new ByteArrayOutputStream(256);
 
         // Write :status pseudo-header
@@ -376,12 +400,13 @@ public final class HPackContext {
             }
         }
 
-        // Write frame header and data
+        byte[] headerBlock = buffer.toByteArray();
         var flags = endStream
             ? FrameFlag.FlagSet.of(FrameFlag.END_HEADERS, FrameFlag.END_STREAM)
             : FrameFlag.FlagSet.of(FrameFlag.END_HEADERS);
-        FrameHeader.writeTo(out, buffer.size(), FrameType.HEADERS, flags, streamId);
-        buffer.writeTo(out);
+        byte[] frameHeader = FrameHeader.encode(
+            headerBlock.length, FrameType.HEADERS, flags, streamId);
+        return BinUtils.combine(frameHeader, headerBlock);
     }
 
     /**

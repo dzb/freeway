@@ -115,9 +115,10 @@ public final class Http2Stream {
                 if (!streamOpen) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 // Enforce the stream-level receive window at frame receipt, not
                 // only when the application reads, so a peer cannot overflow it.
-                if (dataFrame.body.length > receiveWindow.get())
+                int flowLength = dataFrame.flowLength();
+                if (flowLength > receiveWindow.get())
                     throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
-                receiveWindow.addAndGet(-dataFrame.body.length);
+                receiveWindow.addAndGet(-flowLength);
                 dataIn.enqueue(dataFrame.body);
                 if (dataFrame.header().flags().contains(FrameFlag.END_STREAM)) {
                     halfClosed = true;
@@ -147,7 +148,9 @@ public final class Http2Stream {
         if (connection.isClosed()) throw new IOException("connection closed");
         connection.lock();
         try {
-            connection.hpack().writeResponseHeaders(responseHeaders, connection.outputStream(), streamId, closeStream);
+            byte[] frame = connection.hpack().encodeResponseHeaders(
+                responseHeaders, streamId, closeStream);
+            connection.writeFrame(frame);
             if (closeStream) streamOutputClosed = true;
         } finally {
             connection.unlock();
@@ -157,7 +160,6 @@ public final class Http2Stream {
     void startRequest(ExecutorService executor) throws IOException {
         if (!handlingRequest.compareAndSet(false, true))
             throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-        connection.requestsInProgress.incrementAndGet();
         InputStream input = halfClosed ? InputStream.nullInputStream() : dataIn;
         executor.execute(() -> {
             thread = Thread.currentThread();
@@ -191,8 +193,6 @@ public final class Http2Stream {
                 int chunkSize = (int) Math.min(Math.min(length, connection.peerMaxFrameSize),
                     Math.min(connection.sendWindow.get(), sendWindow.get()));
                 if (chunkSize <= 0) {
-                    connection.lock();
-                    try { connection.outputStream().flush(); } finally { connection.unlock(); }
                     waitForSendWindow();
                     if (connection.isClosed()) throw new IOException("closed");
                     continue;
@@ -201,11 +201,9 @@ public final class Http2Stream {
                     connection.sendWindow.addAndGet(chunkSize);
                     continue;
                 }
-                connection.lock();
-                try {
-                    FrameHeader.writeTo(connection.outputStream(), chunkSize, FrameType.DATA, FrameFlag.NONE, streamId);
-                    connection.outputStream().write(data, offset, chunkSize);
-                } finally { connection.unlock(); }
+                connection.writeDataFrame(
+                    FrameHeader.encode(chunkSize, FrameType.DATA, FrameFlag.NONE, streamId),
+                    data, offset, chunkSize);
                 offset += chunkSize;
                 length -= chunkSize;
                 sendWindow.addAndGet(-chunkSize);
@@ -240,13 +238,10 @@ public final class Http2Stream {
             try {
                 if (connection.isClosed()) { headersSent.compareAndSet(false, true); return; }
                 writeResponseHeaders(false);
-                connection.lock();
-                try {
-                    if (!streamOutputClosed)
-                        FrameHeader.writeTo(connection.outputStream(), 0, FrameType.DATA, END_STREAM, streamId);
-                    if (connection.requestsInProgress.decrementAndGet() == 0)
-                        connection.outputStream().flush();
-                } finally { connection.unlock(); }
+                if (!streamOutputClosed) {
+                    connection.writeFrame(
+                        FrameHeader.encode(0, FrameType.DATA, END_STREAM, streamId));
+                }
                 dataIn.close();
             } finally {
                 closed = true;
@@ -311,10 +306,8 @@ public final class Http2Stream {
                         int increment = (int) readSinceWindowUpdate;
                         readSinceWindowUpdate = 0;
                         receiveWindow.addAndGet(increment);
-                        connection.lock();
-                        try {
-                            new WindowUpdateFrame(streamId, increment).writeTo(connection.outputStream());
-                        } finally { connection.unlock(); }
+                        connection.writeFrame(
+                            new WindowUpdateFrame(streamId, increment).encode());
                     }
                 }
             }

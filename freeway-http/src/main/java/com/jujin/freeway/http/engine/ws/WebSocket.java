@@ -98,16 +98,15 @@ public final class WebSocket {
                             messageBytes = 0;
                         }
                     }
-                    case Ping -> writeFrame(out,
+                    case Ping -> session.writeFrame(
                         new WebSocketFrame(OpCode.Pong, true, frame.payload()));
                     case Pong -> { /* no-op */ }
                     case Close -> {
-                        writeFrame(out, new WebSocketFrame(OpCode.Close, true,
+                        session.writeFrame(new WebSocketFrame(OpCode.Close, true,
                             frame.payload()));
                         String reason = frame.closeReason() != null
                             ? frame.closeReason() : "";
-                        int code = frame.closeCode() != null
-                            ? frame.closeCode().value() : 1000;
+                        int code = frame.closeCodeValue();
                         session.markClosed(code, reason);
                         try {
                             listener.onClose(code, reason, true);

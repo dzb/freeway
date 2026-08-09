@@ -4,9 +4,12 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.CorsFilter;
+import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
@@ -19,6 +22,7 @@ import com.jujin.freeway.http.websocket.WebSocketGroup;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import javax.net.ssl.SSLContext;
+import java.io.PrintStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +61,7 @@ public final class WebServerBuilder {
     private Consumer<Object> eventSink = WebServer.NOOP_SINK;
     private JsonCodec jsonCodec = new JsonCodecDefault();
     private Coercer coercer = new CoercerDefault();
+    private Metrics metrics = NoopMetrics.INSTANCE;
 
     WebServerBuilder() {}
 
@@ -99,6 +104,11 @@ public final class WebServerBuilder {
         return this;
     }
 
+    /** Enables a text access log written to the given stream. */
+    public WebServerBuilder accessLog(PrintStream out) {
+        return filter(new AccessLogFilter(out));
+    }
+
     public WebServerBuilder exceptionMapper(ExceptionMapper mapper) {
         exceptionMappers.add(Objects.requireNonNull(mapper, "mapper"));
         return this;
@@ -134,6 +144,12 @@ public final class WebServerBuilder {
         return this;
     }
 
+    /** Attaches a metrics implementation for engine-level counters/gauges. */
+    public WebServerBuilder metrics(Metrics metrics) {
+        this.metrics = Objects.requireNonNull(metrics, "metrics");
+        return this;
+    }
+
     /** Enables HTTPS on the server with the given SSL context and optional HTTP/2. */
     public WebServerBuilder sslContext(SSLContext sslContext, boolean http2OverSsl) {
         this.sslContext = Objects.requireNonNull(sslContext, "sslContext");
@@ -144,8 +160,10 @@ public final class WebServerBuilder {
     public WebServer build() {
         if (engine == null) {
             engine = sslContext != null
-                ? new FreewayHttpEngine(jsonCodec, coercer, sslContext, http2OverSsl)
-                : new FreewayHttpEngine(jsonCodec, coercer);
+                ? new FreewayHttpEngine(
+                    jsonCodec, coercer, sslContext, http2OverSsl,
+                    null, metrics)
+                : new FreewayHttpEngine(jsonCodec, coercer, metrics);
         }
         // Class-based routes resolve via container.create() — they need the IoC
         // HttpModule. Fail fast here instead of blowing up on the first request.

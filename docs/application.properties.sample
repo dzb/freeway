@@ -49,6 +49,30 @@
 # Shutdown grace period for in-flight requests (human-friendly duration).
 # freeway.http.server.shutdown-grace=2s
 
+# Socket read idle timeout (0 disables); covers request reads, TLS
+# handshakes, HTTP/2 frames, and keep-alive waits.
+# freeway.http.server.read-timeout=30s
+
+# Per-socket-write timeout (0 disables): a write blocked longer than this
+# (peer stopped reading / TCP window full) closes the connection.
+# freeway.http.server.write-timeout=30s
+
+# Maximum concurrent connections (0 = unlimited); excess connections are
+# rejected at accept time.
+# freeway.http.server.max-connections=0
+
+# Desired socket receive/send buffer sizes in bytes (0 = OS default).
+# freeway.http.server.receive-buffer-size=0
+# freeway.http.server.send-buffer-size=0
+
+# gzip response compression (client opt-in via Accept-Encoding; only
+# compressible content types and bodies >= min-size are compressed).
+# freeway.http.compression.enabled=true
+# freeway.http.compression.min-size=256
+
+# Text access log (method path status elapsed-ms) written to stdout.
+# freeway.http.access-log.enabled=false
+
 # ================================
 #  HTTP / Health
 # ================================
@@ -80,6 +104,16 @@
 # freeway.http.ssl.key-store-password=
 # freeway.http.ssl.key-store-type=PKCS12
 # freeway.http.ssl.http2=true    # HTTP/2 over TLS via ALPN
+# freeway.http.ssl.trust-store=  # optional truststore for validating client certs
+# freeway.http.ssl.trust-store-password=
+# freeway.http.ssl.trust-store-type=PKCS12
+# freeway.http.ssl.client-auth=false   # require client certificates (mTLS)
+# freeway.http.ssl.protocols=TLSv1.3,TLSv1.2   # restrict TLS versions
+# freeway.http.ssl.ciphers=        # comma-separated cipher suite names
+# freeway.http.ssl.sni-directory=  # per-hostname keystores (<host>.p12/.jks,
+#                                  # default.p12 overrides the key-store)
+# freeway.http.ssl.reload-interval=0s  # poll keystore mtime/size and reload
+#                                      # certificates on change (0 disables)
 
 
 # ================================

@@ -4,6 +4,9 @@ import java.util.Optional;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -183,5 +186,34 @@ public final class StubHttpContext extends HttpContext {
         }
         this.body = new String(data, java.nio.charset.StandardCharsets.UTF_8);
         return this;
+    }
+
+    @Override
+    public HttpContext output(InputStream in, long contentLength) throws IOException {
+        if (!allowsResponseBody()) {
+            this.body = "";
+            return this;
+        }
+        this.body = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        return this;
+    }
+
+    @Override
+    public HttpContext outputFile(Path file, long offset, long length)
+            throws IOException {
+        if (length > Integer.MAX_VALUE) {
+            throw new IOException("stub cannot buffer files larger than 2GB");
+        }
+        try (InputStream in = Files.newInputStream(file)) {
+            in.skipNBytes(offset);
+            byte[] data = new byte[(int) length];
+            int off = 0;
+            while (off < data.length) {
+                int n = in.read(data, off, data.length - off);
+                if (n < 0) break;
+                off += n;
+            }
+            return output(data);
+        }
     }
 }

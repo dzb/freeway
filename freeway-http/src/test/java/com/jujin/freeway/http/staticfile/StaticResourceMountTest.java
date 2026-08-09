@@ -87,6 +87,54 @@ class StaticResourceMountTest {
     }
 
     @Test
+    void byteRangeServesPartialContent() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("range"));
+        Files.writeString(root.resolve("data.txt"), "0123456789");
+        StaticResourceMount mount = StaticResourceMount.directory("/files", root);
+
+        StubHttpContext prefix = new StubHttpContext("GET", "/files/data.txt");
+        prefix.requestHeader("Range", "bytes=0-3");
+        mount.serve(prefix);
+        assertEquals(206, prefix.status());
+        assertEquals("bytes 0-3/10", prefix.responseHeader("Content-Range"));
+        assertEquals("0123", prefix.responseBody());
+
+        StubHttpContext openEnd = new StubHttpContext("GET", "/files/data.txt");
+        openEnd.requestHeader("Range", "bytes=5-");
+        mount.serve(openEnd);
+        assertEquals(206, openEnd.status());
+        assertEquals("56789", openEnd.responseBody());
+
+        StubHttpContext middle = new StubHttpContext("GET", "/files/data.txt");
+        middle.requestHeader("Range", "bytes=2-8");
+        mount.serve(middle);
+        assertEquals("2345678", middle.responseBody());
+
+        StubHttpContext suffix = new StubHttpContext("GET", "/files/data.txt");
+        suffix.requestHeader("Range", "bytes=-4");
+        mount.serve(suffix);
+        assertEquals("6789", suffix.responseBody());
+
+        StubHttpContext head = new StubHttpContext("HEAD", "/files/data.txt");
+        head.requestHeader("Range", "bytes=0-3");
+        mount.serve(head);
+        assertEquals(206, head.status());
+        assertEquals("bytes 0-3/10", head.responseHeader("Content-Range"));
+        assertEquals("4", head.responseHeader("Content-Length"));
+
+        StubHttpContext unsatisfiable = new StubHttpContext("GET", "/files/data.txt");
+        unsatisfiable.requestHeader("Range", "bytes=20-");
+        mount.serve(unsatisfiable);
+        assertEquals(416, unsatisfiable.status());
+        assertEquals("bytes */10", unsatisfiable.responseHeader("Content-Range"));
+
+        StubHttpContext full = new StubHttpContext("GET", "/files/data.txt");
+        mount.serve(full);
+        assertEquals(200, full.status());
+        assertEquals("0123456789", full.responseBody());
+    }
+
+    @Test
     void classpathMountRejectsOversizedResource() throws Exception {
         ClassLoader original = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(

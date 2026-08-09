@@ -2,6 +2,8 @@ package com.jujin.freeway.http.engine;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.http.HttpEngine;
 import com.jujin.freeway.http.HttpRequestHandler;
 import com.jujin.freeway.http.HttpServerConfig;
@@ -10,9 +12,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
+import java.net.StandardSocketOptions;
+import java.nio.channels.ServerSocketChannel;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -27,25 +31,59 @@ public final class FreewayHttpEngine implements HttpEngine {
 
     private final JsonCodec jsonCodec;
     private final Coercer coercer;
-    private final SSLContext sslContext;
+    private volatile SSLContext sslContext;
     private final boolean http2OverSsl;
+    private final SSLParameters sslParameters;
+    private final Metrics metrics;
 
     /** Plain HTTP engine. */
     public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer) {
-        this(jsonCodec, coercer, null, false);
+        this(jsonCodec, coercer, null, false, null, NoopMetrics.INSTANCE);
+    }
+
+    /** Plain HTTP engine with metrics instrumentation. */
+    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer, Metrics metrics) {
+        this(jsonCodec, coercer, null, false, null,
+            metrics == null ? NoopMetrics.INSTANCE : metrics);
     }
 
     /** HTTPS engine with optional HTTP/2 over TLS (ALPN). */
     public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer,
                               SSLContext sslContext, boolean http2OverSsl) {
+        this(jsonCodec, coercer, sslContext, http2OverSsl, null,
+            NoopMetrics.INSTANCE);
+    }
+
+    /** HTTPS engine with optional HTTP/2 and per-socket TLS parameters. */
+    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer,
+                              SSLContext sslContext, boolean http2OverSsl,
+                              SSLParameters sslParameters) {
+        this(jsonCodec, coercer, sslContext, http2OverSsl, sslParameters,
+            NoopMetrics.INSTANCE);
+    }
+
+    /** Full constructor: HTTPS/HTTP/2 options plus metrics instrumentation. */
+    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer,
+                              SSLContext sslContext, boolean http2OverSsl,
+                              SSLParameters sslParameters, Metrics metrics) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
         this.sslContext = sslContext;
         this.http2OverSsl = http2OverSsl;
+        this.sslParameters = sslParameters;
+        this.metrics = metrics == null ? NoopMetrics.INSTANCE : metrics;
     }
 
     public SSLContext sslContext() { return sslContext; }
     public boolean http2OverSsl() { return http2OverSsl; }
+    public SSLParameters sslParameters() { return sslParameters; }
+    Metrics metrics() { return metrics; }
+
+    /** Atomically swaps the SSL context for new connections (certificate
+     *  rotation / hot reload). Existing connections keep their old context. */
+    public void reload(SSLContext sslContext) {
+        this.sslContext = Objects.requireNonNull(sslContext, "sslContext");
+    }
 
     @Override
     public HttpServerHandle start(HttpServerConfig config, HttpRequestHandler handler)
@@ -53,13 +91,17 @@ public final class FreewayHttpEngine implements HttpEngine {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(handler, "handler");
 
-        var ss = new ServerSocket();
-        ss.setReuseAddress(true);
+        // Channel-based listener so accepted sockets expose their
+        // SocketChannel — required for the sendfile fast path.
+        var ss = ServerSocketChannel.open();
+        ss.setOption(StandardSocketOptions.SO_REUSEADDR, true);
         ss.bind(new InetSocketAddress(config.host(), config.port()), config.backlog());
-        int port = ss.getLocalPort();
+        int port = ss.socket().getLocalPort();
 
         var finished = new AtomicBoolean();
-        var registry = new ConnectionRegistry();
+        var registry = new ConnectionRegistry(metrics);
+        Metrics.Counter rejected = metrics.counter("freeway.http.connections.rejected");
+        Metrics.Counter accepted = metrics.counter("freeway.http.connections.total");
 
         // Single platform-thread acceptor, one virtual thread per connection.
         // Virtual threads are cheap, so each connection gets its own carrier that
@@ -68,11 +110,21 @@ public final class FreewayHttpEngine implements HttpEngine {
         var acceptor = new Thread(() -> {
             while (!finished.get()) {
                 try {
-                    var socket = ss.accept();
+                    var socket = ss.accept().socket();
+                    if (config.maxConnections() > 0
+                            && registry.activeCount() >= config.maxConnections()) {
+                        // Reject excess connections at accept time so a flood
+                        // cannot exhaust fds/threads; the client sees an
+                        // immediate close instead of a queued connection.
+                        rejected.increment();
+                        socket.close();
+                        continue;
+                    }
+                    accepted.increment();
                     Thread.ofVirtual()
                         .name("http-" + socket.getRemoteSocketAddress())
                         .start(new HttpSession(socket, handler, jsonCodec, coercer, this,
-                            config.socketBufferSize(), config.maxBodySize(), registry));
+                            config, registry));
                 } catch (IOException e) {
                     if (!finished.get()) LOG.error("Accept failed", e);
                     break;
@@ -83,7 +135,7 @@ public final class FreewayHttpEngine implements HttpEngine {
 
         String scheme = sslContext != null ? "https" : "http";
         LOG.info("Freeway HTTP engine ({}) started on {}:{}", scheme, config.host(), port);
-        return new HttpServerHandleDefault(ss, acceptor,
+        return new HttpServerHandleDefault(ss.socket(), acceptor,
             config.shutdownGrace(), finished, registry, config.host(), port);
     }
 }

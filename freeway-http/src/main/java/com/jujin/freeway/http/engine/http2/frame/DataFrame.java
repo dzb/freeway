@@ -8,8 +8,19 @@ import java.util.Arrays;
 
 public final class DataFrame extends BaseFrame {
     public final byte[] body;
+    private final int padLength;
 
-    public DataFrame(FrameHeader header, byte[] body) { super(header); this.body = body; }
+    public DataFrame(FrameHeader header, byte[] body) {
+        super(header);
+        this.body = body;
+        this.padLength = 0;
+    }
+
+    private DataFrame(FrameHeader header, byte[] body, int padLength) {
+        super(header);
+        this.body = body;
+        this.padLength = padLength;
+    }
 
     public static BaseFrame parse(byte[] body, FrameHeader header) throws IOException {
         int index = 0;
@@ -26,7 +37,17 @@ public final class DataFrame extends BaseFrame {
             if (padLen > body.length - index) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         }
         return new DataFrame(header,
-                Arrays.copyOfRange(body, index, body.length - padLen));
+                Arrays.copyOfRange(body, index, body.length - padLen), padLen);
+    }
+
+    /** Padding bytes (excluding the pad-length byte itself). */
+    public int padLength() {
+        return padLength;
+    }
+
+    /** Flow-controlled length: data + pad-length byte + padding (RFC 7540 §6.9.1). */
+    public int flowLength() {
+        return body.length + padLength + (header().flags().contains(FrameFlag.PADDED) ? 1 : 0);
     }
 
     public void writeTo(OutputStream outputStream) throws IOException { outputStream.write(body); }

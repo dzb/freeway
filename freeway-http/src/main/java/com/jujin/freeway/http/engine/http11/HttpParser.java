@@ -7,6 +7,7 @@ import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -30,12 +31,16 @@ public final class HttpParser {
     private final StringBuilder reqLineBuf = new StringBuilder(64);
     private final StringBuilder headerKeyBuf = new StringBuilder(32);
     private final StringBuilder headerValBuf = new StringBuilder(128);
+    // Bytes handed to a chunked body stream that the body did not consume
+    // (typically a pipelined next request). Reclaimed before the next parse.
+    private ByteArrayInputStream chunkedPrefix;
 
     public HttpParser(InputStream in) { this.in = in; }
 
     /** Reuse this parser for a new request on the same connection. */
     public void reset(InputStream newIn) {
         this.in = newIn;
+        this.chunkedPrefix = null;
         // Preserve bytes buffered past the previous request's header boundary
         // (a pipelined next request); otherwise they would be lost.
         if (pos > 0 && pos < end) {
@@ -175,112 +180,157 @@ public final class HttpParser {
 
     // --- bulk-read helpers ---
 
-    /** Ensures at least one byte is available, reading from the stream if needed. */
-    private int nextByte() throws IOException {
-        if (pos >= end) {
-            pos = 0;
-            end = in.read(buf, 0, buf.length);
-            if (end <= 0) return -1;
-        }
-        return buf[pos++] & 0xFF;
+    /** Fills the reusable buffer; returns false on EOF. */
+    private boolean fill() throws IOException {
+        pos = 0;
+        end = in.read(buf, 0, buf.length);
+        return end > 0;
     }
 
     // --- request line parser ---
 
     private String readRequestLine() throws IOException {
-        reqLineBuf.setLength(0);
-        boolean gotCR = false;
-        while (true) {
-            int c = nextByte();
-            if (c == -1) {
-                if (reqLineBuf.isEmpty()) return null; // empty stream → clean
-                throw new IOException("EOF while reading HTTP request line");
-            }
-            if (reqLineBuf.length() >= MAX_REQUEST_LINE_SIZE) {
-                throw new IOException(
-                    "Request line too long (max " + MAX_REQUEST_LINE_SIZE + " chars)"
-                );
-            }
-            if (gotCR) {
-                if (c == LF) return reqLineBuf.isEmpty() ? "" : reqLineBuf.toString();
-                gotCR = false;
-                reqLineBuf.append(CR).append((char) c);
-            } else {
-                if (c == CR) gotCR = true;
-                else reqLineBuf.append((char) c);
-            }
-        }
+        return readLine(reqLineBuf, MAX_REQUEST_LINE_SIZE, true)
+            ? reqLineBuf.toString()
+            : null;
     }
 
     // --- header parser ---
 
     private Map<String, List<String>> parseHeaders() throws IOException {
         var headers = new LinkedHashMap<String, List<String>>();
-        headerKeyBuf.setLength(0);
-        headerValBuf.setLength(0);
-        var key = headerKeyBuf;
-        var value = headerValBuf;
-        var current = key;
-        boolean prevCR = false, startOfLine = true, afterColon = false;
         int headerCount = 0, totalSize = 0;
-
-        while (true) {
-            int c = nextByte();
-            if (c == -1) {
-                if (startOfLine) return headers; // clean EOF after complete headers
-                throw new IOException("EOF while reading HTTP headers");
-            }
-            totalSize++;
+        boolean haveLine = readLine(headerKeyBuf, MAX_HEADER_SIZE, false);
+        while (haveLine) {
+            if (headerKeyBuf.isEmpty()) break; // blank line terminates headers
+            totalSize += headerKeyBuf.length() + 2;
             if (totalSize > MAX_HEADER_SIZE) throw new IOException("Headers too large");
 
-            if (c == CR) {
-                prevCR = true;
-            } else if (c == LF && prevCR) {
-                if (key.isEmpty() && value.isEmpty()) break;
-                if (startOfLine) { addHeader(headers); if (++headerCount > MAX_HEADER_COUNT) throw new IOException("Too many headers"); break; }
-                prevCR = false; startOfLine = true;
-            } else {
-                if (startOfLine && (c == ' ' || c == '\t')) {
-                    current = value; startOfLine = false;
-                } else {
-                    if (startOfLine) {
-                        if (!key.isEmpty() || !value.isEmpty()) { addHeader(headers); if (++headerCount > MAX_HEADER_COUNT) throw new IOException("Too many headers"); }
-                        current = key; startOfLine = false; afterColon = false;
-                    }
-                    if (c == ':' && current == key) {
-                        current = value; afterColon = true;
-                    } else if (afterColon && (c == ' ' || c == '\t')) {
-                        // skip leading whitespace after colon
-                    } else {
-                        afterColon = false;
-                        if (current == key) {
-                            // Normalize header keys to lowercase per RFC 7230 §3.2
-                            char ch = (char) c;
-                            key.append(ch >= 'A' && ch <= 'Z' ? (char)(ch + 32) : ch);
-                        } else {
-                            current.append((char) c);
-                        }
-                    }
-                }
+            int colon = -1;
+            for (int i = 0; i < headerKeyBuf.length(); i++) {
+                if (headerKeyBuf.charAt(i) == ':') { colon = i; break; }
             }
+            String key;
+            if (colon < 0) {
+                key = headerKeyBuf.toString();
+            } else {
+                key = headerKeyBuf.substring(0, colon).trim();
+            }
+            key = key.toLowerCase(Locale.ROOT);
+
+            headerValBuf.setLength(0);
+            if (colon >= 0) {
+                int vStart = colon + 1;
+                while (vStart < headerKeyBuf.length()
+                        && (headerKeyBuf.charAt(vStart) == ' '
+                            || headerKeyBuf.charAt(vStart) == '\t')) {
+                    vStart++;
+                }
+                headerValBuf.append(headerKeyBuf, vStart, headerKeyBuf.length());
+            }
+
+            // RFC 7230 §3.2.4 obs-fold: continuation lines start with SP/HT.
+            boolean headersEnded = false;
+            while (!headersEnded) {
+                boolean haveFold = readLine(headerKeyBuf, MAX_HEADER_SIZE, false);
+                if (!haveFold || headerKeyBuf.isEmpty()) {
+                    // clean EOF at a line boundary, or the terminating blank
+                    // line — the block is complete.
+                    headersEnded = true;
+                    break;
+                }
+                if (headerKeyBuf.charAt(0) == ' ' || headerKeyBuf.charAt(0) == '\t') {
+                    totalSize += headerKeyBuf.length() + 2;
+                    if (totalSize > MAX_HEADER_SIZE) {
+                        throw new IOException("Headers too large");
+                    }
+                    headerValBuf.append(' ').append(headerKeyBuf.toString().trim());
+                    continue;
+                }
+                // Regular next header line — keep it for the outer loop.
+                break;
+            }
+
+            // Strip trailing OWS per RFC 7230 §3.2.6 — clients may append
+            // spaces/tabs before CRLF (e.g. "Content-Length: 4 ").
+            int vEnd = headerValBuf.length();
+            while (vEnd > 0
+                    && (headerValBuf.charAt(vEnd - 1) == ' '
+                        || headerValBuf.charAt(vEnd - 1) == '\t')) {
+                vEnd--;
+            }
+            String value = vEnd == headerValBuf.length()
+                ? headerValBuf.toString()
+                : headerValBuf.substring(0, vEnd);
+            headers.computeIfAbsent(key, k -> new ArrayList<>(4)).add(value);
+            if (++headerCount > MAX_HEADER_COUNT) {
+                throw new IOException("Too many headers");
+            }
+            if (headersEnded) break;
         }
         return headers;
     }
 
-    private void addHeader(Map<String, List<String>> headers) {
-        // Strip trailing OWS per RFC 7230 §3.2.6 — clients and intermediaries
-        // may append spaces/tabs before CRLF (e.g. "Content-Length: 4 ").
-        int end = headerValBuf.length();
-        while (end > 0 && (headerValBuf.charAt(end - 1) == ' ' || headerValBuf.charAt(end - 1) == '\t')) {
-            end--;
+    /**
+     * Reads one CRLF-terminated line into {@code out} (CRLF excluded) by
+     * scanning the bulk buffer, refilling only at chunk boundaries. Returns
+     * false on a clean EOF before any byte of the line; throws on EOF mid-line
+     * or when {@code maxLen} is exceeded.
+     */
+    private boolean readLine(StringBuilder out, int maxLen, boolean requestLine)
+            throws IOException {
+        out.setLength(0);
+        boolean crPending = false;
+        while (true) {
+            if (pos >= end && !fill()) {
+                if (out.isEmpty() && !crPending) return false;
+                throw new IOException(requestLine
+                    ? "EOF while reading HTTP request line"
+                    : "EOF while reading HTTP headers");
+            }
+            if (crPending) {
+                if (buf[pos] == (byte) '\n') {
+                    pos++;
+                    return true;
+                }
+                out.append(CR);
+                if (out.length() > maxLen) throw lineTooLong(requestLine, maxLen);
+                crPending = false;
+            }
+            int i = pos;
+            while (i < end && buf[i] != (byte) '\n') i++;
+            if (i < end) {
+                int contentEnd = i;
+                if (contentEnd > pos && buf[contentEnd - 1] == (byte) '\r') {
+                    contentEnd--;
+                }
+                appendRange(out, pos, contentEnd, maxLen, requestLine);
+                pos = i + 1;
+                return true;
+            }
+            int appendEnd = end;
+            if (buf[end - 1] == (byte) '\r') {
+                crPending = true;
+                appendEnd--;
+            }
+            appendRange(out, pos, appendEnd, maxLen, requestLine);
+            pos = end;
         }
-        String value = end == headerValBuf.length()
-            ? headerValBuf.toString()
-            : headerValBuf.substring(0, end);
-        headers.computeIfAbsent(headerKeyBuf.toString(), k -> new ArrayList<>(4))
-               .add(value);
-        headerKeyBuf.setLength(0);
-        headerValBuf.setLength(0);
+    }
+
+    private void appendRange(StringBuilder out, int from, int to,
+                             int maxLen, boolean requestLine) throws IOException {
+        int len = to - from;
+        if (out.length() + len > maxLen) throw lineTooLong(requestLine, maxLen);
+        for (int j = from; j < to; j++) {
+            out.append((char) (buf[j] & 0xFF));
+        }
+    }
+
+    private static IOException lineTooLong(boolean requestLine, int maxLen) {
+        return new IOException(requestLine
+            ? "Request line too long (max " + maxLen + " chars)"
+            : "Headers too large");
     }
 
     /**
@@ -296,6 +346,15 @@ public final class HttpParser {
     public InputStream bodyStream(long bodyLength) {
         if (pos >= end) return in;
         int available = end - pos;
+        if (bodyLength < 0) {
+            // Chunked bodies have an unknown wire length, so all buffered
+            // bytes must go to the body parser. Keep a reference so any
+            // bytes left after the terminal chunk (pipelined requests) can
+            // be put back into this parser's buffer.
+            chunkedPrefix = new ByteArrayInputStream(buf, pos, available);
+            pos = end;
+            return new SequenceInputStream(chunkedPrefix, in);
+        }
         int prefixLen = bodyLength >= 0 ? (int) Math.min(available, bodyLength) : available;
         var prefix = new ByteArrayInputStream(buf, pos, prefixLen);
         pos += prefixLen;
@@ -305,6 +364,24 @@ public final class HttpParser {
             return prefix;
         }
         return new SequenceInputStream(prefix, in);
+    }
+
+    /**
+     * Returns bytes that were buffered past the end of a chunked body back
+     * into the parser's reusable buffer so the next pipelined request is not
+     * lost. Must be called only after the chunked body has been fully drained.
+     */
+    public void reclaimChunkedPrefix() {
+        if (chunkedPrefix == null) return;
+        int remaining = chunkedPrefix.available();
+        if (remaining > 0) {
+            int read = chunkedPrefix.read(buf, 0, Math.min(remaining, buf.length));
+            if (read > 0) {
+                end = read;
+                pos = 0;
+            }
+        }
+        chunkedPrefix = null;
     }
 
     public record ParsedRequest(

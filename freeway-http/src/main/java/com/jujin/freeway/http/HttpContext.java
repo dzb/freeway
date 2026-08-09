@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -283,6 +284,22 @@ public abstract class HttpContext {
      * @return this context for chaining
      */
     public abstract HttpContext output(byte[] data) throws IOException;
+
+    /**
+     * Streams a response body from an input stream, writing the response head
+     * first. {@code contentLength} must be known (or a Content-Length header
+     * pre-set) so HTTP/1.1 can frame the response.
+     */
+    public abstract HttpContext output(InputStream in, long contentLength)
+        throws IOException;
+
+    /**
+     * Sends a byte range of a file. Uses the OS sendfile path when the
+     * transport supports it (plain HTTP/1.1 socket with a channel and no
+     * compression); otherwise falls back to buffered streaming.
+     */
+    public abstract HttpContext outputFile(Path file, long offset, long length)
+        throws IOException;
 
     /**
      * Whether the response has been committed (headers or body have started

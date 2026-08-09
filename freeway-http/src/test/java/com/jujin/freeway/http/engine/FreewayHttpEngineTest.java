@@ -38,6 +38,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.security.KeyStore;
 import javax.net.ssl.KeyManagerFactory;
 import java.net.URI;
@@ -85,6 +86,12 @@ class FreewayHttpEngineTest {
         System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
         System.clearProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE);
         System.clearProperty(HttpConfigKeys.SSL_HTTP2);
+        System.clearProperty(HttpConfigKeys.SSL_TRUST_STORE);
+        System.clearProperty(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD);
+        System.clearProperty(HttpConfigKeys.SSL_TRUST_STORE_TYPE);
+        System.clearProperty(HttpConfigKeys.SSL_CLIENT_AUTH);
+        System.clearProperty(HttpConfigKeys.SSL_PROTOCOLS);
+        System.clearProperty(HttpConfigKeys.SSL_CIPHERS);
         System.clearProperty("freeway.http.server.port");
         System.clearProperty("freeway.http.server.host");
     }
@@ -179,6 +186,76 @@ class FreewayHttpEngineTest {
             String second = readHttpResponse(sock);
             assertTrue(second.contains("pong"),
                 "Second request on the same connection failed: " + second);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void chunkedBodyWithPipelinedNextRequestKeepsBoth() throws Exception {
+        int port = freePort();
+        var server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.post("/echo", ctx -> ctx.send(200, new String(
+                ctx.body(), StandardCharsets.UTF_8))))
+            .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+            .build();
+        server.start();
+        try (var sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(3000);
+            var out = sock.getOutputStream();
+            out.write(("POST /echo HTTP/1.1\r\n"
+                    + "Host: x\r\n"
+                    + "Transfer-Encoding: chunked\r\n"
+                    + "\r\n"
+                    + "1\r\na\r\n"
+                    + "0\r\n\r\n"
+                    + "GET /ping HTTP/1.1\r\n"
+                    + "Host: x\r\n"
+                    + "Connection: close\r\n"
+                    + "\r\n")
+                .getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+
+            String first = readHttpResponse(sock);
+            assertTrue(first.contains("a"),
+                "chunked body response missing: " + first);
+            String second = readHttpResponse(sock);
+            assertTrue(second.contains("pong"),
+                "pipelined request after chunked body was lost: " + second);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void handlerConnectionCloseActuallyClosesConnection() throws Exception {
+        int port = freePort();
+        var server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/close", ctx -> {
+                ctx.setHeader("Connection", "close");
+                ctx.send(200, "first");
+            }))
+            .build();
+        server.start();
+        try (var sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(3000);
+            var out = sock.getOutputStream();
+            out.write(("GET /close HTTP/1.1\r\n"
+                    + "Host: x\r\n"
+                    + "\r\n"
+                    + "GET /close HTTP/1.1\r\n"
+                    + "Host: x\r\n"
+                    + "\r\n")
+                .getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+
+            String first = readHttpResponse(sock);
+            assertTrue(first.contains("Connection: close"),
+                "handler Connection: close must appear in the response: " + first);
+            assertEquals(-1, sock.getInputStream().read(),
+                "server must close the connection after Connection: close");
         } finally {
             server.stop();
         }
@@ -620,6 +697,76 @@ class FreewayHttpEngineTest {
         return serverSsl;
     }
 
+    private static Path generateClientKeyStore(Path dir) throws Exception {
+        Path keystore = dir.resolve("client.p12");
+        Process keytool = new ProcessBuilder(
+                System.getProperty("java.home") + "/bin/keytool",
+                "-genkeypair", "-alias", "client",
+                "-keyalg", "RSA", "-keysize", "2048",
+                "-keystore", keystore.toString(),
+                "-storetype", "PKCS12", "-storepass", "changeit",
+                "-dname", "CN=freeway-client", "-validity", "1")
+            .redirectErrorStream(true).start();
+        keytool.getInputStream().readAllBytes();
+        assertTrue(keytool.waitFor(30, TimeUnit.SECONDS) && keytool.exitValue() == 0,
+            "keytool should generate a client keystore");
+        return keystore;
+    }
+
+    private static Path generateTrustStore(Path dir, Path clientKeystore) throws Exception {
+        Path cert = dir.resolve("client.cer");
+        Process export = new ProcessBuilder(
+                System.getProperty("java.home") + "/bin/keytool",
+                "-exportcert", "-alias", "client",
+                "-keystore", clientKeystore.toString(),
+                "-storetype", "PKCS12", "-storepass", "changeit",
+                "-file", cert.toString())
+            .redirectErrorStream(true).start();
+        export.getInputStream().readAllBytes();
+        assertTrue(export.waitFor(30, TimeUnit.SECONDS) && export.exitValue() == 0,
+            "keytool should export the client certificate");
+
+        Path trustStore = dir.resolve("client-trust.p12");
+        Process importCert = new ProcessBuilder(
+                System.getProperty("java.home") + "/bin/keytool",
+                "-importcert", "-alias", "client",
+                "-file", cert.toString(),
+                "-keystore", trustStore.toString(),
+                "-storetype", "PKCS12", "-storepass", "changeit",
+                "-noprompt")
+            .redirectErrorStream(true).start();
+        importCert.getInputStream().readAllBytes();
+        assertTrue(importCert.waitFor(30, TimeUnit.SECONDS) && importCert.exitValue() == 0,
+            "keytool should import the client certificate into the truststore");
+        return trustStore;
+    }
+
+    private static SSLContext clientSslContext(Path clientKeystore) throws Exception {
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        try (var in = Files.newInputStream(clientKeystore)) {
+            ks.load(in, "changeit".toCharArray());
+        }
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, "changeit".toCharArray());
+        SSLContext clientSsl = SSLContext.getInstance("TLS");
+        clientSsl.init(kmf.getKeyManagers(), new TrustManager[]{
+            new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            }
+        }, new SecureRandom());
+        return clientSsl;
+    }
+
     private static SSLContext trustAllSslContext() throws Exception {
         SSLContext trustAll = SSLContext.getInstance("TLS");
         trustAll.init(null, new TrustManager[]{
@@ -1014,6 +1161,69 @@ class FreewayHttpEngineTest {
         }
     }
 
+    @Test
+    void h2cFragmentedTrailerEndStreamCompletesBody() throws Exception {
+        // END_STREAM on the first trailer HEADERS frame must survive a
+        // fragmented header block and wake the handler blocked on body().
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(1)))
+            .route(Route.post("/trailer", ctx -> {
+                ctx.body();
+                ctx.send(200, "ok");
+            }))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
+                StandardCharsets.US_ASCII);
+            try (var socket = new Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(5000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+
+                byte[] settingsHeader = new byte[9];
+                readFully(socket.getInputStream(), settingsHeader);
+                int settingsLen = ((settingsHeader[0] & 0xff) << 16)
+                    | ((settingsHeader[1] & 0xff) << 8)
+                    | (settingsHeader[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                byte[] postBlock = {
+                    (byte) 0x83, 0x04, 0x08,
+                    '/', 't', 'r', 'a', 'i', 'l', 'e', 'r',
+                    (byte) 0x86, 0x01, 0x09,
+                    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                writeFrame(out, postBlock.length, 0x1, 0x4, 1, postBlock);
+                writeFrame(out, 2, 0x0, 0x0, 1,
+                    "hi".getBytes(StandardCharsets.US_ASCII));
+
+                // Trailer block split across HEADERS(END_STREAM) and
+                // CONTINUATION(END_HEADERS).
+                byte[] trailerPart1 = {0x00, 0x01, 'x'};
+                byte[] trailerPart2 = {0x01, 'v'};
+                writeFrame(out, trailerPart1.length, 0x1, 0x1, 1, trailerPart1);
+                writeFrame(out, trailerPart2.length, 0x9, 0x4, 1, trailerPart2);
+                out.flush();
+
+                assertTrue(waitForStatus200(socket.getInputStream(), 1, 5000),
+                    "fragmented trailer END_STREAM must complete the request body");
+
+                byte[] getBlock = {
+                    (byte) 0x82, (byte) 0x84, (byte) 0x86,
+                    (byte) 0x41, 0x09, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                writeFrame(out, getBlock.length, 0x1, 0x5, 3, getBlock);
+                assertTrue(waitForStatus200(socket.getInputStream(), 3, 5000),
+                    "connection must survive a fragmented trailer block");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
     private static void writeFrame(OutputStream out, int len, int type, int flags,
             int streamId, byte[] payload) throws IOException {
         out.write(new byte[] {
@@ -1291,7 +1501,49 @@ class FreewayHttpEngineTest {
 
                 byte[] payload = new byte[length];
                 readFully(socket.getInputStream(), payload);
+
+                Map<Integer, Long> settings = new java.util.HashMap<>();
+                for (int i = 0; i + 6 <= payload.length; i += 6) {
+                    int id = ((payload[i] & 0xff) << 8) | (payload[i + 1] & 0xff);
+                    long value = ((long) (payload[i + 2] & 0xff) << 24)
+                        | ((long) (payload[i + 3] & 0xff) << 16)
+                        | ((long) (payload[i + 4] & 0xff) << 8)
+                        | (payload[i + 5] & 0xff);
+                    settings.put(id, value);
+                }
+                assertEquals(100L, settings.getOrDefault(0x3, -1L),
+                    "server must advertise SETTINGS_MAX_CONCURRENT_STREAMS=100");
+                assertEquals(65536L, settings.getOrDefault(0x6, -1L),
+                    "server must advertise SETTINGS_MAX_HEADER_LIST_SIZE");
+                assertEquals(16384L, settings.getOrDefault(0x5, -1L),
+                    "server must advertise SETTINGS_MAX_FRAME_SIZE=16384");
             }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cUpgradeViaHttp1UpgradeHeader() throws Exception {
+        int port = freePort();
+        var server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
+            .build();
+        server.start();
+        try {
+            var client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_2)
+                .build();
+            var resp = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/ping"))
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals("pong", resp.body());
+            assertEquals(HttpClient.Version.HTTP_2, resp.version(),
+                "Upgrade: h2c must negotiate HTTP/2");
         } finally {
             server.stop();
         }
@@ -1493,6 +1745,117 @@ class FreewayHttpEngineTest {
         }
     }
 
+    @Test
+    void httpsModuleRestrictsProtocolsAndCiphersFromConfig(@TempDir Path tempDir)
+            throws Exception {
+        Path keystore = generateKeyStore(tempDir);
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(HttpConfigKeys.SSL_PROTOCOLS, "TLSv1.3");
+        System.setProperty(HttpConfigKeys.SSL_CIPHERS, "TLS_AES_128_GCM_SHA256");
+
+        app = FreewayApp.run(new String[0], binder ->
+            binder.contribute(Route.class).add(
+                Route.get("/tls-config", ctx -> ctx.sendJson(200, Map.of(
+                    "protocol", ctx.sslSession() != null
+                        ? ctx.sslSession().getProtocol() : "")))
+            ));
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        var client = HttpClient.newBuilder()
+            .sslContext(trustAllSslContext())
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+        var resp = client.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("https://localhost:" + port + "/tls-config"))
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp.statusCode(), resp.body());
+        var body = JsonUtils.parseObject(resp.body());
+        assertEquals("TLSv1.3", body.getString("protocol"),
+            "ssl.protocols must restrict the negotiated TLS version");
+
+        var legacyClient = HttpClient.newBuilder()
+            .sslContext(trustAllSslContext())
+            .version(HttpClient.Version.HTTP_1_1)
+            .sslParameters(legacyTlsOnly())
+            .build();
+        assertThrows(IOException.class, () -> legacyClient.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("https://localhost:" + port + "/tls-config"))
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofString()),
+            "a TLSv1.2-only client must be rejected when ssl.protocols=TLSv1.3");
+    }
+
+    @Test
+    void httpsModuleClientAuthRequiresTrustedClientCertificate(@TempDir Path tempDir)
+            throws Exception {
+        Path keystore = generateKeyStore(tempDir);
+        Path clientKeystore = generateClientKeyStore(tempDir);
+        Path trustStore = generateTrustStore(tempDir, clientKeystore);
+        int port = freePort();
+        System.setProperty(HttpConfigKeys.SERVER_HOST, "127.0.0.1");
+        System.setProperty(HttpConfigKeys.SERVER_PORT, String.valueOf(port));
+        System.setProperty(HttpConfigKeys.SSL_ENABLED, "true");
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE, keystore.toString());
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, "changeit");
+        System.setProperty(HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12");
+        System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
+        System.setProperty(HttpConfigKeys.SSL_TRUST_STORE, trustStore.toString());
+        System.setProperty(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, "changeit");
+        System.setProperty(HttpConfigKeys.SSL_TRUST_STORE_TYPE, "PKCS12");
+        System.setProperty(HttpConfigKeys.SSL_CLIENT_AUTH, "true");
+
+        app = FreewayApp.run(new String[0], binder ->
+            binder.contribute(Route.class).add(
+                Route.get("/mtls", ctx -> ctx.sendJson(200, Map.of(
+                    "secure", ctx.isSecure(),
+                    "session", ctx.sslSession() != null)))
+            ));
+        assertTrue(app.get(WebServer.class).isRunning());
+
+        // A client without a certificate must fail the TLS handshake.
+        var anonymous = HttpClient.newBuilder()
+            .sslContext(trustAllSslContext())
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+        assertThrows(IOException.class, () -> anonymous.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("https://localhost:" + port + "/mtls"))
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofString()),
+            "ssl.client-auth=true must reject clients without a certificate");
+
+        // A client presenting the trusted certificate succeeds.
+        var authenticated = HttpClient.newBuilder()
+            .sslContext(clientSslContext(clientKeystore))
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+        var resp = authenticated.send(
+            HttpRequest.newBuilder()
+                .uri(URI.create("https://localhost:" + port + "/mtls"))
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp.statusCode(), resp.body());
+        var body = JsonUtils.parseObject(resp.body());
+        assertTrue(body.getBoolean("secure"));
+        assertTrue(body.getBoolean("session"));
+    }
+
+    private static javax.net.ssl.SSLParameters legacyTlsOnly() {
+        var params = new javax.net.ssl.SSLParameters();
+        params.setProtocols(new String[]{"TLSv1.2"});
+        return params;
+    }
+
     // ── HEAD response Content-Length (RFC 7231 §4.3.2) ────────────
 
     @Test
@@ -1504,7 +1867,12 @@ class FreewayHttpEngineTest {
             .build();
         server.start();
         try {
-            var client = HttpClient.newHttpClient();
+            // Pin HTTP/1.1: this regression is about RFC 7231 §4.3.2 HEAD
+            // Content-Length semantics, which HTTP/2 expresses with DATA
+            // framing rather than a header.
+            var client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
             var resp = client.send(
                 HttpRequest.newBuilder()
                     .uri(URI.create("http://localhost:" + server.port() + "/data"))

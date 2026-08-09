@@ -29,6 +29,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,10 +64,11 @@ public final class Http2Connection {
     /** Cap on a single inbound header block (across HEADERS + CONTINUATION
      *  fragments) before HPACK decode — bounds memory under a malicious peer. */
     private static final int MAX_INBOUND_HEADER_BLOCK = 64 * 1024;
+    /** Advertised SETTINGS_MAX_HEADER_LIST_SIZE (RFC 7540 §6.5.2). */
+    private static final int MAX_HEADER_LIST_SIZE = 64 * 1024;
 
     public final AtomicLong sendWindow = new AtomicLong(DEFAULT_WINDOW_SIZE);
     public final AtomicInteger receiveWindow = new AtomicInteger(DEFAULT_WINDOW_SIZE);
-    public final AtomicInteger requestsInProgress = new AtomicInteger();
 
     private final InputStream inputStream;
     private final OutputStream outputStream;
@@ -81,9 +83,16 @@ public final class Http2Connection {
     volatile int peerMaxFrameSize = 16384;
     private final SettingsMap remoteSettings = new SettingsMap();
     private final SettingsMap localSettings = new SettingsMap();
+    /** Reused by the single reader thread to avoid per-frame header allocation. */
+    private final byte[] frameHeaderBuffer = new byte[9];
 
     private final int connectionWindowSize = DEFAULT_WINDOW_SIZE;
     private final ReentrantLock lock = new ReentrantLock();
+    /** Outbound frame queue. Producers append under {@link #lock}; a single
+     *  leader drains and flushes so concurrent streams coalesce into fewer
+     *  socket writes. */
+    private final ArrayDeque<OutboundChunk> outbound = new ArrayDeque<>();
+    private boolean writing;
     /** Threads blocked on connection/stream flow control, unparked on WINDOW_UPDATE. */
     final Set<Thread> windowWaiters = ConcurrentHashMap.newKeySet();
 
@@ -103,6 +112,10 @@ public final class Http2Connection {
         this.handler = handler;
         localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_MAX_FRAME_SIZE, DEFAULT_MAX_FRAME_SIZE));
         localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_INITIAL_WINDOW_SIZE, DEFAULT_WINDOW_SIZE));
+        localSettings.set(new SettingParameter(
+            SettingIdentifier.SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS));
+        localSettings.set(new SettingParameter(
+            SettingIdentifier.SETTINGS_MAX_HEADER_LIST_SIZE, MAX_HEADER_LIST_SIZE));
     }
 
     void lock() {
@@ -152,15 +165,85 @@ public final class Http2Connection {
         return expected.equals(new String(buffer));
     }
 
-    void writeFrame(List<byte[]> partials) throws IOException {
+    /**
+     * Queues one or more whole frame byte-arrays and flushes all pending
+     * frames. The first producer to find no active writer drains the queue in
+     * a single write+flush; producers that join while a drain is running only
+     * append, so concurrent streams share syscalls instead of each flushing
+     * its own frame. Frames are drained in FIFO order.
+     */
+    void writeFrame(byte[]... frames) throws IOException {
+        boolean leader;
         lock.lock();
         try {
-            for (var frame : partials) outputStream.write(frame);
-            outputStream.flush();
+            for (var frame : frames) {
+                if (frame != null && frame.length > 0) {
+                    outbound.add(new OutboundChunk(frame, 0, frame.length));
+                }
+            }
+            leader = !writing;
+            if (leader) writing = true;
         } finally {
             lock.unlock();
         }
+        if (leader) drainOutbound();
     }
+
+    /** Queues a DATA frame without copying the payload: header slice plus the
+     *  payload range are appended contiguously under one lock acquisition. */
+    void writeDataFrame(byte[] header, byte[] payload, int offset, int length)
+            throws IOException {
+        boolean leader;
+        lock.lock();
+        try {
+            outbound.add(new OutboundChunk(header, 0, header.length));
+            outbound.add(new OutboundChunk(payload, offset, length));
+            leader = !writing;
+            if (leader) writing = true;
+        } finally {
+            lock.unlock();
+        }
+        if (leader) drainOutbound();
+    }
+
+    private void drainOutbound() throws IOException {
+        try {
+            while (true) {
+                OutboundChunk next;
+                lock.lock();
+                try {
+                    next = outbound.poll();
+                } finally {
+                    lock.unlock();
+                }
+                if (next == null) {
+                    lock.lock();
+                    try {
+                        if (outbound.isEmpty()) {
+                            writing = false;
+                            outputStream.flush();
+                            return;
+                        }
+                    } finally {
+                        lock.unlock();
+                    }
+                    continue;
+                }
+                outputStream.write(next.bytes, next.offset, next.length);
+            }
+        } catch (IOException e) {
+            lock.lock();
+            try {
+                writing = false;
+                outbound.clear();
+            } finally {
+                lock.unlock();
+            }
+            throw e;
+        }
+    }
+
+    private record OutboundChunk(byte[] bytes, int offset, int length) {}
 
     public void handle() throws IOException {
         try {
@@ -180,7 +263,8 @@ public final class Http2Connection {
         int headerBlockSize = 0;
 
         while (!closed.get()) {
-            var frame = FrameSerializer.deserialize(inputStream, maxFrameSize);
+            var frame = FrameSerializer.deserialize(
+                inputStream, maxFrameSize, frameHeaderBuffer);
             int streamId = frame.header().streamId();
 
             if (streamId != 0 && streamId % 2 == 0)
@@ -222,9 +306,10 @@ public final class Http2Connection {
                 case DATA -> {
                     if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     var dataFrame = (DataFrame) frame;
-                    if (dataFrame.body.length > receiveWindow.get())
+                    int flowLength = dataFrame.flowLength();
+                    if (flowLength > receiveWindow.get())
                         throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
-                    receiveWindow.addAndGet(-dataFrame.body.length);
+                    receiveWindow.addAndGet(-flowLength);
                     if (receiveWindow.get() < connectionWindowSize / 10)
                         sendConnectionWindowUpdate();
                     if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
@@ -251,6 +336,8 @@ public final class Http2Connection {
                                 "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK + " bytes");
                         headerBlockFragments.add(trailersFrame.headerBlock());
                         headerBlockSize += trailersFrame.headerBlock().length;
+                        headersEndStream =
+                            trailersFrame.header().flags().contains(FrameFlag.END_STREAM);
                         if (!trailersFrame.header().flags().contains(FrameFlag.END_HEADERS)) {
                             inHeaders = true;
                             openStreamId = streamId;
@@ -367,8 +454,10 @@ public final class Http2Connection {
                 headerBlockFragments.clear();
                 headerBlockSize = 0;
                 inHeaders = false;
+                boolean trailerEndStream = headersEndStream
+                    || frame.header().flags().contains(FrameFlag.END_STREAM);
                 headersEndStream = false;
-                if (frame.header().flags().contains(FrameFlag.END_STREAM)) {
+                if (trailerEndStream) {
                     // END_STREAM on the trailer ends the request body: wake
                     // the body reader so handler body() returns EOF naturally.
                     // The stream itself stays open until the response side
@@ -401,45 +490,65 @@ public final class Http2Connection {
                     stream.sendWindow.addAndGet(parameter.value - oldWindow);
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_FRAME_SIZE) {
                 peerMaxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
+            } else if (parameter.identifier == SettingIdentifier.SETTINGS_HEADER_TABLE_SIZE) {
+                hpack.setMaxDynamicTableSize(parameter.value);
             }
             remoteSettings.set(parameter);
         }
     }
 
+    /** Applies the client SETTINGS payload carried by an h2c Upgrade header. */
+    public void applyUpgradeSettings(SettingsFrame settingsFrame) throws IOException {
+        updateRemoteSettings(settingsFrame);
+    }
+
+    /**
+     * Installs stream 1 for an h2c upgrade (RFC 7540 §3.2). The HTTP/1.1
+     * request that negotiated the upgrade becomes stream 1, implicitly
+     * half-closed from the client side — the client never sends HEADERS for
+     * it. Must be invoked after the server connection preface (SETTINGS) has
+     * been written so a fast handler cannot put response frames ahead of our
+     * preface.
+     */
+    public void prepopulateUpgradeStream(Map<String, List<String>> requestHeaders)
+            throws IOException {
+        if (lastSeenStreamId != 0)
+            throw new IllegalStateException("upgrade stream 1 already in use");
+        var target = new Http2Stream(1, this, requestHeaders, handler);
+        streams.put(1, target);
+        lastSeenStreamId = 1;
+        target.markHalfClosed();
+        target.startRequest(executor);
+    }
+
     public void sendMySettings() throws IOException {
         var sf = new SettingsFrame(new FrameHeader(0, FrameType.SETTINGS, FrameFlag.NONE, 0));
         localSettings.forEach(sf.params::add);
-        writeFrame(List.of(sf.encode()));
+        writeFrame(sf.encode());
     }
 
     private void sendSettingsAck() throws IOException {
-        writeFrame(List.of(FrameHeader.encode(0, FrameType.SETTINGS,
-                FrameFlag.FlagSet.of(FrameFlag.ACK), 0)));
+        writeFrame(FrameHeader.encode(0, FrameType.SETTINGS,
+            FrameFlag.FlagSet.of(FrameFlag.ACK), 0));
     }
 
     private void sendConnectionWindowUpdate() throws IOException {
         int current = receiveWindow.get();
         int increment = connectionWindowSize - current;
         receiveWindow.addAndGet(increment);
-        writeFrame(List.of(new WindowUpdateFrame(0, increment).encode()));
+        writeFrame(new WindowUpdateFrame(0, increment).encode());
     }
 
     public void sendGoAway(Http2ErrorCode errorCode) throws IOException {
-        lock.lock();
-        try {
-            new GoawayFrame(errorCode, lastSeenStreamId).writeTo(outputStream);
-            outputStream.flush();
-        } finally {
-            lock.unlock();
-        }
+        writeFrame(new GoawayFrame(errorCode, lastSeenStreamId).encode());
     }
 
     public void sendResetStream(Http2ErrorCode errorCode, int streamId) throws IOException {
-        writeFrame(List.of(new ResetStreamFrame(errorCode, streamId).encode()));
+        writeFrame(new ResetStreamFrame(errorCode, streamId).encode());
     }
 
     private void sendPingAck(PingFrame pingFrame) throws IOException {
-        writeFrame(List.of(new PingFrame(pingFrame).encode()));
+        writeFrame(new PingFrame(pingFrame).encode());
     }
 
     InetSocketAddress remoteAddress() {

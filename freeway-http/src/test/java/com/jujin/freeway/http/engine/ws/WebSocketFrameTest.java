@@ -77,4 +77,14 @@ class WebSocketFrameTest {
             () -> WebSocketFrame.read(new ByteArrayInputStream(header)));
         assertEquals(CloseCode.MessageTooBig, ex.closeCode());
     }
+
+    @Test
+    void privateCloseCodeIsPreserved() throws Exception {
+        // Close frame with private code 3000 and reason "ok".
+        byte[] raw = {(byte) 0x88, 0x04, 0x0B, (byte) 0xB8, 'o', 'k'};
+        var frame = WebSocketFrame.read(new ByteArrayInputStream(raw));
+        assertEquals(3000, frame.closeCodeValue(),
+            "private close codes 3000-4999 must be preserved");
+        assertEquals("ok", frame.closeReason());
+    }
 }

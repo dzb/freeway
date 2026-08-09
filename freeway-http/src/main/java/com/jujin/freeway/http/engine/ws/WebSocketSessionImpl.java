@@ -26,6 +26,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     private final RequestContext requestContext = RequestContext.create();
     private volatile boolean open = true;
+    private final Object writeLock = new Object();
 
     // lazy
     private Map<String, List<String>> queryParams;
@@ -97,43 +98,46 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     @Override
     public void sendText(String text) throws IOException {
-        checkOpen();
-        WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Text, true, text));
+        writeFrame(new WebSocketFrame(OpCode.Text, true, text));
     }
 
     @Override
     public void sendBinary(byte[] data) throws IOException {
-        checkOpen();
-        WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Binary, true, data));
+        writeFrame(new WebSocketFrame(OpCode.Binary, true, data));
     }
 
     @Override
     public void ping(byte[] data) throws IOException {
-        checkOpen();
-        WebSocket.writeFrame(out, new WebSocketFrame(OpCode.Ping, true, data));
+        writeFrame(new WebSocketFrame(OpCode.Ping, true, data));
     }
 
     @Override
     public void flush() throws IOException {
-        out.flush();
+        synchronized (writeLock) {
+            out.flush();
+        }
     }
 
     @Override
     public void sendTextBatch(List<String> texts) throws IOException {
-        checkOpen();
-        for (String text : texts) {
-            WebSocket.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
+        synchronized (writeLock) {
+            checkOpen();
+            for (String text : texts) {
+                WebSocket.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
+            }
+            out.flush();
         }
-        out.flush();
     }
 
     @Override
     public void close(int code, String reason) throws IOException {
-        if (!open) return;
-        open = false;
-        var closePayload = buildClosePayload(code, reason);
-        WebSocket.writeFrame(out,
-            new WebSocketFrame(OpCode.Close, true, closePayload));
+        synchronized (writeLock) {
+            if (!open) return;
+            open = false;
+            var closePayload = buildClosePayload(code, reason);
+            WebSocket.writeFrame(out,
+                new WebSocketFrame(OpCode.Close, true, closePayload));
+        }
         // Wake the blocking read loop so a server-initiated close does not
         // leave the session thread parked until the peer responds.
         try {
@@ -142,6 +146,22 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     }
 
     // --- package-private ---
+
+    /** Synchronized frame write shared with the read loop's automatic pong/close replies. */
+    void writeFrame(WebSocketFrame frame) throws IOException {
+        synchronized (writeLock) {
+            checkOpen();
+            WebSocket.writeFrame(out, frame);
+        }
+    }
+
+    /** Synchronized batched frame write without per-frame flush. */
+    void writeFrameNoFlush(WebSocketFrame frame) throws IOException {
+        synchronized (writeLock) {
+            checkOpen();
+            WebSocket.writeFrameNoFlush(out, frame);
+        }
+    }
 
     void markOpen() { open = true; }
 

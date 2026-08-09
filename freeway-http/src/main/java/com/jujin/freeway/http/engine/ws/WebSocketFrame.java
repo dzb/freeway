@@ -59,9 +59,11 @@ public final class WebSocketFrame {
 
     private CloseCode closeCode;
     private String closeReason;
+    private int closeCodeValue = 1000;
 
     CloseCode closeCode() { return closeCode; }
     String closeReason() { return closeReason; }
+    int closeCodeValue() { return closeCodeValue; }
 
     // --- read from wire ---
 
@@ -267,14 +269,24 @@ public final class WebSocketFrame {
     private void parseCloseFrame() throws IOException {
         if (payload.length >= 2) {
             int codeVal = (payload[0] & 0xFF) << 8 | (payload[1] & 0xFF);
-            this.closeCode = CloseCode.find(codeVal);
-            // RFC 6455 §7.4.1: 1005/1006/1015 must not appear on wire
-            if (this.closeCode == null || this.closeCode.isReserved()) {
+            if (isValidWireCloseCode(codeVal)) {
+                this.closeCodeValue = codeVal;
+                this.closeCode = CloseCode.find(codeVal);
+            } else {
+                // RFC 6455 §7.4.1: reserved codes and 1016-2999 must not be
+                // sent on the wire; treat them as a protocol error.
                 this.closeCode = CloseCode.ProtocolError;
             }
             this.closeReason = payload.length > 2
                     ? decodeUtf8(payload, 2, payload.length - 2) : "";
         }
+    }
+
+    /** Valid on-wire close codes: registered 1000-1003/1007-1014 and private 3000-4999. */
+    static boolean isValidWireCloseCode(int code) {
+        return (code >= 1000 && code <= 1003)
+            || (code >= 1007 && code <= 1014)
+            || (code >= 3000 && code <= 4999);
     }
 
     private static int checkedRead(int read) throws IOException {

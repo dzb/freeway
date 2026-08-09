@@ -18,6 +18,8 @@ class DataFrameTest {
         var frame = DataFrame.parse(body, header);
         byte[] result = ((DataFrame) frame).body;
         assertEquals(0, result.length, "Empty data + padding should produce zero-length body");
+        assertEquals(4, ((DataFrame) frame).flowLength(),
+            "flow control must count the pad-length byte and padding");
     }
 
     @Test
@@ -30,6 +32,8 @@ class DataFrameTest {
         byte[] result = ((DataFrame) frame).body;
         assertArrayEquals(new byte[]{'A', 'B'}, result,
                 "Pad length byte (index 0) must not be in body");
+        assertEquals(8, ((DataFrame) frame).flowLength(),
+            "flow control must count the pad-length byte and padding");
     }
 
     @Test

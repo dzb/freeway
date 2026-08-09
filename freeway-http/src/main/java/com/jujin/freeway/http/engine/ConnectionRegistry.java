@@ -1,8 +1,10 @@
 package com.jujin.freeway.http.engine;
 
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.http11.Http11Connection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tracks live connections so the server handle can drain or force-close
@@ -12,7 +14,14 @@ import java.util.concurrent.ConcurrentHashMap;
 final class ConnectionRegistry {
 
     private final Set<Http11Connection> active = ConcurrentHashMap.newKeySet();
+    /** Requests currently executing on any connection (gauge source). */
+    final AtomicInteger requestsInFlight = new AtomicInteger();
     private volatile boolean stopping;
+
+    ConnectionRegistry(Metrics metrics) {
+        metrics.gauge("freeway.http.connections.active", this::activeCount);
+        metrics.gauge("freeway.http.requests.active", requestsInFlight::get);
+    }
 
     void register(Http11Connection connection) {
         active.add(connection);

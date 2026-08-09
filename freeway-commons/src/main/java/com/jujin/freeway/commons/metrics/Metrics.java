@@ -20,6 +20,12 @@ public interface Metrics {
     /** Returns the named counter, creating it on first access. */
     Counter counter(String name);
 
+    /** Returns the named duration timer (nanoseconds), creating it on first
+     *  access. Defaults to a no-op so existing implementations keep working. */
+    default Timer timer(String name) {
+        return NOOP_TIMER;
+    }
+
     /**
      * A named cumulative counter. Implementations must be thread-safe.
      */
@@ -33,6 +39,24 @@ public interface Metrics {
         /** Current cumulative value. */
         long value();
     }
+
+    /**
+     * A named cumulative duration recorder. Implementations must be
+     * thread-safe. {@link #record(long)} takes a duration in nanoseconds.
+     */
+    interface Timer {
+        void record(long nanos);
+
+        long count();
+
+        long totalNanos();
+    }
+
+    Timer NOOP_TIMER = new Timer() {
+        @Override public void record(long nanos) { }
+        @Override public long count() { return 0L; }
+        @Override public long totalNanos() { return 0L; }
+    };
 
     /**
      * Registers a named sampled value; {@link #sample()} is invoked by the

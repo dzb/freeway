@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -116,7 +117,56 @@ public final class StaticResourceMount {
             ctx.status(HttpStatus.NOT_MODIFIED).output(new byte[0]);
             return true;
         }
-        if ("HEAD".equalsIgnoreCase(ctx.method())) {
+
+        boolean head = "HEAD".equalsIgnoreCase(ctx.method());
+        ByteRange range = ifRangeAllows(ctx, meta)
+            ? parseRange(ctx.header("Range").orElse(null), meta.size())
+            : null;
+
+        if (range != null && !range.satisfiable()) {
+            ctx.status(416);
+            ctx.setHeader("Content-Range", "bytes */" + meta.size());
+            ctx.output(new byte[0]);
+            return true;
+        }
+
+        if (range != null) {
+            long length = range.end() - range.start() + 1;
+            ctx.status(206);
+            ctx.setHeader("Content-Range",
+                "bytes " + range.start() + "-" + range.end() + "/" + meta.size());
+            ctx.setHeader("Content-Type", contentType(meta.name()));
+            ctx.setHeader("X-Content-Type-Options", "nosniff");
+            if (head) {
+                ctx.setHeader("Content-Length", Long.toString(length));
+                ctx.output(new byte[0]);
+                return true;
+            }
+            Path file = source.file(relative);
+            if (file != null) {
+                ctx.outputFile(file, range.start(), length);
+                return true;
+            }
+            InputStream body = source.open(relative);
+            if (body != null) {
+                try {
+                    body.skipNBytes(range.start());
+                    ctx.output(new BoundedInputStream(body, length), length);
+                    return true;
+                } finally {
+                    body.close();
+                }
+            }
+            StaticAsset asset = source.load(relative);
+            if (asset == null) {
+                return notFound(ctx);
+            }
+            ctx.output(Arrays.copyOfRange(
+                asset.bytes(), (int) range.start(), (int) (range.start() + length)));
+            return true;
+        }
+
+        if (head) {
             // No body needed — report the headers (and real size) without
             // reading the file contents.
             ctx.status(HttpStatus.OK);
@@ -127,6 +177,31 @@ public final class StaticResourceMount {
             }
             ctx.output(new byte[0]);
             return true;
+        }
+        // sendfile fast path: real files on plain HTTP get transferred
+        // straight from the filesystem cache to the socket.
+        Path file = source.file(relative);
+        if (file != null) {
+            ctx.status(HttpStatus.OK);
+            ctx.setHeader("Content-Type", contentType(meta.name()));
+            ctx.setHeader("X-Content-Type-Options", "nosniff");
+            ctx.outputFile(file, 0, meta.size());
+            return true;
+        }
+        // Stream when the source can open a body stream directly (disk
+        // files) — avoids materializing the whole file in memory; classpath
+        // sources fall back to their loaded bytes.
+        InputStream body = source.open(relative);
+        if (body != null) {
+            try {
+                ctx.status(HttpStatus.OK);
+                ctx.setHeader("Content-Type", contentType(meta.name()));
+                ctx.setHeader("X-Content-Type-Options", "nosniff");
+                ctx.output(body, meta.size());
+                return true;
+            } finally {
+                body.close();
+            }
         }
         StaticAsset asset = source.load(relative);
         if (asset == null) {
@@ -234,6 +309,102 @@ public final class StaticResourceMount {
         return false;
     }
 
+    /** A parsed single-range request; {@code satisfiable == false} means the
+     *  range cannot be satisfied (416). */
+    private record ByteRange(long start, long end, boolean satisfiable) {
+        static ByteRange unsatisfiable() {
+            return new ByteRange(-1, -1, false);
+        }
+    }
+
+    /** RFC 7233 §2.3: only single byte ranges are supported; unsupported or
+     *  malformed range headers are ignored (full 200), unsatisfiable ranges
+     *  are flagged for a 416 response. */
+    private static ByteRange parseRange(String header, long size) {
+        if (header == null || size < 0) {
+            return null;
+        }
+        String spec = header.trim();
+        if (!spec.startsWith("bytes=")) {
+            return null;
+        }
+        String part = spec.substring(6).trim();
+        if (part.contains(",")) {
+            return null; // multi-range requests are served as the full body
+        }
+        int dash = part.indexOf('-');
+        if (dash < 0) {
+            return null;
+        }
+        String startStr = part.substring(0, dash).trim();
+        String endStr = part.substring(dash + 1).trim();
+        long start;
+        long end;
+        try {
+            if (startStr.isEmpty()) {
+                long suffix = Long.parseLong(endStr);
+                if (suffix <= 0) return ByteRange.unsatisfiable();
+                start = Math.max(0, size - suffix);
+                end = size - 1;
+            } else {
+                start = Long.parseLong(startStr);
+                if (start < 0 || start >= size) {
+                    return ByteRange.unsatisfiable();
+                }
+                end = endStr.isEmpty() ? size - 1 : Long.parseLong(endStr);
+                if (end < start) return ByteRange.unsatisfiable();
+                end = Math.min(end, size - 1);
+            }
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return new ByteRange(start, end, true);
+    }
+
+    /** RFC 7233 §3.2: If-Range matching — a strong ETag or a Last-Modified
+     *  timestamp that matches the current representation allows the range. */
+    private static boolean ifRangeAllows(HttpContext ctx, AssetMeta meta) {
+        String ifRange = Strings.blankToNull(ctx.header("If-Range").orElse(null));
+        if (ifRange == null) return true;
+        if (ifRange.startsWith("\"") || ifRange.startsWith("W/")) {
+            return etagMatches(ifRange, meta.etag());
+        }
+        try {
+            Instant requested = ZonedDateTime.parse(ifRange, HTTP_DATE).toInstant();
+            Instant lastModified = Instant.ofEpochMilli(meta.lastModifiedMillis());
+            return !lastModified.isAfter(requested);
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    /** Reads at most {@code length} bytes from the delegate, then EOF. */
+    private static final class BoundedInputStream extends InputStream {
+        private final InputStream in;
+        private long remaining;
+
+        BoundedInputStream(InputStream in, long length) {
+            this.in = in;
+            this.remaining = length;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (remaining <= 0) return -1;
+            int b = in.read();
+            if (b >= 0) remaining--;
+            return b;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            if (remaining <= 0) return -1;
+            int n = in.read(b, off, (int) Math.min(len, remaining));
+            if (n > 0) remaining -= n;
+            return n;
+        }
+    }
+
     private static String httpDate(long millis) {
         return HTTP_DATE.format(ZonedDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneOffset.UTC));
     }
@@ -284,8 +455,19 @@ public final class StaticResourceMount {
         /** Lightweight metadata lookup — does not read file contents. */
         AssetMeta meta(String relative) throws IOException;
 
+        /** Real file backing the resource for the sendfile path; null if the
+         *  source is not a plain file (classpath, archives, etc.). */
+        default Path file(String relative) throws IOException {
+            return null;
+        }
+
         /** Full load: metadata plus contents. */
         StaticAsset load(String relative) throws IOException;
+
+        /** Opens a body stream for streaming responses; null to use load(). */
+        default InputStream open(String relative) throws IOException {
+            return null;
+        }
     }
 
     private record AssetMeta(String name, long size, long lastModifiedMillis, String etag) {}
@@ -359,6 +541,39 @@ public final class StaticResourceMount {
                     meta.name(), bytes.length, lastModified, etag(lastModified, bytes.length));
             }
             return new StaticAsset(meta, bytes);
+        }
+
+        @Override
+        public InputStream open(String relative) throws IOException {
+            Path real = resolve(relative);
+            return real == null ? null : Files.newInputStream(real);
+        }
+
+        @Override
+        public Path file(String relative) throws IOException {
+            return resolve(relative);
+        }
+
+        /** Re-verifies containment on every access path (TOCTOU): the file may
+         *  have been replaced by a symlink between meta() and here. */
+        private Path resolve(String relative) throws IOException {
+            Path candidate = root.resolve(relative).normalize();
+            Path realCandidate;
+            try {
+                realCandidate = candidate.toRealPath();
+            } catch (IOException e) {
+                return null;
+            }
+            if (!realCandidate.startsWith(root.toRealPath())
+                    || !Files.isRegularFile(realCandidate)) {
+                return null;
+            }
+            if (Files.size(realCandidate) > MAX_FILE_SIZE_BYTES) {
+                throw new IOException("File too large: " + realCandidate.getFileName()
+                    + " (" + Files.size(realCandidate) + " bytes, max "
+                    + MAX_FILE_SIZE_BYTES + ")");
+            }
+            return realCandidate;
         }
     }
 
