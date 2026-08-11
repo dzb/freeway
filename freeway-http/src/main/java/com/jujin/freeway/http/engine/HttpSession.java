@@ -24,6 +24,7 @@ import com.jujin.freeway.http.websocket.WebSocketMatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import jdk.net.ExtendedSocketOptions;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLParameters;
 import java.io.IOException;
@@ -50,6 +51,28 @@ final class HttpSession implements Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(HttpSession.class);
     private static final byte[] INTERNAL_ERROR_BODY =
         "Internal Server Error".getBytes(StandardCharsets.UTF_8);
+    /** TCP keepalive probe tuning (seconds), for dead-peer detection while an
+     *  HTTP/2 stream is open. The application read timeout cannot cover this:
+     *  active streams must never be torn down by it (see updateReadTimeout),
+     *  so a peer whose TCP stack died would otherwise hold the connection —
+     *  and its fd — forever.
+     *
+     *  Values chosen deliberately:
+     *  - IDLE 30s matches the default readTimeout (HttpServerConfig
+     *    DEFAULT_READ_TIMEOUT): "30s of silence" is the single inactivity
+     *    yardstick across both layers. Idle connections are already reaped
+     *    by readTimeout before keepalive ever fires, so probes only ever
+     *    matter for connections with open streams; and a slow-but-live
+     *    client is never harmed, because the kernel resets the probe timer
+     *    on any traffic and ACKed probes keep the connection alive.
+     *  - INTERVAL 15s x COUNT 3 gives a ~75s worst case to declare a peer
+     *    dead (30s idle + 3 probes at 15s intervals). The retries absorb
+     *    transient packet loss or brief partitions; only a peer whose TCP
+     *    stack is really gone is reclaimed, roughly 100x faster than the
+     *    kernel default (~2 hours). */
+    private static final int KEEPALIVE_IDLE_SECONDS = 30;
+    private static final int KEEPALIVE_INTERVAL_SECONDS = 15;
+    private static final int KEEPALIVE_PROBE_COUNT = 3;
     /** Connection-specific HTTP/1.1 headers that must not cross into HTTP/2
      *  (RFC 7540 §8.1.2.2); Host becomes :authority. */
     private static final Set<String> H2_FORBIDDEN_UPGRADE_HEADERS = Set.of(
@@ -93,6 +116,7 @@ final class HttpSession implements Runnable {
             // idle/slow connections cannot hold a thread forever.
             socket.setTcpNoDelay(true);
             socket.setKeepAlive(true);
+            configureKeepAliveProbe(socket);
             socket.setSoTimeout(timeoutMillis(config.readTimeout()));
             if (config.receiveBufferSize() > 0) {
                 socket.setReceiveBufferSize(config.receiveBufferSize());
@@ -107,6 +131,7 @@ final class HttpSession implements Runnable {
                     .createSocket(rawSocket, null, false);
                 sslSocket.setUseClientMode(false);
                 sslSocket.setSoTimeout(timeoutMillis(config.readTimeout()));
+                configureKeepAliveProbe(sslSocket);
                 if (engine.sslParameters() != null) {
                     sslSocket.setSSLParameters(engine.sslParameters());
                 }
@@ -266,6 +291,25 @@ final class HttpSession implements Runnable {
                     rawSocket.close();
                 } catch (IOException ignored) {}
             }
+        }
+    }
+
+    /**
+     * Applies per-socket TCP keepalive probe tuning so dead peers are
+     * reclaimed quickly. Best-effort: unsupported platforms (e.g. older
+     * Windows without TCP_KEEPIDLE) keep the default kernel behavior.
+     */
+    static void configureKeepAliveProbe(Socket socket) {
+        try {
+            socket.setOption(ExtendedSocketOptions.TCP_KEEPIDLE,
+                KEEPALIVE_IDLE_SECONDS);
+            socket.setOption(ExtendedSocketOptions.TCP_KEEPINTERVAL,
+                KEEPALIVE_INTERVAL_SECONDS);
+            socket.setOption(ExtendedSocketOptions.TCP_KEEPCOUNT,
+                KEEPALIVE_PROBE_COUNT);
+        } catch (UnsupportedOperationException | IOException e) {
+            LOG.debug("TCP keepalive probe tuning unavailable: {}",
+                e.getMessage());
         }
     }
 

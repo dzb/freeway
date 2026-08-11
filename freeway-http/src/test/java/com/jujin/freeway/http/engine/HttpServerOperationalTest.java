@@ -5,6 +5,7 @@ import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
 import com.jujin.freeway.http.route.Route;
+import jdk.net.ExtendedSocketOptions;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -28,8 +29,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class HttpServerOperationalTest {
+
+    @Test
+    void keepAliveProbeTuningApplied() throws Exception {
+        // The server must tune TCP keepalive probes on every accepted socket
+        // so dead peers holding open streams are reclaimed quickly. Verify
+        // the exact routine HttpSession applies on accept.
+        assumeTrue(new Socket().supportedOptions()
+                .contains(ExtendedSocketOptions.TCP_KEEPCOUNT),
+            "platform must support TCP keepalive probe tuning");
+        try (ServerSocket peer = new ServerSocket(0);
+             Socket s = new Socket("127.0.0.1", peer.getLocalPort())) {
+            peer.accept().close();
+            s.setKeepAlive(true);
+            HttpSession.configureKeepAliveProbe(s);
+            assertEquals(30, s.getOption(ExtendedSocketOptions.TCP_KEEPIDLE));
+            assertEquals(15, s.getOption(ExtendedSocketOptions.TCP_KEEPINTERVAL));
+            assertEquals(3, s.getOption(ExtendedSocketOptions.TCP_KEEPCOUNT));
+        }
+    }
 
     @Test
     void readTimeoutClosesIdleConnection() throws Exception {
