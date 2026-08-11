@@ -322,7 +322,8 @@ final class HttpSession implements Runnable {
                         streamOut,
                         reqHeaders,
                         ssl ? connection.getSSLSession() : null
-                    ));
+                    ),
+                timeoutMillis(config.readTimeout()));
 
             if (upgradeSettings != null) {
                 h2conn.applyUpgradeSettings(upgradeSettings);

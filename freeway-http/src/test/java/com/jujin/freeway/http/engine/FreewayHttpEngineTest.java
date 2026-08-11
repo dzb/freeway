@@ -1524,6 +1524,138 @@ class FreewayHttpEngineTest {
     }
 
     @Test
+    void h2cActiveStreamSurvivesReadTimeout() throws Exception {
+        // Regression: the socket read timeout must apply only to truly idle
+        // connections. An OPEN request stream that pauses mid-body (client
+        // sends no frames for longer than readTimeout) must not be torn down.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, 64 * 1024,
+                Duration.ofSeconds(2), 16 * 1024 * 1024,
+                Duration.ofSeconds(2), 64))
+            .route(Route.post("/", ctx ->
+                ctx.send(200, "ok:" + new String(ctx.body(), StandardCharsets.UTF_8))))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
+                StandardCharsets.US_ASCII);
+            try (var socket = new Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(10000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+                byte[] header = new byte[9];
+                readFully(socket.getInputStream(), header);
+                int settingsLen = ((header[0] & 0xff) << 16)
+                    | ((header[1] & 0xff) << 8)
+                    | (header[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                // HEADERS for stream 1: POST / — END_HEADERS set, END_STREAM
+                // NOT set, so the stream stays open awaiting its body.
+                byte[] headerBlock = new byte[] {
+                    (byte) 0x83, // :method POST
+                    (byte) 0x84, // :path /
+                    (byte) 0x86, // :scheme http
+                    (byte) 0x41, 0x09,
+                    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                out.write(new byte[] {
+                    (byte) ((headerBlock.length >> 16) & 0xff),
+                    (byte) ((headerBlock.length >> 8) & 0xff),
+                    (byte) (headerBlock.length & 0xff),
+                    0x1, // HEADERS
+                    0x4, // END_HEADERS (no END_STREAM)
+                    0x00, 0x00, 0x00, 0x01
+                });
+                out.write(headerBlock);
+                out.flush();
+
+                // Idle longer than the 2s read timeout while the stream is open.
+                Thread.sleep(4500);
+
+                // Send the request body now — the connection must still be alive.
+                out.write(new byte[] {
+                    0x00, 0x00, 0x02, // length 2
+                    0x00,             // DATA
+                    0x01,             // END_STREAM
+                    0x00, 0x00, 0x00, 0x01
+                });
+                out.write("hi".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+
+                // Collect response frames until END_STREAM on stream 1.
+                var in = socket.getInputStream();
+                boolean done = false;
+                String body = null;
+                while (!done) {
+                    if (!readFullyOrEof(in, header)) {
+                        fail("server closed the H2 connection while stream 1 "
+                            + "was still active (read timeout must not kill "
+                            + "open streams)");
+                    }
+                    int len = ((header[0] & 0xff) << 16)
+                        | ((header[1] & 0xff) << 8)
+                        | (header[2] & 0xff);
+                    int type = header[3] & 0xff;
+                    int flags = header[4] & 0xff;
+                    int streamId = ((header[5] & 0x7f) << 24)
+                        | ((header[6] & 0xff) << 16)
+                        | ((header[7] & 0xff) << 8)
+                        | (header[8] & 0xff);
+                    byte[] payload = new byte[len];
+                    readFully(in, payload);
+                    if (streamId == 1 && type == 0x0) { // DATA
+                        String chunk = new String(payload, StandardCharsets.UTF_8);
+                        body = body == null ? chunk : body + chunk;
+                    }
+                    if (streamId == 1 && (flags & 0x1) != 0) { // END_STREAM
+                        done = true;
+                    }
+                }
+                assertEquals("ok:hi", body, "response body after idle pause");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cIdleConnectionClosedAfterReadTimeout() throws Exception {
+        // The read timeout still applies to a truly idle H2 connection — no
+        // open streams — so idle sockets cannot hold resources forever.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, 64 * 1024,
+                Duration.ofSeconds(2), 16 * 1024 * 1024,
+                Duration.ofSeconds(2), 64))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(
+                StandardCharsets.US_ASCII);
+            try (var socket = new Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(10000);
+                socket.getOutputStream().write(preface);
+                socket.getOutputStream().flush();
+                byte[] header = new byte[9];
+                readFully(socket.getInputStream(), header);
+                int settingsLen = ((header[0] & 0xff) << 16)
+                    | ((header[1] & 0xff) << 8)
+                    | (header[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                // No streams opened; the server must close the idle connection
+                // after its 2s read timeout.
+                Thread.sleep(4500);
+                assertFalse(readFullyOrEof(socket.getInputStream(), header),
+                    "idle H2 connection must be closed after the read timeout");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void h2cUpgradeViaHttp1UpgradeHeader() throws Exception {
         int port = freePort();
         var server = WebServerBuilder.builder()

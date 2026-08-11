@@ -72,7 +72,7 @@ class Http2ResponseWriterTest {
     private static Http2Connection connection(SocketPair pair, ExecutorService executor)
         throws IOException {
         return new Http2Connection(pair.client, pair.client.getInputStream(),
-            pair.client.getOutputStream(), executor, (s, i, o, h) -> {});
+            pair.client.getOutputStream(), executor, (s, i, o, h) -> {}, 0);
     }
 
     private static final class SocketPair implements AutoCloseable {

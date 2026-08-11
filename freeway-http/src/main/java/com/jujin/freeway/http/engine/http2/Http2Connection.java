@@ -75,6 +75,12 @@ public final class Http2Connection {
     private final Socket socket;
     private final ExecutorService executor;
     private final StreamHandler handler;
+    /** Socket read idle timeout in millis (0 = disabled). Only applied while
+     *  the connection has no open streams — an active stream must never be
+     *  killed by connection-level idle timeout (RFC 7540 multiplexing). */
+    private final int readTimeoutMillis;
+    /** Last SO_TIMEOUT value applied, to avoid a syscall per frame. */
+    private int currentSoTimeout = -1;
     private final HPackContext hpack = new HPackContext();
     final ConcurrentHashMap<Integer, Http2Stream> streams = new ConcurrentHashMap<>();
     /** Our advertised SETTINGS_MAX_FRAME_SIZE — caps INBOUND frame payloads (RFC 7540 §4.2). */
@@ -104,12 +110,14 @@ public final class Http2Connection {
     private int lastSeenStreamId;
 
     public Http2Connection(Socket socket, InputStream inputStream, OutputStream outputStream,
-                           ExecutorService executor, StreamHandler handler) {
+                           ExecutorService executor, StreamHandler handler,
+                           int readTimeoutMillis) {
         this.socket = socket;
         this.inputStream = inputStream;
         this.outputStream = outputStream;
         this.executor = executor;
         this.handler = handler;
+        this.readTimeoutMillis = readTimeoutMillis;
         localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_MAX_FRAME_SIZE, DEFAULT_MAX_FRAME_SIZE));
         localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_INITIAL_WINDOW_SIZE, DEFAULT_WINDOW_SIZE));
         localSettings.set(new SettingParameter(
@@ -263,6 +271,7 @@ public final class Http2Connection {
         int headerBlockSize = 0;
 
         while (!closed.get()) {
+            updateReadTimeout();
             var frame = FrameSerializer.deserialize(
                 inputStream, maxFrameSize, frameHeaderBuffer);
             int streamId = frame.header().streamId();
@@ -475,6 +484,21 @@ public final class Http2Connection {
             }
 
             target.dispatch(frame, executor);
+        }
+    }
+
+    /**
+     * Applies the read idle timeout only when the connection is truly idle
+     * (no open streams). While any stream is active the socket read blocks
+     * indefinitely — a slow client pausing mid-request must not tear down
+     * the whole multiplexed connection. Called at a frame boundary, so the
+     * SO_TIMEOUT change never splits a partially-read frame.
+     */
+    private void updateReadTimeout() throws IOException {
+        int timeout = streams.isEmpty() ? readTimeoutMillis : 0;
+        if (timeout != currentSoTimeout) {
+            socket.setSoTimeout(timeout);
+            currentSoTimeout = timeout;
         }
     }
 
