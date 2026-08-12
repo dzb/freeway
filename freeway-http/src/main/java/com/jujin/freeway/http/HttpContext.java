@@ -1,445 +1,79 @@
 package com.jujin.freeway.http;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Type;
-import java.nio.channels.FileChannel;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-
-import javax.net.ssl.SSLSession;
-
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.http.body.BodyTooLargeException;
-import com.jujin.freeway.http.body.MultipartException;
-import com.jujin.freeway.http.body.MultipartForm;
 import com.jujin.freeway.http.sse.SseEmitter;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.util.Map;
+
 /**
- * Abstract base class for HTTP request/response contexts. Subclasses bridge
- * to a specific server implementation (raw socket, JDK HttpExchange, etc.)
- * while providing a uniform API for reading requests and writing responses.
+ * Combined HTTP request/response view handed to application handlers: one
+ * object for reading the request and writing the response, keeping handler
+ * lambdas concise. The read side is {@link HttpRequest} and the write side
+ * {@link HttpResponse}; framework components that need only one side should
+ * depend on the narrower interface.
+ *
+ * <p>Implementations normally extend {@link AbstractHttpContext}, which
+ * provides the shared coercion, path-variable, and convenience logic.</p>
  */
-public abstract class HttpContext {
-    protected final JsonCodec jsonCodec;
-    protected final Coercer coercer;
-    protected volatile long maxBodySize = 10_485_760L;
-    protected volatile boolean bodyLimitExceeded;
-    protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
-
-    protected HttpContext(JsonCodec jsonCodec, Coercer coercer) {
-        this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
-        this.coercer = Objects.requireNonNull(coercer, "coercer");
-    }
-
-    // == Request ==
-
-    /** Returns the HTTP method (GET, POST, etc.). */
-    public abstract String method();
-
-    /** Returns the raw request path. */
-    public abstract String path();
-
-    /** Returns the first query parameter value for the given name, or empty. */
-    public abstract Optional<String> queryParam(String name);
-
-    /** Returns all query parameter values for the given name. */
-    public abstract List<String> queryParams(String name);
-
-    /** Returns an unmodifiable map of all query parameters. */
-    public abstract Map<String, List<String>> queryParams();
-
-    /**
-     * Returns the value of a single query parameter coerced to the
-     * given type, or empty if absent.
-     */
-    public <T> Optional<T> queryParam(String name, Class<T> type) {
-        return queryParam(name).map(v -> coerceText(v, type));
-    }
-
-    /**
-     * Returns the first request header value for the given name, or empty.
-     * Header names are case-insensitive.
-     */
-    public abstract Optional<String> header(String name);
-
-    /**
-     * Returns all request header values for the given name.
-     * Header names are case-insensitive.
-     */
-    public abstract List<String> headers(String name);
-
-    /**
-     * Returns the value of a single request header coerced to the
-     * given type, or empty if absent.
-     */
-    public <T> Optional<T> header(String name, Class<T> type) {
-        return header(name).map(v -> coerceText(v, type));
-    }
-
-    /** Returns an unmodifiable map of all request headers. */
-    public abstract Map<String, List<String>> headers();
-
-    /** Returns the current response header value for the given name, or null. */
-    protected abstract String responseHeader(String name);
-
-    /** Returns the request context for this request. */
-    public abstract RequestContext requestContext();
-
-    /**
-     * Returns true when this request was received over a TLS connection
-     * (HTTPS / WSS). Defaults to {@code false}; transport bridges override it.
-     */
-    public boolean isSecure() {
-        return false;
-    }
-
-    /**
-     * Returns the TLS session for this request (negotiated protocol, cipher
-     * suite, peer certificates), or {@code null} for plain HTTP.
-     */
-    public SSLSession sslSession() {
-        return null;
-    }
-
-    /**
-     * Returns the client IP address of the connection, or an empty string
-     * when the transport does not expose one.
-     */
-    public String remoteAddress() {
-        return "";
-    }
-
-    /** Returns true if the request has a multipart/form-data content type. */
-    public boolean isMultipart() { return multipart().isPresent(); }
-
-    /**
-     * Parses and returns the multipart form data, or empty if the request
-     * is not a multipart upload.
-     */
-    public Optional<MultipartForm> multipart() {
-        // Guard on the Content-Type before reading the body — parsing a
-        // non-multipart request would consume the entire request body for
-        // nothing (and could trip the body-size limit on isMultipart()).
-        return header("Content-Type")
-            .filter(ct -> ct.toLowerCase(Locale.ROOT)
-                .contains("multipart/form-data"))
-            .flatMap(ct -> {
-                try {
-                    return Optional.of(MultipartForm.parse(ct, body()));
-                } catch (IOException e) {
-                    throw new MultipartException("Invalid multipart request", e);
-                }
-            });
-    }
-
-    /** Returns a path parameter value by name, or empty. */
-    public Optional<String> pathVar(String name) {
-        return Optional.ofNullable(pathVariables.get(name));
-    }
-
-    /** Returns an unmodifiable map of all path parameter values. */
-    public Map<String, String> pathVars() {
-        return Collections.unmodifiableMap(pathVariables);
-    }
+public interface HttpContext extends HttpRequest, HttpResponse {
 
     /** Sets all path variables from a route match. Returns this for chaining. */
-    public HttpContext pathVars(Map<String, String> vars) {
-        this.pathVariables.putAll(vars);
-        return this;
-    }
+    @Override
+    HttpContext pathVars(Map<String, String> vars);
 
-    /**
-     * Returns the value of a path parameter coerced to the given type.
-     */
-    public <T> Optional<T> pathVar(String name, Class<T> type) {
-        return pathVar(name).map(v -> coerceText(v, type));
-    }
+    /** Sets the maximum request body size. Returns this for chaining. */
+    @Override
+    HttpContext maxBodySize(long maxBodySize);
 
-    /**
-     * Returns a request parameter (from query string first, then path).
-     */
-    public Optional<String> param(String name) {
-        return queryParam(name).or(() -> pathVar(name));
-    }
+    /** Sets the HTTP response status code. Returns this for chaining. */
+    @Override
+    HttpContext status(int status);
 
-    /**
-     * Returns a request parameter coerced to the given type.
-     */
-    public <T> Optional<T> param(String name, Class<T> type) {
-        return param(name).map(v -> coerceText(v, type));
-    }
+    /** Sets a response header. Returns this for chaining. */
+    @Override
+    HttpContext setHeader(String name, String value);
 
-    // == Body ==
+    /** Sends a binary body. Returns this for chaining. */
+    @Override
+    HttpContext output(byte[] data) throws IOException;
 
-    /**
-     * Sets the maximum allowed request body size in bytes.
-     * Requests exceeding this limit receive a 413 Payload Too Large
-     * response. Default is 10 MiB.
-     *
-     * @return this context for chaining
-     */
-    public HttpContext maxBodySize(long maxBodySize) {
-        if (maxBodySize <= 0) throw new IllegalArgumentException("maxBodySize must be positive");
-        this.maxBodySize = maxBodySize;
-        return this;
-    }
+    /** Streams a body. Returns this for chaining. */
+    @Override
+    HttpContext output(InputStream in, long contentLength) throws IOException;
 
-    /**
-     * Reads the request body, enforcing the configured max body size.
-     *
-     * @throws BodyTooLargeException if the body exceeds maxBodySize
-     */
-    protected final byte[] readBodyLimited(InputStream input) throws IOException {
-        var out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        long total = 0;
-        int read;
-        while ((read = input.read(buffer)) >= 0) {
-            if (read == 0) continue;
-            if (total > maxBodySize - read) {
-                bodyLimitExceeded = true;
-                throw new BodyTooLargeException(maxBodySize);
-            }
-            out.write(buffer, 0, read);
-            total += read;
-        }
-        return out.toByteArray();
-    }
-
-    /** Reads the request body into a string using the charset from the Content-Type header. */
-    public String bodyText() throws IOException {
-        return new String(body(), charsetFromContentType());
-    }
-
-    /** Deserializes the request body as JSON into the given type. */
-    public <T> T bodyAsJson(Class<T> type) throws IOException {
-        return bodyAsJson((Type) type);
-    }
-
-    /** Deserializes the request body as JSON into the given type. */
-    public <T> T bodyAsJson(Type type) throws IOException {
-        checkJsonContentType();
-        @SuppressWarnings("unchecked")
-        T value = (T) jsonCodec.fromJson(bodyText(), type);
-        return value;
-    }
-
-    /** Returns the raw request body bytes. */
-    public abstract byte[] body() throws IOException;
-
-    // == Response ==
-
-    /**
-     * Sets the HTTP response status code.
-     *
-     * @return this context for chaining
-     */
-    public abstract HttpContext status(int status);
-
-    /** Returns the HTTP response status code. */
-    public abstract int status();
-
-    /**
-     * Sets a response header. Overwrites any existing value for the name.
-     *
-     * @return this context for chaining
-     */
-    public abstract HttpContext setHeader(String name, String value);
-
-    /**
-     * Adds a token to the {@code Vary} response header, merging with any
-     * existing value without duplicating the token (case-insensitive).
-     * Like {@link #setHeader}, this is a no-op once the response has been
-     * committed.
-     *
-     * @throws IllegalArgumentException if the token is null or blank
-     */
-    public final void addVary(String token) {
-        if (token == null || token.isBlank()) {
-            throw new IllegalArgumentException("Vary token must not be blank");
-        }
-        setHeader("Vary", HttpUtils.mergeVary(responseHeader("Vary"), token));
-    }
-
-    /**
-     * Validates that a header value does not contain CR or LF characters,
-     * preventing HTTP response header injection.
-     *
-     * @throws IllegalArgumentException if the value contains CR or LF
-     */
-    protected static void validateHeaderName(String name) {
-        if (name == null) throw new IllegalArgumentException("Header name must not be null");
-        if (!HttpUtils.isToken(name)) {
-            throw new IllegalArgumentException("Invalid header name: " + name);
-        }
-    }
-
-    protected static void validateHeaderValue(String value) {
-        if (value != null) {
-            for (int i = 0; i < value.length(); i++) {
-                char c = value.charAt(i);
-                if (c == '\r' || c == '\n') {
-                    throw new IllegalArgumentException(
-                        "Header value must not contain CR or LF: " +
-                        value.substring(0, Math.min(i + 10, value.length())) + "...");
-                }
-            }
-        }
-    }
-
-    /**
-     * Sends a response with the given status code and binary body.
-     *
-     * @return this context for chaining
-     */
-    public abstract HttpContext output(byte[] data) throws IOException;
-
-    /**
-     * Streams a response body from an input stream, writing the response head
-     * first. {@code contentLength} must be known (or a Content-Length header
-     * pre-set) so HTTP/1.1 can frame the response.
-     */
-    public abstract HttpContext output(InputStream in, long contentLength)
+    /** Sends a file range. Returns this for chaining. */
+    @Override
+    HttpContext outputFile(Path file, long offset, long length)
         throws IOException;
 
-    /**
-     * Sends a byte range of a file. Uses the OS sendfile path when the
-     * transport supports it (plain HTTP/1.1 socket with a channel and no
-     * compression); otherwise falls back to buffered streaming.
-     */
-    public abstract HttpContext outputFile(Path file, long offset, long length)
-        throws IOException;
-
-    /**
-     * Streams an already-open file channel as the response body, taking
-     * ownership of the channel (the implementation closes it on success and
-     * failure). Mainly used by the static-file layer to hand over a securely
-     * opened channel for the sendfile fast path; application handlers can
-     * use {@link #outputFile(Path, long, long)} instead.
-     */
-    public HttpContext outputFile(FileChannel channel, long offset, long length)
+    /** Streams an open file channel. Returns this for chaining. */
+    @Override
+    default HttpContext outputFile(FileChannel channel, long offset, long length)
             throws IOException {
         throw new UnsupportedOperationException(
             "File-channel output is not supported");
     }
 
-    /**
-     * Whether the response has been committed (headers or body have started
-     * being written to the transport). Once committed, a subsequent transport
-     * failure (peer disconnect) can no longer be turned into an error response.
-     */
-    public boolean isResponded() {
-        return false;
-    }
+    /** Sends a text body. Returns this for chaining. */
+    @Override
+    HttpContext output(String text) throws IOException;
 
-    /**
-     * Opens an SSE (Server-Sent Events) emitter on this response.
-     * The response headers must be set before calling this method.
-     */
-    public abstract SseEmitter sse() throws IOException;
+    /** Sends a JSON body. Returns this for chaining. */
+    @Override
+    HttpContext outputJson(Object value) throws IOException;
 
-    /** Sets up standard SSE response headers. */
-    protected void setupSseHeaders() {
-        setHeader("Content-Type", "text/event-stream; charset=utf-8");
-        setHeader("Cache-Control", "no-cache");
-        setHeader("Connection", "keep-alive");
-    }
+    /** Sends a status + text body. Returns this for chaining. */
+    @Override
+    HttpContext send(int status, String text) throws IOException;
 
-    /**
-     * Sends a response with the given status code and text body.
-     * Content-Type defaults to text/plain if not already set.
-     *
-     * @return this context for chaining
-     */
-    public HttpContext output(String text) throws IOException {
-        if (!allowsResponseBody()) return output(new byte[0]);
-        ensureContentType("text/plain; charset=utf-8");
-        output(text.getBytes(StandardCharsets.UTF_8));
-        return this;
-    }
+    /** Sends a status + JSON body. Returns this for chaining. */
+    @Override
+    HttpContext sendJson(int status, Object value) throws IOException;
 
-    /**
-     * Sends a JSON response for the given value.
-     * Content-Type defaults to application/json if not already set.
-     *
-     * @return this context for chaining
-     */
-    public HttpContext outputJson(Object value) throws IOException {
-        if (!allowsResponseBody()) return output(new byte[0]);
-        ensureContentType("application/json; charset=utf-8");
-        output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
-        return this;
-    }
-
-    /**
-     * Sends a response with the given status code and text body.
-     * Convenience shorthand for {@code status(s).output(t)}.
-     *
-     * @return this context for chaining
-     */
-    public HttpContext send(int status, String text) throws IOException {
-        status(status);
-        return output(text);
-    }
-
-    /**
-     * Sends a JSON response with the given status code.
-     * Convenience shorthand for {@code status(s).outputJson(v)}.
-     *
-     * @return this context for chaining
-     */
-    public HttpContext sendJson(int status, Object value) throws IOException {
-        status(status);
-        return outputJson(value);
-    }
-
-    /** Coerces a string value to the given target type. */
-    protected final <T> T coerceText(String value, Class<T> type) {
-        return value != null ? coercer.coerce(value, type) : null;
-    }
-
-    /** Returns true if the response status allows a body. */
-    public final boolean allowsResponseBody() {
-        int status = status();
-        return status != 204 && status != 205 && status != 304;
-    }
-
-    /** Sets Content-Type if not already present (text/json output helpers). */
-    private void ensureContentType(String contentType) {
-        if (Strings.blankToNull(responseHeader("Content-Type")) == null) {
-            setHeader("Content-Type", contentType);
-        }
-    }
-
-    /** Returns the charset from the Content-Type header, defaulting to UTF-8. */
-    private Charset charsetFromContentType() {
-        String ct = header("Content-Type").orElse(null);
-        if (ct == null) return StandardCharsets.UTF_8;
-        int idx = ct.toLowerCase(Locale.ROOT).indexOf("charset=");
-        if (idx < 0) return StandardCharsets.UTF_8;
-        String charset = ct.substring(idx + 8).trim();
-        int semi = charset.indexOf(';');
-        if (semi >= 0) charset = charset.substring(0, semi).trim();
-        try { return Charset.forName(charset); } catch (Exception e) { return StandardCharsets.UTF_8; }
-    }
-
-    private void checkJsonContentType() {
-        String ct = header("Content-Type").orElse(null);
-        if (ct == null || !ct.toLowerCase(Locale.ROOT).contains("application/json")) {
-            throw new IllegalStateException("Expected application/json Content-Type");
-        }
-    }
-
+    /** Opens an SSE emitter on this response. */
+    @Override
+    SseEmitter sse() throws IOException;
 }

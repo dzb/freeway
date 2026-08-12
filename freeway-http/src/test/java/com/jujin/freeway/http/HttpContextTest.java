@@ -98,11 +98,11 @@ class HttpContextTest {
     @Test
     void headerNamesMustBeRfc7230Tokens() {
         assertThrows(IllegalArgumentException.class,
-            () -> HttpContext.validateHeaderName("Bad Name"));
+            () -> AbstractHttpContext.validateHeaderName("Bad Name"));
         assertThrows(IllegalArgumentException.class,
-            () -> HttpContext.validateHeaderName("Bad:Name"));
+            () -> AbstractHttpContext.validateHeaderName("Bad:Name"));
         assertThrows(IllegalArgumentException.class,
-            () -> HttpContext.validateHeaderName("Bad\u00e9"));
-        HttpContext.validateHeaderName("X-Custom-1"); // valid token
+            () -> AbstractHttpContext.validateHeaderName("Bad\u00e9"));
+        AbstractHttpContext.validateHeaderName("X-Custom-1"); // valid token
     }
 }

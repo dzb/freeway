@@ -23,6 +23,7 @@ import javax.net.ssl.SSLSession;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.AbstractHttpContext;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.HttpServerConfig;
@@ -35,7 +36,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
  * (HTTP/1.1 wire format or HTTP/2 stream frames); this class owns the shared
  * request/response state, gzip compression, and streaming helpers.
  */
-public class HttpContextDefault extends HttpContext {
+public class HttpContextDefault extends AbstractHttpContext {
 
     private String method, path, rawQuery;
     private String remoteAddress = "";

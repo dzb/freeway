@@ -17,7 +17,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.sse.SseEmitter;
 
-public final class StubHttpContext extends HttpContext {
+public final class StubHttpContext extends AbstractHttpContext {
 
     @SuppressWarnings("unchecked")
     private static <T> T coerce(Object input, Class<T> targetType) {
