@@ -73,6 +73,8 @@ public class HttpContextDefault extends AbstractHttpContext {
         super(jsonCodec, coercer);
     }
 
+    /** Creates a context seeded with the given correlation id (auto-generated
+     *  when blank); keep-alive reuse updates it per request via reset(). */
     public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer,
                               String correlationId) {
         super(jsonCodec, coercer, correlationId);

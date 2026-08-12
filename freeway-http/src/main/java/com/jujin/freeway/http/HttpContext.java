@@ -8,10 +8,13 @@ import java.util.Optional;
  * One HTTP exchange: the exchange metadata (correlation id, start time,
  * principal, attributes) plus the request and response transport faces.
  *
- * <p>Application handlers receive this combined object for concise lambdas;
- * the convenience methods below forward to the corresponding face. For
- * anything beyond the convenience set, use {@link #request()} and
- * {@link #response()} to work against the narrow transport contracts.</p>
+ * <p>Application handlers receive this combined object for concise lambdas.
+ * The convenience set is deliberately small and fixed: read side
+ * {@code pathVar/pathVars/param/queryParam/header/bodyAsJson}, write side
+ * {@code send/sendJson/status/setHeader/output}. Everything beyond it goes
+ * through {@link #request()} and {@link #response()} against the narrow
+ * transport contracts — this boundary keeps the facade from growing into a
+ * god interface.</p>
  */
 public interface HttpContext extends ExchangeMeta {
 

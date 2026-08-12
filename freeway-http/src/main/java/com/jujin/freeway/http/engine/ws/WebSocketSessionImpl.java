@@ -7,14 +7,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 
+import com.jujin.freeway.http.ExchangeMetaDefault;
 import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 
@@ -33,10 +30,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     private final OutputStream out;
     private final Map<String, String> pathVariables;
 
-    private final String correlationId;
-    private final Instant startTime;
-    private volatile Object principal;
-    private volatile ConcurrentHashMap<String, Object> attributes;
+    private final ExchangeMetaDefault exchangeMeta;
     private volatile boolean open = true;
     private volatile int closeCode = 1006;
     private volatile String closeReason = "";
@@ -57,47 +51,29 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         this.in = in;
         this.out = out;
         this.pathVariables = pathVariables != null ? Map.copyOf(pathVariables) : Map.of();
-        this.correlationId = correlationId != null && !correlationId.isBlank()
-            ? correlationId : fastCorrelationId();
-        this.startTime = Instant.now();
+        this.exchangeMeta = new ExchangeMetaDefault(correlationId);
     }
 
-    @Override public String correlationId() { return correlationId; }
-    @Override public Instant startTime() { return startTime; }
-    @Override public Object principal() { return principal; }
-    @Override public void setPrincipal(Object principal) { this.principal = principal; }
+    @Override public String correlationId() { return exchangeMeta.correlationId(); }
+    @Override public Instant startTime() { return exchangeMeta.startTime(); }
+    @Override public Object principal() { return exchangeMeta.principal(); }
+    @Override public void setPrincipal(Object principal) {
+        exchangeMeta.setPrincipal(principal);
+    }
 
     @Override
     public Object attribute(String key) {
-        Objects.requireNonNull(key, "key");
-        var map = attributes;
-        return map == null ? null : map.get(key);
+        return exchangeMeta.attribute(key);
     }
 
     @Override
     public void setAttribute(String key, Object value) {
-        Objects.requireNonNull(key, "key");
-        var map = attributes;
-        if (map == null) {
-            synchronized (this) {
-                map = attributes;
-                if (map == null) {
-                    map = new ConcurrentHashMap<>();
-                    attributes = map;
-                }
-            }
-        }
-        if (value == null) {
-            map.remove(key);
-        } else {
-            map.put(key, value);
-        }
+        exchangeMeta.setAttribute(key, value);
     }
 
     @Override
     public Map<String, Object> attributes() {
-        var map = attributes;
-        return map == null ? Map.of() : Map.copyOf(map);
+        return exchangeMeta.attributes();
     }
 
     @Override public String method() { return method; }
@@ -301,9 +277,4 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         return payload;
     }
 
-    private static String fastCorrelationId() {
-        byte[] bytes = new byte[16];
-        ThreadLocalRandom.current().nextBytes(bytes);
-        return HexFormat.of().formatHex(bytes);
-    }
 }

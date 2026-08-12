@@ -13,14 +13,11 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Collections;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Base class for {@link HttpContext} implementations. Owns the exchange
@@ -38,10 +35,7 @@ public abstract class AbstractHttpContext
     protected volatile long maxBodySize = 10_485_760L;
     protected volatile boolean bodyLimitExceeded;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
-    private volatile String correlationId;
-    private final Instant startTime;
-    private volatile Object principal;
-    private volatile ConcurrentHashMap<String, Object> attributes;
+    private final ExchangeMetaDefault exchangeMeta;
 
     protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer) {
         this(jsonCodec, coercer, null);
@@ -51,9 +45,7 @@ public abstract class AbstractHttpContext
                                   String correlationId) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
-        this.correlationId = correlationId != null && !correlationId.isBlank()
-            ? correlationId : fastCorrelationId();
-        this.startTime = Instant.now();
+        this.exchangeMeta = new ExchangeMetaDefault(correlationId);
     }
 
     /** Returns the current response header value for the given name, or null. */
@@ -63,64 +55,44 @@ public abstract class AbstractHttpContext
 
     @Override
     public String correlationId() {
-        return correlationId;
+        return exchangeMeta.correlationId();
     }
 
     /** Replaces the correlation id for a reused exchange (keep-alive
      *  connections process a new request per reset). Blank input keeps the
      *  existing id. */
     protected final void setCorrelationId(String correlationId) {
-        if (correlationId != null && !correlationId.isBlank()) {
-            this.correlationId = correlationId;
-        }
+        exchangeMeta.setCorrelationId(correlationId);
     }
 
     @Override
     public Instant startTime() {
-        return startTime;
+        return exchangeMeta.startTime();
     }
 
     @Override
     public Object principal() {
-        return principal;
+        return exchangeMeta.principal();
     }
 
     @Override
     public void setPrincipal(Object principal) {
-        this.principal = principal;
+        exchangeMeta.setPrincipal(principal);
     }
 
     @Override
     public Object attribute(String key) {
-        Objects.requireNonNull(key, "key");
-        var map = attributes;
-        return map == null ? null : map.get(key);
+        return exchangeMeta.attribute(key);
     }
 
     @Override
     public void setAttribute(String key, Object value) {
-        Objects.requireNonNull(key, "key");
-        var map = attributes;
-        if (map == null) {
-            synchronized (this) {
-                map = attributes;
-                if (map == null) {
-                    map = new ConcurrentHashMap<>();
-                    attributes = map;
-                }
-            }
-        }
-        if (value == null) {
-            map.remove(key);
-        } else {
-            map.put(key, value);
-        }
+        exchangeMeta.setAttribute(key, value);
     }
 
     @Override
     public Map<String, Object> attributes() {
-        var map = attributes;
-        return map == null ? Map.of() : Map.copyOf(map);
+        return exchangeMeta.attributes();
     }
 
     @Override
@@ -355,14 +327,4 @@ public abstract class AbstractHttpContext
         }
     }
 
-    /**
-     * 32-char lowercase hex id generated without the UUID machinery: 128
-     * bits from {@link ThreadLocalRandom} give ~2^-64 collision odds between
-     * exchanges, and the path allocates only the scratch + the id string.
-     */
-    private static String fastCorrelationId() {
-        byte[] bytes = new byte[16];
-        ThreadLocalRandom.current().nextBytes(bytes);
-        return HexFormat.of().formatHex(bytes);
-    }
 }
