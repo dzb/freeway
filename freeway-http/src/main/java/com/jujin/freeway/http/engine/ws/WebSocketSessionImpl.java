@@ -9,12 +9,18 @@ import java.io.OutputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public final class WebSocketSessionImpl implements WebSocketSession {
+
+    /** Messages larger than this are sent fragmented, so a single frame
+     *  never exceeds the receive-side cap (WebSocketFrame.MAX_FRAME_SIZE)
+     *  and peers with per-frame limits accept the message. */
+    private static final int MAX_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
     private final String method;
     private final String path;
@@ -98,12 +104,56 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     @Override
     public void sendText(String text) throws IOException {
-        writeFrame(new WebSocketFrame(OpCode.Text, true, text));
+        // length() × 4 would overflow for > 1GB strings; the division form
+        // is mathematically equivalent and overflow-free.
+        if (text.length() <= MAX_FRAME_PAYLOAD / 4) { // cheap upper bound
+            writeFrame(new WebSocketFrame(OpCode.Text, true, text));
+            return;
+        }
+        writeFragmented(OpCode.Text, text.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
     public void sendBinary(byte[] data) throws IOException {
-        writeFrame(new WebSocketFrame(OpCode.Binary, true, data));
+        if (data.length <= MAX_FRAME_PAYLOAD) {
+            writeFrame(new WebSocketFrame(OpCode.Binary, true, data));
+            return;
+        }
+        writeFragmented(OpCode.Binary, data);
+    }
+
+    /** Sends a message larger than one frame as a fragmented message
+     *  (RFC 6455 §5.4): the first frame carries the opcode with FIN=0, the
+     *  rest are CONTINUATION, the last with FIN=1. The whole sequence is
+     *  written under the write lock so no other frame (e.g. a ping) can
+     *  interleave; text is split at UTF-8 code-point boundaries so no
+     *  fragment ends mid-character. */
+    private void writeFragmented(OpCode opCode, byte[] data) throws IOException {
+        synchronized (writeLock) {
+            checkOpen();
+            int offset = 0;
+            boolean first = true;
+            while (offset < data.length) {
+                int end = Math.min(offset + MAX_FRAME_PAYLOAD, data.length);
+                if (end < data.length) {
+                    end = codePointBoundary(data, end);
+                }
+                WebSocket.writeFrame(out, new WebSocketFrame(
+                    first ? opCode : OpCode.Continuation, end == data.length,
+                    Arrays.copyOfRange(data, offset, end)));
+                first = false;
+                offset = end;
+            }
+        }
+    }
+
+    /** Backs up to the start of the UTF-8 code point containing {@code pos}
+     *  (bytes 0x80-0xBF are continuation bytes of a multi-byte code point). */
+    private static int codePointBoundary(byte[] data, int pos) {
+        while (pos > 0 && (data[pos] & 0xC0) == 0x80) {
+            pos--;
+        }
+        return pos;
     }
 
     @Override

@@ -8,6 +8,9 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,6 +60,83 @@ class WebSocketReadLoopTest {
             "all frames must be valid and none lost to interleaving");
         assertTrue(received.contains("t3-7"),
             "sample message must survive concurrent sends");
+    }
+
+    @Test
+    void largeBinaryMessageIsSentFragmented() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var session = new WebSocketSessionImpl(
+            "GET", "/", null, Map.of(),
+            new ByteArrayInputStream(new byte[0]), out, Map.of());
+        int maxFrame = 16 * 1024 * 1024;
+        byte[] big = new byte[maxFrame + 100];
+        for (int i = 0; i < big.length; i++) big[i] = (byte) (i & 0xFF);
+        session.sendBinary(big);
+
+        var frames = readAllFrames(out);
+        assertEquals(2, frames.size(),
+            "a message above the frame cap must be split into two frames");
+        assertEquals(OpCode.Binary, frames.get(0).opCode());
+        assertFalse(frames.get(0).isFin(), "first fragment must not set FIN");
+        assertEquals(maxFrame, frames.get(0).payload().length);
+        assertEquals(OpCode.Continuation, frames.get(1).opCode());
+        assertTrue(frames.get(1).isFin(), "last fragment must set FIN");
+        assertArrayEquals(big, concatPayloads(frames),
+            "fragments must reassemble to the original message");
+    }
+
+    @Test
+    void largeTextMessageSplitAtCodePointBoundaries() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var session = new WebSocketSessionImpl(
+            "GET", "/", null, Map.of(),
+            new ByteArrayInputStream(new byte[0]), out, Map.of());
+        // 6M CJK chars × 3 UTF-8 bytes = 18MB, above the 16MB frame cap.
+        String big = "中".repeat(6_000_000);
+        session.sendText(big);
+
+        var frames = readAllFrames(out);
+        assertTrue(frames.size() >= 2, "an 18MB text must be fragmented");
+        assertEquals(OpCode.Text, frames.get(0).opCode());
+        for (int i = 0; i < frames.size(); i++) {
+            if (i > 0) {
+                assertEquals(OpCode.Continuation, frames.get(i).opCode(),
+                    "fragment " + i + " must be CONTINUATION");
+            }
+            // Every fragment must end on a code point boundary: decoding it
+            // alone must not hit malformed input.
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(frames.get(i).payload()));
+        }
+        assertTrue(frames.get(frames.size() - 1).isFin(),
+            "last fragment must set FIN");
+        assertArrayEquals(big.getBytes(StandardCharsets.UTF_8),
+            concatPayloads(frames),
+            "fragments must reassemble to the exact original text");
+    }
+
+    private static List<WebSocketFrame> readAllFrames(ByteArrayOutputStream out)
+        throws IOException {
+        var wire = new ByteArrayInputStream(out.toByteArray());
+        var frames = new ArrayList<WebSocketFrame>();
+        try {
+            while (true) {
+                frames.add(WebSocketFrame.read(wire));
+            }
+        } catch (java.io.EOFException e) {
+            // end of stream — frames fully read
+        }
+        return frames;
+    }
+
+    private static byte[] concatPayloads(List<WebSocketFrame> frames) {
+        var all = new java.io.ByteArrayOutputStream();
+        for (var frame : frames) {
+            all.writeBytes(frame.payload());
+        }
+        return all.toByteArray();
     }
 
     @Test
