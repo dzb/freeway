@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
 public final class RequestTimingFilter implements HttpFilter {
@@ -19,14 +18,14 @@ public final class RequestTimingFilter implements HttpFilter {
             next.handle(ctx);
             return;
         }
-        RequestContext rc = ctx.requestContext();
-        Instant startedAt = rc.startTime();
+        Instant startedAt = ctx.startTime();
         try {
             next.handle(ctx);
         } finally {
             long elapsedMillis = Duration.between(startedAt, Instant.now()).toMillis();
             LOG.debug("{} {} -> {} ({} ms, id={})",
-                ctx.method(), ctx.path(), ctx.status(), elapsedMillis, rc.correlationId());
+                ctx.request().method(), ctx.request().path(),
+                ctx.response().status(), elapsedMillis, ctx.correlationId());
         }
     }
 }

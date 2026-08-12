@@ -70,40 +70,45 @@ public final class CorsFilter implements HttpFilter {
             return;
         }
 
-        String requestOrigin = ctx.header("Origin").orElse(null);
+        String requestOrigin = ctx.request().header("Origin").orElse(null);
         String acao = resolveAllowedOrigin(requestOrigin);
         if (acao != null) {
-            ctx.setHeader("Access-Control-Allow-Origin", acao);
+            ctx.response().setHeader("Access-Control-Allow-Origin", acao);
             if (!"*".equals(acao)) {
-                ctx.addVary("Origin");
+                ctx.response().addVary("Origin");
             }
             if (allowCredentials) {
-                ctx.setHeader("Access-Control-Allow-Credentials", "true");
+                ctx.response().setHeader(
+                    "Access-Control-Allow-Credentials", "true");
             }
             if (exposedHeaders != null) {
-                ctx.setHeader("Access-Control-Expose-Headers", exposedHeaders);
+                ctx.response().setHeader(
+                    "Access-Control-Expose-Headers", exposedHeaders);
             }
         }
 
         // Intercept only genuine CORS preflight (Origin + Access-Control-Request-Method).
         // Non-preflight OPTIONS pass through to route handlers.
-        if ("OPTIONS".equalsIgnoreCase(ctx.method())
-                && ctx.header("Access-Control-Request-Method").isPresent()) {
+        if ("OPTIONS".equalsIgnoreCase(ctx.request().method())
+                && ctx.request().header("Access-Control-Request-Method")
+                    .isPresent()) {
             if (acao == null) {
                 LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
-                ctx.status(HttpStatus.FORBIDDEN).output(new byte[0]);
+                ctx.response().status(HttpStatus.FORBIDDEN).output(new byte[0]);
                 return;
             }
             if (allowedMethods != null) {
-                ctx.setHeader("Access-Control-Allow-Methods", allowedMethods);
+                ctx.response().setHeader(
+                    "Access-Control-Allow-Methods", allowedMethods);
             }
             if (allowedHeaders != null) {
-                ctx.setHeader("Access-Control-Allow-Headers", allowedHeaders);
+                ctx.response().setHeader(
+                    "Access-Control-Allow-Headers", allowedHeaders);
             }
             if (maxAge != null) {
-                ctx.setHeader("Access-Control-Max-Age", maxAge);
+                ctx.response().setHeader("Access-Control-Max-Age", maxAge);
             }
-            ctx.send(204, "");
+            ctx.response().send(204, "");
             return;
         }
 

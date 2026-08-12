@@ -1,79 +1,71 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.http.sse.SseEmitter;
-
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.channels.FileChannel;
-import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * Combined HTTP request/response view handed to application handlers: one
- * object for reading the request and writing the response, keeping handler
- * lambdas concise. The read side is {@link HttpRequest} and the write side
- * {@link HttpResponse}; framework components that need only one side should
- * depend on the narrower interface.
+ * One HTTP exchange: the exchange metadata (correlation id, start time,
+ * principal, attributes) plus the request and response transport faces.
  *
- * <p>Implementations normally extend {@link AbstractHttpContext}, which
- * provides the shared coercion, path-variable, and convenience logic.</p>
+ * <p>Application handlers receive this combined object for concise lambdas;
+ * the convenience methods below forward to the corresponding face. For
+ * anything beyond the convenience set, use {@link #request()} and
+ * {@link #response()} to work against the narrow transport contracts.</p>
  */
-public interface HttpContext extends HttpRequest, HttpResponse {
+public interface HttpContext extends ExchangeMeta {
 
-    /** Sets all path variables from a route match. Returns this for chaining. */
-    @Override
-    HttpContext pathVars(Map<String, String> vars);
+    /** Read side of the exchange. */
+    HttpRequest request();
 
-    /** Sets the maximum request body size. Returns this for chaining. */
-    @Override
-    HttpContext maxBodySize(long maxBodySize);
+    /** Write side of the exchange. */
+    HttpResponse response();
 
-    /** Sets the HTTP response status code. Returns this for chaining. */
-    @Override
-    HttpContext status(int status);
+    // -- convenience: read side (forwarded to request()) --
 
-    /** Sets a response header. Returns this for chaining. */
-    @Override
-    HttpContext setHeader(String name, String value);
-
-    /** Sends a binary body. Returns this for chaining. */
-    @Override
-    HttpContext output(byte[] data) throws IOException;
-
-    /** Streams a body. Returns this for chaining. */
-    @Override
-    HttpContext output(InputStream in, long contentLength) throws IOException;
-
-    /** Sends a file range. Returns this for chaining. */
-    @Override
-    HttpContext outputFile(Path file, long offset, long length)
-        throws IOException;
-
-    /** Streams an open file channel. Returns this for chaining. */
-    @Override
-    default HttpContext outputFile(FileChannel channel, long offset, long length)
-            throws IOException {
-        throw new UnsupportedOperationException(
-            "File-channel output is not supported");
+    default Optional<String> pathVar(String name) {
+        return request().pathVar(name);
     }
 
-    /** Sends a text body. Returns this for chaining. */
-    @Override
-    HttpContext output(String text) throws IOException;
+    default Map<String, String> pathVars() {
+        return request().pathVars();
+    }
 
-    /** Sends a JSON body. Returns this for chaining. */
-    @Override
-    HttpContext outputJson(Object value) throws IOException;
+    default Optional<String> param(String name) {
+        return request().param(name);
+    }
 
-    /** Sends a status + text body. Returns this for chaining. */
-    @Override
-    HttpContext send(int status, String text) throws IOException;
+    default Optional<String> queryParam(String name) {
+        return request().queryParam(name);
+    }
 
-    /** Sends a status + JSON body. Returns this for chaining. */
-    @Override
-    HttpContext sendJson(int status, Object value) throws IOException;
+    default Optional<String> header(String name) {
+        return request().header(name);
+    }
 
-    /** Opens an SSE emitter on this response. */
-    @Override
-    SseEmitter sse() throws IOException;
+    default <T> T bodyAsJson(Class<T> type) throws IOException {
+        return request().bodyAsJson(type);
+    }
+
+    // -- convenience: write side (forwarded to response()) --
+
+    default HttpResponse send(int status, String text) throws IOException {
+        return response().send(status, text);
+    }
+
+    default HttpResponse sendJson(int status, Object value) throws IOException {
+        return response().sendJson(status, value);
+    }
+
+    default HttpResponse status(int status) {
+        return response().status(status);
+    }
+
+    default HttpResponse setHeader(String name, String value) {
+        return response().setHeader(name, value);
+    }
+
+    default HttpResponse output(byte[] data) throws IOException {
+        return response().output(data);
+    }
 }

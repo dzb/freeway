@@ -23,8 +23,8 @@ import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
 import com.jujin.freeway.http.filter.HttpFilter;
@@ -140,7 +140,7 @@ class HttpServerFeatureTest {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
             .route(Route.get("/stream", ctx ->
-                ctx.output(new ByteArrayInputStream(
+                ctx.response().output(new ByteArrayInputStream(
                     "hello-chunked-world".getBytes(StandardCharsets.UTF_8)), -1)))
             .build();
         server.start();
@@ -164,7 +164,7 @@ class HttpServerFeatureTest {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
             .route(Route.get("/empty", ctx ->
-                ctx.output(new ByteArrayInputStream(new byte[0]), -1)))
+                ctx.response().output(new ByteArrayInputStream(new byte[0]), -1)))
             .build();
         server.start();
         try {
@@ -186,7 +186,7 @@ class HttpServerFeatureTest {
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
             .route(Route.get("/gz", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
-                ctx.output(new ByteArrayInputStream(
+                ctx.response().output(new ByteArrayInputStream(
                     "compress-me-please".getBytes(StandardCharsets.UTF_8)), 18);
             }))
             .build();

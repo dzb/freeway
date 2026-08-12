@@ -26,7 +26,7 @@ class StaticResourceConditionalTest {
 
         // first request — get the ETag
         StubHttpContext first = new StubHttpContext("GET", "/test.txt");
-        assertTrue(mount.serve(first));
+        assertTrue(mount.serve(first, first));
         assertEquals(200, first.status());
         String etag = first.responseHeader("ETag");
         assertNotNull(etag);
@@ -34,7 +34,7 @@ class StaticResourceConditionalTest {
         // second request — with matching If-None-Match
         StubHttpContext second = new StubHttpContext("GET", "/test.txt");
         second.requestHeader("If-None-Match", etag);
-        assertTrue(mount.serve(second));
+        assertTrue(mount.serve(second, second));
         assertEquals(304, second.status());
     }
 
@@ -47,7 +47,7 @@ class StaticResourceConditionalTest {
 
         StubHttpContext ctx = new StubHttpContext("GET", "/data.txt");
         ctx.requestHeader("If-None-Match", "\"sha256-wronghash\"");
-        assertTrue(mount.serve(ctx));
+        assertTrue(mount.serve(ctx, ctx));
         assertEquals(200, ctx.status());
     }
 
@@ -59,12 +59,12 @@ class StaticResourceConditionalTest {
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
 
         StubHttpContext first = new StubHttpContext("GET", "/weak.txt");
-        mount.serve(first);
+        mount.serve(first, first);
         String etag = first.responseHeader("ETag");
 
         StubHttpContext second = new StubHttpContext("GET", "/weak.txt");
         second.requestHeader("If-None-Match", "W/" + etag);
-        assertTrue(mount.serve(second));
+        assertTrue(mount.serve(second, second));
         assertEquals(304, second.status());
     }
 
@@ -77,7 +77,7 @@ class StaticResourceConditionalTest {
 
         StubHttpContext ctx = new StubHttpContext("GET", "/star.txt");
         ctx.requestHeader("If-None-Match", "*");
-        assertTrue(mount.serve(ctx));
+        assertTrue(mount.serve(ctx, ctx));
         assertEquals(304, ctx.status());
     }
 
@@ -103,11 +103,11 @@ class StaticResourceConditionalTest {
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
 
         StubHttpContext first = new StubHttpContext("GET", "/cache.txt");
-        mount.serve(first);
+        mount.serve(first, first);
         String etag1 = first.responseHeader("ETag");
 
         StubHttpContext second = new StubHttpContext("GET", "/cache.txt");
-        mount.serve(second);
+        mount.serve(second, second);
         String etag2 = second.responseHeader("ETag");
 
         assertEquals(etag1, etag2);
@@ -119,10 +119,10 @@ class StaticResourceConditionalTest {
         Files.writeString(file, "hello");
         StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
         StubHttpContext first = new StubHttpContext("GET", "/precision.txt");
-        mount.serve(first);
+        mount.serve(first, first);
         StubHttpContext second = new StubHttpContext("GET", "/precision.txt");
         second.requestHeader("If-Modified-Since", first.responseHeader("Last-Modified"));
-        mount.serve(second);
+        mount.serve(second, second);
         assertEquals(304, second.status());
     }
 }

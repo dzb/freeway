@@ -24,10 +24,9 @@ import javax.net.ssl.SSLSession;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.AbstractHttpContext;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
@@ -43,7 +42,6 @@ public class HttpContextDefault extends AbstractHttpContext {
     private Map<String, List<String>> requestHeaders, queryParams;
     private boolean http10, keepAlive;
     OutputStream rawOut;
-    private RequestContext requestContext;
     private final CaseInsensitiveHeaders responseHeaders = new CaseInsensitiveHeaders();
     private RequestBody requestBody;
     private int responseStatus = 200;
@@ -73,6 +71,11 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
     public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer) {
         super(jsonCodec, coercer);
+    }
+
+    public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer,
+                              String correlationId) {
+        super(jsonCodec, coercer, correlationId);
     }
 
     /** Routes responses through the given transport writer (HTTP/2 stream). */
@@ -119,7 +122,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     void reset(String method, String path, String rawQuery,
                Map<String, List<String>> requestHeaders,
                InputStream bodyStream, long contentLength, boolean chunked,
-               OutputStream rawOut, RequestContext requestContext,
+               OutputStream rawOut, String correlationId,
                boolean http10, boolean keepAlive) {
         this.method = method;
         this.path = path;
@@ -128,7 +131,7 @@ public class HttpContextDefault extends AbstractHttpContext {
         this.requestBody = new RequestBody(
             bodyStream, contentLength, chunked, () -> maxBodySize);
         this.rawOut = rawOut;
-        this.requestContext = requestContext;
+        setCorrelationId(correlationId);
         this.http10 = http10;
         this.keepAlive = keepAlive;
         this.queryParams = HttpUtils.parseQueryParams(rawQuery);
@@ -224,13 +227,10 @@ public class HttpContextDefault extends AbstractHttpContext {
         return requestBody.readAll();
     }
 
-    @Override
-    public RequestContext requestContext() { return requestContext; }
-
     // --- response side ---
 
     @Override
-    public HttpContext status(int status) {
+    public HttpResponse status(int status) {
         this.responseStatus = status;
         return this;
     }
@@ -239,7 +239,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     public int status() { return responseStatus; }
 
     @Override
-    public HttpContext setHeader(String name, String value) {
+    public HttpResponse setHeader(String name, String value) {
         if (responded) return this;
         validateHeaderName(name);
         validateHeaderValue(value);
@@ -249,7 +249,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     @Override
-    public HttpContext output(byte[] data) throws IOException {
+    public HttpResponse output(byte[] data) throws IOException {
         if (responded) return this;
         responded = true;
         byte[] body = data;
@@ -269,7 +269,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     @Override
-    public HttpContext output(InputStream in, long contentLength) throws IOException {
+    public HttpResponse output(InputStream in, long contentLength) throws IOException {
         if (responded) return this;
         boolean gzip = ResponseFraming.shouldGzipStream(
             compression, responseStatus, allowsResponseBody(),
@@ -344,7 +344,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     @Override
-    public HttpContext outputFile(Path file, long offset, long length)
+    public HttpResponse outputFile(Path file, long offset, long length)
             throws IOException {
         if (responded) return this;
         try (FileChannel channel = FileChannel.open(file,
@@ -354,7 +354,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     @Override
-    public HttpContext outputFile(FileChannel channel, long offset, long length)
+    public HttpResponse outputFile(FileChannel channel, long offset, long length)
             throws IOException {
         if (responded) {
             channel.close();

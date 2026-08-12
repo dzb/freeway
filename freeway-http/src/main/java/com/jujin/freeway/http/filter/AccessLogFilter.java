@@ -32,11 +32,12 @@ public final class AccessLogFilter implements HttpFilter {
             next.handle(ctx);
         } finally {
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-            List<String> uaValues = ctx.headers("user-agent");
+            List<String> uaValues = ctx.request().headers("user-agent");
             String ua = uaValues.isEmpty() ? "-" : uaValues.getFirst();
-            String ip = ctx.remoteAddress();
+            String ip = ctx.request().remoteAddress();
             if (ip.isEmpty()) ip = "-";
-            out.println(ctx.method() + " " + ctx.path() + " " + ctx.status()
+            out.println(ctx.request().method() + " " + ctx.request().path()
+                + " " + ctx.response().status()
                 + " " + elapsedMs + "ms " + ip + " " + ua);
         }
     }

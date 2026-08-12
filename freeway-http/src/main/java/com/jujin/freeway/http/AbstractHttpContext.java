@@ -11,35 +11,146 @@ import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Base class for {@link HttpContext} implementations. Owns the shared state
- * (codecs, body-size limit, path variables) and the convenience logic that
- * does not belong to a specific transport (coercion, JSON body helpers, Vary
- * merging, text/JSON send shorthands). Transports extend this and implement
- * only their transport-specific methods.
+ * Base class for {@link HttpContext} implementations. Owns the exchange
+ * metadata, the shared state (codecs, body-size limit, path variables), and
+ * the convenience logic that does not belong to a specific transport
+ * (coercion, JSON body helpers, Vary merging, text/JSON send shorthands).
+ * One object implements all three faces; the combined view exposes them via
+ * {@link #request()} and {@link #response()}.
  */
-public abstract class AbstractHttpContext implements HttpContext {
+public abstract class AbstractHttpContext
+        implements HttpContext, HttpRequest, HttpResponse {
 
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
     protected volatile long maxBodySize = 10_485_760L;
     protected volatile boolean bodyLimitExceeded;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
+    private volatile String correlationId;
+    private final Instant startTime;
+    private volatile Object principal;
+    private volatile ConcurrentHashMap<String, Object> attributes;
 
     protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer) {
+        this(jsonCodec, coercer, null);
+    }
+
+    protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer,
+                                  String correlationId) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
+        this.correlationId = correlationId != null && !correlationId.isBlank()
+            ? correlationId : fastCorrelationId();
+        this.startTime = Instant.now();
     }
 
     /** Returns the current response header value for the given name, or null. */
     protected abstract String responseHeader(String name);
+
+    // -- exchange metadata --
+
+    @Override
+    public String correlationId() {
+        return correlationId;
+    }
+
+    /** Replaces the correlation id for a reused exchange (keep-alive
+     *  connections process a new request per reset). Blank input keeps the
+     *  existing id. */
+    protected final void setCorrelationId(String correlationId) {
+        if (correlationId != null && !correlationId.isBlank()) {
+            this.correlationId = correlationId;
+        }
+    }
+
+    @Override
+    public Instant startTime() {
+        return startTime;
+    }
+
+    @Override
+    public Object principal() {
+        return principal;
+    }
+
+    @Override
+    public void setPrincipal(Object principal) {
+        this.principal = principal;
+    }
+
+    @Override
+    public Object attribute(String key) {
+        Objects.requireNonNull(key, "key");
+        var map = attributes;
+        return map == null ? null : map.get(key);
+    }
+
+    @Override
+    public void setAttribute(String key, Object value) {
+        Objects.requireNonNull(key, "key");
+        var map = attributes;
+        if (map == null) {
+            synchronized (this) {
+                map = attributes;
+                if (map == null) {
+                    map = new ConcurrentHashMap<>();
+                    attributes = map;
+                }
+            }
+        }
+        if (value == null) {
+            map.remove(key);
+        } else {
+            map.put(key, value);
+        }
+    }
+
+    @Override
+    public Map<String, Object> attributes() {
+        var map = attributes;
+        return map == null ? Map.of() : Map.copyOf(map);
+    }
+
+    @Override
+    public HttpRequest request() {
+        return this;
+    }
+
+    @Override
+    public HttpResponse response() {
+        return this;
+    }
+
+    // -- transport-specific methods, declared here so the convenience
+    // defaults on HttpContext do not clash with the abstract contract on
+    // HttpRequest/HttpResponse (a class inheriting both must state them) --
+
+    @Override
+    public abstract Optional<String> queryParam(String name);
+
+    @Override
+    public abstract Optional<String> header(String name);
+
+    @Override
+    public abstract HttpResponse status(int status);
+
+    @Override
+    public abstract HttpResponse setHeader(String name, String value);
+
+    @Override
+    public abstract HttpResponse output(byte[] data) throws IOException;
 
     // -- shared request logic --
 
@@ -64,7 +175,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     @Override
-    public HttpContext pathVars(Map<String, String> vars) {
+    public HttpRequest pathVars(Map<String, String> vars) {
         this.pathVariables.putAll(vars);
         return this;
     }
@@ -85,7 +196,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     @Override
-    public HttpContext maxBodySize(long maxBodySize) {
+    public HttpRequest maxBodySize(long maxBodySize) {
         if (maxBodySize <= 0) {
             throw new IllegalArgumentException("maxBodySize must be positive");
         }
@@ -122,7 +233,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     @Override
-    public HttpContext output(String text) throws IOException {
+    public HttpResponse output(String text) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
         ensureContentType("text/plain; charset=utf-8");
         output(text.getBytes(StandardCharsets.UTF_8));
@@ -130,7 +241,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     @Override
-    public HttpContext outputJson(Object value) throws IOException {
+    public HttpResponse outputJson(Object value) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
         ensureContentType("application/json; charset=utf-8");
         output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
@@ -138,13 +249,13 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     @Override
-    public HttpContext send(int status, String text) throws IOException {
+    public HttpResponse send(int status, String text) throws IOException {
         status(status);
         return output(text);
     }
 
     @Override
-    public HttpContext sendJson(int status, Object value) throws IOException {
+    public HttpResponse sendJson(int status, Object value) throws IOException {
         status(status);
         return outputJson(value);
     }
@@ -242,5 +353,16 @@ public abstract class AbstractHttpContext implements HttpContext {
         if (ct == null || !ct.toLowerCase(Locale.ROOT).contains("application/json")) {
             throw new IllegalStateException("Expected application/json Content-Type");
         }
+    }
+
+    /**
+     * 32-char lowercase hex id generated without the UUID machinery: 128
+     * bits from {@link ThreadLocalRandom} give ~2^-64 collision odds between
+     * exchanges, and the path allocates only the scratch + the id string.
+     */
+    private static String fastCorrelationId() {
+        byte[] bytes = new byte[16];
+        ThreadLocalRandom.current().nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
     }
 }

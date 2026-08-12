@@ -33,7 +33,7 @@ class WebSocketReadLoopTest {
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
             "GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), out, Map.of());
+            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
         int threads = 8;
         int messagesPerThread = 50;
         ExecutorService executor = Executors.newFixedThreadPool(threads);
@@ -70,7 +70,7 @@ class WebSocketReadLoopTest {
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
             "GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), out, Map.of());
+            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
         int maxFrame = 16 * 1024 * 1024;
         byte[] big = new byte[maxFrame + 100];
         for (int i = 0; i < big.length; i++) big[i] = (byte) (i & 0xFF);
@@ -93,7 +93,7 @@ class WebSocketReadLoopTest {
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
             "GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), out, Map.of());
+            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
         // 6M CJK chars × 3 UTF-8 bytes = 18MB, above the 16MB frame cap.
         String big = "中".repeat(6_000_000);
         session.sendText(big);
@@ -151,7 +151,7 @@ class WebSocketReadLoopTest {
         var in = new ByteArrayInputStream(wire);
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), in, out, Map.of());
+            "GET", "/", null, Map.of(), in, out, Map.of(), null);
         var texts = new ArrayList<String>();
         WebSocket.readLoop(in, out, session, new WebSocketListener() {
             @Override
@@ -173,7 +173,7 @@ class WebSocketReadLoopTest {
         var in = new ByteArrayInputStream(wire);
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), in, out, Map.of());
+            "GET", "/", null, Map.of(), in, out, Map.of(), null);
         WebSocket.readLoop(in, out, session, WebSocketListener.NOOP);
 
         assertFalse(session.isOpen(),
@@ -187,7 +187,7 @@ class WebSocketReadLoopTest {
         var in = new ByteArrayInputStream(invalidClose);
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), in, out, Map.of());
+            "GET", "/", null, Map.of(), in, out, Map.of(), null);
 
         WebSocket.readLoop(in, out, session, WebSocketListener.NOOP);
 
@@ -224,7 +224,7 @@ class WebSocketReadLoopTest {
         };
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
-            "GET", "/", null, Map.of(), blockingIn, out, Map.of());
+            "GET", "/", null, Map.of(), blockingIn, out, Map.of(), null);
 
         var loopDone = new AtomicBoolean();
         Thread loop = Thread.startVirtualThread(() -> {
@@ -252,7 +252,7 @@ class WebSocketReadLoopTest {
         };
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl("GET", "/", null, Map.of(),
-            blockingIn, out, Map.of());
+            blockingIn, out, Map.of(), null);
         var closeCode = new AtomicInteger();
         Thread loop = Thread.startVirtualThread(() -> WebSocket.readLoop(
             blockingIn, out, session, new WebSocketListener() {
@@ -269,7 +269,7 @@ class WebSocketReadLoopTest {
     @Test
     void invalidServerCloseDoesNotChangeSessionState() {
         var session = new WebSocketSessionImpl("GET", "/", null, Map.of(),
-            new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), Map.of());
+            new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), Map.of(), null);
         assertThrows(IllegalArgumentException.class, () -> session.close(1005, "bad"));
         assertTrue(session.isOpen());
     }

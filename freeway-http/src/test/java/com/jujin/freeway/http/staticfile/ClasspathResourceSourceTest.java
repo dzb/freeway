@@ -16,7 +16,7 @@ class ClasspathResourceSourceTest {
         StaticResourceMount mount = StaticResourceMount.classpath("/assets", "static");
 
         StubHttpContext ctx = new StubHttpContext("GET", "/assets/test.txt");
-        assertTrue(mount.serve(ctx));
+        assertTrue(mount.serve(ctx, ctx));
         assertEquals(200, ctx.status());
         assertTrue(ctx.responseBody().contains("classpath test content"));
     }
@@ -26,7 +26,7 @@ class ClasspathResourceSourceTest {
         StaticResourceMount mount = StaticResourceMount.classpath("/assets", "static");
 
         StubHttpContext ctx = new StubHttpContext("GET", "/assets/nonexistent.txt");
-        assertTrue(mount.serve(ctx));
+        assertTrue(mount.serve(ctx, ctx));
         assertEquals(404, ctx.status());
     }
 
@@ -36,7 +36,7 @@ class ClasspathResourceSourceTest {
             .fallthrough(true);
 
         StubHttpContext ctx = new StubHttpContext("GET", "/assets/missing.txt");
-        assertFalse(mount.serve(ctx));
+        assertFalse(mount.serve(ctx, ctx));
     }
 
     @Test
@@ -44,7 +44,7 @@ class ClasspathResourceSourceTest {
         StaticResourceMount mount = StaticResourceMount.classpath("/", "static");
 
         StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
-        assertTrue(mount.serve(ctx));
+        assertTrue(mount.serve(ctx, ctx));
         assertEquals(200, ctx.status());
     }
 
@@ -53,7 +53,7 @@ class ClasspathResourceSourceTest {
         StaticResourceMount mount = StaticResourceMount.classpath("/", "static");
 
         StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
-        mount.serve(ctx);
+        mount.serve(ctx, ctx);
         assertEquals("text/plain; charset=utf-8", ctx.responseHeader("Content-Type"));
     }
 
@@ -62,7 +62,7 @@ class ClasspathResourceSourceTest {
         StaticResourceMount mount = StaticResourceMount.classpath("/", "static");
 
         StubHttpContext ctx = new StubHttpContext("GET", "/test.txt");
-        mount.serve(ctx);
+        mount.serve(ctx, ctx);
         assertEquals("nosniff", ctx.responseHeader("X-Content-Type-Options"));
     }
 }

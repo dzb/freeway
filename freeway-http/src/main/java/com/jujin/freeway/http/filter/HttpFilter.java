@@ -15,9 +15,9 @@ import com.jujin.freeway.http.route.RouteHandler;
 @FunctionalInterface
 public interface HttpFilter {
     /**
-     * Intercepts the request context and either handles it directly
-     * or passes it to the next filter or route handler in the chain
-     * by invoking {@code next.handle(ctx)}.
+     * Intercepts the exchange and either handles it directly or passes it to
+     * the next filter or route handler in the chain by invoking
+     * {@code next.handle(ctx)}.
      */
     void doFilter(HttpContext ctx, RouteHandler next) throws Exception;
 

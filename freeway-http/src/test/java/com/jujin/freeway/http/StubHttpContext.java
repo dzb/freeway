@@ -45,7 +45,6 @@ public final class StubHttpContext extends AbstractHttpContext {
 
     private final String method;
     private final String path;
-    private RequestContext requestContext;
     private final Map<String, List<String>> requestHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private final Map<String, String> responseHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private final Map<String, List<String>> queryParams = new LinkedHashMap<>();
@@ -152,7 +151,7 @@ public final class StubHttpContext extends AbstractHttpContext {
     }
 
     @Override
-    public HttpContext status(int status) {
+    public HttpResponse status(int status) {
         this.status = status;
         return this;
     }
@@ -165,23 +164,14 @@ public final class StubHttpContext extends AbstractHttpContext {
     }
 
     @Override
-    public RequestContext requestContext() {
-        if (requestContext == null) {
-            requestContext = RequestContext.create(
-                header("X-Request-Id").orElse(null));
-        }
-        return requestContext;
-    }
-
-    @Override
-    public HttpContext setHeader(String name, String value) {
+    public HttpResponse setHeader(String name, String value) {
         validateHeaderValue(value);
         responseHeaders.put(name, value);
         return this;
     }
 
     @Override
-    public HttpContext output(byte[] data) {
+    public HttpResponse output(byte[] data) {
         if (!allowsResponseBody()) {
             this.body = "";
             return this;
@@ -191,7 +181,7 @@ public final class StubHttpContext extends AbstractHttpContext {
     }
 
     @Override
-    public HttpContext output(InputStream in, long contentLength) throws IOException {
+    public HttpResponse output(InputStream in, long contentLength) throws IOException {
         if (!allowsResponseBody()) {
             this.body = "";
             return this;
@@ -201,7 +191,7 @@ public final class StubHttpContext extends AbstractHttpContext {
     }
 
     @Override
-    public HttpContext outputFile(Path file, long offset, long length)
+    public HttpResponse outputFile(Path file, long offset, long length)
             throws IOException {
         if (length > Integer.MAX_VALUE) {
             throw new IOException("stub cannot buffer files larger than 2GB");

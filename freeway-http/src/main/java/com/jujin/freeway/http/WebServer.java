@@ -13,6 +13,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.event.HttpRequestEvent;
 import com.jujin.freeway.http.event.HttpServerStartedEvent;
@@ -136,13 +137,15 @@ public final class WebServer implements AutoCloseable {
             } catch (Exception ex) {
                 boolean handled = WebServer.this.handleException(ctx, ex);
                 if (!handled) {
-                    publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
+                    publish(new HttpErrorEvent(
+                        ctx.request().method(), ctx.request().path(), ex));
                 }
             }
             long elapsed = Duration.between(
-                ctx.requestContext().startTime(), Instant.now()).toMillis();
+                ctx.startTime(), Instant.now()).toMillis();
             publish(new HttpRequestEvent(
-                ctx.method(), ctx.path(), ctx.status(), elapsed));
+                ctx.request().method(), ctx.request().path(),
+                ctx.response().status(), elapsed));
         };
     }
 
@@ -278,30 +281,32 @@ public final class WebServer implements AutoCloseable {
         );
     }
 
-    private void dispatchToRoute(HttpContext request) throws Exception {
+    private void dispatchToRoute(HttpContext ctx) throws Exception {
         if (!staticMounts.isEmpty()) {
             for (StaticResourceMount mount : staticMounts) {
-                if (mount.matches(request.method(), request.path())) {
-                    if (mount.serve(request)) return;
+                if (mount.matches(ctx.request().method(), ctx.request().path())) {
+                    if (mount.serve(ctx.request(), ctx.response())) return;
                 }
             }
         }
         RouteIndex.RouteMatch match = routes.match(
-            request.method(),
-            request.path()
+            ctx.request().method(),
+            ctx.request().path()
         );
         if (match == null) {
-            request.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
+            ctx.response().status(404).setHeader(
+                "Content-Type", "text/plain; charset=utf-8")
+                .output(NOT_FOUND_BODY);
             return;
         }
-        request.pathVars(match.pathVariables());
-        match.handler().handle(request);
+        ctx.request().pathVars(match.pathVariables());
+        match.handler().handle(ctx);
     }
 
     private boolean handleException(HttpContext ctx, Exception exception) {
         for (ExceptionMapper mapper : mappers) {
             try {
-                if (mapper.handle(ctx, exception)) return true;
+                if (mapper.handle(ctx.response(), exception)) return true;
             } catch (Exception mapperEx) {
                 LOG.warn(
                     "Exception mapper {} failed while handling {}",
@@ -311,7 +316,8 @@ public final class WebServer implements AutoCloseable {
                 );
             }
         }
-        if (exception instanceof IOException && ctx.isResponded()) {
+        if (exception instanceof IOException
+                && ctx.response().isResponded()) {
             // The response was already committed when the transport failed —
             // the peer disconnected mid-write. A 500 cannot be delivered and
             // this is an expected lifecycle event under concurrency (client
@@ -319,20 +325,22 @@ public final class WebServer implements AutoCloseable {
             // quiet; the session layer still traces it. An IOException raised
             // before the response commits is still an application error.
             LOG.debug("Connection error for {} {}: {}: {}",
-                ctx.method(), ctx.path(),
+                ctx.request().method(), ctx.request().path(),
                 exception.getClass().getSimpleName(),
                 String.valueOf(exception.getMessage()));
             return true;
         }
         LOG.error(
             "Unhandled exception for {} {}: {}: {}",
-            ctx.method(),
-            ctx.path(),
+            ctx.request().method(),
+            ctx.request().path(),
             exception.getClass().getSimpleName(),
             String.valueOf(exception.getMessage())
         );
         try {
-            ctx.status(500).setHeader("Content-Type", "text/plain; charset=utf-8").output(INTERNAL_ERROR_BODY);
+            ctx.response().status(500).setHeader(
+                "Content-Type", "text/plain; charset=utf-8")
+                .output(INTERNAL_ERROR_BODY);
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
         }

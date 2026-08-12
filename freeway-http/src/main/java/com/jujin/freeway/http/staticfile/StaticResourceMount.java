@@ -30,7 +30,8 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpRequest;
+import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.PathPattern;
 
@@ -116,45 +117,46 @@ public final class StaticResourceMount {
      * @return true if the request was handled (file sent or 404 returned);
      *         false if the file was not found and {@link #fallthrough} is on, so the request should continue
      */
-    public boolean serve(HttpContext ctx) throws IOException {
-        String relative = relativePath(ctx.path());
+    public boolean serve(HttpRequest request, HttpResponse response)
+            throws IOException {
+        String relative = relativePath(request.path());
         if (relative == null) {
-            return notFound(ctx);
+            return notFound(response);
         }
         AssetMeta meta = source.meta(relative);
         if (meta == null) {
-            return notFound(ctx);
+            return notFound(response);
         }
-        applyCacheHeaders(ctx, meta);
-        if (isNotModified(ctx, meta)) {
-            ctx.status(HttpStatus.NOT_MODIFIED).output(new byte[0]);
+        applyCacheHeaders(response, meta);
+        if (isNotModified(request, meta)) {
+            response.status(HttpStatus.NOT_MODIFIED).output(new byte[0]);
             return true;
         }
 
-        ByteRange range = ifRangeAllows(ctx, meta)
-            ? parseRange(ctx.header("Range").orElse(null), meta.size())
+        ByteRange range = ifRangeAllows(request, meta)
+            ? parseRange(request.header("Range").orElse(null), meta.size())
             : null;
 
         if (range != null && !range.satisfiable()) {
-            ctx.status(416);
-            ctx.setHeader("Content-Range", "bytes */" + meta.size());
-            ctx.output(new byte[0]);
+            response.status(416);
+            response.setHeader("Content-Range", "bytes */" + meta.size());
+            response.output(new byte[0]);
             return true;
         }
 
         if (range != null) {
             long length = range.end() - range.start() + 1;
-            ctx.status(206);
-            ctx.setHeader("Content-Range",
+            response.status(206);
+            response.setHeader("Content-Range",
                 "bytes " + range.start() + "-" + range.end() + "/" + meta.size());
-            if (!serveBytes(ctx, meta, relative, range.start(), length)) {
-                return notFound(ctx);
+            if (!serveBytes(request, response, meta, relative, range.start(), length)) {
+                return notFound(response);
             }
             return true;
         }
 
-        if (!serveBytes(ctx, meta, relative, 0, meta.size())) {
-            return notFound(ctx);
+        if (!serveBytes(request, response, meta, relative, 0, meta.size())) {
+            return notFound(response);
         }
         return true;
     }
@@ -172,27 +174,28 @@ public final class StaticResourceMount {
      * @return true when handled; false when the asset vanished and the
      *         caller should fall through to {@link #notFound}
      */
-    private boolean serveBytes(HttpContext ctx, AssetMeta meta, String relative,
+    private boolean serveBytes(HttpRequest request, HttpResponse response,
+                               AssetMeta meta, String relative,
                                long start, long length) throws IOException {
-        ctx.setHeader("Content-Type", contentType(meta.name()));
-        ctx.setHeader("X-Content-Type-Options", "nosniff");
-        if ("HEAD".equalsIgnoreCase(ctx.method())) {
+        response.setHeader("Content-Type", contentType(meta.name()));
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        if ("HEAD".equalsIgnoreCase(request.method())) {
             // No body needed — report the headers (and real size) without
             // reading the file contents.
             if (length >= 0) {
-                ctx.setHeader("Content-Length", Long.toString(length));
+                response.setHeader("Content-Length", Long.toString(length));
             }
-            ctx.output(new byte[0]);
+            response.output(new byte[0]);
             return true;
         }
         // sendfile fast path: real files on plain HTTP get transferred
         // straight from the filesystem cache to the socket.
-        if (length >= 0 && trySendfile(ctx, source, relative, start, length)) {
+        if (length >= 0 && trySendfile(response, source, relative, start, length)) {
             return true;
         }
         Path file = source.file(relative);
         if (file != null) {
-            ctx.outputFile(file, start, Math.max(0, length));
+            response.outputFile(file, start, Math.max(0, length));
             return true;
         }
         // Stream when the source can open a body stream directly (disk
@@ -203,9 +206,9 @@ public final class StaticResourceMount {
             try {
                 if (length >= 0) {
                     body.skipNBytes(start);
-                    ctx.output(new BoundedInputStream(body, length), length);
+                    response.output(new BoundedInputStream(body, length), length);
                 } else {
-                    ctx.output(body, -1);
+                    response.output(body, -1);
                 }
                 return true;
             } finally {
@@ -217,10 +220,10 @@ public final class StaticResourceMount {
             return false;
         }
         if (length >= 0) {
-            ctx.output(Arrays.copyOfRange(asset.bytes(), (int) start,
+            response.output(Arrays.copyOfRange(asset.bytes(), (int) start,
                 (int) (start + length)));
         } else {
-            ctx.output(asset.bytes());
+            response.output(asset.bytes());
         }
         return true;
     }
@@ -229,12 +232,12 @@ public final class StaticResourceMount {
      * Opens the asset through the secure channel path and hands the channel
      * to the context. Ownership: the context closes the channel exactly
      * once, including failure paths (see
-     * {@link HttpContext#outputFile(FileChannel, long, long)});
+     * {@link HttpResponse#outputFile(FileChannel, long, long)});
      * when the context cannot consume channels
      * ({@link UnsupportedOperationException}) the caller closes it before
      * falling back to the file/stream paths.
      */
-    private static boolean trySendfile(HttpContext ctx, ResourceSource source,
+    private static boolean trySendfile(HttpResponse response, ResourceSource source,
                                        String relative, long offset, long length)
             throws IOException {
         FileChannel channel = source.openChannel(relative);
@@ -242,7 +245,7 @@ public final class StaticResourceMount {
             return false;
         }
         try {
-            ctx.outputFile(channel, offset, length);
+            response.outputFile(channel, offset, length);
             return true;
         } catch (UnsupportedOperationException e) {
             channel.close();
@@ -250,11 +253,11 @@ public final class StaticResourceMount {
         }
     }
 
-    private boolean notFound(HttpContext ctx) throws IOException {
+    private boolean notFound(HttpResponse response) throws IOException {
         if (fallthrough) {
             return false;
         }
-        ctx.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
+        response.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
         return true;
     }
 
@@ -295,24 +298,24 @@ public final class StaticResourceMount {
         return normalized;
     }
 
-    private void applyCacheHeaders(HttpContext ctx, AssetMeta meta) {
+    private void applyCacheHeaders(HttpResponse response, AssetMeta meta) {
         StringBuilder cacheControl = new StringBuilder("public, max-age=").append(cacheMaxAgeSeconds);
         if (immutable) {
             cacheControl.append(", immutable");
         }
-        ctx.setHeader("Cache-Control", cacheControl.toString());
+        response.setHeader("Cache-Control", cacheControl.toString());
         if (meta.lastModifiedMillis() > 0) {
-            ctx.setHeader("Last-Modified", httpDate(meta.lastModifiedMillis()));
+            response.setHeader("Last-Modified", httpDate(meta.lastModifiedMillis()));
         }
-        ctx.setHeader("ETag", meta.etag());
+        response.setHeader("ETag", meta.etag());
     }
 
-    private boolean isNotModified(HttpContext ctx, AssetMeta meta) {
-        String ifNoneMatch = Strings.blankToNull(ctx.header("If-None-Match").orElse(null));
+    private boolean isNotModified(HttpRequest request, AssetMeta meta) {
+        String ifNoneMatch = Strings.blankToNull(request.header("If-None-Match").orElse(null));
         if (ifNoneMatch != null) {
             return etagMatches(ifNoneMatch, meta.etag());
         }
-        String ifModifiedSince = Strings.blankToNull(ctx.header("If-Modified-Since").orElse(null));
+        String ifModifiedSince = Strings.blankToNull(request.header("If-Modified-Since").orElse(null));
         if (ifModifiedSince == null || meta.lastModifiedMillis() <= 0) {
             return false;
         }
@@ -398,8 +401,8 @@ public final class StaticResourceMount {
 
     /** RFC 7233 §3.2: If-Range matching — a strong ETag or a Last-Modified
      *  timestamp that matches the current representation allows the range. */
-    private static boolean ifRangeAllows(HttpContext ctx, AssetMeta meta) {
-        String ifRange = Strings.blankToNull(ctx.header("If-Range").orElse(null));
+    private static boolean ifRangeAllows(HttpRequest request, AssetMeta meta) {
+        String ifRange = Strings.blankToNull(request.header("If-Range").orElse(null));
         if (ifRange == null) return true;
         if (ifRange.startsWith("\"")) {
             return ifRange.equals(meta.etag());

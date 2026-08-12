@@ -4,15 +4,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.jujin.freeway.http.HttpUtils;
-
-import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 
 public final class WebSocketSessionImpl implements WebSocketSession {
@@ -30,7 +33,10 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     private final OutputStream out;
     private final Map<String, String> pathVariables;
 
-    private final RequestContext requestContext = RequestContext.create();
+    private final String correlationId;
+    private final Instant startTime;
+    private volatile Object principal;
+    private volatile ConcurrentHashMap<String, Object> attributes;
     private volatile boolean open = true;
     private volatile int closeCode = 1006;
     private volatile String closeReason = "";
@@ -42,7 +48,8 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     public WebSocketSessionImpl(String method, String path, String rawQuery,
                          Map<String, List<String>> headers,
                          InputStream in, OutputStream out,
-                         Map<String, String> pathVariables) {
+                         Map<String, String> pathVariables,
+                         String correlationId) {
         this.method = method;
         this.path = path;
         this.rawQuery = rawQuery;
@@ -50,13 +57,53 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         this.in = in;
         this.out = out;
         this.pathVariables = pathVariables != null ? Map.copyOf(pathVariables) : Map.of();
+        this.correlationId = correlationId != null && !correlationId.isBlank()
+            ? correlationId : fastCorrelationId();
+        this.startTime = Instant.now();
+    }
+
+    @Override public String correlationId() { return correlationId; }
+    @Override public Instant startTime() { return startTime; }
+    @Override public Object principal() { return principal; }
+    @Override public void setPrincipal(Object principal) { this.principal = principal; }
+
+    @Override
+    public Object attribute(String key) {
+        Objects.requireNonNull(key, "key");
+        var map = attributes;
+        return map == null ? null : map.get(key);
+    }
+
+    @Override
+    public void setAttribute(String key, Object value) {
+        Objects.requireNonNull(key, "key");
+        var map = attributes;
+        if (map == null) {
+            synchronized (this) {
+                map = attributes;
+                if (map == null) {
+                    map = new ConcurrentHashMap<>();
+                    attributes = map;
+                }
+            }
+        }
+        if (value == null) {
+            map.remove(key);
+        } else {
+            map.put(key, value);
+        }
+    }
+
+    @Override
+    public Map<String, Object> attributes() {
+        var map = attributes;
+        return map == null ? Map.of() : Map.copyOf(map);
     }
 
     @Override public String method() { return method; }
     @Override public String path() { return path; }
     @Override public String pathVar(String name) { return pathVariables.get(name); }
     @Override public Map<String, String> pathVars() { return pathVariables; }
-    @Override public RequestContext requestContext() { return requestContext; }
     @Override public boolean isOpen() { return open; }
 
     @Override
@@ -252,5 +299,11 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         payload[1] = (byte) (code & 0xFF);
         System.arraycopy(reasonBytes, 0, payload, 2, reasonBytes.length);
         return payload;
+    }
+
+    private static String fastCorrelationId() {
+        byte[] bytes = new byte[16];
+        ThreadLocalRandom.current().nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
     }
 }

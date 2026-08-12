@@ -15,7 +15,7 @@ class CorsFilterTest {
             .requestHeader("Origin", "https://example.com")
             .requestHeader("Access-Control-Request-Method", "POST");
 
-        filter.doFilter(ctx, next -> next.send(200, "ok"));
+        filter.doFilter(ctx, e -> e.send(200, "ok"));
 
         assertEquals(204, ctx.status());
         assertEquals("*", ctx.responseHeader("Access-Control-Allow-Origin"));
@@ -32,7 +32,7 @@ class CorsFilterTest {
             .build();
         StubHttpContext ctx = new StubHttpContext("GET", "/api");
 
-        filter.doFilter(ctx, next -> next.send(200, "ok"));
+        filter.doFilter(ctx, e -> e.send(200, "ok"));
 
         assertEquals(200, ctx.status());
         assertEquals(null, ctx.responseHeader("Access-Control-Allow-Origin"));
@@ -47,7 +47,7 @@ class CorsFilterTest {
         StubHttpContext ctx = new StubHttpContext("GET", "/api")
             .requestHeader("Origin", "https://example.com");
         ctx.setHeader("Vary", "Accept");
-        filter.doFilter(ctx, next -> next.send(200, "ok"));
+        filter.doFilter(ctx, e -> e.send(200, "ok"));
         assertEquals("Accept, Origin", ctx.responseHeader("Vary"));
     }
 }

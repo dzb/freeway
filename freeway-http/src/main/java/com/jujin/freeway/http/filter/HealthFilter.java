@@ -45,13 +45,15 @@ public final class HealthFilter implements HttpFilter {
 
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
-        if (enabled && "GET".equalsIgnoreCase(ctx.method())
-                && healthPath.equals(PathPattern.normalizePath(ctx.path()))) {
+        if (enabled && "GET".equalsIgnoreCase(ctx.request().method())
+                && healthPath.equals(PathPattern.normalizePath(
+                    ctx.request().path()))) {
             if (healthCheck instanceof HealthCheck.Default) {
-                ctx.status(200).setHeader("Content-Type", "application/json; charset=utf-8")
+                ctx.response().status(200).setHeader(
+                        "Content-Type", "application/json; charset=utf-8")
                     .output(DEFAULT_RESPONSE);
             } else {
-                ctx.sendJson(200, healthCheck.check());
+                ctx.response().sendJson(200, healthCheck.check());
             }
             return;
         }

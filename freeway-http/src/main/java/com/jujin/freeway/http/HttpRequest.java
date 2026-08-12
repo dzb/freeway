@@ -13,9 +13,8 @@ import java.util.Optional;
 
 /**
  * Read side of an HTTP exchange: method, path, parameters, headers, body,
- * TLS details, and the per-request {@link RequestContext}. Application
- * handlers receive the combined {@link HttpContext}; framework components
- * that only read should depend on this interface.
+ * and TLS details. Exchange metadata lives on {@link HttpContext}; framework
+ * components that only read should depend on this interface.
  */
 public interface HttpRequest {
 
@@ -60,9 +59,6 @@ public interface HttpRequest {
 
     /** Returns an unmodifiable map of all request headers. */
     Map<String, List<String>> headers();
-
-    /** Returns the request context for this request. */
-    RequestContext requestContext();
 
     /**
      * Returns true when this request was received over a TLS connection

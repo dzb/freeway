@@ -6,8 +6,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.StubHttpContext;
-import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteHandler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,7 +31,7 @@ class FilterChainTest {
 
         // build chain manually: second wraps first wraps handler
         RouteHandler chain = ctx -> second.doFilter(ctx,
-            next -> first.doFilter(next, handler));
+            c -> first.doFilter(c, handler));
 
         StubHttpContext ctx = new StubHttpContext();
         chain.handle(ctx);
@@ -74,7 +74,7 @@ class FilterChainTest {
         RouteHandler handler = ctx -> fail("handler should not be reached");
 
         RouteHandler chain = ctx -> outer.doFilter(ctx,
-            next -> inner.doFilter(next, handler));
+            c -> inner.doFilter(c, handler));
         StubHttpContext ctx = new StubHttpContext();
         assertThrows(IllegalStateException.class, () -> chain.handle(ctx));
         assertEquals(1, innerAfterCalled.get());
@@ -97,7 +97,8 @@ class FilterChainTest {
 
         RouteHandler chain = ctx -> filter.doFilter(ctx, handler);
         StubHttpContext ctx = new StubHttpContext();
-        assertThrows(IllegalArgumentException.class, () -> chain.handle(ctx));
+        assertThrows(IllegalArgumentException.class,
+            () -> chain.handle(ctx));
         assertEquals(1, filterFinally.get());
     }
 

@@ -30,10 +30,8 @@ import org.slf4j.LoggerFactory;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpRequestHandler;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.engine.http11.Http11Connection;
 import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
@@ -244,8 +242,6 @@ final class HttpSession implements Runnable {
                 var reqIdHeader = req.headers().get("x-request-id");
                 String correlationId = reqIdHeader != null && !reqIdHeader.isEmpty()
                     ? reqIdHeader.getFirst() : null;
-                RequestContext requestContext = RequestContext.create(correlationId);
-
                 // RFC 7230 §3.3.3: a request with neither Content-Length nor
                 // Transfer-Encoding has a zero-length body. Reading to EOF here
                 // would block on a keep-alive socket and consume pipelined data.
@@ -258,8 +254,8 @@ final class HttpSession implements Runnable {
                     : in;
                 ctx.reset(req.method(), req.path(), req.queryString(),
                     req.headers(), bodyStream, bodyLength, req.isChunked(),
-                    out, requestContext, req.isHttp10(), req.keepAlive());
-                ctx.setHeader("X-Request-Id", requestContext.correlationId());
+                    out, correlationId, req.isHttp10(), req.keepAlive());
+                ctx.setHeader("X-Request-Id", ctx.correlationId());
                 // RFC 7231 §5.1.1: acknowledge Expect: 100-continue before
                 // the handler reads the body so clients send it promptly.
                 if ((req.isChunked() || bodyLength > 0)
@@ -624,17 +620,17 @@ final class HttpSession implements Runnable {
             headers.remove(":scheme"); headers.remove(":authority");
             if (authority != null) headers.put("Host", List.of(authority));
 
-            var rc = RequestContext.create(
-                headerValue(reqHeaders, "x-request-id"));
-            var ctx = new HttpContextDefault(jsonCodec, coercer);
+            String correlationId = headerValue(reqHeaders, "x-request-id");
+            var ctx = new HttpContextDefault(jsonCodec, coercer, correlationId);
             ctx.setMaxBodySize(config.maxBodySize());
             ctx.setCompression(config.compression());
             ctx.setSecure(sslSession != null);
             ctx.setSslSession(sslSession);
             ctx.setRemoteAddress(remoteAddress(socket));
-            ctx.reset(method, path, rawQuery, headers, in, -1, false, out, rc, false, false);
+            ctx.reset(method, path, rawQuery, headers, in, -1, false,
+                out, correlationId, false, false);
             ctx.setWriter(new Http2ResponseWriter(stream));
-            ctx.setHeader("X-Request-Id", rc.correlationId());
+            ctx.setHeader("X-Request-Id", ctx.correlationId());
             registry.requestsInFlight.incrementAndGet();
             metrics.counter("freeway.http.requests.total").increment();
             long startNanos = System.nanoTime();
@@ -720,7 +716,8 @@ final class HttpSession implements Runnable {
             InputStream websocketInput = parser.upgradeStream();
             var wsSession = new WebSocketSessionImpl(req.method(), req.path(),
                 req.queryString(), req.headers(), websocketInput,
-                connection.outputStream(), match.pathVariables());
+                connection.outputStream(), match.pathVariables(),
+                headerValue(req.headers(), "x-request-id"));
             var listener = match.endpoint().open(wsSession);
             listener.onOpen(wsSession);
             WebSocket.readLoop(websocketInput, connection.outputStream(),

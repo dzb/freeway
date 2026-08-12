@@ -4,12 +4,12 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.ExchangeMeta;
 
 /**
  * Thin WebSocket session view exposed to application code.
  */
-public interface WebSocketSession {
+public interface WebSocketSession extends ExchangeMeta {
 
     /** Returns the HTTP method used to establish the WebSocket upgrade. */
     String method();
@@ -37,9 +37,6 @@ public interface WebSocketSession {
 
     /** Returns all header values for the given name, or an empty list. */
     List<String> headers(String name);
-
-    /** Returns the request context for this session. */
-    RequestContext requestContext();
 
     /** Returns true if the WebSocket connection is still open. */
     boolean isOpen();

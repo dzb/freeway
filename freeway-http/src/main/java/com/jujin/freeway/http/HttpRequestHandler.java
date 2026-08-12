@@ -3,16 +3,14 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
 
 /**
- * Handles incoming HTTP requests. Implementations process the request
- * context and produce a response. Also supports optional WebSocket
+ * Handles incoming HTTP exchanges. Also supports optional WebSocket
  * upgrade negotiation.
  */
 @FunctionalInterface
 public interface HttpRequestHandler {
 
     /**
-     * Processes an incoming HTTP request represented by the given context.
-     * Implementations should read the request and write a response.
+     * Processes an incoming HTTP exchange.
      *
      * @throws Exception any exception is caught and mapped to a response
      *                   by the registered exception mappers
