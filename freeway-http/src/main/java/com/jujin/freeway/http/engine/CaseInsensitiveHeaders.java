@@ -66,6 +66,9 @@ final class CaseInsensitiveHeaders {
         return Collections.unmodifiableList(list);
     }
 
+    /** Key equality is case-insensitive for ASCII header names; header names
+     *  are validated as RFC 7230 tokens by {@code HttpContext}, so the
+     *  lower-cased hash below is consistent with {@code equalsIgnoreCase}. */
     private record Key(String name) {
         @Override
         public boolean equals(Object o) {

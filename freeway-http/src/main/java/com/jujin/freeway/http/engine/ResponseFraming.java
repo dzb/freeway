@@ -4,11 +4,11 @@ import com.jujin.freeway.http.HttpServerConfig;
 
 /**
  * Single source of truth for the response-framing combination rules:
- * gzip applicability, body suppression (HEAD / 204 / 205 / 304), and the
- * Content-Length-vs-chunked decisions. Transport writers keep their own
- * wire formats; every rule is decided here so a change cannot diverge
- * between HTTP/1.1 and HTTP/2. Internal to the engine — not part of the
- * public application API.
+ * gzip applicability and body suppression (HEAD / 204 / 205 / 304). The
+ * chunked-vs-Content-Length framing stays in the context and writers, but
+ * every shared rule is decided here so a change cannot diverge between
+ * HTTP/1.1 and HTTP/2. Internal to the engine — not part of the public
+ * application API.
  */
 public final class ResponseFraming {
 

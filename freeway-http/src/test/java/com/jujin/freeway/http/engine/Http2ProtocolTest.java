@@ -30,7 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-
 /**
  * HTTP/2 wire-protocol regression tests. Each test drives a raw socket with
  * the h2c preface and asserts the exact frames the server emits — protocol

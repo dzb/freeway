@@ -230,7 +230,7 @@ public final class StaticResourceMount {
      * Opens the asset through the secure channel path and hands the channel
      * to the context. Ownership: the context closes the channel exactly
      * once, including failure paths (see
-     * {@link HttpContext#outputFile(java.nio.channels.FileChannel, long, long)});
+     * {@link HttpContext#outputFile(FileChannel, long, long)});
      * when the context cannot consume channels
      * ({@link UnsupportedOperationException}) the caller closes it before
      * falling back to the file/stream paths.

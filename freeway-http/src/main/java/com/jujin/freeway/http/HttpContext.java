@@ -96,24 +96,6 @@ public abstract class HttpContext {
     /** Returns the current response header value for the given name, or null. */
     protected abstract String responseHeader(String name);
 
-    /**
-     * Adds a token to the {@code Vary} response header, merging with any
-     * existing value without duplicating the token (case-insensitive).
-     */
-    public final void addVary(String token) {
-        String vary = responseHeader("Vary");
-        if (vary == null || vary.isBlank()) {
-            setHeader("Vary", token);
-            return;
-        }
-        for (String part : vary.split(",")) {
-            if (token.equalsIgnoreCase(part.trim())) {
-                return;
-            }
-        }
-        setHeader("Vary", vary + ", " + token);
-    }
-
     /** Returns the request context for this request. */
     public abstract RequestContext requestContext();
 
@@ -279,6 +261,31 @@ public abstract class HttpContext {
     public abstract HttpContext setHeader(String name, String value);
 
     /**
+     * Adds a token to the {@code Vary} response header, merging with any
+     * existing value without duplicating the token (case-insensitive).
+     * Like {@link #setHeader}, this is a no-op once the response has been
+     * committed.
+     *
+     * @throws IllegalArgumentException if the token is null or blank
+     */
+    public final void addVary(String token) {
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("Vary token must not be blank");
+        }
+        String vary = responseHeader("Vary");
+        if (vary == null || vary.isBlank()) {
+            setHeader("Vary", token);
+            return;
+        }
+        for (String part : vary.split(",")) {
+            if (token.equalsIgnoreCase(part.trim())) {
+                return;
+            }
+        }
+        setHeader("Vary", vary + ", " + token);
+    }
+
+    /**
      * Validates that a header value does not contain CR or LF characters,
      * preventing HTTP response header injection.
      *
@@ -288,10 +295,19 @@ public abstract class HttpContext {
         if (name == null) throw new IllegalArgumentException("Header name must not be null");
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
-            if (c == '\r' || c == '\n' || c == ':') {
+            if (!isTokenChar(c)) {
                 throw new IllegalArgumentException("Invalid header name: " + name);
             }
         }
+    }
+
+    /** RFC 7230 §3.2.6 tchar: a header name must be a token. Keeps the
+     *  case-insensitive header store's hash/equals contract consistent
+     *  (both are defined for ASCII tokens). */
+    private static boolean isTokenChar(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+            || (c >= '0' && c <= '9')
+            || "!#$%&'*+-.^_`|~".indexOf(c) >= 0;
     }
 
     protected static void validateHeaderValue(String value) {

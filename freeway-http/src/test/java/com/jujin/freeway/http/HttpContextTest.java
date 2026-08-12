@@ -75,4 +75,34 @@ class HttpContextTest {
 
         assertEquals(Map.of("X-Test", List.of("a", "b")), ctx.headers());
     }
+
+    @Test
+    void addVaryMergesAndDeduplicates() {
+        StubHttpContext ctx = new StubHttpContext();
+
+        ctx.addVary("Origin");
+        ctx.addVary("accept-encoding");
+        ctx.addVary("Origin"); // duplicate, case-insensitive
+
+        assertEquals("Origin, accept-encoding", ctx.responseHeader("Vary"));
+    }
+
+    @Test
+    void addVaryRejectsBlankToken() {
+        StubHttpContext ctx = new StubHttpContext();
+
+        assertThrows(IllegalArgumentException.class, () -> ctx.addVary(null));
+        assertThrows(IllegalArgumentException.class, () -> ctx.addVary(" "));
+    }
+
+    @Test
+    void headerNamesMustBeRfc7230Tokens() {
+        assertThrows(IllegalArgumentException.class,
+            () -> HttpContext.validateHeaderName("Bad Name"));
+        assertThrows(IllegalArgumentException.class,
+            () -> HttpContext.validateHeaderName("Bad:Name"));
+        assertThrows(IllegalArgumentException.class,
+            () -> HttpContext.validateHeaderName("Bad\u00e9"));
+        HttpContext.validateHeaderName("X-Custom-1"); // valid token
+    }
 }
