@@ -210,12 +210,12 @@ public final class HttpParser {
             for (int i = 0; i < headerKeyBuf.length(); i++) {
                 if (headerKeyBuf.charAt(i) == ':') { colon = i; break; }
             }
-            String key;
+            // RFC 7230 §3.2: a header field must be `name ":" value` — a line
+            // without a colon is malformed, not an empty-valued header.
             if (colon < 0) {
-                key = headerKeyBuf.toString();
-            } else {
-                key = headerKeyBuf.substring(0, colon).trim();
+                throw new IOException("Malformed header line (missing colon)");
             }
+            String key = headerKeyBuf.substring(0, colon).trim();
             key = key.toLowerCase(Locale.ROOT);
 
             headerValBuf.setLength(0);

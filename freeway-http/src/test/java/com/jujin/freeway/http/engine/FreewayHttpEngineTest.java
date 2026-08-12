@@ -923,9 +923,19 @@ class FreewayHttpEngineTest {
                     "GET / HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\n".getBytes(
                         StandardCharsets.ISO_8859_1));
                 socket.getOutputStream().flush();
-                int read = socket.getInputStream().read();
-                assertEquals(-1, read,
-                    "a negative Content-Length must close the connection");
+                // Malformed framing is answered 400 instead of silently
+                // dropping the connection.
+                var collected = new ByteArrayOutputStream();
+                byte[] buf = new byte[1024];
+                while (true) {
+                    int n = socket.getInputStream().read(buf);
+                    if (n < 0) break;
+                    collected.write(buf, 0, n);
+                }
+                assertTrue(collected.toString(StandardCharsets.ISO_8859_1)
+                        .contains("400"),
+                    "a negative Content-Length must be answered 400, got: "
+                        + collected.toString(StandardCharsets.ISO_8859_1));
             }
         } finally {
             server.stop();
@@ -1965,9 +1975,19 @@ class FreewayHttpEngineTest {
                 String line = "GET /" + "A".repeat(9000) + " HTTP/1.1\r\n\r\n";
                 socket.getOutputStream().write(line.getBytes(StandardCharsets.ISO_8859_1));
                 socket.getOutputStream().flush();
-                int read = socket.getInputStream().read();
-                assertEquals(-1, read,
-                    "oversized request line must close the connection, not buffer unboundedly");
+                // The server must reject the request with a clear 400 instead
+                // of just dropping the connection.
+                var collected = new ByteArrayOutputStream();
+                byte[] buf = new byte[2048];
+                while (true) {
+                    int n = socket.getInputStream().read(buf);
+                    if (n < 0) break;
+                    collected.write(buf, 0, n);
+                }
+                assertTrue(collected.toString(StandardCharsets.ISO_8859_1)
+                        .contains("400"),
+                    "oversized request line must be answered 400, got: "
+                        + collected.toString(StandardCharsets.ISO_8859_1));
             }
         } finally {
             server.stop();

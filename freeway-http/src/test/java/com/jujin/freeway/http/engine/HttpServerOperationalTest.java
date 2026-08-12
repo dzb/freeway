@@ -182,7 +182,15 @@ class HttpServerOperationalTest {
         } finally {
             server.stop();
         }
-        assertEquals(0, metrics.gauges.get("freeway.http.connections.active").get().intValue(),
+        // Sessions unregister their connection asynchronously after stop();
+        // poll until the gauge drains (with a timeout so a real leak fails).
+        long deadline = System.currentTimeMillis() + 2000;
+        int active = metrics.gauges.get("freeway.http.connections.active").get().intValue();
+        while (active > 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+            active = metrics.gauges.get("freeway.http.connections.active").get().intValue();
+        }
+        assertEquals(0, active,
             "connections.active gauge must drop to zero after stop");
     }
 
@@ -229,6 +237,70 @@ class HttpServerOperationalTest {
                 assertTrue(readStatusLine(socket).contains("200"),
                     "HTTP/1.0 without Host must still be accepted");
             }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void malformedRequestLineGets400() throws Exception {
+        int port = freePort();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(3000);
+            socket.getOutputStream().write(
+                "GARBAGE NOT HTTP\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
+            assertTrue(readStatusLine(socket).contains("400"),
+                "a malformed request line must be answered 400, not dropped");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void unknownExpectValueGets417() throws Exception {
+        int port = freePort();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(3000);
+            socket.getOutputStream().write(
+                ("GET / HTTP/1.1\r\nHost: localhost\r\n"
+                    + "Expect: something-else\r\n\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
+            assertTrue(readStatusLine(socket).contains("417"),
+                "an unrecognized Expect value must be answered 417 (RFC 7231 §5.1.1)");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void headerWithoutColonGets400() throws Exception {
+        int port = freePort();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(3000);
+            socket.getOutputStream().write(
+                ("GET / HTTP/1.1\r\nHost: localhost\r\n"
+                    + "NoColonHere\r\n\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
+            assertTrue(readStatusLine(socket).contains("400"),
+                "a header line without a colon is malformed (RFC 7230 §3.2)");
         } finally {
             server.stop();
         }

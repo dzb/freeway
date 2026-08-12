@@ -27,10 +27,12 @@ import org.slf4j.LoggerFactory;
 import jdk.net.ExtendedSocketOptions;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLParameters;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -190,6 +192,15 @@ final class HttpSession implements Runnable {
                     break;
                 }
 
+                // RFC 7231 §5.1.1: an Expect value we do not understand must
+                // be answered 417 rather than proceeding with the request.
+                String expectHeader = headerValue(req.headers(), "expect");
+                if (expectHeader != null && !expects100Continue(req)) {
+                    sendUpgradeError(connection.outputStream(), 417,
+                        "Expectation Failed");
+                    break;
+                }
+
                 if (isH2cUpgradeRequest(req)) {
                     SettingsFrame h2cSettings = tryPrepareH2cUpgrade(req);
                     if (h2cSettings != null) {
@@ -275,8 +286,23 @@ final class HttpSession implements Runnable {
                 if (!ctx.isKeepAlive()) break;
                 if (req.isHttp10() && !req.keepAlive()) break;
             }
+        } catch (SocketTimeoutException e) {
+            LOG.trace("Connection idle timeout: {}", e.getMessage());
+        } catch (EOFException e) {
+            LOG.trace("Connection closed by peer: {}", e.getMessage());
         } catch (IOException e) {
-            LOG.trace("Connection I/O error: {}", e.getMessage());
+            // Malformed request (bad request line, headers, framing) — answer
+            // 400 instead of silently dropping the connection, so clients and
+            // load balancers get a clear signal. A connection the server
+            // already closed (shutdown force-close, write timeout) is not
+            // malformed input — do not answer it.
+            LOG.debug("Malformed request, replying 400: {}", e.getMessage());
+            if (connection != null && !connection.closed) {
+                try {
+                    sendUpgradeError(connection.outputStream(), 400, "Bad Request");
+                } catch (IOException ignored) {
+                }
+            }
         } catch (Exception e) {
             LOG.warn("Unexpected session error", e);
         } finally {
