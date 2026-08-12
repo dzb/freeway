@@ -24,7 +24,6 @@ import javax.net.ssl.SSLSession;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpContextInternal;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.sse.SseEmitter;
@@ -35,7 +34,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
  * (HTTP/1.1 wire format or HTTP/2 stream frames); this class owns the shared
  * request/response state, gzip compression, and streaming helpers.
  */
-public class HttpContextDefault extends HttpContext implements HttpContextInternal {
+public class HttpContextDefault extends HttpContext {
 
     private String method, path, rawQuery;
     private String remoteAddress = "";
@@ -204,11 +203,6 @@ public class HttpContextDefault extends HttpContext implements HttpContextIntern
     @Override
     protected String responseHeader(String name) {
         return responseHeaders.get(name);
-    }
-
-    @Override
-    public Optional<String> responseHeaderValue(String name) {
-        return Optional.ofNullable(responseHeader(name));
     }
 
     @Override
@@ -436,6 +430,9 @@ public class HttpContextDefault extends HttpContext implements HttpContextIntern
             || lower.startsWith("image/svg+xml");
     }
 
+    /** Vary merge for the compression path: writes directly into the
+     *  internal header store because the response is already committed
+     *  ({@code setHeader} is a no-op after {@code responded}). */
     private void addVaryAcceptEncoding() {
         String vary = responseHeaders.get("Vary");
         if (vary != null) {

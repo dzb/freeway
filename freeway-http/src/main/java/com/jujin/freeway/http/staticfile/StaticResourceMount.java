@@ -32,7 +32,6 @@ import org.slf4j.LoggerFactory;
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpContextInternal;
 import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.PathPattern;
 
@@ -230,22 +229,21 @@ public final class StaticResourceMount {
     /**
      * Opens the asset through the secure channel path and hands the channel
      * to the context. Ownership: the context closes the channel exactly
-     * once, including failure paths (see {@link HttpContextInternal}); when
-     * the context cannot consume channels ({@link UnsupportedOperationException})
-     * the caller closes it before falling back to the file/stream paths.
+     * once, including failure paths (see
+     * {@link HttpContext#outputFile(java.nio.channels.FileChannel, long, long)});
+     * when the context cannot consume channels
+     * ({@link UnsupportedOperationException}) the caller closes it before
+     * falling back to the file/stream paths.
      */
     private static boolean trySendfile(HttpContext ctx, ResourceSource source,
                                        String relative, long offset, long length)
             throws IOException {
-        if (!(ctx instanceof HttpContextInternal internal)) {
-            return false;
-        }
         FileChannel channel = source.openChannel(relative);
         if (channel == null) {
             return false;
         }
         try {
-            internal.outputFile(channel, offset, length);
+            ctx.outputFile(channel, offset, length);
             return true;
         } catch (UnsupportedOperationException e) {
             channel.close();

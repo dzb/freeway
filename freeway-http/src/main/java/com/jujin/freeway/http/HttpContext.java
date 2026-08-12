@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URLDecoder;
+import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -94,6 +95,24 @@ public abstract class HttpContext {
 
     /** Returns the current response header value for the given name, or null. */
     protected abstract String responseHeader(String name);
+
+    /**
+     * Adds a token to the {@code Vary} response header, merging with any
+     * existing value without duplicating the token (case-insensitive).
+     */
+    public final void addVary(String token) {
+        String vary = responseHeader("Vary");
+        if (vary == null || vary.isBlank()) {
+            setHeader("Vary", token);
+            return;
+        }
+        for (String part : vary.split(",")) {
+            if (token.equalsIgnoreCase(part.trim())) {
+                return;
+            }
+        }
+        setHeader("Vary", vary + ", " + token);
+    }
 
     /** Returns the request context for this request. */
     public abstract RequestContext requestContext();
@@ -310,6 +329,19 @@ public abstract class HttpContext {
      */
     public abstract HttpContext outputFile(Path file, long offset, long length)
         throws IOException;
+
+    /**
+     * Streams an already-open file channel as the response body, taking
+     * ownership of the channel (the implementation closes it on success and
+     * failure). Mainly used by the static-file layer to hand over a securely
+     * opened channel for the sendfile fast path; application handlers can
+     * use {@link #outputFile(Path, long, long)} instead.
+     */
+    public HttpContext outputFile(FileChannel channel, long offset, long length)
+            throws IOException {
+        throw new UnsupportedOperationException(
+            "File-channel output is not supported");
+    }
 
     /**
      * Whether the response has been committed (headers or body have started

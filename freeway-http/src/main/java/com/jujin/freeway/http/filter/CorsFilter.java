@@ -1,6 +1,5 @@
 package com.jujin.freeway.http.filter;
 
-import java.util.Arrays;
 import java.util.Objects;
 
 import org.slf4j.Logger;
@@ -8,7 +7,6 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpContextInternal;
 import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.RouteHandler;
 
@@ -72,15 +70,7 @@ public final class CorsFilter implements HttpFilter {
         if (acao != null) {
             ctx.setHeader("Access-Control-Allow-Origin", acao);
             if (!"*".equals(acao)) {
-                String vary = ctx instanceof HttpContextInternal internal
-                    ? internal.responseHeaderValue("Vary").orElse(null)
-                    : null;
-                if (vary == null || vary.isBlank()) {
-                    ctx.setHeader("Vary", "Origin");
-                } else if (Arrays.stream(vary.split(","))
-                            .noneMatch(token -> "Origin".equalsIgnoreCase(token.trim()))) {
-                    ctx.setHeader("Vary", vary + ", Origin");
-                }
+                ctx.addVary("Origin");
             }
             if (allowCredentials) {
                 ctx.setHeader("Access-Control-Allow-Credentials", "true");
