@@ -59,6 +59,11 @@ public final class CorsFilter implements HttpFilter {
     }
 
     @Override
+    public int order() {
+        return -100; // outermost built-in filter
+    }
+
+    @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
         if (!enabled) {
             next.handle(ctx);

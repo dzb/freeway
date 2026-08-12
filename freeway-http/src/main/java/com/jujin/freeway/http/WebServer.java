@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -46,7 +47,6 @@ public final class WebServer implements AutoCloseable {
     private final List<HttpFilter> filters;
     private final List<ExceptionMapper> mappers;
     private final RequestTimingFilter timingFilter;
-    private final HealthFilter healthFilter;
     private final HttpEngine engine;
     private final HttpServerConfig config;
     private final Consumer<Object> eventSink;
@@ -78,11 +78,19 @@ public final class WebServer implements AutoCloseable {
         this.corsFilter = Objects.requireNonNull(pipeline.corsFilter(), "corsFilter");
         this.staticMounts = pipeline.staticMounts() != null ? pipeline.staticMounts() : List.of();
         PreparedFilters preparedFilters = prepareFilters(pipeline.filters());
-        this.filters = List.copyOf(preparedFilters.filters());
         this.timingFilter = preparedFilters.timingFilter();
         this.mappers = pipeline.mappers();
+        // Application filters plus the built-in CORS/health filters share
+        // one ordered chain; inactive built-ins are skipped entirely so a
+        // no-op request never pays a virtual call.
+        var orderedFilters = new ArrayList<>(preparedFilters.filters());
+        HealthFilter healthFilter = Objects.requireNonNull(
+            pipeline.healthFilter(), "healthFilter");
+        if (healthFilter.isActive()) orderedFilters.add(healthFilter);
+        if (corsFilter.isActive()) orderedFilters.add(corsFilter);
+        orderedFilters.sort(Comparator.comparingInt(HttpFilter::order));
+        this.filters = List.copyOf(orderedFilters);
         this.filterChain = buildChain(this::dispatchToRoute, this.filters);
-        this.healthFilter = Objects.requireNonNull(pipeline.healthFilter(), "healthFilter");
         this.engine = Objects.requireNonNull(engine, "engine");
         this.config = Objects.requireNonNull(config, "config");
         this.eventSink = eventSink != null ? eventSink : event -> {};
@@ -90,21 +98,9 @@ public final class WebServer implements AutoCloseable {
         // Skip event computation when sink is the noop sentinel
         this.publishEvents = this.eventSink != NOOP_SINK;
 
-        // Build filter chain — skip wrapping when filters are inactive (no-ops),
-        // saving a virtual call + condition check per filter per request.
-        RouteHandler chain = this.filterChain;
-        if (healthFilter.isActive()) {
-            RouteHandler next = chain;
-            chain = ctx -> healthFilter.doFilter(ctx, next);
-        }
-        if (corsFilter.isActive()) {
-            RouteHandler next = chain;
-            chain = ctx -> corsFilter.doFilter(ctx, next);
-        }
-        RouteHandler inner = chain;
         RouteHandler timedChain = publishEvents
-            ? wrapWithEvents(inner)
-            : wrapWithErrorHandling(inner);
+            ? wrapWithEvents(this.filterChain)
+            : wrapWithErrorHandling(this.filterChain);
 
         this.requestHandler = new HttpRequestHandler() {
             @Override

@@ -39,6 +39,11 @@ public final class HealthFilter implements HttpFilter {
     }
 
     @Override
+    public int order() {
+        return -50; // between CORS (-100) and application filters (0)
+    }
+
+    @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
         if (enabled && "GET".equalsIgnoreCase(ctx.method())
                 && healthPath.equals(PathPattern.normalizePath(ctx.path()))) {

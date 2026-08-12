@@ -15,16 +15,21 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -33,6 +38,57 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpServerFeatureTest {
+
+    @Test
+    void filtersRunInAscendingOrderValue() throws Exception {
+        var execution = new ArrayList<String>();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .filter(new HttpFilter() {
+                @Override
+                public void doFilter(HttpContext ctx, RouteHandler next)
+                        throws Exception {
+                    execution.add("late");
+                    next.handle(ctx);
+                }
+            })
+            .filter(new HttpFilter() {
+                @Override
+                public int order() {
+                    return -200;
+                }
+
+                @Override
+                public void doFilter(HttpContext ctx, RouteHandler next)
+                        throws Exception {
+                    execution.add("early");
+                    next.handle(ctx);
+                }
+            })
+            .filter(new HttpFilter() {
+                @Override
+                public void doFilter(HttpContext ctx, RouteHandler next)
+                        throws Exception {
+                    execution.add("default");
+                    next.handle(ctx);
+                }
+            })
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            var resp = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(URI.create(
+                    "http://127.0.0.1:" + server.port() + "/")).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, resp.statusCode());
+            assertEquals(List.of("early", "late", "default"), execution,
+                "filters must run in ascending order value, stable within "
+                    + "the same order");
+        } finally {
+            server.stop();
+        }
+    }
 
     @Test
     void gzipCompressesCompressibleBodiesWhenAccepted() throws Exception {

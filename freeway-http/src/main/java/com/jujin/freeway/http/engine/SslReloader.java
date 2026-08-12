@@ -1,6 +1,5 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.engine;
 
-import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,54 +11,75 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Polls keystore mtime/size/digest and swaps a freshly built SSLContext into
- * the engine when certificate material changes. The scheduler/stamp-injecting
- * constructor is a test seam for package-local tests; production uses the
- * default constructor. Not part of the public API.
+ * the engine when certificate material changes. The SSL context builder is
+ * injected so this class stays inside the engine and never reaches back into
+ * the IoC assembly layer. The scheduler/stamp-injecting constructor is a test
+ * seam for package-local tests; production uses the default constructor.
+ * Public only so the IoC assembly layer ({@code HttpModule}) can construct
+ * it — not part of the application API.
  */
-final class SslReloader implements AutoCloseable {
+public final class SslReloader implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(SslReloader.class);
 
     private final FreewayHttpEngine engine;
-    private final HttpModule.SslSettings settings;
+    private final Path keyStorePath;
+    private final Path trustStorePath; // nullable
+    private final Path sniDirectory;   // nullable
+    private final Duration reloadInterval;
+    private final Supplier<SSLContext> contextBuilder;
     private final ScheduledExecutorService scheduler;
     private final FileStampProvider fileStampProvider;
     private volatile Map<Path, FileStamp> snapshot;
 
-    SslReloader(FreewayHttpEngine engine, HttpModule.SslSettings settings) {
-        this(engine, settings, Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "freeway-ssl-reload");
-            t.setDaemon(true);
-            return t;
-        }), path -> Files.readAttributes(path, BasicFileAttributes.class));
+    public SslReloader(FreewayHttpEngine engine, Path keyStorePath,
+                       Path trustStorePath, Path sniDirectory,
+                       Duration reloadInterval,
+                       Supplier<SSLContext> contextBuilder) {
+        this(engine, keyStorePath, trustStorePath, sniDirectory,
+            reloadInterval, contextBuilder,
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "freeway-ssl-reload");
+                t.setDaemon(true);
+                return t;
+            }), path -> Files.readAttributes(path, BasicFileAttributes.class));
     }
 
-    SslReloader(FreewayHttpEngine engine, HttpModule.SslSettings settings,
+    SslReloader(FreewayHttpEngine engine, Path keyStorePath,
+                Path trustStorePath, Path sniDirectory,
+                Duration reloadInterval, Supplier<SSLContext> contextBuilder,
                 ScheduledExecutorService scheduler,
                 FileStampProvider fileStampProvider) {
-        this.engine = engine;
-        this.settings = settings;
+        this.engine = Objects.requireNonNull(engine, "engine");
+        this.keyStorePath = Objects.requireNonNull(keyStorePath, "keyStorePath");
+        this.trustStorePath = trustStorePath;
+        this.sniDirectory = sniDirectory;
+        this.reloadInterval = reloadInterval;
+        this.contextBuilder = Objects.requireNonNull(contextBuilder, "contextBuilder");
         this.scheduler = scheduler;
         this.fileStampProvider = fileStampProvider;
     }
 
-    void start() {
+    public void start() {
         try {
             snapshot = snapshot();
         } catch (IOException e) {
             throw new IllegalStateException(
                 "Cannot snapshot keystore files for reload", e);
         }
-        long intervalMillis = Math.max(settings.reloadInterval().toMillis(), 100);
+        long intervalMillis = Math.max(reloadInterval.toMillis(), 100);
         scheduler.scheduleWithFixedDelay(
             this::check, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
@@ -69,7 +89,7 @@ final class SslReloader implements AutoCloseable {
         try {
             Map<Path, FileStamp> current = snapshot();
             if (!current.equals(snapshot)) {
-                engine.reload(HttpModule.buildSslContext(settings));
+                engine.reload(contextBuilder.get());
                 snapshot = current;
                 LOG.info("Reloaded HTTPS certificate material ({} keystore file(s))",
                     current.size());
@@ -81,21 +101,25 @@ final class SslReloader implements AutoCloseable {
 
     private Map<Path, FileStamp> snapshot() throws IOException {
         Map<Path, FileStamp> files = new LinkedHashMap<>();
-        files.put(Path.of(settings.keyStorePath()),
-            stamp(Path.of(settings.keyStorePath())));
-        if (settings.trustStorePath() != null) {
-            Path trustStore = Path.of(settings.trustStorePath());
-            files.put(trustStore, stamp(trustStore));
+        files.put(keyStorePath, stamp(keyStorePath));
+        if (trustStorePath != null) {
+            files.put(trustStorePath, stamp(trustStorePath));
         }
-        if (settings.sniDirectory() != null) {
-            try (var stream = Files.list(Path.of(settings.sniDirectory()))) {
+        if (sniDirectory != null) {
+            try (var stream = Files.list(sniDirectory)) {
                 for (Path p : stream
-                        .filter(HttpModule::isKeystoreFile).sorted().toList()) {
+                        .filter(SslReloader::isKeystoreFile).sorted().toList()) {
                     files.put(p, stamp(p));
                 }
             }
         }
         return files;
+    }
+
+    private static boolean isKeystoreFile(Path path) {
+        if (!Files.isRegularFile(path)) return false;
+        String name = path.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+        return name.endsWith(".p12") || name.endsWith(".pfx") || name.endsWith(".jks");
     }
 
     private FileStamp stamp(Path path) throws IOException {

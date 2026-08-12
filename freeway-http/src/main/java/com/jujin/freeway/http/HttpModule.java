@@ -27,6 +27,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
+import com.jujin.freeway.http.engine.SslReloader;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
@@ -207,7 +208,14 @@ public final class HttpModule implements ModuleEx {
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
                     sslReloader = new SslReloader(
-                        container.get(FreewayHttpEngine.class), ssl);
+                        container.get(FreewayHttpEngine.class),
+                        Path.of(ssl.keyStorePath()),
+                        ssl.trustStorePath() != null
+                            ? Path.of(ssl.trustStorePath()) : null,
+                        ssl.sniDirectory() != null
+                            ? Path.of(ssl.sniDirectory()) : null,
+                        ssl.reloadInterval(),
+                        () -> buildSslContext(ssl));
                     try {
                         sslReloader.start();
                     } catch (RuntimeException ex) {
@@ -288,7 +296,7 @@ public final class HttpModule implements ModuleEx {
                 Duration.ZERO));
     }
 
-    static SSLContext buildSslContext(SslSettings s) {
+    private static SSLContext buildSslContext(SslSettings s) {
         try {
             KeyStore defaultStore = loadKeyStore(
                 Path.of(s.keyStorePath()), s.keyStoreType(), s.keyStorePassword());
@@ -308,7 +316,7 @@ public final class HttpModule implements ModuleEx {
         }
     }
 
-    static KeyStore loadKeyStore(Path path, String type, String password)
+    private static KeyStore loadKeyStore(Path path, String type, String password)
             throws Exception {
         KeyStore ks = KeyStore.getInstance(type);
         try (InputStream in = Files.newInputStream(path)) {
@@ -362,13 +370,13 @@ public final class HttpModule implements ModuleEx {
                 + "(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*");
     }
 
-    static boolean isKeystoreFile(Path path) {
+    private static boolean isKeystoreFile(Path path) {
         if (!Files.isRegularFile(path)) return false;
         String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
         return name.endsWith(".p12") || name.endsWith(".pfx") || name.endsWith(".jks");
     }
 
-    static String storeTypeFor(String fileName, String fallback) {
+    private static String storeTypeFor(String fileName, String fallback) {
         String lower = fileName.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".jks")) return "JKS";
         if (lower.endsWith(".p12") || lower.endsWith(".pfx")) return "PKCS12";

@@ -1,4 +1,4 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.engine;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -15,13 +15,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.http.engine.FreewayHttpEngine;
 
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class HttpModuleSeamTest {
+class SslReloaderTest {
 
     private static final String KEYSTORE_PASSWORD = "changeit";
 
@@ -50,8 +49,8 @@ class HttpModuleSeamTest {
     @Test
     void sslReloaderClosesInjectedScheduler() {
         var scheduler = new ScheduledThreadPoolExecutor(1);
-        var engine = new FreewayHttpEngine(new JsonCodecDefault(), new CoercerDefault());
-        var reloader = reloader(engine, scheduler, Path.of("/tmp/key"), "secret",
+        var engine = engine();
+        var reloader = reloader(engine, scheduler, Path.of("/tmp/key"),
             path -> new Stamps().attrs(path));
         reloader.close();
         assertTrue(scheduler.isShutdown());
@@ -66,7 +65,7 @@ class HttpModuleSeamTest {
         var stamps = new Stamps();
         var scheduler = new ScheduledThreadPoolExecutor(1);
         var reloader = reloader(engine, scheduler, keystore,
-            KEYSTORE_PASSWORD, path -> stamps.attrs(path));
+            path -> stamps.attrs(path));
 
         // start() takes the baseline snapshot; close() stops the scheduler so
         // the manual check() calls below are deterministic.
@@ -88,7 +87,7 @@ class HttpModuleSeamTest {
         var stamps = new Stamps();
         var scheduler = new ScheduledThreadPoolExecutor(1);
         var reloader = reloader(engine, scheduler, keystore,
-            KEYSTORE_PASSWORD, path -> stamps.attrs(path));
+            path -> stamps.attrs(path));
 
         reloader.start();
         reloader.close();
@@ -107,16 +106,20 @@ class HttpModuleSeamTest {
         var initial = SSLContext.getInstance("TLS");
         var engine = engine(initial);
         var scheduler = new ScheduledThreadPoolExecutor(1);
-        var reloader = reloader(engine, scheduler, keystore,
-            KEYSTORE_PASSWORD, path -> {
-                throw new IOException("transient failure");
-            });
+        var reloader = reloader(engine, scheduler, keystore, path -> {
+            throw new IOException("transient failure");
+        });
 
         reloader.check();
 
         assertSame(initial, engine.sslContext(),
             "a failed snapshot must keep the previous context");
         reloader.close();
+    }
+
+    private static FreewayHttpEngine engine() {
+        return new FreewayHttpEngine(
+            new JsonCodecDefault(), new CoercerDefault());
     }
 
     private static FreewayHttpEngine engine(SSLContext initial) {
@@ -126,13 +129,18 @@ class HttpModuleSeamTest {
 
     private static SslReloader reloader(
             FreewayHttpEngine engine, ScheduledThreadPoolExecutor scheduler,
-            Path keyStorePath, String password,
-            SslReloader.FileStampProvider provider) {
-        var settings = new HttpModule.SslSettings(
-            true, keyStorePath.toString(), password, "PKCS12",
-            false, null, null, "PKCS12", false, null, null,
-            null, Duration.ZERO);
-        return new SslReloader(engine, settings, scheduler, provider);
+            Path keyStorePath, SslReloader.FileStampProvider provider) {
+        return new SslReloader(engine, keyStorePath, null, null,
+            Duration.ZERO, SslReloaderTest::freshContext,
+            scheduler, provider);
+    }
+
+    private static SSLContext freshContext() {
+        try {
+            return SSLContext.getInstance("TLS");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static Path generateKeyStore(Path dir) throws Exception {
