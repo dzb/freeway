@@ -4,13 +4,16 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.route.Route;
 import jdk.net.ExtendedSocketOptions;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -304,6 +307,37 @@ class HttpServerOperationalTest {
         } finally {
             server.stop();
         }
+    }
+
+    @Test
+    void accessLogIncludesClientIpAndUserAgent() throws Exception {
+        int port = freePort();
+        var log = new ByteArrayOutputStream();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
+                Duration.ofSeconds(2), 1024,
+                Duration.ofSeconds(2), 0))
+            .filter(new AccessLogFilter(new PrintStream(log, true)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try {
+            var client = HttpClient.newBuilder().build();
+            client.send(HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + port + "/"))
+                .header("User-Agent", "freeway-accesslog-test")
+                .GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        } finally {
+            server.stop();
+        }
+        String line = log.toString(StandardCharsets.UTF_8);
+        assertTrue(line.contains("127.0.0.1"),
+            "access log must include the client IP, got: " + line);
+        assertTrue(line.contains("freeway-accesslog-test"),
+            "access log must include the User-Agent, got: " + line);
+        assertTrue(line.contains("GET / 200"),
+            "access log must keep method/path/status, got: " + line);
     }
 
     @Test

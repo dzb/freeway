@@ -4,12 +4,13 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
 import java.io.PrintStream;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Text access log: writes one line per request with method, path, status,
- * and elapsed milliseconds. Opt-in — wire via
+ * elapsed milliseconds, client IP, and user agent. Opt-in — wire via
  * {@code WebServerBuilder.accessLog(...)} or {@code freeway.http.access-log.enabled}.
  */
 public final class AccessLogFilter implements HttpFilter {
@@ -31,8 +32,12 @@ public final class AccessLogFilter implements HttpFilter {
             next.handle(ctx);
         } finally {
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            List<String> uaValues = ctx.headers("user-agent");
+            String ua = uaValues.isEmpty() ? "-" : uaValues.getFirst();
+            String ip = ctx.remoteAddress();
+            if (ip.isEmpty()) ip = "-";
             out.println(ctx.method() + " " + ctx.path() + " " + ctx.status()
-                + " " + elapsedMs + "ms");
+                + " " + elapsedMs + "ms " + ip + " " + ua);
         }
     }
 }

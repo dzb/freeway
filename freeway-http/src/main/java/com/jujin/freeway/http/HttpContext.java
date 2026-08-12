@@ -114,6 +114,14 @@ public abstract class HttpContext {
         return null;
     }
 
+    /**
+     * Returns the client IP address of the connection, or an empty string
+     * when the transport does not expose one.
+     */
+    public String remoteAddress() {
+        return "";
+    }
+
     /** Returns true if the request has a multipart/form-data content type. */
     public boolean isMultipart() { return multipart().isPresent(); }
 

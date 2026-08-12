@@ -587,7 +587,7 @@ final class HttpSession implements Runnable {
     private void handleHttp2Stream(Http2Stream stream, InputStream in,
                                     OutputStream out,
                                     Map<String, List<String>> reqHeaders,
-                                    SSLSession sslSession) {
+                                    SSLSession sslSession, Socket socket) {
         try {
             String method = headerValue(reqHeaders, ":method");
             String fullPath = headerValue(reqHeaders, ":path");
@@ -728,6 +728,12 @@ final class HttpSession implements Runnable {
     private static void writeLine(OutputStream out, String line) throws IOException {
         out.write(line.getBytes(StandardCharsets.ISO_8859_1));
         out.write('\r'); out.write('\n');
+    }
+
+    /** Client IP for logging and access-control decisions, or "" if unknown. */
+    private static String remoteAddress(Socket socket) {
+        var address = socket.getInetAddress();
+        return address != null ? address.getHostAddress() : "";
     }
 
     private static String headerValue(Map<String, List<String>> h, String n) {

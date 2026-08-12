@@ -35,6 +35,7 @@ import javax.net.ssl.SSLSession;
 public class HttpContextDefault extends HttpContext {
 
     private String method, path, rawQuery;
+    private String remoteAddress = "";
     private Map<String, List<String>> requestHeaders, queryParams;
     private InputStream bodyStream;
     private long contentLength;
@@ -93,6 +94,16 @@ public class HttpContextDefault extends HttpContext {
     /** Attaches the TLS session for this request. */
     void setSslSession(SSLSession sslSession) {
         this.sslSession = sslSession;
+    }
+
+    /** Attaches the client IP address of the connection. */
+    void setRemoteAddress(String remoteAddress) {
+        this.remoteAddress = remoteAddress != null ? remoteAddress : "";
+    }
+
+    @Override
+    public String remoteAddress() {
+        return remoteAddress;
     }
 
     @Override
