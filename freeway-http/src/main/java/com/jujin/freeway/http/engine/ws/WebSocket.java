@@ -110,11 +110,11 @@ public final class WebSocket {
                             ? frame.closeReason() : "";
                         int code = frame.closeCodeValue();
                         session.markClosed(code, reason);
-                            try {
-                                listener.onClose(code, reason, true);
-                            } catch (Exception ignored) {}
-                            closeNotified = true;
-                            return;
+                        try {
+                            listener.onClose(code, reason, true);
+                        } catch (Exception ignored) {}
+                        closeNotified = true;
+                        return;
                     }
                 }
             }
