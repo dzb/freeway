@@ -4,10 +4,10 @@ import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.http.body.MultipartForm;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.jujin.freeway.http.body.MultipartForm;
 
 class MultipartFormTest {
     @Test

@@ -1,9 +1,10 @@
 package com.jujin.freeway.http.filter;
 
+import java.nio.charset.StandardCharsets;
+
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Filter that intercepts the health endpoint before routing.

@@ -1,19 +1,22 @@
 package com.jujin.freeway.http.engine.http2.hpack;
-import java.util.HexFormat;
 
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+
 import org.junit.jupiter.api.Test;
+
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

@@ -1,14 +1,16 @@
 package com.jujin.freeway.http.engine.http2;
 
-import com.jujin.freeway.http.engine.HttpContextDefault;
-import com.jujin.freeway.http.engine.HttpResponseWriter;
-import com.jujin.freeway.http.sse.SseEmitter;
-
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+
+import com.jujin.freeway.http.engine.HttpContextDefault;
+import com.jujin.freeway.http.engine.HttpResponseWriter;
+import com.jujin.freeway.http.engine.ResponseFraming;
+import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * HTTP/2 {@link HttpResponseWriter}: frames the response as HEADERS/DATA onto
@@ -31,8 +33,8 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
     public void writeHead(HttpContextDefault ctx) {
         stream.responseHeaders.clear();
         stream.responseHeaders.put(":status", List.of(String.valueOf(ctx.status())));
-        Set<String> connectionTokens = connectionHeaderTokens(ctx.responseHeaders());
-        for (var entry : ctx.responseHeaders().entrySet()) {
+        Set<String> connectionTokens = connectionHeaderTokens(ctx.responseHeaderEntries());
+        for (var entry : ctx.responseHeaderEntries()) {
             String lower = entry.getKey().toLowerCase(Locale.ROOT);
             if (FORBIDDEN_RESPONSE_HEADERS.contains(lower)
                     || connectionTokens.contains(lower)) {
@@ -44,8 +46,9 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
 
     @Override
     public void writeBody(HttpContextDefault ctx, byte[] data) throws IOException {
-        boolean headRequest = "HEAD".equalsIgnoreCase(ctx.method());
-        if (!headRequest && ctx.allowsResponseBody() && data.length > 0) {
+        boolean suppressBody = ResponseFraming.suppressBodyBytes(
+            ctx.allowsResponseBody(), ctx.method());
+        if (!suppressBody && data.length > 0) {
             stream.outputStream.write(data);
         }
     }
@@ -53,8 +56,9 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
     @Override
     public void writeBody(HttpContextDefault ctx, byte[] data, int offset, int length)
             throws IOException {
-        boolean headRequest = "HEAD".equalsIgnoreCase(ctx.method());
-        if (!headRequest && ctx.allowsResponseBody() && length > 0) {
+        boolean suppressBody = ResponseFraming.suppressBodyBytes(
+            ctx.allowsResponseBody(), ctx.method());
+        if (!suppressBody && length > 0) {
             stream.outputStream.write(data, offset, length);
         }
     }
@@ -71,10 +75,15 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
         return new SseEmitter(stream.outputStream);
     }
 
+    @Override
+    public void onLengthMismatch(HttpContextDefault ctx) throws IOException {
+        stream.abortResponse();
+    }
+
     private static Set<String> connectionHeaderTokens(
-            java.util.Map<String, String> responseHeaders) {
+            List<Map.Entry<String, String>> responseHeaders) {
         String connection = null;
-        for (var entry : responseHeaders.entrySet()) {
+        for (var entry : responseHeaders) {
             if (entry.getKey().equalsIgnoreCase("connection")) {
                 connection = entry.getValue();
                 break;

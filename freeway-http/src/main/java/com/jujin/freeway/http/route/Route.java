@@ -1,10 +1,11 @@
 package com.jujin.freeway.http.route;
 
-import java.util.Objects;
 import java.util.Locale;
+import java.util.Objects;
+
 import com.jujin.freeway.commons.validation.BeanValidator;
-import com.jujin.freeway.http.body.BodyHandler;
 import com.jujin.freeway.http.ValidationException;
+import com.jujin.freeway.http.body.BodyHandler;
 
 public record Route(
     String method,

@@ -1,18 +1,19 @@
 package com.jujin.freeway.http.engine;
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.commons.json.JsonCodecDefault;
-import java.io.IOException;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.jujin.freeway.http.sse.SseEmitter;
 import org.junit.jupiter.api.Test;
+
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.sse.SseEmitter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

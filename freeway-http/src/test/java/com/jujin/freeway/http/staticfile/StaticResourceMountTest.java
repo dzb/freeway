@@ -1,9 +1,7 @@
 package com.jujin.freeway.http.staticfile;
 
-import com.jujin.freeway.http.StubHttpContext;
-
-import java.io.IOException;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
@@ -11,16 +9,18 @@ import java.net.URLStreamHandler;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
-
-import com.jujin.freeway.http.staticfile.StaticResourceMount;
 
 class StaticResourceMountTest {
     @TempDir

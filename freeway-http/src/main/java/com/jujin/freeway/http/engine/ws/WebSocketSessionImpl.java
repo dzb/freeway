@@ -1,8 +1,5 @@
 package com.jujin.freeway.http.engine.ws;
 
-import com.jujin.freeway.http.RequestContext;
-import com.jujin.freeway.http.websocket.WebSocketSession;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -14,6 +11,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.websocket.WebSocketSession;
 
 public final class WebSocketSessionImpl implements WebSocketSession {
 

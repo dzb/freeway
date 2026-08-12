@@ -1,13 +1,4 @@
 package com.jujin.freeway.http;
-import javax.net.ssl.SSLSession;
-
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.http.body.BodyTooLargeException;
-import com.jujin.freeway.http.body.MultipartForm;
-import com.jujin.freeway.http.body.MultipartException;
-import com.jujin.freeway.http.sse.SseEmitter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,9 +6,8 @@ import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
-import java.nio.file.Path;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -26,6 +16,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+
+import javax.net.ssl.SSLSession;
+
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.util.Strings;
+import com.jujin.freeway.http.body.BodyTooLargeException;
+import com.jujin.freeway.http.body.MultipartException;
+import com.jujin.freeway.http.body.MultipartForm;
+import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * Abstract base class for HTTP request/response contexts. Subclasses bridge
@@ -94,11 +94,6 @@ public abstract class HttpContext {
 
     /** Returns the current response header value for the given name, or null. */
     protected abstract String responseHeader(String name);
-
-    /** Returns a response header value before the response is committed. */
-    public Optional<String> responseHeaderValue(String name) {
-        return Optional.ofNullable(responseHeader(name));
-    }
 
     /** Returns the request context for this request. */
     public abstract RequestContext requestContext();
@@ -316,12 +311,6 @@ public abstract class HttpContext {
     public abstract HttpContext outputFile(Path file, long offset, long length)
         throws IOException;
 
-    /** Streams an already validated file descriptor. */
-    public HttpContext outputFile(FileChannel channel, long offset, long length)
-            throws IOException {
-        throw new UnsupportedOperationException("File-channel output is not supported");
-    }
-
     /**
      * Whether the response has been committed (headers or body have started
      * being written to the transport). Once committed, a subsequent transport
@@ -425,7 +414,6 @@ public abstract class HttpContext {
         return value != null ? coercer.coerce(value, type) : null;
     }
 
-    /** Returns true if the response status allows a body. */
     /** Returns true if the response status allows a body. */
     public final boolean allowsResponseBody() {
         int status = status();

@@ -1,12 +1,38 @@
 package com.jujin.freeway.http.engine;
+
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
+
+import jdk.net.ExtendedSocketOptions;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.engine.http11.Http11Connection;
 import com.jujin.freeway.http.engine.http11.HttpParser;
@@ -22,29 +48,6 @@ import com.jujin.freeway.http.engine.ws.WebSocket;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
 import com.jujin.freeway.http.engine.ws.WebSocketUtil;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import jdk.net.ExtendedSocketOptions;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLParameters;
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.Socket;
-import java.net.SocketTimeoutException;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import javax.net.ssl.SSLSession;
 
 /**
  * Per-connection handler. Handles plain HTTP, HTTPS with ALPN, WebSocket upgrade,

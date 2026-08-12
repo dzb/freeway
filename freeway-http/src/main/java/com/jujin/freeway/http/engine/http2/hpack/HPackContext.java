@@ -1,12 +1,4 @@
 package com.jujin.freeway.http.engine.http2.hpack;
-import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
-import com.jujin.freeway.http.engine.http2.util.BinUtils;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
-import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
-import java.util.Locale;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,7 +7,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+
+import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
+import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
+import com.jujin.freeway.http.engine.http2.frame.FrameType;
+import com.jujin.freeway.http.engine.http2.util.BinUtils;
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
+import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
 
 /**
  * HPACK codec implementation (RFC 7541).
@@ -259,6 +260,12 @@ public final class HPackContext {
         return decode(block, Long.MAX_VALUE);
     }
 
+    /**
+     * Decodes an HPACK block, enforcing {@code maxHeaderListSize} on the
+     * decoded field list. The connection passes its advertised
+     * SETTINGS_MAX_HEADER_LIST_SIZE; raw header-block bytes are bounded by
+     * the connection before this method is reached.
+     */
     public List<Http2HeaderField> decode(byte[] block, long maxHeaderListSize)
             throws IOException {
         var fields = new ArrayList<Http2HeaderField>(8);

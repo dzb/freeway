@@ -1,10 +1,11 @@
 package com.jujin.freeway.http.engine.http2.frame;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 public final class FrameSerializer {
     /** HTTP/2 max frame size (16KB default, RFC 7540 Section 4.2). */

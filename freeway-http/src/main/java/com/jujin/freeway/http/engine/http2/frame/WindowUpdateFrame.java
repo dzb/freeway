@@ -1,10 +1,11 @@
 package com.jujin.freeway.http.engine.http2.frame;
-import com.jujin.freeway.http.engine.http2.util.BinUtils;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import java.io.IOException;
 import java.io.OutputStream;
+
+import com.jujin.freeway.http.engine.http2.util.BinUtils;
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 public final class WindowUpdateFrame extends BaseFrame {
     private int windowSizeIncrement;
@@ -22,7 +23,9 @@ public final class WindowUpdateFrame extends BaseFrame {
         if (body.length != 4) throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR);
         var frame = new WindowUpdateFrame(header);
         frame.windowSizeIncrement = BinUtils.readInt(body, 0) & 0x7FFFFFFF;
-        if (frame.windowSizeIncrement == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+        // A zero increment is syntactically valid here; its error scope is
+        // semantic and enforced by Http2FrameValidator at the connection
+        // (GOAWAY) or stream (RST_STREAM) layer per RFC 7540 §6.9.
         return frame;
     }
 

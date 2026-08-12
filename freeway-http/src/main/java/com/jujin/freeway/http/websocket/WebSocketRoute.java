@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.websocket;
 
 import java.util.Objects;
+
 import com.jujin.freeway.http.route.PathPattern;
 
 public record WebSocketRoute(String path, WebSocketEndpoint endpoint, PathPattern pattern) {

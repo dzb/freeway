@@ -1,10 +1,10 @@
 package com.jujin.freeway.http.engine;
 
-import com.jujin.freeway.http.sse.SseEmitter;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+
+import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * HTTP/1.1 response writer: serializes the status line, headers, and body
@@ -42,7 +42,7 @@ final class Http11ResponseWriter implements HttpResponseWriter {
         rawOut.write(CRLF);
 
         // Response headers
-        for (var entry : ctx.responseHeaders().entrySet()) {
+        for (var entry : ctx.responseHeaderEntries()) {
             rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
             rawOut.write(COLSP);
             rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
@@ -60,7 +60,8 @@ final class Http11ResponseWriter implements HttpResponseWriter {
             throws IOException {
         OutputStream rawOut = ctx.rawOut;
         boolean bodyAllowed = ctx.allowsResponseBody();
-        boolean headRequest = "HEAD".equalsIgnoreCase(ctx.method());
+        boolean suppressBody =
+            ResponseFraming.suppressBodyBytes(bodyAllowed, ctx.method());
         // HEAD response must report the same Content-Length as GET (RFC 7231 §4.3.2)
         int contentLength = bodyAllowed ? length : 0;
 
@@ -89,7 +90,7 @@ final class Http11ResponseWriter implements HttpResponseWriter {
         }
 
         // Body
-        if (bodyAllowed && !headRequest && length > 0) {
+        if (!suppressBody && length > 0) {
             if (ctx.chunkedResponse) {
                 rawOut.write(Integer.toHexString(length).getBytes(
                     StandardCharsets.ISO_8859_1));
@@ -104,8 +105,8 @@ final class Http11ResponseWriter implements HttpResponseWriter {
 
     @Override
     public void end(HttpContextDefault ctx) throws IOException {
-        if (ctx.chunkedResponse && ctx.allowsResponseBody()
-                && !"HEAD".equalsIgnoreCase(ctx.method())) {
+        if (ctx.chunkedResponse && !ResponseFraming.suppressBodyBytes(
+                ctx.allowsResponseBody(), ctx.method())) {
             // An empty chunked body never calls writeBody — emit the head
             // (Transfer-Encoding + Connection) here so the terminal chunk
             // has headers to follow.
@@ -132,7 +133,7 @@ final class Http11ResponseWriter implements HttpResponseWriter {
         rawOut.write(SPACE);
         rawOut.write(HttpContextDefault.reasonBytes(ctx.status()));
         rawOut.write(CRLF);
-        for (var entry : ctx.responseHeaders().entrySet()) {
+        for (var entry : ctx.responseHeaderEntries()) {
             rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
             rawOut.write(COLSP);
             rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));

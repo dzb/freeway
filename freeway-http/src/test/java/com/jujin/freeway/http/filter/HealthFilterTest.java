@@ -1,14 +1,14 @@
 package com.jujin.freeway.http.filter;
 
-import com.jujin.freeway.http.StubHttpContext;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.junit.jupiter.api.Test;
+
+import com.jujin.freeway.http.StubHttpContext;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.route.RouteHandler;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

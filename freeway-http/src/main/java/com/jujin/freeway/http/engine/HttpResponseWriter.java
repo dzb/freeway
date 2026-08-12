@@ -1,8 +1,8 @@
 package com.jujin.freeway.http.engine;
 
-import com.jujin.freeway.http.sse.SseEmitter;
-
 import java.io.IOException;
+
+import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * Writes an HTTP response for a {@link HttpContextDefault}. One implementation
@@ -41,4 +41,15 @@ public interface HttpResponseWriter {
 
     /** Opens a Server-Sent Events emitter, writing the response head first. */
     SseEmitter openSse(HttpContextDefault ctx) throws IOException;
+
+    /**
+     * Invoked when the response body length violates the advertised
+     * Content-Length after headers were written. The transport decides the
+     * failure state: HTTP/1.1 closes the connection; HTTP/2 resets the
+     * stream with PROTOCOL_ERROR (RFC 9113 §8.2.2).
+     */
+    default void onLengthMismatch(HttpContextDefault ctx) throws IOException {
+        // HTTP/1.1: the context has already marked the connection
+        // non-reusable; there is nothing further to write.
+    }
 }

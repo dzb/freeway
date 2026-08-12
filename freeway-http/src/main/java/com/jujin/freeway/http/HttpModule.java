@@ -1,5 +1,35 @@
 package com.jujin.freeway.http;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
@@ -7,8 +37,8 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
-import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.AccessLogFilter;
+import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
@@ -29,32 +59,6 @@ import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.net.ssl.KeyManager;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLParameters;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.security.KeyStore;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.security.MessageDigest;
-import java.util.function.Consumer;
 
 @Marker(Builtin.class)
 /** Freeway HTTP module: wires routes, filters, engine, WebSocket, SSE, and the server runtime hook. */
@@ -420,6 +424,9 @@ public final class HttpModule implements ModuleEx {
 
     /** Polls keystore mtime/size and swaps a freshly built SSLContext into the
      *  engine when certificate material changes. */
+    /** Internal SSL-certificate reloader. The scheduler/stamp-injecting
+     *  constructor is a test seam for package-local tests; production uses
+     *  the default constructor. Not part of the public API. */
     final class SslReloader implements AutoCloseable {
         private final FreewayHttpEngine engine;
         private final SslSettings settings;
@@ -456,7 +463,8 @@ public final class HttpModule implements ModuleEx {
                 this::check, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
         }
 
-        private void check() {
+        /** Package-level seam: invoked directly by package-local tests. */
+        void check() {
             try {
                 Map<Path, FileStamp> current = snapshot();
                 if (!current.equals(snapshot)) {
@@ -503,8 +511,8 @@ public final class HttpModule implements ModuleEx {
                         if (n > 0) digest.update(buffer, 0, n);
                     }
                 }
-                return java.util.HexFormat.of().formatHex(digest.digest());
-            } catch (java.security.NoSuchAlgorithmException e) {
+                return HexFormat.of().formatHex(digest.digest());
+            } catch (NoSuchAlgorithmException e) {
                 throw new AssertionError(e);
             }
         }
@@ -517,6 +525,8 @@ public final class HttpModule implements ModuleEx {
 
     record FileStamp(long lastModified, long size, String digest) {}
 
+    /** Internal seam: abstracts file-stamp reads for {@link SslReloader}
+     *  tests. Not part of the public API. */
     @FunctionalInterface
     interface FileStampProvider {
         BasicFileAttributes stamp(Path path) throws IOException;

@@ -1,8 +1,9 @@
 package com.jujin.freeway.http.engine.http2.frame;
-import com.jujin.freeway.http.engine.http2.util.BinUtils;
 
 import java.io.IOException;
 import java.io.OutputStream;
+
+import com.jujin.freeway.http.engine.http2.util.BinUtils;
 
 /**
  * HTTP/2 frame header (9 bytes)

@@ -1,12 +1,12 @@
 package com.jujin.freeway.http.filter;
 
-import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.route.RouteHandler;
-
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.route.RouteHandler;
 
 /**
  * Text access log: writes one line per request with method, path, status,

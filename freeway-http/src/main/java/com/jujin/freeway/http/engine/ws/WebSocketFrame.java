@@ -1,12 +1,13 @@
 package com.jujin.freeway.http.engine.ws;
-import java.nio.charset.CharacterCodingException;
 
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -99,8 +100,8 @@ public final class WebSocketFrame {
 
     static String decodeUtf8(byte[] data, int offset, int length) throws IOException {
         var decoder = StandardCharsets.UTF_8.newDecoder();
-        decoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
-        decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+        decoder.onMalformedInput(CodingErrorAction.REPORT);
+        decoder.onUnmappableCharacter(CodingErrorAction.REPORT);
         try {
             return decoder.decode(ByteBuffer.wrap(data, offset, length)).toString();
         } catch (CharacterCodingException e) {

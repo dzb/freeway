@@ -1,12 +1,11 @@
 package com.jujin.freeway.http.filter;
 
-import com.jujin.freeway.http.StubHttpContext;
-
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
+import com.jujin.freeway.http.StubHttpContext;
 import com.jujin.freeway.http.filter.CorsFilter;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class CorsFilterTest {
     @Test

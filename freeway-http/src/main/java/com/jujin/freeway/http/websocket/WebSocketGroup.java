@@ -3,6 +3,7 @@ package com.jujin.freeway.http.websocket;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+
 import com.jujin.freeway.http.route.PathJoiner;
 
 public record WebSocketGroup(String prefix, List<WebSocketRoute> routes) {

@@ -1,15 +1,16 @@
 package com.jujin.freeway.http.route;
-import com.jujin.freeway.ioc.annotation.Inject;
-import com.jujin.freeway.ioc.annotation.Value;
+
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
+import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.annotation.Value;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

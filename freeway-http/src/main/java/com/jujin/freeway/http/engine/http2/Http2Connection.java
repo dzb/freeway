@@ -1,5 +1,28 @@
 package com.jujin.freeway.http.engine.http2;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.jujin.freeway.http.engine.http2.frame.BaseFrame;
 import com.jujin.freeway.http.engine.http2.frame.ContinuationFrame;
 import com.jujin.freeway.http.engine.http2.frame.DataFrame;
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
@@ -20,27 +43,6 @@ import com.jujin.freeway.http.engine.http2.hpack.HeaderFields;
 import com.jujin.freeway.http.engine.http2.util.BinUtils;
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.util.ArrayList;
-import java.util.ArrayDeque;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.LockSupport;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * HTTP/2 connection controller. Manages the full connection lifecycle:
@@ -61,10 +63,18 @@ public final class Http2Connection {
      * rejected with RST_STREAM(REFUSED_STREAM) instead of opening unbounded
      * per-stream state. */
     private static final int MAX_CONCURRENT_STREAMS = 100;
-    /** Cap on a single inbound header block (across HEADERS + CONTINUATION
-     *  fragments) before HPACK decode — bounds memory under a malicious peer. */
+    /**
+     * Cap on a single inbound header block (across HEADERS + CONTINUATION
+     * fragments) before HPACK decode — bounds memory under a malicious peer.
+     * This is the connection's raw-wire bound; the *decoded* list size is
+     * bounded separately by {@link #MAX_HEADER_LIST_SIZE} (enforced inside
+     * {@link com.jujin.freeway.http.engine.http2.hpack.HPackContext#decode}),
+     * and dynamic-table sizing is owned entirely by HPackContext. */
     private static final int MAX_INBOUND_HEADER_BLOCK = 64 * 1024;
-    /** Advertised SETTINGS_MAX_HEADER_LIST_SIZE (RFC 7540 §6.5.2). */
+    /**
+     * Advertised SETTINGS_MAX_HEADER_LIST_SIZE (RFC 7540 §6.5.2), passed as
+     * the decode-time cap so a peer cannot inflate the decoded field list
+     * beyond what we advertise. */
     private static final int MAX_HEADER_LIST_SIZE = 64 * 1024;
 
     public final AtomicLong sendWindow = new AtomicLong(DEFAULT_WINDOW_SIZE);
@@ -267,26 +277,21 @@ public final class Http2Connection {
     }
 
     private void processFrames() throws IOException {
-        boolean inHeaders = false;
-        boolean headersEndStream = false;
-        int openStreamId = 0;
-        var headerBlockFragments = new ArrayList<byte[]>();
-        int headerBlockSize = 0;
+        var headerBlock = new HeaderBlockState();
 
         while (!closed.get()) {
             updateReadTimeout();
             var frame = FrameSerializer.deserialize(
                 inputStream, maxFrameSize, frameHeaderBuffer);
             int streamId = frame.header().streamId();
-
-            if (streamId != 0 && streamId % 2 == 0)
-                throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+            Http2FrameValidator.requireClientStreamId(streamId);
 
             switch (frame.header().type()) {
                 case SETTINGS -> {
                     // RFC 7540 §4.3: a header block may be interrupted only
                     // by CONTINUATION; any other frame is a connection error.
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
                     if (frame.header().flags().contains(FrameFlag.ACK)) {
                         continue;
                     }
@@ -295,7 +300,8 @@ public final class Http2Connection {
                     continue;
                 }
                 case GOAWAY -> {
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
                     var goaway = (GoawayFrame) frame;
                     if (goaway.errorCode != Http2ErrorCode.NO_ERROR)
                         throw new IOException("GOAWAY");
@@ -305,111 +311,115 @@ public final class Http2Connection {
                     continue;
                 }
                 case PING -> {
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
                     if (!frame.header().flags().contains(FrameFlag.ACK))
                         sendPingAck((PingFrame) frame);
                     continue;
                 }
                 case WINDOW_UPDATE -> {
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
                     if (streamId == 0) {
                         int increment = ((WindowUpdateFrame) frame).increment();
-                        if (sendWindow.addAndGet(increment) > Integer.MAX_VALUE)
-                            throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                        Http2FrameValidator.requirePositiveWindowIncrement(
+                            increment);
+                        if (Http2FrameValidator.sendWindowOverflow(
+                                sendWindow.addAndGet(increment))) {
+                            throw new Http2Exception(
+                                Http2ErrorCode.FLOW_CONTROL_ERROR);
+                        }
                         unparkWindowWaiters();
                         continue;
                     }
+                    // Stream-level WINDOW_UPDATE dispatches below.
                 }
                 case NOT_IMPLEMENTED -> {
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    continue; // RFC 7540 §5.5: ignore unknown/unimplemented frames
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
+                    // RFC 7540 §5.5: ignore unknown/unimplemented frames.
+                    continue;
                 }
                 case DATA -> {
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
+                    if (streamId == 0) {
+                        throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    }
                     var dataFrame = (DataFrame) frame;
                     int flowLength = dataFrame.flowLength();
-                    if (flowLength > receiveWindow.get())
-                        throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    if (flowLength > receiveWindow.get()) {
+                        throw new Http2Exception(
+                            Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    }
                     receiveWindow.addAndGet(-flowLength);
-                    if (receiveWindow.get() < connectionWindowSize / 10)
+                    if (receiveWindow.get() < connectionWindowSize / 10) {
                         sendConnectionWindowUpdate();
+                    }
                 }
                 case HEADERS -> {
-                    if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    if (streamId < lastSeenStreamId) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-
-                    var existing = streams.get(streamId);
-                    if (existing != null) {
+                    if (streamId == 0) {
+                        throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    }
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
+                    if (streamId < lastSeenStreamId) {
+                        throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    }
+                    headerBlock.add(((HeadersFrame) frame).headerBlock());
+                    if (streams.containsKey(streamId)) {
                         // Any HEADERS on an already-created stream is a trailer
                         // block (RFC 7540 §8.1.2.2) — the request pseudo-headers
                         // arrived with the first HEADERS. The stream is still
                         // "open" here because END_STREAM on this very frame has
                         // not been applied yet, so state cannot drive the check.
-                        // Collect the block; the shared header handling decodes
-                        // it to keep HPACK state in sync and discards the fields.
-                        // Duplicate pseudo-headers inside are rejected by
-                        // HeaderFields.validate().
-                        var trailersFrame = (HeadersFrame) frame;
-                        if (headerBlockSize + trailersFrame.headerBlock().length > MAX_INBOUND_HEADER_BLOCK)
-                            throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
-                                "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK + " bytes");
-                        headerBlockFragments.add(trailersFrame.headerBlock());
-                        headerBlockSize += trailersFrame.headerBlock().length;
-                        headersEndStream =
-                            trailersFrame.header().flags().contains(FrameFlag.END_STREAM);
-                        if (!trailersFrame.header().flags().contains(FrameFlag.END_HEADERS)) {
-                            inHeaders = true;
-                            openStreamId = streamId;
-                            continue;
-                        }
-                        // END_HEADERS set — fall through to shared handling below.
-                    } else {
-
-                    var headersFrame = (HeadersFrame) frame;
-                    if (headerBlockSize + headersFrame.headerBlock().length > MAX_INBOUND_HEADER_BLOCK)
-                        throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
-                            "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK + " bytes");
-                    headerBlockFragments.add(headersFrame.headerBlock());
-                    headerBlockSize += headersFrame.headerBlock().length;
-                    if (headersFrame.header().flags().contains(FrameFlag.END_STREAM)) {
-                        headersEndStream = true;
+                        // The shared handling decodes it to keep HPACK state in
+                        // sync and discards the fields.
+                        headerBlock.endStream = frame.header().flags()
+                            .contains(FrameFlag.END_STREAM);
+                    } else if (frame.header().flags()
+                            .contains(FrameFlag.END_STREAM)) {
+                        headerBlock.endStream = true;
                     }
-                    if (!headersFrame.header().flags().contains(FrameFlag.END_HEADERS)) {
-                        inHeaders = true;
-                        openStreamId = streamId;
+                    if (!frame.header().flags()
+                            .contains(FrameFlag.END_HEADERS)) {
+                        headerBlock.start(streamId);
                         continue;
                     }
-                    }
+                    // END_HEADERS set — fall through to shared handling below.
                 }
                 case CONTINUATION -> {
-                    if (inHeaders && streamId != openStreamId)
+                    if (!headerBlock.inHeaders
+                            || streamId != headerBlock.openStreamId) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    if (!inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    var continuationFrame = (ContinuationFrame) frame;
-                    if (headerBlockSize + continuationFrame.headerBlock().length > MAX_INBOUND_HEADER_BLOCK)
-                        throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
-                            "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK + " bytes");
-                    headerBlockFragments.add(continuationFrame.headerBlock());
-                    headerBlockSize += continuationFrame.headerBlock().length;
-                    if (!continuationFrame.header().flags().contains(FrameFlag.END_HEADERS))
+                    }
+                    headerBlock.add(((ContinuationFrame) frame).headerBlock());
+                    if (!frame.header().flags()
+                            .contains(FrameFlag.END_HEADERS)) {
                         continue;
+                    }
+                    // Fall through to shared handling once the block completes.
                 }
                 case PRIORITY -> {
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-                    if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
+                    if (streamId == 0) {
+                        throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    }
                     continue;
                 }
                 case PUSH_PROMISE -> {
                     throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }
                 case RST_STREAM -> {
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    Http2FrameValidator.requireNotInHeaderBlock(
+                        headerBlock.inHeaders);
                     // Any RST_STREAM (even error code 0) terminates the target
                     // stream — close it so the handler and stream state are
                     // released instead of leaking.
-                    if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    if (streamId == 0) {
+                        throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+                    }
                     var resetTarget = streams.get(streamId);
                     if (resetTarget != null) {
                         resetTarget.close();
@@ -422,76 +432,62 @@ public final class Http2Connection {
 
             var target = streams.get(streamId);
             if (target == null && lastSeenStreamId < streamId) {
-                if (goawayReceived) {
-                    // RFC 7540 §6.8: no new streams after GOAWAY. Reject with
-                    // REFUSED_STREAM so the peer may retry on a fresh connection.
-                    lastSeenStreamId = streamId;
-                    headerBlockFragments.clear();
-                    headerBlockSize = 0;
-                    inHeaders = false;
-                    openStreamId = 0;
-                    headersEndStream = false;
-                    sendResetStream(Http2ErrorCode.REFUSED_STREAM, streamId);
+                // New stream: reject when GOAWAY was exchanged (RFC 7540
+                // §6.8, peer may retry on a fresh connection) or the
+                // concurrent-stream cap is reached (RFC 7540 §5.1.2,
+                // streams.size() is the open-stream count because close()
+                // removes from the map).
+                if (goawayReceived || streams.size() >= MAX_CONCURRENT_STREAMS) {
+                    rejectNewStream(
+                        Http2ErrorCode.REFUSED_STREAM, streamId, headerBlock);
                     continue;
                 }
-                // Enforce the concurrent-stream cap. Http2Stream.close()
-                // removes itself from the map, so streams.size() is the number
-                // of currently open streams.
-                if (streams.size() >= MAX_CONCURRENT_STREAMS) {
-                    lastSeenStreamId = streamId;
-                    headerBlockFragments.clear();
-                    headerBlockSize = 0;
-                    inHeaders = false;
-                    openStreamId = 0;
-                    headersEndStream = false;
-                    sendResetStream(Http2ErrorCode.REFUSED_STREAM, streamId);
-                    continue;
-                }
-                byte[] headerBlock = BinUtils.combine(headerBlockFragments);
+                boolean requestEndStream = headerBlock.endStream;
+                byte[] block = headerBlock.combined();
                 var fields = new HeaderFields();
-                for (var field : hpack.decode(headerBlock, MAX_HEADER_LIST_SIZE)) fields.add(field);
+                for (var field : hpack.decode(block, MAX_HEADER_LIST_SIZE)) {
+                    fields.add(field);
+                }
                 fields.validate();
 
-                Map<String, List<String>> requestHeaders = new LinkedHashMap<>(fields.size() * 2);
+                Map<String, List<String>> requestHeaders =
+                    new LinkedHashMap<>(fields.size() * 2);
                 for (var headerField : fields.fields()) {
-                    if (headerField.value != null)
-                        requestHeaders.computeIfAbsent(headerField.normalizedName, k -> new ArrayList<>(4)).add(headerField.value);
+                    if (headerField.value != null) {
+                        requestHeaders.computeIfAbsent(
+                            headerField.normalizedName,
+                            k -> new ArrayList<>(4)).add(headerField.value);
+                    }
                 }
 
-                headerBlockFragments.clear();
-                headerBlockSize = 0;
-                inHeaders = false;
+                headerBlock.reset();
                 target = new Http2Stream(streamId, this, requestHeaders, handler);
                 streams.put(streamId, target);
                 lastSeenStreamId = streamId;
-                if (headersEndStream) {
+                if (requestEndStream) {
                     target.markHalfClosed();
-                    headersEndStream = false;
                 }
                 target.startRequest(executor);
-                // header block assembled — this frame consumed, skip dispatch
+                // Header block assembled — this frame consumed, skip dispatch.
                 continue;
             } else if (target != null
                     && (frame.header().type() == FrameType.HEADERS
                         || frame.header().type() == FrameType.CONTINUATION)) {
                 // Trailer header block (RFC 7540 §8.1.2.2) on a stream that
-                // already received its request headers — open or half-closed,
-                // since END_STREAM on the trailer frame applies only after
-                // this frame is processed. Decode it so the HPACK dynamic
-                // table stays in sync with the peer, then discard — trailers
-                // carry no request semantics we expose. add() still rejects
-                // pseudo-headers and connection-specific fields inside the
-                // block; the REQUIRED pseudo-header check in validate() only
-                // applies to request header blocks.
-                byte[] headerBlock = BinUtils.combine(headerBlockFragments);
+                // already received its request headers. Decode it so the
+                // HPACK dynamic table stays in sync with the peer, then
+                // discard — trailers carry no request semantics we expose.
+                // add() still rejects pseudo-headers and connection-specific
+                // fields inside the block; the REQUIRED pseudo-header check
+                // in validate() only applies to request header blocks.
+                byte[] block = headerBlock.combined();
                 var fields = new HeaderFields();
-                for (var field : hpack.decode(headerBlock, MAX_HEADER_LIST_SIZE)) fields.add(field);
-                headerBlockFragments.clear();
-                headerBlockSize = 0;
-                inHeaders = false;
-                boolean trailerEndStream = headersEndStream
+                for (var field : hpack.decode(block, MAX_HEADER_LIST_SIZE)) {
+                    fields.add(field);
+                }
+                boolean trailerEndStream = headerBlock.endStream
                     || frame.header().flags().contains(FrameFlag.END_STREAM);
-                headersEndStream = false;
+                headerBlock.reset();
                 if (trailerEndStream) {
                     // END_STREAM on the trailer ends the request body: wake
                     // the body reader so handler body() returns EOF naturally.
@@ -503,7 +499,9 @@ public final class Http2Connection {
                 continue;
             } else if (target == null) {
                 if (streamId <= lastSeenStreamId) {
-                    if (frame.header().type() == FrameType.WINDOW_UPDATE) continue;
+                    if (frame.header().type() == FrameType.WINDOW_UPDATE) {
+                        continue;
+                    }
                     // The frame targets a closed stream; this is a stream
                     // error and must not terminate other active streams.
                     sendResetStream(Http2ErrorCode.STREAM_CLOSED, streamId);
@@ -512,13 +510,69 @@ public final class Http2Connection {
                 throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             }
 
-            try {
-                target.dispatch(frame, executor);
-            } catch (Http2Exception e) {
-                // A stream error must not tear down the multiplexed connection.
-                sendResetStream(e.errorCode(), streamId);
-                target.close();
+            dispatchToStream(target, frame, streamId);
+        }
+    }
+
+    /** Rejects a new-stream header block with the given error and clears the
+     *  in-progress block state. */
+    private void rejectNewStream(Http2ErrorCode code, int streamId,
+                                 HeaderBlockState headerBlock)
+            throws IOException {
+        lastSeenStreamId = streamId;
+        headerBlock.reset();
+        sendResetStream(code, streamId);
+    }
+
+    /** Dispatches a frame to a stream, converting stream errors into a reset
+     *  without tearing down the multiplexed connection. */
+    private void dispatchToStream(Http2Stream target, BaseFrame frame,
+                                  int streamId) throws IOException {
+        try {
+            target.dispatch(frame, executor);
+        } catch (Http2Exception e) {
+            // A stream error must not tear down the multiplexed connection.
+            sendResetStream(e.errorCode(), streamId);
+            target.close();
+        }
+    }
+
+    /** In-progress HEADERS/CONTINUATION header block. Tracks the raw fragment
+     *  bytes (bounded by {@link #MAX_INBOUND_HEADER_BLOCK}) and whether the
+     *  block carries END_STREAM, so the stream can be marked half-closed once
+     *  the block completes. */
+    private static final class HeaderBlockState {
+        final List<byte[]> fragments = new ArrayList<>();
+        int size;
+        boolean inHeaders;
+        int openStreamId;
+        boolean endStream;
+
+        void add(byte[] block) throws Http2Exception {
+            if (size + block.length > MAX_INBOUND_HEADER_BLOCK) {
+                throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                    "Header block exceeds " + MAX_INBOUND_HEADER_BLOCK
+                        + " bytes");
             }
+            fragments.add(block);
+            size += block.length;
+        }
+
+        void start(int streamId) {
+            inHeaders = true;
+            openStreamId = streamId;
+        }
+
+        byte[] combined() {
+            return BinUtils.combine(fragments);
+        }
+
+        void reset() {
+            fragments.clear();
+            size = 0;
+            inHeaders = false;
+            openStreamId = 0;
+            endStream = false;
         }
     }
 

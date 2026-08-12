@@ -1,19 +1,5 @@
 package com.jujin.freeway.http.engine;
 
-import com.jujin.freeway.boot.AppRuntime;
-import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.http.HttpConfigKeys;
-import com.jujin.freeway.http.route.Route;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import javax.net.ssl.SNIHostName;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLParameters;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -22,6 +8,22 @@ import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.http.HttpConfigKeys;
+import com.jujin.freeway.http.route.Route;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;

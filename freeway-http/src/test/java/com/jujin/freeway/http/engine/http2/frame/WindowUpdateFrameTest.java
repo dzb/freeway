@@ -1,9 +1,8 @@
 package com.jujin.freeway.http.engine.http2.frame;
 
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WindowUpdateFrameTest {
 
@@ -18,11 +17,13 @@ class WindowUpdateFrameTest {
     }
 
     @Test
-    void zeroIncrementThrows() {
+    void zeroIncrementParsesButIsRejectedUpstream() throws Exception {
         byte[] body = {0, 0, 0, 0};
         var header = new FrameHeader(4, FrameType.WINDOW_UPDATE,
                 FrameFlag.NONE, 0);
-        assertThrows(Http2Exception.class,
-                () -> WindowUpdateFrame.parse(body, header));
+        var frame = WindowUpdateFrame.parse(body, header);
+        assertEquals(0, frame.increment(),
+            "Zero must parse at the frame layer; its error scope is decided "
+                + "by the connection/stream validator (RFC 7540 §6.9)");
     }
 }

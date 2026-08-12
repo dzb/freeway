@@ -1,11 +1,12 @@
 package com.jujin.freeway.http.engine;
 
-import com.jujin.freeway.http.engine.http11.HttpParser;
-import org.junit.jupiter.api.Test;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+
+import org.junit.jupiter.api.Test;
+
+import com.jujin.freeway.http.engine.http11.HttpParser;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

@@ -1,31 +1,33 @@
 package com.jujin.freeway.http.engine;
 
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.RequestContext;
-import com.jujin.freeway.http.sse.SseEmitter;
-
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.ByteArrayOutputStream;
+import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Locale;
-import java.util.zip.GZIPOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.zip.GZIPOutputStream;
+
 import javax.net.ssl.SSLSession;
+
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpContextInternal;
+import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.RequestContext;
+import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * {@link HttpContext} implementation backed by a raw socket connection.
@@ -33,24 +35,21 @@ import javax.net.ssl.SSLSession;
  * (HTTP/1.1 wire format or HTTP/2 stream frames); this class owns the shared
  * request/response state, gzip compression, and streaming helpers.
  */
-public class HttpContextDefault extends HttpContext {
+public class HttpContextDefault extends HttpContext implements HttpContextInternal {
 
     private String method, path, rawQuery;
     private String remoteAddress = "";
     private Map<String, List<String>> requestHeaders, queryParams;
-    private InputStream bodyStream;
-    private InputStream boundedBodyStream;
-    private long contentLength;
-    private boolean chunked, http10, keepAlive;
+    private boolean http10, keepAlive;
     OutputStream rawOut;
     private RequestContext requestContext;
-    private final Map<String, String> responseHeaders = new LinkedHashMap<>();
+    private final CaseInsensitiveHeaders responseHeaders = new CaseInsensitiveHeaders();
+    private RequestBody requestBody;
     private int responseStatus = 200;
     private boolean responded;
     /** Transport-specific response writer. Defaults to HTTP/1.1; the HTTP/2
      *  session replaces it per stream (each stream gets a fresh context). */
     private HttpResponseWriter writer = Http11ResponseWriter.INSTANCE;
-    private byte[] cachedBody;
     private boolean secure;
     private SSLSession sslSession;
     /** Set once the HTTP/1.1 writer has emitted status/headers — streaming
@@ -71,9 +70,6 @@ public class HttpContextDefault extends HttpContext {
         void transfer(FileChannel channel, long offset, long length)
             throws IOException;
     }
-    // Shared drain buffer — reused across drainUnreadBody calls
-    private byte[] drainBuf;
-
     public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer) {
         super(jsonCodec, coercer);
     }
@@ -128,10 +124,8 @@ public class HttpContextDefault extends HttpContext {
         this.path = path;
         this.rawQuery = rawQuery;
         this.requestHeaders = requestHeaders;
-        this.bodyStream = bodyStream;
-        this.boundedBodyStream = null;
-        this.contentLength = contentLength;
-        this.chunked = chunked;
+        this.requestBody = new RequestBody(
+            bodyStream, contentLength, chunked, () -> maxBodySize);
         this.rawOut = rawOut;
         this.requestContext = requestContext;
         this.http10 = http10;
@@ -141,7 +135,6 @@ public class HttpContextDefault extends HttpContext {
         this.responded = false;
         this.responseHeaders.clear();
         this.pathVariables.clear();
-        this.cachedBody = null;
         this.bodyLimitExceeded = false;
         this.headersWritten = false;
         this.chunkedResponse = false;
@@ -214,6 +207,11 @@ public class HttpContextDefault extends HttpContext {
     }
 
     @Override
+    public Optional<String> responseHeaderValue(String name) {
+        return Optional.ofNullable(responseHeader(name));
+    }
+
+    @Override
     public List<String> headers(String name) {
         List<String> values = requestHeaders.get(name);
         if (values != null) return List.copyOf(values);
@@ -227,10 +225,7 @@ public class HttpContextDefault extends HttpContext {
 
     @Override
     public byte[] body() throws IOException {
-        if (cachedBody == null) {
-            cachedBody = readBodyLimited(bodyStream());
-        }
-        return cachedBody;
+        return requestBody.readAll();
     }
 
     @Override
@@ -253,8 +248,7 @@ public class HttpContextDefault extends HttpContext {
         validateHeaderName(name);
         validateHeaderValue(value);
         // Single source of truth — response writers read this in writeHead().
-        responseHeaders.keySet().removeIf(existing -> existing.equalsIgnoreCase(name));
-        responseHeaders.put(name, value);
+        responseHeaders.set(name, value);
         return this;
     }
 
@@ -263,19 +257,14 @@ public class HttpContextDefault extends HttpContext {
         if (responded) return this;
         responded = true;
         byte[] body = data;
-        if (compression.enabled() && responseStatus != 206
-                && allowsResponseBody()
-                && body.length >= compression.minSize()
-                && acceptsGzip() && compressibleContentType()) {
+        if (ResponseFraming.shouldGzip(compression, responseStatus,
+                allowsResponseBody(), body.length,
+                acceptsGzip(), compressibleContentType())) {
             body = gzip(body);
-            responseHeaders.put("Content-Encoding", "gzip");
+            responseHeaders.set("Content-Encoding", "gzip");
             addVaryAcceptEncoding();
-            for (var entry : responseHeaders.entrySet()) {
-                if (entry.getKey().equalsIgnoreCase("Content-Length")) {
-                    entry.setValue(Integer.toString(body.length));
-                    break;
-                }
-            }
+            responseHeaders.setValueIfPresent(
+                "Content-Length", Integer.toString(body.length));
         }
         writer.writeHead(this);
         writer.writeBody(this, body);
@@ -286,21 +275,20 @@ public class HttpContextDefault extends HttpContext {
     @Override
     public HttpContext output(InputStream in, long contentLength) throws IOException {
         if (responded) return this;
-        boolean gzip = compression.enabled() && responseStatus != 206
-            && allowsResponseBody()
-            && acceptsGzip() && compressibleContentType();
+        boolean gzip = ResponseFraming.shouldGzipStream(
+            compression, responseStatus, allowsResponseBody(),
+            acceptsGzip(), compressibleContentType());
         if (gzip) {
             // Compressed length is unknown until the stream is consumed —
             // HTTP/1.1 falls back to chunked framing; the Content-Length
             // header (if any) must not advertise the uncompressed size.
-            responseHeaders.entrySet().removeIf(
-                e -> e.getKey().equalsIgnoreCase("Content-Length"));
+            responseHeaders.remove("Content-Length");
             chunkedResponse = true;
-            responseHeaders.put("Content-Encoding", "gzip");
+            responseHeaders.set("Content-Encoding", "gzip");
             addVaryAcceptEncoding();
         } else if (contentLength >= 0
                 && !hasResponseHeaderIgnoreCase("Content-Length")) {
-            responseHeaders.put("Content-Length", Long.toString(contentLength));
+            responseHeaders.set("Content-Length", Long.toString(contentLength));
         } else if (contentLength < 0
                 && !hasResponseHeaderIgnoreCase("Content-Length")) {
             chunkedResponse = true;
@@ -336,6 +324,7 @@ public class HttpContextDefault extends HttpContext {
                 if (remaining == 0) {
                     if (in.read() >= 0) {
                         keepAlive = false;
+                        writer.onLengthMismatch(this);
                         throw new IOException("Response body exceeds Content-Length");
                     }
                     break;
@@ -350,6 +339,7 @@ public class HttpContextDefault extends HttpContext {
             }
             if (contentLength >= 0 && actual != contentLength) {
                 keepAlive = false;
+                writer.onLengthMismatch(this);
                 throw new IOException("Response body shorter than Content-Length");
             }
         }
@@ -374,18 +364,19 @@ public class HttpContextDefault extends HttpContext {
             channel.close();
             return this;
         }
-        boolean gzip = compression.enabled() && responseStatus != 206
-            && acceptsGzip() && compressibleContentType();
+        boolean gzip = ResponseFraming.shouldGzipFile(
+            compression, responseStatus, allowsResponseBody(),
+            acceptsGzip(), compressibleContentType());
         if (gzip || fileSender == null || length < MIN_SENDFILE_BYTES) {
             channel.position(offset);
             try {
                 return output(new FixedLengthInputStream(
-                    java.nio.channels.Channels.newInputStream(channel), length), length);
+                    Channels.newInputStream(channel), length), length);
             } finally {
                 channel.close();
             }
         }
-        responseHeaders.put("Content-Length", Long.toString(length));
+        responseHeaders.set("Content-Length", Long.toString(length));
         responded = true;
         writer.writeHead(this);
         writer.writeBody(this, new byte[0]); // status + headers, once
@@ -434,13 +425,7 @@ public class HttpContextDefault extends HttpContext {
     }
 
     private boolean compressibleContentType() {
-        String contentType = null;
-        for (var entry : responseHeaders.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase("Content-Type")) {
-                contentType = entry.getValue();
-                break;
-            }
-        }
+        String contentType = responseHeaders.get("Content-Type");
         if (contentType == null) return false;
         String lower = contentType.toLowerCase(Locale.ROOT);
         return lower.startsWith("text/")
@@ -452,16 +437,14 @@ public class HttpContextDefault extends HttpContext {
     }
 
     private void addVaryAcceptEncoding() {
-        for (var entry : responseHeaders.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase("Vary")) {
-                if (!entry.getValue().toLowerCase(Locale.ROOT)
-                        .contains("accept-encoding")) {
-                    entry.setValue(entry.getValue() + ", Accept-Encoding");
-                }
-                return;
+        String vary = responseHeaders.get("Vary");
+        if (vary != null) {
+            if (!vary.toLowerCase(Locale.ROOT).contains("accept-encoding")) {
+                responseHeaders.set("Vary", vary + ", Accept-Encoding");
             }
+        } else {
+            responseHeaders.set("Vary", "Accept-Encoding");
         }
-        responseHeaders.put("Vary", "Accept-Encoding");
     }
 
     private static byte[] gzip(byte[] data) throws IOException {
@@ -500,32 +483,7 @@ public class HttpContextDefault extends HttpContext {
      * @return true if the request body was fully consumed
      */
     boolean drainUnreadBody() {
-        // Only drain when there's an actual request body to consume.
-        // For GET/HEAD/DELETE (no Content-Length, not chunked), the "body stream"
-        // is the raw socket InputStream — draining it would eat the next keep-alive request.
-        if (cachedBody != null) return true;
-        // Do not recreate a bounded stream after an over-limit read. Closing
-        // is safer than risking consumption of a pipelined next request.
-        if (bodyLimitExceeded) return false;
-        if (contentLength > maxBodySize) return false;
-        if (contentLength <= 0 && !chunked) return true;
-        try {
-            if (bodyStream != null) {
-                if (drainBuf == null) drainBuf = new byte[2048];
-                // Drain through the bounded body stream so we stop exactly at
-                // the end of the body. Reading the raw stream would block on
-                // a keep-alive socket and swallow the next request.
-                InputStream remaining = bodyStream();
-                long drained = 0;
-                int n;
-                while ((n = remaining.read(drainBuf)) >= 0) {
-                    drained += n;
-                    if (drained > maxBodySize) return false;
-                }
-            }
-            return true;
-        } catch (IOException ignored) { /* best-effort */ }
-        return false;
+        return requestBody.drain();
     }
 
     /**
@@ -534,13 +492,7 @@ public class HttpContextDefault extends HttpContext {
      * closes the connection after the current request.
      */
     void syncKeepAliveFromResponse() {
-        String connection = null;
-        for (var entry : responseHeaders.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase("connection")) {
-                connection = entry.getValue();
-                break;
-            }
-        }
+        String connection = responseHeaders.get("connection");
         if (connection == null) return;
         for (String token : connection.split(",")) {
             String t = token.trim();
@@ -550,22 +502,6 @@ public class HttpContextDefault extends HttpContext {
                 keepAlive = true;
             }
         }
-    }
-
-    // --- internal ---
-
-    private InputStream bodyStream() throws IOException {
-        if (boundedBodyStream != null) return boundedBodyStream;
-        if (chunked) {
-            boundedBodyStream = new ChunkedInputStream(bodyStream);
-            return boundedBodyStream;
-        }
-        if (contentLength >= 0) {
-            boundedBodyStream = new FixedLengthInputStream(bodyStream, contentLength);
-            return boundedBodyStream;
-        }
-        // no Content-Length and not chunked → read to EOF
-        return bodyStream;
     }
 
     // Pre-encoded reason phrases indexed by status code
@@ -623,15 +559,21 @@ public class HttpContextDefault extends HttpContext {
     }
 
     boolean hasResponseHeaderIgnoreCase(String name) {
-        for (String key : responseHeaders.keySet()) {
-            if (key.equalsIgnoreCase(name)) return true;
-        }
-        return false;
+        return responseHeaders.contains(name);
     }
 
-    /** Unmodifiable view of the response headers — consumed by response writers. */
-    public Map<String, String> responseHeaders() {
-        return Collections.unmodifiableMap(responseHeaders);
+    /** Response headers in insertion order — consumed by response writers. */
+    public List<Map.Entry<String, String>> responseHeaderEntries() {
+        return responseHeaders.entries();
+    }
+
+    /** Snapshot view for tests and diagnostics (not on the hot path). */
+    Map<String, String> responseHeaders() {
+        Map<String, String> copy = new LinkedHashMap<>();
+        for (var entry : responseHeaders.entries()) {
+            copy.put(entry.getKey(), entry.getValue());
+        }
+        return copy;
     }
 
     void setKeepAlive(boolean keepAlive) {

@@ -1,15 +1,5 @@
 package com.jujin.freeway.http.ssl;
 
-import javax.net.ssl.ExtendedSSLSession;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SNIHostName;
-import javax.net.ssl.SNIServerName;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.StandardConstants;
-import javax.net.ssl.X509ExtendedKeyManager;
-import javax.net.ssl.X509KeyManager;
 import java.net.Socket;
 import java.security.KeyStore;
 import java.security.Principal;
@@ -21,6 +11,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+
+import javax.net.ssl.ExtendedSSLSession;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SNIServerName;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.StandardConstants;
+import javax.net.ssl.X509ExtendedKeyManager;
+import javax.net.ssl.X509KeyManager;
 
 /**
  * Server-side {@link X509KeyManager} that selects a certificate chain from the

@@ -1,8 +1,9 @@
 package com.jujin.freeway.http;
 
-import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.commons.coercion.Coercer;
 import org.junit.jupiter.api.Test;
+
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;

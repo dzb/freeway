@@ -1,6 +1,5 @@
 package com.jujin.freeway.http.body;
 
-import com.jujin.freeway.commons.util.Strings;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,6 +14,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+
+import com.jujin.freeway.commons.util.Strings;
 
 public final class MultipartForm {
 

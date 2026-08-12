@@ -1,12 +1,14 @@
 package com.jujin.freeway.http.engine;
 
-import com.jujin.freeway.http.HttpServerHandle;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.jujin.freeway.http.HttpServerHandle;
 
 /**
  * Lifecycle handle for the built-in HTTP engine.

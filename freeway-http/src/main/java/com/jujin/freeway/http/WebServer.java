@@ -1,5 +1,17 @@
 package com.jujin.freeway.http;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.event.HttpRequestEvent;
 import com.jujin.freeway.http.event.HttpServerStartedEvent;
@@ -13,17 +25,6 @@ import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
 import com.jujin.freeway.http.websocket.WebSocketIndex;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.function.Consumer;
 
 /**
  * Orchestrates HTTP request handling: filter chain, route dispatch, static
@@ -242,6 +243,8 @@ public final class WebServer implements AutoCloseable {
         try { handle.close(); } catch (Exception ignored) {}
     }
 
+    /** Internal seam: lets package-local tests verify the readiness gate
+     *  without binding a real socket. Not part of the public API. */
     @FunctionalInterface
     interface ReadinessProbe {
         boolean ready(String host, int port);

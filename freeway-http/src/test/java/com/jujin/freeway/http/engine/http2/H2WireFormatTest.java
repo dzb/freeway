@@ -1,13 +1,19 @@
 package com.jujin.freeway.http.engine.http2;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.Test;
+
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
 import com.jujin.freeway.http.engine.http2.frame.FrameSerializer;
+import com.jujin.freeway.http.engine.http2.frame.FrameType;
 import com.jujin.freeway.http.engine.http2.frame.GoawayFrame;
 import com.jujin.freeway.http.engine.http2.frame.ResetStreamFrame;
 import com.jujin.freeway.http.engine.http2.frame.SettingIdentifier;
@@ -16,16 +22,10 @@ import com.jujin.freeway.http.engine.http2.frame.SettingsFrame;
 import com.jujin.freeway.http.engine.http2.frame.WindowUpdateFrame;
 import com.jujin.freeway.http.engine.http2.hpack.HPackContext;
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import org.junit.jupiter.api.Test;
-
-import java.io.ByteArrayOutputStream;
-import java.util.HexFormat;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 
 /**
  * Byte-level verification of HTTP/2 frame encoding against RFC 7540 §4-§6

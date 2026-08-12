@@ -1,10 +1,8 @@
 package com.jujin.freeway.http;
-import java.util.Optional;
 
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.json.JsonCodecDefault;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,11 +11,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.sse.SseEmitter;
 
-public final class StubHttpContext extends HttpContext {
+public final class StubHttpContext extends HttpContext implements HttpContextInternal {
 
     @SuppressWarnings("unchecked")
     private static <T> T coerce(Object input, Class<T> targetType) {
@@ -141,6 +142,18 @@ public final class StubHttpContext extends HttpContext {
     @Override
     public String responseHeader(String name) {
         return responseHeaders.get(name);
+    }
+
+    @Override
+    public Optional<String> responseHeaderValue(String name) {
+        return Optional.ofNullable(responseHeaders.get(name));
+    }
+
+    @Override
+    public HttpContext outputFile(FileChannel channel, long offset, long length)
+            throws IOException {
+        throw new UnsupportedOperationException(
+            "File-channel output is not supported by the test stub");
     }
 
     @Override

@@ -1,7 +1,8 @@
 package com.jujin.freeway.http.engine.http2.hpack;
 
-import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
 import org.junit.jupiter.api.Test;
+
+import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;

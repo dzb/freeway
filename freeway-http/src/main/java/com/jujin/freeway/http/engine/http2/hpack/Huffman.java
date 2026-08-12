@@ -1,10 +1,11 @@
 package com.jujin.freeway.http.engine.http2.hpack;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 /**
  * HPACK Huffman codec (RFC 7541 Appendix B).

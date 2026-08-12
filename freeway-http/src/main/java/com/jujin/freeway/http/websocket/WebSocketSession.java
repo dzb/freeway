@@ -1,9 +1,10 @@
 package com.jujin.freeway.http.websocket;
 
-import com.jujin.freeway.http.RequestContext;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+
+import com.jujin.freeway.http.RequestContext;
 
 /**
  * Thin WebSocket session view exposed to application code.

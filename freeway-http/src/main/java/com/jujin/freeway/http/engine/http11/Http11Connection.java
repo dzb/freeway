@@ -1,8 +1,5 @@
 package com.jujin.freeway.http.engine.http11;
 
-import com.jujin.freeway.http.engine.SessionBufferedInputStream;
-import com.jujin.freeway.http.engine.SessionBufferedOutputStream;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,10 +9,15 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.jujin.freeway.http.engine.SessionBufferedInputStream;
+import com.jujin.freeway.http.engine.SessionBufferedOutputStream;
 
 /**
  * Wraps a connected {@code Socket} with buffered I/O streams.

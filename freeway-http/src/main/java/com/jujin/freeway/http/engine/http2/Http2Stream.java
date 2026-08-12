@@ -1,17 +1,5 @@
 package com.jujin.freeway.http.engine.http2;
 
-import com.jujin.freeway.http.engine.http2.frame.BaseFrame;
-import com.jujin.freeway.http.engine.http2.frame.DataFrame;
-import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
-import com.jujin.freeway.http.engine.http2.frame.SettingIdentifier;
-import com.jujin.freeway.http.engine.http2.frame.WindowUpdateFrame;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -23,6 +11,19 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.jujin.freeway.http.engine.http2.frame.BaseFrame;
+import com.jujin.freeway.http.engine.http2.frame.DataFrame;
+import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
+import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
+import com.jujin.freeway.http.engine.http2.frame.FrameType;
+import com.jujin.freeway.http.engine.http2.frame.SettingIdentifier;
+import com.jujin.freeway.http.engine.http2.frame.WindowUpdateFrame;
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 /**
  * HTTP/2 stream processor. Represents a single HTTP/2 request/response stream,
@@ -47,6 +48,7 @@ public final class Http2Stream {
     private final AtomicLong receiveWindow = new AtomicLong(65535);
     private final AtomicBoolean handlingRequest = new AtomicBoolean();
     private final AtomicBoolean headersSent = new AtomicBoolean();
+    private final AtomicBoolean responseAborted = new AtomicBoolean();
     private volatile Thread thread;
     private volatile boolean streamOpen = true;
     private volatile boolean halfClosed;
@@ -76,7 +78,23 @@ public final class Http2Stream {
     public boolean isHalfClosed() { return halfClosed; }
 
     public void sendReset() throws IOException {
-        connection.sendResetStream(Http2ErrorCode.INTERNAL_ERROR, streamId);
+        if (!responseAborted.get()) {
+            connection.sendResetStream(Http2ErrorCode.INTERNAL_ERROR, streamId);
+        }
+    }
+
+    /**
+     * Aborts the response after a framing violation (e.g. body length does
+     * not match the advertised Content-Length). Sends exactly one
+     * RST_STREAM(PROTOCOL_ERROR) and closes the stream so no END_STREAM or
+     * further DATA is emitted for it.
+     */
+    public void abortResponse() throws IOException {
+        if (responseAborted.compareAndSet(false, true)) {
+            connection.sendResetStream(Http2ErrorCode.PROTOCOL_ERROR, streamId);
+        }
+        streamOutputClosed = true;
+        close();
     }
 
     void markHalfClosed() {
@@ -135,7 +153,9 @@ public final class Http2Stream {
             case RST_STREAM -> { halfClosed = true; close(); }
             case WINDOW_UPDATE -> {
                 int increment = ((WindowUpdateFrame) frame).increment();
-                if (sendWindow.addAndGet(increment) > Integer.MAX_VALUE) {
+                Http2FrameValidator.requirePositiveWindowIncrement(increment);
+                if (Http2FrameValidator.sendWindowOverflow(
+                        sendWindow.addAndGet(increment))) {
                     connection.sendResetStream(Http2ErrorCode.FLOW_CONTROL_ERROR, streamId);
                     close();
                 }

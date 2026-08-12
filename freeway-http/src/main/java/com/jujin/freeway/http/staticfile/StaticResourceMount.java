@@ -1,10 +1,5 @@
 package com.jujin.freeway.http.staticfile;
 
-import com.jujin.freeway.commons.util.ByteStreams;
-import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpStatus;
-import com.jujin.freeway.http.route.PathPattern;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -12,12 +7,14 @@ import java.net.URLConnection;
 import java.net.URLDecoder;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.DirectoryStream;
 import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.SecureDirectoryStream;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -29,7 +26,18 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.jujin.freeway.commons.util.ByteStreams;
+import com.jujin.freeway.commons.util.Strings;
+import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpContextInternal;
+import com.jujin.freeway.http.HttpStatus;
+import com.jujin.freeway.http.route.PathPattern;
+
 public final class StaticResourceMount {
+    private static final Logger LOG = LoggerFactory.getLogger(StaticResourceMount.class);
     private static final long DEFAULT_CACHE_MAX_AGE_SECONDS = 86_400L;
     private static final long MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024L; // 50MB
     private static final DateTimeFormatter HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
@@ -125,7 +133,6 @@ public final class StaticResourceMount {
             return true;
         }
 
-        boolean head = "HEAD".equalsIgnoreCase(ctx.method());
         ByteRange range = ifRangeAllows(ctx, meta)
             ? parseRange(ctx.header("Range").orElse(null), meta.size())
             : null;
@@ -142,78 +149,52 @@ public final class StaticResourceMount {
             ctx.status(206);
             ctx.setHeader("Content-Range",
                 "bytes " + range.start() + "-" + range.end() + "/" + meta.size());
-            ctx.setHeader("Content-Type", contentType(meta.name()));
-            ctx.setHeader("X-Content-Type-Options", "nosniff");
-            if (head) {
-                ctx.setHeader("Content-Length", Long.toString(length));
-                ctx.output(new byte[0]);
-                return true;
-            }
-            Path file = source.file(relative);
-            FileChannel secureChannel = source.openChannel(relative);
-            if (secureChannel != null) {
-                try {
-                    ctx.outputFile(secureChannel, range.start(), length);
-                    return true;
-                } catch (UnsupportedOperationException e) {
-                    secureChannel.close();
-                }
-            }
-            if (file != null) {
-                ctx.outputFile(file, range.start(), length);
-                return true;
-            }
-            InputStream body = source.open(relative);
-            if (body != null) {
-                try {
-                    body.skipNBytes(range.start());
-                    ctx.output(new BoundedInputStream(body, length), length);
-                    return true;
-                } finally {
-                    body.close();
-                }
-            }
-            StaticAsset asset = source.load(relative);
-            if (asset == null) {
+            if (!serveBytes(ctx, meta, relative, range.start(), length)) {
                 return notFound(ctx);
             }
-            ctx.output(Arrays.copyOfRange(
-                asset.bytes(), (int) range.start(), (int) (range.start() + length)));
             return true;
         }
 
-        if (head) {
+        if (!serveBytes(ctx, meta, relative, 0, meta.size())) {
+            return notFound(ctx);
+        }
+        return true;
+    }
+
+    /**
+     * Serves the asset through the fastest available path: secure sendfile
+     * channel, verified file path, body stream, or fully loaded bytes.
+     *
+     * <p>{@code start} is the byte offset and {@code length} the byte count;
+     * a negative length means unknown (classpath sources), streamed chunked.
+     * The file path is re-resolved at use time because the asset may have
+     * been replaced by a symlink between {@code meta()} and here (TOCTOU);
+     * {@code resolve()} re-checks containment on every access.</p>
+     *
+     * @return true when handled; false when the asset vanished and the
+     *         caller should fall through to {@link #notFound}
+     */
+    private boolean serveBytes(HttpContext ctx, AssetMeta meta, String relative,
+                               long start, long length) throws IOException {
+        ctx.setHeader("Content-Type", contentType(meta.name()));
+        ctx.setHeader("X-Content-Type-Options", "nosniff");
+        if ("HEAD".equalsIgnoreCase(ctx.method())) {
             // No body needed — report the headers (and real size) without
             // reading the file contents.
-            ctx.status(HttpStatus.OK);
-            ctx.setHeader("Content-Type", contentType(meta.name()));
-            ctx.setHeader("X-Content-Type-Options", "nosniff");
-            if (meta.size() >= 0) {
-                ctx.setHeader("Content-Length", Long.toString(meta.size()));
+            if (length >= 0) {
+                ctx.setHeader("Content-Length", Long.toString(length));
             }
             ctx.output(new byte[0]);
             return true;
         }
         // sendfile fast path: real files on plain HTTP get transferred
         // straight from the filesystem cache to the socket.
-        Path file = source.file(relative);
-        FileChannel secureChannel = source.openChannel(relative);
-        if (secureChannel != null) {
-            try {
-                ctx.status(HttpStatus.OK);
-                ctx.setHeader("Content-Type", contentType(meta.name()));
-                ctx.setHeader("X-Content-Type-Options", "nosniff");
-                ctx.outputFile(secureChannel, 0, meta.size());
-                return true;
-            } catch (UnsupportedOperationException e) {
-                secureChannel.close();
-            }
+        if (length >= 0 && trySendfile(ctx, source, relative, start, length)) {
+            return true;
         }
+        Path file = source.file(relative);
         if (file != null) {
-            ctx.status(HttpStatus.OK);
-            ctx.setHeader("Content-Type", contentType(meta.name()));
-            ctx.setHeader("X-Content-Type-Options", "nosniff");
-            ctx.outputFile(file, 0, meta.size());
+            ctx.outputFile(file, start, Math.max(0, length));
             return true;
         }
         // Stream when the source can open a body stream directly (disk
@@ -222,10 +203,12 @@ public final class StaticResourceMount {
         InputStream body = source.open(relative);
         if (body != null) {
             try {
-                ctx.status(HttpStatus.OK);
-                ctx.setHeader("Content-Type", contentType(meta.name()));
-                ctx.setHeader("X-Content-Type-Options", "nosniff");
-                ctx.output(body, meta.size());
+                if (length >= 0) {
+                    body.skipNBytes(start);
+                    ctx.output(new BoundedInputStream(body, length), length);
+                } else {
+                    ctx.output(body, -1);
+                }
                 return true;
             } finally {
                 body.close();
@@ -233,13 +216,41 @@ public final class StaticResourceMount {
         }
         StaticAsset asset = source.load(relative);
         if (asset == null) {
-            return notFound(ctx);
+            return false;
         }
-        ctx.status(HttpStatus.OK);
-        ctx.setHeader("Content-Type", contentType(asset.meta().name()));
-        ctx.setHeader("X-Content-Type-Options", "nosniff");
-        ctx.output(asset.bytes());
+        if (length >= 0) {
+            ctx.output(Arrays.copyOfRange(asset.bytes(), (int) start,
+                (int) (start + length)));
+        } else {
+            ctx.output(asset.bytes());
+        }
         return true;
+    }
+
+    /**
+     * Opens the asset through the secure channel path and hands the channel
+     * to the context. Ownership: the context closes the channel exactly
+     * once, including failure paths (see {@link HttpContextInternal}); when
+     * the context cannot consume channels ({@link UnsupportedOperationException})
+     * the caller closes it before falling back to the file/stream paths.
+     */
+    private static boolean trySendfile(HttpContext ctx, ResourceSource source,
+                                       String relative, long offset, long length)
+            throws IOException {
+        if (!(ctx instanceof HttpContextInternal internal)) {
+            return false;
+        }
+        FileChannel channel = source.openChannel(relative);
+        if (channel == null) {
+            return false;
+        }
+        try {
+            internal.outputFile(channel, offset, length);
+            return true;
+        } catch (UnsupportedOperationException e) {
+            channel.close();
+            return false;
+        }
     }
 
     private boolean notFound(HttpContext ctx) throws IOException {
@@ -589,10 +600,18 @@ public final class StaticResourceMount {
             try {
                 Path rootPath = root.toRealPath();
                 try (DirectoryStream<Path> stream = Files.newDirectoryStream(rootPath)) {
-                    if (!(stream instanceof java.nio.file.SecureDirectoryStream<Path> secureRoot)) {
-                        return null;
+                    if (!(stream instanceof SecureDirectoryStream<Path> secureRoot)) {
+                        // Degraded platform: no symlink-race-free directory
+                        // walks. Fall back to a containment-verified real-path
+                        // open; the resolution-vs-open race remains, so this
+                        // is weaker than SecureDirectoryStream.
+                        LOG.debug(
+                            "SecureDirectoryStream unavailable for mount {} — "
+                                + "falling back to verified real-path open",
+                            root);
+                        return fallbackChannel(relative);
                     }
-                    java.nio.file.SecureDirectoryStream<Path> current = secureRoot;
+                    SecureDirectoryStream<Path> current = secureRoot;
                     try {
                         String[] parts = relative.split("/");
                         for (int i = 0; i < parts.length - 1; i++) {
@@ -602,7 +621,7 @@ public final class StaticResourceMount {
                             current = next;
                         }
                         Set<OpenOption> options = new HashSet<>();
-                        options.add(java.nio.file.StandardOpenOption.READ);
+                        options.add(StandardOpenOption.READ);
                         var opened = current.newByteChannel(
                             Path.of(parts[parts.length - 1]), options);
                         if (!(opened instanceof FileChannel channel)) {
@@ -615,8 +634,27 @@ public final class StaticResourceMount {
                     }
                 }
             } catch (FileSystemException e) {
-                return null;
+                // The secure walk hit a non-directory segment or a vanished
+                // entry — fall back to the verified path/stream/load routes.
+                LOG.debug(
+                    "SecureDirectoryStream open failed for {} under {}: {}",
+                    relative, root, e.getMessage());
+                return fallbackChannel(relative);
             }
+        }
+
+        /**
+         * Containment-verified fallback open. Resolves the real path inside
+         * the mount root and opens it read-only; unlike
+         * {@link SecureDirectoryStream} this cannot prevent a race between
+         * resolution and open, so it is only used on degraded platforms or
+         * when the secure walk fails.
+         */
+        private FileChannel fallbackChannel(String relative) throws IOException {
+            Path real = resolve(relative);
+            return real == null
+                ? null
+                : FileChannel.open(real, StandardOpenOption.READ);
         }
 
         @Override

@@ -1,8 +1,9 @@
 package com.jujin.freeway.http.engine.http2.hpack;
-import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
 
 public final class StaticHeaderTable {
     private static final Http2HeaderField[] TABLE = new Http2HeaderField[62];
