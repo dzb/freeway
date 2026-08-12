@@ -272,17 +272,21 @@ public abstract class HttpContext {
         if (token == null || token.isBlank()) {
             throw new IllegalArgumentException("Vary token must not be blank");
         }
-        String vary = responseHeader("Vary");
-        if (vary == null || vary.isBlank()) {
-            setHeader("Vary", token);
-            return;
+        setHeader("Vary", mergeVary(responseHeader("Vary"), token));
+    }
+
+    /** Merges a token into an existing {@code Vary} value (or returns the
+     *  token alone), without duplicating it — case-insensitive. */
+    public static String mergeVary(String current, String token) {
+        if (current == null || current.isBlank()) {
+            return token;
         }
-        for (String part : vary.split(",")) {
+        for (String part : current.split(",")) {
             if (token.equalsIgnoreCase(part.trim())) {
-                return;
+                return current;
             }
         }
-        setHeader("Vary", vary + ", " + token);
+        return current + ", " + token;
     }
 
     /**
@@ -293,21 +297,25 @@ public abstract class HttpContext {
      */
     protected static void validateHeaderName(String name) {
         if (name == null) throw new IllegalArgumentException("Header name must not be null");
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            if (!isTokenChar(c)) {
-                throw new IllegalArgumentException("Invalid header name: " + name);
-            }
+        if (!isToken(name)) {
+            throw new IllegalArgumentException("Invalid header name: " + name);
         }
     }
 
-    /** RFC 7230 §3.2.6 tchar: a header name must be a token. Keeps the
-     *  case-insensitive header store's hash/equals contract consistent
-     *  (both are defined for ASCII tokens). */
-    private static boolean isTokenChar(char c) {
-        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
-            || (c >= '0' && c <= '9')
-            || "!#$%&'*+-.^_`|~".indexOf(c) >= 0;
+    /** RFC 7230 §3.2.6 tchar: true when every character is an HTTP token
+     *  character. Keeps the case-insensitive header store's hash/equals
+     *  contract consistent (both are defined for ASCII tokens). */
+    public static boolean isToken(String value) {
+        if (value.isEmpty()) return false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if ((c < 'A' || c > 'Z') && (c < 'a' || c > 'z')
+                    && (c < '0' || c > '9')
+                    && "!#$%&'*+-.^_`|~".indexOf(c) < 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     protected static void validateHeaderValue(String value) {

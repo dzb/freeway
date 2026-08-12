@@ -31,23 +31,7 @@ final class Http11ResponseWriter implements HttpResponseWriter {
 
     @Override
     public void writeHead(HttpContextDefault ctx) throws IOException {
-        OutputStream rawOut = ctx.rawOut;
-        int status = ctx.status();
-
-        // Status line: "HTTP/1.1 {code} {reason}\r\n"
-        rawOut.write(HTTP11);
-        rawOut.write(HttpContextDefault.statusCodeBytes(status));
-        rawOut.write(SPACE);
-        rawOut.write(HttpContextDefault.reasonBytes(status));
-        rawOut.write(CRLF);
-
-        // Response headers
-        for (var entry : ctx.responseHeaderEntries()) {
-            rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
-            rawOut.write(COLSP);
-            rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
-            rawOut.write(CRLF);
-        }
+        writeStatusLineAndHeaders(ctx);
     }
 
     @Override
@@ -71,18 +55,18 @@ final class Http11ResponseWriter implements HttpResponseWriter {
             ctx.headersWritten = true;
             if (bodyAllowed && ctx.chunkedResponse) {
                 rawOut.write(TE_CHUNKED);
-                if (!ctx.hasResponseHeaderIgnoreCase("Connection")) {
+                if (!ctx.hasResponseHeader("Connection")) {
                     rawOut.write(ctx.isKeepAlive() ? CONN_KA : CONN_CLOSE);
                 }
             } else {
                 // Content-Length
-                if (bodyAllowed && !ctx.hasResponseHeaderIgnoreCase("Content-Length")) {
+                if (bodyAllowed && !ctx.hasResponseHeader("Content-Length")) {
                     rawOut.write(CL_PREFIX);
                     rawOut.write(HttpContextDefault.contentLengthBytes(contentLength));
                     rawOut.write(CRLF);
                 }
                 // Connection
-                if (!ctx.hasResponseHeaderIgnoreCase("Connection")) {
+                if (!ctx.hasResponseHeader("Connection")) {
                     rawOut.write(ctx.isKeepAlive() ? CONN_KA : CONN_CLOSE);
                 }
             }
@@ -128,6 +112,20 @@ final class Http11ResponseWriter implements HttpResponseWriter {
         ctx.setHeader("Connection", "close");
 
         OutputStream rawOut = ctx.rawOut;
+        writeStatusLineAndHeaders(ctx);
+        rawOut.write("Transfer-Encoding: chunked".getBytes(StandardCharsets.ISO_8859_1));
+        rawOut.write(CRLF);
+        rawOut.write(CRLF);
+        rawOut.flush();
+        return new SseEmitter(new HttpContextDefault.ChunkedOutputStream(rawOut));
+    }
+
+    /** Status line plus response headers, without the framing headers
+     *  (Content-Length/Transfer-Encoding/Connection) that writeHead adds
+     *  during the body write. */
+    private static void writeStatusLineAndHeaders(HttpContextDefault ctx)
+            throws IOException {
+        OutputStream rawOut = ctx.rawOut;
         rawOut.write(HTTP11);
         rawOut.write(HttpContextDefault.statusCodeBytes(ctx.status()));
         rawOut.write(SPACE);
@@ -139,10 +137,5 @@ final class Http11ResponseWriter implements HttpResponseWriter {
             rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));
             rawOut.write(CRLF);
         }
-        rawOut.write("Transfer-Encoding: chunked".getBytes(StandardCharsets.ISO_8859_1));
-        rawOut.write(CRLF);
-        rawOut.write(CRLF);
-        rawOut.flush();
-        return new SseEmitter(new HttpContextDefault.ChunkedOutputStream(rawOut));
     }
 }

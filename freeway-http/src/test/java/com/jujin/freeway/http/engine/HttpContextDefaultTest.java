@@ -38,7 +38,9 @@ class HttpContextDefaultTest {
         @Override
         public void writeHead(HttpContextDefault ctx) {
             headStatus = ctx.status();
-            headHeaders.putAll(ctx.responseHeaders());
+            for (var entry : ctx.responseHeaderEntries()) {
+                headHeaders.put(entry.getKey(), entry.getValue());
+            }
         }
 
         @Override
@@ -83,7 +85,7 @@ class HttpContextDefaultTest {
     void setHeaderIsSingleSourceOfTruth() {
         var ctx = context(new RecordingWriter());
         ctx.setHeader("X-Custom", "abc");
-        assertEquals(Map.of("X-Custom", "abc"), ctx.responseHeaders(),
+        assertEquals(Map.of("X-Custom", "abc"), toMap(ctx),
                 "setHeader must write the context's response headers");
     }
 
@@ -126,7 +128,7 @@ class HttpContextDefaultTest {
         }
 
         assertTrue(writer.sse != null, "sse() must open the emitter via the writer");
-        assertTrue(ctx.responseHeaders().containsKey("Content-Type"),
+        assertTrue(toMap(ctx).containsKey("Content-Type"),
                 "SSE Content-Type must be set on the context");
     }
 
@@ -193,8 +195,16 @@ class HttpContextDefaultTest {
         var ctx = context(new RecordingWriter());
         ctx.setHeader("Content-Length", "1");
         ctx.setHeader("content-length", "2");
-        assertEquals(1, ctx.responseHeaders().size());
-        assertEquals("2", ctx.responseHeaders().get("content-length"));
+        assertEquals(1, toMap(ctx).size());
+        assertEquals("2", toMap(ctx).get("content-length"));
+    }
+
+    private static Map<String, String> toMap(HttpContextDefault ctx) {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (var entry : ctx.responseHeaderEntries()) {
+            map.put(entry.getKey(), entry.getValue());
+        }
+        return map;
     }
 
     @Test

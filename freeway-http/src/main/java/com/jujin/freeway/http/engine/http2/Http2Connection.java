@@ -195,7 +195,7 @@ public final class Http2Connection {
      */
     void writeFrame(byte[]... frames) throws IOException {
         boolean leader;
-        lock.lock();
+        lock();
         try {
             for (var frame : frames) {
                 if (frame != null && frame.length > 0) {
@@ -205,7 +205,7 @@ public final class Http2Connection {
             leader = !writing;
             if (leader) writing = true;
         } finally {
-            lock.unlock();
+            unlock();
         }
         if (leader) drainOutbound();
     }
@@ -215,14 +215,14 @@ public final class Http2Connection {
     void writeDataFrame(byte[] header, byte[] payload, int offset, int length)
             throws IOException {
         boolean leader;
-        lock.lock();
+        lock();
         try {
             outbound.add(new OutboundChunk(header, 0, header.length));
             outbound.add(new OutboundChunk(payload, offset, length));
             leader = !writing;
             if (leader) writing = true;
         } finally {
-            lock.unlock();
+            unlock();
         }
         if (leader) drainOutbound();
     }
@@ -231,14 +231,14 @@ public final class Http2Connection {
         try {
             while (true) {
                 OutboundChunk next;
-                lock.lock();
+                lock();
                 try {
                     next = outbound.poll();
                 } finally {
-                    lock.unlock();
+                    unlock();
                 }
                 if (next == null) {
-                    lock.lock();
+                    lock();
                     try {
                         if (outbound.isEmpty()) {
                             writing = false;
@@ -246,19 +246,19 @@ public final class Http2Connection {
                             return;
                         }
                     } finally {
-                        lock.unlock();
+                        unlock();
                     }
                     continue;
                 }
                 outputStream.write(next.bytes, next.offset, next.length);
             }
         } catch (IOException e) {
-            lock.lock();
+            lock();
             try {
                 writing = false;
                 outbound.clear();
             } finally {
-                lock.unlock();
+                unlock();
             }
             throw e;
         }

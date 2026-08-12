@@ -145,30 +145,13 @@ public final class PathPattern {
      * (it is only form-encoding in query strings, not in paths). Returns
      * {@code null} for malformed encodings.
      */
-    static String decodeSegment(String seg) {
+    public static String decodeSegment(String seg) {
         try {
             return URLDecoder.decode(
                 seg.replace("+", "%2B"), StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
             return null;
         }
-    }
-
-    /** Decodes an entire request path once, preserving segment boundaries. */
-    static String decodePath(String path) {
-        String[] segments = PathPattern.splitPath(path);
-        if (segments.length == 0) {
-            return "/";
-        }
-        StringBuilder decoded = new StringBuilder(path.length());
-        for (String segment : segments) {
-            String value = PathPattern.decodeSegment(segment);
-            if (value == null) {
-                return null;
-            }
-            decoded.append('/').append(value);
-        }
-        return decoded.toString();
     }
 
     public static String normalizePath(String path) {

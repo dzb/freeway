@@ -281,10 +281,10 @@ public class HttpContextDefault extends HttpContext {
             responseHeaders.set("Content-Encoding", "gzip");
             addVaryAcceptEncoding();
         } else if (contentLength >= 0
-                && !hasResponseHeaderIgnoreCase("Content-Length")) {
+                && !hasResponseHeader("Content-Length")) {
             responseHeaders.set("Content-Length", Long.toString(contentLength));
         } else if (contentLength < 0
-                && !hasResponseHeaderIgnoreCase("Content-Length")) {
+                && !hasResponseHeader("Content-Length")) {
             chunkedResponse = true;
         }
         responded = true;
@@ -434,14 +434,8 @@ public class HttpContextDefault extends HttpContext {
      *  internal header store because the response is already committed
      *  ({@code setHeader} is a no-op after {@code responded}). */
     private void addVaryAcceptEncoding() {
-        String vary = responseHeaders.get("Vary");
-        if (vary != null) {
-            if (!vary.toLowerCase(Locale.ROOT).contains("accept-encoding")) {
-                responseHeaders.set("Vary", vary + ", Accept-Encoding");
-            }
-        } else {
-            responseHeaders.set("Vary", "Accept-Encoding");
-        }
+        responseHeaders.set("Vary",
+            HttpContext.mergeVary(responseHeaders.get("Vary"), "Accept-Encoding"));
     }
 
     private static byte[] gzip(byte[] data) throws IOException {
@@ -555,22 +549,13 @@ public class HttpContextDefault extends HttpContext {
         }
     }
 
-    boolean hasResponseHeaderIgnoreCase(String name) {
+    boolean hasResponseHeader(String name) {
         return responseHeaders.contains(name);
     }
 
     /** Response headers in insertion order — consumed by response writers. */
     public List<Map.Entry<String, String>> responseHeaderEntries() {
         return responseHeaders.entries();
-    }
-
-    /** Snapshot view for tests and diagnostics (not on the hot path). */
-    Map<String, String> responseHeaders() {
-        Map<String, String> copy = new LinkedHashMap<>();
-        for (var entry : responseHeaders.entries()) {
-            copy.put(entry.getKey(), entry.getValue());
-        }
-        return copy;
     }
 
     void setKeepAlive(boolean keepAlive) {

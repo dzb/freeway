@@ -3,14 +3,14 @@ package com.jujin.freeway.http.engine.ws;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.jujin.freeway.http.HttpContext;
 
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.websocket.WebSocketSession;
@@ -234,26 +234,9 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     private Map<String, List<String>> ensureQueryParams() {
         if (queryParams == null) {
-            var map = new LinkedHashMap<String, List<String>>();
-            if (rawQuery != null && !rawQuery.isBlank()) {
-                for (String pair : rawQuery.split("&")) {
-                    int eq = pair.indexOf('=');
-                    String k = eq >= 0 ? decode(pair.substring(0, eq)) : decode(pair);
-                    String v = eq >= 0 ? decode(pair.substring(eq + 1)) : "";
-                    map.computeIfAbsent(k, ignored -> new ArrayList<>()).add(v);
-                }
-            }
-            queryParams = map;
+            queryParams = HttpContext.parseQueryParams(rawQuery);
         }
         return queryParams;
-    }
-
-    private static String decode(String s) {
-        try {
-            return URLDecoder.decode(s, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException e) {
-            return s;
-        }
     }
 
     private static byte[] buildClosePayload(int code, String reason) {

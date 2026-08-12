@@ -1,23 +1,15 @@
 package com.jujin.freeway.http;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.KeyStore;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import javax.net.ssl.KeyManager;
@@ -34,12 +26,11 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.http.body.BodyTooLargeException;
-import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
+import com.jujin.freeway.http.filter.ExceptionMappers;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
@@ -252,30 +243,8 @@ public final class HttpModule implements ModuleEx {
 
         binder.contribute(HttpFilter.class).add(new RequestTimingFilter());
 
-        binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
-            if (ex instanceof BodyTooLargeException) {
-                ctx.sendJson(HttpStatus.PAYLOAD_TOO_LARGE, Map.of(
-                    "error", "Payload Too Large",
-                    "message", ex.getMessage()
-                ));
-                return true;
-            }
-            if (ex instanceof MultipartException) {
-                ctx.sendJson(400, Map.of("error", "Invalid Multipart Request"));
-                return true;
-            }
-            if (ex instanceof ValidationException ve) {
-                var errors = ve.result().getErrors().stream()
-                        .map(e -> Map.of("field", e.field(), "message", e.message()))
-                    .toList();
-                ctx.sendJson(400, Map.of(
-                    "error", "Validation Failed",
-                    "details", errors
-                ));
-                return true;
-            }
-            return false;
-        });
+        binder.contribute(ExceptionMapper.class)
+            .add(ExceptionMappers.defaultMapper());
     }
 
     record SslSettings(
@@ -319,7 +288,7 @@ public final class HttpModule implements ModuleEx {
                 Duration.ZERO));
     }
 
-    private static SSLContext buildSslContext(SslSettings s) {
+    static SSLContext buildSslContext(SslSettings s) {
         try {
             KeyStore defaultStore = loadKeyStore(
                 Path.of(s.keyStorePath()), s.keyStoreType(), s.keyStorePassword());
@@ -339,7 +308,7 @@ public final class HttpModule implements ModuleEx {
         }
     }
 
-    private static KeyStore loadKeyStore(Path path, String type, String password)
+    static KeyStore loadKeyStore(Path path, String type, String password)
             throws Exception {
         KeyStore ks = KeyStore.getInstance(type);
         try (InputStream in = Files.newInputStream(path)) {
@@ -393,13 +362,13 @@ public final class HttpModule implements ModuleEx {
                 + "(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*");
     }
 
-    private static boolean isKeystoreFile(Path path) {
+    static boolean isKeystoreFile(Path path) {
         if (!Files.isRegularFile(path)) return false;
         String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
         return name.endsWith(".p12") || name.endsWith(".pfx") || name.endsWith(".jks");
     }
 
-    private static String storeTypeFor(String fileName, String fallback) {
+    static String storeTypeFor(String fileName, String fallback) {
         String lower = fileName.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".jks")) return "JKS";
         if (lower.endsWith(".p12") || lower.endsWith(".pfx")) return "PKCS12";
@@ -422,115 +391,6 @@ public final class HttpModule implements ModuleEx {
         return tmf.getTrustManagers();
     }
 
-    /** Polls keystore mtime/size and swaps a freshly built SSLContext into the
-     *  engine when certificate material changes. */
-    /** Internal SSL-certificate reloader. The scheduler/stamp-injecting
-     *  constructor is a test seam for package-local tests; production uses
-     *  the default constructor. Not part of the public API. */
-    final class SslReloader implements AutoCloseable {
-        private final FreewayHttpEngine engine;
-        private final SslSettings settings;
-        private final ScheduledExecutorService scheduler;
-        private final FileStampProvider fileStampProvider;
-        private volatile Map<Path, FileStamp> snapshot;
-
-        SslReloader(FreewayHttpEngine engine, SslSettings settings) {
-            this(engine, settings, Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "freeway-ssl-reload");
-                t.setDaemon(true);
-                return t;
-            }), path -> Files.readAttributes(path, BasicFileAttributes.class));
-        }
-
-        SslReloader(FreewayHttpEngine engine, SslSettings settings,
-                    ScheduledExecutorService scheduler,
-                    FileStampProvider fileStampProvider) {
-            this.engine = engine;
-            this.settings = settings;
-            this.scheduler = scheduler;
-            this.fileStampProvider = fileStampProvider;
-        }
-
-        void start() {
-            try {
-                snapshot = snapshot();
-            } catch (IOException e) {
-                throw new IllegalStateException(
-                    "Cannot snapshot keystore files for reload", e);
-            }
-            long intervalMillis = Math.max(settings.reloadInterval().toMillis(), 100);
-            scheduler.scheduleWithFixedDelay(
-                this::check, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
-        }
-
-        /** Package-level seam: invoked directly by package-local tests. */
-        void check() {
-            try {
-                Map<Path, FileStamp> current = snapshot();
-                if (!current.equals(snapshot)) {
-                    engine.reload(buildSslContext(settings));
-                    snapshot = current;
-                    LOG.info("Reloaded HTTPS certificate material ({} keystore file(s))",
-                        current.size());
-                }
-            } catch (Exception e) {
-                LOG.error("HTTPS certificate reload failed — keeping previous context", e);
-            }
-        }
-
-        private Map<Path, FileStamp> snapshot() throws IOException {
-            Map<Path, FileStamp> files = new LinkedHashMap<>();
-            files.put(Path.of(settings.keyStorePath()),
-                stamp(Path.of(settings.keyStorePath())));
-            if (settings.trustStorePath() != null) {
-                Path trustStore = Path.of(settings.trustStorePath());
-                files.put(trustStore, stamp(trustStore));
-            }
-            if (settings.sniDirectory() != null) {
-                try (var stream = Files.list(Path.of(settings.sniDirectory()))) {
-                    for (Path p : stream.filter(HttpModule::isKeystoreFile).sorted().toList()) {
-                        files.put(p, stamp(p));
-                    }
-                }
-            }
-            return files;
-        }
-
-        private FileStamp stamp(Path path) throws IOException {
-            BasicFileAttributes attrs = fileStampProvider.stamp(path);
-            return new FileStamp(attrs.lastModifiedTime().toMillis(), attrs.size(), digest(path));
-        }
-
-        private static String digest(Path path) throws IOException {
-            try {
-                MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                try (InputStream in = Files.newInputStream(path)) {
-                    byte[] buffer = new byte[8192];
-                    int n;
-                    while ((n = in.read(buffer)) >= 0) {
-                        if (n > 0) digest.update(buffer, 0, n);
-                    }
-                }
-                return HexFormat.of().formatHex(digest.digest());
-            } catch (NoSuchAlgorithmException e) {
-                throw new AssertionError(e);
-            }
-        }
-
-        @Override
-        public void close() {
-            scheduler.shutdownNow();
-        }
-    }
-
-    record FileStamp(long lastModified, long size, String digest) {}
-
-    /** Internal seam: abstracts file-stamp reads for {@link SslReloader}
-     *  tests. Not part of the public API. */
-    @FunctionalInterface
-    interface FileStampProvider {
-        BasicFileAttributes stamp(Path path) throws IOException;
-    }
 
     private static SSLParameters buildSslParameters(
             boolean clientAuth, String protocols, String ciphers) {

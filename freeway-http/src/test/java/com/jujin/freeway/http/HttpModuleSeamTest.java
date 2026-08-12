@@ -124,16 +124,15 @@ class HttpModuleSeamTest {
             new JsonCodecDefault(), new CoercerDefault(), initial, false, null);
     }
 
-    private static HttpModule.SslReloader reloader(
+    private static SslReloader reloader(
             FreewayHttpEngine engine, ScheduledThreadPoolExecutor scheduler,
             Path keyStorePath, String password,
-            HttpModule.FileStampProvider provider) {
+            SslReloader.FileStampProvider provider) {
         var settings = new HttpModule.SslSettings(
             true, keyStorePath.toString(), password, "PKCS12",
             false, null, null, "PKCS12", false, null, null,
             null, Duration.ZERO);
-        return new HttpModule().new SslReloader(
-            engine, settings, scheduler, provider);
+        return new SslReloader(engine, settings, scheduler, provider);
     }
 
     private static Path generateKeyStore(Path dir) throws Exception {

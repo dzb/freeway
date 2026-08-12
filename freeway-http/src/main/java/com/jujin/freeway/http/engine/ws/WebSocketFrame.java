@@ -114,6 +114,17 @@ public final class WebSocketFrame {
             throw new WebSocketException(CloseCode.ProtocolError,
                 "Control frame payload must not exceed 125 bytes");
         }
+        writeHeaderAndPayload(out);
+        out.flush();
+    }
+
+    /** Writes frame without flushing — for high-frequency sends where
+     *  SessionBufferedOutputStream batching is preferred. */
+    void writeWithoutFlush(OutputStream out) throws IOException {
+        writeHeaderAndPayload(out);
+    }
+
+    private void writeHeaderAndPayload(OutputStream out) throws IOException {
         int header = fin ? 0x80 : 0;
         header |= opCode.value() & 0x0F;
         out.write(header);
@@ -147,7 +158,6 @@ public final class WebSocketFrame {
         } else {
             out.write(payload);
         }
-        out.flush();
     }
 
     // --- internal ---
@@ -209,43 +219,6 @@ public final class WebSocketFrame {
             }
         }
         this.payload = new byte[payloadLength];
-    }
-
-    /** Writes frame without flushing — for high-frequency sends where SessionBufferedOutputStream batching is preferred. */
-    void writeWithoutFlush(OutputStream out) throws IOException {
-        int header = fin ? 0x80 : 0;
-        header |= opCode.value() & 0x0F;
-        out.write(header);
-
-        int len = payload != null ? payload.length : 0;
-        boolean masked = maskingKey != null && maskingKey.length == 4;
-
-        if (len <= 125) {
-            out.write(masked ? 0x80 | (byte) len : (byte) len);
-        } else if (len <= 0xFFFF) {
-            out.write(masked ? 0xFE : 126);
-            out.write(len >>> 8);
-            out.write(len);
-        } else {
-            out.write(masked ? 0xFF : 127);
-            out.write(0);
-            out.write(0);
-            out.write(0);
-            out.write(0);
-            out.write(len >>> 24);
-            out.write(len >>> 16);
-            out.write(len >>> 8);
-            out.write(len);
-        }
-
-        if (masked) {
-            out.write(maskingKey);
-            for (int i = 0; i < len; i++) {
-                out.write(payload[i] ^ maskingKey[i % 4]);
-            }
-        } else {
-            out.write(payload);
-        }
     }
 
     private void readPayload(InputStream in) throws IOException {

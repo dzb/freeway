@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import com.jujin.freeway.http.HttpContext;
+
 /**
  * Parses HTTP/1.x request line and headers from a raw {@code InputStream}.
  * Bulk-reads into a reusable buffer to minimize socket calls.
@@ -222,8 +224,10 @@ public final class HttpParser {
                 throw new IOException("Malformed header line (missing colon)");
             }
             String rawKey = headerKeyBuf.substring(0, colon);
-            if (rawKey.isEmpty() || !rawKey.equals(rawKey.trim()) || !isToken(rawKey))
+            if (rawKey.isEmpty() || !rawKey.equals(rawKey.trim())
+                    || !HttpContext.isToken(rawKey)) {
                 throw new IOException("Invalid header name");
+            }
             String key = rawKey;
             key = key.toLowerCase(Locale.ROOT);
 
@@ -340,16 +344,6 @@ public final class HttpParser {
         return new IOException(requestLine
             ? "Request line too long (max " + maxLen + " chars)"
             : "Headers too large");
-    }
-
-    private static boolean isToken(String value) {
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (!(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z')
-                    && !(c >= '0' && c <= '9')
-                    && "!#$%&'*+-.^_`|~".indexOf(c) < 0) return false;
-        }
-        return true;
     }
 
     /**

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
-import java.net.URLDecoder;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -276,13 +275,12 @@ public final class StaticResourceMount {
         if (normalized.isBlank()) {
             normalized = "index.html";
         }
-        try {
-            // URLDecoder treats + as space (form encoding); file paths use %2B
-            normalized = URLDecoder.decode(
-                normalized.replace("+", "%2B"), StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException e) {
+        // URLDecoder treats + as space (form encoding); file paths use %2B.
+        String decoded = PathPattern.decodeSegment(normalized);
+        if (decoded == null) {
             return null;
         }
+        normalized = decoded;
         if (normalized.startsWith("/")) {
             normalized = normalized.substring(1);
         }
