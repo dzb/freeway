@@ -112,4 +112,17 @@ class StaticResourceConditionalTest {
 
         assertEquals(etag1, etag2);
     }
+
+    @Test
+    void ifModifiedSinceUsesHttpSecondPrecision(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("precision.txt");
+        Files.writeString(file, "hello");
+        StaticResourceMount mount = StaticResourceMount.directory("/", tempDir);
+        StubHttpContext first = new StubHttpContext("GET", "/precision.txt");
+        mount.serve(first);
+        StubHttpContext second = new StubHttpContext("GET", "/precision.txt");
+        second.requestHeader("If-Modified-Since", first.responseHeader("Last-Modified"));
+        mount.serve(second);
+        assertEquals(304, second.status());
+    }
 }

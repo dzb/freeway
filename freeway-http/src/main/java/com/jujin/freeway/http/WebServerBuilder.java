@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.http.body.BodyTooLargeException;
+import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.AccessLogFilter;
@@ -206,6 +207,10 @@ public final class WebServerBuilder {
                 ctx.sendJson(413, Map.of(
                     "error", "Payload Too Large",
                     "message", ex.getMessage()));
+                return true;
+            }
+            if (ex instanceof MultipartException) {
+                ctx.sendJson(400, Map.of("error", "Invalid Multipart Request"));
                 return true;
             }
             if (ex instanceof ValidationException ve) {

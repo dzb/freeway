@@ -42,6 +42,9 @@ public class SseEmitter implements AutoCloseable {
      *         lines; {@code 0} disables the heartbeat */
     public SseEmitter(OutputStream outputStream, long heartbeatIntervalMillis) {
         this.outputStream = Objects.requireNonNull(outputStream, "outputStream");
+        if (heartbeatIntervalMillis < 0) {
+            throw new IllegalArgumentException("heartbeatIntervalMillis must be >= 0");
+        }
         this.heartbeatIntervalMillis = heartbeatIntervalMillis;
         this.heartbeatThread = heartbeatIntervalMillis > 0
             ? Thread.ofVirtual().name("sse-heartbeat").start(this::heartbeatLoop)
@@ -51,6 +54,11 @@ public class SseEmitter implements AutoCloseable {
     /** Writes a single SSE event to the output stream with full event metadata. */
     public void send(SseEvent event) throws IOException {
         Objects.requireNonNull(event, "event");
+        validateField(event.id(), "id");
+        validateField(event.event(), "event");
+        if (event.retry() != null && event.retry() < 0) {
+            throw new IllegalArgumentException("retry must be >= 0");
+        }
         if (closed) return;
 
         // The whole event is written under one lock so the heartbeat thread
@@ -104,10 +112,12 @@ public class SseEmitter implements AutoCloseable {
 
     /** Closes the emitter. Subsequent sends are silently ignored. */
     public void complete() throws IOException {
-        if (closed) return;
-        closed = true;
-        if (heartbeatThread != null) heartbeatThread.interrupt();
-        outputStream.close();
+        synchronized (this) {
+            if (closed) return;
+            closed = true;
+            if (heartbeatThread != null) heartbeatThread.interrupt();
+            outputStream.close();
+        }
     }
 
     @Override
@@ -115,6 +125,12 @@ public class SseEmitter implements AutoCloseable {
 
     private void write(String text) throws IOException {
         outputStream.write(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void validateField(String value, String field) {
+        if (value != null && (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0)) {
+            throw new IllegalArgumentException(field + " must not contain CR/LF");
+        }
     }
 
     private void heartbeatLoop() {

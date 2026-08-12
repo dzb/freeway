@@ -118,6 +118,15 @@ public final class Http11Connection {
         try { socket.close(); } catch (Exception e) { LOG.trace("Socket close error", e); }
     }
 
+    /** Immediate shutdown path; never blocks trying to flush a dead peer. */
+    public void forceClose() {
+        closed = true;
+        if (watchdog != null) watchdog.interrupt();
+        try { socket.close(); } catch (IOException ignored) {}
+        try { bufferedIn.close(); } catch (IOException ignored) {}
+        try { bufferedOut.close(); } catch (IOException ignored) {}
+    }
+
     /**
      * Installs a best-effort hook run by {@link #preClose()} before the
      * server handle force-closes connections during shutdown. Used by

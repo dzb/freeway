@@ -7,6 +7,7 @@ import java.util.Map;
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
 import com.jujin.freeway.http.engine.http2.frame.FrameType;
+import com.jujin.freeway.http.engine.http2.frame.FrameSerializer;
 import com.jujin.freeway.http.engine.http2.frame.GoawayFrame;
 import com.jujin.freeway.http.engine.http2.frame.ResetStreamFrame;
 import com.jujin.freeway.http.engine.http2.frame.SettingIdentifier;
@@ -21,6 +22,10 @@ import java.io.ByteArrayOutputStream;
 import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 
 /**
  * Byte-level verification of HTTP/2 frame encoding against RFC 7540 §4-§6
@@ -96,6 +101,14 @@ class H2WireFormatTest {
             FrameFlag.FlagSet.of(FrameFlag.ACK), 0);
         assertEquals("000000040100000000", HEX.formatHex(ack),
             "SETTINGS ACK: len=0, type=0x04, flags=0x01");
+    }
+
+    @Test
+    void continuationRejectsNonEndHeadersFlags() {
+        byte[] header = FrameHeader.encode(0, FrameType.CONTINUATION,
+            FrameFlag.FlagSet.of(FrameFlag.END_STREAM), 1);
+        assertThrows(Http2Exception.class, () -> FrameSerializer.deserialize(
+            new ByteArrayInputStream(header)));
     }
 
     @Test

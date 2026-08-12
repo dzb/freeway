@@ -28,6 +28,8 @@ import java.util.Map;
  * </ul>
  */
 public final class HPackContext {
+    /** Hard local ceiling for memory used by an inbound peer's HPACK table. */
+    private static final long MAX_INBOUND_DYNAMIC_TABLE_SIZE = 64 * 1024;
     /**
      * Dynamic table (HPACK max table size in bytes, default 4096).
      */
@@ -38,7 +40,7 @@ public final class HPackContext {
     /** Adjusts the decoder's dynamic table cap to the encoder's advertised
      *  SETTINGS_HEADER_TABLE_SIZE (RFC 7541 §4.2). */
     public void setMaxDynamicTableSize(long size) {
-        maxDynamicTableSize = size;
+        maxDynamicTableSize = Math.min(size, MAX_INBOUND_DYNAMIC_TABLE_SIZE);
         trimDynamicTable();
     }
 
@@ -57,9 +59,9 @@ public final class HPackContext {
      */
     static IntR readInt(byte[] b, int p, int bits) throws IOException {
         int mask = (1 << bits) - 1;
-        int value = b[p] & mask;
+        long value = b[p] & mask;
         p++;
-        if (value < mask) return new IntR(p, value);
+        if (value < mask) return new IntR(p, (int) value);
 
         // Multi-byte encoding
         int shift = 0;
@@ -69,16 +71,16 @@ public final class HPackContext {
             x = b[p] & 0xFF;
             // value += (x & 0x7F) << shift must stay within int range:
             // shift 29+ always overflows; shift == 28 allows up to 7<<28.
-            if (shift > 28 || (shift == 28 && (x & 0x7F) > 7)
-                    || value > (Integer.MAX_VALUE - (x & 0x7F))) {
+            long digit = x & 0x7F;
+            if (shift >= 31 || (digit << shift) > Integer.MAX_VALUE - value) {
                 throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
                     "HPACK integer exceeds 2^31-1");
             }
-            value += (x & 0x7F) << shift;
+            value += digit << shift;
             shift += 7;
             p++;
         } while ((x & 0x80) != 0);
-        return new IntR(p, value);
+        return new IntR(p, (int) value);
     }
 
     /**
@@ -254,7 +256,13 @@ public final class HPackContext {
      * @return the decoded list of header fields
      */
     public List<Http2HeaderField> decode(byte[] block) throws IOException {
+        return decode(block, Long.MAX_VALUE);
+    }
+
+    public List<Http2HeaderField> decode(byte[] block, long maxHeaderListSize)
+            throws IOException {
         var fields = new ArrayList<Http2HeaderField>(8);
+        long headerListSize = 0;
         int pos = 0;
         while (pos < block.length) {
             var field = new Http2HeaderField();
@@ -280,6 +288,13 @@ public final class HPackContext {
                 continue;
             } else {
                 throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
+            }
+            if (field.name != null && field.value != null) {
+                headerListSize += (long) field.name.length() + field.value.length() + 32;
+                if (headerListSize > maxHeaderListSize) {
+                    throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR,
+                        "Decoded header list exceeds " + maxHeaderListSize + " bytes");
+                }
             }
             fields.add(field);
         }

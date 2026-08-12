@@ -449,7 +449,7 @@ public final class Http2Connection {
                 }
                 byte[] headerBlock = BinUtils.combine(headerBlockFragments);
                 var fields = new HeaderFields();
-                for (var field : hpack.decode(headerBlock)) fields.add(field);
+                for (var field : hpack.decode(headerBlock, MAX_HEADER_LIST_SIZE)) fields.add(field);
                 fields.validate();
 
                 Map<String, List<String>> requestHeaders = new LinkedHashMap<>(fields.size() * 2);
@@ -485,7 +485,7 @@ public final class Http2Connection {
                 // applies to request header blocks.
                 byte[] headerBlock = BinUtils.combine(headerBlockFragments);
                 var fields = new HeaderFields();
-                for (var field : hpack.decode(headerBlock)) fields.add(field);
+                for (var field : hpack.decode(headerBlock, MAX_HEADER_LIST_SIZE)) fields.add(field);
                 headerBlockFragments.clear();
                 headerBlockSize = 0;
                 inHeaders = false;
@@ -504,12 +504,21 @@ public final class Http2Connection {
             } else if (target == null) {
                 if (streamId <= lastSeenStreamId) {
                     if (frame.header().type() == FrameType.WINDOW_UPDATE) continue;
-                    throw new Http2Exception(Http2ErrorCode.STREAM_CLOSED);
+                    // The frame targets a closed stream; this is a stream
+                    // error and must not terminate other active streams.
+                    sendResetStream(Http2ErrorCode.STREAM_CLOSED, streamId);
+                    continue;
                 }
                 throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             }
 
-            target.dispatch(frame, executor);
+            try {
+                target.dispatch(frame, executor);
+            } catch (Http2Exception e) {
+                // A stream error must not tear down the multiplexed connection.
+                sendResetStream(e.errorCode(), streamId);
+                target.close();
+            }
         }
     }
 
@@ -538,6 +547,8 @@ public final class Http2Connection {
                     throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
                 for (var stream : streams.values())
                     stream.sendWindow.addAndGet(parameter.value - oldWindow);
+                // SETTINGS can unblock writers without a WINDOW_UPDATE.
+                unparkWindowWaiters();
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_FRAME_SIZE) {
                 peerMaxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_HEADER_TABLE_SIZE) {

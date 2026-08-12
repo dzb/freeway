@@ -33,12 +33,15 @@ public final class HeadersFrame extends BaseFrame {
             if (frame.padLength >= header.length()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             pos++;
         }
+        int end = header.length() - frame.padLength;
         if (header.flags().contains(FrameFlag.PRIORITY)) {
+            if (end - pos < 5)
+                throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR,
+                    "HEADERS PRIORITY field is truncated");
             frame.dependentStreamId = BinUtils.readInt(payload, pos, 4) & 0x7FFFFFFFL;
             if (frame.dependentStreamId == header.streamId()) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             pos += 5;
         }
-        int end = header.length() - frame.padLength;
         if (end < pos) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         frame.headerBlock = Arrays.copyOfRange(payload, pos, end);
         return frame;

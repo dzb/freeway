@@ -139,12 +139,18 @@ public final class HttpParser {
                 case "transfer-encoding" -> {
                     for (String v : entry.getValue()) {
                         if (v != null) {
-                            for (String token : v.split(",")) {
+                            String[] tokens = v.split(",", -1);
+                            for (int i = 0; i < tokens.length; i++) {
+                                String token = tokens[i];
                                 token = token.trim();
                                 if ("chunked".equalsIgnoreCase(token)) {
+                                    if (isChunked || i != tokens.length - 1)
+                                        throw new IOException("Invalid Transfer-Encoding order");
                                     isChunked = true;
                                 } else if (!token.isEmpty()) {
                                     throw new IOException("Unsupported Transfer-Encoding: " + token);
+                                } else {
+                                    throw new IOException("Invalid empty Transfer-Encoding");
                                 }
                             }
                         }
@@ -215,7 +221,10 @@ public final class HttpParser {
             if (colon < 0) {
                 throw new IOException("Malformed header line (missing colon)");
             }
-            String key = headerKeyBuf.substring(0, colon).trim();
+            String rawKey = headerKeyBuf.substring(0, colon);
+            if (rawKey.isEmpty() || !rawKey.equals(rawKey.trim()) || !isToken(rawKey))
+                throw new IOException("Invalid header name");
+            String key = rawKey;
             key = key.toLowerCase(Locale.ROOT);
 
             headerValBuf.setLength(0);
@@ -333,6 +342,16 @@ public final class HttpParser {
             : "Headers too large");
     }
 
+    private static boolean isToken(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z')
+                    && !(c >= '0' && c <= '9')
+                    && "!#$%&'*+-.^_`|~".indexOf(c) < 0) return false;
+        }
+        return true;
+    }
+
     /**
      * Returns an {@code InputStream} for reading the request body: any bytes
      * already buffered past the header boundary, followed by the remaining
@@ -363,6 +382,14 @@ public final class HttpParser {
             // pipelined next request — keep it for the next parse().
             return prefix;
         }
+        return new SequenceInputStream(prefix, in);
+    }
+
+    /** Returns unread parser bytes followed by the underlying stream. */
+    public InputStream upgradeStream() {
+        if (pos >= end) return in;
+        var prefix = new ByteArrayInputStream(buf, pos, end - pos);
+        pos = end;
         return new SequenceInputStream(prefix, in);
     }
 

@@ -128,9 +128,9 @@ final class Http11ResponseWriter implements HttpResponseWriter {
 
         OutputStream rawOut = ctx.rawOut;
         rawOut.write(HTTP11);
-        rawOut.write(HttpContextDefault.statusCodeBytes(200));
+        rawOut.write(HttpContextDefault.statusCodeBytes(ctx.status()));
         rawOut.write(SPACE);
-        rawOut.write(HttpContextDefault.reasonBytes(200));
+        rawOut.write(HttpContextDefault.reasonBytes(ctx.status()));
         rawOut.write(CRLF);
         for (var entry : ctx.responseHeaders().entrySet()) {
             rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));

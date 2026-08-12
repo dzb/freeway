@@ -76,12 +76,29 @@ class HPackContextTest {
     }
 
     @Test
+    void peerTableSizeCannotExceedLocalHardCap() throws IOException {
+        HPackContext hpack = new HPackContext();
+        hpack.setMaxDynamicTableSize(1024 * 1024);
+        hpack.decode(incrementalBlock(400, 100, 100));
+
+        assertNull(hpack.get(62 + 300),
+            "Inbound dynamic table must remain below the local hard cap");
+    }
+
+    @Test
     void oversizedFieldIsNotAddedToDynamicTable() throws IOException {
         HPackContext hpack = new HPackContext();
         hpack.decode(incrementalBlock(1, 3000, 3000));
 
         assertNull(hpack.get(62),
             "An entry larger than the table capacity must not be stored");
+    }
+
+    @Test
+    void decodedHeaderListSizeIsBounded() {
+        HPackContext hpack = new HPackContext();
+        assertThrows(Http2Exception.class,
+            () -> hpack.decode(incrementalBlock(2, 100, 100), 200));
     }
 
     @Test

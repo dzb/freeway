@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Locale;
@@ -38,6 +39,7 @@ public class HttpContextDefault extends HttpContext {
     private String remoteAddress = "";
     private Map<String, List<String>> requestHeaders, queryParams;
     private InputStream bodyStream;
+    private InputStream boundedBodyStream;
     private long contentLength;
     private boolean chunked, http10, keepAlive;
     OutputStream rawOut;
@@ -127,6 +129,7 @@ public class HttpContextDefault extends HttpContext {
         this.rawQuery = rawQuery;
         this.requestHeaders = requestHeaders;
         this.bodyStream = bodyStream;
+        this.boundedBodyStream = null;
         this.contentLength = contentLength;
         this.chunked = chunked;
         this.rawOut = rawOut;
@@ -139,6 +142,7 @@ public class HttpContextDefault extends HttpContext {
         this.responseHeaders.clear();
         this.pathVariables.clear();
         this.cachedBody = null;
+        this.bodyLimitExceeded = false;
         this.headersWritten = false;
         this.chunkedResponse = false;
     }
@@ -249,6 +253,7 @@ public class HttpContextDefault extends HttpContext {
         validateHeaderName(name);
         validateHeaderValue(value);
         // Single source of truth — response writers read this in writeHead().
+        responseHeaders.keySet().removeIf(existing -> existing.equalsIgnoreCase(name));
         responseHeaders.put(name, value);
         return this;
     }
@@ -259,6 +264,7 @@ public class HttpContextDefault extends HttpContext {
         responded = true;
         byte[] body = data;
         if (compression.enabled() && responseStatus != 206
+                && allowsResponseBody()
                 && body.length >= compression.minSize()
                 && acceptsGzip() && compressibleContentType()) {
             body = gzip(body);
@@ -281,6 +287,7 @@ public class HttpContextDefault extends HttpContext {
     public HttpContext output(InputStream in, long contentLength) throws IOException {
         if (responded) return this;
         boolean gzip = compression.enabled() && responseStatus != 206
+            && allowsResponseBody()
             && acceptsGzip() && compressibleContentType();
         if (gzip) {
             // Compressed length is unknown until the stream is consumed —
@@ -322,10 +329,28 @@ public class HttpContextDefault extends HttpContext {
             }
             gzipOut.finish();
         } else {
+            long remaining = contentLength;
+            long actual = 0;
             while (true) {
-                int n = in.read(buffer);
+                int requested = remaining >= 0 ? (int) Math.min(buffer.length, remaining) : buffer.length;
+                if (remaining == 0) {
+                    if (in.read() >= 0) {
+                        keepAlive = false;
+                        throw new IOException("Response body exceeds Content-Length");
+                    }
+                    break;
+                }
+                int n = in.read(buffer, 0, requested);
                 if (n < 0) break;
-                if (n > 0) writer.writeBody(this, buffer, 0, n);
+                if (n > 0) {
+                    actual += n;
+                    if (remaining >= 0) remaining -= n;
+                    writer.writeBody(this, buffer, 0, n);
+                }
+            }
+            if (contentLength >= 0 && actual != contentLength) {
+                keepAlive = false;
+                throw new IOException("Response body shorter than Content-Length");
             }
         }
         writer.end(this);
@@ -336,12 +361,28 @@ public class HttpContextDefault extends HttpContext {
     public HttpContext outputFile(Path file, long offset, long length)
             throws IOException {
         if (responded) return this;
+        try (FileChannel channel = FileChannel.open(file,
+                StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+            return outputFile(channel, offset, length);
+        }
+    }
+
+    @Override
+    public HttpContext outputFile(FileChannel channel, long offset, long length)
+            throws IOException {
+        if (responded) {
+            channel.close();
+            return this;
+        }
         boolean gzip = compression.enabled() && responseStatus != 206
             && acceptsGzip() && compressibleContentType();
         if (gzip || fileSender == null || length < MIN_SENDFILE_BYTES) {
-            try (InputStream in = Files.newInputStream(file)) {
-                in.skipNBytes(offset);
-                return output(new FixedLengthInputStream(in, length), length);
+            channel.position(offset);
+            try {
+                return output(new FixedLengthInputStream(
+                    java.nio.channels.Channels.newInputStream(channel), length), length);
+            } finally {
+                channel.close();
             }
         }
         responseHeaders.put("Content-Length", Long.toString(length));
@@ -349,8 +390,10 @@ public class HttpContextDefault extends HttpContext {
         writer.writeHead(this);
         writer.writeBody(this, new byte[0]); // status + headers, once
         rawOut.flush();
-        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+        try {
             fileSender.transfer(channel, offset, length);
+        } finally {
+            channel.close();
         }
         writer.end(this);
         return this;
@@ -431,6 +474,7 @@ public class HttpContextDefault extends HttpContext {
 
     @Override
     public SseEmitter sse() throws IOException {
+        if (responded) throw new IllegalStateException("Response already committed");
         // Mark responded only after the writer opened the stream — the writer
         // still needs setHeader() while assembling the SSE head (e.g. the
         // HTTP/1.1 Connection: close override).
@@ -460,6 +504,10 @@ public class HttpContextDefault extends HttpContext {
         // For GET/HEAD/DELETE (no Content-Length, not chunked), the "body stream"
         // is the raw socket InputStream — draining it would eat the next keep-alive request.
         if (cachedBody != null) return true;
+        // Do not recreate a bounded stream after an over-limit read. Closing
+        // is safer than risking consumption of a pipelined next request.
+        if (bodyLimitExceeded) return false;
+        if (contentLength > maxBodySize) return false;
         if (contentLength <= 0 && !chunked) return true;
         try {
             if (bodyStream != null) {
@@ -468,7 +516,12 @@ public class HttpContextDefault extends HttpContext {
                 // the end of the body. Reading the raw stream would block on
                 // a keep-alive socket and swallow the next request.
                 InputStream remaining = bodyStream();
-                while (remaining.read(drainBuf) >= 0) { /* drain */ }
+                long drained = 0;
+                int n;
+                while ((n = remaining.read(drainBuf)) >= 0) {
+                    drained += n;
+                    if (drained > maxBodySize) return false;
+                }
             }
             return true;
         } catch (IOException ignored) { /* best-effort */ }
@@ -502,11 +555,14 @@ public class HttpContextDefault extends HttpContext {
     // --- internal ---
 
     private InputStream bodyStream() throws IOException {
+        if (boundedBodyStream != null) return boundedBodyStream;
         if (chunked) {
-            return new ChunkedInputStream(bodyStream);
+            boundedBodyStream = new ChunkedInputStream(bodyStream);
+            return boundedBodyStream;
         }
         if (contentLength >= 0) {
-            return new FixedLengthInputStream(bodyStream, contentLength);
+            boundedBodyStream = new FixedLengthInputStream(bodyStream, contentLength);
+            return boundedBodyStream;
         }
         // no Content-Length and not chunked → read to EOF
         return bodyStream;

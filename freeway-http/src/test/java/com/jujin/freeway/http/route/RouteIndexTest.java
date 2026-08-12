@@ -30,6 +30,25 @@ class RouteIndexTest {
     }
 
     @Test
+    void encodedSlashStaysInsideOnePathSegment() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/files/{name}", ctx -> ctx.send(200, "ok"))),
+            List.of());
+        var match = registry.match("GET", "/files/a%2Fb");
+        assertNotNull(match);
+        assertEquals("a/b", match.pathVariables().get("name"));
+    }
+
+    @Test
+    void constrainedParameterRoutesCanShareAPathLevel() {
+        RouteIndex registry = new RouteIndex(List.of(
+            Route.get("/items/{id:\\d+}", ctx -> ctx.send(200, "number")),
+            Route.get("/items/{name:[a-z]+}", ctx -> ctx.send(200, "word"))), List.of());
+        assertNotNull(registry.match("GET", "/items/42"));
+        assertNotNull(registry.match("GET", "/items/abc"));
+    }
+
+    @Test
     void nonTerminalDotStarConstraintMatchesOnlyOneSegment() {
         RouteIndex registry = new RouteIndex(
             List.of(Route.get("/files/{name:.*}/meta", ctx -> ctx.send(200, "ok"))),

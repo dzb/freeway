@@ -28,6 +28,7 @@ public final class FrameSerializer {
     public static BaseFrame deserialize(InputStream inputStream, int maxFrameSize,
                                         byte[] headerBuffer) throws IOException {
         readFully(inputStream, headerBuffer);
+        FrameFlag.validate(headerBuffer[4], FrameType.fromValue(headerBuffer[3] & 0xFF));
         var header = FrameHeader.parse(headerBuffer);
         if (header.length() > maxFrameSize)
             throw new Http2Exception(Http2ErrorCode.FRAME_SIZE_ERROR);

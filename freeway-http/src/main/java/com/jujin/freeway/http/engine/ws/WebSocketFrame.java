@@ -275,7 +275,8 @@ public final class WebSocketFrame {
             } else {
                 // RFC 6455 §7.4.1: reserved codes and 1016-2999 must not be
                 // sent on the wire; treat them as a protocol error.
-                this.closeCode = CloseCode.ProtocolError;
+                throw new WebSocketException(CloseCode.ProtocolError,
+                    "Invalid close code: " + codeVal);
             }
             this.closeReason = payload.length > 2
                     ? decodeUtf8(payload, 2, payload.length - 2) : "";

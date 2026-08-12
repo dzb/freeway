@@ -186,4 +186,25 @@ class HttpContextDefaultTest {
             "a second output after the response must be a no-op");
         assertEquals("first", new String(writer.bodies.getFirst()));
     }
+
+    @Test
+    void responseHeadersAreCaseInsensitive() {
+        var ctx = context(new RecordingWriter());
+        ctx.setHeader("Content-Length", "1");
+        ctx.setHeader("content-length", "2");
+        assertEquals(1, ctx.responseHeaders().size());
+        assertEquals("2", ctx.responseHeaders().get("content-length"));
+    }
+
+    @Test
+    void noEntityStatusesAreNotCompressed() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("GET", "/", null,
+            Map.of("accept-encoding", List.of("gzip")), null, -1, false,
+            new ByteArrayOutputStream(), null, false, false);
+        ctx.status(204).setHeader("Content-Type", "text/plain");
+        ctx.output(new byte[512]);
+        assertFalse(writer.headHeaders.containsKey("Content-Encoding"));
+    }
 }

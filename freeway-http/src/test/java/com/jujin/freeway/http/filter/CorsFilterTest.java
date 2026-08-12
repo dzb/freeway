@@ -40,4 +40,15 @@ class CorsFilterTest {
         assertEquals(null, ctx.responseHeader("Access-Control-Allow-Credentials"),
             "Credentials header must not leak onto non-CORS responses");
     }
+
+    @Test
+    void mergesOriginIntoExistingVaryHeader() throws Exception {
+        CorsFilter filter = new CorsFilter(true, "https://example.com",
+            "GET", null, null, null, false);
+        StubHttpContext ctx = new StubHttpContext("GET", "/api")
+            .requestHeader("Origin", "https://example.com");
+        ctx.setHeader("Vary", "Accept");
+        filter.doFilter(ctx, next -> next.send(200, "ok"));
+        assertEquals("Accept, Origin", ctx.responseHeader("Vary"));
+    }
 }

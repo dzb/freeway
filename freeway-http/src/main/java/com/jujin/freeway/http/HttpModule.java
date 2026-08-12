@@ -5,6 +5,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.body.BodyTooLargeException;
+import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.AccessLogFilter;
@@ -52,6 +53,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.security.MessageDigest;
 import java.util.function.Consumer;
 
 @Marker(Builtin.class)
@@ -203,15 +205,22 @@ public final class HttpModule implements ModuleEx {
         binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
-                container.get(WebServer.class).start();
                 var symbols = container.get(SymbolSource.class);
                 var coercer = container.get(Coercer.class);
                 SslSettings ssl = loadSslSettings(symbols, coercer);
+                container.get(WebServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
                     sslReloader = new SslReloader(
                         container.get(FreewayHttpEngine.class), ssl);
-                    sslReloader.start();
+                    try {
+                        sslReloader.start();
+                    } catch (RuntimeException ex) {
+                        sslReloader.close();
+                        sslReloader = null;
+                        container.get(WebServer.class).stop();
+                        throw ex;
+                    }
                 }
             }
 
@@ -247,6 +256,10 @@ public final class HttpModule implements ModuleEx {
                 ));
                 return true;
             }
+            if (ex instanceof MultipartException) {
+                ctx.sendJson(400, Map.of("error", "Invalid Multipart Request"));
+                return true;
+            }
             if (ex instanceof ValidationException ve) {
                 var errors = ve.result().getErrors().stream()
                         .map(e -> Map.of("field", e.field(), "message", e.message()))
@@ -261,7 +274,7 @@ public final class HttpModule implements ModuleEx {
         });
     }
 
-    private record SslSettings(
+    record SslSettings(
         boolean enabled,
         String keyStorePath, String keyStorePassword, String keyStoreType,
         boolean http2,
@@ -407,20 +420,28 @@ public final class HttpModule implements ModuleEx {
 
     /** Polls keystore mtime/size and swaps a freshly built SSLContext into the
      *  engine when certificate material changes. */
-    private final class SslReloader implements AutoCloseable {
+    final class SslReloader implements AutoCloseable {
         private final FreewayHttpEngine engine;
         private final SslSettings settings;
-        private final ScheduledExecutorService scheduler =
-            Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "freeway-ssl-reload");
-                t.setDaemon(true);
-                return t;
-            });
+        private final ScheduledExecutorService scheduler;
+        private final FileStampProvider fileStampProvider;
         private volatile Map<Path, FileStamp> snapshot;
 
         SslReloader(FreewayHttpEngine engine, SslSettings settings) {
+            this(engine, settings, Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "freeway-ssl-reload");
+                t.setDaemon(true);
+                return t;
+            }), path -> Files.readAttributes(path, BasicFileAttributes.class));
+        }
+
+        SslReloader(FreewayHttpEngine engine, SslSettings settings,
+                    ScheduledExecutorService scheduler,
+                    FileStampProvider fileStampProvider) {
             this.engine = engine;
             this.settings = settings;
+            this.scheduler = scheduler;
+            this.fileStampProvider = fileStampProvider;
         }
 
         void start() {
@@ -453,6 +474,10 @@ public final class HttpModule implements ModuleEx {
             Map<Path, FileStamp> files = new LinkedHashMap<>();
             files.put(Path.of(settings.keyStorePath()),
                 stamp(Path.of(settings.keyStorePath())));
+            if (settings.trustStorePath() != null) {
+                Path trustStore = Path.of(settings.trustStorePath());
+                files.put(trustStore, stamp(trustStore));
+            }
             if (settings.sniDirectory() != null) {
                 try (var stream = Files.list(Path.of(settings.sniDirectory()))) {
                     for (Path p : stream.filter(HttpModule::isKeystoreFile).sorted().toList()) {
@@ -463,10 +488,25 @@ public final class HttpModule implements ModuleEx {
             return files;
         }
 
-        private static FileStamp stamp(Path path) throws IOException {
-            BasicFileAttributes attrs = Files.readAttributes(
-                path, BasicFileAttributes.class);
-            return new FileStamp(attrs.lastModifiedTime().toMillis(), attrs.size());
+        private FileStamp stamp(Path path) throws IOException {
+            BasicFileAttributes attrs = fileStampProvider.stamp(path);
+            return new FileStamp(attrs.lastModifiedTime().toMillis(), attrs.size(), digest(path));
+        }
+
+        private static String digest(Path path) throws IOException {
+            try {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                try (InputStream in = Files.newInputStream(path)) {
+                    byte[] buffer = new byte[8192];
+                    int n;
+                    while ((n = in.read(buffer)) >= 0) {
+                        if (n > 0) digest.update(buffer, 0, n);
+                    }
+                }
+                return java.util.HexFormat.of().formatHex(digest.digest());
+            } catch (java.security.NoSuchAlgorithmException e) {
+                throw new AssertionError(e);
+            }
         }
 
         @Override
@@ -475,7 +515,12 @@ public final class HttpModule implements ModuleEx {
         }
     }
 
-    private record FileStamp(long lastModified, long size) {}
+    record FileStamp(long lastModified, long size, String digest) {}
+
+    @FunctionalInterface
+    interface FileStampProvider {
+        BasicFileAttributes stamp(Path path) throws IOException;
+    }
 
     private static SSLParameters buildSslParameters(
             boolean clientAuth, String protocols, String ciphers) {

@@ -33,6 +33,7 @@ public final class WebSocket {
         var binaryBuf = new ByteArrayOutputStream();
         OpCode fragType = null;
         long messageBytes = 0;
+        boolean closeNotified = false;
 
         try {
             while (session.isOpen()) {
@@ -72,6 +73,7 @@ public final class WebSocket {
                                     return;
                                 }
                             }
+                            messageBytes = 0;
                         } else {
                             fragType = frame.opCode();
                             appendData(frame, textBuf, binaryBuf, fragType);
@@ -108,26 +110,36 @@ public final class WebSocket {
                             ? frame.closeReason() : "";
                         int code = frame.closeCodeValue();
                         session.markClosed(code, reason);
-                        try {
-                            listener.onClose(code, reason, true);
-                        } catch (Exception ignored) {}
-                        return;
+                            try {
+                                listener.onClose(code, reason, true);
+                            } catch (Exception ignored) {}
+                            closeNotified = true;
+                            return;
                     }
                 }
             }
         } catch (EOFException e) {
             LOG.trace("WebSocket EOF: {}", e.getMessage());
-            session.markClosed(CloseCode.AbnormalClosure, e.getMessage());
+            if (session.isOpen()) session.markClosed(CloseCode.AbnormalClosure, e.getMessage());
             try { listener.onError(e); } catch (Exception ignored) {}
         } catch (WebSocketException e) {
             LOG.trace("WebSocket protocol error: {}", e.getMessage());
+            try {
+                session.close(e.closeCode().value(), e.closeReason());
+            } catch (Exception ignored) {
+            }
             session.markClosed(e.closeCode(), e.closeReason());
             try { listener.onError(e); } catch (Exception ignored) {}
         } catch (IOException e) {
             LOG.trace("WebSocket I/O error: {}", e.getMessage());
-            session.markClosed(CloseCode.AbnormalClosure, e.getMessage());
+            if (session.isOpen()) session.markClosed(CloseCode.AbnormalClosure, e.getMessage());
             try { listener.onError(e); } catch (Exception ignored) {}
         } finally {
+            if (!closeNotified) {
+                try {
+                    listener.onClose(session.closeCode(), session.closeReason(), false);
+                } catch (Exception ignored) {}
+            }
             if (session.isOpen()) {
                 session.markClosed(CloseCode.InternalServerError,
                     "Handler terminated without closing");

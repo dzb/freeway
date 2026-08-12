@@ -176,6 +176,23 @@ class HttpParserTest {
     }
 
     @Test
+    void rejectsInvalidHeaderName() {
+        var parser = new HttpParser(new ByteArrayInputStream(
+            "GET / HTTP/1.1\r\n Bad: value\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
+        assertThrows(IOException.class, parser::parse);
+    }
+
+    @Test
+    void rejectsRepeatedOrNonFinalChunkedEncoding() {
+        for (String value : new String[]{"chunked, chunked", "chunked, gzip"}) {
+            var parser = new HttpParser(new ByteArrayInputStream((
+                "POST / HTTP/1.1\r\nTransfer-Encoding: " + value + "\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII)));
+            assertThrows(IOException.class, parser::parse);
+        }
+    }
+
+    @Test
     void parsePostWithBody() throws IOException {
         String raw = "POST /echo HTTP/1.1\r\n"
             + "Host: localhost\r\n"
@@ -313,6 +330,20 @@ class HttpParserTest {
         var req2 = parser.parse();
         assertEquals("/b", req2.path(),
                 "pipelined request after a body must survive the body read");
+    }
+
+    @Test
+    void upgradeStreamPreservesFrameReadAhead() throws Exception {
+        String handshake = "GET /ws HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        byte[] frame = {(byte) 0x81, (byte) 0x81, 1, 2, 3, 4,
+            (byte) ('x' ^ 1)};
+        byte[] raw = new byte[handshake.getBytes(StandardCharsets.ISO_8859_1).length + frame.length];
+        System.arraycopy(handshake.getBytes(StandardCharsets.ISO_8859_1), 0, raw, 0,
+            handshake.length());
+        System.arraycopy(frame, 0, raw, handshake.length(), frame.length);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        parser.parse();
+        assertEquals('x', parser.upgradeStream().readAllBytes()[6] ^ 1);
     }
 
     private static String headerValue(HttpParser.ParsedRequest req, String name) {

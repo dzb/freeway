@@ -19,6 +19,7 @@ import java.net.StandardSocketOptions;
 import java.nio.channels.ServerSocketChannel;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.Semaphore;
 
 /**
  * Built-in HTTP engine using virtual threads and synchronous socket I/O.
@@ -94,14 +95,21 @@ public final class FreewayHttpEngine implements HttpEngine {
         // Channel-based listener so accepted sockets expose their
         // SocketChannel — required for the sendfile fast path.
         var ss = ServerSocketChannel.open();
-        ss.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-        ss.bind(new InetSocketAddress(config.host(), config.port()), config.backlog());
+        try {
+            ss.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+            ss.bind(new InetSocketAddress(config.host(), config.port()), config.backlog());
+        } catch (IOException | RuntimeException e) {
+            try { ss.close(); } catch (IOException ignored) {}
+            throw e;
+        }
         int port = ss.socket().getLocalPort();
 
         var finished = new AtomicBoolean();
         var registry = new ConnectionRegistry(metrics);
         Metrics.Counter rejected = metrics.counter("freeway.http.connections.rejected");
         Metrics.Counter accepted = metrics.counter("freeway.http.connections.total");
+        var permits = config.maxConnections() > 0
+            ? new Semaphore(config.maxConnections()) : null;
 
         // Single platform-thread acceptor, one virtual thread per connection.
         // Virtual threads are cheap, so each connection gets its own carrier that
@@ -111,8 +119,7 @@ public final class FreewayHttpEngine implements HttpEngine {
             while (!finished.get()) {
                 try {
                     var socket = ss.accept().socket();
-                    if (config.maxConnections() > 0
-                            && registry.activeCount() >= config.maxConnections()) {
+                    if (permits != null && !permits.tryAcquire()) {
                         // Reject excess connections at accept time so a flood
                         // cannot exhaust fds/threads; the client sees an
                         // immediate close instead of a queued connection.
@@ -124,7 +131,7 @@ public final class FreewayHttpEngine implements HttpEngine {
                     Thread.ofVirtual()
                         .name("http-" + socket.getRemoteSocketAddress())
                         .start(new HttpSession(socket, handler, jsonCodec, coercer, this,
-                            config, registry));
+                            config, registry, permits));
                 } catch (IOException e) {
                     if (!finished.get()) LOG.error("Accept failed", e);
                     break;

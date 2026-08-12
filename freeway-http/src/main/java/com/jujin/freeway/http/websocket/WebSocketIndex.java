@@ -29,15 +29,35 @@ public final class WebSocketIndex {
         if (!"GET".equalsIgnoreCase(method)) {
             return null;
         }
-        // reverse iteration: individuals (added last) override groups (added first)
+        WebSocketMatch best = null;
+        int bestScore = Integer.MIN_VALUE;
         for (int i = routes.size() - 1; i >= 0; i--) {
             WebSocketRoute route = routes.get(i);
             Map<String, String> vars = route.pattern().match(path);
             if (vars != null) {
-                return new WebSocketMatch(route.endpoint(), vars);
+                int score = specificity(route.path());
+                if (best == null || score > bestScore) {
+                    best = new WebSocketMatch(route.endpoint(), vars);
+                    bestScore = score;
+                }
             }
         }
-        return null;
+        return best;
+    }
+
+    private static int specificity(String path) {
+        int score = 0;
+        for (String segment : path.split("/")) {
+            if (segment.startsWith("{") && segment.endsWith("}")) {
+                score += segment.contains(":") ? 20 : 10;
+                if (segment.endsWith(":.*}")) score -= 10;
+            } else if (segment.startsWith(":")) {
+                score += 10;
+            } else {
+                score += 30;
+            }
+        }
+        return score;
     }
 
     private void add(WebSocketRoute route) {

@@ -49,4 +49,19 @@ class ChunkedInputStreamTest {
         assertThrows(IOException.class, () -> in.read(new byte[10], 0, 10),
                 "Chunk size beyond 2^31-1 must raise IOException");
     }
+
+    @Test
+    void rejectsEmptyChunkSize() {
+        var in = new ChunkedInputStream(new ByteArrayInputStream(";\r\n".getBytes()));
+        assertThrows(IOException.class, () -> in.read(new byte[1], 0, 1));
+    }
+
+    @Test
+    void closeDrainsUnreadChunks() throws Exception {
+        var raw = new ByteArrayInputStream("3\r\nabc\r\n0\r\n\r\n".getBytes());
+        var in = new ChunkedInputStream(raw);
+        in.close();
+        assertEquals(0, raw.available(), "close must consume the remaining chunk framing");
+        assertThrows(IOException.class, () -> in.read(new byte[1], 0, 1));
+    }
 }

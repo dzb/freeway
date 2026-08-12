@@ -119,7 +119,14 @@ public final class Http2Stream {
                 if (flowLength > receiveWindow.get())
                     throw new Http2Exception(Http2ErrorCode.FLOW_CONTROL_ERROR);
                 receiveWindow.addAndGet(-flowLength);
-                dataIn.enqueue(dataFrame.body);
+                if (dataFrame.body.length == 0 && flowLength > 0) {
+                    // Padding-only DATA has no application read that can
+                    // trigger the normal stream WINDOW_UPDATE path.
+                    receiveWindow.addAndGet(flowLength);
+                    connection.writeFrame(new WindowUpdateFrame(streamId, flowLength).encode());
+                } else {
+                    dataIn.enqueue(dataFrame.body, flowLength);
+                }
                 if (dataFrame.header().flags().contains(FrameFlag.END_STREAM)) {
                     halfClosed = true;
                     dataIn.wakeupReader();
@@ -252,12 +259,15 @@ public final class Http2Stream {
 
     /** InputStream adapter that reads request body from DATA frames using park/unpark for blocking. */
     private class DataIn extends InputStream {
-        private final ConcurrentLinkedQueue<byte[]> queue = new ConcurrentLinkedQueue<>();
+        private final ConcurrentLinkedQueue<InboundData> queue = new ConcurrentLinkedQueue<>();
         private volatile Thread reader;
         private int offset;
         private long readSinceWindowUpdate;
 
-        void enqueue(byte[] data) { queue.add(data); LockSupport.unpark(reader); }
+        void enqueue(byte[] data, int flowLength) {
+            queue.add(new InboundData(data, flowLength));
+            LockSupport.unpark(reader);
+        }
         void wakeupReader() { LockSupport.unpark(reader); }
 
         @Override
@@ -282,12 +292,18 @@ public final class Http2Stream {
             try {
                 reader = Thread.currentThread();
                 while (len > 0) {
-                    byte[] data;
-                    while ((data = queue.peek()) == null) {
+                    InboundData inbound;
+                    while ((inbound = queue.peek()) == null) {
                         if (bytesRead > 0) return bytesRead;
                         if (halfClosed) return -1;
                         LockSupport.park();
                         if (Thread.interrupted()) throw new IOException("interrupted");
+                    }
+                    byte[] data = inbound.data();
+                    if (data.length == 0) {
+                        queue.poll();
+                        readSinceWindowUpdate += inbound.flowLength();
+                        continue;
                     }
                     int available = data.length - offset;
                     int toRead = Math.min(len, available);
@@ -296,7 +312,13 @@ public final class Http2Stream {
                     off += toRead;
                     len -= toRead;
                     bytesRead += toRead;
-                    if (offset == data.length) { queue.poll(); offset = 0; }
+                    if (offset == data.length) {
+                        queue.poll();
+                        offset = 0;
+                        // Padding consumes flow-control credit too; body bytes
+                        // are accounted for in the finally block below.
+                        readSinceWindowUpdate += inbound.flowLength() - data.length;
+                    }
                 }
                 return bytesRead;
             } finally {
@@ -312,5 +334,7 @@ public final class Http2Stream {
                 }
             }
         }
+
+        private record InboundData(byte[] data, int flowLength) {}
     }
 }

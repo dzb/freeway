@@ -30,4 +30,13 @@ class HeadersFrameTest {
         assertArrayEquals(new byte[]{'A', 'B'}, frame.headerBlock(),
                 "Pad length byte and trailing padding must not be in the header block");
     }
+
+    @Test
+    void priorityFieldMustBeComplete() {
+        var header = new FrameHeader(4, FrameType.HEADERS,
+                FrameFlag.FlagSet.of(FrameFlag.PRIORITY), 1);
+        Http2Exception ex = assertThrows(Http2Exception.class,
+            () -> HeadersFrame.parse(new byte[4], header));
+        assertEquals(Http2ErrorCode.FRAME_SIZE_ERROR, ex.errorCode());
+    }
 }

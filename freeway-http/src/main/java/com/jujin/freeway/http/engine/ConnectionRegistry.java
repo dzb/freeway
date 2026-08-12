@@ -56,7 +56,7 @@ final class ConnectionRegistry {
     void closeAll() {
         for (Http11Connection connection : active) {
             try {
-                connection.close();
+                connection.forceClose();
             } catch (Exception ignored) {
                 // best-effort force close
             }

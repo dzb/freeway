@@ -159,4 +159,11 @@ class SseEmitterTest {
         assertEquals(1, counting.writes,
             "after a write failure the emitter must stop writing to the stream");
     }
+
+    @Test
+    void rejectsLineInjectionInEventMetadata() {
+        var emitter = new SseEmitter(new ByteArrayOutputStream(), 0);
+        assertThrows(IllegalArgumentException.class,
+            () -> emitter.send(new SseEvent("data", "bad\nid", null, null)));
+    }
 }

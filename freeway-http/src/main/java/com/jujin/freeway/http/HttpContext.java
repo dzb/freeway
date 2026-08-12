@@ -6,9 +6,8 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.MultipartForm;
+import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.sse.SseEmitter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -17,6 +16,7 @@ import java.lang.reflect.Type;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,10 +33,10 @@ import java.util.Optional;
  * while providing a uniform API for reading requests and writing responses.
  */
 public abstract class HttpContext {
-    private static final Logger LOG = LoggerFactory.getLogger(HttpContext.class);
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
     protected volatile long maxBodySize = 10_485_760L;
+    protected volatile boolean bodyLimitExceeded;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
 
     protected HttpContext(JsonCodec jsonCodec, Coercer coercer) {
@@ -95,6 +95,11 @@ public abstract class HttpContext {
     /** Returns the current response header value for the given name, or null. */
     protected abstract String responseHeader(String name);
 
+    /** Returns a response header value before the response is committed. */
+    public Optional<String> responseHeaderValue(String name) {
+        return Optional.ofNullable(responseHeader(name));
+    }
+
     /** Returns the request context for this request. */
     public abstract RequestContext requestContext();
 
@@ -140,8 +145,7 @@ public abstract class HttpContext {
                 try {
                     return Optional.of(MultipartForm.parse(ct, body()));
                 } catch (IOException e) {
-                    LOG.warn("Failed to parse multipart body", e);
-                    return Optional.empty();
+                    throw new MultipartException("Invalid multipart request", e);
                 }
             });
     }
@@ -210,7 +214,10 @@ public abstract class HttpContext {
         int read;
         while ((read = input.read(buffer)) >= 0) {
             if (read == 0) continue;
-            if (total > maxBodySize - read) throw new BodyTooLargeException(maxBodySize);
+            if (total > maxBodySize - read) {
+                bodyLimitExceeded = true;
+                throw new BodyTooLargeException(maxBodySize);
+            }
             out.write(buffer, 0, read);
             total += read;
         }
@@ -308,6 +315,12 @@ public abstract class HttpContext {
      */
     public abstract HttpContext outputFile(Path file, long offset, long length)
         throws IOException;
+
+    /** Streams an already validated file descriptor. */
+    public HttpContext outputFile(FileChannel channel, long offset, long length)
+            throws IOException {
+        throw new UnsupportedOperationException("File-channel output is not supported");
+    }
 
     /**
      * Whether the response has been committed (headers or body have started

@@ -178,7 +178,7 @@ public final class MultipartForm {
         if (contentType == null) {
             return null;
         }
-        for (String token : contentType.split(";")) {
+        for (String token : splitSemicolons(contentType)) {
             String item = token.trim();
             int eq = item.indexOf('=');
             if (eq <= 0) {

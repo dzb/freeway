@@ -1,5 +1,8 @@
 package com.jujin.freeway.http.engine.http2.frame;
 
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.util.Http2Exception;
+
 public enum FrameFlag {
     END_STREAM((byte) 0x1), ACK((byte) 0x1), END_HEADERS((byte) 0x4), PADDED((byte) 0x8), PRIORITY((byte) 0x20);
     public static final FlagSet NONE = new FlagSet(0, false);
@@ -13,6 +16,13 @@ public enum FrameFlag {
     public static FlagSet parse(byte v, FrameType t) {
         if (v == 0) return NONE;
         return new FlagSet(v & MASK, t == FrameType.SETTINGS || t == FrameType.PING);
+    }
+
+    public static void validate(byte v, FrameType t) throws Http2Exception {
+        int raw = v & 0xFF;
+        if (t == FrameType.CONTINUATION && (raw & ~0x04) != 0)
+            throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR,
+                "CONTINUATION has illegal flags");
     }
 
     public static final class FlagSet {

@@ -4,6 +4,7 @@ import com.jujin.freeway.http.engine.http2.frame.DataFrame;
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
 import com.jujin.freeway.http.engine.http2.frame.FrameType;
+import com.jujin.freeway.http.engine.http2.frame.WindowUpdateFrame;
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class Http2FlowControlTest {
 
@@ -67,6 +69,26 @@ class Http2FlowControlTest {
         }
     }
 
+    @Test
+    void paddingOnlyDataReturnsStreamCredit() throws Exception {
+        try (SocketPair pair = SocketPair.open();
+             ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Http2Connection connection = connection(pair, executor);
+            Http2Stream stream = new Http2Stream(1, connection, Map.of(), (s, i, o, h) -> {});
+            var header = new FrameHeader(4, FrameType.DATA,
+                FrameFlag.FlagSet.of(FrameFlag.PADDED), 1);
+            DataFrame frame = (DataFrame) DataFrame.parse(new byte[]{3, 0, 0, 0}, header);
+            stream.dispatch(frame, executor);
+
+            byte[] wire = pair.peer.getInputStream().readNBytes(13);
+            assertEquals(13, wire.length);
+            assertEquals(0x8, wire[3] & 0xFF, "WINDOW_UPDATE frame type");
+            assertEquals(1, wire[8] & 0xFF, "stream id");
+            assertEquals(4, ((wire[9] & 0xFF) << 24) | ((wire[10] & 0xFF) << 16)
+                | ((wire[11] & 0xFF) << 8) | (wire[12] & 0xFF));
+        }
+    }
+
     private static Http2Connection connection(SocketPair pair, ExecutorService executor)
         throws IOException {
         return new Http2Connection(pair.client, pair.client.getInputStream(),
@@ -94,21 +116,25 @@ class Http2FlowControlTest {
     private static final class SocketPair implements AutoCloseable {
         private final ServerSocket server;
         private final Socket client;
+        private final Socket peer;
 
-        private SocketPair(ServerSocket server, Socket client) {
+        private SocketPair(ServerSocket server, Socket client, Socket peer) {
             this.server = server;
             this.client = client;
+            this.peer = peer;
         }
 
         static SocketPair open() throws IOException {
             ServerSocket server = new ServerSocket(0);
             Socket client = new Socket("127.0.0.1", server.getLocalPort());
-            return new SocketPair(server, client);
+            Socket peer = server.accept();
+            return new SocketPair(server, client, peer);
         }
 
         @Override
         public void close() throws IOException {
             client.close();
+            peer.close();
             server.close();
         }
     }

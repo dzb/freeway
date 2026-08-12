@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -62,8 +63,8 @@ public final class RouteIndex {
                 n += countLeaves(child);
             }
         }
-        if (node.paramChild != null) {
-            n += countLeaves(node.paramChild);
+        if (node.paramChildren != null) {
+            for (TrieNode child : node.paramChildren) n += countLeaves(child);
         }
         return n;
     }
@@ -139,91 +140,85 @@ public final class RouteIndex {
 
     public RouteMatch match(String method, String path) {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
-        // Decode the request path exactly once before matching or cache lookup,
-        // so "/a%20b" matches a route registered as "/a b" and path variables
-        // carry decoded values. Malformed encodings never match.
-        String decodedPath = PathPattern.decodePath(path);
-        if (decodedPath == null) {
-            return null;
-        }
+        // Split the raw path before decoding. An encoded slash belongs to its
+        // original segment and must not create a new route segment.
+        String rawPath = path;
         // Fast path: exact match cache bypasses trie for routes without variables
-        String cacheKey = key.concat(":").concat(decodedPath);
-        RouteHandler exact = exactCache.get(cacheKey);
-        if (exact != null) return new RouteMatch(exact, Map.of());
-        // HEAD fallback to GET exact cache
-        if ("HEAD".equals(key)) {
-            exact = exactCache.get("GET:".concat(decodedPath));
+        if (rawPath.indexOf('%') < 0 && rawPath.indexOf('+') < 0) {
+            String cacheKey = key.concat(":").concat(rawPath);
+            RouteHandler exact = exactCache.get(cacheKey);
             if (exact != null) return new RouteMatch(exact, Map.of());
+            if ("HEAD".equals(key)) {
+                exact = exactCache.get("GET:".concat(rawPath));
+                if (exact != null) return new RouteMatch(exact, Map.of());
+            }
         }
         TrieNode root = methodRoots.get(key);
-        RouteMatch result = matchTrie(root, decodedPath);
+        RouteMatch result = matchTrie(root, rawPath);
         if (result != null || !"HEAD".equals(key)) return result;
-        return matchTrie(methodRoots.get("GET"), decodedPath);
+        return matchTrie(methodRoots.get("GET"), rawPath);
     }
 
-    /** @param path the already-decoded request path */
+    /** Matches raw path segments after decoding each segment independently. */
     private RouteMatch matchTrie(TrieNode root, String path) {
         if (root == null) {
             return null;
         }
         String[] segments = PathPattern.splitPath(path);
-        Map<String, String> vars = null;
-        TrieNode current = root;
-        for (int i = 0; i < segments.length; i++) {
-            String seg = segments[i];
-            if (seg.isEmpty() || PathPattern.isPathTraversalSegment(seg)) {
-                return null;
-            }
-            // Try literal match first
-            TrieNode literal =
-                current.literals != null ? current.literals.get(seg) : null;
-            if (literal != null) {
-                current = literal;
+        return matchFrom(root, segments, 0, new LinkedHashMap<>());
+    }
+
+    private RouteMatch matchFrom(TrieNode node, String[] rawSegments, int index,
+                                 Map<String, String> vars) {
+        if (index == rawSegments.length) {
+            return node.handler == null ? null : new RouteMatch(node.handler, Map.copyOf(vars));
+        }
+        String seg = PathPattern.decodeSegment(rawSegments[index]);
+        if (seg == null || seg.isEmpty() || PathPattern.isPathTraversalSegment(seg)
+                || PathPattern.containsPathTraversal(seg)) return null;
+
+        TrieNode literal = node.literals == null ? null : node.literals.get(seg);
+        if (literal != null) {
+            RouteMatch result = matchFrom(literal, rawSegments, index + 1, vars);
+            if (result != null) return result;
+        }
+        if (node.paramChildren == null) return null;
+        var candidates = new ArrayList<>(node.paramChildren);
+        candidates.sort(Comparator.comparingInt(RouteIndex::parameterSpecificity).reversed());
+        for (TrieNode param : candidates) {
+            Map<String, String> next = new LinkedHashMap<>(vars);
+            if (param.wildcard) {
+                StringBuilder remainder = new StringBuilder();
+                for (int i = index; i < rawSegments.length; i++) {
+                    if (rawSegments[i].isEmpty()) {
+                        remainder.setLength(0);
+                        break;
+                    }
+                    String part = PathPattern.decodeSegment(rawSegments[i]);
+                    if (part == null || part.isEmpty()) {
+                        remainder.setLength(0);
+                        break;
+                    }
+                    if (remainder.length() > 0) remainder.append('/');
+                    remainder.append(part);
+                }
+                String decoded = remainder.toString();
+                if (decoded == null || decoded.isEmpty() || PathPattern.containsPathTraversal(decoded)) continue;
+                next.put(param.paramName, decoded);
+                if (param.handler != null) return new RouteMatch(param.handler, Map.copyOf(next));
                 continue;
             }
-            // Try param match
-            TrieNode param = current.paramChild;
-            if (param != null) {
-                // Wildcard consumes remaining segments
-                if (param.wildcard) {
-                    for (int j = i; j < segments.length; j++) {
-                        if (segments[j].isEmpty()) {
-                            return null;
-                        }
-                    }
-                    String remainder = String.join(
-                        "/",
-                        Arrays.copyOfRange(segments, i, segments.length)
-                    );
-                    if (
-                        remainder.isEmpty() ||
-                        PathPattern.containsPathTraversal(remainder)
-                    ) {
-                        return null;
-                    }
-                    if (vars == null) vars = new LinkedHashMap<>();
-                    vars.put(param.paramName, remainder);
-                    current = param;
-                    break;
-                }
-                // Regex constraint check
-                if (
-                    param.paramPattern != null &&
-                    !param.paramPattern.matcher(seg).matches()
-                ) {
-                    return null;
-                }
-                if (vars == null) vars = new LinkedHashMap<>();
-                vars.put(param.paramName, seg);
-                current = param;
-                continue;
-            }
-            return null;
+            if (param.paramPattern != null && !param.paramPattern.matcher(seg).matches()) continue;
+            next.put(param.paramName, seg);
+            RouteMatch result = matchFrom(param, rawSegments, index + 1, next);
+            if (result != null) return result;
         }
-        if (current.handler == null) {
-            return null;
-        }
-        return new RouteMatch(current.handler, vars != null ? vars : Map.of());
+        return null;
+    }
+
+    private static int parameterSpecificity(TrieNode node) {
+        if (node.wildcard) return 0;
+        return node.paramPattern == null ? 10 : 20;
     }
 
     // ---- Trie node ----
@@ -235,7 +230,7 @@ public final class RouteIndex {
         Pattern paramPattern; // regex constraint for param (null = any)
         boolean wildcard; // {path:.*} wildcard
         Map<String, TrieNode> literals; // literal children
-        TrieNode paramChild; // param child (at most one per node)
+        List<TrieNode> paramChildren;
         RouteHandler handler; // non-null if route terminates here
         boolean frozen;
 
@@ -245,7 +240,7 @@ public final class RouteIndex {
             if (frozen) {
                 throw new IllegalStateException("RouteIndex is frozen");
             }
-            if (paramChild != null && paramChild.wildcard) {
+            if (paramChildren != null && paramChildren.stream().anyMatch(n -> n.wildcard)) {
                 throw new IllegalArgumentException(
                     "Cannot register literal segment '" + seg
                         + "' under a wildcard — wildcard captures all remaining path segments");
@@ -268,32 +263,24 @@ public final class RouteIndex {
             if (frozen) {
                 throw new IllegalStateException("RouteIndex is frozen");
             }
-            if (paramChild == null) {
-                if (isWildcard && literals != null && !literals.isEmpty()) {
-                    throw new IllegalArgumentException(
-                        "Cannot register wildcard '{"
-                            + name + ":.*}' under a node that already has literal children");
-                }
-                paramChild = new TrieNode();
-                paramChild.paramName = name;
-                paramChild.paramPattern = regex;
-                paramChild.wildcard = isWildcard;
-            } else {
-                boolean sameRegex = (paramChild.paramPattern == null && regex == null)
-                        || (paramChild.paramPattern != null && regex != null
-                            && paramChild.paramPattern.pattern().equals(regex.pattern()));
-                if (!paramChild.paramName.equals(name)
-                        || !sameRegex
-                        || paramChild.wildcard != isWildcard) {
-                    String existing = "{" + paramChild.paramName
-                        + (paramChild.wildcard ? ":.*}" : paramChild.paramPattern != null ? ":" + paramChild.paramPattern.pattern() + "}" : "}");
-                    String incoming = "{" + name
-                        + (isWildcard ? ":.*}" : regex != null ? ":" + regex.pattern() + "}" : "}");
-                    throw new IllegalArgumentException(
-                        "Conflicting parameter definitions at same path level: '"
-                            + existing + "' vs '" + incoming + "'");
+            if (paramChildren == null) paramChildren = new ArrayList<>();
+            for (TrieNode existing : paramChildren) {
+                boolean sameRegex = (existing.paramPattern == null && regex == null)
+                    || (existing.paramPattern != null && regex != null
+                        && existing.paramPattern.pattern().equals(regex.pattern()));
+                if (existing.paramName.equals(name) && sameRegex && existing.wildcard == isWildcard) {
+                    return existing;
                 }
             }
+            if (isWildcard && literals != null && !literals.isEmpty()) {
+                throw new IllegalArgumentException(
+                    "Cannot register wildcard under a node that already has literal children");
+            }
+            TrieNode paramChild = new TrieNode();
+            paramChild.paramName = name;
+            paramChild.paramPattern = regex;
+            paramChild.wildcard = isWildcard;
+            paramChildren.add(paramChild);
             return paramChild;
         }
 
@@ -305,8 +292,8 @@ public final class RouteIndex {
                 }
                 literals = Map.copyOf(literals);
             }
-            if (paramChild != null) {
-                paramChild.freeze();
+            if (paramChildren != null) {
+                for (TrieNode child : paramChildren) child.freeze();
             }
         }
 

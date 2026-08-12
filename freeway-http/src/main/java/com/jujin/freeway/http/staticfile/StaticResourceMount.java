@@ -12,7 +12,14 @@ import java.net.URLConnection;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.FileSystemException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.channels.FileChannel;
+import java.nio.file.DirectoryStream;
+import java.nio.file.OpenOption;
+import java.util.HashSet;
+import java.util.Set;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -143,6 +150,15 @@ public final class StaticResourceMount {
                 return true;
             }
             Path file = source.file(relative);
+            FileChannel secureChannel = source.openChannel(relative);
+            if (secureChannel != null) {
+                try {
+                    ctx.outputFile(secureChannel, range.start(), length);
+                    return true;
+                } catch (UnsupportedOperationException e) {
+                    secureChannel.close();
+                }
+            }
             if (file != null) {
                 ctx.outputFile(file, range.start(), length);
                 return true;
@@ -181,6 +197,18 @@ public final class StaticResourceMount {
         // sendfile fast path: real files on plain HTTP get transferred
         // straight from the filesystem cache to the socket.
         Path file = source.file(relative);
+        FileChannel secureChannel = source.openChannel(relative);
+        if (secureChannel != null) {
+            try {
+                ctx.status(HttpStatus.OK);
+                ctx.setHeader("Content-Type", contentType(meta.name()));
+                ctx.setHeader("X-Content-Type-Options", "nosniff");
+                ctx.outputFile(secureChannel, 0, meta.size());
+                return true;
+            } catch (UnsupportedOperationException e) {
+                secureChannel.close();
+            }
+        }
         if (file != null) {
             ctx.status(HttpStatus.OK);
             ctx.setHeader("Content-Type", contentType(meta.name()));
@@ -283,7 +311,7 @@ public final class StaticResourceMount {
         }
         try {
             Instant requested = ZonedDateTime.parse(ifModifiedSince, HTTP_DATE).toInstant();
-            Instant lastModified = Instant.ofEpochMilli(meta.lastModifiedMillis());
+            Instant lastModified = Instant.ofEpochMilli(meta.lastModifiedMillis() / 1000 * 1000);
             return !lastModified.isAfter(requested);
         } catch (DateTimeParseException ignored) {
             return false;
@@ -366,8 +394,11 @@ public final class StaticResourceMount {
     private static boolean ifRangeAllows(HttpContext ctx, AssetMeta meta) {
         String ifRange = Strings.blankToNull(ctx.header("If-Range").orElse(null));
         if (ifRange == null) return true;
-        if (ifRange.startsWith("\"") || ifRange.startsWith("W/")) {
-            return etagMatches(ifRange, meta.etag());
+        if (ifRange.startsWith("\"")) {
+            return ifRange.equals(meta.etag());
+        }
+        if (ifRange.startsWith("W/")) {
+            return false;
         }
         try {
             Instant requested = ZonedDateTime.parse(ifRange, HTTP_DATE).toInstant();
@@ -468,6 +499,10 @@ public final class StaticResourceMount {
         default InputStream open(String relative) throws IOException {
             return null;
         }
+
+        default FileChannel openChannel(String relative) throws IOException {
+            return null;
+        }
     }
 
     private record AssetMeta(String name, long size, long lastModifiedMillis, String etag) {}
@@ -546,7 +581,42 @@ public final class StaticResourceMount {
         @Override
         public InputStream open(String relative) throws IOException {
             Path real = resolve(relative);
-            return real == null ? null : Files.newInputStream(real);
+            return real == null ? null : Files.newInputStream(real, LinkOption.NOFOLLOW_LINKS);
+        }
+
+        @Override
+        public FileChannel openChannel(String relative) throws IOException {
+            try {
+                Path rootPath = root.toRealPath();
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(rootPath)) {
+                    if (!(stream instanceof java.nio.file.SecureDirectoryStream<Path> secureRoot)) {
+                        return null;
+                    }
+                    java.nio.file.SecureDirectoryStream<Path> current = secureRoot;
+                    try {
+                        String[] parts = relative.split("/");
+                        for (int i = 0; i < parts.length - 1; i++) {
+                            var next = current.newDirectoryStream(
+                                Path.of(parts[i]), LinkOption.NOFOLLOW_LINKS);
+                            if (current != secureRoot) current.close();
+                            current = next;
+                        }
+                        Set<OpenOption> options = new HashSet<>();
+                        options.add(java.nio.file.StandardOpenOption.READ);
+                        var opened = current.newByteChannel(
+                            Path.of(parts[parts.length - 1]), options);
+                        if (!(opened instanceof FileChannel channel)) {
+                            opened.close();
+                            return null;
+                        }
+                        return channel;
+                    } finally {
+                        if (current != secureRoot) current.close();
+                    }
+                }
+            } catch (FileSystemException e) {
+                return null;
+            }
         }
 
         @Override

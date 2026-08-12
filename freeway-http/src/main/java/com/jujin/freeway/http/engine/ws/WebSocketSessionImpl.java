@@ -32,6 +32,8 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     private final RequestContext requestContext = RequestContext.create();
     private volatile boolean open = true;
+    private volatile int closeCode = 1006;
+    private volatile String closeReason = "";
     private final Object writeLock = new Object();
 
     // lazy
@@ -183,8 +185,10 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     public void close(int code, String reason) throws IOException {
         synchronized (writeLock) {
             if (!open) return;
-            open = false;
             var closePayload = buildClosePayload(code, reason);
+            closeCode = code;
+            closeReason = reason == null ? "" : reason;
+            open = false;
             WebSocket.writeFrame(out,
                 new WebSocketFrame(OpCode.Close, true, closePayload));
         }
@@ -215,8 +219,16 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     void markOpen() { open = true; }
 
-    void markClosed(CloseCode code, String reason) { open = false; }
-    void markClosed(int code, String reason) { open = false; }
+    void markClosed(CloseCode code, String reason) {
+        markClosed(code.value(), reason);
+    }
+    void markClosed(int code, String reason) {
+        closeCode = code;
+        closeReason = reason == null ? "" : reason;
+        open = false;
+    }
+    int closeCode() { return closeCode; }
+    String closeReason() { return closeReason; }
 
     // --- internal ---
 
@@ -245,7 +257,13 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     }
 
     private static byte[] buildClosePayload(int code, String reason) {
+        if (!WebSocketFrame.isValidWireCloseCode(code)) {
+            throw new IllegalArgumentException("Invalid WebSocket close code: " + code);
+        }
         byte[] reasonBytes = reason.getBytes(WebSocketFrame.TEXT_CHARSET);
+        if (reasonBytes.length > 123) {
+            throw new IllegalArgumentException("WebSocket close reason exceeds 123 bytes");
+        }
         byte[] payload = new byte[2 + reasonBytes.length];
         payload[0] = (byte) (code >> 8 & 0xFF);
         payload[1] = (byte) (code & 0xFF);

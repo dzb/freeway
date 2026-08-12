@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.engine.ws;
 import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketReadLoopTest {
@@ -178,6 +180,23 @@ class WebSocketReadLoopTest {
     }
 
     @Test
+    void protocolErrorSendsCloseFrame() throws Exception {
+        // Close code 1005 is reserved and must never appear on the wire.
+        byte[] invalidClose = maskedFrame(0x08, true, new byte[]{3, (byte) 0xED});
+        var in = new ByteArrayInputStream(invalidClose);
+        var out = new ByteArrayOutputStream();
+        var session = new WebSocketSessionImpl(
+            "GET", "/", null, Map.of(), in, out, Map.of());
+
+        WebSocket.readLoop(in, out, session, WebSocketListener.NOOP);
+
+        var response = WebSocketFrame.read(new ByteArrayInputStream(out.toByteArray()));
+        assertEquals(OpCode.Close, response.opCode());
+        assertEquals(1002, ((response.payload()[0] & 0xff) << 8)
+            | (response.payload()[1] & 0xff));
+    }
+
+    @Test
     void serverCloseWakesBlockingReadLoop() throws Exception {
         // A server-initiated close while the read loop is parked on a live
         // (blocking) stream must wake the loop: close() closes the input,
@@ -218,6 +237,40 @@ class WebSocketReadLoopTest {
         loop.join(3000);
         assertTrue(loopDone.get(),
             "readLoop must return when the session is closed, not hang on the blocked read");
+    }
+
+    @Test
+    void serverCloseNotifiesListenerWithItsCloseCode() throws Exception {
+        var blockingIn = new InputStream() {
+            volatile boolean closed;
+            @Override public int read() throws IOException {
+                while (!closed) Thread.onSpinWait();
+                throw new IOException("closed");
+            }
+            @Override public void close() { closed = true; }
+        };
+        var out = new ByteArrayOutputStream();
+        var session = new WebSocketSessionImpl("GET", "/", null, Map.of(),
+            blockingIn, out, Map.of());
+        var closeCode = new AtomicInteger();
+        Thread loop = Thread.startVirtualThread(() -> WebSocket.readLoop(
+            blockingIn, out, session, new WebSocketListener() {
+                @Override public void onClose(int code, String reason, boolean remote) {
+                    closeCode.set(code);
+                }
+            }));
+        Thread.sleep(200);
+        session.close(1001, "shutdown");
+        loop.join(3000);
+        assertEquals(1001, closeCode.get());
+    }
+
+    @Test
+    void invalidServerCloseDoesNotChangeSessionState() {
+        var session = new WebSocketSessionImpl("GET", "/", null, Map.of(),
+            new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), Map.of());
+        assertThrows(IllegalArgumentException.class, () -> session.close(1005, "bad"));
+        assertTrue(session.isOpen());
     }
 
     private static byte[] maskedFrame(int opcode, boolean fin, byte[] payload) {

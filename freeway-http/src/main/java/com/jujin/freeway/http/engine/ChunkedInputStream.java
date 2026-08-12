@@ -11,6 +11,8 @@ import java.io.InputStream;
 final class ChunkedInputStream extends InputStream {
 
     private static final int MAX_CHUNK_HEADER_SIZE = 2050;
+    private static final int MAX_TRAILER_BYTES = 8192;
+    private static final int MAX_TRAILER_COUNT = 200;
     static final char CR = '\r';
     static final char LF = '\n';
 
@@ -76,7 +78,6 @@ final class ChunkedInputStream extends InputStream {
     @Override
     public void close() throws IOException {
         if (closed) return;
-        closed = true;
         if (!eof) {
             // drain remaining chunk data
             try {
@@ -86,6 +87,7 @@ final class ChunkedInputStream extends InputStream {
                 }
             } catch (IOException ignored) { /* best-effort drain */ }
         }
+        closed = true;
     }
 
     private int readChunkHeader() throws IOException {
@@ -124,6 +126,7 @@ final class ChunkedInputStream extends InputStream {
     }
 
     private static int parseHex(char[] arr, int nchars) throws IOException {
+        if (nchars == 0) throw new IOException("Empty chunk size");
         long len = 0;
         for (int i = 0; i < nchars; i++) {
             char c = arr[i];
@@ -151,20 +154,26 @@ final class ChunkedInputStream extends InputStream {
 
     /** Reads and discards optional trailer headers after the final chunk. */
     private void consumeTrailers() throws IOException {
+        int total = 0;
+        int count = 0;
         while (true) {
             int cr = in.read();
             if (cr == -1) return;
+            if (++total > MAX_TRAILER_BYTES) throw new IOException("Trailers too large");
             if (cr == CR) {
                 int lf = in.read();
+                if (lf >= 0 && ++total > MAX_TRAILER_BYTES) throw new IOException("Trailers too large");
                 if (lf == LF) return; // empty line → end of trailers
                 // trailer header — keep reading this line
                 // CR not followed by LF — put back or continue
             }
+            if (++count > MAX_TRAILER_COUNT) throw new IOException("Too many trailers");
             // skip trailer line until CRLF
             int prev = cr;
             while (true) {
                 int c = in.read();
                 if (c == -1) return;
+                if (++total > MAX_TRAILER_BYTES) throw new IOException("Trailers too large");
                 if (prev == CR && c == LF) break;
                 prev = c;
             }

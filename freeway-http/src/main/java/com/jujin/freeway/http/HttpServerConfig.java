@@ -64,14 +64,14 @@ public record HttpServerConfig(
                 "maxBodySize must be positive: " + maxBodySize);
         }
         if (readTimeout == null || readTimeout.isNegative()) {
-            readTimeout = DEFAULT_READ_TIMEOUT;
+            throw new IllegalArgumentException("readTimeout must be non-negative");
         }
         if (maxConnections < 0) {
             throw new IllegalArgumentException(
                 "maxConnections must be >= 0: " + maxConnections);
         }
         if (writeTimeout == null || writeTimeout.isNegative()) {
-            writeTimeout = DEFAULT_WRITE_TIMEOUT;
+            throw new IllegalArgumentException("writeTimeout must be non-negative");
         }
         if (compression == null) {
             compression = CompressionConfig.DEFAULT;

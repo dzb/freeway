@@ -69,7 +69,13 @@ public final class CorsFilter implements HttpFilter {
         if (acao != null) {
             ctx.setHeader("Access-Control-Allow-Origin", acao);
             if (!"*".equals(acao)) {
-                ctx.setHeader("Vary", "Origin");
+                String vary = ctx.responseHeaderValue("Vary").orElse(null);
+                if (vary == null || vary.isBlank()) {
+                    ctx.setHeader("Vary", "Origin");
+                } else if (java.util.Arrays.stream(vary.split(","))
+                            .noneMatch(token -> "Origin".equalsIgnoreCase(token.trim()))) {
+                    ctx.setHeader("Vary", vary + ", Origin");
+                }
             }
             if (allowCredentials) {
                 ctx.setHeader("Access-Control-Allow-Credentials", "true");

@@ -5,6 +5,7 @@ import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
 import com.jujin.freeway.http.filter.AccessLogFilter;
+import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.route.Route;
 import jdk.net.ExtendedSocketOptions;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -131,6 +133,34 @@ class HttpServerOperationalTest {
     }
 
     @Test
+    void oversizedBodyClosesConnectionInsteadOfDrainingNextRequest() throws Exception {
+        int port = freePort();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
+                Duration.ofSeconds(2), 4, Duration.ofSeconds(2), 0))
+            .route(Route.post("/body", ctx -> ctx.send(200, ctx.bodyText())))
+            .route(Route.get("/next", ctx -> ctx.send(200, "next")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(3000);
+            socket.getOutputStream().write(("POST /body HTTP/1.1\r\nHost: x\r\n"
+                + "Content-Length: 8\r\n\r\n12345678"
+                + "GET /next HTTP/1.1\r\nHost: x\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
+            String response = readUntil(socket.getInputStream(), "Payload Too Large");
+            assertTrue(response.contains("413"));
+            ByteArrayOutputStream rest = new ByteArrayOutputStream();
+            socket.getInputStream().transferTo(rest);
+            assertTrue(!rest.toString(StandardCharsets.US_ASCII).contains("HTTP/1.1 200"),
+                "an over-limit request must not reuse the connection");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void metricsRecordConnectionsRequestsAndStatus() throws Exception {
         TestMetrics metrics = new TestMetrics();
         int port = freePort();
@@ -195,6 +225,32 @@ class HttpServerOperationalTest {
         }
         assertEquals(0, active,
             "connections.active gauge must drop to zero after stop");
+    }
+
+    @Test
+    void mappedExceptionsAreNotPublishedAsErrorEvents() throws Exception {
+        List<Object> events = new java.util.concurrent.CopyOnWriteArrayList<>();
+        int port = freePort();
+        WebServer server = WebServerBuilder.builder()
+            .eventSink(events::add)
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .route(Route.post("/boom", ctx -> {
+                ctx.maxBodySize(1);
+                ctx.body();
+                ctx.send(200, "unexpected");
+            }))
+            .build();
+        server.start();
+        try {
+            var response = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder().uri(URI.create("http://127.0.0.1:" + port + "/boom"))
+                    .POST(HttpRequest.BodyPublishers.ofString("too large")).build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(413, response.statusCode());
+            assertTrue(events.stream().noneMatch(HttpErrorEvent.class::isInstance));
+        } finally {
+            server.stop();
+        }
     }
 
     @Test

@@ -43,6 +43,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import javax.net.ssl.SSLSession;
 
 /**
@@ -89,6 +90,7 @@ final class HttpSession implements Runnable {
     private final FreewayHttpEngine engine;
     private final HttpServerConfig config;
     private final ConnectionRegistry registry;
+    private final Semaphore connectionPermits;
     private final Metrics metrics;
     private final Metrics.Timer requestTimer;
     private ExecutorService h2Executor;
@@ -96,6 +98,13 @@ final class HttpSession implements Runnable {
     public HttpSession(Socket socket, HttpRequestHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
             HttpServerConfig config, ConnectionRegistry registry) {
+        this(socket, handler, jsonCodec, coercer, engine, config, registry, null);
+    }
+
+    public HttpSession(Socket socket, HttpRequestHandler handler,
+            JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
+            HttpServerConfig config, ConnectionRegistry registry,
+            Semaphore connectionPermits) {
         this.rawSocket = socket;
         this.handler = handler;
         this.jsonCodec = jsonCodec;
@@ -103,6 +112,7 @@ final class HttpSession implements Runnable {
         this.engine = engine;
         this.config = config;
         this.registry = registry;
+        this.connectionPermits = connectionPermits;
         this.metrics = engine.metrics();
         this.requestTimer = this.metrics.timer("freeway.http.requests.duration");
     }
@@ -223,7 +233,7 @@ final class HttpSession implements Runnable {
                         && !upgradeHeader.isEmpty()
                         && "websocket".equalsIgnoreCase(upgradeHeader.getFirst())) {
                     metrics.counter("freeway.http.requests.total").increment();
-                    handleWebSocketUpgrade(connection, req);
+                    handleWebSocketUpgrade(connection, parser, req);
                     return;
                 }
 
@@ -247,7 +257,6 @@ final class HttpSession implements Runnable {
                     req.headers(), bodyStream, bodyLength, req.isChunked(),
                     out, requestContext, req.isHttp10(), req.keepAlive());
                 ctx.setHeader("X-Request-Id", requestContext.correlationId());
-
                 // RFC 7231 §5.1.1: acknowledge Expect: 100-continue before
                 // the handler reads the body so clients send it promptly.
                 if ((req.isChunked() || bodyLength > 0)
@@ -283,6 +292,7 @@ final class HttpSession implements Runnable {
                 if (req.isChunked() && bodyDrained) {
                     parser.reclaimChunkedPrefix();
                 }
+                if (!bodyDrained) break;
                 ctx.syncKeepAliveFromResponse();
                 if (registry.isStopping()) break;
                 if (!ctx.isKeepAlive()) break;
@@ -319,6 +329,7 @@ final class HttpSession implements Runnable {
                     rawSocket.close();
                 } catch (IOException ignored) {}
             }
+            if (connectionPermits != null) connectionPermits.release();
         }
     }
 
@@ -650,7 +661,8 @@ final class HttpSession implements Runnable {
     // --- WebSocket upgrade ---
 
     private void handleWebSocketUpgrade(Http11Connection connection,
-                                        HttpParser.ParsedRequest req) {
+                                         HttpParser parser,
+                                         HttpParser.ParsedRequest req) {
         try {
             String origin = headerValue(req.headers(), "Origin");
             WebSocketMatch match = handler.websocket(req.method(), req.path(), origin);
@@ -702,12 +714,13 @@ final class HttpSession implements Runnable {
             out.flush();
             metrics.counter("freeway.http.websocket.connections").increment();
 
+            InputStream websocketInput = parser.upgradeStream();
             var wsSession = new WebSocketSessionImpl(req.method(), req.path(),
-                req.queryString(), req.headers(), connection.inputStream(),
+                req.queryString(), req.headers(), websocketInput,
                 connection.outputStream(), match.pathVariables());
             var listener = match.endpoint().open(wsSession);
             listener.onOpen(wsSession);
-            WebSocket.readLoop(connection.inputStream(), connection.outputStream(),
+            WebSocket.readLoop(websocketInput, connection.outputStream(),
                 wsSession, listener);
         } catch (Exception e) {
             LOG.trace("WebSocket upgrade error: {}", e.getMessage());

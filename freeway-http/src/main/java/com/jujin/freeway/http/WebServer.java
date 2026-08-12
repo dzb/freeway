@@ -17,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,6 +49,7 @@ public final class WebServer implements AutoCloseable {
     private final HttpEngine engine;
     private final HttpServerConfig config;
     private final Consumer<Object> eventSink;
+    private final ReadinessProbe readinessProbe;
     private final HttpRequestHandler requestHandler;
     private final RouteHandler filterChain;
     private final boolean publishEvents;
@@ -61,6 +61,16 @@ public final class WebServer implements AutoCloseable {
         HttpServerConfig config,
         Consumer<Object> eventSink,
         RequestPipeline pipeline
+    ) {
+        this(engine, config, eventSink, pipeline, (host, port) -> port > 0);
+    }
+
+    WebServer(
+        HttpEngine engine,
+        HttpServerConfig config,
+        Consumer<Object> eventSink,
+        RequestPipeline pipeline,
+        ReadinessProbe readinessProbe
     ) {
         this.routes = Objects.requireNonNull(pipeline.routes(), "routes");
         this.websocketIndex = Objects.requireNonNull(pipeline.websocketIndex(), "websocketIndex");
@@ -75,6 +85,7 @@ public final class WebServer implements AutoCloseable {
         this.engine = Objects.requireNonNull(engine, "engine");
         this.config = Objects.requireNonNull(config, "config");
         this.eventSink = eventSink != null ? eventSink : event -> {};
+        this.readinessProbe = Objects.requireNonNull(readinessProbe, "readinessProbe");
         // Skip event computation when sink is the noop sentinel
         this.publishEvents = this.eventSink != NOOP_SINK;
 
@@ -126,8 +137,10 @@ public final class WebServer implements AutoCloseable {
             try {
                 inner.handle(ctx);
             } catch (Exception ex) {
-                WebServer.this.handleException(ctx, ex);
-                publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
+                boolean handled = WebServer.this.handleException(ctx, ex);
+                if (!handled) {
+                    publish(new HttpErrorEvent(ctx.method(), ctx.path(), ex));
+                }
             }
             long elapsed = Duration.between(
                 ctx.requestContext().startTime(), Instant.now()).toMillis();
@@ -204,7 +217,7 @@ public final class WebServer implements AutoCloseable {
             }
             boolean closed = false;
             try {
-                if (!awaitReady(h.host(), h.port())) {
+                if (!readinessProbe.ready(h.host(), h.port())) {
                     closed = true;
                     closeQuietly(h);
                     throw new RuntimeException(
@@ -229,26 +242,9 @@ public final class WebServer implements AutoCloseable {
         try { handle.close(); } catch (Exception ignored) {}
     }
 
-    private static boolean awaitReady(String host, int port) {
-        String probe = isWildcardAddress(host) ? "127.0.0.1" : host;
-        long deadline = System.currentTimeMillis() + 10_000;
-        while (System.currentTimeMillis() < deadline) {
-            try (Socket s = new Socket(probe, port)) {
-                return true;
-            } catch (IOException ignored) {
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean isWildcardAddress(String host) {
-        return "0.0.0.0".equals(host) || "::".equals(host);
+    @FunctionalInterface
+    interface ReadinessProbe {
+        boolean ready(String host, int port);
     }
 
     private RouteHandler buildChain(
@@ -303,10 +299,10 @@ public final class WebServer implements AutoCloseable {
         match.handler().handle(request);
     }
 
-    private void handleException(HttpContext ctx, Exception exception) {
+    private boolean handleException(HttpContext ctx, Exception exception) {
         for (ExceptionMapper mapper : mappers) {
             try {
-                if (mapper.handle(ctx, exception)) return;
+                if (mapper.handle(ctx, exception)) return true;
             } catch (Exception mapperEx) {
                 LOG.warn(
                     "Exception mapper {} failed while handling {}",
@@ -327,7 +323,7 @@ public final class WebServer implements AutoCloseable {
                 ctx.method(), ctx.path(),
                 exception.getClass().getSimpleName(),
                 String.valueOf(exception.getMessage()));
-            return;
+            return true;
         }
         LOG.error(
             "Unhandled exception for {} {}: {}: {}",
@@ -341,6 +337,7 @@ public final class WebServer implements AutoCloseable {
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
         }
+        return false;
     }
 
     private void publish(Object event) {
