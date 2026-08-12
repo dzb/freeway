@@ -4,12 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
-import java.net.URLDecoder;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -272,21 +270,7 @@ public abstract class HttpContext {
         if (token == null || token.isBlank()) {
             throw new IllegalArgumentException("Vary token must not be blank");
         }
-        setHeader("Vary", mergeVary(responseHeader("Vary"), token));
-    }
-
-    /** Merges a token into an existing {@code Vary} value (or returns the
-     *  token alone), without duplicating it — case-insensitive. */
-    public static String mergeVary(String current, String token) {
-        if (current == null || current.isBlank()) {
-            return token;
-        }
-        for (String part : current.split(",")) {
-            if (token.equalsIgnoreCase(part.trim())) {
-                return current;
-            }
-        }
-        return current + ", " + token;
+        setHeader("Vary", HttpUtils.mergeVary(responseHeader("Vary"), token));
     }
 
     /**
@@ -297,25 +281,9 @@ public abstract class HttpContext {
      */
     protected static void validateHeaderName(String name) {
         if (name == null) throw new IllegalArgumentException("Header name must not be null");
-        if (!isToken(name)) {
+        if (!HttpUtils.isToken(name)) {
             throw new IllegalArgumentException("Invalid header name: " + name);
         }
-    }
-
-    /** RFC 7230 §3.2.6 tchar: true when every character is an HTTP token
-     *  character. Keeps the case-insensitive header store's hash/equals
-     *  contract consistent (both are defined for ASCII tokens). */
-    public static boolean isToken(String value) {
-        if (value.isEmpty()) return false;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if ((c < 'A' || c > 'Z') && (c < 'a' || c > 'z')
-                    && (c < '0' || c > '9')
-                    && "!#$%&'*+-.^_`|~".indexOf(c) < 0) {
-                return false;
-            }
-        }
-        return true;
     }
 
     protected static void validateHeaderValue(String value) {
@@ -437,34 +405,6 @@ public abstract class HttpContext {
         return outputJson(value);
     }
 
-    // == Utility ==
-
-    /** Converts a blank string to null. */
-    public static String blankToNull(String text) {
-        return Strings.blankToNull(text);
-    }
-
-    /**
-     * Parses a URL query string into a parameter map.
-     * Values are URL-decoded. Malformed percent-encoding is left as-is.
-     */
-    public static Map<String, List<String>> parseQueryParams(String rawQuery) {
-        if (rawQuery == null || rawQuery.isEmpty()) return Map.of();
-        LinkedHashMap<String, List<String>> params = new LinkedHashMap<>();
-        for (String pair : rawQuery.split("&")) {
-            int eq = pair.indexOf('=');
-            String name = eq >= 0 ? urlDecode(pair.substring(0, eq)) : urlDecode(pair);
-            String value = eq >= 0 ? urlDecode(pair.substring(eq + 1)) : "";
-            params.computeIfAbsent(name, k -> new ArrayList<>(1)).add(value);
-        }
-        return params;
-    }
-
-    /** Creates a request context from an optional correlation ID header value. */
-    public static RequestContext createRequestContext(String correlationId) {
-        return RequestContext.create(correlationId);
-    }
-
     /** Coerces a string value to the given target type. */
     protected final <T> T coerceText(String value, Class<T> type) {
         return value != null ? coercer.coerce(value, type) : null;
@@ -478,7 +418,7 @@ public abstract class HttpContext {
 
     /** Sets Content-Type if not already present (text/json output helpers). */
     private void ensureContentType(String contentType) {
-        if (blankToNull(responseHeader("Content-Type")) == null) {
+        if (Strings.blankToNull(responseHeader("Content-Type")) == null) {
             setHeader("Content-Type", contentType);
         }
     }
@@ -500,11 +440,6 @@ public abstract class HttpContext {
         if (ct == null || !ct.toLowerCase(Locale.ROOT).contains("application/json")) {
             throw new IllegalStateException("Expected application/json Content-Type");
         }
-    }
-
-    private static String urlDecode(String text) {
-        try { return URLDecoder.decode(text, StandardCharsets.UTF_8); }
-        catch (Exception e) { return text; }
     }
 
 }

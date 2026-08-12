@@ -62,7 +62,8 @@ public final class StubHttpContext extends HttpContext {
         int q = path.indexOf('?');
         if (q >= 0) {
             this.path = path.substring(0, q);
-            this.queryParams.putAll(parseQueryParams(path.substring(q + 1)));
+            this.queryParams.putAll(
+                HttpUtils.parseQueryParams(path.substring(q + 1)));
         } else {
             this.path = path;
         }
@@ -166,7 +167,8 @@ public final class StubHttpContext extends HttpContext {
     @Override
     public RequestContext requestContext() {
         if (requestContext == null) {
-            requestContext = HttpContext.createRequestContext(header("X-Request-Id").orElse(null));
+            requestContext = RequestContext.create(
+                header("X-Request-Id").orElse(null));
         }
         return requestContext;
     }

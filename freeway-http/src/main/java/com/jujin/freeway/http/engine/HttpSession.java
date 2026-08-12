@@ -244,7 +244,7 @@ final class HttpSession implements Runnable {
                 var reqIdHeader = req.headers().get("x-request-id");
                 String correlationId = reqIdHeader != null && !reqIdHeader.isEmpty()
                     ? reqIdHeader.getFirst() : null;
-                RequestContext requestContext = HttpContext.createRequestContext(correlationId);
+                RequestContext requestContext = RequestContext.create(correlationId);
 
                 // RFC 7230 §3.3.3: a request with neither Content-Length nor
                 // Transfer-Encoding has a zero-length body. Reading to EOF here
@@ -624,7 +624,7 @@ final class HttpSession implements Runnable {
             headers.remove(":scheme"); headers.remove(":authority");
             if (authority != null) headers.put("Host", List.of(authority));
 
-            var rc = HttpContext.createRequestContext(
+            var rc = RequestContext.create(
                 headerValue(reqHeaders, "x-request-id"));
             var ctx = new HttpContextDefault(jsonCodec, coercer);
             ctx.setMaxBodySize(config.maxBodySize());

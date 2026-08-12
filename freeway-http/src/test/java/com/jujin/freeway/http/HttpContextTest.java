@@ -21,7 +21,7 @@ class HttpContextTest {
 
     @Test
     void malformedQueryEncodingFallsBackToRawText() {
-        var params = HttpContext.parseQueryParams("bad=%zz&ok=a%20b");
+        var params = HttpUtils.parseQueryParams("bad=%zz&ok=a%20b");
 
         assertEquals("%zz", params.get("bad").getFirst());
         assertEquals("a b", params.get("ok").getFirst());

@@ -4,7 +4,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -83,24 +82,11 @@ public final class HttpModule implements ModuleEx {
         binder.bind(CorsFilter.class).to(container -> {
             var symbols = container.get(SymbolSource.class);
             var coercer = container.get(Coercer.class);
-            boolean enabled = config(symbols, coercer,
-                HttpConfigKeys.CORS_ENABLED, true);
-            String origins = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOWED_ORIGINS, "*");
-            String methods = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOWED_METHODS,
-                "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-            String headers = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOWED_HEADERS,
-                "Content-Type, Authorization");
-            String exposed = config(symbols, coercer,
-                HttpConfigKeys.CORS_EXPOSED_HEADERS, "");
-            String maxAge = config(symbols, coercer,
-                HttpConfigKeys.CORS_MAX_AGE, "3600");
-            boolean credentials = config(symbols, coercer,
-                HttpConfigKeys.CORS_ALLOW_CREDENTIALS, false);
-            return new CorsFilter(enabled, origins, methods, headers,
-                exposed.isBlank() ? null : exposed, maxAge, credentials);
+            HttpConfig.Cors cors = HttpConfig.from(symbols, coercer).cors();
+            return new CorsFilter(cors.enabled(), cors.allowedOrigins(),
+                cors.allowedMethods(), cors.allowedHeaders(),
+                cors.exposedHeaders().isBlank() ? null : cors.exposedHeaders(),
+                cors.maxAge(), cors.allowCredentials());
         });
 
         // Engines — concrete bindings, HTTPS when SSL is enabled
@@ -110,7 +96,7 @@ public final class HttpModule implements ModuleEx {
             var symbols = container.get(SymbolSource.class);
             var metrics = container.get(Metrics.class);
 
-            SslSettings ssl = loadSslSettings(symbols, coercer);
+            HttpConfig.Ssl ssl = HttpConfig.from(symbols, coercer).ssl();
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(json, coercer, metrics);
@@ -135,43 +121,14 @@ public final class HttpModule implements ModuleEx {
             HttpEngine engine = container.get(HttpEngine.class);
             var symbols = container.get(SymbolSource.class);
             var coercer = container.get(Coercer.class);
-
-            String host = config(symbols, coercer,
-                HttpConfigKeys.SERVER_HOST, "127.0.0.1");
-            int port = config(symbols, coercer,
-                HttpConfigKeys.SERVER_PORT, 8080);
-            int backlog = config(symbols, coercer,
-                HttpConfigKeys.SERVER_BACKLOG, 0);
-            Duration shutdownGrace = config(symbols, coercer,
-                HttpConfigKeys.SERVER_SHUTDOWN_GRACE,
-                Duration.ofSeconds(2));
-            Duration readTimeout = config(symbols, coercer,
-                HttpConfigKeys.SERVER_READ_TIMEOUT,
-                HttpServerConfig.DEFAULT_READ_TIMEOUT);
-            Duration writeTimeout = config(symbols, coercer,
-                HttpConfigKeys.SERVER_WRITE_TIMEOUT,
-                HttpServerConfig.DEFAULT_WRITE_TIMEOUT);
-            int maxConnections = config(symbols, coercer,
-                HttpConfigKeys.SERVER_MAX_CONNECTIONS,
-                HttpServerConfig.DEFAULT_MAX_CONNECTIONS);
-            boolean compressionEnabled = config(symbols, coercer,
-                HttpConfigKeys.COMPRESSION_ENABLED, true);
-            int compressionMinSize = config(symbols, coercer,
-                HttpConfigKeys.COMPRESSION_MIN_SIZE, 256);
-            int receiveBufferSize = config(symbols, coercer,
-                HttpConfigKeys.SERVER_RECEIVE_BUFFER, 0);
-            int sendBufferSize = config(symbols, coercer,
-                HttpConfigKeys.SERVER_SEND_BUFFER, 0);
-            long maxBodySize = config(symbols, coercer,
-                HttpConfigKeys.MAX_BODY_SIZE, HttpServerConfig.DEFAULT_MAX_BODY_SIZE);
+            HttpConfig cfg = HttpConfig.from(symbols, coercer);
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
 
             var filters = new ArrayList<>(
                 container.extension(HttpFilter.class).all());
-            if (config(symbols, coercer,
-                    HttpConfigKeys.ACCESS_LOG_ENABLED, false)) {
+            if (cfg.accessLogEnabled()) {
                 filters.add(new AccessLogFilter());
             }
 
@@ -187,12 +144,13 @@ public final class HttpModule implements ModuleEx {
 
             return new WebServer(
                 engine,
-                new HttpServerConfig(host, port, backlog,
-                    HttpServerConfig.DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace,
-                    maxBodySize, readTimeout, maxConnections, writeTimeout,
+                new HttpServerConfig(cfg.host(), cfg.port(), cfg.backlog(),
+                    HttpServerConfig.DEFAULT_SOCKET_BUFFER_SIZE, cfg.shutdownGrace(),
+                    cfg.maxBodySize(), cfg.readTimeout(), cfg.maxConnections(),
+                    cfg.writeTimeout(),
                     new HttpServerConfig.CompressionConfig(
-                        compressionEnabled, compressionMinSize),
-                    receiveBufferSize, sendBufferSize),
+                        cfg.compressionEnabled(), cfg.compressionMinSize()),
+                    cfg.receiveBufferSize(), cfg.sendBufferSize()),
                 eventSink,
                 pipeline
             );
@@ -203,7 +161,7 @@ public final class HttpModule implements ModuleEx {
             public void start(Container container) {
                 var symbols = container.get(SymbolSource.class);
                 var coercer = container.get(Coercer.class);
-                SslSettings ssl = loadSslSettings(symbols, coercer);
+                HttpConfig.Ssl ssl = HttpConfig.from(symbols, coercer).ssl();
                 container.get(WebServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
@@ -241,12 +199,9 @@ public final class HttpModule implements ModuleEx {
         binder.bind(HealthFilter.class).to(container -> {
             var symbols = container.get(SymbolSource.class);
             var coercer = container.get(Coercer.class);
-            boolean enabled = config(symbols, coercer,
-                HttpConfigKeys.HEALTH_ENABLED, true);
-            String path = config(symbols, coercer,
-                HttpConfigKeys.HEALTH_PATH, "/healthz");
+            HttpConfig.Health health = HttpConfig.from(symbols, coercer).health();
             HealthCheck check = container.get(HealthCheck.class);
-            return new HealthFilter(enabled, path, check);
+            return new HealthFilter(health.enabled(), health.path(), check);
         });
 
         binder.contribute(HttpFilter.class).add(new RequestTimingFilter());
@@ -255,48 +210,8 @@ public final class HttpModule implements ModuleEx {
             .add(ExceptionMappers.defaultMapper());
     }
 
-    record SslSettings(
-        boolean enabled,
-        String keyStorePath, String keyStorePassword, String keyStoreType,
-        boolean http2,
-        String trustStorePath, String trustStorePassword, String trustStoreType,
-        boolean clientAuth, String protocols, String ciphers,
-        String sniDirectory, Duration reloadInterval
-    ) {}
 
-    private static SslSettings loadSslSettings(SymbolSource symbols, Coercer coercer) {
-        boolean sslEnabled = config(symbols, coercer,
-            HttpConfigKeys.SSL_ENABLED, false);
-        String ksPath = config(symbols, coercer,
-            HttpConfigKeys.SSL_KEY_STORE, null);
-        String ksPwd = config(symbols, coercer,
-            HttpConfigKeys.SSL_KEY_STORE_PASSWORD, null);
-        if (sslEnabled && (ksPath == null || ksPwd == null)) {
-            LOG.error("SSL enabled ({} = true) but {} and {} are not configured",
-                HttpConfigKeys.SSL_ENABLED,
-                HttpConfigKeys.SSL_KEY_STORE,
-                HttpConfigKeys.SSL_KEY_STORE_PASSWORD);
-            throw new IllegalStateException(
-                "SSL is enabled but " + HttpConfigKeys.SSL_KEY_STORE
-                + " and " + HttpConfigKeys.SSL_KEY_STORE_PASSWORD
-                + " are required");
-        }
-        return new SslSettings(
-            sslEnabled, ksPath, ksPwd,
-            config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12"),
-            config(symbols, coercer, HttpConfigKeys.SSL_HTTP2, true),
-            config(symbols, coercer, HttpConfigKeys.SSL_TRUST_STORE, null),
-            config(symbols, coercer, HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, null),
-            config(symbols, coercer, HttpConfigKeys.SSL_TRUST_STORE_TYPE, "PKCS12"),
-            config(symbols, coercer, HttpConfigKeys.SSL_CLIENT_AUTH, false),
-            config(symbols, coercer, HttpConfigKeys.SSL_PROTOCOLS, null),
-            config(symbols, coercer, HttpConfigKeys.SSL_CIPHERS, null),
-            config(symbols, coercer, HttpConfigKeys.SSL_SNI_DIRECTORY, null),
-            config(symbols, coercer, HttpConfigKeys.SSL_RELOAD_INTERVAL,
-                Duration.ZERO));
-    }
-
-    private static SSLContext buildSslContext(SslSettings s) {
+    private static SSLContext buildSslContext(HttpConfig.Ssl s) {
         try {
             KeyStore defaultStore = loadKeyStore(
                 Path.of(s.keyStorePath()), s.keyStoreType(), s.keyStorePassword());
@@ -333,7 +248,7 @@ public final class HttpModule implements ModuleEx {
         return kmf.getKeyManagers();
     }
 
-    private static KeyManager[] buildSniKeyManagers(SslSettings s, KeyStore defaultStore)
+    private static KeyManager[] buildSniKeyManagers(HttpConfig.Ssl s, KeyStore defaultStore)
             throws Exception {
         Path dir = Path.of(s.sniDirectory());
         if (!Files.isDirectory(dir)) {
@@ -383,7 +298,7 @@ public final class HttpModule implements ModuleEx {
         return fallback;
     }
 
-    private static TrustManager[] buildTrustManagers(SslSettings s) throws Exception {
+    private static TrustManager[] buildTrustManagers(HttpConfig.Ssl s) throws Exception {
         if (s.trustStorePath() == null) {
             return null;
         }
@@ -430,23 +345,4 @@ public final class HttpModule implements ModuleEx {
         return value == null || value.isBlank();
     }
 
-    @SuppressWarnings("unchecked")
-    private static <T> T config(SymbolSource symbols, Coercer coercer, String key, T defaultValue) {
-        String raw = symbols.resolve(key, null);
-        if (raw == null) {
-            return defaultValue;
-        }
-        Class<T> targetType = (Class<T>) (defaultValue != null
-            ? defaultValue.getClass() : String.class);
-        try {
-            return coercer.coerce(raw, targetType);
-        } catch (IllegalArgumentException ex) {
-            // Same error shape as ConfigSpec.parse: the message names the key
-            // and value so a bad http config is fixable without a stack crawl.
-            throw new IllegalArgumentException(
-                "Invalid value for config key '" + key + "': '" + raw + "'",
-                ex
-            );
-        }
-    }
 }

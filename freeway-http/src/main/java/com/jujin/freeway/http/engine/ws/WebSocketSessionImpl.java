@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpUtils;
 
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.websocket.WebSocketSession;
@@ -234,7 +234,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     private Map<String, List<String>> ensureQueryParams() {
         if (queryParams == null) {
-            queryParams = HttpContext.parseQueryParams(rawQuery);
+            queryParams = HttpUtils.parseQueryParams(rawQuery);
         }
         return queryParams;
     }

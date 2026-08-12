@@ -24,6 +24,7 @@ import javax.net.ssl.SSLSession;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.RequestContext;
 import com.jujin.freeway.http.sse.SseEmitter;
@@ -129,7 +130,7 @@ public class HttpContextDefault extends HttpContext {
         this.requestContext = requestContext;
         this.http10 = http10;
         this.keepAlive = keepAlive;
-        this.queryParams = parseQueryParams(rawQuery);
+        this.queryParams = HttpUtils.parseQueryParams(rawQuery);
         this.responseStatus = 200;
         this.responded = false;
         this.responseHeaders.clear();
@@ -435,7 +436,7 @@ public class HttpContextDefault extends HttpContext {
      *  ({@code setHeader} is a no-op after {@code responded}). */
     private void addVaryAcceptEncoding() {
         responseHeaders.set("Vary",
-            HttpContext.mergeVary(responseHeaders.get("Vary"), "Accept-Encoding"));
+            HttpUtils.mergeVary(responseHeaders.get("Vary"), "Accept-Encoding"));
     }
 
     private static byte[] gzip(byte[] data) throws IOException {
