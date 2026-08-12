@@ -27,6 +27,44 @@ class SseEmitterTest {
     }
 
     @Test
+    void emitsHeartbeatComment() throws Exception {
+        var baos = new ByteArrayOutputStream();
+        var emitter = new SseEmitter(baos, 50);
+        Thread.sleep(180);
+        emitter.close();
+
+        String out = baos.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains(": ping\n\n"),
+            "a quiet stream must still emit heartbeat comments");
+    }
+
+    @Test
+    void heartbeatDoesNotSplitEvents() throws Exception {
+        var baos = new ByteArrayOutputStream();
+        var emitter = new SseEmitter(baos, 10);
+        emitter.send("first");
+        emitter.send("second");
+        emitter.close();
+
+        String out = baos.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains("data: first\n\ndata: second\n\n"),
+            "heartbeat comments must never interleave into an event");
+    }
+
+    @Test
+    void heartbeatDisabledWithZeroInterval() throws Exception {
+        var baos = new ByteArrayOutputStream();
+        var emitter = new SseEmitter(baos, 0);
+        Thread.sleep(100);
+        emitter.send("data");
+        emitter.close();
+
+        String out = baos.toString(StandardCharsets.UTF_8);
+        assertEquals("data: data\n\n", out,
+            "zero heartbeat interval must disable the heartbeat entirely");
+    }
+
+    @Test
     void sendsEventWithAllFields() throws Exception {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos);
