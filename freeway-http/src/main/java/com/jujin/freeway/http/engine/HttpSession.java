@@ -175,6 +175,7 @@ final class HttpSession implements Runnable {
             }
             ctx.setSecure(connection.getSSLSession() != null);
             ctx.setSslSession(connection.getSSLSession());
+            ctx.setRemoteAddress(remoteAddress(connection.socket()));
 
             while (!connection.closed) {
                 parser.reset(in);
@@ -616,6 +617,7 @@ final class HttpSession implements Runnable {
             ctx.setCompression(config.compression());
             ctx.setSecure(sslSession != null);
             ctx.setSslSession(sslSession);
+            ctx.setRemoteAddress(remoteAddress(socket));
             ctx.reset(method, path, rawQuery, headers, in, -1, false, out, rc, false, false);
             ctx.setWriter(new Http2ResponseWriter(stream));
             ctx.setHeader("X-Request-Id", rc.correlationId());
