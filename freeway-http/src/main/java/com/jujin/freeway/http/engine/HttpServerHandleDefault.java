@@ -47,6 +47,9 @@ final class HttpServerHandleDefault implements HttpServerHandle {
         finished.set(true);
         registry.beginShutdown();
         try { serverSocket.close(); } catch (IOException ignored) {}
+        // Announce shutdown to HTTP/2 peers (GOAWAY) before the grace window
+        // so they stop opening new streams and can retry elsewhere.
+        registry.preCloseAll();
         try { acceptor.join(1000); } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         }

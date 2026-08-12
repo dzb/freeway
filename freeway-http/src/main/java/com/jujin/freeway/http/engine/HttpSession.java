@@ -17,6 +17,7 @@ import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
 import com.jujin.freeway.http.engine.http2.frame.FrameType;
 import com.jujin.freeway.http.engine.http2.frame.SettingsFrame;
+import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.ws.WebSocket;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
 import com.jujin.freeway.http.engine.ws.WebSocketUtil;
@@ -391,9 +392,20 @@ final class HttpSession implements Runnable {
                         streamIn,
                         streamOut,
                         reqHeaders,
-                        ssl ? connection.getSSLSession() : null
+                        ssl ? connection.getSSLSession() : null,
+                        connection.socket()
                     ),
                 timeoutMillis(config.readTimeout()));
+            // On shutdown the server handle force-closes connections; give
+            // the peer a GOAWAY first so it stops creating streams and can
+            // retry on a fresh connection (RFC 7540 §6.8).
+            final Http2Connection goAwayTarget = h2conn;
+            connection.setPreCloseHook(() -> {
+                try {
+                    goAwayTarget.sendGoAway(Http2ErrorCode.NO_ERROR);
+                } catch (IOException ignored) {
+                }
+            });
 
             if (upgradeSettings != null) {
                 h2conn.applyUpgradeSettings(upgradeSettings);

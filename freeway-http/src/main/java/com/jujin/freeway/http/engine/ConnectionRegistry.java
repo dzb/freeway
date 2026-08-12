@@ -40,6 +40,14 @@ final class ConnectionRegistry {
         stopping = true;
     }
 
+    /** Runs each connection's pre-close hook (e.g. HTTP/2 GOAWAY) so peers
+     *  learn about the shutdown before the connection is force-closed. */
+    void preCloseAll() {
+        for (Http11Connection connection : active) {
+            connection.preClose();
+        }
+    }
+
     boolean isStopping() {
         return stopping;
     }

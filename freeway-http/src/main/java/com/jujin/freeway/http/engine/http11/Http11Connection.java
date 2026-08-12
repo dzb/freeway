@@ -36,6 +36,8 @@ public final class Http11Connection {
     private final long writeTimeoutMillis;
 
     public volatile boolean closed;
+    /** Best-effort hook run before a shutdown force-close (H2 GOAWAY). */
+    private volatile Runnable preCloseHook;
 
     public Http11Connection(Socket socket) throws IOException {
         this(socket, 1024, 0);
@@ -114,6 +116,26 @@ public final class Http11Connection {
         try { bufferedIn.close(); } catch (Exception e) { LOG.trace("Input close error", e); }
         try { bufferedOut.close(); } catch (Exception e) { LOG.trace("Output close error", e); }
         try { socket.close(); } catch (Exception e) { LOG.trace("Socket close error", e); }
+    }
+
+    /**
+     * Installs a best-effort hook run by {@link #preClose()} before the
+     * server handle force-closes connections during shutdown. Used by
+     * HTTP/2 sessions to send GOAWAY so the peer stops creating streams.
+     */
+    public void setPreCloseHook(Runnable hook) {
+        this.preCloseHook = hook;
+    }
+
+    /** Runs the pre-close hook, if any, swallowing failures (best-effort). */
+    public void preClose() {
+        Runnable hook = preCloseHook;
+        if (hook != null) {
+            try {
+                hook.run();
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     /**

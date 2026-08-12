@@ -91,8 +91,8 @@ public final class Http2Connection {
     private final SettingsMap localSettings = new SettingsMap();
     /** Reused by the single reader thread to avoid per-frame header allocation. */
     private final byte[] frameHeaderBuffer = new byte[9];
-    /** Set once a GOAWAY has been received — no new streams may be created
-     *  afterwards (RFC 7540 §6.8). */
+    /** Set once GOAWAY has been sent or received — no new streams may be
+     *  created afterwards (RFC 7540 §6.8). */
     private volatile boolean goawayReceived;
 
     private final int connectionWindowSize = DEFAULT_WINDOW_SIZE;
@@ -595,6 +595,9 @@ public final class Http2Connection {
     }
 
     public void sendGoAway(Http2ErrorCode errorCode) throws IOException {
+        // Sending GOAWAY has the same effect as receiving one (RFC 7540
+        // §6.8): no new streams may be created afterwards.
+        goawayReceived = true;
         writeFrame(new GoawayFrame(errorCode, lastSeenStreamId).encode());
     }
 

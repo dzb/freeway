@@ -1960,6 +1960,52 @@ class FreewayHttpEngineTest {
         }
     }
 
+    @Test
+    void h2cShutdownSendsGoaway() throws Exception {
+        // Graceful shutdown must announce GOAWAY(NO_ERROR) to HTTP/2 peers
+        // before closing the socket (RFC 7540 §6.8), so they stop creating
+        // streams and can retry on a fresh connection.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+            socket.setSoTimeout(3000);
+            var out = socket.getOutputStream();
+            out.write(PREFACE_BYTES);
+            out.flush();
+            byte[] header = new byte[9];
+            readFully(socket.getInputStream(), header);
+            int settingsLen = ((header[0] & 0xff) << 16)
+                | ((header[1] & 0xff) << 8)
+                | (header[2] & 0xff);
+            readFully(socket.getInputStream(), new byte[settingsLen]);
+
+            server.stop();
+
+            // The first frame after shutdown must be GOAWAY(NO_ERROR=0),
+            // not a bare EOF.
+            assertTrue(readFullyOrEof(socket.getInputStream(), header),
+                "shutdown must send GOAWAY before closing the connection");
+            int len = ((header[0] & 0xff) << 16)
+                | ((header[1] & 0xff) << 8)
+                | (header[2] & 0xff);
+            assertEquals(0x7, header[3] & 0xff,
+                "the first shutdown frame must be GOAWAY");
+            byte[] payload = new byte[len];
+            readFully(socket.getInputStream(), payload);
+            assertEquals(8, len, "GOAWAY payload must carry errorCode + lastStreamId");
+            int errorCode = ((payload[4] & 0xff) << 24)
+                | ((payload[5] & 0xff) << 16)
+                | ((payload[6] & 0xff) << 8)
+                | (payload[7] & 0xff);
+            assertEquals(0, errorCode, "shutdown GOAWAY must carry NO_ERROR");
+        } finally {
+            server.stop();
+        }
+    }
+
     // ── oversized request line ────────────────────────────────────
 
     @Test
