@@ -91,6 +91,9 @@ public final class Http2Connection {
     private final SettingsMap localSettings = new SettingsMap();
     /** Reused by the single reader thread to avoid per-frame header allocation. */
     private final byte[] frameHeaderBuffer = new byte[9];
+    /** Set once a GOAWAY has been received — no new streams may be created
+     *  afterwards (RFC 7540 §6.8). */
+    private volatile boolean goawayReceived;
 
     private final int connectionWindowSize = DEFAULT_WINDOW_SIZE;
     private final ReentrantLock lock = new ReentrantLock();
@@ -281,6 +284,9 @@ public final class Http2Connection {
 
             switch (frame.header().type()) {
                 case SETTINGS -> {
+                    // RFC 7540 §4.3: a header block may be interrupted only
+                    // by CONTINUATION; any other frame is a connection error.
+                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (frame.header().flags().contains(FrameFlag.ACK)) {
                         continue;
                     }
@@ -289,17 +295,23 @@ public final class Http2Connection {
                     continue;
                 }
                 case GOAWAY -> {
+                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     var goaway = (GoawayFrame) frame;
                     if (goaway.errorCode != Http2ErrorCode.NO_ERROR)
                         throw new IOException("GOAWAY");
+                    // RFC 7540 §6.8: after receiving GOAWAY the endpoint must
+                    // not create new streams — new HEADERS are RST'd below.
+                    goawayReceived = true;
                     continue;
                 }
                 case PING -> {
+                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (!frame.header().flags().contains(FrameFlag.ACK))
                         sendPingAck((PingFrame) frame);
                     continue;
                 }
                 case WINDOW_UPDATE -> {
+                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (streamId == 0) {
                         int increment = ((WindowUpdateFrame) frame).increment();
                         if (sendWindow.addAndGet(increment) > Integer.MAX_VALUE)
@@ -313,6 +325,7 @@ public final class Http2Connection {
                     continue; // RFC 7540 §5.5: ignore unknown/unimplemented frames
                 }
                 case DATA -> {
+                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     var dataFrame = (DataFrame) frame;
                     int flowLength = dataFrame.flowLength();
@@ -321,7 +334,6 @@ public final class Http2Connection {
                     receiveWindow.addAndGet(-flowLength);
                     if (receiveWindow.get() < connectionWindowSize / 10)
                         sendConnectionWindowUpdate();
-                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }
                 case HEADERS -> {
                     if (streamId == 0) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
@@ -393,6 +405,7 @@ public final class Http2Connection {
                     throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 }
                 case RST_STREAM -> {
+                    if (inHeaders) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     // Any RST_STREAM (even error code 0) terminates the target
                     // stream — close it so the handler and stream state are
                     // released instead of leaking.
@@ -409,6 +422,18 @@ public final class Http2Connection {
 
             var target = streams.get(streamId);
             if (target == null && lastSeenStreamId < streamId) {
+                if (goawayReceived) {
+                    // RFC 7540 §6.8: no new streams after GOAWAY. Reject with
+                    // REFUSED_STREAM so the peer may retry on a fresh connection.
+                    lastSeenStreamId = streamId;
+                    headerBlockFragments.clear();
+                    headerBlockSize = 0;
+                    inHeaders = false;
+                    openStreamId = 0;
+                    headersEndStream = false;
+                    sendResetStream(Http2ErrorCode.REFUSED_STREAM, streamId);
+                    continue;
+                }
                 // Enforce the concurrent-stream cap. Http2Stream.close()
                 // removes itself from the map, so streams.size() is the number
                 // of currently open streams.
@@ -417,6 +442,7 @@ public final class Http2Connection {
                     headerBlockFragments.clear();
                     headerBlockSize = 0;
                     inHeaders = false;
+                    openStreamId = 0;
                     headersEndStream = false;
                     sendResetStream(Http2ErrorCode.REFUSED_STREAM, streamId);
                     continue;
@@ -516,6 +542,11 @@ public final class Http2Connection {
                 peerMaxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_HEADER_TABLE_SIZE) {
                 hpack.setMaxDynamicTableSize(parameter.value);
+            } else if (parameter.identifier == SettingIdentifier.SETTINGS_ENABLE_PUSH) {
+                // RFC 7540 §6.5.2: ENABLE_PUSH is sent by clients (it disables
+                // server push); any value other than 0 or 1 is a connection error.
+                if (parameter.value != 0 && parameter.value != 1)
+                    throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             }
             remoteSettings.set(parameter);
         }

@@ -70,6 +70,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FreewayHttpEngineTest {
+
+    private static final byte[] PREFACE_BYTES =
+        "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
     private AppRuntime app;
 
     @AfterEach
@@ -1676,6 +1679,272 @@ class FreewayHttpEngineTest {
             assertEquals("pong", resp.body());
             assertEquals(HttpClient.Version.HTTP_2, resp.version(),
                 "Upgrade: h2c must negotiate HTTP/2");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cGoawayRejectsNewStreams() throws Exception {
+        // RFC 7540 §6.8: after receiving GOAWAY the server must not create
+        // new streams — a later HEADERS must be RST'd (REFUSED_STREAM).
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+            socket.setSoTimeout(3000);
+            var out = socket.getOutputStream();
+            out.write(PREFACE_BYTES);
+            out.flush();
+            byte[] header = new byte[9];
+            readFully(socket.getInputStream(), header);
+            int settingsLen = ((header[0] & 0xff) << 16)
+                | ((header[1] & 0xff) << 8)
+                | (header[2] & 0xff);
+            readFully(socket.getInputStream(), new byte[settingsLen]);
+
+            // GOAWAY(NO_ERROR, lastStreamId=0)
+            out.write(new byte[] {
+                0x00, 0x00, 0x08, // length 8
+                0x07,             // GOAWAY
+                0x00,             // flags
+                0x00, 0x00, 0x00, 0x00, // stream 0
+                0x00, 0x00, 0x00, 0x00, // errorCode NO_ERROR
+                0x00, 0x00, 0x00, 0x00  // lastStreamId
+            });
+            // HEADERS for stream 3 (new stream after GOAWAY)
+            byte[] headerBlock = new byte[] {
+                (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41, 0x09,
+                'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+            };
+            out.write(new byte[] {
+                (byte) ((headerBlock.length >> 16) & 0xff),
+                (byte) ((headerBlock.length >> 8) & 0xff),
+                (byte) (headerBlock.length & 0xff),
+                0x1, // HEADERS
+                0x5, // END_HEADERS | END_STREAM
+                0x00, 0x00, 0x00, 0x03
+            });
+            out.write(headerBlock);
+            out.flush();
+
+            // Expect RST_STREAM(REFUSED_STREAM=0x7) on stream 3.
+            var in = socket.getInputStream();
+            boolean rejected = false;
+            long deadline = System.currentTimeMillis() + 2000;
+            while (System.currentTimeMillis() < deadline && !rejected) {
+                if (!readFullyOrEof(in, header)) break;
+                int len = ((header[0] & 0xff) << 16)
+                    | ((header[1] & 0xff) << 8)
+                    | (header[2] & 0xff);
+                int type = header[3] & 0xff;
+                int streamId = ((header[5] & 0x7f) << 24)
+                    | ((header[6] & 0xff) << 16)
+                    | ((header[7] & 0xff) << 8)
+                    | (header[8] & 0xff);
+                byte[] payload = new byte[len];
+                readFully(in, payload);
+                if (type == 0x3 && streamId == 3 && len >= 4) { // RST_STREAM
+                    int errorCode = ((payload[0] & 0xff) << 24)
+                        | ((payload[1] & 0xff) << 16)
+                        | ((payload[2] & 0xff) << 8)
+                        | (payload[3] & 0xff);
+                    rejected = errorCode == 0x7;
+                }
+            }
+            assertTrue(rejected,
+                "a new stream after GOAWAY must be rejected with RST_STREAM(REFUSED_STREAM)");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cInterruptedHeaderBlockIsProtocolError() throws Exception {
+        // RFC 7540 §4.3: a header block may be interrupted only by
+        // CONTINUATION; SETTINGS mid-block must be a connection error.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+            socket.setSoTimeout(3000);
+            var out = socket.getOutputStream();
+            out.write(PREFACE_BYTES);
+            out.flush();
+            byte[] header = new byte[9];
+            readFully(socket.getInputStream(), header);
+            int settingsLen = ((header[0] & 0xff) << 16)
+                | ((header[1] & 0xff) << 8)
+                | (header[2] & 0xff);
+            readFully(socket.getInputStream(), new byte[settingsLen]);
+
+            // HEADERS on stream 1 WITHOUT END_HEADERS — block left open.
+            out.write(new byte[] {
+                0x00, 0x00, 0x04, // length 4
+                0x01,             // HEADERS
+                0x00,             // no END_HEADERS, no END_STREAM
+                0x00, 0x00, 0x00, 0x01,
+                (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41 // fragment (incomplete block is fine)
+            });
+            // SETTINGS while the header block is incomplete.
+            out.write(new byte[] {
+                0x00, 0x00, 0x00, // length 0
+                0x04,             // SETTINGS
+                0x00,
+                0x00, 0x00, 0x00, 0x00
+            });
+            out.flush();
+
+            // Expect GOAWAY(PROTOCOL_ERROR=0x1).
+            var in = socket.getInputStream();
+            boolean sawGoaway = false;
+            long deadline = System.currentTimeMillis() + 2000;
+            while (System.currentTimeMillis() < deadline && !sawGoaway) {
+                if (!readFullyOrEof(in, header)) break;
+                int len = ((header[0] & 0xff) << 16)
+                    | ((header[1] & 0xff) << 8)
+                    | (header[2] & 0xff);
+                int type = header[3] & 0xff;
+                byte[] payload = new byte[len];
+                readFully(in, payload);
+                if (type == 0x7 && len >= 8) { // GOAWAY: [0..3]=lastStreamId, [4..7]=errorCode
+                    int errorCode = ((payload[4] & 0xff) << 24)
+                        | ((payload[5] & 0xff) << 16)
+                        | ((payload[6] & 0xff) << 8)
+                        | (payload[7] & 0xff);
+                    sawGoaway = errorCode == 0x1;
+                }
+            }
+            assertTrue(sawGoaway,
+                "a SETTINGS frame mid-header-block must trigger GOAWAY(PROTOCOL_ERROR)");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cWindowUpdateMidHeaderBlockIsProtocolError() throws Exception {
+        // RFC 7540 §4.3: ANY frame other than CONTINUATION mid-header-block
+        // is a connection error — WINDOW_UPDATE included.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+            socket.setSoTimeout(3000);
+            var out = socket.getOutputStream();
+            out.write(PREFACE_BYTES);
+            out.flush();
+            byte[] header = new byte[9];
+            readFully(socket.getInputStream(), header);
+            int settingsLen = ((header[0] & 0xff) << 16)
+                | ((header[1] & 0xff) << 8)
+                | (header[2] & 0xff);
+            readFully(socket.getInputStream(), new byte[settingsLen]);
+
+            // HEADERS on stream 1 WITHOUT END_HEADERS — block left open.
+            out.write(new byte[] {
+                0x00, 0x00, 0x04, // length 4
+                0x01,             // HEADERS
+                0x00,             // no END_HEADERS, no END_STREAM
+                0x00, 0x00, 0x00, 0x01,
+                (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41
+            });
+            // WINDOW_UPDATE (stream 0, increment 1) while the block is open.
+            out.write(new byte[] {
+                0x00, 0x00, 0x04, // length 4
+                0x08,             // WINDOW_UPDATE
+                0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x01
+            });
+            out.flush();
+
+            var in = socket.getInputStream();
+            boolean sawGoaway = false;
+            long deadline = System.currentTimeMillis() + 2000;
+            while (System.currentTimeMillis() < deadline && !sawGoaway) {
+                if (!readFullyOrEof(in, header)) break;
+                int len = ((header[0] & 0xff) << 16)
+                    | ((header[1] & 0xff) << 8)
+                    | (header[2] & 0xff);
+                int type = header[3] & 0xff;
+                byte[] payload = new byte[len];
+                readFully(in, payload);
+                if (type == 0x7 && len >= 8) { // GOAWAY: [0..3]=lastStreamId, [4..7]=errorCode
+                    int errorCode = ((payload[4] & 0xff) << 24)
+                        | ((payload[5] & 0xff) << 16)
+                        | ((payload[6] & 0xff) << 8)
+                        | (payload[7] & 0xff);
+                    sawGoaway = errorCode == 0x1;
+                }
+            }
+            assertTrue(sawGoaway,
+                "a WINDOW_UPDATE frame mid-header-block must trigger GOAWAY(PROTOCOL_ERROR)");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cInvalidEnablePushIsProtocolError() throws Exception {
+        // RFC 7540 §6.5.2: SETTINGS_ENABLE_PUSH accepts only 0 or 1;
+        // any other value is a connection error.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+            socket.setSoTimeout(3000);
+            var out = socket.getOutputStream();
+            out.write(PREFACE_BYTES);
+            out.flush();
+            byte[] header = new byte[9];
+            readFully(socket.getInputStream(), header);
+            int settingsLen = ((header[0] & 0xff) << 16)
+                | ((header[1] & 0xff) << 8)
+                | (header[2] & 0xff);
+            readFully(socket.getInputStream(), new byte[settingsLen]);
+
+            // SETTINGS with ENABLE_PUSH (0x2) = 2.
+            out.write(new byte[] {
+                0x00, 0x00, 0x06, // length 6
+                0x04,             // SETTINGS
+                0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x02,       // ENABLE_PUSH
+                0x00, 0x00, 0x00, 0x02 // value 2 (invalid)
+            });
+            out.flush();
+
+            var in = socket.getInputStream();
+            boolean sawGoaway = false;
+            long deadline = System.currentTimeMillis() + 2000;
+            while (System.currentTimeMillis() < deadline && !sawGoaway) {
+                if (!readFullyOrEof(in, header)) break;
+                int len = ((header[0] & 0xff) << 16)
+                    | ((header[1] & 0xff) << 8)
+                    | (header[2] & 0xff);
+                int type = header[3] & 0xff;
+                byte[] payload = new byte[len];
+                readFully(in, payload);
+                if (type == 0x7 && len >= 8) { // GOAWAY: [0..3]=lastStreamId, [4..7]=errorCode
+                    int errorCode = ((payload[4] & 0xff) << 24)
+                        | ((payload[5] & 0xff) << 16)
+                        | ((payload[6] & 0xff) << 8)
+                        | (payload[7] & 0xff);
+                    sawGoaway = errorCode == 0x1;
+                }
+            }
+            assertTrue(sawGoaway,
+                "SETTINGS_ENABLE_PUSH with a value other than 0/1 must trigger "
+                    + "GOAWAY(PROTOCOL_ERROR)");
         } finally {
             server.stop();
         }
