@@ -142,7 +142,6 @@ public class HttpContextDefault extends AbstractHttpContext {
         this.responded = false;
         this.responseHeaders.clear();
         this.pathVariables.clear();
-        this.bodyLimitExceeded = false;
         this.headersWritten = false;
         this.chunkedResponse = false;
     }
@@ -564,49 +563,5 @@ public class HttpContextDefault extends AbstractHttpContext {
             return b;
         }
         return String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
-    }
-
-    /**
-     * HTTP chunked transfer encoding output stream wrapper.
-     * Writes each chunk as {@code hex-length\r\n} + data + {@code \r\n},
-     * and sends the terminating chunk {@code 0\r\n\r\n} on close.
-     */
-    static final class ChunkedOutputStream extends OutputStream {
-        private final OutputStream out;
-        private static final byte[] CRLF = {'\r', '\n'};
-        private static final byte[] TERMINAL_CHUNK = {'0', '\r', '\n', '\r', '\n'};
-        private boolean closed;
-
-        ChunkedOutputStream(OutputStream out) {
-            this.out = Objects.requireNonNull(out, "out");
-        }
-
-        @Override
-        public void write(int b) throws IOException {
-            write(new byte[]{(byte) b});
-        }
-
-        @Override
-        public void write(byte[] data, int off, int len) throws IOException {
-            if (len == 0) return;
-            String hex = Integer.toHexString(len);
-            out.write(hex.getBytes(StandardCharsets.US_ASCII));
-            out.write(CRLF);
-            out.write(data, off, len);
-            out.write(CRLF);
-            out.flush();
-        }
-
-        @Override
-        public void close() throws IOException {
-            if (closed) return;
-            closed = true;
-            try {
-                out.write(TERMINAL_CHUNK);
-                out.flush();
-            } finally {
-                out.close();
-            }
-        }
     }
 }

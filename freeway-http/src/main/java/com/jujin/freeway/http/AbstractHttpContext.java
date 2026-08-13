@@ -3,12 +3,9 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +31,6 @@ public abstract class AbstractHttpContext
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
     protected volatile long maxBodySize = HttpServerConfig.DEFAULT_MAX_BODY_SIZE;
-    protected volatile boolean bodyLimitExceeded;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
     private final ExchangeMetaDefault exchangeMeta;
 
@@ -202,30 +198,6 @@ public abstract class AbstractHttpContext
     public HttpResponse sendJson(int status, Object value) throws IOException {
         status(status);
         return outputJson(value);
-    }
-
-    // -- protected helpers for transport implementations --
-
-    /**
-     * Reads the request body, enforcing the configured max body size.
-     *
-     * @throws BodyTooLargeException if the body exceeds maxBodySize
-     */
-    protected final byte[] readBodyLimited(InputStream input) throws IOException {
-        var out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        long total = 0;
-        int read;
-        while ((read = input.read(buffer)) >= 0) {
-            if (read == 0) continue;
-            if (total > maxBodySize - read) {
-                bodyLimitExceeded = true;
-                throw new BodyTooLargeException(maxBodySize);
-            }
-            out.write(buffer, 0, read);
-            total += read;
-        }
-        return out.toByteArray();
     }
 
     /** Coerces a string value to the given target type. */

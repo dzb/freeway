@@ -117,7 +117,7 @@ final class Http11ResponseWriter implements HttpResponseWriter {
         rawOut.write(CRLF);
         rawOut.write(CRLF);
         rawOut.flush();
-        return new SseEmitter(new HttpContextDefault.ChunkedOutputStream(rawOut));
+        return new SseEmitter(new ChunkedOutputStream(rawOut));
     }
 
     /** Status line plus response headers, without the framing headers
