@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
+import com.jujin.freeway.http.internal.HttpUtils;
 
 import java.io.IOException;
 import java.lang.reflect.Type;

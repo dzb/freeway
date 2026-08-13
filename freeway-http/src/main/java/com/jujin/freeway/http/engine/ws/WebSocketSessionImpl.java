@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import com.jujin.freeway.http.ExchangeMetaDefault;
-import com.jujin.freeway.http.HttpUtils;
+import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 
 public final class WebSocketSessionImpl implements WebSocketSession {

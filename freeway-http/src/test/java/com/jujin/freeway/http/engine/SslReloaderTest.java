@@ -15,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.internal.SslReloader;
 
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;

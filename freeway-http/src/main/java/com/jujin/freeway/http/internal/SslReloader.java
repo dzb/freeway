@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine;
+package com.jujin.freeway.http.internal;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +20,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+
+import com.jujin.freeway.http.engine.FreewayHttpEngine;
 
 /**
  * Polls keystore mtime/size/digest and swaps a freshly built SSLContext into
@@ -57,11 +59,11 @@ public final class SslReloader implements AutoCloseable {
             }), path -> Files.readAttributes(path, BasicFileAttributes.class));
     }
 
-    SslReloader(FreewayHttpEngine engine, Path keyStorePath,
-                Path trustStorePath, Path sniDirectory,
-                Duration reloadInterval, Supplier<SSLContext> contextBuilder,
-                ScheduledExecutorService scheduler,
-                FileStampProvider fileStampProvider) {
+    public SslReloader(FreewayHttpEngine engine, Path keyStorePath,
+                       Path trustStorePath, Path sniDirectory,
+                       Duration reloadInterval, Supplier<SSLContext> contextBuilder,
+                       ScheduledExecutorService scheduler,
+                       FileStampProvider fileStampProvider) {
         this.engine = Objects.requireNonNull(engine, "engine");
         this.keyStorePath = Objects.requireNonNull(keyStorePath, "keyStorePath");
         this.trustStorePath = trustStorePath;
@@ -84,8 +86,8 @@ public final class SslReloader implements AutoCloseable {
             this::check, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
-    /** Package-level seam: invoked directly by package-local tests. */
-    void check() {
+    /** Test seam: invoked directly by the engine-package reload tests. */
+    public void check() {
         try {
             Map<Path, FileStamp> current = snapshot();
             if (!current.equals(snapshot)) {
@@ -154,7 +156,7 @@ public final class SslReloader implements AutoCloseable {
     /** Internal seam: abstracts file-stamp reads for {@link SslReloader}
      *  tests. Not part of the public API. */
     @FunctionalInterface
-    interface FileStampProvider {
+    public interface FileStampProvider {
         BasicFileAttributes stamp(Path path) throws IOException;
     }
 }

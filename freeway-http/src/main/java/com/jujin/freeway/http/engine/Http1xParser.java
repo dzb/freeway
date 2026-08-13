@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import com.jujin.freeway.http.HttpUtils;
+import com.jujin.freeway.http.internal.HttpUtils;
 
 /**
  * Parses HTTP/1.x request line and headers from a raw {@code InputStream}.

@@ -2,6 +2,7 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.body.MultipartForm;
+import com.jujin.freeway.http.internal.HttpUtils;
 
 import javax.net.ssl.SSLSession;
 import java.io.ByteArrayInputStream;

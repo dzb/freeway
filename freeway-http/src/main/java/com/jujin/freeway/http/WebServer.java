@@ -20,6 +20,7 @@ import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
+import com.jujin.freeway.http.internal.ErrorResponses;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;

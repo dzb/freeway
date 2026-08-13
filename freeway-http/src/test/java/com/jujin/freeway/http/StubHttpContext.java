@@ -15,6 +15,7 @@ import java.util.TreeMap;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 public final class StubHttpContext extends AbstractHttpContext {

@@ -3,7 +3,7 @@ package com.jujin.freeway.http.filter;
 import java.nio.charset.StandardCharsets;
 
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpUtils;
+import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
 

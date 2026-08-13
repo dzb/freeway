@@ -25,7 +25,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.AbstractHttpContext;
 import com.jujin.freeway.http.HttpResponse;
-import com.jujin.freeway.http.HttpUtils;
+import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.sse.SseEmitter;
 

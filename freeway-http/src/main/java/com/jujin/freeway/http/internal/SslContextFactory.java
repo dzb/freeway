@@ -1,4 +1,4 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.internal;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -18,17 +18,19 @@ import javax.net.ssl.TrustManagerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.jujin.freeway.http.HttpConfigKeys;
+
 /**
  * Builds the TLS material for the built-in HTTPS engine: keystore/truststore
  * loading, SNI key managers, and protocol/cipher restriction.
  */
-final class SslContextFactory {
+public final class SslContextFactory {
 
     private static final Logger LOG = LoggerFactory.getLogger(SslContextFactory.class);
 
     private SslContextFactory() {}
 
-    static SSLContext buildContext(HttpConfig.Ssl s) {
+    public static SSLContext buildContext(HttpConfig.Ssl s) {
         try {
             KeyStore defaultStore = loadKeyStore(
                 Path.of(s.keyStorePath()), s.keyStoreType(), s.keyStorePassword());
@@ -48,7 +50,7 @@ final class SslContextFactory {
         }
     }
 
-    static SSLParameters buildParameters(boolean clientAuth, String protocols,
+    public static SSLParameters buildParameters(boolean clientAuth, String protocols,
                                          String ciphers) {
         if (!clientAuth && isBlank(protocols) && isBlank(ciphers)) {
             return null;

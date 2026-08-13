@@ -13,6 +13,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
+import com.jujin.freeway.http.internal.HttpUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

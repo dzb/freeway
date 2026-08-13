@@ -1,6 +1,8 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.internal;
 
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.http.HttpConfigKeys;
+import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.time.Duration;
@@ -10,7 +12,7 @@ import java.time.Duration;
  * from the IoC {@link SymbolSource} instead of reading each key at every
  * binding site. Internal assembly model — not part of the application API.
  */
-record HttpConfig(
+public record HttpConfig(
     String host, int port, int backlog, Duration shutdownGrace,
     Duration readTimeout, Duration writeTimeout, int maxConnections,
     boolean compressionEnabled, int compressionMinSize,
@@ -21,19 +23,21 @@ record HttpConfig(
     Ssl ssl
 ) {
 
-    record Cors(boolean enabled, String allowedOrigins, String allowedMethods,
-                String allowedHeaders, String exposedHeaders, String maxAge,
-                boolean allowCredentials) {}
+    public record Cors(boolean enabled, String allowedOrigins,
+                       String allowedMethods, String allowedHeaders,
+                       String exposedHeaders, String maxAge,
+                       boolean allowCredentials) {}
 
-    record Health(boolean enabled, String path) {}
+    public record Health(boolean enabled, String path) {}
 
-    record Ssl(boolean enabled, String keyStorePath, String keyStorePassword,
-               String keyStoreType, boolean http2, String trustStorePath,
-               String trustStorePassword, String trustStoreType,
-               boolean clientAuth, String protocols, String ciphers,
-               String sniDirectory, Duration reloadInterval) {}
+    public record Ssl(boolean enabled, String keyStorePath,
+                      String keyStorePassword, String keyStoreType,
+                      boolean http2, String trustStorePath,
+                      String trustStorePassword, String trustStoreType,
+                      boolean clientAuth, String protocols, String ciphers,
+                      String sniDirectory, Duration reloadInterval) {}
 
-    static HttpConfig from(SymbolSource symbols, Coercer coercer) {
+    public static HttpConfig from(SymbolSource symbols, Coercer coercer) {
         return new HttpConfig(
             config(symbols, coercer, HttpConfigKeys.SERVER_HOST, "127.0.0.1"),
             config(symbols, coercer, HttpConfigKeys.SERVER_PORT, 8080),
@@ -86,7 +90,7 @@ record HttpConfig(
     }
 
     /** Maps this IoC config snapshot to the engine's server config. */
-    HttpServerConfig toServerConfig() {
+    public HttpServerConfig toServerConfig() {
         return new HttpServerConfig(
             host, port, backlog,
             HttpServerConfig.DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace,

@@ -1,7 +1,10 @@
-package com.jujin.freeway.http;
+package com.jujin.freeway.http.internal;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+
+import com.jujin.freeway.http.HttpResponse;
+import com.jujin.freeway.http.HttpStatus;
 
 /**
  * Shared error responses for the common failure paths (route miss and
