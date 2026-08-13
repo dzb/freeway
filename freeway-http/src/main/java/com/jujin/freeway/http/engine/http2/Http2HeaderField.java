@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.util;
+package com.jujin.freeway.http.engine.http2;
 
 public final class Http2HeaderField {
     public String name, value, normalizedName;

@@ -21,8 +21,8 @@ import org.slf4j.LoggerFactory;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
 import com.jujin.freeway.http.engine.http2.Http2ResponseWriter;
 import com.jujin.freeway.http.engine.http2.Http2Stream;
-import com.jujin.freeway.http.engine.http2.frame.SettingsFrame;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.SettingsFrame;
+import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
 
 /**
  * HTTP/2 connection handling: preface verification, connection/stream

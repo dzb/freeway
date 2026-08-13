@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
-import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
+import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.Http2Exception;
+import com.jujin.freeway.http.engine.http2.Http2HeaderField;
 
 public final class HeaderFields {
     private static final Set<String> PROHIBITED = Set.of(

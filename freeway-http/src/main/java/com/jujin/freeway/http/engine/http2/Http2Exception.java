@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.util;
+package com.jujin.freeway.http.engine.http2;
 
 import java.io.IOException;
 

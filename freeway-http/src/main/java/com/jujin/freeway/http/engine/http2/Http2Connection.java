@@ -20,27 +20,8 @@ import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.engine.http2.frame.BaseFrame;
-import com.jujin.freeway.http.engine.http2.frame.ContinuationFrame;
-import com.jujin.freeway.http.engine.http2.frame.DataFrame;
-import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameSerializer;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
-import com.jujin.freeway.http.engine.http2.frame.GoawayFrame;
-import com.jujin.freeway.http.engine.http2.frame.HeadersFrame;
-import com.jujin.freeway.http.engine.http2.frame.PingFrame;
-import com.jujin.freeway.http.engine.http2.frame.ResetStreamFrame;
-import com.jujin.freeway.http.engine.http2.frame.SettingIdentifier;
-import com.jujin.freeway.http.engine.http2.frame.SettingParameter;
-import com.jujin.freeway.http.engine.http2.frame.SettingsFrame;
-import com.jujin.freeway.http.engine.http2.frame.SettingsMap;
-import com.jujin.freeway.http.engine.http2.frame.WindowUpdateFrame;
 import com.jujin.freeway.http.engine.http2.hpack.HPackContext;
 import com.jujin.freeway.http.engine.http2.hpack.HeaderFields;
-import com.jujin.freeway.http.engine.http2.util.BinUtils;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 /**
  * HTTP/2 connection controller. Manages the full connection lifecycle:

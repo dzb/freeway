@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.frame;
+package com.jujin.freeway.http.engine.http2;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -6,8 +6,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 public final class SettingsFrame extends BaseFrame {
     public final ArrayList<SettingParameter> params = new ArrayList<>();

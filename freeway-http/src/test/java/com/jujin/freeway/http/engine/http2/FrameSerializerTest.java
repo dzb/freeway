@@ -1,11 +1,10 @@
-package com.jujin.freeway.http.engine.http2.frame;
+package com.jujin.freeway.http.engine.http2;
 
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;

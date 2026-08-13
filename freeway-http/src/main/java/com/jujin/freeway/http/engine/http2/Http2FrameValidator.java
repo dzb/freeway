@@ -1,9 +1,5 @@
 package com.jujin.freeway.http.engine.http2;
 
-import com.jujin.freeway.http.engine.http2.frame.DataFrame;
-import com.jujin.freeway.http.engine.http2.frame.FrameSerializer;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 /**
  * Central frame/state validation for the HTTP/2 connection and its streams.

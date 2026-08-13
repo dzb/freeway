@@ -1,9 +1,7 @@
-package com.jujin.freeway.http.engine.http2.frame;
+package com.jujin.freeway.http.engine.http2;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;

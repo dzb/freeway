@@ -11,12 +11,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.engine.http2.frame.DataFrame;
-import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

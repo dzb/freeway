@@ -10,13 +10,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
-import com.jujin.freeway.http.engine.http2.util.BinUtils;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
-import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
+import com.jujin.freeway.http.engine.http2.FrameFlag;
+import com.jujin.freeway.http.engine.http2.FrameHeader;
+import com.jujin.freeway.http.engine.http2.FrameType;
+import com.jujin.freeway.http.engine.http2.BinUtils;
+import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
+import com.jujin.freeway.http.engine.http2.Http2Exception;
+import com.jujin.freeway.http.engine.http2.Http2HeaderField;
 
 /**
  * HPACK codec implementation (RFC 7541).

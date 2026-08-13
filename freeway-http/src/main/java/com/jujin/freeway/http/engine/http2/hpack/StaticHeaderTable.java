@@ -3,7 +3,7 @@ package com.jujin.freeway.http.engine.http2.hpack;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
+import com.jujin.freeway.http.engine.http2.Http2HeaderField;
 
 public final class StaticHeaderTable {
     private static final Http2HeaderField[] TABLE = new Http2HeaderField[62];

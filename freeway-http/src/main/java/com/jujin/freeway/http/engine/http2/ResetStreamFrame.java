@@ -1,11 +1,8 @@
-package com.jujin.freeway.http.engine.http2.frame;
+package com.jujin.freeway.http.engine.http2;
 
 import java.io.IOException;
 import java.io.OutputStream;
 
-import com.jujin.freeway.http.engine.http2.util.BinUtils;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 public final class ResetStreamFrame extends BaseFrame {
     public final Http2ErrorCode errorCode;

@@ -15,15 +15,6 @@ import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.engine.http2.frame.BaseFrame;
-import com.jujin.freeway.http.engine.http2.frame.DataFrame;
-import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
-import com.jujin.freeway.http.engine.http2.frame.SettingIdentifier;
-import com.jujin.freeway.http.engine.http2.frame.WindowUpdateFrame;
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 /**
  * HTTP/2 stream processor. Represents a single HTTP/2 request/response stream,

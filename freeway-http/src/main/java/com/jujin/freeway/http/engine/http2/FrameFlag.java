@@ -1,7 +1,5 @@
-package com.jujin.freeway.http.engine.http2.frame;
+package com.jujin.freeway.http.engine.http2;
 
-import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
-import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 public enum FrameFlag {
     END_STREAM((byte) 0x1), ACK((byte) 0x1), END_HEADERS((byte) 0x4), PADDED((byte) 0x8), PRIORITY((byte) 0x20);

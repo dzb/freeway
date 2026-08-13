@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.util;
+package com.jujin.freeway.http.engine.http2;
 
 public enum Http2ErrorCode {
     NO_ERROR(0x0),

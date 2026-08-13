@@ -12,10 +12,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.ErrorResponses;
-import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
-import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
-import com.jujin.freeway.http.engine.http2.frame.FrameType;
-import com.jujin.freeway.http.engine.http2.frame.SettingsFrame;
+import com.jujin.freeway.http.engine.http2.FrameFlag;
+import com.jujin.freeway.http.engine.http2.FrameHeader;
+import com.jujin.freeway.http.engine.http2.FrameType;
+import com.jujin.freeway.http.engine.http2.SettingsFrame;
 
 /**
  * HTTP/1.1 connection loop: keep-alive parsing, request dispatch, and the

@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http2.frame;
+package com.jujin.freeway.http.engine.http2;
 
 import org.junit.jupiter.api.Test;
 
