@@ -20,19 +20,33 @@ import java.util.Map;
  */
 final class CaseInsensitiveHeaders {
 
-    private final LinkedHashMap<Key, String> values = new LinkedHashMap<>();
+    private final LinkedHashMap<Key, List<String>> values = new LinkedHashMap<>();
 
+    /** Replaces every value for the name, moving it to the end of insertion
+     *  order (matching the previous remove + put semantics). */
     void set(String name, String value) {
         values.remove(new Key(name));
-        values.put(new Key(name), value);
+        List<String> list = new ArrayList<>(1);
+        list.add(value);
+        values.put(new Key(name), list);
     }
 
-    /** Replaces the value of an existing header without moving it or
-     *  changing its name case; no-op when the header is absent. */
+    /** Appends a value to the name, preserving any existing values and their
+     *  relative order. Used for repeated fields such as {@code Set-Cookie}. */
+    void add(String name, String value) {
+        values.computeIfAbsent(new Key(name), k -> new ArrayList<>(2))
+            .add(value);
+    }
+
+    /** Replaces the value of an existing header without moving it or changing
+     *  its name case; no-op when the header is absent. The name's value list
+     *  is replaced with a single value. */
     void setValueIfPresent(String name, String value) {
         Key key = new Key(name);
         if (values.containsKey(key)) {
-            values.put(key, value);
+            List<String> list = new ArrayList<>(1);
+            list.add(value);
+            values.put(key, list);
         }
     }
 
@@ -40,8 +54,16 @@ final class CaseInsensitiveHeaders {
         values.remove(new Key(name));
     }
 
+    /** First value for the name, or null when absent. */
     String get(String name) {
-        return values.get(new Key(name));
+        List<String> list = values.get(new Key(name));
+        return (list == null || list.isEmpty()) ? null : list.getFirst();
+    }
+
+    /** Unmodifiable snapshot of all values for the name, or empty. */
+    List<String> getAll(String name) {
+        List<String> list = values.get(new Key(name));
+        return list == null ? List.of() : List.copyOf(list);
     }
 
     boolean contains(String name) {
@@ -56,12 +78,14 @@ final class CaseInsensitiveHeaders {
         return values.size();
     }
 
-    /** Unmodifiable snapshot of the entries in insertion order. */
+    /** Unmodifiable snapshot of the entries in insertion order, flattened so
+     *  a multi-valued header becomes one entry per value. */
     List<Map.Entry<String, String>> entries() {
-        List<Map.Entry<String, String>> list = new ArrayList<>(values.size());
+        List<Map.Entry<String, String>> list = new ArrayList<>();
         for (var entry : values.entrySet()) {
-            list.add(new SimpleImmutableEntry<>(
-                entry.getKey().name, entry.getValue()));
+            for (String value : entry.getValue()) {
+                list.add(new SimpleImmutableEntry<>(entry.getKey().name, value));
+            }
         }
         return Collections.unmodifiableList(list);
     }

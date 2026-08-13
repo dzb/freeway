@@ -171,6 +171,13 @@ public final class StubHttpContext extends AbstractHttpContext {
     }
 
     @Override
+    public HttpResponse addHeader(String name, String value) {
+        validateHeaderValue(value);
+        responseHeaders.merge(name, value, (prev, next) -> prev + ", " + next);
+        return this;
+    }
+
+    @Override
     public HttpResponse output(byte[] data) {
         if (!allowsResponseBody()) {
             this.body = "";

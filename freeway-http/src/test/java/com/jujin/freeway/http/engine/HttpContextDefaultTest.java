@@ -199,6 +199,45 @@ class HttpContextDefaultTest {
         assertEquals("2", toMap(ctx).get("content-length"));
     }
 
+    @Test
+    void addHeaderPreservesMultipleValues() {
+        var ctx = context(new RecordingWriter());
+        ctx.addHeader("Set-Cookie", "a=1");
+        ctx.addHeader("Set-Cookie", "b=2");
+
+        List<String> values = new ArrayList<>();
+        for (var entry : ctx.responseHeaderEntries()) {
+            if ("Set-Cookie".equals(entry.getKey())) {
+                values.add(entry.getValue());
+            }
+        }
+        assertEquals(List.of("a=1", "b=2"), values);
+    }
+
+    @Test
+    void setHeaderReplacesAllValuesForName() {
+        var ctx = context(new RecordingWriter());
+        ctx.addHeader("X-Multi", "1");
+        ctx.addHeader("X-Multi", "2");
+        ctx.setHeader("X-Multi", "3");
+
+        assertEquals(Map.of("X-Multi", "3"), toMap(ctx));
+    }
+
+    @Test
+    void http1WriterEmitsMultipleSetCookieLines() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = new HttpContextDefault(CODEC, COERCER);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+        ctx.addHeader("Set-Cookie", "a=1");
+        ctx.addHeader("Set-Cookie", "b=2");
+        ctx.send(200, "ok");
+
+        String wire = out.toString();
+        assertTrue(wire.contains("Set-Cookie: a=1\r\n"));
+        assertTrue(wire.contains("Set-Cookie: b=2\r\n"));
+    }
+
     private static Map<String, String> toMap(HttpContextDefault ctx) {
         Map<String, String> map = new LinkedHashMap<>();
         for (var entry : ctx.responseHeaderEntries()) {

@@ -6,6 +6,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -104,5 +106,14 @@ class HttpContextTest {
         assertThrows(IllegalArgumentException.class,
             () -> AbstractHttpContext.validateHeaderName("Bad\u00e9"));
         AbstractHttpContext.validateHeaderName("X-Custom-1"); // valid token
+    }
+
+    @Test
+    void bodyAsJsonRejectsNonJsonContentType() {
+        StubHttpContext ctx = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "text/plain");
+
+        assertThrows(UnsupportedMediaTypeException.class,
+            () -> ctx.bodyAsJson(Map.class));
     }
 }

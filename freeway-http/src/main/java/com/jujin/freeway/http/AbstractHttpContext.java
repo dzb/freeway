@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.body.BodyTooLargeException;
+import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -32,7 +33,7 @@ public abstract class AbstractHttpContext
 
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
-    protected volatile long maxBodySize = 10_485_760L;
+    protected volatile long maxBodySize = HttpServerConfig.DEFAULT_MAX_BODY_SIZE;
     protected volatile boolean bodyLimitExceeded;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
     private final ExchangeMetaDefault exchangeMeta;
@@ -294,7 +295,7 @@ public abstract class AbstractHttpContext
     private void checkJsonContentType() {
         String ct = header("Content-Type").orElse(null);
         if (ct == null || !ct.toLowerCase(Locale.ROOT).contains("application/json")) {
-            throw new IllegalStateException("Expected application/json Content-Type");
+            throw new UnsupportedMediaTypeException("Expected application/json Content-Type");
         }
     }
 

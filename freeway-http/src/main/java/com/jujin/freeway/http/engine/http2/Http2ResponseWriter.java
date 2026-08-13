@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.engine.http2;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,7 +41,9 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
                     || connectionTokens.contains(lower)) {
                 continue;
             }
-            stream.responseHeaders.put(lower, List.of(entry.getValue()));
+            stream.responseHeaders
+                .computeIfAbsent(lower, k -> new ArrayList<>())
+                .add(entry.getValue());
         }
     }
 

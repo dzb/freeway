@@ -26,11 +26,28 @@ public interface HttpResponse {
     int status();
 
     /**
-     * Sets a response header. Overwrites any existing value for the name.
+     * Sets a response header, replacing all existing values for the name.
      *
      * @return this response for chaining
      */
     HttpResponse setHeader(String name, String value);
+
+    /**
+     * Adds a value to a response header, preserving any existing values for
+     * the same name so the field can be sent multiple times (for example,
+     * multiple {@code Set-Cookie} or {@code WWW-Authenticate} fields).
+     *
+     * <p>The built-in engine supports multiple values. A transport that does
+     * not support multi-valued response headers throws
+     * {@link UnsupportedOperationException}; use {@link #setHeader} to replace
+     * the single value for a name instead.</p>
+     *
+     * @return this response for chaining
+     */
+    default HttpResponse addHeader(String name, String value) {
+        throw new UnsupportedOperationException(
+            "addHeader is not supported by this response");
+    }
 
     /**
      * Adds a token to the {@code Vary} response header, merging with any

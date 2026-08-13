@@ -3,6 +3,7 @@ package com.jujin.freeway.http.engine.http2;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -13,6 +14,7 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.engine.HttpContextDefault;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -67,6 +69,26 @@ class Http2ResponseWriterTest {
             assertTrue(stream.responseHeaders.containsKey("content-type"));
             assertTrue(stream.responseHeaders.containsKey("cache-control"));
             assertFalse(stream.responseHeaders.containsKey("connection"));
+        }
+    }
+
+    @Test
+    void writeHeadPreservesMultipleSetCookieValues() throws Exception {
+        try (SocketPair pair = SocketPair.open();
+             ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Http2Connection connection = connection(pair, executor);
+            Http2Stream stream = new Http2Stream(1, connection, Map.of(),
+                (s, in, out, h) -> {});
+            stream.markHalfClosed();
+            HttpContextDefault ctx = new HttpContextDefault(
+                new JsonCodecDefault(), new CoercerDefault());
+            ctx.addHeader("Set-Cookie", "a=1");
+            ctx.addHeader("Set-Cookie", "b=2");
+
+            new Http2ResponseWriter(stream).writeHead(ctx);
+
+            assertEquals(List.of("a=1", "b=2"),
+                stream.responseHeaders.get("set-cookie"));
         }
     }
 

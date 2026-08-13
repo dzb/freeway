@@ -251,6 +251,15 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     @Override
+    public HttpResponse addHeader(String name, String value) {
+        if (responded) return this;
+        validateHeaderName(name);
+        validateHeaderValue(value);
+        responseHeaders.add(name, value);
+        return this;
+    }
+
+    @Override
     public HttpResponse output(byte[] data) throws IOException {
         if (responded) return this;
         responded = true;
