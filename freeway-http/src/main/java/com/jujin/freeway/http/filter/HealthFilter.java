@@ -3,6 +3,7 @@ package com.jujin.freeway.http.filter;
 import java.nio.charset.StandardCharsets;
 
 import com.jujin.freeway.http.HttpContext;
+import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
 
@@ -50,7 +51,7 @@ public final class HealthFilter implements HttpFilter {
                     ctx.path()))) {
             if (healthCheck instanceof HealthCheck.Default) {
                 ctx.status(200).setHeader(
-                        "Content-Type", "application/json; charset=utf-8")
+                        "Content-Type", HttpUtils.JSON_UTF8)
                     .output(DEFAULT_RESPONSE);
             } else {
                 ctx.sendJson(200, healthCheck.check());

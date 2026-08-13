@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -103,8 +102,7 @@ public interface HttpRequest {
 
     /** Returns true if the request has a multipart/form-data content type. */
     default boolean isMultipart() {
-        return header("Content-Type")
-            .map(ct -> ct.toLowerCase(Locale.ROOT).contains("multipart/form-data"))
+        return header("Content-Type").map(HttpUtils::isMultipartFormData)
             .orElse(false);
     }
 
@@ -117,8 +115,7 @@ public interface HttpRequest {
         // non-multipart request would consume the entire request body for
         // nothing (and could trip the body-size limit on isMultipart()).
         return header("Content-Type")
-            .filter(ct -> ct.toLowerCase(Locale.ROOT)
-                .contains("multipart/form-data"))
+            .filter(HttpUtils::isMultipartFormData)
             .flatMap(ct -> {
                 try {
                     return Optional.of(MultipartForm.parse(ct, body()));

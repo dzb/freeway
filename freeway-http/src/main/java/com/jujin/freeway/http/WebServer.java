@@ -1,7 +1,6 @@
 package com.jujin.freeway.http;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -32,10 +31,6 @@ import com.jujin.freeway.http.websocket.WebSocketMatch;
  * files, WebSocket upgrades, error mapping, and event publishing.
  */
 public final class WebServer implements AutoCloseable {
-
-    // Pre-computed error response bodies (UTF-8)
-    private static final byte[] NOT_FOUND_BODY = "Not Found".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] INTERNAL_ERROR_BODY = "Internal Server Error".getBytes(StandardCharsets.UTF_8);
 
     private static final Logger LOG = LoggerFactory.getLogger(WebServer.class);
     static final Consumer<Object> NOOP_SINK = event -> {};
@@ -265,9 +260,7 @@ public final class WebServer implements AutoCloseable {
             ctx.path()
         );
         if (match == null) {
-            ctx.status(HttpStatus.NOT_FOUND).setHeader(
-                "Content-Type", "text/plain; charset=utf-8")
-                .output(NOT_FOUND_BODY);
+            ErrorResponses.notFound(ctx);
             return;
         }
         ctx.setPathVars(match.pathVariables());
@@ -309,9 +302,7 @@ public final class WebServer implements AutoCloseable {
             String.valueOf(exception.getMessage())
         );
         try {
-            ctx.status(HttpStatus.INTERNAL_ERROR).setHeader(
-                "Content-Type", "text/plain; charset=utf-8")
-                .output(INTERNAL_ERROR_BODY);
+            ErrorResponses.internalError(ctx);
         } catch (Exception sendEx) {
             LOG.error("Failed to send error response", sendEx);
         }

@@ -25,8 +25,7 @@ import java.util.Optional;
  * One object implements all three contracts; transports extend this and
  * implement only their transport-specific methods.
  */
-public abstract class AbstractHttpContext
-        implements HttpContext {
+public abstract class AbstractHttpContext implements HttpContext {
 
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
@@ -180,7 +179,7 @@ public abstract class AbstractHttpContext
     @Override
     public HttpResponse output(String text) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
-        ensureContentType("text/plain; charset=utf-8");
+        ensureContentType(HttpUtils.TEXT_PLAIN_UTF8);
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -188,7 +187,7 @@ public abstract class AbstractHttpContext
     @Override
     public HttpResponse outputJson(Object value) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
-        ensureContentType("application/json; charset=utf-8");
+        ensureContentType(HttpUtils.JSON_UTF8);
         output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -243,7 +242,7 @@ public abstract class AbstractHttpContext
 
     /** Sets up standard SSE response headers. */
     protected void setupSseHeaders() {
-        setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        setHeader("Content-Type", HttpUtils.EVENT_STREAM_UTF8);
         setHeader("Cache-Control", "no-cache");
         setHeader("Connection", "keep-alive");
     }
@@ -271,9 +270,8 @@ public abstract class AbstractHttpContext
 
     private void checkJsonContentType() {
         String ct = header("Content-Type").orElse(null);
-        if (ct == null || !ct.toLowerCase(Locale.ROOT).contains("application/json")) {
+        if (!HttpUtils.isJson(ct)) {
             throw new UnsupportedMediaTypeException("Expected application/json Content-Type");
         }
     }
-
 }

@@ -23,6 +23,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpRequestHandler;
 import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.HttpUtils;
 
 /**
  * Per-connection entry point. Tunes the socket, wraps TLS/ALPN, then hands
@@ -153,10 +154,7 @@ final class HttpSession implements Runnable {
     }
 
     static String headerValue(Map<String, List<String>> headers, String name) {
-        for (var e : headers.entrySet())
-            if (e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty())
-                return e.getValue().getFirst();
-        return null;
+        return HttpUtils.headerValue(headers, name);
     }
 
     static boolean containsToken(String headerValue, String token) {

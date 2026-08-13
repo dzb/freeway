@@ -420,15 +420,8 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     private boolean compressibleContentType() {
-        String contentType = responseHeaders.get("Content-Type");
-        if (contentType == null) return false;
-        String lower = contentType.toLowerCase(Locale.ROOT);
-        return lower.startsWith("text/")
-            || lower.startsWith("application/json")
-            || lower.startsWith("application/javascript")
-            || lower.startsWith("application/xml")
-            || lower.startsWith("application/xhtml+xml")
-            || lower.startsWith("image/svg+xml");
+        return HttpUtils.isCompressibleContentType(
+            responseHeaders.get("Content-Type"));
     }
 
     /** Adds the RFC 7231 {@code Date} header once, unless the application

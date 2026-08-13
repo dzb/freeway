@@ -740,7 +740,8 @@ class FreewayHttpEngineTest {
                 WebSocketRoute.of("/ws/{room}", session -> new WebSocketListener() {
                     @Override
                     public void onText(String text) throws Exception {
-                        session.sendText("echo:" + text + ":" + session.pathVar("room") + ":" + session.correlationId());
+                        session.sendText("echo:" + text + ":" +
+                            session.pathVar("room").orElse("") + ":" + session.correlationId());
                         session.flush();
                     }
                 })

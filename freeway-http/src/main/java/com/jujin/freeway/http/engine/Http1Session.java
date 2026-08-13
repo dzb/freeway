@@ -5,13 +5,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.SocketTimeoutException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.jujin.freeway.http.ErrorResponses;
 import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
@@ -25,9 +25,6 @@ import com.jujin.freeway.http.engine.http2.frame.SettingsFrame;
 final class Http1Session {
 
     private static final Logger LOG = LoggerFactory.getLogger(Http1Session.class);
-    private static final byte[] INTERNAL_ERROR_BODY =
-        "Internal Server Error".getBytes(StandardCharsets.UTF_8);
-
     private final SessionContext ctx;
 
     Http1Session(SessionContext ctx) {
@@ -110,29 +107,14 @@ final class Http1Session {
                     out.flush();
                 }
 
-                ctx.registry().requestsInFlight.incrementAndGet();
-                long startNanos = System.nanoTime();
-                try { ctx.handler().handle(context); }
+                try { ctx.executeRequest(context); }
                 catch (Exception e) {
                     LOG.debug("Handler exception for {} {}", req.method(), req.path(), e);
                     if (!context.isResponded()) {
                         try {
-                            context.status(500)
-                                .setHeader("Content-Type", "text/plain; charset=utf-8")
-                                .output(INTERNAL_ERROR_BODY);
+                            ErrorResponses.internalError(context);
                         } catch (IOException ignored) {}
                     }
-                } finally {
-                    ctx.registry().requestsInFlight.decrementAndGet();
-                    ctx.requestTimer().record(System.nanoTime() - startNanos);
-                }
-
-                ctx.metrics().requestsTotal().increment();
-                int status = context.status();
-                if (status >= 500) {
-                    ctx.metrics().responses5xx().increment();
-                } else if (status >= 400) {
-                    ctx.metrics().responses4xx().increment();
                 }
 
                 boolean bodyDrained = context.drainUnreadBody();

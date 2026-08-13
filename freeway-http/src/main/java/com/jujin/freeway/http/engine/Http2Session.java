@@ -192,21 +192,7 @@ final class Http2Session {
                 out, correlationId, false, false);
             context.setWriter(new Http2ResponseWriter(stream));
             context.setHeader("X-Request-Id", context.correlationId());
-            ctx.registry().requestsInFlight.incrementAndGet();
-            ctx.metrics().requestsTotal().increment();
-            long startNanos = System.nanoTime();
-            try {
-                ctx.handler().handle(context);
-            } finally {
-                ctx.registry().requestsInFlight.decrementAndGet();
-                ctx.requestTimer().record(System.nanoTime() - startNanos);
-            }
-            int status = context.status();
-            if (status >= 500) {
-                ctx.metrics().responses5xx().increment();
-            } else if (status >= 400) {
-                ctx.metrics().responses4xx().increment();
-            }
+            ctx.executeRequest(context);
             stream.close();
         } catch (Exception e) {
             LOG.debug("HTTP/2 stream error", e);

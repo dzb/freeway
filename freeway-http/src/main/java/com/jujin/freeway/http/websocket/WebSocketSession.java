@@ -3,6 +3,7 @@ package com.jujin.freeway.http.websocket;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.jujin.freeway.http.ExchangeMeta;
 
@@ -18,13 +19,13 @@ public interface WebSocketSession extends ExchangeMeta {
     String path();
 
     /** Returns the value of a path variable by name. */
-    String pathVar(String name);
+    Optional<String> pathVar(String name);
 
     /** Returns an unmodifiable map of all path variables. */
     Map<String, String> pathVars();
 
-    /** Returns the first query parameter value for the given name, or null. */
-    String queryParam(String name);
+    /** Returns the first query parameter value for the given name. */
+    Optional<String> queryParam(String name);
 
     /** Returns all query parameter values for the given name, or an empty list. */
     List<String> queryParams(String name);
@@ -32,11 +33,14 @@ public interface WebSocketSession extends ExchangeMeta {
     /** Returns an unmodifiable map of all query parameters. */
     Map<String, List<String>> queryParams();
 
-    /** Returns the first header value for the given name, or null. */
-    String header(String name);
+    /** Returns the first header value for the given name. */
+    Optional<String> header(String name);
 
     /** Returns all header values for the given name, or an empty list. */
     List<String> headers(String name);
+
+    /** Returns an unmodifiable map of all headers. */
+    Map<String, List<String>> headers();
 
     /** Returns true if the WebSocket connection is still open. */
     boolean isOpen();

@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.jujin.freeway.http.ExchangeMetaDefault;
 import com.jujin.freeway.http.HttpUtils;
@@ -78,14 +79,17 @@ public final class WebSocketSessionImpl implements WebSocketSession {
 
     @Override public String method() { return method; }
     @Override public String path() { return path; }
-    @Override public String pathVar(String name) { return pathVariables.get(name); }
+    @Override
+    public Optional<String> pathVar(String name) {
+        return Optional.ofNullable(pathVariables.get(name));
+    }
     @Override public Map<String, String> pathVars() { return pathVariables; }
     @Override public boolean isOpen() { return open; }
 
     @Override
-    public String queryParam(String name) {
+    public Optional<String> queryParam(String name) {
         return ensureQueryParams().getOrDefault(name, List.of()).stream()
-            .findFirst().orElse(null);
+            .findFirst();
     }
 
     @Override
@@ -102,25 +106,20 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     }
 
     @Override
-    public String header(String name) {
-        for (var e : headers.entrySet()) {
-            if (e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty()) {
-                return e.getValue().getFirst();
-            }
-        }
-        return null;
+    public Optional<String> header(String name) {
+        return Optional.ofNullable(HttpUtils.headerValue(headers, name));
     }
 
     @Override
     public List<String> headers(String name) {
-        List<String> v = headers.get(name);
-        if (v != null) return List.copyOf(v);
-        for (var e : headers.entrySet()) {
-            if (e.getKey().equalsIgnoreCase(name)) {
-                return List.copyOf(e.getValue());
-            }
-        }
-        return List.of();
+        return HttpUtils.headerValues(headers, name);
+    }
+
+    @Override
+    public Map<String, List<String>> headers() {
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        headers.forEach((k, v) -> copy.put(k, List.copyOf(v)));
+        return Collections.unmodifiableMap(copy);
     }
 
     private void checkOpen() throws IOException {

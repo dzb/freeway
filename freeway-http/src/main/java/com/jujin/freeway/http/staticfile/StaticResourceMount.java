@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
@@ -29,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Strings;
+import com.jujin.freeway.http.ErrorResponses;
 import com.jujin.freeway.http.HttpRequest;
 import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.HttpStatus;
@@ -40,7 +40,6 @@ public final class StaticResourceMount {
     private static final long DEFAULT_CACHE_MAX_AGE_SECONDS = 86_400L;
     private static final long MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024L; // 50MB
     private static final DateTimeFormatter HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
-    private static final byte[] NOT_FOUND_BODY = "Not Found".getBytes(StandardCharsets.UTF_8);
 
     private final String mountPath;
     private final ResourceSource source;
@@ -257,7 +256,7 @@ public final class StaticResourceMount {
         if (fallthrough) {
             return false;
         }
-        response.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").output(NOT_FOUND_BODY);
+        ErrorResponses.notFound(response);
         return true;
     }
 
@@ -458,10 +457,10 @@ public final class StaticResourceMount {
             return "application/javascript; charset=utf-8";
         }
         if (lower.endsWith(".json")) {
-            return "application/json; charset=utf-8";
+            return HttpUtils.JSON_UTF8;
         }
         if (lower.endsWith(".txt")) {
-            return "text/plain; charset=utf-8";
+            return HttpUtils.TEXT_PLAIN_UTF8;
         }
         if (lower.endsWith(".xml")) {
             return "application/xml; charset=utf-8";
@@ -481,7 +480,7 @@ public final class StaticResourceMount {
         if (lower.endsWith(".ico")) {
             return "image/x-icon";
         }
-        return "application/octet-stream";
+        return HttpUtils.OCTET_STREAM;
     }
 
     private static String normalizeMount(String mountPath) {
