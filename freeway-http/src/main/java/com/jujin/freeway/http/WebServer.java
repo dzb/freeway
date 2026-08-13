@@ -45,7 +45,7 @@ public final class WebServer implements AutoCloseable {
     private final HttpServerConfig config;
     private final Consumer<Object> eventSink;
     private final ReadinessProbe readinessProbe;
-    private final ExchangeHandler requestHandler;
+    private final ExchangeHandler exchangeHandler;
     private final RouteHandler filterChain;
     private final boolean publishEvents;
 
@@ -117,7 +117,7 @@ public final class WebServer implements AutoCloseable {
             }
         };
 
-        this.requestHandler = new ExchangeHandler() {
+        this.exchangeHandler = new ExchangeHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
                 request.handle(ctx);
@@ -195,7 +195,7 @@ public final class WebServer implements AutoCloseable {
                 return h;
             }
             try {
-                h = engine.start(config, requestHandler);
+                h = engine.start(config, exchangeHandler);
             } catch (IOException ex) {
                 throw new RuntimeException(
                     "Failed to start HTTP engine", ex);

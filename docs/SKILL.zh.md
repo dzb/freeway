@@ -602,8 +602,8 @@ binder.contribute(RouteGroup.class)
 | `ctx.queryParam("q")` | 查询参数 |
 | `ctx.header("Accept")` | 请求头 |
 | `ctx.bodyAsJson(User.class)` | JSON 反序列化 |
-| `ctx.param("name")` | pathVar → queryParam → body 字段（便利方法） |
-| `ctx.requestContext().correlationId()` | 唯一请求 id |
+| `ctx.param("name")` | queryParam → pathVar（便利方法） |
+| `ctx.correlationId()` | 唯一请求 id |
 | `ctx.setStatus(201)` | 设置状态码 |
 | `ctx.setHeader("X-Custom", "value")` | 设置响应头 |
 | `ctx.send(200, "plain text")` | 发送文本响应 |

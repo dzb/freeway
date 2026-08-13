@@ -761,8 +761,8 @@ ctx.header("Accept")    // request header
 ctx.body()              // raw bytes
 ctx.bodyText()          // UTF-8 string
 ctx.bodyAsJson(User.class)  // deserialize JSON to object
-ctx.param("name")       // pathVar → queryParam → body field (convenience)
-ctx.requestContext().correlationId()  // unique request id
+ctx.param("name")       // queryParam → pathVar (convenience)
+ctx.correlationId()     // unique request id
 ```
 
 ### Response

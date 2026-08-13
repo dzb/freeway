@@ -6,7 +6,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -15,7 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.zip.GZIPOutputStream;
 
@@ -38,7 +36,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
  */
 public class HttpContextDefault extends AbstractHttpContext {
 
-    private String method, path, rawQuery;
+    private String method, path;
     private String remoteAddress = "";
     private Headers requestHeaders;
     private Map<String, List<String>> queryParams;
@@ -48,7 +46,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     private RequestBody requestBody;
     private int responseStatus = 200;
     private boolean responded;
-    /** Transport-specific response writer. Defaults to HTTP/1.1; the HTTP/2
+    /** Transport-specific response writer. Defaults to HTTP/1.x; the HTTP/2
      *  session replaces it per stream (each stream gets a fresh context). */
     private HttpResponseWriter writer = Http1xResponseWriter.INSTANCE;
     private boolean secure;
@@ -125,7 +123,6 @@ public class HttpContextDefault extends AbstractHttpContext {
                boolean http10, boolean keepAlive) {
         this.method = method;
         this.path = path;
-        this.rawQuery = rawQuery;
         this.requestHeaders = Headers.copyOf(requestHeaders);
         this.requestBody = new RequestBody(
             bodyStream, contentLength, chunked, () -> maxBodySize);

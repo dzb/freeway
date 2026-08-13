@@ -6,7 +6,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * Writes an HTTP response for a {@link HttpContextDefault}. One implementation
- * serializes HTTP/1.1 onto a raw socket; the HTTP/2 implementation frames
+ * serializes HTTP/1.x onto a raw socket; the HTTP/2 implementation frames
  * HEADERS/DATA onto a stream. The context owns the response state (status,
  * response headers, method, keep-alive); writers read it through the public
  * {@link HttpContextDefault} accessors.
