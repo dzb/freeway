@@ -3,6 +3,9 @@ package com.jujin.freeway.http;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -11,7 +14,9 @@ import org.junit.jupiter.api.Test;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class HttpContextTest {
@@ -128,5 +133,20 @@ class HttpContextTest {
             assertEquals("stream-me",
                 new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
+    }
+
+    @Test
+    void httpDateIsRfc1123UtcAndCachedPerSecond() {
+        long first = 1_700_000_000_000L;
+        long second = first + 1000L;
+
+        String date = HttpUtils.httpDate(first);
+        assertSame(date, HttpUtils.httpDate(first));
+        assertNotSame(date, HttpUtils.httpDate(second));
+
+        ZonedDateTime parsed =
+            ZonedDateTime.parse(date, DateTimeFormatter.RFC_1123_DATE_TIME);
+        assertEquals(ZoneOffset.UTC, parsed.getOffset());
+        assertEquals(first, parsed.toInstant().toEpochMilli());
     }
 }

@@ -114,6 +114,33 @@ class HttpContextDefaultTest {
     }
 
     @Test
+    void responseIncludesDateHeader() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
+
+        ctx.send(200, "ok");
+
+        assertTrue(writer.headHeaders.containsKey("Date"),
+                "responses must carry an RFC 7231 Date header");
+    }
+
+    @Test
+    void appSetDateHeaderIsNotOverridden() throws Exception {
+        var writer = new RecordingWriter();
+        var ctx = context(writer);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false,
+                new ByteArrayOutputStream(), null, false, false);
+        ctx.setHeader("Date", "custom-date");
+
+        ctx.send(200, "ok");
+
+        assertEquals("custom-date", writer.headHeaders.get("Date"),
+                "an application-provided Date must win");
+    }
+
+    @Test
     void setHeaderRejectsCRLFInName() {
         var ctx = context(new RecordingWriter());
         assertThrows(IllegalArgumentException.class, () ->

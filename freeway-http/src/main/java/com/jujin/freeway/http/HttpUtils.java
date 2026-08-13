@@ -2,6 +2,10 @@ package com.jujin.freeway.http;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,6 +17,11 @@ import java.util.Map;
  * request/response API — keep {@link HttpContext} focused on the exchange.
  */
 public final class HttpUtils {
+
+    private static final DateTimeFormatter HTTP_DATE =
+        DateTimeFormatter.RFC_1123_DATE_TIME;
+    private static volatile long lastHttpDateSecond = Long.MIN_VALUE;
+    private static volatile String cachedHttpDate = "";
 
     private HttpUtils() {}
 
@@ -44,6 +53,26 @@ public final class HttpUtils {
             }
         }
         return current + ", " + token;
+    }
+
+    /**
+     * Formats an HTTP {@code Date} field value (RFC 7231 §7.1.1.2) in GMT.
+     * The result is cached per second — response headers change at most once
+     * per second, so the hot path avoids re-formatting on every request.
+     */
+    public static String httpDate(long epochMillis) {
+        long second = Math.floorDiv(epochMillis, 1000L);
+        if (second != lastHttpDateSecond) {
+            synchronized (HttpUtils.class) {
+                if (second != lastHttpDateSecond) {
+                    cachedHttpDate = HTTP_DATE.format(
+                        ZonedDateTime.ofInstant(
+                            Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC));
+                    lastHttpDateSecond = second;
+                }
+            }
+        }
+        return cachedHttpDate;
     }
 
     /**

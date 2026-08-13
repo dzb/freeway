@@ -250,6 +250,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     @Override
     public HttpResponse output(byte[] data) throws IOException {
         if (responded) return this;
+        ensureDateHeader();
         responded = true;
         byte[] body = data;
         if (ResponseFraming.shouldGzip(compression, responseStatus,
@@ -270,6 +271,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     @Override
     public HttpResponse output(InputStream in, long contentLength) throws IOException {
         if (responded) return this;
+        ensureDateHeader();
         boolean gzip = ResponseFraming.shouldGzipStream(
             compression, responseStatus, allowsResponseBody(),
             acceptsGzip(), compressibleContentType());
@@ -372,6 +374,7 @@ public class HttpContextDefault extends AbstractHttpContext {
             }
         }
         responseHeaders.set("Content-Length", Long.toString(length));
+        ensureDateHeader();
         responded = true;
         writer.writeHead(this);
         writer.writeBody(this, new byte[0]); // status + headers, once
@@ -427,6 +430,16 @@ public class HttpContextDefault extends AbstractHttpContext {
             || lower.startsWith("image/svg+xml");
     }
 
+    /** Adds the RFC 7231 {@code Date} header once, unless the application
+     *  already set one. Written directly to the internal store because this
+     *  runs at response-commit time (after {@code setHeader} becomes a no-op
+     *  for the already-responded guard). */
+    private void ensureDateHeader() {
+        if (!responseHeaders.contains("Date")) {
+            responseHeaders.set("Date", HttpUtils.httpDate(System.currentTimeMillis()));
+        }
+    }
+
     /** Vary merge for the compression path: writes directly into the
      *  internal header store because the response is already committed
      *  ({@code setHeader} is a no-op after {@code responded}). */
@@ -450,6 +463,7 @@ public class HttpContextDefault extends AbstractHttpContext {
         // still needs setHeader() while assembling the SSE head (e.g. the
         // HTTP/1.1 Connection: close override).
         setupSseHeaders();
+        ensureDateHeader();
         SseEmitter emitter = writer.openSse(this);
         responded = true;
         return emitter;

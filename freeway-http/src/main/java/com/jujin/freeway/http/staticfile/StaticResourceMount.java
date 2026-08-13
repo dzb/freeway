@@ -15,7 +15,6 @@ import java.nio.file.Path;
 import java.nio.file.SecureDirectoryStream;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -33,6 +32,7 @@ import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.HttpRequest;
 import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.HttpStatus;
+import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.route.PathPattern;
 
 public final class StaticResourceMount {
@@ -305,7 +305,7 @@ public final class StaticResourceMount {
         }
         response.setHeader("Cache-Control", cacheControl.toString());
         if (meta.lastModifiedMillis() > 0) {
-            response.setHeader("Last-Modified", httpDate(meta.lastModifiedMillis()));
+            response.setHeader("Last-Modified", HttpUtils.httpDate(meta.lastModifiedMillis()));
         }
         response.setHeader("ETag", meta.etag());
     }
@@ -444,10 +444,6 @@ public final class StaticResourceMount {
             if (n > 0) remaining -= n;
             return n;
         }
-    }
-
-    private static String httpDate(long millis) {
-        return HTTP_DATE.format(ZonedDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneOffset.UTC));
     }
 
     private static String contentType(String name) {
