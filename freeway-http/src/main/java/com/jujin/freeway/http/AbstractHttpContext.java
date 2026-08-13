@@ -144,7 +144,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     @Override
-    public HttpContext maxBodySize(long maxBodySize) {
+    public HttpContext setMaxBodySize(long maxBodySize) {
         if (maxBodySize <= 0) {
             throw new IllegalArgumentException("maxBodySize must be positive");
         }
@@ -154,7 +154,7 @@ public abstract class AbstractHttpContext implements HttpContext {
 
     /**
      * Reads the complete request body from the transport stream, enforcing
-     * {@link #maxBodySize(long)}. Adapters use this shared helper so their
+     * {@link #setMaxBodySize(long)}. Adapters use this shared helper so their
      * body-size accounting matches the built-in engine exactly.
      */
     protected final byte[] readBody(InputStream input) throws IOException {
@@ -220,13 +220,13 @@ public abstract class AbstractHttpContext implements HttpContext {
 
     @Override
     public HttpResponse send(int status, String text) throws IOException {
-        status(status);
+        setStatus(status);
         return output(text);
     }
 
     @Override
     public HttpResponse sendJson(int status, Object value) throws IOException {
-        status(status);
+        setStatus(status);
         return outputJson(value);
     }
 

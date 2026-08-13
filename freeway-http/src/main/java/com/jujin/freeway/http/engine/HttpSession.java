@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.ExchangeHandler;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.internal.HttpUtils;
 
@@ -41,13 +41,13 @@ final class HttpSession implements Runnable {
     private final SessionContext context;
     private final Semaphore connectionPermits;
 
-    HttpSession(Socket socket, HttpRequestHandler handler,
+    HttpSession(Socket socket, ExchangeHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
             HttpServerConfig config, ConnectionRegistry registry) {
         this(socket, handler, jsonCodec, coercer, engine, config, registry, null);
     }
 
-    HttpSession(Socket socket, HttpRequestHandler handler,
+    HttpSession(Socket socket, ExchangeHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
             HttpServerConfig config, ConnectionRegistry registry,
             Semaphore connectionPermits) {

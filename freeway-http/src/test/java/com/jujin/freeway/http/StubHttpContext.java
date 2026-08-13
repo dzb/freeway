@@ -152,7 +152,7 @@ public final class StubHttpContext extends AbstractHttpContext {
     }
 
     @Override
-    public HttpResponse status(int status) {
+    public HttpResponse setStatus(int status) {
         this.status = status;
         return this;
     }

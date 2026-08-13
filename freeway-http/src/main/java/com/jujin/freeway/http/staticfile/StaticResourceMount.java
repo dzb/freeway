@@ -129,7 +129,7 @@ public final class StaticResourceMount {
         }
         applyCacheHeaders(response, meta);
         if (isNotModified(request, meta)) {
-            response.status(HttpStatus.NOT_MODIFIED).output(new byte[0]);
+            response.setStatus(HttpStatus.NOT_MODIFIED).output(new byte[0]);
             return true;
         }
 
@@ -138,7 +138,7 @@ public final class StaticResourceMount {
             : null;
 
         if (range != null && !range.satisfiable()) {
-            response.status(416);
+            response.setStatus(416);
             response.setHeader("Content-Range", "bytes */" + meta.size());
             response.output(new byte[0]);
             return true;
@@ -146,7 +146,7 @@ public final class StaticResourceMount {
 
         if (range != null) {
             long length = range.end() - range.start() + 1;
-            response.status(206);
+            response.setStatus(206);
             response.setHeader("Content-Range",
                 "bytes " + range.start() + "-" + range.end() + "/" + meta.size());
             if (!serveBytes(request, response, meta, relative, range.start(), length)) {

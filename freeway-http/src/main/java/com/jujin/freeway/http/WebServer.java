@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.event.HttpErrorEvent;
-import com.jujin.freeway.http.event.HttpRequestEvent;
+import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.event.HttpServerStartedEvent;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
@@ -45,7 +45,7 @@ public final class WebServer implements AutoCloseable {
     private final HttpServerConfig config;
     private final Consumer<Object> eventSink;
     private final ReadinessProbe readinessProbe;
-    private final HttpRequestHandler requestHandler;
+    private final ExchangeHandler requestHandler;
     private final RouteHandler filterChain;
     private final boolean publishEvents;
 
@@ -110,14 +110,14 @@ public final class WebServer implements AutoCloseable {
                         ctx.status(), elapsed, ctx.correlationId());
                 }
                 if (publishEvents) {
-                    publish(new HttpRequestEvent(
+                    publish(new HttpExchangeEvent(
                         ctx.method(), ctx.path(),
                         ctx.status(), elapsed));
                 }
             }
         };
 
-        this.requestHandler = new HttpRequestHandler() {
+        this.requestHandler = new ExchangeHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
                 request.handle(ctx);

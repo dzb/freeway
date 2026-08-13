@@ -94,7 +94,7 @@ public final class CorsFilter implements HttpFilter {
                     .isPresent()) {
             if (acao == null) {
                 LOG.debug("CORS preflight rejected: origin '{}'", requestOrigin);
-                ctx.status(HttpStatus.FORBIDDEN).output(new byte[0]);
+                ctx.setStatus(HttpStatus.FORBIDDEN).output(new byte[0]);
                 return;
             }
             if (allowedMethods != null) {

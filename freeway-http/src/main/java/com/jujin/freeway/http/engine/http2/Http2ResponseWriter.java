@@ -15,7 +15,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
  * HTTP/2 {@link HttpResponseWriter}: frames the response as HEADERS/DATA onto
- * the owning stream. Mirrors {@code Http11ResponseWriter} so the two transport
+ * the owning stream. Mirrors {@code Http1xResponseWriter} so the two transport
  * writers are directly comparable. The stream itself stays a pure request
  * processor — it does not implement the writer contract.
  */

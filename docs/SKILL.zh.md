@@ -604,7 +604,7 @@ binder.contribute(RouteGroup.class)
 | `ctx.bodyAsJson(User.class)` | JSON 反序列化 |
 | `ctx.param("name")` | pathVar → queryParam → body 字段（便利方法） |
 | `ctx.requestContext().correlationId()` | 唯一请求 id |
-| `ctx.status(201)` | 设置状态码 |
+| `ctx.setStatus(201)` | 设置状态码 |
 | `ctx.setHeader("X-Custom", "value")` | 设置响应头 |
 | `ctx.send(200, "plain text")` | 发送文本响应 |
 | `ctx.sendJson(200, object)` | 发送 JSON 响应 |

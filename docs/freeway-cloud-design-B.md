@@ -199,7 +199,7 @@ freeway-cloud
 
 ### 6.3 可观测性
 - `Tracer`/`TraceContext`：生成 traceId/spanId，用 **`ScopedValue`** 跨异步/虚拟线程边界传播，并写 MDC 供日志显示（建立在既有 MDC 显示之上）；outbound 端注入/接收 W3C `traceparent` 头。
-- 贡献 `HttpFilter`（服务端提取/注入 trace 上下文）+ 复用 `RequestTimingFilter`/`HttpRequestEvent` 自动记延迟。
+- 贡献 `HttpFilter`（服务端提取/注入 trace 上下文）+ 复用 `WebServer` 内建的请求计时与 `HttpExchangeEvent` 自动记延迟。
 - `MeterRegistry`（counter/timer/gauge，in-memory 默认）+ 贡献 `Route` `/metrics`（Prometheus 文本格式）。
 - **K8s 探针拆分**：在 `HealthCheck`/`Route` 扩展点之上补 `/health/ready`（依赖就绪：DB/注册中心连通）与 `/health/live`（进程存活）两个端点——这是云原生就绪的核心，且建立在既有 `freeway.http.health.*` 配置键之上。优雅关停复用 §3 已有的 `shutdown-grace` + `RuntimeHook.stop` + `AppStoppingEvent`，注册中心反注册放在 `RuntimeHook.stop` 内。
 

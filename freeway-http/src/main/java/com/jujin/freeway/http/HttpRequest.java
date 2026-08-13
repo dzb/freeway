@@ -92,7 +92,7 @@ public interface HttpRequest extends RequestView {
 
     /**
      * Returns the request body as a streaming input, enforcing the
-     * configured {@link HttpContext#maxBodySize(long) maximum body size} as
+     * configured {@link HttpContext#setMaxBodySize(long) maximum body size} as
      * it is read.
      *
      * <p>The default reads the whole body into memory for implementations

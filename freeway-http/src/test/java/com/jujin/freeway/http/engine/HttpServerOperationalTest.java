@@ -237,7 +237,7 @@ class HttpServerOperationalTest {
             .eventSink(events::add)
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
             .route(Route.post("/boom", ctx -> {
-                ctx.maxBodySize(1);
+                ctx.setMaxBodySize(1);
                 ctx.body();
                 ctx.send(200, "unexpected");
             }))

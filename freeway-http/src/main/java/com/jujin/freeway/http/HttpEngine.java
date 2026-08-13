@@ -17,5 +17,5 @@ public interface HttpEngine {
      * @return a handle that exposes the bound host/port and can shut down the server
      * @throws IOException if the server fails to bind or start
      */
-    HttpServerHandle start(HttpServerConfig config, HttpRequestHandler handler) throws IOException;
+    HttpServerHandle start(HttpServerConfig config, ExchangeHandler handler) throws IOException;
 }

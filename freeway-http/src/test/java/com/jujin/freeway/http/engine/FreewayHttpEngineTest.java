@@ -526,7 +526,7 @@ class FreewayHttpEngineTest {
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(Route.post("/echo", ctx -> {
-                ctx.maxBodySize(3);
+                ctx.setMaxBodySize(3);
                 ctx.send(200, ctx.bodyText());
             }))
         );

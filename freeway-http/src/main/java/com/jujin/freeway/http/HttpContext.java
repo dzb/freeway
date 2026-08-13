@@ -29,5 +29,5 @@ public interface HttpContext extends ExchangeMeta, HttpRequest, HttpResponse {
      *
      * @return this context for chaining
      */
-    HttpContext maxBodySize(long maxBodySize);
+    HttpContext setMaxBodySize(long maxBodySize);
 }

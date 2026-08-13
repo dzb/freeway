@@ -19,13 +19,13 @@ public final class ErrorResponses {
     private ErrorResponses() {}
 
     public static void notFound(HttpResponse response) throws IOException {
-        response.status(HttpStatus.NOT_FOUND)
+        response.setStatus(HttpStatus.NOT_FOUND)
             .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
             .output(NOT_FOUND);
     }
 
     public static void internalError(HttpResponse response) throws IOException {
-        response.status(HttpStatus.INTERNAL_ERROR)
+        response.setStatus(HttpStatus.INTERNAL_ERROR)
             .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
             .output(INTERNAL_ERROR);
     }

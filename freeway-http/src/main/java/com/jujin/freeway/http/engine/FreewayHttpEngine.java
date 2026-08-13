@@ -19,7 +19,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.http.HttpEngine;
-import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.ExchangeHandler;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.HttpServerHandle;
 
@@ -89,7 +89,7 @@ public final class FreewayHttpEngine implements HttpEngine {
     }
 
     @Override
-    public HttpServerHandle start(HttpServerConfig config, HttpRequestHandler handler)
+    public HttpServerHandle start(HttpServerConfig config, ExchangeHandler handler)
         throws IOException {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(handler, "handler");

@@ -50,7 +50,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     private boolean responded;
     /** Transport-specific response writer. Defaults to HTTP/1.1; the HTTP/2
      *  session replaces it per stream (each stream gets a fresh context). */
-    private HttpResponseWriter writer = Http11ResponseWriter.INSTANCE;
+    private HttpResponseWriter writer = Http1xResponseWriter.INSTANCE;
     private boolean secure;
     private SSLSession sslSession;
     /** Set once the HTTP/1.1 writer has emitted status/headers — streaming
@@ -85,11 +85,6 @@ public class HttpContextDefault extends AbstractHttpContext {
     /** Routes responses through the given transport writer (HTTP/2 stream). */
     void setWriter(HttpResponseWriter writer) {
         this.writer = writer;
-    }
-
-    /** Sets the maximum request body size. Called after reset() or construction. */
-    public void setMaxBodySize(long maxBodySize) {
-        this.maxBodySize = maxBodySize;
     }
 
     /** Marks this request as transported over TLS. */
@@ -222,7 +217,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     // --- response side ---
 
     @Override
-    public HttpResponse status(int status) {
+    public HttpResponse setStatus(int status) {
         this.responseStatus = status;
         return this;
     }

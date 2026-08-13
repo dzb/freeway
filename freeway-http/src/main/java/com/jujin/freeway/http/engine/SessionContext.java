@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.HttpRequestHandler;
+import com.jujin.freeway.http.ExchangeHandler;
 import com.jujin.freeway.http.HttpServerConfig;
 
 /**
@@ -13,7 +13,7 @@ import com.jujin.freeway.http.HttpServerConfig;
  * argument list.
  */
 record SessionContext(
-    HttpRequestHandler handler,
+    ExchangeHandler handler,
     JsonCodec jsonCodec,
     Coercer coercer,
     FreewayHttpEngine engine,

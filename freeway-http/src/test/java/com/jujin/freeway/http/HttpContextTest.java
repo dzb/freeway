@@ -29,8 +29,8 @@ class HttpContextTest {
     void maxBodySizeMustBePositive() {
         StubHttpContext ctx = new StubHttpContext();
 
-        assertThrows(IllegalArgumentException.class, () -> ctx.maxBodySize(0));
-        assertThrows(IllegalArgumentException.class, () -> ctx.maxBodySize(-1));
+        assertThrows(IllegalArgumentException.class, () -> ctx.setMaxBodySize(0));
+        assertThrows(IllegalArgumentException.class, () -> ctx.setMaxBodySize(-1));
     }
 
     @Test
@@ -56,7 +56,7 @@ class HttpContextTest {
         assertNull(resetContent.responseHeader("Content-Type"));
 
         StubHttpContext notModified = new StubHttpContext();
-        notModified.status(304).outputJson(Map.of("ok", true));
+        notModified.setStatus(304).outputJson(Map.of("ok", true));
         assertEquals(304, notModified.status());
         assertEquals("", notModified.responseBody());
         assertNull(notModified.responseHeader("Content-Type"));

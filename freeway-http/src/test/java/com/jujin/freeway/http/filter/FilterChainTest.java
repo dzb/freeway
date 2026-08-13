@@ -42,7 +42,7 @@ class FilterChainTest {
     @Test
     void filterCanShortCircuit() throws Exception {
         HttpFilter blocker = (ctx, next) -> {
-            ctx.status(403).output("blocked".getBytes());
+            ctx.setStatus(403).output("blocked".getBytes());
             // does not call next.handle(ctx)
         };
         AtomicInteger handlerCalled = new AtomicInteger(0);

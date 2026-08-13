@@ -104,7 +104,7 @@ class HttpContextDefaultTest {
         ctx.reset("GET", "/", null, Map.of(), null, -1, false,
                 new ByteArrayOutputStream(), null, false, false);
 
-        ctx.status(201);
+        ctx.setStatus(201);
         ctx.setHeader("X-Custom", "abc");
         ctx.send(201, "created");
 
@@ -174,7 +174,7 @@ class HttpContextDefaultTest {
         ctx.reset("POST", "/", null, Map.of(), null, -1, false,
                 new ByteArrayOutputStream(), null, false, false);
 
-        ctx.status(204);
+        ctx.setStatus(204);
         ctx.output("should-be-ignored".getBytes());
 
         assertEquals(204, writer.headStatus);
@@ -288,7 +288,7 @@ class HttpContextDefaultTest {
         ctx.reset("GET", "/", null,
             Map.of("accept-encoding", List.of("gzip")), null, -1, false,
             new ByteArrayOutputStream(), null, false, false);
-        ctx.status(204).setHeader("Content-Type", "text/plain");
+        ctx.setStatus(204).setHeader("Content-Type", "text/plain");
         ctx.output(new byte[512]);
         assertFalse(writer.headHeaders.containsKey("Content-Encoding"));
     }

@@ -21,7 +21,7 @@ public interface HttpResponse {
      *
      * @return this response for chaining
      */
-    HttpResponse status(int status);
+    HttpResponse setStatus(int status);
 
     /** Returns the HTTP response status code. */
     int status();

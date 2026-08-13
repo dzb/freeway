@@ -7,7 +7,7 @@ import com.jujin.freeway.http.websocket.WebSocketMatch;
  * upgrade negotiation.
  */
 @FunctionalInterface
-public interface HttpRequestHandler {
+public interface ExchangeHandler {
 
     /**
      * Processes an incoming HTTP exchange.

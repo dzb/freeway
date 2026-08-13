@@ -7,14 +7,14 @@ import java.nio.charset.StandardCharsets;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
- * HTTP/1.1 response writer: serializes the status line, headers, and body
+ * HTTP/1.x response writer: serializes the status line, headers, and body
  * straight onto the connection's buffered output stream. Stateless — one
  * shared instance reads everything from the context, so the hot path keeps
  * the pre-encoded byte constants and a single flush per response.
  */
-final class Http11ResponseWriter implements HttpResponseWriter {
+final class Http1xResponseWriter implements HttpResponseWriter {
 
-    static final Http11ResponseWriter INSTANCE = new Http11ResponseWriter();
+    static final Http1xResponseWriter INSTANCE = new Http1xResponseWriter();
 
     // Pre-encoded constants for hot-path headers
     private static final byte[] HTTP11 = "HTTP/1.1 ".getBytes(StandardCharsets.ISO_8859_1);
@@ -27,7 +27,7 @@ final class Http11ResponseWriter implements HttpResponseWriter {
     private static final byte[] SPACE = " ".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] TERMINAL_CHUNK = {'0', '\r', '\n', '\r', '\n'};
 
-    private Http11ResponseWriter() {}
+    private Http1xResponseWriter() {}
 
     @Override
     public void writeHead(HttpContextDefault ctx) throws IOException {

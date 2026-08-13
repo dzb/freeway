@@ -17,7 +17,7 @@
 | **配置键** | `HttpConfigKeys` 集中常量类 | `DbConfigKeys` 集中常量类 |
 | **实现隔离** | `engine/` 子包（含 `http2/`, `ws/`；HTTP/1.x 直接在 `engine/`） | `internal/` 子包（`DatabaseImpl`, `PoolDefault` 等） |
 | **独立子系统** | `filter/`, `route/`, `sse/`, `websocket/`, `staticfile/` | `schema/`, `migration/` |
-| **领域事件** | `event/` — `HttpServerStartedEvent`, `HttpRequestEvent` | 无 |
+| **领域事件** | `event/` — `HttpServerStartedEvent`, `HttpExchangeEvent` | 无 |
 | **独立构建器** | `WebServerBuilder` | `DatabaseBuilder` |
 | **IoC 接线** | 仅 `HttpModule` | 仅 `DbModule` |
 | **Primary 选择** | `HttpEngine` → `FreewayHttpEngine` | `Dialect` → `PostgresDialect` |

@@ -50,7 +50,7 @@ public final class HealthFilter implements HttpFilter {
                 && healthPath.equals(PathPattern.normalizePath(
                     ctx.path()))) {
             if (healthCheck instanceof HealthCheck.Default) {
-                ctx.status(200).setHeader(
+                ctx.setStatus(200).setHeader(
                         "Content-Type", MediaTypes.JSON_UTF8)
                     .output(DEFAULT_RESPONSE);
             } else {

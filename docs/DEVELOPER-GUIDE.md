@@ -649,10 +649,10 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 | Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http2/` |
 | Engine (WebSocket) | `WebSocketFrame`, `WebSocketSessionImpl`, `WebSocketUtil` etc in `engine/ws/` |
 | Routing | `Route`, `RouteGroup`, `RouteIndex`, `PathPattern` |
-| Body | `BodyHandler`, `RequestContext`, `RequestContextDefault`, `MultipartForm` |
+| Body | `BodyHandler`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
-| Built-ins | `JsonCodecDefault`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `RequestTimingFilter`, `StaticResourceMount`, `ExceptionMapper` |
+| Built-ins | `JsonCodecDefault`, `AccessLogFilter`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ExceptionMapper` |
 
 Engine internals (`engine/` and sub-packages) are implementation details — `FreewayHttpEngine` is the only public class. `JdkHttpEngine`/`JdkHttpContext` have been removed; the built-in engine is the sole default.
 
@@ -768,7 +768,7 @@ ctx.requestContext().correlationId()  // unique request id
 ### Response
 
 ```java
-ctx.status(201);
+ctx.setStatus(201);
 ctx.setHeader("X-Custom", "value");
 ctx.send(200, "plain text");
 ctx.sendJson(200, object);
@@ -794,7 +794,7 @@ public class AuthFilter implements HttpFilter {
 binder.contribute(HttpFilter.class).add(new AuthFilter());
 ```
 
-Built-in filters: `RequestTimingFilter` (logs request duration), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys), `HealthFilter` (health endpoint, see below).
+Built-in filters: `AccessLogFilter` (optional text access log), `CorsFilter` (configurable CORS via `freeway.http.cors.*` keys), `HealthFilter` (health endpoint, see below). Request timing is measured by `WebServer` and published as `HttpExchangeEvent`.
 
 ### Health Check
 
