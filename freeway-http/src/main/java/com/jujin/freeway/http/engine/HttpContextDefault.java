@@ -39,10 +39,11 @@ public class HttpContextDefault extends AbstractHttpContext {
 
     private String method, path, rawQuery;
     private String remoteAddress = "";
-    private Map<String, List<String>> requestHeaders, queryParams;
+    private Headers requestHeaders;
+    private Map<String, List<String>> queryParams;
     private boolean http10, keepAlive;
     OutputStream rawOut;
-    private final CaseInsensitiveHeaders responseHeaders = new CaseInsensitiveHeaders();
+    private final Headers responseHeaders = new Headers();
     private RequestBody requestBody;
     private int responseStatus = 200;
     private boolean responded;
@@ -129,7 +130,7 @@ public class HttpContextDefault extends AbstractHttpContext {
         this.method = method;
         this.path = path;
         this.rawQuery = rawQuery;
-        this.requestHeaders = requestHeaders;
+        this.requestHeaders = Headers.copyOf(requestHeaders);
         this.requestBody = new RequestBody(
             bodyStream, contentLength, chunked, () -> maxBodySize);
         this.rawOut = rawOut;
@@ -188,23 +189,13 @@ public class HttpContextDefault extends AbstractHttpContext {
 
     @Override
     public Map<String, List<String>> headers() {
-        Map<String, List<String>> copy = new LinkedHashMap<>();
-        requestHeaders.forEach((key, value) -> copy.put(key, List.copyOf(value)));
-        return Collections.unmodifiableMap(copy);
+        return requestHeaders.asMap();
     }
 
     @Override
     public Optional<String> header(String name) {
-        List<String> values = requestHeaders.get(name);
-        if (values != null && !values.isEmpty())
-            return Optional.of(values.getFirst());
-        for (var entry : requestHeaders.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(name)
-                && !entry.getValue().isEmpty()) {
-                return Optional.of(entry.getValue().getFirst());
-            }
-        }
-        return Optional.empty();
+        String value = requestHeaders.get(name);
+        return value == null ? Optional.empty() : Optional.of(value);
     }
 
     @Override
@@ -214,14 +205,7 @@ public class HttpContextDefault extends AbstractHttpContext {
 
     @Override
     public List<String> headers(String name) {
-        List<String> values = requestHeaders.get(name);
-        if (values != null) return List.copyOf(values);
-        for (var entry : requestHeaders.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(name)) {
-                return List.copyOf(entry.getValue());
-            }
-        }
-        return List.of();
+        return requestHeaders.getAll(name);
     }
 
     @Override
@@ -398,19 +382,15 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     private boolean acceptsGzip() {
-        for (var entry : requestHeaders.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase("accept-encoding")) {
-                for (String value : entry.getValue()) {
-                    for (String part : value.split(",")) {
-                        String token = part.trim();
-                        int q = token.indexOf(';');
-                        String name = q < 0 ? token : token.substring(0, q).trim();
-                        if ("gzip".equalsIgnoreCase(name)) {
-                            if (q < 0) return true;
-                            String params = token.substring(q + 1).toLowerCase(Locale.ROOT);
-                            return !qValueIsZero(params);
-                        }
-                    }
+        for (String value : requestHeaders.getAll("accept-encoding")) {
+            for (String part : value.split(",")) {
+                String token = part.trim();
+                int q = token.indexOf(';');
+                String name = q < 0 ? token : token.substring(0, q).trim();
+                if ("gzip".equalsIgnoreCase(name)) {
+                    if (q < 0) return true;
+                    String params = token.substring(q + 1).toLowerCase(Locale.ROOT);
+                    return !qValueIsZero(params);
                 }
             }
         }

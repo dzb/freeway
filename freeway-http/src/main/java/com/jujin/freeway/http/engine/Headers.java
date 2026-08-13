@@ -9,8 +9,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Case-insensitive response-header store that preserves insertion order and
- * the case of the most recently written name.
+ * Case-insensitive, multi-valued header store shared by the request and
+ * response paths. Preserves insertion order and the case of the most
+ * recently written name.
  *
  * <p>Lookup, replacement, and removal ignore case, so framework code never
  * needs repeated {@code equalsIgnoreCase()} scans. Writing a name that
@@ -18,9 +19,23 @@ import java.util.Map;
  * the end of the insertion order, matching the previous
  * {@code remove + put} semantics.</p>
  */
-final class CaseInsensitiveHeaders {
+final class Headers {
 
     private final LinkedHashMap<Key, List<String>> values = new LinkedHashMap<>();
+
+    /** Copies an existing header map (for example a parsed request) into a
+     *  case-insensitive store. */
+    static Headers copyOf(Map<String, List<String>> source) {
+        Headers headers = new Headers();
+        if (source != null) {
+            source.forEach((name, values) -> {
+                if (values != null) {
+                    values.forEach(value -> headers.add(name, value));
+                }
+            });
+        }
+        return headers;
+    }
 
     /** Replaces every value for the name, moving it to the end of insertion
      *  order (matching the previous remove + put semantics). */
@@ -88,6 +103,15 @@ final class CaseInsensitiveHeaders {
             }
         }
         return Collections.unmodifiableList(list);
+    }
+
+    /** Unmodifiable, insertion-ordered view of all headers as a map. */
+    Map<String, List<String>> asMap() {
+        Map<String, List<String>> map = new LinkedHashMap<>();
+        for (var entry : values.entrySet()) {
+            map.put(entry.getKey().name, List.copyOf(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(map);
     }
 
     /** Key equality is case-insensitive for ASCII header names; header names
