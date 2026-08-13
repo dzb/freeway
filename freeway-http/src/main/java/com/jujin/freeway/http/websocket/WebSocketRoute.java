@@ -4,16 +4,11 @@ import java.util.Objects;
 
 import com.jujin.freeway.http.route.PathPattern;
 
-public record WebSocketRoute(String path, WebSocketEndpoint endpoint, PathPattern pattern) {
+public record WebSocketRoute(String path, WebSocketEndpoint endpoint) {
     public WebSocketRoute {
         path = normalizePath(path);
         endpoint = Objects.requireNonNull(endpoint, "endpoint");
         PathPattern.validateRegistrationPath(path);
-        pattern = Objects.requireNonNull(pattern, "pattern");
-    }
-
-    public WebSocketRoute(String path, WebSocketEndpoint endpoint) {
-        this(path, endpoint, new PathPattern(normalizePath(path)));
     }
 
     public static WebSocketRoute of(String path, WebSocketEndpoint endpoint) {

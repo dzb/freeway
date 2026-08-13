@@ -223,8 +223,7 @@ public final class WebServer implements AutoCloseable {
                     closed = true;
                     closeQuietly(h);
                     throw new RuntimeException(
-                        "Web server did not become ready on " + h.host() + ":" + h.port()
-                            + " within 10s");
+                        "Web server did not become ready on " + h.host() + ":" + h.port());
                 }
                 this.handle = h;
                 LOG.info("Freeway web server started on {}:{}", h.host(), h.port());
@@ -296,7 +295,7 @@ public final class WebServer implements AutoCloseable {
             ctx.path()
         );
         if (match == null) {
-            ctx.status(404).setHeader(
+            ctx.status(HttpStatus.NOT_FOUND).setHeader(
                 "Content-Type", "text/plain; charset=utf-8")
                 .output(NOT_FOUND_BODY);
             return;
@@ -340,7 +339,7 @@ public final class WebServer implements AutoCloseable {
             String.valueOf(exception.getMessage())
         );
         try {
-            ctx.status(500).setHeader(
+            ctx.status(HttpStatus.INTERNAL_ERROR).setHeader(
                 "Content-Type", "text/plain; charset=utf-8")
                 .output(INTERNAL_ERROR_BODY);
         } catch (Exception sendEx) {

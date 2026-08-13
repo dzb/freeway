@@ -83,7 +83,7 @@ public final class StaticHeaderTable {
 
     private static void add(int index, String name, String value) {
         TABLE[index] = new Http2HeaderField(name, value);
-        NAME_INDEX.put(name, index);
+        NAME_INDEX.putIfAbsent(name, index);
     }
 
     public static Http2HeaderField get(int index) {
