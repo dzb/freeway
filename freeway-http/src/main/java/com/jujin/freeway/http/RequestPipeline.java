@@ -13,7 +13,7 @@ import com.jujin.freeway.http.websocket.WebSocketIndex;
 /**
  * Bundles the request-handling components that form a WebServer's pipeline.
  */
-record RequestPipeline(
+public record RequestPipeline(
     RouteIndex routes,
     WebSocketIndex websocketIndex,
     CorsFilter corsFilter,
