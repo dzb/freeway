@@ -1,7 +1,6 @@
 package com.jujin.freeway.http;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -10,11 +9,11 @@ import java.util.Optional;
  *
  * <p>Application handlers receive this combined object for concise lambdas.
  * The convenience set is deliberately small and fixed: read side
- * {@code pathVar/pathVars/param/queryParam/header/bodyAsJson}, write side
- * {@code send/sendJson/status/setHeader/output}. Everything beyond it goes
- * through {@link #request()} and {@link #response()} against the narrow
- * transport contracts — this boundary keeps the facade from growing into a
- * god interface.</p>
+ * {@code pathVar/queryParam/header/bodyAsJson/body}, write side
+ * {@code send/sendJson/status/setHeader/output} — the high-frequency calls
+ * only. Everything else goes through {@link #request()} and
+ * {@link #response()} against the narrow transport contracts, so the facade
+ * cannot grow into a god interface.</p>
  */
 public interface HttpContext extends ExchangeMeta {
 
@@ -30,14 +29,6 @@ public interface HttpContext extends ExchangeMeta {
         return request().pathVar(name);
     }
 
-    default Map<String, String> pathVars() {
-        return request().pathVars();
-    }
-
-    default Optional<String> param(String name) {
-        return request().param(name);
-    }
-
     default Optional<String> queryParam(String name) {
         return request().queryParam(name);
     }
@@ -48,6 +39,10 @@ public interface HttpContext extends ExchangeMeta {
 
     default <T> T bodyAsJson(Class<T> type) throws IOException {
         return request().bodyAsJson(type);
+    }
+
+    default byte[] body() throws IOException {
+        return request().body();
     }
 
     // -- convenience: write side (forwarded to response()) --

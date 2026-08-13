@@ -116,6 +116,9 @@ public abstract class AbstractHttpContext
     public abstract Optional<String> header(String name);
 
     @Override
+    public abstract byte[] body() throws IOException;
+
+    @Override
     public abstract HttpResponse status(int status);
 
     @Override
