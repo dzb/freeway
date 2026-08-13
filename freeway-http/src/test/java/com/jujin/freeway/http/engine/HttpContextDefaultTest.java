@@ -1,11 +1,19 @@
 package com.jujin.freeway.http.engine;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 
 import org.junit.jupiter.api.Test;
 
@@ -256,5 +264,148 @@ class HttpContextDefaultTest {
         ctx.status(204).setHeader("Content-Type", "text/plain");
         ctx.output(new byte[512]);
         assertFalse(writer.headHeaders.containsKey("Content-Encoding"));
+    }
+
+    @Test
+    void http1StreamingKnownLengthUsesContentLength() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = new HttpContextDefault(CODEC, COERCER);
+        ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+
+        ctx.output(new ByteArrayInputStream("hello".getBytes()), 5);
+
+        String wire = out.toString();
+        assertTrue(wire.contains("Content-Length: 5"));
+        assertFalse(wire.contains("Transfer-Encoding"));
+        assertTrue(wire.endsWith("hello"));
+    }
+
+    @Test
+    void http1StreamingUnknownLengthUsesChunked() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = new HttpContextDefault(CODEC, COERCER);
+        ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+
+        ctx.output(new ByteArrayInputStream("hello".getBytes()), -1);
+
+        String wire = out.toString();
+        assertTrue(wire.contains("Transfer-Encoding: chunked"));
+        assertTrue(wire.endsWith("5\r\nhello\r\n0\r\n\r\n"));
+    }
+
+    @Test
+    void http1BufferedGzipRoundTrips() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = new HttpContextDefault(CODEC, COERCER);
+        ctx.reset("POST", "/", null,
+            Map.of("accept-encoding", List.of("gzip")), null, 0, false,
+            out, null, false, false);
+        ctx.setHeader("Content-Type", "text/plain");
+        String original = "hello gzip ".repeat(64);
+        ctx.output(original.getBytes(StandardCharsets.UTF_8));
+
+        String wire = out.toString();
+        assertTrue(wire.contains("Content-Encoding: gzip"));
+        assertTrue(wire.contains("Content-Length: "));
+        assertFalse(wire.contains("Transfer-Encoding"));
+
+        byte[] gz = bodyAfterHeaders(out);
+        try (var gin = new GZIPInputStream(new ByteArrayInputStream(gz))) {
+            assertEquals(original, new String(gin.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void http1StreamingGzipUsesChunked() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = new HttpContextDefault(CODEC, COERCER);
+        ctx.reset("POST", "/", null,
+            Map.of("accept-encoding", List.of("gzip")), null, 0, false,
+            out, null, false, false);
+        ctx.setHeader("Content-Type", "text/plain");
+        byte[] body = "stream ".repeat(64).getBytes(StandardCharsets.UTF_8);
+
+        ctx.output(new ByteArrayInputStream(body), body.length);
+
+        String wire = out.toString();
+        assertTrue(wire.contains("Content-Encoding: gzip"));
+        assertTrue(wire.contains("Transfer-Encoding: chunked"));
+        assertFalse(wire.contains("Content-Length"));
+    }
+
+    @Test
+    void http1HeadSuppressesBodyButKeepsLength() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var ctx = new HttpContextDefault(CODEC, COERCER);
+        ctx.reset("HEAD", "/", null, Map.of(), null, 0, false, out, null, false, false);
+
+        ctx.send(200, "hello");
+
+        String wire = out.toString();
+        assertTrue(wire.contains("Content-Length: 5"));
+        assertFalse(wire.contains("hello"));
+    }
+
+    @Test
+    void outputFileUsesSendfileForLargeFile() throws Exception {
+        Path file = Files.createTempFile("sendfile", ".bin");
+        try {
+            int size = 64 * 1024;
+            Files.write(file, new byte[size]);
+            var out = new ByteArrayOutputStream();
+            var ctx = new HttpContextDefault(CODEC, COERCER);
+            long[] transferred = new long[2];
+            ctx.setFileSender((channel, offset, length) -> {
+                transferred[0] = offset;
+                transferred[1] = length;
+            });
+            ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+
+            try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+                ctx.outputFile(channel, 0, size);
+            }
+
+            assertEquals(0L, transferred[0]);
+            assertEquals((long) size, transferred[1]);
+            assertTrue(out.toString().contains("Content-Length: " + size));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    void outputFileStreamsSmallFileThroughBuffer() throws Exception {
+        Path file = Files.createTempFile("small", ".bin");
+        try {
+            byte[] content = "hello".getBytes(StandardCharsets.UTF_8);
+            Files.write(file, content);
+            var out = new ByteArrayOutputStream();
+            var ctx = new HttpContextDefault(CODEC, COERCER);
+            ctx.setFileSender((c, o, l) -> {
+                throw new AssertionError("small file must not use sendfile");
+            });
+            ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+
+            try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+                ctx.outputFile(channel, 0, content.length);
+            }
+
+            String wire = out.toString();
+            assertTrue(wire.contains("Content-Length: 5"));
+            assertTrue(wire.endsWith("hello"));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    private static byte[] bodyAfterHeaders(ByteArrayOutputStream out) {
+        byte[] wire = out.toByteArray();
+        for (int i = 0; i + 3 < wire.length; i++) {
+            if (wire[i] == '\r' && wire[i + 1] == '\n'
+                    && wire[i + 2] == '\r' && wire[i + 3] == '\n') {
+                return Arrays.copyOfRange(wire, i + 4, wire.length);
+            }
+        }
+        return new byte[0];
     }
 }
