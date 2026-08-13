@@ -2,45 +2,14 @@ package com.jujin.freeway.http.websocket;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 import com.jujin.freeway.http.ExchangeMeta;
+import com.jujin.freeway.http.RequestInfo;
 
 /**
  * Thin WebSocket session view exposed to application code.
  */
-public interface WebSocketSession extends ExchangeMeta {
-
-    /** Returns the HTTP method used to establish the WebSocket upgrade. */
-    String method();
-
-    /** Returns the request path of the WebSocket upgrade. */
-    String path();
-
-    /** Returns the value of a path variable by name. */
-    Optional<String> pathVar(String name);
-
-    /** Returns an unmodifiable map of all path variables. */
-    Map<String, String> pathVars();
-
-    /** Returns the first query parameter value for the given name. */
-    Optional<String> queryParam(String name);
-
-    /** Returns all query parameter values for the given name, or an empty list. */
-    List<String> queryParams(String name);
-
-    /** Returns an unmodifiable map of all query parameters. */
-    Map<String, List<String>> queryParams();
-
-    /** Returns the first header value for the given name. */
-    Optional<String> header(String name);
-
-    /** Returns all header values for the given name, or an empty list. */
-    List<String> headers(String name);
-
-    /** Returns an unmodifiable map of all headers. */
-    Map<String, List<String>> headers();
+public interface WebSocketSession extends ExchangeMeta, RequestInfo {
 
     /** Returns true if the WebSocket connection is still open. */
     boolean isOpen();

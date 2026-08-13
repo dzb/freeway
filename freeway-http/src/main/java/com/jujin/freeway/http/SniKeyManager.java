@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.ssl;
+package com.jujin.freeway.http;
 
 import java.net.Socket;
 import java.security.KeyStore;
@@ -30,7 +30,7 @@ import javax.net.ssl.X509KeyManager;
  * addressed through unique synthetic aliases so the JDK's aggregated key
  * manager can resolve {@code getCertificateChain}/{@code getPrivateKey}.
  */
-public final class SniKeyManager extends X509ExtendedKeyManager {
+final class SniKeyManager extends X509ExtendedKeyManager {
 
     private record Entry(String uniqueAlias, X509KeyManager delegate, String storeAlias) {}
 

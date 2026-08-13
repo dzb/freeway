@@ -8,8 +8,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -17,22 +15,7 @@ import java.util.Optional;
  * and TLS details. Exchange metadata lives on {@link HttpContext}; framework
  * components that only read should depend on this interface.
  */
-public interface HttpRequest {
-
-    /** Returns the HTTP method (GET, POST, etc.). */
-    String method();
-
-    /** Returns the raw request path. */
-    String path();
-
-    /** Returns the first query parameter value for the given name, or empty. */
-    Optional<String> queryParam(String name);
-
-    /** Returns all query parameter values for the given name. */
-    List<String> queryParams(String name);
-
-    /** Returns an unmodifiable map of all query parameters. */
-    Map<String, List<String>> queryParams();
+public interface HttpRequest extends RequestInfo {
 
     /**
      * Returns the value of a single query parameter coerced to the
@@ -41,25 +24,10 @@ public interface HttpRequest {
     <T> Optional<T> queryParam(String name, Class<T> type);
 
     /**
-     * Returns the first request header value for the given name, or empty.
-     * Header names are case-insensitive.
-     */
-    Optional<String> header(String name);
-
-    /**
-     * Returns all request header values for the given name.
-     * Header names are case-insensitive.
-     */
-    List<String> headers(String name);
-
-    /**
      * Returns the value of a single request header coerced to the
      * given type, or empty if absent.
      */
     <T> Optional<T> header(String name, Class<T> type);
-
-    /** Returns an unmodifiable map of all request headers. */
-    Map<String, List<String>> headers();
 
     /**
      * Returns true when this request was received over a TLS connection
@@ -84,12 +52,6 @@ public interface HttpRequest {
     default String remoteAddress() {
         return "";
     }
-
-    /** Returns a path parameter value by name, or empty. */
-    Optional<String> pathVar(String name);
-
-    /** Returns an unmodifiable map of all path parameter values. */
-    Map<String, String> pathVars();
 
     /** Returns the value of a path parameter coerced to the given type. */
     <T> Optional<T> pathVar(String name, Class<T> type);

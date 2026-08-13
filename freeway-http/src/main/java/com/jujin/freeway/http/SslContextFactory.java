@@ -18,8 +18,6 @@ import javax.net.ssl.TrustManagerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.ssl.SniKeyManager;
-
 /**
  * Builds the TLS material for the built-in HTTPS engine: keystore/truststore
  * loading, SNI key managers, and protocol/cipher restriction.
