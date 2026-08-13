@@ -101,15 +101,6 @@ public interface HttpRequest {
     /** Returns a request parameter coerced to the given type. */
     <T> Optional<T> param(String name, Class<T> type);
 
-    /**
-     * Sets the maximum allowed request body size in bytes.
-     * Requests exceeding this limit receive a 413 Payload Too Large
-     * response. Default is 10 MiB.
-     *
-     * @return this context for chaining
-     */
-    HttpRequest maxBodySize(long maxBodySize);
-
     /** Returns true if the request has a multipart/form-data content type. */
     default boolean isMultipart() {
         return header("Content-Type")
@@ -142,7 +133,8 @@ public interface HttpRequest {
 
     /**
      * Returns the request body as a streaming input, enforcing the
-     * configured {@link #maxBodySize(long) maximum body size} as it is read.
+     * configured {@link HttpContext#maxBodySize(long) maximum body size} as
+     * it is read.
      *
      * <p>The default reads the whole body into memory for implementations
      * that only buffer; transport bridges override it to stream directly.</p>

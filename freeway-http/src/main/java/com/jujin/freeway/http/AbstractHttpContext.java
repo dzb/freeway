@@ -141,7 +141,7 @@ public abstract class AbstractHttpContext
     }
 
     @Override
-    public HttpRequest maxBodySize(long maxBodySize) {
+    public HttpContext maxBodySize(long maxBodySize) {
         if (maxBodySize <= 0) {
             throw new IllegalArgumentException("maxBodySize must be positive");
         }

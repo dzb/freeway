@@ -21,4 +21,13 @@ public interface HttpContext extends ExchangeMeta, HttpRequest, HttpResponse {
      * @return this context for chaining
      */
     HttpContext setPathVars(Map<String, String> vars);
+
+    /**
+     * Sets the maximum allowed request body size in bytes for this exchange.
+     * Requests exceeding this limit receive a 413 Payload Too Large
+     * response. Default is 10 MiB.
+     *
+     * @return this context for chaining
+     */
+    HttpContext maxBodySize(long maxBodySize);
 }
