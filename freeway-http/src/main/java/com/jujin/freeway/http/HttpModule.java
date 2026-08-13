@@ -77,12 +77,14 @@ public final class HttpModule implements ModuleEx {
         });
         binder.bind(WebSocketIndex.class).to(WebSocketIndex.class);
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
+        // Config — one immutable snapshot, bound once for the whole module.
+        binder.bind(HttpConfig.class).to(container -> HttpConfig.from(
+            container.get(SymbolSource.class),
+            container.get(Coercer.class)));
 
         // CorsFilter — bridge ioC config to plain constructor
         binder.bind(CorsFilter.class).to(container -> {
-            var symbols = container.get(SymbolSource.class);
-            var coercer = container.get(Coercer.class);
-            HttpConfig.Cors cors = HttpConfig.from(symbols, coercer).cors();
+            HttpConfig.Cors cors = container.get(HttpConfig.class).cors();
             return new CorsFilter(cors.enabled(), cors.allowedOrigins(),
                 cors.allowedMethods(), cors.allowedHeaders(),
                 cors.exposedHeaders().isBlank() ? null : cors.exposedHeaders(),
@@ -93,10 +95,9 @@ public final class HttpModule implements ModuleEx {
         binder.bind(FreewayHttpEngine.class).to(container -> {
             var json = container.get(JsonCodec.class);
             var coercer = container.get(Coercer.class);
-            var symbols = container.get(SymbolSource.class);
             var metrics = container.get(Metrics.class);
 
-            HttpConfig.Ssl ssl = HttpConfig.from(symbols, coercer).ssl();
+            HttpConfig.Ssl ssl = container.get(HttpConfig.class).ssl();
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(json, coercer, metrics);
@@ -119,9 +120,7 @@ public final class HttpModule implements ModuleEx {
         // WebServer — bridge IoC capabilities to plain constructor
         binder.bind(WebServer.class).to(container -> {
             HttpEngine engine = container.get(HttpEngine.class);
-            var symbols = container.get(SymbolSource.class);
-            var coercer = container.get(Coercer.class);
-            HttpConfig cfg = HttpConfig.from(symbols, coercer);
+            HttpConfig cfg = container.get(HttpConfig.class);
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
@@ -159,9 +158,7 @@ public final class HttpModule implements ModuleEx {
         binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
-                var symbols = container.get(SymbolSource.class);
-                var coercer = container.get(Coercer.class);
-                HttpConfig.Ssl ssl = HttpConfig.from(symbols, coercer).ssl();
+                HttpConfig.Ssl ssl = container.get(HttpConfig.class).ssl();
                 container.get(WebServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
@@ -197,9 +194,7 @@ public final class HttpModule implements ModuleEx {
 
         binder.bind(HealthCheck.class).to(HealthCheck.Default.class);
         binder.bind(HealthFilter.class).to(container -> {
-            var symbols = container.get(SymbolSource.class);
-            var coercer = container.get(Coercer.class);
-            HttpConfig.Health health = HttpConfig.from(symbols, coercer).health();
+            HttpConfig.Health health = container.get(HttpConfig.class).health();
             HealthCheck check = container.get(HealthCheck.class);
             return new HealthFilter(health.enabled(), health.path(), check);
         });
