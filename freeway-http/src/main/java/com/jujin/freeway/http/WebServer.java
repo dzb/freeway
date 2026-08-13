@@ -21,7 +21,6 @@ import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ExceptionMapper;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
-import com.jujin.freeway.http.filter.RequestTimingFilter;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.route.RouteIndex;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
@@ -106,19 +105,27 @@ public final class WebServer implements AutoCloseable {
                         ctx.method(), ctx.path(), ex));
                 }
             }
-            if (publishEvents) {
+            boolean debug = LOG.isDebugEnabled();
+            if (debug || publishEvents) {
                 long elapsed = Duration.between(
                     ctx.startTime(), Instant.now()).toMillis();
-                publish(new HttpRequestEvent(
-                    ctx.method(), ctx.path(),
-                    ctx.status(), elapsed));
+                if (debug) {
+                    LOG.debug("{} {} -> {} ({} ms, id={})",
+                        ctx.method(), ctx.path(),
+                        ctx.status(), elapsed, ctx.correlationId());
+                }
+                if (publishEvents) {
+                    publish(new HttpRequestEvent(
+                        ctx.method(), ctx.path(),
+                        ctx.status(), elapsed));
+                }
             }
         };
 
         this.requestHandler = new HttpRequestHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
-                new RequestTimingFilter().doFilter(ctx, request);
+                request.handle(ctx);
             }
 
             @Override
