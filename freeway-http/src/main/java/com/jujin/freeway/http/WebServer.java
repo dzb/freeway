@@ -47,7 +47,6 @@ public final class WebServer implements AutoCloseable {
     private final List<StaticResourceMount> staticMounts;
     private final List<HttpFilter> filters;
     private final List<ExceptionMapper> mappers;
-    private final RequestTimingFilter timingFilter;
     private final HttpEngine engine;
     private final HttpServerConfig config;
     private final Consumer<Object> eventSink;
@@ -78,13 +77,11 @@ public final class WebServer implements AutoCloseable {
         this.websocketIndex = Objects.requireNonNull(pipeline.websocketIndex(), "websocketIndex");
         this.corsFilter = Objects.requireNonNull(pipeline.corsFilter(), "corsFilter");
         this.staticMounts = pipeline.staticMounts() != null ? pipeline.staticMounts() : List.of();
-        PreparedFilters preparedFilters = prepareFilters(pipeline.filters());
-        this.timingFilter = preparedFilters.timingFilter();
         this.mappers = pipeline.mappers();
         // Application filters plus the built-in CORS/health filters share
         // one ordered chain; inactive built-ins are skipped entirely so a
         // no-op request never pays a virtual call.
-        var orderedFilters = new ArrayList<>(preparedFilters.filters());
+        var orderedFilters = new ArrayList<>(pipeline.filters());
         HealthFilter healthFilter = Objects.requireNonNull(
             pipeline.healthFilter(), "healthFilter");
         if (healthFilter.isActive()) orderedFilters.add(healthFilter);
@@ -99,14 +96,29 @@ public final class WebServer implements AutoCloseable {
         // Skip event computation when sink is the noop sentinel
         this.publishEvents = this.eventSink != NOOP_SINK;
 
-        RouteHandler timedChain = publishEvents
-            ? wrapWithEvents(this.filterChain)
-            : wrapWithErrorHandling(this.filterChain);
+        RouteHandler request = ctx -> {
+            try {
+                filterChain.handle(ctx);
+            } catch (Exception ex) {
+                boolean handled = WebServer.this.handleException(ctx, ex);
+                if (!handled && publishEvents) {
+                    publish(new HttpErrorEvent(
+                        ctx.method(), ctx.path(), ex));
+                }
+            }
+            if (publishEvents) {
+                long elapsed = Duration.between(
+                    ctx.startTime(), Instant.now()).toMillis();
+                publish(new HttpRequestEvent(
+                    ctx.method(), ctx.path(),
+                    ctx.status(), elapsed));
+            }
+        };
 
         this.requestHandler = new HttpRequestHandler() {
             @Override
             public void handle(HttpContext ctx) throws Exception {
-                timingFilter.doFilter(ctx, timedChain);
+                new RequestTimingFilter().doFilter(ctx, request);
             }
 
             @Override
@@ -127,37 +139,6 @@ public final class WebServer implements AutoCloseable {
                     }
                 }
                 return websocketIndex.match(method, path);
-            }
-        };
-    }
-
-    /** Wraps the chain with error handling + request/error events. */
-    private RouteHandler wrapWithEvents(RouteHandler inner) {
-        return ctx -> {
-            try {
-                inner.handle(ctx);
-            } catch (Exception ex) {
-                boolean handled = WebServer.this.handleException(ctx, ex);
-                if (!handled) {
-                    publish(new HttpErrorEvent(
-                        ctx.method(), ctx.path(), ex));
-                }
-            }
-            long elapsed = Duration.between(
-                ctx.startTime(), Instant.now()).toMillis();
-            publish(new HttpRequestEvent(
-                ctx.method(), ctx.path(),
-                ctx.status(), elapsed));
-        };
-    }
-
-    /** Wraps the chain with error handling only (no event publishing). */
-    private RouteHandler wrapWithErrorHandling(RouteHandler inner) {
-        return ctx -> {
-            try {
-                inner.handle(ctx);
-            } catch (Exception ex) {
-                WebServer.this.handleException(ctx, ex);
             }
         };
     }
@@ -264,24 +245,6 @@ public final class WebServer implements AutoCloseable {
         return chain;
     }
 
-    private PreparedFilters prepareFilters(List<HttpFilter> filters) {
-        List<HttpFilter> items = new ArrayList<>();
-        RequestTimingFilter timing = null;
-        for (HttpFilter filter : filters == null
-            ? List.<HttpFilter>of()
-            : filters) {
-            if (filter instanceof RequestTimingFilter candidate) {
-                if (timing == null) timing = candidate;
-            } else {
-                items.add(filter);
-            }
-        }
-        return new PreparedFilters(
-            items,
-            timing != null ? timing : new RequestTimingFilter()
-        );
-    }
-
     private void dispatchToRoute(HttpContext ctx) throws Exception {
         if (!staticMounts.isEmpty()) {
             for (StaticResourceMount mount : staticMounts) {
@@ -357,8 +320,4 @@ public final class WebServer implements AutoCloseable {
         }
     }
 
-    private record PreparedFilters(
-        List<HttpFilter> filters,
-        RequestTimingFilter timingFilter
-    ) {}
 }

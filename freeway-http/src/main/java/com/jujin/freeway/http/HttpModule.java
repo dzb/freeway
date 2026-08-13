@@ -34,7 +34,6 @@ import com.jujin.freeway.http.filter.ExceptionMappers;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
-import com.jujin.freeway.http.filter.RequestTimingFilter;
 import com.jujin.freeway.http.route.LazyHandler;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteGroup;
@@ -198,8 +197,6 @@ public final class HttpModule implements ModuleEx {
             HealthCheck check = container.get(HealthCheck.class);
             return new HealthFilter(health.enabled(), health.path(), check);
         });
-
-        binder.contribute(HttpFilter.class).add(new RequestTimingFilter());
 
         binder.contribute(ExceptionMapper.class)
             .add(ExceptionMappers.defaultMapper());
