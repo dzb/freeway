@@ -15,7 +15,7 @@ import java.util.Optional;
  * and TLS details. Exchange metadata lives on {@link HttpContext}; framework
  * components that only read should depend on this interface.
  */
-public interface HttpRequest extends RequestInfo {
+public interface HttpRequest extends RequestView {
 
     /**
      * Returns the value of a single query parameter coerced to the

@@ -121,7 +121,7 @@ public final class HttpModule implements ModuleEx {
                 filters.add(new AccessLogFilter());
             }
 
-            var pipeline = new RequestPipeline(
+            var pipeline = new RequestComponents(
                 container.get(RouteIndex.class),
                 container.get(WebSocketIndex.class),
                 container.get(CorsFilter.class),

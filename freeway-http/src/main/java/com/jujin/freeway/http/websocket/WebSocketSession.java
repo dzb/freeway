@@ -4,12 +4,12 @@ import java.io.IOException;
 import java.util.List;
 
 import com.jujin.freeway.http.ExchangeMeta;
-import com.jujin.freeway.http.RequestInfo;
+import com.jujin.freeway.http.RequestView;
 
 /**
  * Thin WebSocket session view exposed to application code.
  */
-public interface WebSocketSession extends ExchangeMeta, RequestInfo {
+public interface WebSocketSession extends ExchangeMeta, RequestView {
 
     /** Returns true if the WebSocket connection is still open. */
     boolean isOpen();

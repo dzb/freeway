@@ -191,7 +191,7 @@ public final class WebServerBuilder {
         List<ExceptionMapper> mappers = exceptionMappers.isEmpty()
             ? List.of(ExceptionMappers.defaultMapper())
             : List.copyOf(exceptionMappers);
-        var pipeline = new RequestPipeline(
+        var pipeline = new RequestComponents(
             routeIndex, wsIndex, corsFilter, healthFilter,
             List.copyOf(staticMounts),
             List.copyOf(filters),

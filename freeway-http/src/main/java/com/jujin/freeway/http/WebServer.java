@@ -55,7 +55,7 @@ public final class WebServer implements AutoCloseable {
         HttpEngine engine,
         HttpServerConfig config,
         Consumer<Object> eventSink,
-        RequestPipeline pipeline
+        RequestComponents pipeline
     ) {
         this(engine, config, eventSink, pipeline, (host, port) -> port > 0);
     }
@@ -64,7 +64,7 @@ public final class WebServer implements AutoCloseable {
         HttpEngine engine,
         HttpServerConfig config,
         Consumer<Object> eventSink,
-        RequestPipeline pipeline,
+        RequestComponents pipeline,
         ReadinessProbe readinessProbe
     ) {
         this.routes = Objects.requireNonNull(pipeline.routes(), "routes");

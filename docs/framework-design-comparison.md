@@ -171,7 +171,7 @@ freeway-http/
 │   ├── Route.java           ← record，零容器依赖
 │   ├── RouteHandler.java    ← @FunctionalInterface，零容器依赖
 │   ├── RouteIndex.java      ← 纯 trie 数据结构，零容器依赖
-│   ├── RequestPipeline.java ← record，零容器依赖
+│   ├── RequestComponents.java ← record，零容器依赖
 │   └── ...
 ├── freeway-http-ioc/（概念上）
 │   └── HttpModule.java      ← 唯一的容器感知点
@@ -222,7 +222,7 @@ Solon.start(MyApp.class, args, app -> {
 每个核心抽象都使用了 Java 25 的能力：
 
 - **ScopedValue**：作为 Defer、事务作用域、线程作用域的基础——替代了 ThreadLocal
-- **Record**：`Route`、`RouteGroup`、`RequestPipeline` 都是 record——声明即定义
+- **Record**：`Route`、`RouteGroup`、`RequestComponents` 都是 record——声明即定义
 - **@FunctionalInterface**：`RouteHandler`、`HttpFilter`、`ModuleEx` 都是函数式接口
 - **Sealed class / Pattern matching**：用于受限类型层次和类型驱动的分发
 

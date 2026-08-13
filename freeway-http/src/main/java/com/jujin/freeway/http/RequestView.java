@@ -13,7 +13,7 @@ import java.util.Optional;
  * whole-map accessors return lists or immutable snapshots. Header names are
  * case-insensitive.</p>
  */
-public interface RequestInfo {
+public interface RequestView {
 
     /** Returns the HTTP method (GET, POST, etc.). */
     String method();
