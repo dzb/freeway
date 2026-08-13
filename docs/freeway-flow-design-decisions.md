@@ -71,7 +71,7 @@ Read-write lock allows concurrent reads (fast path) and serializes the rare writ
 public static final long DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024L; // 10MB
 ```
 
-When exceeded, a `BodyTooLargeException` is thrown and handled by the built-in `ExceptionMapper` returning HTTP 413 Payload Too Large.
+When exceeded, a `BodyTooLargeException` is thrown and handled by the built-in `ErrorHandler` returning HTTP 413 Payload Too Large.
 
 **See also:** `HttpServerConfig.java`, `MultipartForm.java` (`freeway-http`)
 

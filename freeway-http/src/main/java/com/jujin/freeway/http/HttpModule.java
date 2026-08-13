@@ -21,8 +21,8 @@ import com.jujin.freeway.http.internal.SslContextFactory;
 import com.jujin.freeway.http.internal.SslReloader;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ExceptionMapper;
-import com.jujin.freeway.http.filter.ExceptionMappers;
+import com.jujin.freeway.http.filter.ErrorHandler;
+import com.jujin.freeway.http.filter.ErrorHandlers;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
@@ -128,7 +128,7 @@ public final class HttpModule implements ModuleEx {
                 container.get(HealthFilter.class),
                 container.extension(StaticResourceMount.class).all(),
                 List.copyOf(filters),
-                container.extension(ExceptionMapper.class).all()
+                container.extension(ErrorHandler.class).all()
             );
 
             return new WebServer(
@@ -183,8 +183,8 @@ public final class HttpModule implements ModuleEx {
             return new HealthFilter(health.enabled(), health.path(), check);
         });
 
-        binder.contribute(ExceptionMapper.class)
-            .add(ExceptionMappers.defaultMapper());
+        binder.contribute(ErrorHandler.class)
+            .add(ErrorHandlers.defaultHandler());
     }
 
 }

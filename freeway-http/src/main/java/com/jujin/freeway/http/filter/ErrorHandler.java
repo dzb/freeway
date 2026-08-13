@@ -3,10 +3,11 @@ package com.jujin.freeway.http.filter;
 import com.jujin.freeway.http.HttpResponse;
 
 /**
- * Maps an exception thrown during request processing to an HTTP response.
+ * Handles an exception thrown during request processing by writing an
+ * HTTP error response.
  */
 @FunctionalInterface
-public interface ExceptionMapper {
+public interface ErrorHandler {
     /**
      * Attempts to handle the given exception by writing an error response
      * to the response.

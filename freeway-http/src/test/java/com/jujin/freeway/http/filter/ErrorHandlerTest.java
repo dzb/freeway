@@ -6,18 +6,17 @@ import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.StubHttpContext;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
-import com.jujin.freeway.http.filter.ExceptionMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-class ExceptionMapperTest {
+class ErrorHandlerTest {
 
     @Test
-    void firstMatchingMapperHandlesException() throws Exception {
-        ExceptionMapper mapper = (ctx, ex) -> {
+    void firstMatchingHandlerHandlesException() throws Exception {
+        ErrorHandler handler = (ctx, ex) -> {
             if (ex instanceof IllegalArgumentException) {
                 ctx.send(400, "Bad Request");
                 return true;
@@ -26,15 +25,15 @@ class ExceptionMapperTest {
         };
 
         StubHttpContext ctx = new StubHttpContext();
-        boolean handled = mapper.handle(ctx, new IllegalArgumentException("bad"));
+        boolean handled = handler.handle(ctx, new IllegalArgumentException("bad"));
 
         assertTrue(handled);
         assertEquals(400, ctx.status());
     }
 
     @Test
-    void nonMatchingMapperReturnsFalse() throws Exception {
-        ExceptionMapper mapper = (ctx, ex) -> {
+    void nonMatchingHandlerReturnsFalse() throws Exception {
+        ErrorHandler handler = (ctx, ex) -> {
             if (ex instanceof IllegalArgumentException) {
                 return true;
             }
@@ -42,27 +41,27 @@ class ExceptionMapperTest {
         };
 
         StubHttpContext ctx = new StubHttpContext();
-        boolean handled = mapper.handle(ctx, new IllegalStateException("nope"));
+        boolean handled = handler.handle(ctx, new IllegalStateException("nope"));
 
         assertFalse(handled);
     }
 
     @Test
-    void mapperChainTriesEachUntilHandled() throws Exception {
-        ExceptionMapper first = (ctx, ex) -> false;
-        ExceptionMapper second = (ctx, ex) -> {
+    void handlerChainTriesEachUntilHandled() throws Exception {
+        ErrorHandler first = (ctx, ex) -> false;
+        ErrorHandler second = (ctx, ex) -> {
             ctx.send(500, "caught");
             return true;
         };
-        ExceptionMapper third = (ctx, ex) -> {
-            fail("third mapper should not be called");
+        ErrorHandler third = (ctx, ex) -> {
+            fail("third handler should not be called");
             return false;
         };
 
         StubHttpContext ctx = new StubHttpContext();
         boolean handled = false;
-        for (ExceptionMapper mapper : List.of(first, second, third)) {
-            if (mapper.handle(ctx, new RuntimeException("test"))) {
+        for (ErrorHandler handler : List.of(first, second, third)) {
+            if (handler.handle(ctx, new RuntimeException("test"))) {
                 handled = true;
                 break;
             }
@@ -73,25 +72,25 @@ class ExceptionMapperTest {
     }
 
     @Test
-    void mapperThatThrowsIsSkipped() {
-        ExceptionMapper broken = (ctx, ex) -> {
-            throw new RuntimeException("mapper exploded");
+    void handlerThatThrowsIsSkipped() {
+        ErrorHandler broken = (ctx, ex) -> {
+            throw new RuntimeException("handler exploded");
         };
-        ExceptionMapper fallback = (ctx, ex) -> {
+        ErrorHandler fallback = (ctx, ex) -> {
             ctx.send(500, "fallback");
             return true;
         };
 
         StubHttpContext ctx = new StubHttpContext();
         boolean handled = false;
-        for (ExceptionMapper mapper : List.of(broken, fallback)) {
+        for (ErrorHandler handler : List.of(broken, fallback)) {
             try {
-                if (mapper.handle(ctx, new RuntimeException("test"))) {
+                if (handler.handle(ctx, new RuntimeException("test"))) {
                     handled = true;
                     break;
                 }
             } catch (Exception ignored) {
-                // mapper threw, skip to next
+                // handler threw, skip to next
             }
         }
 
@@ -99,8 +98,8 @@ class ExceptionMapperTest {
     }
 
     @Test
-    void noMapperMatchMeansUnhandled() throws Exception {
-        ExceptionMapper only = (ctx, ex) -> false;
+    void noHandlerMatchMeansUnhandled() throws Exception {
+        ErrorHandler only = (ctx, ex) -> false;
 
         StubHttpContext ctx = new StubHttpContext();
         boolean handled = only.handle(ctx, new RuntimeException("test"));
@@ -109,10 +108,10 @@ class ExceptionMapperTest {
     }
 
     @Test
-    void defaultMapperMapsUnsupportedMediaTypeTo415() throws Exception {
+    void defaultHandlerMapsUnsupportedMediaTypeTo415() throws Exception {
         StubHttpContext ctx = new StubHttpContext();
 
-        boolean handled = ExceptionMappers.defaultMapper().handle(
+        boolean handled = ErrorHandlers.defaultHandler().handle(
             ctx, new UnsupportedMediaTypeException(
                 "Expected application/json Content-Type"));
 

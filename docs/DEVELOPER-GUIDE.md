@@ -652,7 +652,7 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 | Body | `BodyHandler`, `MultipartForm` |
 | WebSocket | `WebSocketSession`, `WebSocketListener`, `WebSocketRoute`, `WebSocketGroup`, `WebSocketIndex` |
 | SSE | `SseEmitter`, `SseEvent` |
-| Built-ins | `JsonCodecDefault`, `AccessLogFilter`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ExceptionMapper` |
+| Built-ins | `JsonCodecDefault`, `AccessLogFilter`, `CorsFilter`, `HealthFilter`, `HealthCheck`, `StaticResourceMount`, `ErrorHandler` |
 
 Engine internals (`engine/` and sub-packages) are implementation details — `FreewayHttpEngine` is the only public class. `JdkHttpEngine`/`JdkHttpContext` have been removed; the built-in engine is the sole default.
 
@@ -880,7 +880,7 @@ binder.contribute(WebSocketGroup.class)
 ### Exception Mapping
 
 ```java
-binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
+binder.contribute(ErrorHandler.class).add((ctx, ex) -> {
     if (ex instanceof NotFoundException) {
         ctx.sendJson(404, Map.of("error", ex.getMessage()));
         return true;  // handled

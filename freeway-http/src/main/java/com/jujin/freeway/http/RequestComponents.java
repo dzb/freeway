@@ -3,7 +3,7 @@ package com.jujin.freeway.http;
 import java.util.List;
 
 import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ExceptionMapper;
+import com.jujin.freeway.http.filter.ErrorHandler;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteIndex;
@@ -20,5 +20,5 @@ public record RequestComponents(
     HealthFilter healthFilter,
     List<StaticResourceMount> staticMounts,
     List<HttpFilter> filters,
-    List<ExceptionMapper> mappers
+    List<ErrorHandler> errorHandlers
 ) {}

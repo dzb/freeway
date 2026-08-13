@@ -377,7 +377,7 @@ Map<String, Route> named = c.extension(Route.class).asMap();
 | `RuntimeHook.class` | 生命周期钩子 |
 | `EventSubscriber.class` | 模块级事件订阅者 |
 | `CoerceRule.class` | 类型转换规则 |
-| `ExceptionMapper.class` | HTTP 异常映射器 |
+| `ErrorHandler.class` | HTTP 异常处理器 |
 | `StaticResourceMount.class` | 静态文件挂载 |
 | `WebSocketRoute.class` | WebSocket 路由 |
 | `WebSocketGroup.class` | WebSocket 路由组 |
@@ -657,7 +657,7 @@ Route.get("/events", ctx -> {
 ### 异常映射
 
 ```java
-binder.contribute(ExceptionMapper.class).add((ctx, ex) -> {
+binder.contribute(ErrorHandler.class).add((ctx, ex) -> {
     if (ex instanceof NotFoundException) {
         ctx.sendJson(404, Map.of("error", ex.getMessage()));
         return true;

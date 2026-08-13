@@ -17,7 +17,7 @@ import com.jujin.freeway.http.event.HttpErrorEvent;
 import com.jujin.freeway.http.event.HttpExchangeEvent;
 import com.jujin.freeway.http.event.HttpServerStartedEvent;
 import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ExceptionMapper;
+import com.jujin.freeway.http.filter.ErrorHandler;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteHandler;
@@ -40,7 +40,7 @@ public final class WebServer implements AutoCloseable {
     private final CorsFilter corsFilter;
     private final List<StaticResourceMount> staticMounts;
     private final List<HttpFilter> filters;
-    private final List<ExceptionMapper> mappers;
+    private final List<ErrorHandler> errorHandlers;
     private final HttpEngine engine;
     private final HttpServerConfig config;
     private final Consumer<Object> eventSink;
@@ -71,7 +71,7 @@ public final class WebServer implements AutoCloseable {
         this.websocketIndex = Objects.requireNonNull(pipeline.websocketIndex(), "websocketIndex");
         this.corsFilter = Objects.requireNonNull(pipeline.corsFilter(), "corsFilter");
         this.staticMounts = pipeline.staticMounts() != null ? pipeline.staticMounts() : List.of();
-        this.mappers = pipeline.mappers();
+        this.errorHandlers = pipeline.errorHandlers();
         // Application filters plus the built-in CORS/health filters share
         // one ordered chain; inactive built-ins are skipped entirely so a
         // no-op request never pays a virtual call.
@@ -268,15 +268,15 @@ public final class WebServer implements AutoCloseable {
     }
 
     private boolean handleException(HttpContext ctx, Exception exception) {
-        for (ExceptionMapper mapper : mappers) {
+        for (ErrorHandler handler : errorHandlers) {
             try {
-                if (mapper.handle(ctx, exception)) return true;
-            } catch (Exception mapperEx) {
+                if (handler.handle(ctx, exception)) return true;
+            } catch (Exception handlerEx) {
                 LOG.warn(
-                    "Exception mapper {} failed while handling {}",
-                    mapper.getClass().getSimpleName(),
+                    "Error handler {} failed while handling {}",
+                    handler.getClass().getSimpleName(),
                     String.valueOf(exception.getMessage()),
-                    mapperEx
+                    handlerEx
                 );
             }
         }

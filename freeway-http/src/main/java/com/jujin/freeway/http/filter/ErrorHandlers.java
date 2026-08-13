@@ -9,18 +9,18 @@ import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 import java.util.Map;
 
 /**
- * Built-in exception-to-response mapping shared by the IoC
+ * Built-in exception-to-response handlers shared by the IoC
  * {@code HttpModule} and the standalone {@code WebServerBuilder}, so both
  * entry points produce identical error bodies.
  */
-public final class ExceptionMappers {
+public final class ErrorHandlers {
 
-    private ExceptionMappers() {}
+    private ErrorHandlers() {}
 
-    /** The default mapper: 413 for oversized bodies, 415 for unsupported
+    /** The default handler: 413 for oversized bodies, 415 for unsupported
      *  request media types, 400 for invalid multipart requests and failed
      *  bean validation. */
-    public static ExceptionMapper defaultMapper() {
+    public static ErrorHandler defaultHandler() {
         return (ctx, ex) -> {
             if (ex instanceof BodyTooLargeException) {
                 ctx.sendJson(HttpStatus.PAYLOAD_TOO_LARGE, Map.of(

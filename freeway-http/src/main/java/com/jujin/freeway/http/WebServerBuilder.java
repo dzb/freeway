@@ -18,8 +18,8 @@ import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
-import com.jujin.freeway.http.filter.ExceptionMapper;
-import com.jujin.freeway.http.filter.ExceptionMappers;
+import com.jujin.freeway.http.filter.ErrorHandler;
+import com.jujin.freeway.http.filter.ErrorHandlers;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.LazyHandler;
@@ -49,7 +49,7 @@ public final class WebServerBuilder {
     private final List<WebSocketRoute> webSocketRoutes = new ArrayList<>();
     private final List<WebSocketGroup> webSocketGroups = new ArrayList<>();
     private final List<HttpFilter> filters = new ArrayList<>();
-    private final List<ExceptionMapper> exceptionMappers = new ArrayList<>();
+    private final List<ErrorHandler> errorHandlers = new ArrayList<>();
     private final List<StaticResourceMount> staticMounts = new ArrayList<>();
 
     private HttpServerConfig config = new HttpServerConfig(
@@ -110,8 +110,8 @@ public final class WebServerBuilder {
         return filter(new AccessLogFilter(out));
     }
 
-    public WebServerBuilder exceptionMapper(ExceptionMapper mapper) {
-        exceptionMappers.add(Objects.requireNonNull(mapper, "mapper"));
+    public WebServerBuilder errorHandler(ErrorHandler handler) {
+        errorHandlers.add(Objects.requireNonNull(handler, "handler"));
         return this;
     }
 
@@ -188,14 +188,14 @@ public final class WebServerBuilder {
         }
         var routeIndex = new RouteIndex(routes, routeGroups);
         var wsIndex = new WebSocketIndex(webSocketRoutes, webSocketGroups);
-        List<ExceptionMapper> mappers = exceptionMappers.isEmpty()
-            ? List.of(ExceptionMappers.defaultMapper())
-            : List.copyOf(exceptionMappers);
+        List<ErrorHandler> errorHandlers = this.errorHandlers.isEmpty()
+            ? List.of(ErrorHandlers.defaultHandler())
+            : List.copyOf(this.errorHandlers);
         var pipeline = new RequestComponents(
             routeIndex, wsIndex, corsFilter, healthFilter,
             List.copyOf(staticMounts),
             List.copyOf(filters),
-            mappers
+            errorHandlers
         );
         return new WebServer(engine, config, eventSink, pipeline);
     }
