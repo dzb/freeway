@@ -1,10 +1,7 @@
-package com.jujin.freeway.http.internal;
+package com.jujin.freeway.http;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-
-import com.jujin.freeway.http.HttpResponse;
-import com.jujin.freeway.http.HttpStatus;
 
 /**
  * Shared error responses for the common failure paths (route miss and
@@ -23,13 +20,13 @@ public final class ErrorResponses {
 
     public static void notFound(HttpResponse response) throws IOException {
         response.status(HttpStatus.NOT_FOUND)
-            .setHeader("Content-Type", HttpUtils.TEXT_PLAIN_UTF8)
+            .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
             .output(NOT_FOUND);
     }
 
     public static void internalError(HttpResponse response) throws IOException {
         response.status(HttpStatus.INTERNAL_ERROR)
-            .setHeader("Content-Type", HttpUtils.TEXT_PLAIN_UTF8)
+            .setHeader("Content-Type", MediaTypes.TEXT_PLAIN_UTF8)
             .output(INTERNAL_ERROR);
     }
 }

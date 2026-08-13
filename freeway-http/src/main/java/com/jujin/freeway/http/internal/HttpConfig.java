@@ -93,8 +93,7 @@ public record HttpConfig(
     public HttpServerConfig toServerConfig() {
         return new HttpServerConfig(
             host, port, backlog,
-            HttpServerConfig.DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace,
-            maxBodySize, readTimeout, maxConnections, writeTimeout,
+            shutdownGrace, maxBodySize, readTimeout, maxConnections, writeTimeout,
             new HttpServerConfig.CompressionConfig(
                 compressionEnabled, compressionMinSize),
             receiveBufferSize, sendBufferSize);

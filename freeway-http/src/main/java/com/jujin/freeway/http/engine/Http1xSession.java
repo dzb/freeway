@@ -11,7 +11,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.internal.ErrorResponses;
+import com.jujin.freeway.http.ErrorResponses;
 import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;

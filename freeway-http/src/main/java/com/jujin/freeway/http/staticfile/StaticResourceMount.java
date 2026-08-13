@@ -28,10 +28,11 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Strings;
-import com.jujin.freeway.http.internal.ErrorResponses;
+import com.jujin.freeway.http.ErrorResponses;
 import com.jujin.freeway.http.HttpRequest;
 import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.HttpStatus;
+import com.jujin.freeway.http.MediaTypes;
 import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.route.PathPattern;
 
@@ -457,10 +458,10 @@ public final class StaticResourceMount {
             return "application/javascript; charset=utf-8";
         }
         if (lower.endsWith(".json")) {
-            return HttpUtils.JSON_UTF8;
+            return MediaTypes.JSON_UTF8;
         }
         if (lower.endsWith(".txt")) {
-            return HttpUtils.TEXT_PLAIN_UTF8;
+            return MediaTypes.TEXT_PLAIN_UTF8;
         }
         if (lower.endsWith(".xml")) {
             return "application/xml; charset=utf-8";
@@ -480,7 +481,7 @@ public final class StaticResourceMount {
         if (lower.endsWith(".ico")) {
             return "image/x-icon";
         }
-        return HttpUtils.OCTET_STREAM;
+        return MediaTypes.OCTET_STREAM;
     }
 
     private static String normalizeMount(String mountPath) {

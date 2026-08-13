@@ -755,7 +755,7 @@ class FreewayHttpEngineTest {
     void isMultipartDoesNotReadBodyForNonMultipartRequest() throws Exception {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig(
-                "127.0.0.1", 0, 0, 1024, Duration.ofSeconds(2), 1024))
+                "127.0.0.1", 0, 0, Duration.ofSeconds(2), 1024))
             .route(Route.post("/check", ctx ->
                 ctx.send(200, "is-multipart=" + ctx.isMultipart())))
             .build();
@@ -971,7 +971,7 @@ class FreewayHttpEngineTest {
     @Test
     void configRejectsNonPositiveMaxBodySize() {
         assertThrows(IllegalArgumentException.class, () ->
-            new HttpServerConfig("127.0.0.1", 0, 0, 1024, Duration.ofSeconds(2), 0));
+            new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2), 0));
     }
 
     // ── transport security flag ────────────────────────────────────

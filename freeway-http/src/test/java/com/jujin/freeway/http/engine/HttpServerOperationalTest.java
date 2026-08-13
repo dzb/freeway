@@ -63,7 +63,7 @@ class HttpServerOperationalTest {
     void readTimeoutClosesIdleConnection() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
+            .config(new HttpServerConfig("127.0.0.1", port, 0,
                 Duration.ofSeconds(2), 1024,
                 Duration.ofMillis(500), 0))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
@@ -82,7 +82,7 @@ class HttpServerOperationalTest {
     void maxConnectionsRejectsExcessConnections() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
+            .config(new HttpServerConfig("127.0.0.1", port, 0,
                 Duration.ofSeconds(2), 1024,
                 Duration.ofMinutes(2), 2))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
@@ -138,7 +138,7 @@ class HttpServerOperationalTest {
     void oversizedBodyClosesConnectionInsteadOfDrainingNextRequest() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
+            .config(new HttpServerConfig("127.0.0.1", port, 0,
                 Duration.ofSeconds(2), 4, Duration.ofSeconds(2), 0))
             .route(Route.post("/body", ctx -> ctx.send(200, ctx.bodyText())))
             .route(Route.get("/next", ctx -> ctx.send(200, "next")))
@@ -372,7 +372,7 @@ class HttpServerOperationalTest {
         int port = freePort();
         var log = new ByteArrayOutputStream();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
+            .config(new HttpServerConfig("127.0.0.1", port, 0,
                 Duration.ofSeconds(2), 1024,
                 Duration.ofSeconds(2), 0))
             .filter(new AccessLogFilter(new PrintStream(log, true)))
@@ -402,7 +402,7 @@ class HttpServerOperationalTest {
     void writeTimeoutClosesConnectionWhenPeerStopsReading() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
+            .config(new HttpServerConfig("127.0.0.1", port, 0,
                 Duration.ofSeconds(2), 1024,
                 Duration.ofSeconds(30), 0, Duration.ofMillis(500)))
             .route(Route.get("/big", ctx ->

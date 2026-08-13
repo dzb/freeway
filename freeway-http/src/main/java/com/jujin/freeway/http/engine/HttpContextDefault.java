@@ -27,6 +27,7 @@ import com.jujin.freeway.http.AbstractHttpContext;
 import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.MediaTypes;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
@@ -420,7 +421,7 @@ public class HttpContextDefault extends AbstractHttpContext {
     }
 
     private boolean compressibleContentType() {
-        return HttpUtils.isCompressibleContentType(
+        return MediaTypes.isCompressibleContentType(
             responseHeaders.get("Content-Type"));
     }
 

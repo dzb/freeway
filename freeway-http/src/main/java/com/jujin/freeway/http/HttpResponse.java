@@ -5,6 +5,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -37,17 +38,13 @@ public interface HttpResponse {
      * the same name so the field can be sent multiple times (for example,
      * multiple {@code Set-Cookie} or {@code WWW-Authenticate} fields).
      *
-     * <p>The built-in engine supports multiple values. A transport that does
-     * not support multi-valued response headers throws
-     * {@link UnsupportedOperationException}; use {@link #setHeader} to replace
-     * the single value for a name instead.</p>
+     * <p>Implementations are expected to preserve every value as a distinct
+     * field on the wire so repeated fields such as {@code Set-Cookie} remain
+     * separate.</p>
      *
      * @return this response for chaining
      */
-    default HttpResponse addHeader(String name, String value) {
-        throw new UnsupportedOperationException(
-            "addHeader is not supported by this response");
-    }
+    HttpResponse addHeader(String name, String value);
 
     /**
      * Adds a token to the {@code Vary} response header, merging with any
@@ -71,15 +68,37 @@ public interface HttpResponse {
      * first. {@code contentLength} must be known (or a Content-Length header
      * pre-set) so HTTP/1.1 can frame the response.
      */
-    HttpResponse output(InputStream in, long contentLength) throws IOException;
+    /**
+     * Sends the remaining bytes of the given stream as the response body.
+     * {@code contentLength} is advisory for implementations that can stream
+     * with a known length; the default buffers the stream and delegates to
+     * {@link #output(byte[])}.
+     */
+    default HttpResponse output(InputStream in, long contentLength)
+            throws IOException {
+        return output(in.readAllBytes());
+    }
 
     /**
      * Sends a byte range of a file. Uses the OS sendfile path when the
      * transport supports it (plain HTTP/1.1 socket with a channel and no
      * compression); otherwise falls back to buffered streaming.
      */
-    HttpResponse outputFile(Path file, long offset, long length)
-        throws IOException;
+    /**
+     * Sends a byte range of a file. The default buffers the range and
+     * delegates to {@link #output(byte[])}; transports with a zero-copy or
+     * sendfile path override it.
+     */
+    default HttpResponse outputFile(Path file, long offset, long length)
+            throws IOException {
+        try (InputStream input = Files.newInputStream(file)) {
+            input.skipNBytes(offset);
+            if (length > Integer.MAX_VALUE) {
+                throw new IOException("File range too large to buffer");
+            }
+            return output(input.readNBytes((int) length));
+        }
+    }
 
     /**
      * Streams an already-open file channel as the response body, taking
@@ -145,5 +164,14 @@ public interface HttpResponse {
     default boolean allowsResponseBody() {
         int status = status();
         return status != 204 && status != 205 && status != 304;
+    }
+
+    /**
+     * Returns true when the wire must not carry body bytes for this response
+     * and method: HEAD requests and the bodyless statuses already excluded by
+     * {@link #allowsResponseBody()}.
+     */
+    default boolean suppressBodyBytes(String method) {
+        return !allowsResponseBody() || "HEAD".equalsIgnoreCase(method);
     }
 }

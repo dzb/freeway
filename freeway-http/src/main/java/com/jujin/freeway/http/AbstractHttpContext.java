@@ -3,10 +3,13 @@ package com.jujin.freeway.http;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
+import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 import com.jujin.freeway.http.internal.HttpUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -149,6 +152,28 @@ public abstract class AbstractHttpContext implements HttpContext {
         return this;
     }
 
+    /**
+     * Reads the complete request body from the transport stream, enforcing
+     * {@link #maxBodySize(long)}. Adapters use this shared helper so their
+     * body-size accounting matches the built-in engine exactly.
+     */
+    protected final byte[] readBody(InputStream input) throws IOException {
+        var out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = input.read(buffer)) >= 0) {
+            if (read == 0) continue;
+            long limit = maxBodySize;
+            if (total > limit - read) {
+                throw new BodyTooLargeException(limit);
+            }
+            out.write(buffer, 0, read);
+            total += read;
+        }
+        return out.toByteArray();
+    }
+
     @Override
     public String bodyText() throws IOException {
         return new String(body(), charsetFromContentType());
@@ -180,7 +205,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     @Override
     public HttpResponse output(String text) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
-        ensureContentType(HttpUtils.TEXT_PLAIN_UTF8);
+        ensureContentType(MediaTypes.TEXT_PLAIN_UTF8);
         output(text.getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -188,7 +213,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     @Override
     public HttpResponse outputJson(Object value) throws IOException {
         if (!allowsResponseBody()) return output(new byte[0]);
-        ensureContentType(HttpUtils.JSON_UTF8);
+        ensureContentType(MediaTypes.JSON_UTF8);
         output(jsonCodec.toJson(value).getBytes(StandardCharsets.UTF_8));
         return this;
     }
@@ -243,7 +268,7 @@ public abstract class AbstractHttpContext implements HttpContext {
 
     /** Sets up standard SSE response headers. */
     protected void setupSseHeaders() {
-        setHeader("Content-Type", HttpUtils.EVENT_STREAM_UTF8);
+        setHeader("Content-Type", MediaTypes.EVENT_STREAM_UTF8);
         setHeader("Cache-Control", "no-cache");
         setHeader("Connection", "keep-alive");
     }
@@ -271,7 +296,7 @@ public abstract class AbstractHttpContext implements HttpContext {
 
     private void checkJsonContentType() {
         String ct = header("Content-Type").orElse(null);
-        if (!HttpUtils.isJson(ct)) {
+        if (!MediaTypes.isJson(ct)) {
             throw new UnsupportedMediaTypeException("Expected application/json Content-Type");
         }
     }

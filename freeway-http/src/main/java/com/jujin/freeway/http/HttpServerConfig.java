@@ -8,7 +8,6 @@ import java.time.Duration;
  * @param host              bind address
  * @param port              listen port (0 selects an ephemeral port)
  * @param backlog           accept backlog (0 uses the platform default)
- * @param socketBufferSize  per-connection output buffer size in bytes
  * @param shutdownGrace     grace period for in-flight requests on shutdown
  * @param maxBodySize       maximum request body size in bytes
  * @param readTimeout       socket read idle timeout (zero disables); applied
@@ -28,7 +27,6 @@ public record HttpServerConfig(
     String host,
     int port,
     int backlog,
-    int socketBufferSize,
     Duration shutdownGrace,
     long maxBodySize,
     Duration readTimeout,
@@ -38,7 +36,6 @@ public record HttpServerConfig(
     int receiveBufferSize,
     int sendBufferSize
 ) {
-    public static final int DEFAULT_SOCKET_BUFFER_SIZE = 1024;
     public static final long DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024L; // 10MB
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(30);
     public static final Duration DEFAULT_WRITE_TIMEOUT = Duration.ofSeconds(30);
@@ -51,9 +48,6 @@ public record HttpServerConfig(
         }
         if (backlog < 0) {
             throw new IllegalArgumentException("backlog must be >= 0: " + backlog);
-        }
-        if (socketBufferSize < 256) {
-            throw new IllegalArgumentException("socketBufferSize must be at least 256: " + socketBufferSize);
         }
         if (shutdownGrace == null || shutdownGrace.isNegative()) {
             throw new IllegalArgumentException(
@@ -93,34 +87,30 @@ public record HttpServerConfig(
     }
 
     public HttpServerConfig(String host, int port, int backlog,
-                            int socketBufferSize, Duration shutdownGrace,
-                            long maxBodySize, Duration readTimeout,
-                            int maxConnections) {
-        this(host, port, backlog, socketBufferSize, shutdownGrace, maxBodySize,
-            readTimeout, maxConnections, DEFAULT_WRITE_TIMEOUT,
-            CompressionConfig.DEFAULT, 0, 0);
+                            Duration shutdownGrace, long maxBodySize,
+                            Duration readTimeout, int maxConnections) {
+        this(host, port, backlog, shutdownGrace, maxBodySize, readTimeout,
+            maxConnections, DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0);
     }
 
     public HttpServerConfig(String host, int port, int backlog,
-                            int socketBufferSize, Duration shutdownGrace,
-                            long maxBodySize, Duration readTimeout,
-                            int maxConnections, Duration writeTimeout) {
-        this(host, port, backlog, socketBufferSize, shutdownGrace, maxBodySize,
-            readTimeout, maxConnections, writeTimeout, CompressionConfig.DEFAULT,
-            0, 0);
+                            Duration shutdownGrace, long maxBodySize,
+                            Duration readTimeout, int maxConnections,
+                            Duration writeTimeout) {
+        this(host, port, backlog, shutdownGrace, maxBodySize, readTimeout,
+            maxConnections, writeTimeout, CompressionConfig.DEFAULT, 0, 0);
     }
 
     public HttpServerConfig(String host, int port, int backlog,
-                            int socketBufferSize, Duration shutdownGrace,
-                            long maxBodySize) {
-        this(host, port, backlog, socketBufferSize, shutdownGrace, maxBodySize,
+                            Duration shutdownGrace, long maxBodySize) {
+        this(host, port, backlog, shutdownGrace, maxBodySize,
             DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS, DEFAULT_WRITE_TIMEOUT,
             CompressionConfig.DEFAULT, 0, 0);
     }
 
     public HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {
-        this(host, port, backlog, DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace,
-            DEFAULT_MAX_BODY_SIZE, DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS,
-            DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0);
+        this(host, port, backlog, shutdownGrace, DEFAULT_MAX_BODY_SIZE,
+            DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS, DEFAULT_WRITE_TIMEOUT,
+            CompressionConfig.DEFAULT, 0, 0);
     }
 }

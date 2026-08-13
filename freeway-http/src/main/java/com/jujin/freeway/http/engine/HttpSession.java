@@ -35,6 +35,7 @@ final class HttpSession implements Runnable {
     private static final int KEEPALIVE_IDLE_SECONDS = 30;
     private static final int KEEPALIVE_INTERVAL_SECONDS = 15;
     private static final int KEEPALIVE_PROBE_COUNT = 3;
+    private static final int SESSION_BUFFER_SIZE = 1024;
 
     private final Socket rawSocket;
     private final SessionContext context;
@@ -94,7 +95,7 @@ final class HttpSession implements Runnable {
             }
 
             connection = new HttpConnection(
-                socket, context.config().socketBufferSize(),
+                socket, SESSION_BUFFER_SIZE,
                 timeoutMillis(context.config().writeTimeout()));
             context.registry().register(connection);
 

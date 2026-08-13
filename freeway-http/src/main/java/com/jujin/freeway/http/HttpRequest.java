@@ -2,7 +2,6 @@ package com.jujin.freeway.http;
 
 import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.body.MultipartForm;
-import com.jujin.freeway.http.internal.HttpUtils;
 
 import javax.net.ssl.SSLSession;
 import java.io.ByteArrayInputStream;
@@ -65,7 +64,7 @@ public interface HttpRequest extends RequestInfo {
 
     /** Returns true if the request has a multipart/form-data content type. */
     default boolean isMultipart() {
-        return header("Content-Type").map(HttpUtils::isMultipartFormData)
+        return header("Content-Type").map(MediaTypes::isMultipartFormData)
             .orElse(false);
     }
 
@@ -78,7 +77,7 @@ public interface HttpRequest extends RequestInfo {
         // non-multipart request would consume the entire request body for
         // nothing (and could trip the body-size limit on isMultipart()).
         return header("Content-Type")
-            .filter(HttpUtils::isMultipartFormData)
+            .filter(MediaTypes::isMultipartFormData)
             .flatMap(ct -> {
                 try {
                     return Optional.of(MultipartForm.parse(ct, body()));

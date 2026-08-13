@@ -815,7 +815,7 @@ class Http2ProtocolTest {
         // connections. An OPEN request stream that pauses mid-body (client
         // sends no frames for longer than readTimeout) must not be torn down.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, 64 * 1024,
+            .config(new HttpServerConfig("127.0.0.1", 0, 0,
                 Duration.ofSeconds(2), 16 * 1024 * 1024,
                 Duration.ofSeconds(2), 64))
             .route(Route.post("/", ctx ->
@@ -911,7 +911,7 @@ class Http2ProtocolTest {
         // The read timeout still applies to a truly idle H2 connection — no
         // open streams — so idle sockets cannot hold resources forever.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, 64 * 1024,
+            .config(new HttpServerConfig("127.0.0.1", 0, 0,
                 Duration.ofSeconds(2), 16 * 1024 * 1024,
                 Duration.ofSeconds(2), 64))
             .build();
