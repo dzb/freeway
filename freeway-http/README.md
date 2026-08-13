@@ -27,7 +27,7 @@ Three-layer design:
 
 ```
 engine/              — socket I/O, protocol parsing, connection lifecycle
-  http11/            — Http11Connection, HttpParser
+  (HttpConnection, Http1xSession, Http1xParser live directly here)
   http2/             — Http2Connection, frame/HPACK/stream management
   ws/                — WebSocket frame read/write protocol
 WebServer            — filter chain, routing, event publishing (Consumer<Object>)
@@ -57,8 +57,7 @@ FreewayApp.run(args, new HttpModule(), binder -> {
 | Package | Visibility | Contents |
 |---|---|---|
 | `http/` | public API | WebServer, HttpContext, HttpEngine, RouteIndex, filter interfaces |
-| `http/engine/` | implementation | `FreewayHttpEngine` (public), shared I/O (BufferedIn/Out, ChunkedIn, FixedLengthIn), WS frame protocol |
-| `http/engine/http11/` | package | Http11Connection, HttpParser |
+| `http/engine/` | implementation | `FreewayHttpEngine` (public), `HttpConnection`, `Http1xSession`, `Http1xParser`, HTTP/1.x framing and shared I/O |
 | `http/engine/http2/` | package | Http2Connection, 29 HTTP/2 frame/HPACK/stream files |
 | `http/engine/ws/` | package | WebSocketFrame, WebSocketSessionImpl, WsUtil, opcode/close enums |
 
