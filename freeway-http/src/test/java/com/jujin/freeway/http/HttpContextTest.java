@@ -1,6 +1,8 @@
 package com.jujin.freeway.http;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -115,5 +117,16 @@ class HttpContextTest {
 
         assertThrows(UnsupportedMediaTypeException.class,
             () -> ctx.bodyAsJson(Map.class));
+    }
+
+    @Test
+    void bodyStreamDefaultsToBufferedBody() throws Exception {
+        StubHttpContext ctx = new StubHttpContext();
+        ctx.output("stream-me".getBytes(StandardCharsets.UTF_8));
+
+        try (InputStream in = ctx.bodyStream()) {
+            assertEquals("stream-me",
+                new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
     }
 }

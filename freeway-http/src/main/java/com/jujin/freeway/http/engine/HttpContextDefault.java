@@ -212,6 +212,11 @@ public class HttpContextDefault extends AbstractHttpContext {
         return requestBody.readAll();
     }
 
+    @Override
+    public InputStream bodyStream() throws IOException {
+        return requestBody.stream();
+    }
+
     // --- response side ---
 
     @Override

@@ -4,7 +4,9 @@ import com.jujin.freeway.http.body.MultipartException;
 import com.jujin.freeway.http.body.MultipartForm;
 
 import javax.net.ssl.SSLSession;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Locale;
@@ -138,6 +140,17 @@ public interface HttpRequest {
 
     /** Returns the raw request body bytes. */
     byte[] body() throws IOException;
+
+    /**
+     * Returns the request body as a streaming input, enforcing the
+     * configured {@link #maxBodySize(long) maximum body size} as it is read.
+     *
+     * <p>The default reads the whole body into memory for implementations
+     * that only buffer; transport bridges override it to stream directly.</p>
+     */
+    default InputStream bodyStream() throws IOException {
+        return new ByteArrayInputStream(body());
+    }
 
     /** Reads the request body into a string using the charset from the
      *  Content-Type header. */
