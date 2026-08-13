@@ -487,60 +487,6 @@ public class HttpContextDefault extends AbstractHttpContext {
         }
     }
 
-    // Pre-encoded reason phrases indexed by status code
-    private static final byte[][] REASON_BYTES = new byte[600][];
-    static {
-        REASON_BYTES[200] = "OK".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[201] = "Created".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[204] = "No Content".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[301] = "Moved Permanently".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[302] = "Found".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[304] = "Not Modified".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[400] = "Bad Request".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[401] = "Unauthorized".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[403] = "Forbidden".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[404] = "Not Found".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[405] = "Method Not Allowed".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[413] = "Payload Too Large".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[422] = "Unprocessable Content".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[426] = "Upgrade Required".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[429] = "Too Many Requests".getBytes(StandardCharsets.ISO_8859_1);
-        REASON_BYTES[500] = "Internal Server Error".getBytes(StandardCharsets.ISO_8859_1);
-    }
-
-    static byte[] reasonBytes(int status) {
-        if (status >= 0 && status < REASON_BYTES.length) {
-            byte[] b = REASON_BYTES[status];
-            if (b != null) return b;
-        }
-        return new byte[0];
-    }
-
-    // Pre-encoded status code digits indexed by status code (0-599)
-    private static final byte[][] STATUS_CODE_BYTES = new byte[600][];
-    static {
-        for (int i = 0; i < STATUS_CODE_BYTES.length; i++) {
-            STATUS_CODE_BYTES[i] = String.valueOf(i).getBytes(StandardCharsets.ISO_8859_1);
-        }
-    }
-
-    static byte[] statusCodeBytes(int status) {
-        if (status >= 0 && status < STATUS_CODE_BYTES.length) {
-            return STATUS_CODE_BYTES[status];
-        }
-        return String.valueOf(status).getBytes(StandardCharsets.ISO_8859_1);
-    }
-
-    // Pre-encoded Content-Length digits for common small body sizes (0-Ki)
-    // Lazily expanded: the first request with a given length populates the slot
-    private static final byte[][] CL_BYTES = new byte[4096][];
-    static {
-        // eagerly fill the most common lengths
-        for (int i = 0; i < 256; i++) {
-            CL_BYTES[i] = String.valueOf(i).getBytes(StandardCharsets.ISO_8859_1);
-        }
-    }
-
     boolean hasResponseHeader(String name) {
         return responseHeaders.contains(name);
     }
@@ -552,16 +498,5 @@ public class HttpContextDefault extends AbstractHttpContext {
 
     void setKeepAlive(boolean keepAlive) {
         this.keepAlive = keepAlive;
-    }
-
-    static byte[] contentLengthBytes(int length) {
-        if (length >= 0 && length < CL_BYTES.length) {
-            byte[] b = CL_BYTES[length];
-            if (b != null) return b;
-            b = String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
-            CL_BYTES[length] = b;
-            return b;
-        }
-        return String.valueOf(length).getBytes(StandardCharsets.ISO_8859_1);
     }
 }
