@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,7 +16,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,7 +79,7 @@ public final class Http2Connection {
     public final AtomicInteger receiveWindow = new AtomicInteger(DEFAULT_WINDOW_SIZE);
 
     private final InputStream inputStream;
-    private final OutputStream outputStream;
+    private final Http2FrameWriter writer;
     private final Socket socket;
     private final ExecutorService executor;
     private final StreamHandler handler;
@@ -93,8 +91,6 @@ public final class Http2Connection {
     private int currentSoTimeout = -1;
     private final HPackContext hpack = new HPackContext();
     final ConcurrentHashMap<Integer, Http2Stream> streams = new ConcurrentHashMap<>();
-    /** Our advertised SETTINGS_MAX_FRAME_SIZE — caps INBOUND frame payloads (RFC 7540 §4.2). */
-    final int maxFrameSize = 16384;
     /** Peer's advertised SETTINGS_MAX_FRAME_SIZE — caps our OUTBOUND DATA chunking. */
     volatile int peerMaxFrameSize = 16384;
     private final SettingsMap remoteSettings = new SettingsMap();
@@ -105,13 +101,6 @@ public final class Http2Connection {
      *  created afterwards (RFC 7540 §6.8). */
     private volatile boolean goawayReceived;
 
-    private final int connectionWindowSize = DEFAULT_WINDOW_SIZE;
-    private final ReentrantLock lock = new ReentrantLock();
-    /** Outbound frame queue. Producers append under {@link #lock}; a single
-     *  leader drains and flushes so concurrent streams coalesce into fewer
-     *  socket writes. */
-    private final ArrayDeque<OutboundChunk> outbound = new ArrayDeque<>();
-    private boolean writing;
     /** Threads blocked on connection/stream flow control, unparked on WINDOW_UPDATE. */
     final Set<Thread> windowWaiters = ConcurrentHashMap.newKeySet();
 
@@ -127,7 +116,7 @@ public final class Http2Connection {
                            int readTimeoutMillis) {
         this.socket = socket;
         this.inputStream = inputStream;
-        this.outputStream = outputStream;
+        this.writer = new Http2FrameWriter(outputStream);
         this.executor = executor;
         this.handler = handler;
         this.readTimeoutMillis = readTimeoutMillis;
@@ -140,11 +129,11 @@ public final class Http2Connection {
     }
 
     void lock() {
-        lock.lock();
+        writer.lock();
     }
 
     void unlock() {
-        lock.unlock();
+        writer.unlock();
     }
 
     public boolean isClosed() {
@@ -157,10 +146,6 @@ public final class Http2Connection {
 
     SettingsMap localSettings() {
         return localSettings;
-    }
-
-    OutputStream outputStream() {
-        return outputStream;
     }
 
     HPackContext hpack() {
@@ -186,85 +171,14 @@ public final class Http2Connection {
         return expected.equals(new String(buffer));
     }
 
-    /**
-     * Queues one or more whole frame byte-arrays and flushes all pending
-     * frames. The first producer to find no active writer drains the queue in
-     * a single write+flush; producers that join while a drain is running only
-     * append, so concurrent streams share syscalls instead of each flushing
-     * its own frame. Frames are drained in FIFO order.
-     */
     void writeFrame(byte[]... frames) throws IOException {
-        boolean leader;
-        lock();
-        try {
-            for (var frame : frames) {
-                if (frame != null && frame.length > 0) {
-                    outbound.add(new OutboundChunk(frame, 0, frame.length));
-                }
-            }
-            leader = !writing;
-            if (leader) writing = true;
-        } finally {
-            unlock();
-        }
-        if (leader) drainOutbound();
+        writer.writeFrame(frames);
     }
 
-    /** Queues a DATA frame without copying the payload: header slice plus the
-     *  payload range are appended contiguously under one lock acquisition. */
     void writeDataFrame(byte[] header, byte[] payload, int offset, int length)
             throws IOException {
-        boolean leader;
-        lock();
-        try {
-            outbound.add(new OutboundChunk(header, 0, header.length));
-            outbound.add(new OutboundChunk(payload, offset, length));
-            leader = !writing;
-            if (leader) writing = true;
-        } finally {
-            unlock();
-        }
-        if (leader) drainOutbound();
+        writer.writeDataFrame(header, payload, offset, length);
     }
-
-    private void drainOutbound() throws IOException {
-        try {
-            while (true) {
-                OutboundChunk next;
-                lock();
-                try {
-                    next = outbound.poll();
-                } finally {
-                    unlock();
-                }
-                if (next == null) {
-                    lock();
-                    try {
-                        if (outbound.isEmpty()) {
-                            writing = false;
-                            outputStream.flush();
-                            return;
-                        }
-                    } finally {
-                        unlock();
-                    }
-                    continue;
-                }
-                outputStream.write(next.bytes, next.offset, next.length);
-            }
-        } catch (IOException e) {
-            lock();
-            try {
-                writing = false;
-                outbound.clear();
-            } finally {
-                unlock();
-            }
-            throw e;
-        }
-    }
-
-    private record OutboundChunk(byte[] bytes, int offset, int length) {}
 
     public void handle() throws IOException {
         try {
@@ -282,7 +196,7 @@ public final class Http2Connection {
         while (!closed.get()) {
             updateReadTimeout();
             var frame = FrameSerializer.deserialize(
-                inputStream, maxFrameSize, frameHeaderBuffer);
+                inputStream, DEFAULT_MAX_FRAME_SIZE, frameHeaderBuffer);
             int streamId = frame.header().streamId();
             Http2FrameValidator.requireClientStreamId(streamId);
 
@@ -353,7 +267,7 @@ public final class Http2Connection {
                             Http2ErrorCode.FLOW_CONTROL_ERROR);
                     }
                     receiveWindow.addAndGet(-flowLength);
-                    if (receiveWindow.get() < connectionWindowSize / 10) {
+                    if (receiveWindow.get() < DEFAULT_WINDOW_SIZE / 10) {
                         sendConnectionWindowUpdate();
                     }
                 }
@@ -654,7 +568,7 @@ public final class Http2Connection {
 
     private void sendConnectionWindowUpdate() throws IOException {
         int current = receiveWindow.get();
-        int increment = connectionWindowSize - current;
+        int increment = DEFAULT_WINDOW_SIZE - current;
         receiveWindow.addAndGet(increment);
         writeFrame(new WindowUpdateFrame(0, increment).encode());
     }
