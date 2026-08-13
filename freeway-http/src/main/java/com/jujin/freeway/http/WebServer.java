@@ -115,14 +115,16 @@ public final class WebServer implements AutoCloseable {
                 String path,
                 String origin
             ) {
-                String allowed = corsFilter.resolveAllowedOrigin(origin);
-                if (allowed == null && origin != null && !origin.isBlank()) {
-                    LOG.debug(
-                        "WebSocket upgrade rejected: origin '{}' not allowed for {}",
-                        origin,
-                        path
-                    );
-                    return null;
+                if (corsFilter.isActive()) {
+                    String allowed = corsFilter.resolveAllowedOrigin(origin);
+                    if (allowed == null && origin != null && !origin.isBlank()) {
+                        LOG.debug(
+                            "WebSocket upgrade rejected: origin '{}' not allowed for {}",
+                            origin,
+                            path
+                        );
+                        return null;
+                    }
                 }
                 return websocketIndex.match(method, path);
             }

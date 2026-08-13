@@ -48,6 +48,7 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.http.WebServerBuilder;
+import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.staticfile.StaticResourceMount;
@@ -822,6 +823,67 @@ class FreewayHttpEngineTest {
             }
         } finally {
             server.stop();
+        }
+    }
+
+    @Test
+    void webSocketUpgradeIgnoresOriginWhenCorsDisabled() throws Exception {
+        // CORS disabled must not gate WebSocket upgrades: an Origin header
+        // that would fail the allow-list is accepted because there is no
+        // CORS policy at all.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .cors(new CorsFilter(false, null, null, null, null, null, false))
+            .webSocketRoute(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP))
+            .build();
+        server.start();
+        try {
+            assertHandshake(server.port(), "/ws", "https://evil.example", 101);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void webSocketUpgradeRejectsOriginWhenCorsEnabled() throws Exception {
+        // With CORS enabled and an explicit allow-list, an Origin outside
+        // the list must be rejected with 403.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .cors(new CorsFilter(true, "https://allowed.example",
+                "GET", "", "", "", false))
+            .webSocketRoute(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP))
+            .build();
+        server.start();
+        try {
+            assertHandshake(server.port(), "/ws", "https://evil.example", 403);
+            assertHandshake(server.port(), "/ws", "https://allowed.example", 101);
+        } finally {
+            server.stop();
+        }
+    }
+
+    private static void assertHandshake(int port, String path,
+            String origin, int expectedStatus) throws IOException {
+        try (var socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(3000);
+            String key = Base64.getEncoder().encodeToString(new byte[16]);
+            String req = "GET " + path + " HTTP/1.1\r\n"
+                + "Host: x\r\n"
+                + "Upgrade: websocket\r\n"
+                + "Connection: Upgrade\r\n"
+                + "Sec-WebSocket-Key: " + key + "\r\n"
+                + "Sec-WebSocket-Version: 13\r\n"
+                + "Origin: " + origin + "\r\n\r\n";
+            socket.getOutputStream().write(
+                req.getBytes(StandardCharsets.ISO_8859_1));
+            socket.getOutputStream().flush();
+            byte[] buf = new byte[1024];
+            int n = socket.getInputStream().read(buf);
+            String response = new String(buf, 0, Math.max(n, 0),
+                StandardCharsets.ISO_8859_1);
+            assertTrue(response.startsWith("HTTP/1.1 " + expectedStatus),
+                "expected " + expectedStatus + ", got: " + response);
         }
     }
 
