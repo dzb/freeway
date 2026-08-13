@@ -8,7 +8,6 @@ import java.util.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.ws.WebSocket;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
 import com.jujin.freeway.http.engine.ws.WebSocketUtil;
@@ -27,8 +26,8 @@ final class WebSocketUpgrade {
         this.ctx = ctx;
     }
 
-    void handle(HttpConnection connection, HttpParser parser,
-                HttpParser.ParsedRequest req) {
+    void handle(HttpConnection connection, Http1xParser parser,
+                Http1xParser.ParsedRequest req) {
         try {
             String origin = HttpSession.headerValue(req.headers(), "Origin");
             WebSocketMatch match = ctx.handler().websocket(req.method(), req.path(), origin);

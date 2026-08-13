@@ -18,7 +18,6 @@ import javax.net.ssl.SSLSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
 import com.jujin.freeway.http.engine.http2.Http2ResponseWriter;
 import com.jujin.freeway.http.engine.http2.Http2Stream;
@@ -43,7 +42,7 @@ final class Http2Session {
         this.ctx = ctx;
     }
 
-    void handle(HttpConnection connection, boolean ssl, HttpParser parser,
+    void handle(HttpConnection connection, boolean ssl, Http1xParser parser,
                 SettingsFrame upgradeSettings,
                 Map<String, List<String>> upgradeStreamHeaders) {
         Http2Connection h2conn = null;
@@ -117,8 +116,8 @@ final class Http2Session {
         }
     }
 
-    void handleH2cUpgrade(HttpConnection connection, HttpParser.ParsedRequest req,
-                          HttpParser parser, SettingsFrame settings) {
+    void handleH2cUpgrade(HttpConnection connection, Http1xParser.ParsedRequest req,
+                          Http1xParser parser, SettingsFrame settings) {
         try {
             OutputStream out = connection.outputStream();
             HttpSession.writeLine(out, "HTTP/1.1 101 Switching Protocols");
@@ -136,7 +135,7 @@ final class Http2Session {
     }
 
     private static Map<String, List<String>> upgradeStreamRequestHeaders(
-            HttpParser.ParsedRequest req) {
+            Http1xParser.ParsedRequest req) {
         var headers = new LinkedHashMap<String, List<String>>();
         headers.put(":method", List.of(req.method()));
         String path = req.path();

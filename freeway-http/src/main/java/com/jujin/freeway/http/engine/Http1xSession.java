@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.ErrorResponses;
-import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http2.frame.FrameFlag;
 import com.jujin.freeway.http.engine.http2.frame.FrameHeader;
 import com.jujin.freeway.http.engine.http2.frame.FrameType;
@@ -22,12 +21,12 @@ import com.jujin.freeway.http.engine.http2.frame.SettingsFrame;
  * HTTP/1.1 connection loop: keep-alive parsing, request dispatch, and the
  * h2c / WebSocket upgrade hand-off.
  */
-final class Http1Session {
+final class Http1xSession {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Http1Session.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Http1xSession.class);
     private final SessionContext ctx;
 
-    Http1Session(SessionContext ctx) {
+    Http1xSession(SessionContext ctx) {
         this.ctx = ctx;
     }
 
@@ -35,7 +34,7 @@ final class Http1Session {
         try {
             var in = connection.inputStream();
             var out = connection.outputStream();
-            var parser = new HttpParser(in);
+            var parser = new Http1xParser(in);
             var context = new HttpContextDefault(ctx.jsonCodec(), ctx.coercer());
             context.setMaxBodySize(ctx.config().maxBodySize());
             context.setCompression(ctx.config().compression());
@@ -144,7 +143,7 @@ final class Http1Session {
         }
     }
 
-    private static boolean isH2cUpgradeRequest(HttpParser.ParsedRequest req) {
+    private static boolean isH2cUpgradeRequest(Http1xParser.ParsedRequest req) {
         String connection = HttpSession.headerValue(req.headers(), "connection");
         if (connection == null || !HttpSession.containsToken(connection, "upgrade")) {
             return false;
@@ -153,7 +152,7 @@ final class Http1Session {
         return upgrade != null && HttpSession.containsToken(upgrade, "h2c");
     }
 
-    private static boolean expects100Continue(HttpParser.ParsedRequest req) {
+    private static boolean expects100Continue(Http1xParser.ParsedRequest req) {
         String expect = HttpSession.headerValue(req.headers(), "expect");
         return expect != null && HttpSession.containsToken(expect, "100-continue");
     }
@@ -176,7 +175,7 @@ final class Http1Session {
         return false;
     }
 
-    private static SettingsFrame tryPrepareH2cUpgrade(HttpParser.ParsedRequest req) {
+    private static SettingsFrame tryPrepareH2cUpgrade(Http1xParser.ParsedRequest req) {
         if (req.isHttp10() || req.isChunked() || req.contentLength() > 0) {
             return null;
         }

@@ -6,8 +6,6 @@ import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.http.engine.http11.HttpParser;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -15,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class HttpParserTest {
+class Http1xParserTest {
 
     @Test
     void parseWebSocketUpgradeRequest() throws IOException {
@@ -27,7 +25,7 @@ class HttpParserTest {
             + "Sec-WebSocket-Version: 13\r\n"
             + "Origin: http://127.0.0.1:8080\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -51,7 +49,7 @@ class HttpParserTest {
             + "X-Request-Id: abc-123\r\n"
             + "Content-Type: application/json\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -73,7 +71,7 @@ class HttpParserTest {
             + "Content-Length: 4 \r\n"
             + "\r\n"
             + "abcd";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -87,7 +85,7 @@ class HttpParserTest {
             + "Host: localhost\r\n"
             + "Connection: keep-alive \r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -104,7 +102,7 @@ class HttpParserTest {
             + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
             + "Sec-WebSocket-Version: 13\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -123,7 +121,7 @@ class HttpParserTest {
             + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
             + "Sec-WebSocket-Version: 13\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -138,7 +136,7 @@ class HttpParserTest {
             + "Host: localhost\r\n"
             + "Connection: keep-alive, close\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -153,7 +151,7 @@ class HttpParserTest {
             + "Content-Length:\t4\r\n"
             + "\r\n"
             + "abcd";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -166,7 +164,7 @@ class HttpParserTest {
         String raw = "GET /ping HTTP/1.1\r\n"
             + "Host: localhost\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -178,7 +176,7 @@ class HttpParserTest {
 
     @Test
     void rejectsInvalidHeaderName() {
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             "GET / HTTP/1.1\r\n Bad: value\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
         assertThrows(IOException.class, parser::parse);
     }
@@ -186,7 +184,7 @@ class HttpParserTest {
     @Test
     void rejectsRepeatedOrNonFinalChunkedEncoding() {
         for (String value : new String[]{"chunked, chunked", "chunked, gzip"}) {
-            var parser = new HttpParser(new ByteArrayInputStream((
+            var parser = new Http1xParser(new ByteArrayInputStream((
                 "POST / HTTP/1.1\r\nTransfer-Encoding: " + value + "\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII)));
             assertThrows(IOException.class, parser::parse);
@@ -200,7 +198,7 @@ class HttpParserTest {
             + "Content-Length: 4\r\n"
             + "\r\n"
             + "abcd";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -215,7 +213,7 @@ class HttpParserTest {
         String raw = "GET /old HTTP/1.0\r\n"
             + "Host: localhost\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -230,7 +228,7 @@ class HttpParserTest {
             + "Host: localhost\r\n"
             + "Connection: keep-alive\r\n"
             + "\r\n";
-        var parser = new HttpParser(new ByteArrayInputStream(
+        var parser = new Http1xParser(new ByteArrayInputStream(
             raw.getBytes(StandardCharsets.ISO_8859_1)));
         var req = parser.parse();
 
@@ -241,7 +239,7 @@ class HttpParserTest {
 
     @Test
     void nullOnEmptyStream() throws IOException {
-        var parser = new HttpParser(new ByteArrayInputStream(new byte[0]));
+        var parser = new Http1xParser(new ByteArrayInputStream(new byte[0]));
         assertNull(parser.parse());
     }
 
@@ -249,7 +247,7 @@ class HttpParserTest {
     void rejectsDuplicateContentLength() {
         byte[] raw = ("POST / HTTP/1.1\r\nContent-Length: 4\r\n"
                 + "Content-Length: 7\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
         assertThrows(IOException.class, parser::parse,
                 "Duplicate Content-Length headers should be rejected");
     }
@@ -258,7 +256,7 @@ class HttpParserTest {
     void transferEncodingHandlesCommaSeparatedChunked() throws Exception {
         byte[] raw = ("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
                 .getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
         var req = parser.parse();
         assertTrue(req.isChunked(), "Transfer-Encoding: chunked should set isChunked=true");
     }
@@ -267,7 +265,7 @@ class HttpParserTest {
     void transferEncodingRejectsUnknownCoding() {
         byte[] raw = ("POST / HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n")
                 .getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
         assertThrows(IOException.class, parser::parse,
                 "Unknown Transfer-Encoding should be rejected");
     }
@@ -276,7 +274,7 @@ class HttpParserTest {
     void rejectsBothContentLengthAndChunked() throws Exception {
         byte[] raw = ("POST / HTTP/1.1\r\nContent-Length: 4\r\n"
                 + "Transfer-Encoding: chunked\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
         assertThrows(IOException.class, parser::parse);
     }
 
@@ -284,7 +282,7 @@ class HttpParserTest {
     void rejectsTruncatedHeaders() {
         // "GET / HTTP/1.1\r\nHost: a" — no final CRLF → truncated headers
         byte[] raw = "GET / HTTP/1.1\r\nHost: a".getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
         assertThrows(IOException.class, parser::parse,
                 "Truncated headers should throw IOException");
     }
@@ -293,7 +291,7 @@ class HttpParserTest {
     void rejectsTruncatedRequestLine() {
         // "GET / HTTP/1.1" with no CRLF → truncated
         byte[] raw = "GET / HTTP/1.1".getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
         assertThrows(IOException.class, parser::parse,
                 "Truncated request line should throw IOException");
     }
@@ -303,7 +301,7 @@ class HttpParserTest {
         // Two requests back-to-back in one TCP segment
         byte[] raw = ("GET /a HTTP/1.1\r\n\r\nGET /b HTTP/1.1\r\n\r\n")
                 .getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
 
         var req1 = parser.parse();
         assertEquals("/a", req1.path());
@@ -320,7 +318,7 @@ class HttpParserTest {
         byte[] raw = ("POST /a HTTP/1.1\r\nContent-Length: 4\r\n\r\n"
                 + "bodyGET /b HTTP/1.1\r\n\r\n")
                 .getBytes(StandardCharsets.ISO_8859_1);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
 
         var req1 = parser.parse();
         assertEquals("/a", req1.path());
@@ -342,12 +340,12 @@ class HttpParserTest {
         System.arraycopy(handshake.getBytes(StandardCharsets.ISO_8859_1), 0, raw, 0,
             handshake.length());
         System.arraycopy(frame, 0, raw, handshake.length(), frame.length);
-        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var parser = new Http1xParser(new ByteArrayInputStream(raw));
         parser.parse();
         assertEquals('x', parser.upgradeStream().readAllBytes()[6] ^ 1);
     }
 
-    private static String headerValue(HttpParser.ParsedRequest req, String name) {
+    private static String headerValue(Http1xParser.ParsedRequest req, String name) {
         for (var e : req.headers().entrySet()) {
             if (e.getKey().equalsIgnoreCase(name)) {
                 return e.getValue().getFirst();

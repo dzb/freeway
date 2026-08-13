@@ -101,7 +101,7 @@ final class HttpSession implements Runnable {
             if (isH2) {
                 new Http2Session(context).handle(connection, true, null, null, null);
             } else {
-                new Http1Session(context).handle(connection);
+                new Http1xSession(context).handle(connection);
             }
         } catch (SocketTimeoutException e) {
             LOG.trace("Connection idle timeout: {}", e.getMessage());

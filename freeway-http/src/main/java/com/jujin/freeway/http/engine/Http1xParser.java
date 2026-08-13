@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http11;
+package com.jujin.freeway.http.engine;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -16,7 +16,7 @@ import com.jujin.freeway.http.HttpUtils;
  * Parses HTTP/1.x request line and headers from a raw {@code InputStream}.
  * Bulk-reads into a reusable buffer to minimize socket calls.
  */
-public final class HttpParser {
+final class Http1xParser {
 
     private static final int MAX_HEADER_COUNT = 200;
     private static final int MAX_HEADER_SIZE = 8192;
@@ -37,10 +37,10 @@ public final class HttpParser {
     // (typically a pipelined next request). Reclaimed before the next parse.
     private ByteArrayInputStream chunkedPrefix;
 
-    public HttpParser(InputStream in) { this.in = in; }
+    Http1xParser(InputStream in) { this.in = in; }
 
     /** Reuse this parser for a new request on the same connection. */
-    public void reset(InputStream newIn) {
+    void reset(InputStream newIn) {
         this.in = newIn;
         this.chunkedPrefix = null;
         // Preserve bytes buffered past the previous request's header boundary
@@ -58,7 +58,7 @@ public final class HttpParser {
         headerValBuf.setLength(0);
     }
 
-    public ParsedRequest parse() throws IOException {
+    ParsedRequest parse() throws IOException {
         // Preserve unread bytes from a previous pipelined request. reset()
         // may already have compacted the buffer (pos == 0 with end > 0).
         if (pos < end) {
@@ -356,7 +356,7 @@ public final class HttpParser {
      * pipelined next request stay in the parser buffer and are parsed next.
      * Call this once after {@link #parse()}.</p>
      */
-    public InputStream bodyStream(long bodyLength) {
+    InputStream bodyStream(long bodyLength) {
         if (pos >= end) return in;
         int available = end - pos;
         if (bodyLength < 0) {
@@ -380,7 +380,7 @@ public final class HttpParser {
     }
 
     /** Returns unread parser bytes followed by the underlying stream. */
-    public InputStream upgradeStream() {
+    InputStream upgradeStream() {
         if (pos >= end) return in;
         var prefix = new ByteArrayInputStream(buf, pos, end - pos);
         pos = end;
@@ -392,7 +392,7 @@ public final class HttpParser {
      * into the parser's reusable buffer so the next pipelined request is not
      * lost. Must be called only after the chunked body has been fully drained.
      */
-    public void reclaimChunkedPrefix() {
+    void reclaimChunkedPrefix() {
         if (chunkedPrefix == null) return;
         int remaining = chunkedPrefix.available();
         if (remaining > 0) {
@@ -405,7 +405,7 @@ public final class HttpParser {
         chunkedPrefix = null;
     }
 
-    public record ParsedRequest(
+    record ParsedRequest(
         String method, String path, String queryString, String httpVersion,
         Map<String, List<String>> headers, long contentLength, boolean isChunked,
         boolean isHttp10, boolean keepAlive, boolean isUpgradeRequest,
