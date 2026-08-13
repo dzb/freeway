@@ -131,13 +131,7 @@ public final class HttpModule implements ModuleEx {
 
             return new WebServer(
                 engine,
-                new HttpServerConfig(cfg.host(), cfg.port(), cfg.backlog(),
-                    HttpServerConfig.DEFAULT_SOCKET_BUFFER_SIZE, cfg.shutdownGrace(),
-                    cfg.maxBodySize(), cfg.readTimeout(), cfg.maxConnections(),
-                    cfg.writeTimeout(),
-                    new HttpServerConfig.CompressionConfig(
-                        cfg.compressionEnabled(), cfg.compressionMinSize()),
-                    cfg.receiveBufferSize(), cfg.sendBufferSize()),
+                cfg.toServerConfig(),
                 eventSink,
                 pipeline
             );

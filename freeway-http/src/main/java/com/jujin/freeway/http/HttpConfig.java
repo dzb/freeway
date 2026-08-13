@@ -85,6 +85,17 @@ record HttpConfig(
         );
     }
 
+    /** Maps this IoC config snapshot to the engine's server config. */
+    HttpServerConfig toServerConfig() {
+        return new HttpServerConfig(
+            host, port, backlog,
+            HttpServerConfig.DEFAULT_SOCKET_BUFFER_SIZE, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout,
+            new HttpServerConfig.CompressionConfig(
+                compressionEnabled, compressionMinSize),
+            receiveBufferSize, sendBufferSize);
+    }
+
     @SuppressWarnings("unchecked")
     private static <T> T config(SymbolSource symbols, Coercer coercer,
                                 String key, T defaultValue) {
