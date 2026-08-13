@@ -45,7 +45,7 @@ final class Http1Session {
             if (ctx.engine().sslContext() == null
                     && connection.socket().getChannel() != null) {
                 context.setFileSender((channel, offset, length) -> {
-                    ctx.metrics().counter("freeway.http.sendfile.transfers").increment();
+                    ctx.metrics().sendfileTransfers().increment();
                     connection.transferFile(channel, offset, length);
                 });
             }
@@ -78,7 +78,7 @@ final class Http1Session {
                 if (isH2cUpgradeRequest(req)) {
                     SettingsFrame h2cSettings = tryPrepareH2cUpgrade(req);
                     if (h2cSettings != null) {
-                        ctx.metrics().counter("freeway.http.requests.total").increment();
+                        ctx.metrics().requestsTotal().increment();
                         new Http2Session(ctx).handleH2cUpgrade(connection, req, parser, h2cSettings);
                         return;
                     }
@@ -88,7 +88,7 @@ final class Http1Session {
                 if (req.isUpgradeRequest() && upgradeHeader != null
                         && !upgradeHeader.isEmpty()
                         && "websocket".equalsIgnoreCase(upgradeHeader.getFirst())) {
-                    ctx.metrics().counter("freeway.http.requests.total").increment();
+                    ctx.metrics().requestsTotal().increment();
                     new WebSocketUpgrade(ctx).handle(connection, parser, req);
                     return;
                 }
@@ -127,12 +127,12 @@ final class Http1Session {
                     ctx.requestTimer().record(System.nanoTime() - startNanos);
                 }
 
-                ctx.metrics().counter("freeway.http.requests.total").increment();
+                ctx.metrics().requestsTotal().increment();
                 int status = context.status();
                 if (status >= 500) {
-                    ctx.metrics().counter("freeway.http.responses.5xx").increment();
+                    ctx.metrics().responses5xx().increment();
                 } else if (status >= 400) {
-                    ctx.metrics().counter("freeway.http.responses.4xx").increment();
+                    ctx.metrics().responses4xx().increment();
                 }
 
                 boolean bodyDrained = context.drainUnreadBody();

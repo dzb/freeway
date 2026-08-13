@@ -107,9 +107,10 @@ public final class FreewayHttpEngine implements HttpEngine {
         int port = ss.socket().getLocalPort();
 
         var finished = new AtomicBoolean();
-        var registry = new ConnectionRegistry(metrics);
-        Metrics.Counter rejected = metrics.counter("freeway.http.connections.rejected");
-        Metrics.Counter accepted = metrics.counter("freeway.http.connections.total");
+        HttpMetrics httpMetrics = new HttpMetrics(metrics);
+        var registry = new ConnectionRegistry(httpMetrics);
+        Metrics.Counter rejected = httpMetrics.connectionsRejected();
+        Metrics.Counter accepted = httpMetrics.connectionsTotal();
         var permits = config.maxConnections() > 0
             ? new Semaphore(config.maxConnections()) : null;
 

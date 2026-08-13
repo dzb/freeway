@@ -21,7 +21,6 @@ import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpRequestHandler;
 import com.jujin.freeway.http.HttpServerConfig;
 
@@ -51,10 +50,8 @@ final class HttpSession implements Runnable {
             HttpServerConfig config, ConnectionRegistry registry,
             Semaphore connectionPermits) {
         this.rawSocket = socket;
-        Metrics metrics = engine.metrics();
         this.context = new SessionContext(handler, jsonCodec, coercer, engine,
-            config, registry, metrics,
-            metrics.timer("freeway.http.requests.duration"));
+            config, registry, new HttpMetrics(engine.metrics()));
         this.connectionPermits = connectionPermits;
     }
 

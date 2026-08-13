@@ -4,7 +4,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.jujin.freeway.commons.metrics.Metrics;
 /**
  * Tracks live connections so the server handle can drain or force-close
  * them during shutdown. Each connection is registered by its session on
@@ -17,9 +16,8 @@ final class ConnectionRegistry {
     final AtomicInteger requestsInFlight = new AtomicInteger();
     private volatile boolean stopping;
 
-    ConnectionRegistry(Metrics metrics) {
-        metrics.gauge("freeway.http.connections.active", this::activeCount);
-        metrics.gauge("freeway.http.requests.active", requestsInFlight::get);
+    ConnectionRegistry(HttpMetrics metrics) {
+        metrics.registerGauges(this::activeCount, requestsInFlight::get);
     }
 
     void register(HttpConnection connection) {

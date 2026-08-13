@@ -76,7 +76,7 @@ final class Http2Session {
             }
 
             this.h2Executor = Executors.newVirtualThreadPerTaskExecutor();
-            ctx.metrics().counter("freeway.http.h2.connections").increment();
+            ctx.metrics().h2Connections().increment();
             h2conn = new Http2Connection(connection.socket(), in,
                     connection.outputStream(), h2Executor,
                 (stream, streamIn, streamOut, reqHeaders) ->
@@ -193,7 +193,7 @@ final class Http2Session {
             context.setWriter(new Http2ResponseWriter(stream));
             context.setHeader("X-Request-Id", context.correlationId());
             ctx.registry().requestsInFlight.incrementAndGet();
-            ctx.metrics().counter("freeway.http.requests.total").increment();
+            ctx.metrics().requestsTotal().increment();
             long startNanos = System.nanoTime();
             try {
                 ctx.handler().handle(context);
@@ -203,9 +203,9 @@ final class Http2Session {
             }
             int status = context.status();
             if (status >= 500) {
-                ctx.metrics().counter("freeway.http.responses.5xx").increment();
+                ctx.metrics().responses5xx().increment();
             } else if (status >= 400) {
-                ctx.metrics().counter("freeway.http.responses.4xx").increment();
+                ctx.metrics().responses4xx().increment();
             }
             stream.close();
         } catch (Exception e) {

@@ -18,6 +18,9 @@ record SessionContext(
     FreewayHttpEngine engine,
     HttpServerConfig config,
     ConnectionRegistry registry,
-    Metrics metrics,
-    Metrics.Timer requestTimer
-) {}
+    HttpMetrics metrics
+) {
+    Metrics.Timer requestTimer() {
+        return metrics.requestsDuration();
+    }
+}

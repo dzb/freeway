@@ -82,7 +82,7 @@ final class WebSocketUpgrade {
             }
             HttpSession.writeLine(out, "");
             out.flush();
-            ctx.metrics().counter("freeway.http.websocket.connections").increment();
+            ctx.metrics().websocketConnections().increment();
 
             InputStream websocketInput = parser.upgradeStream();
             var wsSession = new WebSocketSessionImpl(req.method(), req.path(),
