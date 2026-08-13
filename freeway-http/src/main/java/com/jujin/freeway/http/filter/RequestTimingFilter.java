@@ -24,8 +24,8 @@ public final class RequestTimingFilter implements HttpFilter {
         } finally {
             long elapsedMillis = Duration.between(startedAt, Instant.now()).toMillis();
             LOG.debug("{} {} -> {} ({} ms, id={})",
-                ctx.request().method(), ctx.request().path(),
-                ctx.response().status(), elapsedMillis, ctx.correlationId());
+                ctx.method(), ctx.path(),
+                ctx.status(), elapsedMillis, ctx.correlationId());
         }
     }
 }

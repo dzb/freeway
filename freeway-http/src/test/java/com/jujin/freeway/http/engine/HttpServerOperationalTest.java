@@ -107,7 +107,7 @@ class HttpServerOperationalTest {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
-            .route(Route.post("/echo", ctx -> ctx.send(200, ctx.request().bodyText())))
+            .route(Route.post("/echo", ctx -> ctx.send(200, ctx.bodyText())))
             .build();
         server.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
@@ -140,7 +140,7 @@ class HttpServerOperationalTest {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, 1024,
                 Duration.ofSeconds(2), 4, Duration.ofSeconds(2), 0))
-            .route(Route.post("/body", ctx -> ctx.send(200, ctx.request().bodyText())))
+            .route(Route.post("/body", ctx -> ctx.send(200, ctx.bodyText())))
             .route(Route.get("/next", ctx -> ctx.send(200, "next")))
             .build();
         server.start();
@@ -237,8 +237,8 @@ class HttpServerOperationalTest {
             .eventSink(events::add)
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
             .route(Route.post("/boom", ctx -> {
-                ctx.request().maxBodySize(1);
-                ctx.request().body();
+                ctx.maxBodySize(1);
+                ctx.body();
                 ctx.send(200, "unexpected");
             }))
             .build();

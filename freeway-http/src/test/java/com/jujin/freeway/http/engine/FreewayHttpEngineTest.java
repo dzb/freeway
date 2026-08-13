@@ -108,7 +108,7 @@ class FreewayHttpEngineTest {
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
                 Route.post("/upload", ctx -> {
-                    ctx.request().body();
+                    ctx.body();
                     ctx.send(200, "ok");
                 })
             ));
@@ -131,7 +131,7 @@ class FreewayHttpEngineTest {
         int port = freePort();
         var server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
-            .route(Route.get("/read", ctx -> ctx.send(200, "len=" + ctx.request().body().length)))
+            .route(Route.get("/read", ctx -> ctx.send(200, "len=" + ctx.body().length)))
             .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
             .build();
         server.start();
@@ -199,7 +199,7 @@ class FreewayHttpEngineTest {
         var server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
             .route(Route.post("/echo", ctx -> ctx.send(200, new String(
-                ctx.request().body(), StandardCharsets.UTF_8))))
+                ctx.body(), StandardCharsets.UTF_8))))
             .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
             .build();
         server.start();
@@ -269,7 +269,7 @@ class FreewayHttpEngineTest {
         var server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
             .route(Route.get("/sse", ctx -> {
-                try (var emitter = ctx.response().sse()) {
+                try (var emitter = ctx.sse()) {
                     emitter.send("hi");
                 }
             }))
@@ -440,7 +440,7 @@ class FreewayHttpEngineTest {
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
                 Route.get("/sse", ctx -> {
-                    try (var emitter = ctx.response().sse()) {
+                    try (var emitter = ctx.sse()) {
                         emitter.send("hello");
                         emitter.send("world");
                     }
@@ -525,8 +525,8 @@ class FreewayHttpEngineTest {
 
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(Route.post("/echo", ctx -> {
-                ctx.request().maxBodySize(3);
-                ctx.send(200, ctx.request().bodyText());
+                ctx.maxBodySize(3);
+                ctx.send(200, ctx.bodyText());
             }))
         );
         assertTrue(app.get(WebServer.class).isRunning());
@@ -755,7 +755,7 @@ class FreewayHttpEngineTest {
             .config(new HttpServerConfig(
                 "127.0.0.1", 0, 0, 1024, Duration.ofSeconds(2), 1024))
             .route(Route.post("/check", ctx ->
-                ctx.send(200, "is-multipart=" + ctx.request().isMultipart())))
+                ctx.send(200, "is-multipart=" + ctx.isMultipart())))
             .build();
         server.start();
         try {
@@ -917,7 +917,7 @@ class FreewayHttpEngineTest {
     void plainHttpRequestIsNotSecure() throws Exception {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
-            .route(Route.get("/secure", ctx -> ctx.send(200, String.valueOf(ctx.request().isSecure()))))
+            .route(Route.get("/secure", ctx -> ctx.send(200, String.valueOf(ctx.isSecure()))))
             .build();
         server.start();
         try {
@@ -940,7 +940,7 @@ class FreewayHttpEngineTest {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/session", ctx ->
-                ctx.send(200, String.valueOf(ctx.request().sslSession() != null))))
+                ctx.send(200, String.valueOf(ctx.sslSession() != null))))
             .build();
         server.start();
         try {
@@ -1059,10 +1059,10 @@ class FreewayHttpEngineTest {
         var handle = engine.start(
             new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)),
             ctx -> ctx.sendJson(200, Map.of(
-                "secure", ctx.request().isSecure(),
-                "session", ctx.request().sslSession() != null,
-                "protocol", ctx.request().sslSession() != null
-                    ? ctx.request().sslSession().getProtocol() : ""))
+                "secure", ctx.isSecure(),
+                "session", ctx.sslSession() != null,
+                "protocol", ctx.sslSession() != null
+                    ? ctx.sslSession().getProtocol() : ""))
         );
         try {
             SSLContext trustAll = trustAllSslContext();
@@ -1102,10 +1102,10 @@ class FreewayHttpEngineTest {
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
                 Route.get("/tls-module", ctx -> ctx.sendJson(200, Map.of(
-                    "secure", ctx.request().isSecure(),
-                    "session", ctx.request().sslSession() != null,
-                    "protocol", ctx.request().sslSession() != null
-                        ? ctx.request().sslSession().getProtocol() : "")))
+                    "secure", ctx.isSecure(),
+                    "session", ctx.sslSession() != null,
+                    "protocol", ctx.sslSession() != null
+                        ? ctx.sslSession().getProtocol() : "")))
             ));
         assertTrue(app.get(WebServer.class).isRunning(),
             "HttpModule must start an HTTPS server when freeway.http.ssl.* is configured");
@@ -1139,9 +1139,9 @@ class FreewayHttpEngineTest {
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .sslContext(serverSslContext(keystore), true)
             .route(Route.get("/h2-tls", ctx -> ctx.sendJson(200, Map.of(
-                "secure", ctx.request().isSecure(),
-                "protocol", ctx.request().sslSession() != null
-                    ? ctx.request().sslSession().getProtocol() : ""))))
+                "secure", ctx.isSecure(),
+                "protocol", ctx.sslSession() != null
+                    ? ctx.sslSession().getProtocol() : ""))))
             .build();
         server.start();
         try {
@@ -1186,8 +1186,8 @@ class FreewayHttpEngineTest {
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
                 Route.get("/tls-config", ctx -> ctx.sendJson(200, Map.of(
-                    "protocol", ctx.request().sslSession() != null
-                        ? ctx.request().sslSession().getProtocol() : "")))
+                    "protocol", ctx.sslSession() != null
+                        ? ctx.sslSession().getProtocol() : "")))
             ));
         assertTrue(app.get(WebServer.class).isRunning());
 
@@ -1240,8 +1240,8 @@ class FreewayHttpEngineTest {
         app = FreewayApp.run(new String[0], binder ->
             binder.contribute(Route.class).add(
                 Route.get("/mtls", ctx -> ctx.sendJson(200, Map.of(
-                    "secure", ctx.request().isSecure(),
-                    "session", ctx.request().sslSession() != null)))
+                    "secure", ctx.isSecure(),
+                    "session", ctx.sslSession() != null)))
             ));
         assertTrue(app.get(WebServer.class).isRunning());
 

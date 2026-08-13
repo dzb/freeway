@@ -24,11 +24,11 @@ import java.util.Optional;
  * metadata, the shared state (codecs, body-size limit, path variables), and
  * the convenience logic that does not belong to a specific transport
  * (coercion, JSON body helpers, Vary merging, text/JSON send shorthands).
- * One object implements all three faces; the combined view exposes them via
- * {@link #request()} and {@link #response()}.
+ * One object implements all three contracts; transports extend this and
+ * implement only their transport-specific methods.
  */
 public abstract class AbstractHttpContext
-        implements HttpContext, HttpRequest, HttpResponse {
+        implements HttpContext {
 
     protected final JsonCodec jsonCodec;
     protected final Coercer coercer;
@@ -94,38 +94,6 @@ public abstract class AbstractHttpContext
     public Map<String, Object> attributes() {
         return exchangeMeta.attributes();
     }
-
-    @Override
-    public HttpRequest request() {
-        return this;
-    }
-
-    @Override
-    public HttpResponse response() {
-        return this;
-    }
-
-    // -- transport-specific methods, declared here so the convenience
-    // defaults on HttpContext do not clash with the abstract contract on
-    // HttpRequest/HttpResponse (a class inheriting both must state them) --
-
-    @Override
-    public abstract Optional<String> queryParam(String name);
-
-    @Override
-    public abstract Optional<String> header(String name);
-
-    @Override
-    public abstract byte[] body() throws IOException;
-
-    @Override
-    public abstract HttpResponse status(int status);
-
-    @Override
-    public abstract HttpResponse setHeader(String name, String value);
-
-    @Override
-    public abstract HttpResponse output(byte[] data) throws IOException;
 
     // -- shared request logic --
 

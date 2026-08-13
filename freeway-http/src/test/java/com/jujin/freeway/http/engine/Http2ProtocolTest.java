@@ -50,7 +50,7 @@ class Http2ProtocolTest {
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/mismatch", ctx -> {
                 ctx.setHeader("Content-Length", "5");
-                ctx.response().output(new ByteArrayInputStream(
+                ctx.output(new ByteArrayInputStream(
                     "hello world".getBytes(StandardCharsets.UTF_8)), 5);
             }))
             .route(Route.get("/ok", ctx -> ctx.send(200, "ok")))
@@ -297,7 +297,7 @@ class Http2ProtocolTest {
         var server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(1)))
             .route(Route.post("/upload", ctx -> {
-                ctx.request().body();
+                ctx.body();
                 ctx.send(200, "ok");
             }))
             .build();
@@ -435,7 +435,7 @@ class Http2ProtocolTest {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
             .route(Route.get("/", ctx -> {
-                ctx.request().body();
+                ctx.body();
                 ctx.send(200, "ok");
             }))
             .build();
@@ -496,7 +496,7 @@ class Http2ProtocolTest {
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(1)))
             .route(Route.post("/trailer", ctx -> {
-                ctx.request().body();
+                ctx.body();
                 ctx.send(200, "ok");
             }))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
@@ -696,7 +696,7 @@ class Http2ProtocolTest {
             .route(Route.get("/", ctx -> {
                 active.incrementAndGet();
                 try {
-                    ctx.request().body();
+                    ctx.body();
                 } catch (IOException ignored) {
                     // RST closes the body stream — expected.
                 } finally {
@@ -819,7 +819,7 @@ class Http2ProtocolTest {
                 Duration.ofSeconds(2), 16 * 1024 * 1024,
                 Duration.ofSeconds(2), 64))
             .route(Route.post("/", ctx ->
-                ctx.send(200, "ok:" + new String(ctx.request().body(), StandardCharsets.UTF_8))))
+                ctx.send(200, "ok:" + new String(ctx.body(), StandardCharsets.UTF_8))))
             .build();
         server.start();
         try {
