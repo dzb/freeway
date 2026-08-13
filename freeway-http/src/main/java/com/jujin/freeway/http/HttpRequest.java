@@ -92,9 +92,6 @@ public interface HttpRequest {
     /** Returns an unmodifiable map of all path parameter values. */
     Map<String, String> pathVars();
 
-    /** Sets all path variables from a route match. Returns this for chaining. */
-    HttpRequest pathVars(Map<String, String> vars);
-
     /** Returns the value of a path parameter coerced to the given type. */
     <T> Optional<T> pathVar(String name, Class<T> type);
 
@@ -115,7 +112,9 @@ public interface HttpRequest {
 
     /** Returns true if the request has a multipart/form-data content type. */
     default boolean isMultipart() {
-        return multipart().isPresent();
+        return header("Content-Type")
+            .map(ct -> ct.toLowerCase(Locale.ROOT).contains("multipart/form-data"))
+            .orElse(false);
     }
 
     /**

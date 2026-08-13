@@ -62,6 +62,11 @@ public abstract class AbstractHttpContext
         exchangeMeta.setCorrelationId(correlationId);
     }
 
+    /** Resets the exchange-scoped metadata for a keep-alive reuse. */
+    protected final void resetExchangeMeta() {
+        exchangeMeta.reset();
+    }
+
     @Override
     public Instant startTime() {
         return exchangeMeta.startTime();
@@ -115,7 +120,7 @@ public abstract class AbstractHttpContext
     }
 
     @Override
-    public HttpRequest pathVars(Map<String, String> vars) {
+    public HttpContext setPathVars(Map<String, String> vars) {
         this.pathVariables.putAll(vars);
         return this;
     }

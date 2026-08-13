@@ -270,7 +270,7 @@ public final class WebServer implements AutoCloseable {
                 .output(NOT_FOUND_BODY);
             return;
         }
-        ctx.pathVars(match.pathVariables());
+        ctx.setPathVars(match.pathVariables());
         match.handler().handle(ctx);
     }
 

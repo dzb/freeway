@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class ExchangeMetaDefault implements ExchangeMeta {
 
     private volatile String correlationId;
-    private final Instant startTime;
+    private volatile Instant startTime;
     private volatile Object principal;
     private volatile ConcurrentHashMap<String, Object> attributes;
 
@@ -31,6 +31,19 @@ public final class ExchangeMetaDefault implements ExchangeMeta {
         if (correlationId != null && !correlationId.isBlank()) {
             this.correlationId = correlationId;
         }
+    }
+
+    /**
+     * Re-initializes the per-exchange state for a keep-alive reuse: a fresh
+     * correlation id and start time, and no leftover principal or attributes.
+     * Callers that received a client-supplied id re-apply it afterwards via
+     * {@link #setCorrelationId(String)}.
+     */
+    public void reset() {
+        this.correlationId = fastCorrelationId();
+        this.startTime = Instant.now();
+        this.principal = null;
+        this.attributes = null;
     }
 
     @Override

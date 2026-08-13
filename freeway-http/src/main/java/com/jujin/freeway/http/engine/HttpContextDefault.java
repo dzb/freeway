@@ -134,6 +134,7 @@ public class HttpContextDefault extends AbstractHttpContext {
         this.requestBody = new RequestBody(
             bodyStream, contentLength, chunked, () -> maxBodySize);
         this.rawOut = rawOut;
+        resetExchangeMeta();
         setCorrelationId(correlationId);
         this.http10 = http10;
         this.keepAlive = keepAlive;

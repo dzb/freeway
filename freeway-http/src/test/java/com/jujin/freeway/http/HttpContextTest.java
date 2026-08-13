@@ -3,6 +3,7 @@ package com.jujin.freeway.http;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -14,10 +15,13 @@ import org.junit.jupiter.api.Test;
 import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HttpContextTest {
     @Test
@@ -148,5 +152,33 @@ class HttpContextTest {
             ZonedDateTime.parse(date, DateTimeFormatter.RFC_1123_DATE_TIME);
         assertEquals(ZoneOffset.UTC, parsed.getOffset());
         assertEquals(first, parsed.toInstant().toEpochMilli());
+    }
+
+    @Test
+    void isMultipartChecksContentTypeWithoutReadingBody() {
+        StubHttpContext multipart = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "multipart/form-data; boundary=x");
+        StubHttpContext json = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "application/json");
+
+        assertTrue(multipart.isMultipart());
+        assertFalse(json.isMultipart());
+    }
+
+    @Test
+    void exchangeMetaResetClearsPerRequestState() {
+        ExchangeMetaDefault meta = new ExchangeMetaDefault("client-id");
+        meta.setPrincipal("user");
+        meta.setAttribute("k", "v");
+
+        Instant before = Instant.now();
+        meta.reset();
+        Instant after = Instant.now();
+
+        assertNull(meta.principal());
+        assertTrue(meta.attributes().isEmpty());
+        assertNotEquals("client-id", meta.correlationId());
+        assertFalse(meta.startTime().isBefore(before));
+        assertFalse(meta.startTime().isAfter(after));
     }
 }
