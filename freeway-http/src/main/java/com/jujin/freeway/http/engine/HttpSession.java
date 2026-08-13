@@ -32,7 +32,6 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpRequestHandler;
 import com.jujin.freeway.http.HttpServerConfig;
-import com.jujin.freeway.http.engine.http11.Http11Connection;
 import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
 import com.jujin.freeway.http.engine.http2.Http2ResponseWriter;
@@ -120,7 +119,7 @@ final class HttpSession implements Runnable {
 
     @Override
     public void run() {
-        Http11Connection connection = null;
+        HttpConnection connection = null;
         try {
             Socket socket = rawSocket;
             boolean isH2 = false;
@@ -158,7 +157,7 @@ final class HttpSession implements Runnable {
                 socket = sslSocket;
             }
 
-            connection = new Http11Connection(
+            connection = new HttpConnection(
                 socket, config.socketBufferSize(),
                 timeoutMillis(config.writeTimeout()));
             registry.register(connection);
@@ -176,7 +175,7 @@ final class HttpSession implements Runnable {
             var ctx = new HttpContextDefault(jsonCodec, coercer);
             ctx.setMaxBodySize(config.maxBodySize());
             ctx.setCompression(config.compression());
-            Http11Connection conn = connection;
+            HttpConnection conn = connection;
             if (engine.sslContext() == null
                     && conn.socket().getChannel() != null) {
                 ctx.setFileSender((channel, offset, length) -> {
@@ -322,7 +321,7 @@ final class HttpSession implements Runnable {
                 connection.close();
             } else if (!rawSocket.isClosed()) {
                 // SSL handshake or connection setup failed before the
-                // Http11Connection was created — the raw socket would
+                // HttpConnection was created — the raw socket would
                 // otherwise leak an fd per failed handshake.
                 try {
                     rawSocket.close();
@@ -354,7 +353,7 @@ final class HttpSession implements Runnable {
     // --- HTTP/2 upgrade (h2c: ssl=false, h2: ssl=true) ---
 
     private void handleHttp2Upgrade(
-        Http11Connection connection,
+        HttpConnection connection,
         boolean ssl,
         HttpParser parser,
         SettingsFrame upgradeSettings,
@@ -533,7 +532,7 @@ final class HttpSession implements Runnable {
         }
     }
 
-    private void handleH2cUpgrade(Http11Connection connection,
+    private void handleH2cUpgrade(HttpConnection connection,
                                   HttpParser.ParsedRequest req,
                                   HttpParser parser,
                                   SettingsFrame settings) {
@@ -659,7 +658,7 @@ final class HttpSession implements Runnable {
 
     // --- WebSocket upgrade ---
 
-    private void handleWebSocketUpgrade(Http11Connection connection,
+    private void handleWebSocketUpgrade(HttpConnection connection,
                                          HttpParser parser,
                                          HttpParser.ParsedRequest req) {
         try {

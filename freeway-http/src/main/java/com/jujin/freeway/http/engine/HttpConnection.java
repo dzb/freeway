@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.engine.http11;
+package com.jujin.freeway.http.engine;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,19 +16,17 @@ import javax.net.ssl.SSLSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.engine.SessionBufferedInputStream;
-import com.jujin.freeway.http.engine.SessionBufferedOutputStream;
-
 /**
- * Wraps a connected {@code Socket} with buffered I/O streams.
- * HTTP/1.1 sessions own the streams from a single virtual thread; HTTP/2
- * serializes socket writes through its leader drain; a watchdog virtual
- * thread enforces the write timeout. The buffered streams themselves are
- * single-writer and need no synchronization.
+ * Wraps a connected {@code Socket} with buffered I/O streams, shared by the
+ * HTTP/1.1, HTTP/2, and WebSocket protocol handlers. HTTP/1.1 sessions own
+ * the streams from a single virtual thread; HTTP/2 serializes socket writes
+ * through its leader drain; a watchdog virtual thread enforces the write
+ * timeout. The buffered streams themselves are single-writer and need no
+ * synchronization.
  */
-public final class Http11Connection {
+final class HttpConnection {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Http11Connection.class);
+    private static final Logger LOG = LoggerFactory.getLogger(HttpConnection.class);
 
     private final Socket socket;
     private final InputStream bufferedIn;
@@ -41,15 +39,15 @@ public final class Http11Connection {
     /** Best-effort hook run before a shutdown force-close (H2 GOAWAY). */
     private volatile Runnable preCloseHook;
 
-    public Http11Connection(Socket socket) throws IOException {
+    HttpConnection(Socket socket) throws IOException {
         this(socket, 1024, 0);
     }
 
-    public Http11Connection(Socket socket, int bufferSize) throws IOException {
+    HttpConnection(Socket socket, int bufferSize) throws IOException {
         this(socket, bufferSize, 0);
     }
 
-    public Http11Connection(Socket socket, int bufferSize, long writeTimeoutMillis)
+    HttpConnection(Socket socket, int bufferSize, long writeTimeoutMillis)
             throws IOException {
         this.socket = socket;
         this.writeTimeoutMillis = writeTimeoutMillis;
@@ -65,13 +63,13 @@ public final class Http11Connection {
     }
 
     /** Returns the TLS session for this connection, or null for plain HTTP. */
-    public SSLSession getSSLSession() {
+    SSLSession getSSLSession() {
         return socket instanceof SSLSocket ssl ? ssl.getSession() : null;
     }
 
-    public Socket socket() { return socket; }
-    public InputStream inputStream() { return bufferedIn; }
-    public OutputStream outputStream() { return bufferedOut; }
+    Socket socket() { return socket; }
+    InputStream inputStream() { return bufferedIn; }
+    OutputStream outputStream() { return bufferedOut; }
 
     InetSocketAddress remoteAddress() {
         return (InetSocketAddress) socket.getRemoteSocketAddress();
@@ -88,7 +86,7 @@ public final class Http11Connection {
      * tracked by the write watchdog so a peer that stops reading still gets
      * the connection closed on write timeout.
      */
-    public void transferFile(FileChannel channel, long offset, long count)
+    void transferFile(FileChannel channel, long offset, long count)
             throws IOException {
         SocketChannel socketChannel = socket.getChannel();
         if (socketChannel == null) {
@@ -110,7 +108,7 @@ public final class Http11Connection {
         }
     }
 
-    public void close() {
+    void close() {
         if (closed) return;
         closed = true;
         if (watchdog != null) watchdog.interrupt();
@@ -121,7 +119,7 @@ public final class Http11Connection {
     }
 
     /** Immediate shutdown path; never blocks trying to flush a dead peer. */
-    public void forceClose() {
+    void forceClose() {
         closed = true;
         if (watchdog != null) watchdog.interrupt();
         try { socket.close(); } catch (IOException ignored) {}
@@ -134,12 +132,12 @@ public final class Http11Connection {
      * server handle force-closes connections during shutdown. Used by
      * HTTP/2 sessions to send GOAWAY so the peer stops creating streams.
      */
-    public void setPreCloseHook(Runnable hook) {
+    void setPreCloseHook(Runnable hook) {
         this.preCloseHook = hook;
     }
 
     /** Runs the pre-close hook, if any, swallowing failures (best-effort). */
-    public void preClose() {
+    void preClose() {
         Runnable hook = preCloseHook;
         if (hook != null) {
             try {

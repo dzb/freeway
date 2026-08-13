@@ -5,8 +5,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.http.engine.http11.Http11Connection;
-
 /**
  * Tracks live connections so the server handle can drain or force-close
  * them during shutdown. Each connection is registered by its session on
@@ -14,7 +12,7 @@ import com.jujin.freeway.http.engine.http11.Http11Connection;
  */
 final class ConnectionRegistry {
 
-    private final Set<Http11Connection> active = ConcurrentHashMap.newKeySet();
+    private final Set<HttpConnection> active = ConcurrentHashMap.newKeySet();
     /** Requests currently executing on any connection (gauge source). */
     final AtomicInteger requestsInFlight = new AtomicInteger();
     private volatile boolean stopping;
@@ -24,11 +22,11 @@ final class ConnectionRegistry {
         metrics.gauge("freeway.http.requests.active", requestsInFlight::get);
     }
 
-    void register(Http11Connection connection) {
+    void register(HttpConnection connection) {
         active.add(connection);
     }
 
-    void unregister(Http11Connection connection) {
+    void unregister(HttpConnection connection) {
         active.remove(connection);
     }
 
@@ -44,7 +42,7 @@ final class ConnectionRegistry {
     /** Runs each connection's pre-close hook (e.g. HTTP/2 GOAWAY) so peers
      *  learn about the shutdown before the connection is force-closed. */
     void preCloseAll() {
-        for (Http11Connection connection : active) {
+        for (HttpConnection connection : active) {
             connection.preClose();
         }
     }
@@ -55,7 +53,7 @@ final class ConnectionRegistry {
 
     /** Force-closes every remaining connection (after the grace window). */
     void closeAll() {
-        for (Http11Connection connection : active) {
+        for (HttpConnection connection : active) {
             try {
                 connection.forceClose();
             } catch (Exception ignored) {
