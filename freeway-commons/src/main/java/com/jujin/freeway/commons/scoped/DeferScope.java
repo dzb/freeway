@@ -20,11 +20,20 @@ public final class DeferScope {
     private static final Logger LOG = LoggerFactory.getLogger(DeferScope.class);
 
     private final List<DeferAction> actions = new ArrayList<>();
+    private final Set<String> ids = new LinkedHashSet<>();
     private boolean rolledBack;
 
     DeferScope() {}
 
     void add(DeferAction action) {
+        // Fail fast on duplicate ids: detect the constraint violation at
+        // registration time instead of only at drain (commit) time, when a
+        // late exception used to drop every deferred action.
+        if (action.id() != null && !ids.add(action.id())) {
+            throw new IllegalStateException(
+                "Duplicate deferred action id '" + action.id() + "'"
+            );
+        }
         actions.add(action);
     }
 
@@ -40,7 +49,27 @@ public final class DeferScope {
     }
 
     void drain() {
-        List<Runnable> ordered = sort(actions);
+        IllegalStateException orderingFailure = null;
+        List<Runnable> ordered;
+        try {
+            ordered = sort(actions);
+        } catch (IllegalStateException ex) {
+            // Ordering is impossible (circular before/after constraint).
+            // Never drop the deferred actions — commit, cache cleanup and
+            // lock release must still run even when their relative order
+            // cannot be satisfied. Fall back to registration order, log the
+            // failure loudly, and rethrow below so callers still see the
+            // constraint bug instead of a silent mis-ordering.
+            LOG.error(
+                "Deferred action ordering failed; running all actions in registration order",
+                ex
+            );
+            orderingFailure = ex;
+            ordered = new ArrayList<>(actions.size());
+            for (DeferAction action : actions) {
+                ordered.add(action.action());
+            }
+        }
         for (Runnable action : ordered) {
             try {
                 action.run();
@@ -50,10 +79,14 @@ public final class DeferScope {
                 LOG.warn("Deferred action failed", ex);
             }
         }
+        if (orderingFailure != null) {
+            throw orderingFailure;
+        }
     }
 
     void discard() {
         actions.clear();
+        ids.clear();
     }
 
     /**
