@@ -17,8 +17,9 @@ import java.util.Locale;
  *
  * <h3>Quick start</h3>
  * <pre>{@code
- * // Generate DDL only, no execution
- * String ddl = Schema.define(User.class);
+ * // Generate DDL only, no execution (the dialect is an explicit choice —
+ * // no Database is bound during DDL generation)
+ * String ddl = Schema.define(new PostgresDialect(), User.class);
  *
  * // AutoMigrate: create tables + add missing columns (never drops or alters)
  * Schema.ensure(db, User.class, Post.class);

@@ -749,12 +749,6 @@ public final class Sql {
             updateTable, setClauses, setArgs);
     }
 
-    /**
-     * Parses SQL fragments containing {@code ?}, {@code :name}, and {@code $name} placeholders.
-     * Replaces all with {@code ?} and extracts arguments from the values array in order.
-     *
-     * @return [normalizedSql(String), extraArgs(Object[])]
-     */
     private static String renderConditions(List<Condition> conditions) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < conditions.size(); i++) {

@@ -1,7 +1,6 @@
 package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
-import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -18,7 +17,7 @@ import java.util.Set;
  * returns {@code true}.
  */
 public final class SqliteDialect implements Dialect {
-    private static final Set<String> RESERVED = buildReserved(
+    private static final Set<String> RESERVED = Dialect.buildReserved(
         "abort", "attach", "detach", "reindex", "release", "savepoint",
         "vacuum", "glob", "match", "regexp", "escape", "collate", "rowid"
     );
@@ -113,11 +112,5 @@ public final class SqliteDialect implements Dialect {
     @Override
     public Set<String> reservedWords() {
         return RESERVED;
-    }
-
-    private static Set<String> buildReserved(String... sqliteSpecific) {
-        Set<String> words = new HashSet<>(Dialect.COMMON_RESERVED);
-        words.addAll(Set.of(sqliteSpecific));
-        return Set.copyOf(words);
     }
 }

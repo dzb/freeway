@@ -461,12 +461,7 @@ final class QueryImpl implements Query {
         }
         if (value instanceof Object[] arr) {
             if (arr.length == 0) {
-                throw new SqlException(
-                    "Cannot expand empty collection or array for SQL: " +
-                        originalSql +
-                        ". Use a conditional branch for empty collections " +
-                        "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
-                );
+                throw emptyExpansionError();
             }
             appendExpanded(sb, flat, Arrays.asList(arr));
             return true;
@@ -481,12 +476,7 @@ final class QueryImpl implements Query {
             // byte[]/char[] stay scalar for BLOB/TEXT parameters.
             int length = Array.getLength(value);
             if (length == 0) {
-                throw new SqlException(
-                    "Cannot expand empty collection or array for SQL: " +
-                        originalSql +
-                        ". Use a conditional branch for empty collections " +
-                        "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
-                );
+                throw emptyExpansionError();
             }
             boolean first = true;
             for (int i = 0; i < length; i++) {
@@ -502,6 +492,20 @@ final class QueryImpl implements Query {
         sb.append('?');
         flat.add(value);
         return false;
+    }
+
+    /**
+     * The error for an empty array parameter that cannot be expanded into
+     * {@code ?} placeholders (shared by the {@code Object[]} and primitive
+     * array paths).
+     */
+    private SqlException emptyExpansionError() {
+        return new SqlException(
+            "Cannot expand empty collection or array for SQL: " +
+                originalSql +
+                ". Use a conditional branch for empty collections " +
+                "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
+        );
     }
 
     private static void appendExpanded(

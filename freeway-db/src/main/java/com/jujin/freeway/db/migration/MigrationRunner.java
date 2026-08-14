@@ -269,12 +269,22 @@ public final class MigrationRunner {
         return out.toByteArray();
     }
 
-    public static String versionFromPath(String path) {
+    /**
+     * The migration file's basename with backslashes normalized to forward
+     * slashes and the {@code .sql} suffix stripped (e.g.
+     * {@code db/migration/V1__a.sql} → {@code V1__a}).
+     */
+    private static String baseName(String path) {
         String normalized = path.replace('\\', '/');
         String name = normalized.substring(normalized.lastIndexOf('/') + 1);
         if (name.endsWith(".sql")) {
             name = name.substring(0, name.length() - 4);
         }
+        return name;
+    }
+
+    public static String versionFromPath(String path) {
+        String name = baseName(path);
         int sep = name.indexOf("__");
         return sep > 0 ? name.substring(0, sep) : name;
     }
@@ -675,11 +685,7 @@ public final class MigrationRunner {
     }
 
     private static String descriptionFromPath(String path) {
-        String normalized = path.replace('\\', '/');
-        String name = normalized.substring(normalized.lastIndexOf('/') + 1);
-        if (name.endsWith(".sql")) {
-            name = name.substring(0, name.length() - 4);
-        }
+        String name = baseName(path);
         int sep = name.indexOf("__");
         return sep > 0 ? name.substring(sep + 2) : "";
     }

@@ -153,32 +153,19 @@ public final class SqlTypeMapping {
         Dialect dialect,
         boolean generated
     ) {
-        // Explicit override
+        String baseType;
         if (col != null && !col.type().isBlank()) {
-            String explicit = col.type().trim().toUpperCase(Locale.ROOT);
-            return normalizeGeneratedSqlType(explicit, javaType, dialect, generated);
+            // Explicit override — not passed through the string/decimal
+            // resolution below.
+            baseType = col.type().trim().toUpperCase(Locale.ROOT);
+        } else {
+            baseType = defaultSqlType(javaType, dialect);
+            if (baseType.startsWith("VARCHAR") || baseType.startsWith("CHAR")) {
+                baseType = resolveStringType(javaType, property, col, baseType);
+            } else if (baseType.startsWith("DECIMAL") || baseType.startsWith("NUMERIC")) {
+                baseType = resolveDecimalType(col);
+            }
         }
-
-        String baseType = defaultSqlType(javaType, dialect);
-
-        if (baseType.startsWith("VARCHAR") || baseType.startsWith("CHAR")) {
-            return normalizeGeneratedSqlType(
-                resolveStringType(javaType, property, col, baseType),
-                javaType,
-                dialect,
-                generated
-            );
-        }
-
-        if (baseType.startsWith("DECIMAL") || baseType.startsWith("NUMERIC")) {
-            return normalizeGeneratedSqlType(
-                resolveDecimalType(col),
-                javaType,
-                dialect,
-                generated
-            );
-        }
-
         return normalizeGeneratedSqlType(baseType, javaType, dialect, generated);
     }
 

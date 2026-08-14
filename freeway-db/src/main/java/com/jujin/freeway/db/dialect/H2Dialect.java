@@ -1,7 +1,6 @@
 package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
@@ -17,7 +16,7 @@ import java.util.Set;
  */
 public final class H2Dialect extends PostgresDialect {
 
-    private static final Set<String> RESERVED = buildReserved(
+    private static final Set<String> RESERVED = Dialect.buildReserved(
         "dual", "rownum", "sysdate", "systimestamp", "array", "identity", "if",
         "cached", "memory", "generated", "always", "checkpoint", "shutdown",
         "analyze", "backup", "call", "compress", "script", "merge", "explain"
@@ -49,11 +48,5 @@ public final class H2Dialect extends PostgresDialect {
     @Override
     public Set<String> reservedWords() {
         return RESERVED;
-    }
-
-    private static Set<String> buildReserved(String... h2Specific) {
-        Set<String> words = new HashSet<>(Dialect.COMMON_RESERVED);
-        words.addAll(Set.of(h2Specific));
-        return Set.copyOf(words);
     }
 }

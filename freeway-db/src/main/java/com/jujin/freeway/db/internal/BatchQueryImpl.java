@@ -137,15 +137,6 @@ final class BatchQueryImpl implements BatchQuery {
                     raw.commit();
                 }
                 return results;
-            } catch (SQLException e) {
-                if (autoCommitChanged) {
-                    rollbackQuietly(conn);
-                }
-                LOG.warn("Batch execution failed: {}", sql, e);
-                throw new SqlException(
-                    "Batch execution failed: " + e.getMessage(),
-                    e
-                );
             }
         } catch (SQLException e) {
             if (autoCommitChanged) {

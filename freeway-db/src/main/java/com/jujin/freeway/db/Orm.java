@@ -117,9 +117,7 @@ public final class Orm {
             "INSERT INTO " + table + " (" + String.join(", ", columns.names) + ") VALUES (" + placeholders(columns.names.size()) + ")",
             values);
 
-        if (result.hasKey() && columns.generated != null && !plan.record()) {
-            columns.generated.write(entity, coercer.coerce(result.key(), Types.rawClass(columns.generated.type())));
-        }
+        writeBackGeneratedKey(result, columns, entity, plan);
         return result;
     }
 
@@ -171,10 +169,7 @@ public final class Orm {
 
         ExecuteResult result = db.execute(sql, insertValues);
 
-        if (result.hasKey() && columns.generated != null && !plan.record()) {
-            Object coercedKey = coercer.coerce(result.key(), Types.rawClass(columns.generated.type()));
-            columns.generated.write(entity, coercedKey);
-        }
+        writeBackGeneratedKey(result, columns, entity, plan);
         return result;
     }
 
@@ -204,13 +199,9 @@ public final class Orm {
         }
 
         List<Object> values = new ArrayList<>(setClauses.values());
-        Object[] ids = new Object[idProps.size()];
-        for (int i = 0; i < idProps.size(); i++) {
-            ids[i] = idProps.get(i).read(entity);
-            if (ids[i] == null) {
-                throw new SqlException("No @Id value for '" + idProps.get(i).name() + "' on " + t.getName());
-            }
-            values.add(ids[i]);
+        Object[] ids = requireIdValues(idProps, entity, t);
+        for (Object id : ids) {
+            values.add(id);
         }
 
         List<String> assignments = new ArrayList<>();
@@ -236,13 +227,7 @@ public final class Orm {
         String table = dialect.quoteName(SqlTypeMapping.tableName(t));
         List<BeanProperty> idProps = idProperties(plan);
 
-        Object[] ids = new Object[idProps.size()];
-        for (int i = 0; i < idProps.size(); i++) {
-            ids[i] = idProps.get(i).read(entity);
-            if (ids[i] == null) {
-                throw new SqlException("No @Id value for '" + idProps.get(i).name() + "' on " + t.getName());
-            }
-        }
+        Object[] ids = requireIdValues(idProps, entity, t);
         return db.execute("DELETE FROM " + table + " WHERE " + idWhereClause(plan), ids);
     }
 
@@ -265,15 +250,20 @@ public final class Orm {
 
     private String idWhereClause(BeanPlan plan) {
         List<String> clauses = new ArrayList<>();
-        for (BeanProperty prop : plan.properties()) {
-            if (isId(prop)) {
-                clauses.add(dialect.quoteName(rawColumnName(prop)) + " = ?");
-            }
-        }
-        if (clauses.isEmpty()) {
-            throw new SqlException("No @Id annotated property found on " + plan.type().getName());
+        for (BeanProperty prop : idProperties(plan)) {
+            clauses.add(dialect.quoteName(rawColumnName(prop)) + " = ?");
         }
         return String.join(" AND ", clauses);
+    }
+
+    /**
+     * Writes the generated key back onto the entity after an INSERT (the
+     * caller's column info must carry the {@code @Generated} property).
+     */
+    private void writeBackGeneratedKey(ExecuteResult result, ColumnInfo columns, Object entity, BeanPlan plan) {
+        if (result.hasKey() && columns.generated != null && !plan.record()) {
+            columns.generated.write(entity, coercer.coerce(result.key(), Types.rawClass(columns.generated.type())));
+        }
     }
 
     private static List<BeanProperty> idProperties(BeanPlan plan) {
@@ -285,6 +275,21 @@ public final class Orm {
             throw new SqlException("No @Id annotated property found on " + plan.type().getName());
         }
         return result;
+    }
+
+    /**
+     * Reads the id property values off the entity, failing with the standard
+     * message when any of them is unset.
+     */
+    private static Object[] requireIdValues(List<BeanProperty> idProps, Object entity, Class<?> type) {
+        Object[] ids = new Object[idProps.size()];
+        for (int i = 0; i < idProps.size(); i++) {
+            ids[i] = idProps.get(i).read(entity);
+            if (ids[i] == null) {
+                throw new SqlException("No @Id value for '" + idProps.get(i).name() + "' on " + type.getName());
+            }
+        }
+        return ids;
     }
 
     @SuppressWarnings("unchecked")

@@ -85,6 +85,17 @@ public interface Dialect {
     }
 
     /**
+     * Builds the reserved-word set for a dialect: the {@link #COMMON_RESERVED}
+     * words plus the dialect-specific ones. Shared by the built-in dialects;
+     * custom dialects may use it too.
+     */
+    static Set<String> buildReserved(String... specific) {
+        Set<String> words = new HashSet<>(COMMON_RESERVED);
+        words.addAll(Set.of(specific));
+        return Set.copyOf(words);
+    }
+
+    /**
      * Returns true if the given identifier needs quoting.
      */
     default boolean needsQuoting(String name) {
@@ -105,9 +116,7 @@ public interface Dialect {
                     return true;
                 }
             }
-        }
-        for (int i = 0; i < name.length(); i++) {
-            if (Character.isUpperCase(name.charAt(i))) {
+            if (Character.isUpperCase(c)) {
                 return true;
             }
         }

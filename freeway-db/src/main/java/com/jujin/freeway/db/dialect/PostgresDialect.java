@@ -1,7 +1,6 @@
 package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.Locale;
 
@@ -14,7 +13,7 @@ import java.util.Locale;
  */
 public class PostgresDialect implements Dialect {
 
-    private static final Set<String> RESERVED = buildReserved(
+    private static final Set<String> RESERVED = Dialect.buildReserved(
         "window", "lateral", "both", "leading", "trailing", "placing", "symmetric",
         "variadic", "current_user", "session_user", "localtime", "localtimestamp"
     );
@@ -98,11 +97,5 @@ public class PostgresDialect implements Dialect {
     @Override
     public Set<String> reservedWords() {
         return RESERVED;
-    }
-
-    private static Set<String> buildReserved(String... postgresSpecific) {
-        Set<String> words = new HashSet<>(Dialect.COMMON_RESERVED);
-        words.addAll(Set.of(postgresSpecific));
-        return Set.copyOf(words);
     }
 }

@@ -2,7 +2,6 @@ package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -18,7 +17,7 @@ import java.util.Set;
  * MySQL 9.0+ users should configure {@link PostgresDialect} or a custom dialect.
  */
 public final class MySqlDialect implements Dialect {
-    private static final Set<String> RESERVED = buildReserved(
+    private static final Set<String> RESERVED = Dialect.buildReserved(
         "status", "show", "describe", "explain", "use", "repeat", "loop", "leave",
         "iterate", "return", "while", "declare", "handler", "condition", "signal",
         "resignal", "get", "diagnostics", "sqlstate", "call", "do", "if", "for",
@@ -135,11 +134,5 @@ public final class MySqlDialect implements Dialect {
     @Override
     public Set<String> reservedWords() {
         return RESERVED;
-    }
-
-    private static Set<String> buildReserved(String... mysqlSpecific) {
-        Set<String> words = new HashSet<>(Dialect.COMMON_RESERVED);
-        words.addAll(Set.of(mysqlSpecific));
-        return Set.copyOf(words);
     }
 }
