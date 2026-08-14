@@ -315,7 +315,17 @@ public final class Sql {
         return combineCompound("UNION ALL", other);
     }
 
-    /** Return columns for INSERT / UPDATE / DELETE. */
+    /**
+     * Return columns for INSERT / UPDATE / DELETE.
+     *
+     * <p>RETURNING produces rows, so consume the statement via
+     * {@link Database#query(Sql)} (or {@link Database#query(String, Object...)}
+     * with {@link #sql()} / {@link #args()}) to read the returned columns;
+     * {@link Database#execute(Sql)} discards RETURNING output and only reports
+     * affected rows. Dialects without RETURNING (MySQL/MariaDB) reject the
+     * statement through the {@code Database} convenience methods, which
+     * validate against the target dialect.
+     */
     public Sql returning(String columns) {
         Objects.requireNonNull(columns, "columns");
         if (!isDml()) {

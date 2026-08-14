@@ -46,6 +46,13 @@ public final class MySqlDialect implements Dialect {
     }
 
     @Override
+    public boolean backslashEscapesStrings() {
+        // MySQL/MariaDB: '\' escapes the next character in ordinary string
+        // literals ('it\'s' = it's). The standard '' doubling also works.
+        return true;
+    }
+
+    @Override
     public boolean supportsIndexIfNotExists() {
         return false;
     }
@@ -57,6 +64,13 @@ public final class MySqlDialect implements Dialect {
 
     @Override
     public boolean supportsOnConflict() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsTransactionalDdl() {
+        // MySQL/MariaDB implicitly commit on every DDL statement; a migration
+        // containing DDL cannot be applied atomically there.
         return false;
     }
 

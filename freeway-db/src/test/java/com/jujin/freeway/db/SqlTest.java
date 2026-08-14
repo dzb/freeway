@@ -641,6 +641,33 @@ class SqlTest {
         }
     }
 
+    @Test
+    void integrationExecuteAndQuerySqlBuilder() {
+        // The Sql convenience methods must validate against the dialect and
+        // still execute normally on a returning-capable database.
+        var db = builder("sql_integ_sql_builder").build();
+        try (db) {
+            db.execute("create table t_user (id bigint primary key, name varchar(16))");
+
+            ExecuteResult r = db.execute(Sql.insert("t_user").set("id", 1L).set("name", "alpha"));
+            assertEquals(1, r.rows());
+
+            String name = db.query(Sql.select("name").from("t_user").where("id = ?", 1L))
+                .one(String.class).orElseThrow();
+            assertEquals("alpha", name);
+        }
+    }
+
+    @Test
+    void backslashEscapedQuoteInFragmentKeepsNamedParam() {
+        // MySQL-style \' inside a string literal must not close the string,
+        // or :p would be swallowed and the fragment would fail at build time.
+        Sql q = Sql.select("*").from("t")
+            .where("label = 'it\\'s' AND x = :p", 5);
+        assertEquals("SELECT * FROM t WHERE label = 'it\\'s' AND x = ?", q.sql());
+        assertArrayEquals(new Object[]{5}, q.args());
+    }
+
     // ====================== 辅助 ======================
 
     private static DatabaseBuilder builder(String name) {

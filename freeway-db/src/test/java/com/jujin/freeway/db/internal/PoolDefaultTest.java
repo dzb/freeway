@@ -491,6 +491,115 @@ class PoolDefaultTest {
         }
     }
 
+    @Test
+    void borrowActivationRaceAfterCloseDrainDoesNotStrandConnection() throws Exception {
+        // The S3 race: a borrow passes its closed re-check, then close()'s
+        // drain completes before active.add — pre-fix this stranded the
+        // freshly created connection in the closed pool's active set forever
+        // (surfacing only as "N connection(s) still tracked"). The test hook
+        // parks the borrower precisely in that window so the drain
+        // deterministically passes first; the locked activation must observe
+        // closed and destroy the connection instead of adding it to active.
+        CountDownLatch inWindow = new CountDownLatch(1);
+        CountDownLatch releaseBorrow = new CountDownLatch(1);
+        AtomicInteger closes = new AtomicInteger();
+        Driver driver = new Driver() {
+            @Override
+            public Connection connect(String url, Properties info) {
+                return connectionProxy(closes);
+            }
+
+            @Override
+            public boolean acceptsURL(String url) {
+                return url != null && url.startsWith("jdbc:freeway-activate:");
+            }
+
+            @Override
+            public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
+                return new DriverPropertyInfo[0];
+            }
+
+            @Override
+            public int getMajorVersion() {
+                return 1;
+            }
+
+            @Override
+            public int getMinorVersion() {
+                return 0;
+            }
+
+            @Override
+            public boolean jdbcCompliant() {
+                return false;
+            }
+
+            @Override
+            public Logger getParentLogger() {
+                return Logger.getLogger("test");
+            }
+        };
+
+        DriverManager.registerDriver(driver);
+        try {
+            var config = new PoolConfig(
+                "jdbc:freeway-activate:test", "sa", "",
+                2, 0,
+                Duration.ofMillis(150), // connectionTimeout — close() waits this long for total to drop
+                Duration.ofMinutes(30),
+                Duration.ofMinutes(5),
+                Duration.ofSeconds(30),
+                null,
+                Duration.ofSeconds(3), PoolConfig.DEFAULT_QUERY_TIMEOUT
+            );
+            PoolDefault pool = new PoolDefault(config);
+            try {
+                AtomicReference<Throwable> borrowError = new AtomicReference<>();
+                pool.beforeActivateHook = () -> {
+                    inWindow.countDown();
+                    try {
+                        releaseBorrow.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                };
+                Thread borrower = Thread.ofVirtual().start(() -> {
+                    try {
+                        pool.borrow();
+                    } catch (Throwable t) {
+                        borrowError.set(t);
+                    }
+                });
+
+                // The borrower has created the connection, passed its closed
+                // re-check, and is parked right before active.add.
+                assertTrue(inWindow.await(5, TimeUnit.SECONDS));
+
+                pool.close(); // full drain completes while active is still empty
+
+                releaseBorrow.countDown();
+                borrower.join(10_000);
+
+                Throwable t = borrowError.get();
+                assertNotNull(t,
+                    "borrow must fail, not return a connection from a closed pool");
+                assertTrue(t.getMessage().contains("closed"),
+                    "expected 'Database is closed', got: " + t.getMessage());
+                assertEquals(1, closes.get(),
+                    "the in-flight connection must be destroyed, not stranded");
+                assertEquals(0, pool.stats().total(),
+                    "no connection may remain tracked after close + raced borrow");
+                assertEquals(0, pool.stats().active(),
+                    "the closed pool's active set must be empty");
+            } finally {
+                pool.beforeActivateHook = null;
+                pool.close();
+            }
+        } finally {
+            DriverManager.deregisterDriver(driver);
+        }
+    }
+
     private static Connection connectionProxyThrowingOnValid(AtomicInteger closes) {
         InvocationHandler handler = (proxy, method, args) -> {
             String name = method.getName();

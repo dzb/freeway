@@ -48,6 +48,15 @@ public final class PoolDefault implements Pool {
     private volatile boolean closed;
     private Thread cleanThread;
 
+    /**
+     * Test-only hook, invoked immediately before a borrowed connection is
+     * registered in {@link #active} — i.e. between the caller's
+     * {@code closed} re-check and the locked activation. Lets tests park a
+     * borrower exactly in the close-vs-borrow race window so close()'s drain
+     * deterministically passes first. {@code null} in production.
+     */
+    volatile Runnable beforeActivateHook;
+
     public PoolDefault(PoolConfig config) {
         this.config = config;
         this.semaphore = new Semaphore(config.maxSize(), true);
@@ -104,17 +113,8 @@ public final class PoolDefault implements Pool {
                     (conn.isFresh(FRESH_IDLE_THRESHOLD) && !isClosed(conn)) ||
                     isValid(conn)
                 ) {
-                    if (closed) {
-                        // Pool shut down while we were validating the idle
-                        // connection — do not hand out a connection from a
-                        // closed pool.
-                        destroy(conn);
-                        throw new SqlException("Database is closed");
-                    }
+                    handOut(conn, waitStart);
                     success = true;
-                    conn.markBorrowed();
-                    active.add(conn);
-                    recordBorrow(waitStart);
                     return conn;
                 }
                 // Replace the stale connection BEFORE destroying it, so the
@@ -145,16 +145,47 @@ public final class PoolDefault implements Pool {
                     throw new SqlException("Database is closed");
                 }
             }
+            handOut(conn, waitStart);
             success = true;
-            conn.markBorrowed();
-            active.add(conn);
-            recordBorrow(waitStart);
             return conn;
         } finally {
             if (!success) {
                 semaphore.release();
             }
         }
+    }
+
+    /**
+     * Marks {@code conn} borrowed and registers it in {@link #active} under
+     * {@link #lifecycleLock}, re-checking {@link #closed} inside the lock.
+     *
+     * <p>The locked re-check closes a race: without it, close()'s final drain
+     * could pass between the caller's {@code closed} re-check and
+     * {@code active.add}, leaving a freshly created connection stranded in
+     * the closed pool's active set where it is never closed (surfacing only
+     * as "N connection(s) still tracked"). When the pool has closed, the
+     * connection is destroyed instead of being handed out, and the caller's
+     * {@code finally} releases the acquired permit — no deadlock: this is the
+     * same lifecycleLock ordering already used by release() and close().
+     *
+     * @throws SqlException if the pool closed while the connection was being
+     *         prepared — the connection is destroyed and the caller must not
+     *         use it.
+     */
+    private void handOut(PooledConnectionDefault conn, long waitStart) {
+        conn.markBorrowed();
+        Runnable hook = beforeActivateHook;
+        if (hook != null) {
+            hook.run();
+        }
+        synchronized (lifecycleLock) {
+            if (closed) {
+                destroy(conn);
+                throw new SqlException("Database is closed");
+            }
+            active.add(conn);
+        }
+        recordBorrow(waitStart);
     }
 
     @Override

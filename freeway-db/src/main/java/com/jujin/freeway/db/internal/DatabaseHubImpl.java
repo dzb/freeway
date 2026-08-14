@@ -15,6 +15,15 @@ public final class DatabaseHubImpl implements DatabaseHub {
     private static final Logger LOG = LoggerFactory.getLogger(
         DatabaseHubImpl.class
     );
+
+    /**
+     * Multi-database work is <b>not</b> XA / two-phase committed: each
+     * {@link Database} owns its own connections and transactions, so a
+     * transaction opened on one database covers only that database. Never
+     * mix writes across multiple databases inside a single-database
+     * transaction — work on the other databases commits independently and is
+     * not rolled back with the transaction.
+     */
     private final Map<String, Database> databases;
 
     /**

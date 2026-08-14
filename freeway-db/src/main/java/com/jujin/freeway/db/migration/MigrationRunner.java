@@ -7,6 +7,7 @@ import com.jujin.freeway.db.Database;
 import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.dialect.Dialect;
 import com.jujin.freeway.db.util.SqlTextParser;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
@@ -144,7 +145,7 @@ public final class MigrationRunner {
                 continue;
             }
             byte[] raw = readResourceBytes(migration);
-            String checksum = Digests.sha256Hex(raw);
+            String checksum = checksum(raw);
             applyMigration(migration, checksum, ++installedRank);
             ran++;
             LOG.info("Applied migration: {}", migration);
@@ -190,6 +191,16 @@ public final class MigrationRunner {
      * This protects against silent drift where a SQL file changes
      * after being applied, which could break assumptions made by
      * later migrations.
+     *
+     * <p>Validation is dual-track for backward compatibility: the stored
+     * checksum was recorded from the migration file's raw bytes, so the raw
+     * bytes are compared first. If that mismatches, the file is compared a
+     * second time with CRLF line endings normalized to LF — a file whose line
+     * endings changed between recording and deployment (e.g. checked out with
+     * CRLF on Windows after being recorded from an LF checkout) has identical
+     * SQL content and must not be reported as modified. Either track matching
+     * passes validation; the stored checksum row is never rewritten, so old
+     * rows stay valid and new migrations are still recorded from raw bytes.
      */
     private void validateChecksums(
         List<String> migrations,
@@ -203,21 +214,59 @@ public final class MigrationRunner {
             String stored = existing.get(normalizeVersion(version));
             if (stored == null) continue;
             byte[] raw = readResourceBytes(m);
-            String current = Digests.sha256Hex(raw);
-            if (!stored.equals(current)) {
-                throw new SqlException(
-                    "Checksum mismatch for version " +
-                        version +
-                        " (" +
-                        m +
-                        ") — the SQL file has been modified since it was applied. " +
-                        "Stored: " +
-                        stored +
-                        ", Current: " +
-                        current
-                );
+            String current = checksum(raw);
+            if (stored.equals(current)) {
+                continue;
+            }
+            if (stored.equals(normalizedChecksum(raw))) {
+                // Only the line endings differ — accept without rewriting the
+                // stored row, keeping the raw-bytes checksum authoritative.
+                continue;
+            }
+            throw new SqlException(
+                "Checksum mismatch for version " +
+                    version +
+                    " (" +
+                    m +
+                    ") — the SQL file has been modified since it was applied. " +
+                    "Stored: " +
+                    stored +
+                    ", Current: " +
+                    current
+            );
+        }
+    }
+
+    /** SHA-256 of the migration file's raw bytes — the canonical stored checksum. */
+    private static String checksum(byte[] raw) {
+        return Digests.sha256Hex(raw);
+    }
+
+    /**
+     * SHA-256 of the migration file with CRLF line endings normalized to LF
+     * (a lone CR is treated as a line ending too). Used as the second
+     * validation track so a pure line-ending change is not reported as a
+     * checksum mismatch; any real content change survives the normalization
+     * and still mismatches.
+     */
+    private static String normalizedChecksum(byte[] raw) {
+        return Digests.sha256Hex(normalizeLineEndings(raw));
+    }
+
+    private static byte[] normalizeLineEndings(byte[] raw) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(raw.length);
+        for (int i = 0; i < raw.length; i++) {
+            byte b = raw[i];
+            if (b == '\r') {
+                if (i + 1 < raw.length && raw[i + 1] == '\n') {
+                    i++;
+                }
+                out.write('\n');
+            } else {
+                out.write(b);
             }
         }
+        return out.toByteArray();
     }
 
     public static String versionFromPath(String path) {
@@ -317,6 +366,20 @@ public final class MigrationRunner {
                     resourcePath
             );
         }
+        if (
+            !database.dialect().supportsTransactionalDdl() &&
+            containsDdl(statements)
+        ) {
+            throw new SqlException(
+                "Dialect does not support transactional DDL — migration " +
+                    resourcePath +
+                    " contains DDL and cannot be applied atomically on this " +
+                    "database: the DDL would commit but the checksum row would " +
+                    "be lost, and the next startup would re-run the DDL and fail. " +
+                    "Split DDL into separate migrations and make statements " +
+                    "idempotent (IF NOT EXISTS), or use a transactional-DDL database"
+            );
+        }
         String version = versionFromPath(resourcePath);
         String description = descriptionFromPath(resourcePath);
         database.transaction(() -> {
@@ -333,6 +396,44 @@ public final class MigrationRunner {
                 installedRank
             );
         });
+    }
+
+    /** Statement-leading keywords that make a statement DDL (implicit-commit on MySQL). */
+    private static final Set<String> DDL_KEYWORDS = Set.of(
+        "create", "alter", "drop", "truncate", "rename", "comment",
+        "grant", "revoke", "analyze", "attach", "detach"
+    );
+
+    /**
+     * True when any statement begins with a DDL keyword. Split statements have
+     * comments stripped, so the first token is the statement's keyword — only
+     * leading whitespace needs skipping. Used to reject migrations that cannot
+     * be applied atomically on dialects without transactional DDL.
+     */
+    static boolean containsDdl(List<String> statements) {
+        for (String statement : statements) {
+            String first = firstWord(statement);
+            if (first != null && DDL_KEYWORDS.contains(first)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String firstWord(String statement) {
+        int i = 0;
+        int len = statement.length();
+        while (i < len && Character.isWhitespace(statement.charAt(i))) {
+            i++;
+        }
+        int start = i;
+        while (
+            i < len &&
+            (Character.isLetterOrDigit(statement.charAt(i)) || statement.charAt(i) == '_')
+        ) {
+            i++;
+        }
+        return start == i ? null : statement.substring(start, i).toLowerCase(Locale.ROOT);
     }
 
     static List<String> splitStatements(String sql) {

@@ -244,6 +244,12 @@ public final class DbModule implements ModuleEx {
      * Resolve the global dialect.
      * Order: {@code freeway.db.dialect} config → JDBC URL auto-detect →
      * default {@code PostgresDialect}.
+     *
+     * <p>An explicit {@code freeway.db.dialect} always wins. Without one, an
+     * unrecognized JDBC URL scheme (e.g. {@code jdbc:oracle:...}) makes URL
+     * detection throw with guidance (see {@link DatabaseBuilder#dialectForUrl})
+     * instead of silently falling back to PostgreSQL — the container fails
+     * fast at startup rather than emitting wrong-dialect SQL at runtime.
      */
     static Dialect resolveDialect(Container container) {
         SymbolSource s = container.get(SymbolSource.class);

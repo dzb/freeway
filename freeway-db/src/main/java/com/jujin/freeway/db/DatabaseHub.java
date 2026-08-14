@@ -7,6 +7,12 @@ import java.util.Map;
  *
  * <p>Contributions are made via {@code binder.contribute(NamedDatabase.class)} in IoC mode,
  * or via {@link DatabaseHubImpl} directly in standalone mode.
+ *
+ * <p>Multi-database work is <b>not</b> XA / two-phase committed: each
+ * {@link Database} manages its own connections and transactions
+ * independently. Do not mix writes across multiple databases inside a
+ * single-database transaction — work on the other databases commits on its
+ * own and is not rolled back with the transaction.
  */
 public interface DatabaseHub {
 

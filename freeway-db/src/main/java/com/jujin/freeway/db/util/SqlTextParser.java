@@ -42,24 +42,35 @@ public final class SqlTextParser {
         private final boolean bracketQuoting;
         private final boolean dollarQuoting;
         private final boolean escapeStringPrefix;
+        private final boolean backslashEscapesStrings;
 
         private LexerConfig(
             String identifierQuoteChars,
             boolean hashLineComments,
             boolean bracketQuoting,
             boolean dollarQuoting,
-            boolean escapeStringPrefix
+            boolean escapeStringPrefix,
+            boolean backslashEscapesStrings
         ) {
             this.identifierQuoteChars = identifierQuoteChars;
             this.hashLineComments = hashLineComments;
             this.bracketQuoting = bracketQuoting;
             this.dollarQuoting = dollarQuoting;
             this.escapeStringPrefix = escapeStringPrefix;
+            this.backslashEscapesStrings = backslashEscapesStrings;
         }
 
-        /** Union of every built-in dialect's syntax — the lenient default. */
+        /**
+         * Union of every built-in dialect's syntax — the lenient default.
+         * {@code backslashEscapesStrings} is enabled because MySQL (a
+         * supported dialect) treats {@code \} as an escape inside ordinary
+         * string literals; in the no-dialect case the union errs on the side
+         * of skipping more text, so a {@code :name} after {@code 'it\'s'} is
+         * still recognized.
+         */
         public static final LexerConfig SUPERSET = new LexerConfig(
             "\"`",
+            true,
             true,
             true,
             true,
@@ -73,7 +84,8 @@ public final class SqlTextParser {
                 dialect.hashLineComments(),
                 dialect.bracketQuoting(),
                 dialect.dollarQuoting(),
-                dialect.escapeStringPrefix()
+                dialect.escapeStringPrefix(),
+                dialect.backslashEscapesStrings()
             );
         }
 
@@ -95,6 +107,10 @@ public final class SqlTextParser {
 
         boolean escapeStringPrefix() {
             return escapeStringPrefix;
+        }
+
+        boolean backslashEscapesStrings() {
+            return backslashEscapesStrings;
         }
     }
 
@@ -131,7 +147,7 @@ public final class SqlTextParser {
         while (i < len) {
             char c = sql.charAt(i);
             if (c == '\'') {
-                int after = skipQuoted(sql, i, '\'');
+                int after = skipQuoted(sql, i, '\'', config.backslashEscapesStrings());
                 sink.text(sql, textStart, after);
                 i = after;
                 textStart = i;
@@ -392,7 +408,7 @@ public final class SqlTextParser {
         while (i < len) {
             char c = sql.charAt(i);
             if (c == '\'') {
-                i = skipQuoted(sql, i, '\'');
+                i = skipQuoted(sql, i, '\'', config.backslashEscapesStrings());
                 continue;
             }
             if (config.isQuoteChar(c)) {
@@ -499,7 +515,7 @@ public final class SqlTextParser {
         while (i < len) {
             char c = sql.charAt(i);
             if (c == '\'') {
-                int after = skipQuoted(sql, i, '\'');
+                int after = skipQuoted(sql, i, '\'', config.backslashEscapesStrings());
                 current.append(sql, i, after);
                 i = after;
                 continue;
@@ -569,11 +585,31 @@ public final class SqlTextParser {
     // ====================== skip primitives ======================
 
     private static int skipQuoted(String sql, int start, char quote) {
+        return skipQuoted(sql, start, quote, false);
+    }
+
+    /**
+     * Skips a quoted region {@code start} ({@code '} for string literals,
+     * an identifier quote for quoted identifiers). Doubled quotes
+     * ({@code ''}) are the standard escape; when {@code backslashEscapes} is
+     * true (MySQL/MariaDB string literals) a {@code \} escapes the next
+     * character. The scan ends at the first unescaped, non-doubled quote.
+     */
+    private static int skipQuoted(
+        String sql,
+        int start,
+        char quote,
+        boolean backslashEscapes
+    ) {
         int i = start + 1;
         int len = sql.length();
         while (i < len) {
             char c = sql.charAt(i);
             i++;
+            if (backslashEscapes && c == '\\' && i < len) {
+                i++;
+                continue;
+            }
             if (c == quote) {
                 if (i < len && sql.charAt(i) == quote) {
                     i++;

@@ -13,6 +13,7 @@ import com.jujin.freeway.db.schema.Id;
 import com.jujin.freeway.db.schema.SqlTypeMapping;
 import com.jujin.freeway.db.schema.Transient;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -134,11 +135,11 @@ public final class Orm {
         String table = dialect.quoteName(SqlTypeMapping.tableName(t));
         List<BeanProperty> idProps = idProperties(plan);
 
-        // read id values and collect raw column names — if any id is null, plain insert
+        // read id values and collect raw column names — if any id is unset, plain insert
         List<String> idCols = new ArrayList<>(idProps.size());
         boolean hasFullId = true;
         for (BeanProperty idProp : idProps) {
-            if (idProp.read(entity) == null) hasFullId = false;
+            if (!hasIdValue(idProp, entity)) hasFullId = false;
             idCols.add(rawColumnName(idProp));
         }
 
@@ -301,6 +302,31 @@ public final class Orm {
 
     private static boolean isOrmTransient(BeanProperty prop) {
         return prop.hasAnnotation(Transient.class);
+    }
+
+    /**
+     * Whether the entity carries an actual value for this id property. A null
+     * id is always unset; a primitive {@code @Generated} id reads back its
+     * type's default (0 / 0L / 0.0 / false) instead of null, so a fresh
+     * entity would otherwise look fully identified and {@code save()} would
+     * upsert an explicit zero id, bypassing the auto-increment sequence.
+     */
+    private static boolean hasIdValue(BeanProperty idProp, Object entity) {
+        Object value = idProp.read(entity);
+        if (value == null) {
+            return false;
+        }
+        if (isGenerated(idProp)) {
+            Class<?> raw = Types.rawClass(idProp.type());
+            if (raw.isPrimitive()) {
+                // Default boxed value of the primitive type (Array.get on a
+                // one-element primitive array unboxes, then re-boxes to the
+                // default — 0 / 0L / 0.0 / false).
+                Object zero = Array.get(Array.newInstance(raw, 1), 0);
+                return !zero.equals(value);
+            }
+        }
+        return true;
     }
 
     /** Rejects an entity with nothing to insert (all properties @Generated/@Transient). */

@@ -85,17 +85,28 @@ public final class DatabaseBuilder {
     }
 
     /**
-     * Detects the SQL dialect from a JDBC URL, defaulting to
-     * {@link PostgresDialect} when the URL does not identify a known database.
+     * Detects the SQL dialect from a JDBC URL. A {@code null} or blank URL
+     * (no database configured yet) defaults to {@link PostgresDialect}, but an
+     * URL with an unrecognized scheme fails fast: silently falling back to
+     * PostgreSQL for {@code jdbc:oracle:...}, {@code jdbc:sqlserver:...}, etc.
+     * would generate PostgreSQL syntax (SELECT statements, {@code ON
+     * CONFLICT}, {@code pg_indexes}) that the target database rejects — and
+     * the IoC path would not even warn.
      *
      * <p>Single source of truth for URL-based dialect detection — shared by
      * {@link #build()} (standalone use) and {@link DbModule} (IoC use) so both
      * resolve the same dialect for the same URL.
      *
-     * @param url JDBC URL; may be {@code null} (treated as unknown → PostgreSQL)
+     * @param url JDBC URL; may be {@code null} or blank (treated as no URL →
+     *            default PostgreSQL dialect)
+     * @throws IllegalStateException when the URL scheme is not a supported
+     *                               database — configure a dialect explicitly
+     *                               via {@link #dialect(Dialect)} (standalone)
+     *                               or the {@code freeway.db.dialect} config
+     *                               key (IoC)
      */
     static Dialect dialectForUrl(String url) {
-        if (url == null) {
+        if (url == null || url.isBlank()) {
             return new PostgresDialect();
         }
         String upper = url.toUpperCase();
@@ -117,7 +128,15 @@ public final class DatabaseBuilder {
             }
             return new H2Dialect();
         }
-        return new PostgresDialect();
+        if (url.contains("jdbc:postgresql")) {
+            return new PostgresDialect();
+        }
+        throw new IllegalStateException(
+            "No SQL dialect for JDBC URL '" + url + "' — unsupported database. "
+                + "Supported URL schemes: mysql, mariadb, sqlite, h2, postgresql. "
+                + "Set the dialect explicitly via DatabaseBuilder.dialect(...) "
+                + "or the freeway.db.dialect config key"
+        );
     }
 
     public Database build() {

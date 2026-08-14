@@ -75,6 +75,12 @@ final class BatchQueryImpl implements BatchQuery {
             db.checkBound(boundBinding);
         }
         boolean ownConnection = boundBinding == null;
+        if (ownConnection) {
+            // No transaction binding on this thread — if a transaction is
+            // active on another thread, borrowing here would silently run
+            // outside it.
+            db.checkNoForeignTransaction();
+        }
         PooledConnection conn = ownConnection
             ? db.pool().borrow()
             : boundBinding.conn();

@@ -450,7 +450,10 @@ final class QueryImpl implements Query {
         if (value instanceof Collection<?> col) {
             if (col.isEmpty()) {
                 throw new SqlException(
-                    "Cannot expand empty collection for SQL: " + originalSql
+                    "Cannot expand empty collection for SQL: " +
+                        originalSql +
+                        ". Use a conditional branch for empty collections " +
+                        "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
                 );
             }
             appendExpanded(sb, flat, col);
@@ -459,7 +462,10 @@ final class QueryImpl implements Query {
         if (value instanceof Object[] arr) {
             if (arr.length == 0) {
                 throw new SqlException(
-                    "Cannot expand empty array for SQL: " + originalSql
+                    "Cannot expand empty collection or array for SQL: " +
+                        originalSql +
+                        ". Use a conditional branch for empty collections " +
+                        "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
                 );
             }
             appendExpanded(sb, flat, Arrays.asList(arr));
@@ -476,7 +482,10 @@ final class QueryImpl implements Query {
             int length = Array.getLength(value);
             if (length == 0) {
                 throw new SqlException(
-                    "Cannot expand empty array for SQL: " + originalSql
+                    "Cannot expand empty collection or array for SQL: " +
+                        originalSql +
+                        ". Use a conditional branch for empty collections " +
+                        "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
                 );
             }
             boolean first = true;
@@ -537,6 +546,9 @@ final class QueryImpl implements Query {
             return new ExecuteContext(stmt, null, null);
         }
 
+        // No transaction binding on this thread — if a transaction is active
+        // on another thread, borrowing here would silently run outside it.
+        db.checkNoForeignTransaction();
         PooledConnection conn = db.pool().borrow();
         PreparedStatement stmt = null;
         boolean success = false;
