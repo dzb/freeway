@@ -231,12 +231,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`HttpServerConfig.builder()`（freeway-http，新增）** — 具名 setter 的配置构造，
   避免长位置参数把 `Duration` 绑错槽位（如 readTimeout 落到 shutdownGrace）；
   默认值与 canonical 构造一致，`build()` 走同一套校验。
-- **`AbstractHttpContext.readBodyLimited` 改名（freeway-http，兼容提示）** — 请求体限流
-  读取助手更名为 `readBody`（语义不变）；旧名保留为 `@Deprecated` 桥接一个版本，
-  未迁移的 transport 适配器仍可编译。
-- **`WebSocketRoute` record 形状简化（freeway-http，兼容提示）** — 移除从未参与匹配的
-  `pattern` 组件（匹配由路由 trie 按 path 完成）；保留 `@Deprecated` 3 参构造器作为
-  源码兼容桥接，新代码请用 `WebSocketRoute.of(path, endpoint)`。
+- **`AbstractHttpContext.readBodyLimited` 改名（freeway-http）** — 请求体限流读取助手
+  更名为 `readBody`（语义不变），旧名已移除，调用方请改用新名。
+- **`WebSocketRoute` record 形状简化（freeway-http）** — 移除从未参与匹配的 `pattern`
+  组件（匹配由路由 trie 按 path 完成）；3 参构造器一并移除，请用
+  `WebSocketRoute.of(path, endpoint)`。
 
 - **JSON 媒体类型判断补齐 `+json` 后缀（freeway-http，修复）** — `MediaTypes.isJson`
   现在接受 `application/*+json` 结构化语法后缀（如 `application/vnd.api+json`、

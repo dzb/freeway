@@ -176,15 +176,6 @@ public abstract class AbstractHttpContext implements HttpContext {
         return out.toByteArray();
     }
 
-    /**
-     * @deprecated renamed to {@link #readBody(InputStream)}; kept as a bridge
-     *             for transport adapters compiled against the old SPI name.
-     */
-    @Deprecated
-    protected final byte[] readBodyLimited(InputStream input) throws IOException {
-        return readBody(input);
-    }
-
     @Override
     public String bodyText() throws IOException {
         return new String(body(), charsetFromContentType());

@@ -121,19 +121,6 @@ class HttpContextTest {
     }
 
     @Test
-    void deprecatedReadBodyLimitedBridgesToReadBody() throws Exception {
-        StubHttpContext ctx = new StubHttpContext();
-        ctx.requestBody("payload");
-
-        byte[] limited = ctx.readBodyLimited(
-            new java.io.ByteArrayInputStream("payload".getBytes()));
-
-        org.junit.jupiter.api.Assertions.assertEquals(
-            "payload", new String(limited, StandardCharsets.UTF_8),
-            "the deprecated bridge must delegate to readBody with identical semantics");
-    }
-
-    @Test
     void bodyStreamDefaultsToBufferedBody() throws Exception {
         StubHttpContext ctx = new StubHttpContext();
         ctx.output("stream-me".getBytes(StandardCharsets.UTF_8));
