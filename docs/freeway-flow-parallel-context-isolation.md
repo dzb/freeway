@@ -12,6 +12,12 @@
   (无事务性);回放/排障在多分支竞争场景下可能不稳定。
 - 下文描述的 fork/overlay/join 完全隔离模型是设计提案,尚未实现。
 
+上述现状在最近的 flow 语义修复(网关死路检测、表达式语义、$for 原子抢占等)
+之后**保持不变**:分支依然共享同一个 `FlowContext` 实例,引擎的
+`FlowEngineImpl.parallel_run_out()` 注释明确将"分支共享同一 FlowContext、
+并发写同一 data key 是已知限制"列为既定行为并引用本文档;数据隔离
+(per-branch overlay / join 合并)仍未实现。
+
 ## 背景
 
 `freeway-flow` 当前在并行分支中共享同一个 `FlowContext`。虽然底层使用了并发容器，但这只能保证容器层面的线程安全，不能保证流程语义上的一致性。

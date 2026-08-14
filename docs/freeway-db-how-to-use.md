@@ -1,6 +1,6 @@
 # freeway-db 使用模式手册
 
-> 基于 freeway-db 模块的完整开发体验总结。涵盖：实体定义 → DDL 自动建表 → ORM 存取 → 原始 SQL → SQL 构建器 → 事务 → 自增 ID 行为。
+> 基于 freeway-db 模块的完整开发体验总结。涵盖：实体定义 → DDL 自动建表 → 版本化 SQL 迁移 → ORM 存取 → 原始 SQL → SQL 构建器 → 事务 → 自增 ID 行为。
 
 ---
 
@@ -69,6 +69,14 @@ Database db = ...;
 Schema.ensure(db, User.class);
 ```
 
+### 2.3 版本化 SQL 迁移（MigrationRunner）
+
+把 `V1__描述.sql`（Flyway 兼容命名：`V` + 数字，可用 `.`/`_` 分隔，如 `V1_2__init.sql`）放进 classpath 的 `db/migration/` 目录。IoC 方式（`DbModule`）启动时会在 HTTP server 之前执行尚未应用的迁移；独立使用可手动调用 `new MigrationRunner(db, true, "db/migration", "_migrations").run()`。相关配置：`freeway.db.migration.enabled`（默认 `true`）、`freeway.db.migration.path`（默认 `db/migration/`）、`freeway.db.migration.table`（默认 `_migrations`）。
+
+**校验和双轨校验（CRLF/LF）**：每个已应用迁移的原始字节 SHA-256 存入校验和表。每次启动重新比对：原始字节一致 → 通过；不一致时再用 CRLF→LF 归一化后的字节比对一次——纯换行风格变化（如 Windows 检出把 LF 变 CRLF）不再误报"文件被修改"，而真正的内容改动仍抛 `SqlException`（checksum mismatch，启动失败）。已存储的校验和行不会被改写。
+
+**MySQL 上含 DDL 的迁移会被拒绝**：MySQL/MariaDB 的每条 DDL 都会隐式提交（无事务性 DDL），含 DDL 的迁移无法原子应用——DDL 已提交但校验和行丢失，下次启动会重跑 DDL 而失败。因此 `MigrationRunner` 在执行任何 SQL 之前就会拒绝这类迁移（启动失败，抛 `SqlException`），并附指引：把 DDL 拆成独立迁移并写成幂等（`IF NOT EXISTS`），或改用支持事务性 DDL 的数据库（PostgreSQL/H2/SQLite）。纯 DML 迁移不受影响。
+
 ---
 
 ## 三、数据库构建
@@ -111,6 +119,13 @@ Database p = hub.get("primary");
 Database a = hub.get("audit");
 Database def = hub.primary();
 ```
+
+### 3.4 方言检测与选择
+
+- **URL 自动检测**（`DatabaseBuilder.dialectForUrl`，大小写不敏感）：`jdbc:mysql` / `jdbc:mariadb` → MySQL；`jdbc:sqlite` → SQLite；`jdbc:h2` → H2（`MODE=PostgreSQL` → PostgreSQL，`MODE=MySQL` / `MODE=MariaDB` → MySQL）；`jdbc:postgresql` → PostgreSQL。
+- URL 为 `null` 或空白 → 默认 PostgreSQL。
+- **未知 JDBC URL 启动失败（fail-fast）**：识别不了的 scheme（如 `jdbc:oracle:...`）**不再静默回退 PostgreSQL**，直接抛 `IllegalStateException`（消息带 `freeway.db.dialect` 指引）——独立构建用 `.dialect(new XxxDialect())` 显式指定，IoC 方式配置 `freeway.db.dialect=xxx`。静默回退会让错误方言在运行时把 PG 语法（`ON CONFLICT`、`pg_indexes`）发给目标库才暴露，所以改为启动即失败。
+- IoC 下 `freeway.db.dialect` 显式配置优先于 URL 检测。
 
 ---
 
@@ -172,13 +187,17 @@ orm.deleteById(UserBean.class, 1L);
 ### 4.6 Save — 插入或更新
 
 ```java
-// id=null → INSERT
+// id=null（或未设置）→ INSERT，数据库分配自增键
 UserBean u = new UserBean("闪电", 3);
 orm.save(u);
 // u.id 已被赋值
 
-// id=已有值（PostgreSQL 下走 ON CONFLICT DO UPDATE）
-// H2 不支持 ON CONFLICT，所以仅 INSERT 路径可用
+// 原始类型 @Generated 主键（如 long id）：新实体读到的 id 是 0 而非 null，
+// save() 仍按"未设置"处理 → INSERT 走自增序列并写回生成的键（不会拿 0 去 upsert）
+
+// id=已有值 → upsert，子句由方言决定：
+//   PostgreSQL / SQLite / H2 → INSERT ... ON CONFLICT (id) DO UPDATE
+//   MySQL / MariaDB         → INSERT ... ON DUPLICATE KEY UPDATE
 ```
 
 ---
@@ -311,6 +330,18 @@ db.transaction(() -> {
     bus.publish(new UserCreatedEvent(user));  // 提交后才真正发布
 });
 ```
+
+### 跨线程限制（ScopedValue 不传播）
+
+事务绑定在开启它的线程上，`ScopedValue` **不会传播到子线程**。`transaction()` 内新起的线程/其它线程不能做 DB 工作——此时调用 `db.query/execute/batch` 会抛 `SqlException`（"Transaction work must run on the transaction thread ..."），而不是静默借用独立连接绕过事务、破坏原子性。事务内创建的 `Query`/`BatchQuery` 也必须在事务线程上、事务结束前消费完，否则同样抛 `SqlException`。
+
+### 跨库无 XA
+
+`db.transaction()` 只覆盖当前 `Database` 自己的连接：经 `DatabaseHub` 拿到的其它数据源在事务内写入会**独立提交**，本事务失败不会回滚它们。跨库没有 XA / 两阶段提交，不要在单库事务里混写多个库。
+
+### Schema.ensure 与事务
+
+MySQL/MariaDB 的 DDL 隐式提交（无事务性 DDL）：事务内调用 `Schema.ensure()` / `Schema.drop()` 会被拒绝（抛 `SqlException`）——DDL 会连带提交事务里尚未提交的修改。请把 schema DDL 放在开启事务之前。PostgreSQL / H2 / SQLite 支持事务性 DDL，事务内 `ensure()` 安全（失败可整体回滚）。
 
 ---
 
