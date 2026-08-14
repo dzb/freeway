@@ -15,6 +15,7 @@ import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;
 import com.jujin.freeway.http.engine.http2.SettingsFrame;
+import com.jujin.freeway.http.internal.HttpUtils;
 
 /**
  * HTTP/1.1 connection loop: keep-alive parsing, request dispatch, and the
@@ -167,17 +168,9 @@ final class Http1xSession {
         if (values == null || values.size() != 1) {
             return true;
         }
-        String host = values.getFirst();
-        if (host == null || host.isBlank()) {
-            return true;
-        }
-        for (int i = 0; i < host.length(); i++) {
-            char c = host.charAt(i);
-            if (c == ',' || c == ' ' || c == '\t' || c == '/' || c == '\\' || c == '@') {
-                return true;
-            }
-        }
-        return false;
+        // RFC 7230 §5.4: exactly one Host; the value follows the shared
+        // Host/:authority character rules in HttpUtils.
+        return HttpUtils.invalidHostValue(values.getFirst());
     }
 
     private static SettingsFrame tryPrepareH2cUpgrade(Http1xParser.ParsedRequest req) {
