@@ -20,6 +20,12 @@ import java.util.OptionalLong;
  * intermediate normalized tree is built for raw structures. Leaf conversions
  * share the scalar-leaf mapping with {@link JsonNormalizer} via
  * {@link JsonLeaves}, so the two paths cannot drift apart.
+ *
+ * <p><b>Bean serialization:</b> bean properties come from
+ * {@link BeanPlan} — fields define the property set, a {@code getX()}/
+ * {@code isX()} accessor is the preferred read path when present (transforming
+ * getters are honored), and getter-only (computed) properties serialize as
+ * read-only members. See {@link BeanPlan} for the full property model.
  */
 final class JsonWriter {
 

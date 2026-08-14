@@ -159,6 +159,97 @@ class BeanPlanTest {
         }
     }
 
+    // ====================== getter accessors ======================
+
+    @Test
+    void getterIsPreferredReadPath() {
+        // A JavaBeans getter wins over direct field read, so transforming
+        // getters are honored during serialization instead of bypassed.
+        BeanPlan plan = BeanIntrospector.plan(TransformingGetterBean.class);
+
+        BeanProperty value = plan.property("value");
+        assertNotNull(value);
+        assertEquals("ABC", value.read(new TransformingGetterBean("abc")));
+    }
+
+    @Test
+    void getterOnlyPropertyIsReadableAndNotWritable() {
+        // Getter-only (computed) properties are first-class readable
+        // properties — previously they silently vanished from JSON.
+        BeanPlan plan = BeanIntrospector.plan(ComputedBean.class);
+
+        BeanProperty computed = plan.property("computed");
+        assertNotNull(computed);
+        assertFalse(computed.isWritable(), "computed property has no setter/field");
+        assertEquals(42, computed.read(new ComputedBean()));
+        assertThrows(UnsupportedOperationException.class,
+            () -> computed.write(new ComputedBean(), 1));
+    }
+
+    @Test
+    void isBooleanAccessorIsRecognized() {
+        // The isX() convention maps to a boolean property.
+        BeanPlan plan = BeanIntrospector.plan(FlagBean.class);
+
+        BeanProperty active = plan.property("active");
+        assertNotNull(active);
+        assertEquals(Boolean.TRUE, active.read(new FlagBean(true)));
+        assertEquals(Boolean.FALSE, active.read(new FlagBean(false)));
+    }
+
+    @Test
+    void getterWithSetterIsWritable() {
+        BeanPlan plan = BeanIntrospector.plan(GetterSetterBean.class);
+
+        BeanProperty label = plan.property("label");
+        assertTrue(label.isWritable());
+        GetterSetterBean bean = new GetterSetterBean();
+        label.write(bean, "viaSetter");
+        assertEquals("viaSetter", label.read(bean));
+    }
+
+    private static final class TransformingGetterBean {
+        private final String value;
+
+        TransformingGetterBean(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value == null ? null : value.toUpperCase();
+        }
+    }
+
+    private static final class ComputedBean {
+        public int getComputed() {
+            return 42;
+        }
+    }
+
+    private static final class FlagBean {
+        private final boolean active;
+
+        FlagBean(boolean active) {
+            this.active = active;
+        }
+
+        public boolean isActive() {
+            return active;
+        }
+    }
+
+    private static final class GetterSetterBean {
+        private String label;
+
+        public String getLabel() {
+            return label;
+        }
+
+        public void setLabel(String label) {
+            this.label = label;
+        }
+    }
+
     // ====================== regression fixes ======================
 
     @Test

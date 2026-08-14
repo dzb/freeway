@@ -14,6 +14,14 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/**
+ * Normalizes a raw value tree into {@link JsonObject}/{@link JsonArray}/
+ * scalar form, mirroring {@link JsonWriter} leaf conversions via
+ * {@link JsonLeaves}. Bean serialization follows the {@link BeanPlan}
+ * property model: fields define the property set, {@code getX()}/{@code isX()}
+ * accessors are the preferred read path, and getter-only (computed)
+ * properties are included as read-only members.
+ */
 final class JsonNormalizer {
 
     private static final int MAX_DEPTH = JsonParser.MAX_DEPTH;

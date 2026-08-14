@@ -513,6 +513,15 @@ public final class CoercerDefault implements Coercer {
         }
         if (targetType == Double.class) {
             double d = Double.parseDouble(text);
+            if (Double.isNaN(d)) {
+                // "NaN" (any case) parses to NaN — reject it exactly like
+                // Infinity so a config value can never silently become
+                // Double.NaN (which later explodes in stringify or coerces
+                // to false).
+                throw new IllegalArgumentException(
+                    "Cannot coerce '" + text + "' to Double: not a finite number"
+                );
+            }
             if (Double.isInfinite(d)) {
                 throw new IllegalArgumentException(
                     "Cannot coerce '" + text + "' to Double: out of range"
@@ -522,6 +531,11 @@ public final class CoercerDefault implements Coercer {
         }
         if (targetType == Float.class) {
             float f = Float.parseFloat(text);
+            if (Float.isNaN(f)) {
+                throw new IllegalArgumentException(
+                    "Cannot coerce '" + text + "' to Float: not a finite number"
+                );
+            }
             if (Float.isInfinite(f)) {
                 throw new IllegalArgumentException(
                     "Cannot coerce '" + text + "' to Float: out of range"

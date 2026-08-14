@@ -43,6 +43,7 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,6 +79,31 @@ class JsonUtilsTest {
         assertEquals("a", ((JsonArray) app.get("tags")).get(0));
         assertEquals("b", ((JsonArray) app.get("tags")).get(1));
         assertEquals(8080, server.get("port"));
+    }
+
+    @Test
+    void duplicateObjectKeysLastWins() {
+        // {"a":1,"a":2} → {"a":2}: parsing follows Map.put semantics — the
+        // last occurrence of a key wins (documented contract, not an error).
+        JsonObject object = JsonUtils.parseObject("{\"a\":1,\"a\":2}");
+
+        assertEquals(2, object.get("a"));
+        assertEquals(1, object.size());
+    }
+
+    @Test
+    void duplicateObjectKeysLastWinsInNestedObjects() {
+        // The same last-wins rule applies at every nesting level.
+        JsonObject object = JsonUtils.parseObject(
+            "{\"outer\":{\"a\":1,\"a\":2,\"b\":\"keep\"},\"top\":1,\"top\":\"last\"}"
+        );
+
+        JsonObject outer = (JsonObject) object.get("outer");
+        assertEquals(2, outer.get("a"));
+        assertEquals("keep", outer.get("b"));
+        assertEquals(2, outer.size());
+        assertEquals("last", object.get("top"));
+        assertEquals(2, object.size());
     }
 
     @Test
@@ -574,6 +600,40 @@ class JsonUtilsTest {
     }
 
     @Test
+    void rejectsOversizedNumberToken() {
+        // Regression: parseNumber had no token-length limit, so an unbounded
+        // digit run reached BigInteger/BigDecimal (super-linear cost) — a
+        // 20MB number caused a CPU/memory spike instead of a fast error.
+        // 20MB digits pass the 32MB input cap but must trip the 10MB
+        // number-token limit immediately.
+        String huge = "9".repeat(20 * 1024 * 1024);
+
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> JsonUtils.parse(huge)
+        );
+
+        assertTrue(ex.getMessage().contains("JSON number too long"),
+            "must fail via the number-token limit, got: " + ex.getMessage());
+    }
+
+    @Test
+    void rejectsOversizedStringInput() {
+        // Regression: parse(String) had no total input cap (the stream path
+        // did). An oversized string must fail fast with a clear error instead
+        // of driving unbounded parse work.
+        String huge = " ".repeat(JsonParser.MAX_INPUT_BYTES + 1);
+
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> JsonUtils.parse(huge)
+        );
+
+        assertTrue(ex.getMessage().contains("JSON input too large"),
+            "must fail via the input-size cap, got: " + ex.getMessage());
+    }
+
+    @Test
     void parseNumberAcceptsBigInteger() {
         Object result = JsonUtils.parse("9223372036854775808"); // > Long.MAX_VALUE
         assertEquals(new BigInteger("9223372036854775808"), result);
@@ -837,7 +897,114 @@ class JsonUtilsTest {
         }
     }
 
+    // ====================== bean getter serialization ======================
+
+    @Test
+    void stringifyIncludesGetterOnlyAndIsProperties() {
+        // Regression: getter-only/computed properties and isX() booleans used
+        // to vanish from JSON (serialization only read fields). They are now
+        // first-class bean properties.
+        GetterBean bean = new GetterBean();
+
+        JsonObject out = JsonUtils.parseObject(JsonUtils.stringify(bean));
+        assertEquals("demo", out.getString("name"));
+        assertEquals(42, out.getInt("computed"));
+        assertEquals(Boolean.TRUE, out.getBoolean("active"));
+        // Normalizer mirrors the writer exactly (same property order).
+        assertEquals(
+            JsonUtils.stringify(bean),
+            JsonUtils.stringify(JsonUtils.normalize(bean))
+        );
+    }
+
+    @Test
+    void stringifyPrefersTransformingGetterOverField() {
+        // A getter is the preferred read path: its transformation is honored.
+        TransformBean bean = new TransformBean();
+        bean.value = "abc";
+
+        assertEquals("{\"value\":\"ABC\"}", JsonUtils.stringify(bean));
+    }
+
+    @Test
+    void coerceSkipsReadOnlyGetterOnlyProperty() {
+        // Deserialization cannot write a computed property — the value is
+        // skipped, the bean still constructs, and the getter keeps winning.
+        GetterBean round = JsonUtils.coerce(
+            JsonUtils.parse("{\"name\":\"x\",\"computed\":999,\"active\":false}"),
+            GetterBean.class
+        );
+
+        assertEquals("x", round.name);
+        assertEquals(42, round.getComputed(),
+            "read-only computed property must not be overwritten");
+        assertEquals(true, round.isActive(),
+            "read-only isX property must not be overwritten");
+    }
+
+    static class GetterBean {
+        private String name = "demo";
+
+        public String getName() {
+            return name;
+        }
+
+        public int getComputed() {
+            return 42;
+        }
+
+        public boolean isActive() {
+            return true;
+        }
+    }
+
+    static class TransformBean {
+        private String value = "abc";
+
+        public String getValue() {
+            return value.toUpperCase();
+        }
+    }
+
     // ====================== regression fixes ======================
+
+    @Test
+    void selfReferentialGenericBoundDoesNotStackOverflow() {
+        // Regression: class Node<T extends Comparable<T>> with a
+        // self-referential field (Node<T> next) binds T to Comparable<T>;
+        // resolving T then recursed resolve(T) -> resolve(Comparable<T>) ->
+        // resolve(T) -> ... forever, ending in StackOverflowError (an Error
+        // nobody could catch). The resolver now erases re-entrant type
+        // variables to Object, so coercion completes.
+        @SuppressWarnings("rawtypes")
+        GenericNode node = JsonUtils.coerce(
+            JsonUtils.parse(
+                "{\"value\":1,\"next\":{\"value\":2,\"next\":{\"value\":3}}}"
+            ),
+            GenericNode.class
+        );
+
+        assertEquals(1, node.value);
+        assertEquals(2, node.next.value);
+        assertEquals(3, node.next.next.value);
+        assertNull(node.next.next.next, "tail must terminate cleanly");
+    }
+
+    @Test
+    void cyclicBoundFieldStillCoercesNormalTypes() {
+        // The same cyclic-bound class coerces plain comparable values
+        // (Integer is Comparable) without recursion.
+        GenericNode<Integer> node = JsonUtils.coerce(
+            JsonUtils.parse("{\"value\":1}"),
+            GenericNode.class
+        );
+        assertEquals(1, node.value);
+    }
+
+    static class GenericNode<T extends Comparable<T>> {
+        T value;
+        GenericNode<T> next;
+    }
 
     @Test
     void concreteCollectionAndMapTargets() {

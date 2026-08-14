@@ -25,6 +25,21 @@ import java.util.Set;
  * <p>Describes the type's constructor, all readable/writable properties,
  * and whether it is a record or a regular Java bean.
  *
+ * <p><b>Bean property model (serialization semantics):</b> properties are
+ * sourced from instance fields (declared across the app-class hierarchy,
+ * stopping at JDK classes — see {@link BeanIntrospector}). JavaBeans
+ * accessors refine the model:
+ * <ul>
+ *   <li>a {@code getX()}/{@code isX()} accessor becomes the <b>preferred read
+ *       path</b> for the matching property when one exists — a transforming
+ *       getter is honored instead of bypassed;</li>
+ *   <li>getter-only properties (computed values, {@code isX()} booleans) are
+ *       included as <b>read-only</b> properties — they serialize but are not
+ *       deserialized unless a matching setter exists;</li>
+ *   <li>a {@code setX(...)} method becomes the write path for the matching
+ *       property; without a setter a non-final field is written directly.</li>
+ * </ul>
+ *
  * <p>Obtained via {@link BeanIntrospector#plan(Class)}.
  */
 public final class BeanPlan {
@@ -202,13 +217,95 @@ public final class BeanPlan {
                     field.getGenericType(),
                     field.getAnnotations(),
                     MethodHandleUtils.varHandle(field),
+                    null, // getter attached in the second pass, when present
                     setter != null ? MethodHandleUtils.methodHandle(setter) : null,
                     !Modifier.isFinal(field.getModifiers()) || setter != null
                 ));
             }
             current = current.getSuperclass();
         }
+        // Second pass — JavaBeans accessors refine the model (same hierarchy
+        // walk, same JDK boundary): a getX()/isX() accessor becomes the
+        // preferred read path for the matching field property, and getter-only
+        // properties (computed values, isX() booleans) become read-only
+        // properties so they are no longer silently dropped from JSON.
+        Map<String, Method> getters = new LinkedHashMap<>();
+        current = type;
+        while (current != null
+                && current != Object.class
+                && !isJdkClass(current)) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (!isGetter(method)) {
+                    continue;
+                }
+                String prop = propertyName(method);
+                getters.putIfAbsent(prop, method);
+            }
+            current = current.getSuperclass();
+        }
+        for (Map.Entry<String, Method> entry : getters.entrySet()) {
+            String name = entry.getKey();
+            Method getter = entry.getValue();
+            BeanProperty existing = unique.get(name);
+            if (existing instanceof FieldBeanProperty fieldProperty) {
+                unique.put(name, new FieldBeanProperty(
+                    fieldProperty.name(),
+                    fieldProperty.type(),
+                    fieldProperty.annotations(),
+                    fieldProperty.field(),
+                    MethodHandleUtils.methodHandle(getter),
+                    fieldProperty.setter(),
+                    fieldProperty.writable()
+                ));
+            } else {
+                Method setter = setters.get(name);
+                unique.put(name, new GetterBeanProperty(
+                    name,
+                    getter.getGenericReturnType(),
+                    getter.getAnnotations(),
+                    MethodHandleUtils.methodHandle(getter),
+                    setter != null ? MethodHandleUtils.methodHandle(setter) : null,
+                    setter != null
+                ));
+            }
+        }
         return new BeanPlan(type, false, constructor != null ? BeanConstructor.of(constructor) : null, new ArrayList<>(unique.values()));
+    }
+
+    /**
+     * JavaBeans read-accessor shape: public, non-static, non-abstract,
+     * zero-parameter {@code getX()} (any non-void return) or {@code isX()}
+     * (boolean/Boolean return). {@code getClass()} and synthetic/bridge
+     * methods are excluded.
+     */
+    private static boolean isGetter(Method method) {
+        if (!Modifier.isPublic(method.getModifiers())
+                || Modifier.isStatic(method.getModifiers())
+                || Modifier.isAbstract(method.getModifiers())
+                || method.isSynthetic()
+                || method.isBridge()
+                || method.getParameterCount() != 0) {
+            return false;
+        }
+        String name = method.getName();
+        Class<?> returnType = method.getReturnType();
+        if (returnType == void.class || returnType == Void.class) {
+            return false;
+        }
+        if (name.startsWith("get") && name.length() > 3) {
+            return !name.equals("getClass");
+        }
+        if (name.startsWith("is") && name.length() > 2) {
+            return returnType == boolean.class || returnType == Boolean.class;
+        }
+        return false;
+    }
+
+    private static String propertyName(Method getter) {
+        String name = getter.getName();
+        return Introspector.decapitalize(
+            name.startsWith("is") ? name.substring(2) : name.substring(3)
+        );
     }
 
 
@@ -238,7 +335,7 @@ public final class BeanPlan {
         }
     }
 
-    private record FieldBeanProperty(String name, Type type, Annotation[] annotations, VarHandle field, MethodHandle setter, boolean writable) implements BeanProperty {
+    private record FieldBeanProperty(String name, Type type, Annotation[] annotations, VarHandle field, MethodHandle getter, MethodHandle setter, boolean writable) implements BeanProperty {
         @Override
         public boolean isWritable() {
             return writable;
@@ -250,6 +347,16 @@ public final class BeanPlan {
 
         @Override
         public Object read(Object target) {
+            if (getter != null) {
+                // The JavaBeans getter is the preferred read path when the
+                // class declares one — a transforming getter is honored
+                // instead of bypassed.
+                try {
+                    return MethodHandleUtils.invoke(getter, target);
+                } catch (Error e) { throw e; } catch (Throwable ex) {
+                    throw new IllegalArgumentException("Cannot read property: " + name, ex);
+                }
+            }
             return field.get(target);
         }
 
@@ -266,6 +373,43 @@ public final class BeanPlan {
                 }
             } else {
                 field.set(target, value);
+            }
+        }
+    }
+
+    /**
+     * Getter-backed property: a {@code getX()}/{@code isX()} accessor with no
+     * backing field (computed value). Read-only unless a matching setter
+     * exists.
+     */
+    private record GetterBeanProperty(String name, Type type, Annotation[] annotations, MethodHandle getter, MethodHandle setter, boolean writable) implements BeanProperty {
+        @Override
+        public boolean isWritable() {
+            return writable;
+        }
+        @Override
+        public Annotation[] annotations() {
+            return annotations.clone();
+        }
+
+        @Override
+        public Object read(Object target) {
+            try {
+                return MethodHandleUtils.invoke(getter, target);
+            } catch (Error e) { throw e; } catch (Throwable ex) {
+                throw new IllegalArgumentException("Cannot read property: " + name, ex);
+            }
+        }
+
+        @Override
+        public void write(Object target, Object value) {
+            if (!writable) {
+                throw new UnsupportedOperationException("Property is read-only: " + name);
+            }
+            try {
+                MethodHandleUtils.invoke(setter, target, value);
+            } catch (Error e) { throw e; } catch (Throwable ex) {
+                throw new IllegalArgumentException("Cannot write property: " + name, ex);
             }
         }
     }
