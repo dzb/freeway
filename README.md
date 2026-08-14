@@ -255,7 +255,7 @@ The HTTP layer stays deliberately thin:
 - Static resources - classpath and filesystem mounts.
 - Multipart upload - file upload handling.
 - Filters - `HttpFilter` chain.
-- Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
+- Error handling - `ErrorHandler` chain with built-in validation/body-size mappings.
 - Protocol hardening - HTTP/1.1 rejects control characters in header values and non-`1*DIGIT` `Content-Length`; HTTP/2 validates pseudo-headers (`:path` must be origin-form, `:authority` follows Host rules). `maxBodySize` is enforced on streaming reads as well as buffered ones. Keep-alive state (principal, attributes, correlation id) is reset between requests on a reused connection.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.

@@ -190,7 +190,13 @@ final class Http2Session {
             context.reset(method, path, rawQuery, headers, in, -1, false,
                 out, correlationId, false, false);
             context.setWriter(new Http2ResponseWriter(stream));
-            context.setHeader("X-Request-Id", context.correlationId());
+            // Echo for tracing only — a hostile value (e.g. CR/LF inside an
+            // HPACK-encoded header) must never poison the response head; the
+            // stream-level catch below would otherwise reset it.
+            try {
+                context.setHeader("X-Request-Id", context.correlationId());
+            } catch (IllegalArgumentException ignored) {
+            }
             ctx.executeRequest(context);
             stream.close();
         } catch (Exception e) {

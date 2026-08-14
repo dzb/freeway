@@ -83,6 +83,22 @@ final class WebSocketUpgrade {
             out.flush();
             ctx.metrics().websocketConnections().increment();
 
+            // A WebSocket is long-lived and must survive idle periods:
+            // clear the socket read timeout before entering the blocking
+            // frame read loop, otherwise SO_TIMEOUT (readTimeout, 30s by
+            // default) kills a healthy connection that simply has nothing
+            // to say — a 1006 abnormal closure with no frames exchanged.
+            // Dead peers are still reclaimed by the TCP keepalive probes
+            // configured at connection setup (setKeepAlive + KEEPALIVE_*),
+            // exactly like HTTP/2 updateReadTimeout() zeroes SO_TIMEOUT for
+            // connections with open streams. No server-side ping is sent.
+            try {
+                connection.socket().setSoTimeout(0);
+            } catch (IOException ignored) {
+                // Best-effort — if the timeout cannot be cleared the read
+                // loop keeps the pre-existing (timeout-kill) behavior.
+            }
+
             InputStream websocketInput = parser.upgradeStream();
             var wsSession = new WebSocketSessionImpl(req.method(), req.path(),
                 req.queryString(), req.headers(), websocketInput,

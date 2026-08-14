@@ -98,7 +98,13 @@ final class Http1xSession {
                 context.reset(req.method(), req.path(), req.queryString(),
                     req.headers(), bodyStream, bodyLength, req.isChunked(),
                     out, correlationId, req.isHttp10(), req.keepAlive());
-                context.setHeader("X-Request-Id", context.correlationId());
+                // The correlation id is echoed for tracing only — a hostile
+                // value must never break the session. (HTTP/1.1 parsing now
+                // rejects CTL, so this guard is defense-in-depth.)
+                try {
+                    context.setHeader("X-Request-Id", context.correlationId());
+                } catch (IllegalArgumentException ignored) {
+                }
                 if ((req.isChunked() || bodyLength > 0) && expects100Continue(req)) {
                     HttpSession.writeLine(out, "HTTP/1.1 100 Continue");
                     HttpSession.writeLine(out, "");

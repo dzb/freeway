@@ -316,7 +316,7 @@ public abstract class AbstractHttpContext implements HttpContext {
      * read. Accepts {@code application/json} and structured syntax suffixes
      * ({@code application/*+json}, e.g. {@code application/vnd.api+json});
      * anything else is a client error ({@link UnsupportedMediaTypeException})
-     * mapped to 415 by {@code ExceptionMappers}, not a 500.
+     * mapped to 415 by the default error handler, not a 500.
      */
     private void checkJsonContentType() {
         String ct = header("Content-Type").orElse(null);
