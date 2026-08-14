@@ -5,6 +5,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.StubHttpContext;
+import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 import com.jujin.freeway.http.filter.ExceptionMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -105,5 +106,15 @@ class ExceptionMapperTest {
         boolean handled = only.handle(ctx, new RuntimeException("test"));
 
         assertFalse(handled);
+    }
+
+    @Test
+    void defaultMapperMapsUnsupportedMediaTypeTo415() throws Exception {
+        StubHttpContext ctx = new StubHttpContext();
+        boolean handled = ExceptionMappers.defaultMapper().handle(
+            ctx, new UnsupportedMediaTypeException("expected application/json"));
+
+        assertTrue(handled);
+        assertEquals(415, ctx.status());
     }
 }

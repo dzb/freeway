@@ -3,6 +3,7 @@ package com.jujin.freeway.http.staticfile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLStreamHandler;
@@ -153,6 +154,35 @@ class StaticResourceMountTest {
     }
 
     @Test
+    void directoryMountServesFileLargerThanMemoryCap(@TempDir Path tempDir) throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("public"));
+        Path big = root.resolve("big.bin");
+        // Sparse 60MB file — larger than the 50MB in-memory cap, but
+        // streamable; meta()/resolve() must not reject it by size.
+        try (var raf = new RandomAccessFile(big.toFile(), "rw")) {
+            raf.setLength(60L * 1024 * 1024);
+        }
+        long expected = Files.size(big);
+        assertTrue(expected > 50L * 1024 * 1024, "test file must exceed the memory cap");
+
+        StaticResourceMount mount = StaticResourceMount.directory("/files", root);
+
+        // HEAD reports the real size without reading the file and without a
+        // size error (previously meta() threw IOException → 500).
+        StubHttpContext head = new StubHttpContext("HEAD", "/files/big.bin");
+        assertTrue(mount.serve(head, head));
+        assertEquals(200, head.status());
+        assertEquals(String.valueOf(expected), head.responseHeader("Content-Length"),
+            "an oversized file must be streamed by metadata without a size error");
+
+        // GET must still be served (200), not 500.
+        StubHttpContext get = new StubHttpContext("GET", "/files/big.bin");
+        assertTrue(mount.serve(get, get));
+        assertEquals(200, get.status());
+        assertEquals(expected, get.body().length);
+    }
+
+    @Test
     void headOmitsContentLengthWhenClasspathSizeUnknown() throws Exception {
         ClassLoader original = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(
@@ -168,6 +198,54 @@ class StaticResourceMountTest {
         } finally {
             Thread.currentThread().setContextClassLoader(original);
         }
+    }
+
+    @Test
+    void directoryRequestsResolveSubdirectoryIndexHtml() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("public"));
+        Files.createDirectories(root.resolve("sub"));
+        Files.writeString(root.resolve("sub/index.html"), "sub index content");
+
+        StaticResourceMount mount = StaticResourceMount.directory("/static", root);
+
+        StubHttpContext withSlash = new StubHttpContext("GET", "/static/sub/");
+        assertTrue(mount.serve(withSlash, withSlash));
+        assertEquals(200, withSlash.status());
+        assertEquals("sub index content", withSlash.responseBody(),
+            "a trailing-slash directory request must serve sub/index.html");
+
+        StubHttpContext withoutSlash = new StubHttpContext("GET", "/static/sub");
+        assertTrue(mount.serve(withoutSlash, withoutSlash));
+        assertEquals(200, withoutSlash.status());
+        assertEquals("sub index content", withoutSlash.responseBody(),
+            "a directory request without a trailing slash must also serve "
+                + "sub/index.html");
+    }
+
+    @Test
+    void missingDirectoryIndexReturnsNotFound() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("public"));
+        Files.createDirectories(root.resolve("empty"));
+
+        StaticResourceMount mount = StaticResourceMount.directory("/static", root);
+        StubHttpContext ctx = new StubHttpContext("GET", "/static/empty/");
+
+        assertTrue(mount.serve(ctx, ctx));
+        assertEquals(404, ctx.status());
+        assertEquals("Not Found", ctx.responseBody());
+    }
+
+    @Test
+    void trailingSlashOnAFileStillReturnsNotFound() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("public"));
+        Files.writeString(root.resolve("data.txt"), "data");
+
+        StaticResourceMount mount = StaticResourceMount.directory("/static", root);
+        StubHttpContext ctx = new StubHttpContext("GET", "/static/data.txt/");
+
+        assertTrue(mount.serve(ctx, ctx));
+        assertEquals(404, ctx.status(),
+            "a trailing slash on a file must not be served as a directory index");
     }
 
     private static void createSymlinkOrSkip(Path link, Path target) {
