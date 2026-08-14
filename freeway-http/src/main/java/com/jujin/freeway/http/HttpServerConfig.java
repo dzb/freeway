@@ -113,4 +113,93 @@ public record HttpServerConfig(
             DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS, DEFAULT_WRITE_TIMEOUT,
             CompressionConfig.DEFAULT, 0, 0);
     }
+
+    /**
+     * Fluent builder for configurations with many explicit fields. The long
+     * positional constructors make it easy to mis-bind a {@code Duration} to
+     * the wrong slot (e.g. a read timeout landing on shutdownGrace); the
+     * builder's named setters rule that out. Defaults match the canonical
+     * constructor's, and {@link #build()} runs the same validation.
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private String host = "127.0.0.1";
+        private int port;
+        private int backlog;
+        private Duration shutdownGrace = Duration.ZERO;
+        private long maxBodySize = DEFAULT_MAX_BODY_SIZE;
+        private Duration readTimeout = DEFAULT_READ_TIMEOUT;
+        private int maxConnections = DEFAULT_MAX_CONNECTIONS;
+        private Duration writeTimeout = DEFAULT_WRITE_TIMEOUT;
+        private CompressionConfig compression = CompressionConfig.DEFAULT;
+        private int receiveBufferSize;
+        private int sendBufferSize;
+
+        public Builder host(String host) {
+            this.host = host;
+            return this;
+        }
+
+        public Builder port(int port) {
+            this.port = port;
+            return this;
+        }
+
+        public Builder backlog(int backlog) {
+            this.backlog = backlog;
+            return this;
+        }
+
+        /** Grace period for in-flight requests on shutdown. */
+        public Builder shutdownGrace(Duration shutdownGrace) {
+            this.shutdownGrace = shutdownGrace;
+            return this;
+        }
+
+        public Builder maxBodySize(long maxBodySize) {
+            this.maxBodySize = maxBodySize;
+            return this;
+        }
+
+        /** Socket read idle timeout (zero disables). */
+        public Builder readTimeout(Duration readTimeout) {
+            this.readTimeout = readTimeout;
+            return this;
+        }
+
+        public Builder maxConnections(int maxConnections) {
+            this.maxConnections = maxConnections;
+            return this;
+        }
+
+        /** Per-socket-write timeout (zero disables). */
+        public Builder writeTimeout(Duration writeTimeout) {
+            this.writeTimeout = writeTimeout;
+            return this;
+        }
+
+        public Builder compression(CompressionConfig compression) {
+            this.compression = compression;
+            return this;
+        }
+
+        public Builder receiveBufferSize(int receiveBufferSize) {
+            this.receiveBufferSize = receiveBufferSize;
+            return this;
+        }
+
+        public Builder sendBufferSize(int sendBufferSize) {
+            this.sendBufferSize = sendBufferSize;
+            return this;
+        }
+
+        public HttpServerConfig build() {
+            return new HttpServerConfig(host, port, backlog, shutdownGrace,
+                maxBodySize, readTimeout, maxConnections, writeTimeout,
+                compression, receiveBufferSize, sendBufferSize);
+        }
+    }
 }
