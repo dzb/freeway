@@ -143,13 +143,10 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadProperties(ClassLoader loader, String resourceName) {
-        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
-        InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
-        if (stream == null) {
-            return Map.of();
-        }
-
-        try (stream; InputStream bounded = ByteStreams.bounded(stream, 16L * 1024 * 1024, resourceName)) {
+        try (InputStream bounded = openBoundedStream(loader, resourceName)) {
+            if (bounded == null) {
+                return Map.of();
+            }
             Properties properties = new Properties();
             properties.load(bounded);
             Map<String, String> values = new LinkedHashMap<>();
@@ -163,14 +160,10 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadJson(ClassLoader loader, String resourceName) {
-        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
-        InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
-        if (stream == null) {
-            return Map.of();
-        }
-
-        try (stream; InputStream bounded = ByteStreams.bounded(
-                stream, 16L * 1024 * 1024, resourceName)) {
+        try (InputStream bounded = openBoundedStream(loader, resourceName)) {
+            if (bounded == null) {
+                return Map.of();
+            }
             byte[] bytes;
             try {
                 bytes = bounded.readAllBytes();
@@ -196,6 +189,20 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         } catch (IOException | RuntimeException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
         }
+    }
+
+    /**
+     * Opens {@code resourceName} on the given (or default) class loader,
+     * wrapping the stream with a 16 MiB read cap. Returns {@code null} when
+     * the resource does not exist, so callers can treat it as "no config".
+     */
+    private static InputStream openBoundedStream(ClassLoader loader, String resourceName) {
+        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
+        InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
+        if (stream == null) {
+            return null;
+        }
+        return ByteStreams.bounded(stream, 16L * 1024 * 1024, resourceName);
     }
 
     private static String resourceName(String baseName, String profile, String suffix) {
@@ -233,26 +240,17 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             if (arg.startsWith("--") || arg.startsWith("-D")) {
                 String raw = arg.substring(2);
                 int eq = raw.indexOf('=');
-                String key;
-                String value;
                 if (eq > 0) {
-                    key = raw.substring(0, eq);
-                    value = raw.substring(eq + 1);
-                } else if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
-                    key = raw;
-                    value = list.get(++i);
+                    values.put(validateCliKey(raw.substring(0, eq), arg), raw.substring(eq + 1));
                 } else {
-                    key = raw;
-                    value = "true";
+                    ConsumableValue consumed = consumeValueOrTrue(list, i);
+                    values.put(validateCliKey(raw, arg), consumed.value());
+                    i = consumed.nextIndex();
                 }
-                values.put(validateCliKey(key, arg), value);
             } else if (arg.startsWith("-") && arg.length() == 2) {
-                String key = arg.substring(1);
-                if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
-                    values.put(validateCliKey(key, arg), list.get(++i));
-                } else {
-                    values.put(validateCliKey(key, arg), "true");
-                }
+                ConsumableValue consumed = consumeValueOrTrue(list, i);
+                values.put(validateCliKey(arg.substring(1), arg), consumed.value());
+                i = consumed.nextIndex();
             } else {
                 LOG.warn(
                     "Ignoring positional command-line argument '{}' — "
@@ -264,6 +262,21 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         }
         return values;
     }
+
+    /**
+     * The value for a flag at {@code index}: the next argument when it is a
+     * consumable value (see {@link #isConsumableValue}), otherwise
+     * {@code "true"} (boolean flag). {@code nextIndex} is the index the
+     * caller should continue scanning from — it skips the consumed value.
+     */
+    private static ConsumableValue consumeValueOrTrue(List<String> list, int index) {
+        if (index + 1 < list.size() && isConsumableValue(list.get(index + 1))) {
+            return new ConsumableValue(list.get(index + 1), index + 1);
+        }
+        return new ConsumableValue("true", index);
+    }
+
+    private record ConsumableValue(String value, int nextIndex) {}
 
     /**
      * Rejects CLI arguments whose key is empty (bare {@code --} / {@code -D})
