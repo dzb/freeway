@@ -25,25 +25,26 @@ public final class ExchangeMetaDefault implements ExchangeMeta {
         this.startTime = Instant.now();
     }
 
+    /**
+     * Resets per-request state for keep-alive connection reuse: clears the
+     * principal and attributes, rolls a fresh correlation id and refreshes
+     * the start time so per-request timing stats stay accurate. WebSocket
+     * sessions own their exchange for the whole connection lifetime and never
+     * call this.
+     */
+    public void reset() {
+        principal = null;
+        attributes = null;
+        correlationId = fastCorrelationId();
+        startTime = Instant.now();
+    }
+
     /** Replaces the correlation id for a reused exchange (keep-alive);
      *  blank input keeps the existing id. */
     public void setCorrelationId(String correlationId) {
         if (correlationId != null && !correlationId.isBlank()) {
             this.correlationId = correlationId;
         }
-    }
-
-    /**
-     * Re-initializes the per-exchange state for a keep-alive reuse: a fresh
-     * correlation id and start time, and no leftover principal or attributes.
-     * Callers that received a client-supplied id re-apply it afterwards via
-     * {@link #setCorrelationId(String)}.
-     */
-    public void reset() {
-        this.correlationId = fastCorrelationId();
-        this.startTime = Instant.now();
-        this.principal = null;
-        this.attributes = null;
     }
 
     @Override

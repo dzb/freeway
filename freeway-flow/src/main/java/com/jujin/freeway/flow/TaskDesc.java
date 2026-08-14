@@ -11,14 +11,9 @@ import java.util.Set;
  * @since 3.0
  */
 public class TaskDesc {
-    public static boolean isNotEmpty(TaskDesc t) {
-        return t != null && !t.isEmpty();
-    }
-
     private final Node node;
     private final String description;
     private final TaskComponent component;
-    public Object attachment;
 
     public TaskDesc(Node node, String description) {
         this.node = node;

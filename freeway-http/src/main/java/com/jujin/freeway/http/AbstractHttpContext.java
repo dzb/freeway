@@ -65,7 +65,9 @@ public abstract class AbstractHttpContext implements HttpContext {
         exchangeMeta.setCorrelationId(correlationId);
     }
 
-    /** Resets the exchange-scoped metadata for a keep-alive reuse. */
+    /** Resets per-request exchange metadata (principal, attributes,
+     *  correlation id, start time) so a keep-alive context reused for the
+     *  next request never leaks state from the previous one. */
     protected final void resetExchangeMeta() {
         exchangeMeta.reset();
     }
@@ -230,6 +232,8 @@ public abstract class AbstractHttpContext implements HttpContext {
         return outputJson(value);
     }
 
+    // -- protected helpers for transport implementations --
+
     /** Coerces a string value to the given target type. */
     protected final <T> T coerceText(String value, Class<T> type) {
         return value != null ? coercer.coerce(value, type) : null;
@@ -248,10 +252,14 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     /**
-     * Validates that a header value does not contain CR or LF characters,
-     * preventing HTTP response header injection.
+     * Validates that a header value does not contain CR or LF characters
+     * (preventing HTTP response header injection) and is fully encodable as
+     * ISO-8859-1 (the charset the HTTP/1.1 writers serialize header values
+     * with — anything above U+00FF would otherwise be silently replaced by
+     * '?' on the wire).
      *
-     * @throws IllegalArgumentException if the value contains CR or LF
+     * @throws IllegalArgumentException if the value contains CR/LF or a
+     *         character that is not representable in ISO-8859-1
      */
     protected static void validateHeaderValue(String value) {
         if (value != null) {
@@ -260,6 +268,15 @@ public abstract class AbstractHttpContext implements HttpContext {
                 if (c == '\r' || c == '\n') {
                     throw new IllegalArgumentException(
                         "Header value must not contain CR or LF: " +
+                        value.substring(0, Math.min(i + 10, value.length())) + "...");
+                }
+            }
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (c > 0xFF) {
+                    throw new IllegalArgumentException(
+                        "Header value must be ISO-8859-1 encodable (non-Latin-1 character at index "
+                            + i + "): " +
                         value.substring(0, Math.min(i + 10, value.length())) + "...");
                 }
             }
@@ -294,6 +311,13 @@ public abstract class AbstractHttpContext implements HttpContext {
         }
     }
 
+    /**
+     * Validates that the request Content-Type is JSON before a typed body
+     * read. Accepts {@code application/json} and structured syntax suffixes
+     * ({@code application/*+json}, e.g. {@code application/vnd.api+json});
+     * anything else is a client error ({@link UnsupportedMediaTypeException})
+     * mapped to 415 by {@code ExceptionMappers}, not a 500.
+     */
     private void checkJsonContentType() {
         String ct = header("Content-Type").orElse(null);
         if (!MediaTypes.isJson(ct)) {

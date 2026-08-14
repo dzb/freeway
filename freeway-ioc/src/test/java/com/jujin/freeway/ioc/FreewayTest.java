@@ -178,6 +178,37 @@ class FreewayTest {
     }
 
     @Test
+    void lateIdChangeMigratesRealizedInstance() {
+        // Regression: Binding.id() called AFTER the binding was realized re-keys
+        // the binding index but used to leave the old-key cache entries behind —
+        // get(new id) then realized a SECOND singleton, so close() ran
+        // @PreDestroy twice on two instances. The cache must migrate with the
+        // re-key so the binding keeps serving ONE instance.
+        IdChangeService.destroyed.set(0);
+        AtomicReference<Binding<IdChangeService>> handle = new AtomicReference<>();
+        Container container = Freeway.create(binder -> {
+            Binding<IdChangeService> binding =
+                binder.bind(IdChangeService.class).to(IdChangeService.class).id("initial");
+            handle.set(binding);
+        });
+
+        IdChangeService original = container.get(IdChangeService.class, "initial");
+        handle.get().id("renamed"); // late re-key after realization
+
+        IdChangeService renamed = container.get(IdChangeService.class, "renamed");
+        assertSame(original, renamed,
+            "a re-keyed binding must keep serving the same realized instance");
+        assertEquals(0, IdChangeService.destroyed.get());
+        assertThrows(IllegalArgumentException.class,
+            () -> container.get(IdChangeService.class, "initial"),
+            "the old id must no longer resolve after the re-key");
+
+        container.close();
+        assertEquals(1, IdChangeService.destroyed.get(),
+            "exactly one @PreDestroy for the re-keyed singleton (no second instance)");
+    }
+
+    @Test
     void loggerServiceAndInjectionUseOwningTypeByDefault() {
         Container container = Freeway.create();
         LoggerSource loggerSource = container.get(LoggerSource.class);
@@ -518,6 +549,97 @@ class FreewayTest {
         @Override public String greet() { return "hello"; }
     }
 
+    interface StatefulCounter {
+        void bump();
+
+        int value();
+    }
+
+    static class StatefulCounterImpl implements StatefulCounter {
+        static final AtomicInteger created = new AtomicInteger();
+        static volatile boolean failNextConstruction;
+        private int value;
+
+        StatefulCounterImpl() {
+            if (failNextConstruction) {
+                failNextConstruction = false;
+                throw new IllegalStateException("simulated construction failure");
+            }
+            created.incrementAndGet();
+        }
+
+        @Override
+        public void bump() {
+            value++;
+        }
+
+        @Override
+        public int value() {
+            return value;
+        }
+    }
+
+    @Test
+    void advisedPrototypeKeepsStateAcrossCallsOnSameProxy() {
+        // Regression: an advised PROTOTYPE proxy created a NEW target on every
+        // method call, so state set on the first call was lost on the second —
+        // unlike an unadvised prototype ("one instance per get(), state
+        // persists across calls"). The proxy must lazily create ONE target per
+        // proxy and reuse it.
+        StatefulCounterImpl.created.set(0);
+        StatefulCounterImpl.failNextConstruction = false;
+        Container container = Freeway.create(binder ->
+            binder.bind(StatefulCounter.class)
+                  .to(StatefulCounterImpl.class)
+                  .scope(Scope.PROTOTYPE)
+                  .advise(advisor -> advisor.wrap(inv -> true, MethodInvocation::proceed)));
+
+        StatefulCounter p1 = container.get(StatefulCounter.class);
+        p1.bump();
+        p1.bump();
+        p1.bump();
+        assertEquals(3, p1.value(),
+            "state set through one proxy must persist across calls on that proxy");
+
+        StatefulCounter p2 = container.get(StatefulCounter.class);
+        assertEquals(0, p2.value(), "each get() must yield a fresh instance");
+        p2.bump();
+        assertEquals(1, p2.value());
+        assertEquals(3, p1.value(), "the first proxy's state must be untouched by p2");
+
+        assertEquals(2, StatefulCounterImpl.created.get(),
+            "exactly one target per proxy (one per get())");
+        container.close();
+    }
+
+    @Test
+    void advisedPrototypeRetriesFailedConstruction() {
+        // A throwing target construction must NOT be cached: the next call on
+        // the same proxy retries instead of reusing a failed (or missing) target.
+        StatefulCounterImpl.created.set(0);
+        StatefulCounterImpl.failNextConstruction = true;
+        Container container = Freeway.create(binder ->
+            binder.bind(StatefulCounter.class)
+                  .to(StatefulCounterImpl.class)
+                  .scope(Scope.PROTOTYPE)
+                  .advise(advisor -> advisor.wrap(inv -> true, MethodInvocation::proceed)));
+
+        StatefulCounter p1 = container.get(StatefulCounter.class);
+        RuntimeException failure = assertThrows(RuntimeException.class, p1::bump,
+            "the failed construction must propagate");
+        Throwable cause = failure;
+        while (cause != null && !(cause instanceof IllegalStateException)) {
+            cause = cause.getCause();
+        }
+        assertInstanceOf(IllegalStateException.class, cause,
+            "the simulated construction failure must surface in the cause chain");
+        p1.bump();
+        assertEquals(1, p1.value(),
+            "the next call must retry construction instead of reusing the failed attempt");
+        assertEquals(1, StatefulCounterImpl.created.get());
+        container.close();
+    }
+
     interface SingletonService {
         String name();
     }
@@ -678,6 +800,69 @@ class FreewayTest {
 
         assertEquals(9090, service.port());
         assertEquals("field-app", service.name());
+    }
+
+    @Test
+    void injectIntoFinalFieldWithInjectThrows() {
+        // Regression: a final field carrying @Inject was silently skipped and
+        // kept its default value — the mis-injection surfaced only at runtime.
+        Container container = Freeway.create();
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.create(FinalInjectFieldBean.class),
+            "injecting into a final field must fail fast at construction");
+        assertTrue(chainContains(ex, IllegalStateException.class, "use constructor injection"),
+            "the error must point at constructor injection, got: " + ex);
+        container.close();
+    }
+
+    @Test
+    void injectIntoFinalFieldWithValueThrows() {
+        Container container = Freeway.create();
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.create(FinalValueFieldBean.class),
+            "a final field carrying @Value must fail fast, not stay at its default");
+        assertTrue(chainContains(ex, IllegalStateException.class, "use constructor injection"),
+            "got: " + ex);
+        container.close();
+    }
+
+    /** Walks the cause chain looking for a message fragment on a matching type. */
+    private static boolean chainContains(Throwable t, Class<? extends Throwable> type, String fragment) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (type.isInstance(c) && c.getMessage() != null && c.getMessage().contains(fragment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Test
+    void finalFieldWithoutInjectionAnnotationIsLeftAlone() {
+        // Non-writable fields WITHOUT any injection annotation keep the
+        // existing skip behavior — no exception, default value preserved.
+        Container container = Freeway.create();
+        FinalPlainFieldBean bean = assertDoesNotThrow(
+            () -> container.create(FinalPlainFieldBean.class),
+            "a plain final field must not trip the injection guard");
+        assertEquals("default", bean.name);
+        container.close();
+    }
+
+    @Test
+    void normalFieldInjectionStillWorks() {
+        // Sanity: the non-writable guard must not disturb ordinary injection.
+        System.setProperty(PORT_KEY, "7070");
+        System.setProperty(NAME_KEY, "field-app");
+        Container container = Freeway.create();
+        try {
+            FieldConfiguredService service = container.create(FieldConfiguredService.class);
+            assertEquals(7070, service.port());
+            assertEquals("field-app", service.name());
+        } finally {
+            System.clearProperty(PORT_KEY);
+            System.clearProperty(NAME_KEY);
+        }
+        container.close();
     }
 
     @Test
@@ -1127,6 +1312,15 @@ class FreewayTest {
         String greet();
     }
 
+    public static final class IdChangeService {
+        static final AtomicInteger destroyed = new AtomicInteger();
+
+        @PreDestroy
+        void destroy() {
+            destroyed.incrementAndGet();
+        }
+    }
+
     public static final class GreeterImpl implements Greeter {
         static final AtomicInteger created = new AtomicInteger();
 
@@ -1265,6 +1459,20 @@ class FreewayTest {
         }
     }
 
+    public static final class FinalInjectFieldBean {
+        @Inject
+        final String name = "default";
+    }
+
+    public static final class FinalValueFieldBean {
+        @Value("${" + PORT_KEY + "}")
+        final String port = "default";
+    }
+
+    public static final class FinalPlainFieldBean {
+        final String name = "default";
+    }
+
     public record AppFeature(String name) {}
 
     public record AppFlag(String name, boolean enabled) {}
@@ -1277,7 +1485,10 @@ class FreewayTest {
         private final List<AppFeature> features;
         private final Map<String, AppFlag> flags;
 
-        public MixedExtensionCatalog(List<AppFeature> features, Map<String, AppFlagEntry> flagEntries) {
+        public MixedExtensionCatalog(
+            List<AppFeature> features,
+            Map<String, AppFlagEntry> flagEntries
+        ) {
             this.features = List.copyOf(features);
             Map<String, AppFlag> map = new LinkedHashMap<>();
             for (Map.Entry<String, AppFlagEntry> e : flagEntries.entrySet())
@@ -1569,6 +1780,35 @@ class FreewayTest {
     }
 
     @Test
+    void threadScopedProxyRejectsInvocationAfterClose() {
+        // Regression: the singleton path throws "Container is closed" from
+        // realize() when a proxy obtained before close() is invoked after
+        // close, but realizeThreadScoped() had no such check — a THREAD proxy
+        // silently realized a fresh value after the container was sealed.
+        ScopedCounter.created.set(0);
+        ScopedCounter.destroyed.set(0);
+        Container container = Freeway.create(binder ->
+            binder.bind(ScopedApi.class).to(ScopedCounter.class).scope(Scope.THREAD)
+        );
+        Scoping scoping = container.get(Scoping.class);
+        ScopedApi api = container.get(ScopedApi.class); // lazy THREAD proxy
+
+        scoping.within(() -> {
+            container.close();
+            IllegalStateException ex = assertThrows(IllegalStateException.class, api::id,
+                "invoking a THREAD proxy after close must throw");
+            assertTrue(ex.getMessage().contains("Container is closed"),
+                "a THREAD proxy invoked after close must report the sealed container, got: "
+                    + ex.getMessage());
+            return null;
+        });
+
+        assertEquals(0, ScopedCounter.created.get(),
+            "no thread value may be realized after close");
+        assertEquals(0, ScopedCounter.destroyed.get());
+    }
+
+    @Test
     void singletonCanInjectScopedInterfaceThroughProxy() {
         ScopedCounter.created.set(0);
         ScopedCounter.destroyed.set(0);
@@ -1730,6 +1970,47 @@ class FreewayTest {
     }
 
     @Test
+    void dashDefaultSeparatorStripsLeadingDash() {
+        // Regression: the javadoc advertises ${name:-default}, but the parser
+        // took everything after ':' as the default, so ${port:-8080} produced
+        // "-8080". A single leading dash after ':' must be dropped (shell
+        // semantics); ${name:default} stays verbatim.
+        Container container = Freeway.create();
+        try {
+            SymbolSource symbols = container.get(SymbolSource.class);
+
+            assertEquals("8080", symbols.expand("${freeway.test.missing.port:-8080}"),
+                "${name:-default} must strip the leading dash");
+            assertEquals("8080", symbols.expand("${freeway.test.missing.port:8080}"),
+                "${name:default} must keep the default verbatim");
+            assertEquals("-8080", symbols.expand("${freeway.test.missing.port:--8080}"),
+                "only ONE leading dash is stripped");
+            assertEquals("", symbols.expand("${freeway.test.missing.name:-}"),
+                "${name:-} must yield the empty string");
+            assertEquals("", symbols.expand("${freeway.test.missing.name:}"),
+                "${name:} must yield the empty string");
+        } finally {
+            container.close();
+        }
+    }
+
+    @Test
+    void dashDefaultSeparatorDoesNotAffectResolvedSymbol() {
+        // A value present in the source wins regardless of the default syntax —
+        // the ":-" stripping only applies when the fallback is actually used.
+        System.setProperty(PORT_KEY, "1234");
+        Container container = Freeway.create();
+        try {
+            SymbolSource symbols = container.get(SymbolSource.class);
+            assertEquals("1234", symbols.expand("${" + PORT_KEY + ":-8080}"),
+                "a resolved symbol must not have its value dash-stripped");
+        } finally {
+            System.clearProperty(PORT_KEY);
+            container.close();
+        }
+    }
+
+    @Test
     void configuredValueCoercionErrorIncludesContext() {
         System.setProperty(APP_NAME_KEY, "not-a-list");
         Container container = Freeway.create();
@@ -1786,6 +2067,60 @@ class FreewayTest {
     }
 
     @Test
+    void qualifiedListInjectionPrefersBoundServiceOverContributions() {
+        // Regression: resolveContributed fired for ANY List<X> constructor
+        // parameter BEFORE id-based injection, so a user-bound List<String>
+        // service was permanently shadowed by the contribution mechanism —
+        // @Inject("mylist") List<String> injected the contributions instead of
+        // the bound service. An explicit id must prefer the bound service.
+        Container container = Freeway.create(
+            binder -> binder.bind(List.class)
+                .to(ignored -> List.of("bound-a", "bound-b"))
+                .id("mylist")
+                .scope(Scope.PROTOTYPE),
+            binder -> binder.contribute(String.class).add("contributed-a")
+        );
+
+        QualifiedListConsumer consumer = container.create(QualifiedListConsumer.class);
+
+        assertEquals(List.of("bound-a", "bound-b"), consumer.values(),
+            "@Inject(\"mylist\") List<String> must resolve the bound service, not the contributions");
+        container.close();
+    }
+
+    @Test
+    void qualifiedListInjectionFallsBackToContributionsWhenUnbound() {
+        // No List binding with the requested id: resolution must fall back to
+        // the contribution view instead of failing.
+        Container container = Freeway.create(
+            binder -> binder.contribute(String.class).add("contributed-a")
+        );
+
+        FallbackListConsumer consumer = container.create(FallbackListConsumer.class);
+
+        assertEquals(List.of("contributed-a"), consumer.values(),
+            "an id without a matching binding must fall back to contributions");
+        container.close();
+    }
+
+    @Test
+    void unannotatedListParameterConsumesContributions() {
+        // Constructor parameters consume contributions implicitly — the
+        // constructor is the single mandatory injection point, so resolution
+        // failure is loud at startup and there is no silent-miss risk; no
+        // @Inject ceremony is required on parameters (fields still require
+        // @Inject). An explicit @Inject("id") prefers a bound service.
+        Container container = Freeway.create(
+            binder -> binder.contribute(String.class).add("contributed-a")
+        );
+
+        PlainListConsumer consumer = container.create(PlainListConsumer.class);
+        assertEquals(List.of("contributed-a"), consumer.values,
+            "an unannotated List constructor parameter must receive the contributed view");
+        container.close();
+    }
+
+    @Test
     void rejectsAdvisorOnNonInterfaceType() {
         Container container = Freeway.create(binder ->
             binder.bind(GreeterImpl.class)
@@ -1823,6 +2158,38 @@ class FreewayTest {
     public static final class ConfiguredListConsumer {
         @SuppressWarnings("unused")
         ConfiguredListConsumer(@Value("${" + LIST_KEY + "}") List<String> values) {}
+    }
+
+    public static final class QualifiedListConsumer {
+        private final List<String> values;
+
+        QualifiedListConsumer(@Inject("mylist") List<String> values) {
+            this.values = values;
+        }
+
+        List<String> values() {
+            return values;
+        }
+    }
+
+    public static final class FallbackListConsumer {
+        private final List<String> values;
+
+        FallbackListConsumer(@Inject("missing-id") List<String> values) {
+            this.values = values;
+        }
+
+        List<String> values() {
+            return values;
+        }
+    }
+
+    public static final class PlainListConsumer {
+        final List<String> values;
+
+        PlainListConsumer(List<String> values) {
+            this.values = values;
+        }
     }
 
     // ========== @PostConstruct / @PreDestroy tests ==========

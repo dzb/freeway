@@ -7,14 +7,9 @@ package com.jujin.freeway.flow;
  * @since 3.0
  */
 public class ConditionDesc {
-    public static boolean isNotEmpty(ConditionDesc c) {
-        return c != null && !c.isEmpty();
-    }
-
     private final Graph graph;
     private final String description;
     private final ConditionComponent component;
-    public Object attachment;
 
     public ConditionDesc(Graph graph, String description) {
         this.graph = graph;

@@ -390,6 +390,42 @@ class SqlTextParserTest {
     }
 
     @Test
+    void mysqlBackslashEscapedQuoteKeepsFollowingParamVisible() {
+        // MySQL treats \' as an escaped quote inside ordinary string literals;
+        // the string must not close early, or :p after it would be swallowed.
+        var r = SqlTextParser.parseNamed(
+            "select id from t where label = 'it\\'s' and x = :p",
+            new MySqlDialect()
+        );
+        assertEquals(List.of("p"), r.names());
+        assertEquals("select id from t where label = 'it\\'s' and x = ?", r.sql());
+    }
+
+    @Test
+    void supersetTreatsBackslashAsEscapeInStrings() {
+        // SUPERSET (no dialect) is the union of all built-in dialects' syntax,
+        // and MySQL's backslash escaping is part of that union — the union
+        // errs on the side of skipping more text.
+        var r = SqlTextParser.parseNamed(
+            "select id from t where label = 'it\\'s' and x = :p"
+        );
+        assertEquals(List.of("p"), r.names());
+    }
+
+    @Test
+    void postgresBackslashInOrdinaryStringIsNotAnEscape() {
+        // PostgreSQL (standard_conforming_strings=on): a backslash is literal,
+        // so 'it\' closes the string and the trailing quote opens a new
+        // (unterminated) string that swallows :p — a user SQL error, and the
+        // PG profile keeps that behavior unchanged.
+        var r = SqlTextParser.parseNamed(
+            "select id from t where label = 'it\\'s' and x = :p",
+            new PostgresDialect()
+        );
+        assertEquals(List.of(), r.names());
+    }
+
+    @Test
     void unterminatedDollarQuoteIsLeftAsLiteral() {
         var r = SqlTextParser.parseNamed("select $$abc");
         assertEquals(List.of(), r.names());

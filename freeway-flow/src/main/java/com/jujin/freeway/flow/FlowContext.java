@@ -78,7 +78,10 @@ public interface FlowContext {
     }
 
     default FlowContext putAll(Map<String, Object> model) {
-        data().putAll(model);
+        // Consistent with put(): null values are not stored.
+        model.forEach((k, v) -> {
+            if (v != null) data().put(k, v);
+        });
         return this;
     }
 

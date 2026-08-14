@@ -33,7 +33,11 @@ final class Lifecycle {
         }
         try {
             MethodHandleUtils.invoke(handle, instance);
-        } catch (Error e) { throw e; } catch (Throwable ex) {
+        } catch (Throwable ex) {
+            // Errors included: a throwing callback is a failure of that
+            // callback, not a reason to skip the rest of the lifecycle drain.
+            // Callers (Shutdown, ScopedCache cleanup) handle the resulting
+            // RuntimeException uniformly.
             throw new RuntimeException(
                 annotationName + " invocation failed on " + instance.getClass().getName(), ex
             );

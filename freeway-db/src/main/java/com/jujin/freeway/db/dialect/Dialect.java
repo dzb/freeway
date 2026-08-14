@@ -1,9 +1,8 @@
 package com.jujin.freeway.db.dialect;
 
 import com.jujin.freeway.db.Database;
-import org.slf4j.LoggerFactory;
+import com.jujin.freeway.db.SqlException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -86,6 +85,17 @@ public interface Dialect {
     }
 
     /**
+     * Builds the reserved-word set for a dialect: the {@link #COMMON_RESERVED}
+     * words plus the dialect-specific ones. Shared by the built-in dialects;
+     * custom dialects may use it too.
+     */
+    static Set<String> buildReserved(String... specific) {
+        Set<String> words = new HashSet<>(COMMON_RESERVED);
+        words.addAll(Set.of(specific));
+        return Set.copyOf(words);
+    }
+
+    /**
      * Returns true if the given identifier needs quoting.
      */
     default boolean needsQuoting(String name) {
@@ -106,9 +116,7 @@ public interface Dialect {
                     return true;
                 }
             }
-        }
-        for (int i = 0; i < name.length(); i++) {
-            if (Character.isUpperCase(name.charAt(i))) {
+            if (Character.isUpperCase(c)) {
                 return true;
             }
         }
@@ -163,6 +171,19 @@ public interface Dialect {
      * (PostgreSQL; backslash escapes the next character).
      */
     default boolean escapeStringPrefix() {
+        return false;
+    }
+
+    /**
+     * Whether a backslash escapes the next character inside <em>ordinary</em>
+     * single-quoted string literals (MySQL/MariaDB: {@code 'it\'s'} is the
+     * string {@code it's}). The SQL standard only defines {@code ''}
+     * doubling; PostgreSQL handles backslash escapes via {@code E'...'}
+     * literals ({@link #escapeStringPrefix()}) — in a regular PG string a
+     * backslash is literal text ({@code standard_conforming_strings=on}), so
+     * this defaults to {@code false}.
+     */
+    default boolean backslashEscapesStrings() {
         return false;
     }
 
@@ -240,6 +261,17 @@ public interface Dialect {
         return true;
     }
 
+    /**
+     * Whether DDL statements participate in transactions. PostgreSQL, H2, and
+     * SQLite support transactional DDL; MySQL/MariaDB implicitly commit on
+     * every DDL statement, so a migration that mixes DDL with the checksum
+     * INSERT can never be applied atomically there (the DDL is committed but
+     * the checksum row is lost, so the next startup re-runs the DDL and fails).
+     */
+    default boolean supportsTransactionalDdl() {
+        return true;
+    }
+
     /** Whether {@code INSERT/UPDATE/DELETE ... RETURNING col} is supported. */
     default boolean supportsReturning() {
         return true;
@@ -314,8 +346,15 @@ public interface Dialect {
     }
 
     /**
-     * Helper for introspection queries: executes a SQL query, lowercases results,
-     * and returns them as a set. On error, logs a warning and returns an empty set.
+     * Helper for introspection queries: executes a SQL query, lowercases
+     * results, and returns them as a set.
+     *
+     * <p>An introspection failure throws {@link SqlException} — it must never
+     * be silently read as "the database is empty", because callers such as
+     * {@code Schema} would then generate misleading DDL (duplicate index
+     * creation, re-CREATE of existing tables) against an unknown current
+     * state. {@code Schema.ensure} catches this and skips the affected DDL
+     * phase with a warning.
      */
     default Set<String> querySet(Database db, String sql, Object... params) {
         try {
@@ -324,10 +363,10 @@ public interface Dialect {
                 .filter(r -> r != null)
                 .map(s -> s.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toCollection(HashSet::new));
-        } catch (Exception e) {
-            LoggerFactory.getLogger(Dialect.class)
-                .warn("Schema introspection query failed: {}", sql, e);
-            return Collections.emptySet();
+        } catch (RuntimeException e) {
+            throw new SqlException(
+                "Schema introspection query failed: " + sql + " — cannot verify "
+                    + "current database state", e);
         }
     }
 }

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -231,6 +232,56 @@ class DeferTest {
             Defer.within(() -> {
                 Defer.defer("dup", () -> {});
                 Defer.defer("dup", () -> {});
+            });
+        });
+    }
+
+    @Test
+    void duplicateDeferIdFailsAtRegistrationNotDrain() {
+        // Regression: duplicate ids used to surface only at drain (commit)
+        // time, when the late exception dropped every deferred action. The
+        // scope now rejects the second registration immediately.
+        AtomicBoolean reachedDrain = new AtomicBoolean(false);
+        assertThrows(IllegalStateException.class, () -> {
+            Defer.within(() -> {
+                Defer.defer("dup", () -> {});
+                Defer.defer("dup", () -> {});
+                reachedDrain.set(true);
+            });
+        });
+        assertFalse(reachedDrain.get(),
+            "duplicate id must fail at registration time, before drain");
+    }
+
+    @Test
+    void circularDependencyStillRunsAllActions() {
+        // Regression: a sort failure (circular before/after) used to drop
+        // every deferred action silently — commit, cache cleanup and lock
+        // release were all lost. The scope now runs all actions in
+        // registration order, logs the failure, and still surfaces the
+        // ordering error to the caller.
+        List<String> log = new ArrayList<>();
+
+        assertThrows(IllegalStateException.class, () -> {
+            Defer.within(() -> {
+                Defer.defer("a", () -> log.add("a")).after("b");
+                Defer.defer("b", () -> log.add("b")).after("a");
+                Defer.defer(() -> log.add("unnamed"));
+            });
+        });
+
+        assertEquals(List.of("a", "b", "unnamed"), log,
+            "all actions must run in registration order when ordering is impossible");
+    }
+
+    @Test
+    void circularDependencyErrorStillPropagatesAfterActionsRun() {
+        // The ordering bug must stay visible to the caller even though the
+        // fallback ran the actions: within() rethrows the sort failure.
+        assertThrows(IllegalStateException.class, () -> {
+            Defer.within(() -> {
+                Defer.defer("a", () -> {}).after("b");
+                Defer.defer("b", () -> {}).after("a");
             });
         });
     }

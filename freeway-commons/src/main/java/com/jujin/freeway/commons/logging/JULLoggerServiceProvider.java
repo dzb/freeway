@@ -8,11 +8,20 @@ import org.slf4j.spi.SLF4JServiceProvider;
 
 /**
  * SLF4J service provider backed by {@code java.util.logging}.
- * Installed by {@link LogBootstrap} when no external SLF4J provider
- * (Logback, Log4j) is detected.
  *
- * <p>JUL enhancement (formatters, file logging) is handled separately
- * by {@link JULEnhancer} — it activates regardless of SLF4J provider.
+ * <p>Registered <em>unconditionally</em> via
+ * {@code META-INF/services/org.slf4j.spi.SLF4JServiceProvider}, so SLF4J's
+ * {@code ServiceLoader} always sees it. It is the fallback provider: when an
+ * external SLF4J 2.x provider (Logback, Log4j 2, slf4j-simple) is on the
+ * classpath, {@link LogBootstrap#ensureProvider()} — invoked from
+ * {@code FreewayApp}'s/{@code Freeway}'s static initializers — pins the
+ * {@code slf4j.provider} system property to the external provider, so this
+ * JUL provider is only actually selected when no external provider is present
+ * (or the user pinned it explicitly). SLF4J picks the provider before any
+ * provider code runs, so this class cannot detect that situation itself.
+ *
+ * <p>JUL enhancement (formatters, file logging) is handled separately by
+ * {@link JULEnhancer}, which is activated when the JUL provider is selected.
  */
 public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
 

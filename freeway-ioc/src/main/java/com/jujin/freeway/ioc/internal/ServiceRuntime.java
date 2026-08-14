@@ -96,11 +96,7 @@ final class ServiceRuntime {
             return realizeThreadScoped(binding);
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
-        Set<ServiceKey> stack = realizeStack.get();
-        if (!stack.add(key)) {
-            throw new IllegalStateException("Circular dependency detected: " + key);
-        }
-        try {
+        return withCycleGuard(key, () -> {
             synchronized (REALIZE_LOCK) {
                 // A get() that passed the closed check before close() may
                 // block here while close() drains; once the container is
@@ -116,28 +112,43 @@ final class ServiceRuntime {
                 }
                 return binding.type().cast(cached);
             }
-        } finally {
-            stack.remove(key);
-        }
+        });
     }
 
     private <T> T realizeThreadScoped(BindingImpl<T> binding) {
+        // Same contract as the singleton path: a proxy obtained before close()
+        // must not silently instantiate a fresh value after the container is
+        // sealed (the singleton path throws from realize(); thread scope
+        // previously did not, so a THREAD proxy kept working after close while
+        // a SINGLETON proxy threw "Container is closed").
+        if (container.isClosed()) {
+            throw new IllegalStateException("Container is closed");
+        }
         if (!ScopedCache.isActive()) {
             throw new IllegalStateException(
                 "No open scope for type " + binding.type().getName()
             );
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
+        return withCycleGuard(key, () -> binding.type().cast(ScopedCache.get(key, () -> {
+            Object created = binding.directInstance();
+            ContainerImpl.manageScopeValue(container, created);
+            return created;
+        })));
+    }
+
+    /**
+     * Runs {@code work} under the circular-dependency guard for {@code key}:
+     * a re-entrant realization of the same key on this thread fails fast
+     * instead of recursing forever; the guard is always released.
+     */
+    private <T> T withCycleGuard(ServiceKey key, Supplier<T> work) {
         Set<ServiceKey> stack = realizeStack.get();
         if (!stack.add(key)) {
             throw new IllegalStateException("Circular dependency detected: " + key);
         }
         try {
-            return binding.type().cast(ScopedCache.get(key, () -> {
-                Object created = binding.directInstance();
-                ContainerImpl.manageScopeValue(container, created);
-                return created;
-            }));
+            return work.get();
         } finally {
             stack.remove(key);
         }
@@ -156,16 +167,21 @@ final class ServiceRuntime {
     private <T> T createAdvised(BindingImpl<T> binding) {
         // PROTOTYPE targets must not route through realize(): that path caches
         // in targetCache, which would share one target across every proxy and
-        // pull the prototype into container-close lifecycle. Per-call
-        // directInstance() preserves instance independence.
-        Supplier<T> target = binding.scope() == Scope.PROTOTYPE
+        // pull the prototype into container-close lifecycle. The proxy instead
+        // lazily creates ONE target per proxy (first method call) and reuses it
+        // for later calls — matching the unadvised prototype semantics of "one
+        // instance per get(), state persists across calls" — without sharing
+        // across proxies or entering the container's caches.
+        boolean perProxyCache = binding.scope() == Scope.PROTOTYPE;
+        Supplier<T> target = perProxyCache
             ? binding::directInstance
             : () -> realize(binding);
         return proxyFactory.createAdvised(
             binding.type(),
             target,
             binding.type().getSimpleName() + "[" + binding.id() + "]",
-            binding.advices()
+            binding.advices(),
+            perProxyCache
         );
     }
 }

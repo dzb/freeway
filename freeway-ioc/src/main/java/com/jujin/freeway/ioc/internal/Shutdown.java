@@ -1,7 +1,5 @@
 package com.jujin.freeway.ioc.internal;
 
-import com.jujin.freeway.commons.coercion.CoercerDefault;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -15,52 +13,81 @@ final class Shutdown {
      */
     private static final int MAX_DRAIN_ITERATIONS = 10_000;
 
-    private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
-    private final BindingIndex bindingIndex;
-    private final CoercerDefault coercer;
+    private final Set<Object> preDestroyed = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Object> closed = Collections.newSetFromMap(new IdentityHashMap<>());
+    private int iterations;
 
-    Shutdown(
-        Map<ServiceKey, Object> serviceCache,
-        Map<ServiceKey, Object> targetCache,
-        BindingIndex bindingIndex,
-        CoercerDefault coercer
-    ) {
-        this.serviceCache = serviceCache;
+    Shutdown(Map<ServiceKey, Object> targetCache) {
         this.targetCache = targetCache;
-        this.bindingIndex = bindingIndex;
-        this.coercer = coercer;
     }
 
+    /**
+     * Drains lifecycle callbacks until stable: {@code @PreDestroy} callbacks
+     * may realize new services (the container stays open during shutdown), and
+     * those must receive their own lifecycle callbacks instead of being
+     * orphaned after the caches are cleared. Each target is processed once
+     * (identity-deduped). The iteration cap guards against a pathological
+     * callback chain that realizes a fresh service on every pass.
+     *
+     * <p>Deliberately does NOT clear the caches or seal the container — the
+     * caller does that atomically under {@link ServiceRuntime#REALIZE_LOCK}
+     * after this drain (see {@link ContainerImpl#close()}), so a realization
+     * racing {@code close()} cannot insert a fresh singleton past the last
+     * snapshot and escape lifecycle cleanup.
+     */
     RuntimeException close() {
-        RuntimeException failure = null;
-        // Drain until stable: @PreDestroy callbacks may realize new services
-        // (the container stays open during shutdown), and those must receive
-        // their own lifecycle callbacks instead of being orphaned after the
-        // caches are cleared. Each target is processed once (identity-deduped).
-        // The iteration cap guards against a pathological callback chain that
-        // realizes a fresh service on every pass.
-        Set<Object> preDestroyed = Collections.newSetFromMap(new IdentityHashMap<>());
-        Set<Object> closed = Collections.newSetFromMap(new IdentityHashMap<>());
-        int iterations = 0;
+        return drainRemaining(null);
+    }
+
+    /**
+     * Final drain pass for targets realized concurrently with the main drain.
+     * The caller must hold {@link ServiceRuntime#REALIZE_LOCK} while invoking
+     * this: under the lock no new realization can add targets after this
+     * pass's last snapshot, so the pass stabilizes in at most two iterations
+     * and the subsequent cache clear cannot orphan anything. Targets already
+     * processed by {@link #close()} are skipped via the shared dedup sets.
+     */
+    RuntimeException drainRemaining(RuntimeException failure) {
+        failure = drainPhase(failure, true);
+        failure = drainPhase(failure, false);
+        return failure;
+    }
+
+    private RuntimeException drainPhase(RuntimeException failure, boolean preDestroy) {
+        Set<Object> done = preDestroy ? preDestroyed : closed;
         List<Object> batch = snapshotTargets();
         while (!batch.isEmpty()) {
             if (++iterations > MAX_DRAIN_ITERATIONS) {
-                failure = accumulateFailure(failure,
+                return accumulateFailure(failure,
                     "Container shutdown exceeded the drain iteration limit; "
                         + "remaining targets were skipped", null);
-                break;
             }
             boolean processedAny = false;
             for (Object value : batch) {
-                if (!preDestroyed.add(value)) {
+                if (!done.add(value)) {
                     continue;
                 }
                 processedAny = true;
                 try {
-                    Lifecycle.invokePreDestroy(value);
-                } catch (Exception ex) {
-                    failure = accumulateFailure(failure, "Unable to invoke @PreDestroy", ex);
+                    if (preDestroy) {
+                        Lifecycle.invokePreDestroy(value);
+                    } else if (value instanceof AutoCloseable closeable) {
+                        closeable.close();
+                    }
+                } catch (Throwable ex) {
+                    // Errors included (AssertionError, OOM, ...): one failing
+                    // callback must not abort the drain — closed=true, the
+                    // cache clear and the remaining services' cleanup all
+                    // depend on drain running to completion. Matches the
+                    // DeferScope/ScopedCache Throwable handling.
+                    failure = accumulateFailure(
+                        failure,
+                        preDestroy
+                            ? "Unable to invoke @PreDestroy"
+                            : "Unable to close container-managed resource",
+                        ex
+                    );
                 }
             }
             if (!processedAny) {
@@ -68,42 +95,6 @@ final class Shutdown {
             }
             batch = snapshotTargets();
         }
-        batch = snapshotTargets();
-        while (!batch.isEmpty()) {
-            if (++iterations > MAX_DRAIN_ITERATIONS) {
-                failure = accumulateFailure(failure,
-                    "Container shutdown exceeded the drain iteration limit; "
-                        + "remaining targets were skipped", null);
-                break;
-            }
-            boolean anyNew = false;
-            for (Object value : batch) {
-                if (!closed.add(value)) {
-                    continue;
-                }
-                anyNew = true;
-                if (!(value instanceof AutoCloseable closeable)) {
-                    continue;
-                }
-                try {
-                    closeable.close();
-                } catch (Exception ex) {
-                    failure = accumulateFailure(
-                        failure,
-                        "Unable to close container-managed resource",
-                        ex
-                    );
-                }
-            }
-            if (!anyNew) {
-                break;
-            }
-            batch = snapshotTargets();
-        }
-        serviceCache.clear();
-        targetCache.clear();
-        bindingIndex.clear();
-        coercer.clearRules();
         return failure;
     }
 
@@ -121,7 +112,7 @@ final class Shutdown {
     private static RuntimeException accumulateFailure(
         RuntimeException failure,
         String message,
-        Exception ex
+        Throwable ex
     ) {
         if (failure == null) {
             return new RuntimeException(message, ex);

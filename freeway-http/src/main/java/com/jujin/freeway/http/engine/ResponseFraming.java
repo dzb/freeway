@@ -40,8 +40,8 @@ public final class ResponseFraming {
             HttpServerConfig.CompressionConfig compression,
             int status, boolean bodyAllowed,
             boolean acceptsGzip, boolean compressible) {
-        return compression.enabled() && status != 206 && bodyAllowed
-            && acceptsGzip && compressible;
+        return shouldGzipStream(compression, status, bodyAllowed,
+            acceptsGzip, compressible);
     }
 
     /** True when the wire must not carry body bytes: HEAD requests and

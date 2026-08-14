@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.function.Supplier;
 
 /**
  * Hand-written JSON serializer.
@@ -20,6 +21,12 @@ import java.util.OptionalLong;
  * intermediate normalized tree is built for raw structures. Leaf conversions
  * share the scalar-leaf mapping with {@link JsonNormalizer} via
  * {@link JsonLeaves}, so the two paths cannot drift apart.
+ *
+ * <p><b>Bean serialization:</b> bean properties come from
+ * {@link BeanPlan} — fields define the property set, a {@code getX()}/
+ * {@code isX()} accessor is the preferred read path when present (transforming
+ * getters are honored), and getter-only (computed) properties serialize as
+ * read-only members. See {@link BeanPlan} for the full property model.
  */
 final class JsonWriter {
 
@@ -87,41 +94,41 @@ final class JsonWriter {
             return;
         }
         if (value instanceof Optional<?> opt) {
-            writeValue(
+            writeOptional(
                 out,
-                opt.isPresent() ? opt.get() : null,
+                () -> opt.isPresent() ? opt.get() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
         }
         if (value instanceof OptionalInt oi) {
-            writeValue(
+            writeOptional(
                 out,
-                oi.isPresent() ? oi.getAsInt() : null,
+                () -> oi.isPresent() ? oi.getAsInt() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
         }
         if (value instanceof OptionalLong ol) {
-            writeValue(
+            writeOptional(
                 out,
-                ol.isPresent() ? ol.getAsLong() : null,
+                () -> ol.isPresent() ? ol.getAsLong() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
         }
         if (value instanceof OptionalDouble od) {
-            writeValue(
+            writeOptional(
                 out,
-                od.isPresent() ? od.getAsDouble() : null,
+                () -> od.isPresent() ? od.getAsDouble() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
@@ -141,6 +148,22 @@ final class JsonWriter {
         writeBean(out, value, pretty, indent, context);
     }
 
+    /**
+     * Writes the value supplied by {@code unwrapped} one level deeper than
+     * the current indent — the shared shape of the four Optional branches
+     * in {@link #writeValue}. The supplier keeps the {@code isPresent} check
+     * lazy so an empty optional is never unwrapped.
+     */
+    private static void writeOptional(
+        StringBuilder out,
+        Supplier<Object> unwrapped,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
+        writeValue(out, unwrapped.get(), pretty, indent + 1, context);
+    }
+
     private static void writeObject(
         StringBuilder out,
         JsonObject object,
@@ -148,35 +171,21 @@ final class JsonWriter {
         int indent,
         Context context
     ) {
-        context.enter(object);
-        try {
-            out.append('{');
+        withCycleGuard(out, object, pretty, indent, context, (o, g, p, i, c) -> {
+            o.append('{');
             boolean first = true;
-            for (Map.Entry<String, Object> entry : object.entries()) {
-                if (first) {
-                    first = false;
-                } else {
-                    out.append(',');
+            for (Map.Entry<String, Object> entry : ((JsonObject) g).entries()) {
+                first = writePrefix(o, first, p, i + 1);
+                quote(o, entry.getKey());
+                o.append(':');
+                if (p) {
+                    o.append(' ');
                 }
-                if (pretty) {
-                    out.append('\n');
-                    indent(out, indent + 1);
-                }
-                quote(out, entry.getKey());
-                out.append(':');
-                if (pretty) {
-                    out.append(' ');
-                }
-                writeValue(out, entry.getValue(), pretty, indent + 1, context);
+                writeValue(o, entry.getValue(), p, i + 1, c);
             }
-            if (pretty && !first) {
-                out.append('\n');
-                indent(out, indent);
-            }
-            out.append('}');
-        } finally {
-            context.exit(object);
-        }
+            writeSuffix(o, p, first, i);
+            o.append('}');
+        });
     }
 
     private static void writeMap(
@@ -186,41 +195,27 @@ final class JsonWriter {
         int indent,
         Context context
     ) {
-        context.enter(map);
-        try {
-            out.append('{');
+        withCycleGuard(out, map, pretty, indent, context, (o, g, p, i, c) -> {
+            o.append('{');
             boolean first = true;
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (first) {
-                    first = false;
-                } else {
-                    out.append(',');
-                }
-                if (pretty) {
-                    out.append('\n');
-                    indent(out, indent + 1);
-                }
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) g).entrySet()) {
+                first = writePrefix(o, first, p, i + 1);
                 Object key = entry.getKey();
                 if (key == null) {
                     throw new IllegalArgumentException(
                         "Cannot serialize a Map with null keys to JSON"
                     );
                 }
-                quote(out, String.valueOf(key));
-                out.append(':');
-                if (pretty) {
-                    out.append(' ');
+                quote(o, String.valueOf(key));
+                o.append(':');
+                if (p) {
+                    o.append(' ');
                 }
-                writeValue(out, entry.getValue(), pretty, indent + 1, context);
+                writeValue(o, entry.getValue(), p, i + 1, c);
             }
-            if (pretty && !first) {
-                out.append('\n');
-                indent(out, indent);
-            }
-            out.append('}');
-        } finally {
-            context.exit(map);
-        }
+            writeSuffix(o, p, first, i);
+            o.append('}');
+        });
     }
 
     private static void writeSequence(
@@ -230,31 +225,16 @@ final class JsonWriter {
         int indent,
         Context context
     ) {
-        context.enter(array);
-        try {
-            out.append('[');
+        withCycleGuard(out, array, pretty, indent, context, (o, g, p, i, c) -> {
+            o.append('[');
             boolean first = true;
-            for (int i = 0; i < array.size(); i++) {
-                Object item = array.get(i);
-                if (first) {
-                    first = false;
-                } else {
-                    out.append(',');
-                }
-                if (pretty) {
-                    out.append('\n');
-                    indent(out, indent + 1);
-                }
-                writeValue(out, item, pretty, indent + 1, context);
+            for (int idx = 0; idx < ((JsonArray) g).size(); idx++) {
+                first = writePrefix(o, first, p, i + 1);
+                writeValue(o, ((JsonArray) g).get(idx), p, i + 1, c);
             }
-            if (pretty && !first) {
-                out.append('\n');
-                indent(out, indent);
-            }
-            out.append(']');
-        } finally {
-            context.exit(array);
-        }
+            writeSuffix(o, p, first, i);
+            o.append(']');
+        });
     }
 
     private static void writeArray(
@@ -264,32 +244,17 @@ final class JsonWriter {
         int indent,
         Context context
     ) {
-        context.enter(array);
-        try {
-            out.append('[');
-            int length = Array.getLength(array);
+        withCycleGuard(out, array, pretty, indent, context, (o, g, p, i, c) -> {
+            o.append('[');
+            int length = Array.getLength(g);
             boolean first = true;
-            for (int i = 0; i < length; i++) {
-                Object item = Array.get(array, i);
-                if (first) {
-                    first = false;
-                } else {
-                    out.append(',');
-                }
-                if (pretty) {
-                    out.append('\n');
-                    indent(out, indent + 1);
-                }
-                writeValue(out, item, pretty, indent + 1, context);
+            for (int idx = 0; idx < length; idx++) {
+                first = writePrefix(o, first, p, i + 1);
+                writeValue(o, Array.get(g, idx), p, i + 1, c);
             }
-            if (pretty && !first) {
-                out.append('\n');
-                indent(out, indent);
-            }
-            out.append(']');
-        } finally {
-            context.exit(array);
-        }
+            writeSuffix(o, p, first, i);
+            o.append(']');
+        });
     }
 
     private static void writeIterable(
@@ -299,30 +264,16 @@ final class JsonWriter {
         int indent,
         Context context
     ) {
-        context.enter(iterable);
-        try {
-            out.append('[');
+        withCycleGuard(out, iterable, pretty, indent, context, (o, g, p, i, c) -> {
+            o.append('[');
             boolean first = true;
-            for (Object item : iterable) {
-                if (first) {
-                    first = false;
-                } else {
-                    out.append(',');
-                }
-                if (pretty) {
-                    out.append('\n');
-                    indent(out, indent + 1);
-                }
-                writeValue(out, item, pretty, indent + 1, context);
+            for (Object item : (Iterable<?>) g) {
+                first = writePrefix(o, first, p, i + 1);
+                writeValue(o, item, p, i + 1, c);
             }
-            if (pretty && !first) {
-                out.append('\n');
-                indent(out, indent);
-            }
-            out.append(']');
-        } finally {
-            context.exit(iterable);
-        }
+            writeSuffix(o, p, first, i);
+            o.append(']');
+        });
     }
 
     private static void writeBean(
@@ -332,42 +283,96 @@ final class JsonWriter {
         int indent,
         Context context
     ) {
-        context.enter(value);
-        try {
-            BeanPlan plan = BeanIntrospector.plan(value.getClass());
-            out.append('{');
+        withCycleGuard(out, value, pretty, indent, context, (o, g, p, i, c) -> {
+            BeanPlan plan = BeanIntrospector.plan(g.getClass());
+            o.append('{');
             boolean first = true;
             for (BeanProperty property : plan.properties()) {
-                if (first) {
-                    first = false;
-                } else {
-                    out.append(',');
+                first = writePrefix(o, first, p, i + 1);
+                quote(o, property.name());
+                o.append(':');
+                if (p) {
+                    o.append(' ');
                 }
-                if (pretty) {
-                    out.append('\n');
-                    indent(out, indent + 1);
-                }
-                quote(out, property.name());
-                out.append(':');
-                if (pretty) {
-                    out.append(' ');
-                }
-                writeValue(
-                    out,
-                    property.read(value),
-                    pretty,
-                    indent + 1,
-                    context
-                );
+                writeValue(o, property.read(g), p, i + 1, c);
             }
-            if (pretty && !first) {
-                out.append('\n');
-                indent(out, indent);
-            }
-            out.append('}');
-        } finally {
-            context.exit(value);
+            writeSuffix(o, p, first, i);
+            o.append('}');
+        });
+    }
+
+    /**
+     * Emits the per-element prefix shared by every container skeleton: a
+     * comma before every element but the first, then the pretty-mode line
+     * break and indentation. Returns the updated {@code first} flag.
+     */
+    private static boolean writePrefix(
+        StringBuilder out,
+        boolean first,
+        boolean pretty,
+        int indent
+    ) {
+        if (first) {
+            first = false;
+        } else {
+            out.append(',');
         }
+        if (pretty) {
+            out.append('\n');
+            indent(out, indent);
+        }
+        return first;
+    }
+
+    /**
+     * Emits the pretty-mode line break before the closing bracket of a
+     * non-empty container.
+     */
+    private static void writeSuffix(
+        StringBuilder out,
+        boolean pretty,
+        boolean first,
+        int indent
+    ) {
+        if (pretty && !first) {
+            out.append('\n');
+            indent(out, indent);
+        }
+    }
+
+    /**
+     * Runs {@code work} with {@code guard} registered as active in
+     * {@code context}, releasing it in a finally block so the cycle guard is
+     * cleared even when the work throws. Unlike the {@link Supplier}-based
+     * {@code JsonNormalizer} twin, {@code work} receives the shared state as
+     * parameters, keeping every call-site lambda non-capturing — a per
+     * container write must not allocate.
+     */
+    private static void withCycleGuard(
+        StringBuilder out,
+        Object guard,
+        boolean pretty,
+        int indent,
+        Context context,
+        GuardedWork work
+    ) {
+        context.enter(guard);
+        try {
+            work.run(out, guard, pretty, indent, context);
+        } finally {
+            context.exit(guard);
+        }
+    }
+
+    @FunctionalInterface
+    private interface GuardedWork {
+        void run(
+            StringBuilder out,
+            Object guard,
+            boolean pretty,
+            int indent,
+            Context context
+        );
     }
 
     private static void indent(StringBuilder out, int level) {

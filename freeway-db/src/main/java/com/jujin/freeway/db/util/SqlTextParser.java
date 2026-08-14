@@ -42,24 +42,35 @@ public final class SqlTextParser {
         private final boolean bracketQuoting;
         private final boolean dollarQuoting;
         private final boolean escapeStringPrefix;
+        private final boolean backslashEscapesStrings;
 
         private LexerConfig(
             String identifierQuoteChars,
             boolean hashLineComments,
             boolean bracketQuoting,
             boolean dollarQuoting,
-            boolean escapeStringPrefix
+            boolean escapeStringPrefix,
+            boolean backslashEscapesStrings
         ) {
             this.identifierQuoteChars = identifierQuoteChars;
             this.hashLineComments = hashLineComments;
             this.bracketQuoting = bracketQuoting;
             this.dollarQuoting = dollarQuoting;
             this.escapeStringPrefix = escapeStringPrefix;
+            this.backslashEscapesStrings = backslashEscapesStrings;
         }
 
-        /** Union of every built-in dialect's syntax — the lenient default. */
+        /**
+         * Union of every built-in dialect's syntax — the lenient default.
+         * {@code backslashEscapesStrings} is enabled because MySQL (a
+         * supported dialect) treats {@code \} as an escape inside ordinary
+         * string literals; in the no-dialect case the union errs on the side
+         * of skipping more text, so a {@code :name} after {@code 'it\'s'} is
+         * still recognized.
+         */
         public static final LexerConfig SUPERSET = new LexerConfig(
             "\"`",
+            true,
             true,
             true,
             true,
@@ -73,7 +84,8 @@ public final class SqlTextParser {
                 dialect.hashLineComments(),
                 dialect.bracketQuoting(),
                 dialect.dollarQuoting(),
-                dialect.escapeStringPrefix()
+                dialect.escapeStringPrefix(),
+                dialect.backslashEscapesStrings()
             );
         }
 
@@ -95,6 +107,10 @@ public final class SqlTextParser {
 
         boolean escapeStringPrefix() {
             return escapeStringPrefix;
+        }
+
+        boolean backslashEscapesStrings() {
+            return backslashEscapesStrings;
         }
     }
 
@@ -130,79 +146,25 @@ public final class SqlTextParser {
         int i = 0;
         while (i < len) {
             char c = sql.charAt(i);
-            if (c == '\'') {
-                int after = skipQuoted(sql, i, '\'');
+            int after = skipCommentish(sql, i, config);
+            if (after > i) {
                 sink.text(sql, textStart, after);
                 i = after;
                 textStart = i;
                 continue;
             }
-            if (config.isQuoteChar(c)) {
-                int after = skipQuoted(sql, i, c);
+            after = skipQuotedish(sql, i, config);
+            if (after > i) {
                 sink.text(sql, textStart, after);
                 i = after;
                 textStart = i;
                 continue;
-            }
-            if (config.bracketQuoting() && c == '[') {
-                int after = skipBracketQuote(sql, i);
-                sink.text(sql, textStart, after);
-                i = after;
-                textStart = i;
-                continue;
-            }
-            if (c == '-' && i + 1 < len && sql.charAt(i + 1) == '-') {
-                int after = skipLineComment(sql, i);
-                sink.text(sql, textStart, after);
-                i = after;
-                textStart = i;
-                continue;
-            }
-            if (
-                config.hashLineComments() &&
-                c == '#' &&
-                !(i + 1 < len && sql.charAt(i + 1) == '>')
-            ) {
-                // # starts a line comment (MySQL) — except the #> / #>> jsonb
-                // path operators.
-                int after = skipHashComment(sql, i);
-                sink.text(sql, textStart, after);
-                i = after;
-                textStart = i;
-                continue;
-            }
-            if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
-                int after = skipBlockComment(sql, i);
-                sink.text(sql, textStart, after);
-                i = after;
-                textStart = i;
-                continue;
-            }
-            if (
-                config.escapeStringPrefix() &&
-                (c == 'E' || c == 'e') &&
-                i + 1 < len &&
-                sql.charAt(i + 1) == '\''
-            ) {
-                int after = skipEscapeString(sql, i);
-                sink.text(sql, textStart, after);
-                i = after;
-                textStart = i;
-                continue;
-            }
-            if (config.dollarQuoting() && c == '$') {
-                int after = skipDollarQuote(sql, i);
-                if (after > i) {
-                    sink.text(sql, textStart, after);
-                    i = after;
-                    textStart = i;
-                    continue;
-                }
             }
             if (c == ':' && i + 1 < len && sql.charAt(i + 1) == ':') {
-                // PostgreSQL :: cast — never a parameter marker. (Names never
-                // start with ':', so this is also handled by the param branch
-                // below; kept explicit for clarity.)
+                // PostgreSQL :: cast — never a parameter marker. This branch
+                // is required: at the second ':' the following char looks
+                // like a parameter start, so without skipping both colons
+                // the param branch below would misparse a::b as :b.
                 i += 2;
                 continue;
             }
@@ -391,49 +353,15 @@ public final class SqlTextParser {
         boolean sawWith = false;
         while (i < len) {
             char c = sql.charAt(i);
-            if (c == '\'') {
-                i = skipQuoted(sql, i, '\'');
+            int after = skipCommentish(sql, i, config);
+            if (after > i) {
+                i = after;
                 continue;
             }
-            if (config.isQuoteChar(c)) {
-                i = skipQuoted(sql, i, c);
+            after = skipQuotedish(sql, i, config);
+            if (after > i) {
+                i = after;
                 continue;
-            }
-            if (config.bracketQuoting() && c == '[') {
-                i = skipBracketQuote(sql, i);
-                continue;
-            }
-            if (c == '-' && i + 1 < len && sql.charAt(i + 1) == '-') {
-                i = skipLineComment(sql, i);
-                continue;
-            }
-            if (
-                config.hashLineComments() &&
-                c == '#' &&
-                !(i + 1 < len && sql.charAt(i + 1) == '>')
-            ) {
-                i = skipHashComment(sql, i);
-                continue;
-            }
-            if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
-                i = skipBlockComment(sql, i);
-                continue;
-            }
-            if (
-                config.escapeStringPrefix() &&
-                (c == 'E' || c == 'e') &&
-                i + 1 < len &&
-                sql.charAt(i + 1) == '\''
-            ) {
-                i = skipEscapeString(sql, i);
-                continue;
-            }
-            if (config.dollarQuoting() && c == '$') {
-                int after = skipDollarQuote(sql, i);
-                if (after > i) {
-                    i = after;
-                    continue;
-                }
             }
             if (c == '(') {
                 depth++;
@@ -498,61 +426,17 @@ public final class SqlTextParser {
         int i = 0;
         while (i < len) {
             char c = sql.charAt(i);
-            if (c == '\'') {
-                int after = skipQuoted(sql, i, '\'');
-                current.append(sql, i, after);
+            int after = skipCommentish(sql, i, config);
+            if (after > i) {
+                // line and block comments are dropped from statements
                 i = after;
                 continue;
             }
-            if (config.isQuoteChar(c)) {
-                int after = skipQuoted(sql, i, c);
+            after = skipQuotedish(sql, i, config);
+            if (after > i) {
                 current.append(sql, i, after);
                 i = after;
                 continue;
-            }
-            if (config.bracketQuoting() && c == '[') {
-                int after = skipBracketQuote(sql, i);
-                current.append(sql, i, after);
-                i = after;
-                continue;
-            }
-            if (c == '-' && i + 1 < len && sql.charAt(i + 1) == '-') {
-                // line comments are dropped from statements
-                i = skipLineComment(sql, i);
-                continue;
-            }
-            if (
-                config.hashLineComments() &&
-                c == '#' &&
-                !(i + 1 < len && sql.charAt(i + 1) == '>')
-            ) {
-                i = skipHashComment(sql, i);
-                continue;
-            }
-            if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
-                // block comments are dropped from statements, matching the
-                // line-comment handling
-                i = skipBlockComment(sql, i);
-                continue;
-            }
-            if (
-                config.escapeStringPrefix() &&
-                (c == 'E' || c == 'e') &&
-                i + 1 < len &&
-                sql.charAt(i + 1) == '\''
-            ) {
-                int after = skipEscapeString(sql, i);
-                current.append(sql, i, after);
-                i = after;
-                continue;
-            }
-            if (config.dollarQuoting() && c == '$') {
-                int after = skipDollarQuote(sql, i);
-                if (after > i) {
-                    current.append(sql, i, after);
-                    i = after;
-                    continue;
-                }
             }
             if (c == ';') {
                 addStatement(statements, current);
@@ -568,12 +452,98 @@ public final class SqlTextParser {
 
     // ====================== skip primitives ======================
 
+    /**
+     * When {@code i} starts a comment region — {@code --} line comment,
+     * {@code #} line comment (only where the config declares them and the
+     * {@code #>} / {@code #>>} jsonb path operators are not starting), or
+     * {@code /*} block comment — returns the index just past it; otherwise
+     * returns {@code i} unchanged.
+     */
+    private static int skipCommentish(String sql, int i, LexerConfig config) {
+        int len = sql.length();
+        char c = sql.charAt(i);
+        if (c == '-' && i + 1 < len && sql.charAt(i + 1) == '-') {
+            return skipLineComment(sql, i);
+        }
+        if (
+            config.hashLineComments() &&
+            c == '#' &&
+            !(i + 1 < len && sql.charAt(i + 1) == '>')
+        ) {
+            // # starts a line comment (MySQL) — except the #> / #>> jsonb
+            // path operators.
+            return skipHashComment(sql, i);
+        }
+        if (c == '/' && i + 1 < len && sql.charAt(i + 1) == '*') {
+            return skipBlockComment(sql, i);
+        }
+        return i;
+    }
+
+    /**
+     * When {@code i} starts a quoted region — {@code '...'} string literal
+     * (with the config's backslash-escape semantics), a quoted identifier, a
+     * {@code [...]} bracket quote, a {@code E'...'} escape string, or a
+     * {@code $tag$...$tag$} dollar quote (only where the config declares
+     * them) — returns the index just past it; otherwise returns {@code i}
+     * unchanged, so non-dollar-quote {@code $} falls through to the
+     * parameter branches.
+     */
+    private static int skipQuotedish(String sql, int i, LexerConfig config) {
+        int len = sql.length();
+        char c = sql.charAt(i);
+        if (c == '\'') {
+            return skipQuoted(sql, i, '\'', config.backslashEscapesStrings());
+        }
+        if (config.isQuoteChar(c)) {
+            return skipQuoted(sql, i, c);
+        }
+        if (config.bracketQuoting() && c == '[') {
+            return skipBracketQuote(sql, i);
+        }
+        if (
+            config.escapeStringPrefix() &&
+            (c == 'E' || c == 'e') &&
+            i + 1 < len &&
+            sql.charAt(i + 1) == '\''
+        ) {
+            return skipEscapeString(sql, i);
+        }
+        if (config.dollarQuoting() && c == '$') {
+            int after = skipDollarQuote(sql, i);
+            if (after > i) {
+                return after;
+            }
+        }
+        return i;
+    }
+
     private static int skipQuoted(String sql, int start, char quote) {
+        return skipQuoted(sql, start, quote, false);
+    }
+
+    /**
+     * Skips a quoted region {@code start} ({@code '} for string literals,
+     * an identifier quote for quoted identifiers). Doubled quotes
+     * ({@code ''}) are the standard escape; when {@code backslashEscapes} is
+     * true (MySQL/MariaDB string literals) a {@code \} escapes the next
+     * character. The scan ends at the first unescaped, non-doubled quote.
+     */
+    private static int skipQuoted(
+        String sql,
+        int start,
+        char quote,
+        boolean backslashEscapes
+    ) {
         int i = start + 1;
         int len = sql.length();
         while (i < len) {
             char c = sql.charAt(i);
             i++;
+            if (backslashEscapes && c == '\\' && i < len) {
+                i++;
+                continue;
+            }
             if (c == quote) {
                 if (i < len && sql.charAt(i) == quote) {
                     i++;

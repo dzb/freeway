@@ -28,6 +28,11 @@ public final class RouteIndex {
     // Fast path: exact match cache for routes without path variables
     private final Map<String, RouteHandler> exactCache = new ConcurrentHashMap<>();
 
+    /**
+     * Contribution-consumed routes: both parameter lists are resolved from
+     * {@code binder.contribute(...)} extensions when the container builds
+     * this class — constructor parameters consume contributions implicitly.
+     */
     public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
         // Phase 1: collect all routes
         List<Route> all = new ArrayList<>();
@@ -72,17 +77,44 @@ public final class RouteIndex {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
         TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
         String[] segments = PathPattern.splitPath(path);
-        // Populate exact cache for routes without path variables
+        // Literal segments are stored percent-decoded so registration agrees
+        // with matching (requests decode each segment before the trie lookup).
+        // An encoded slash (%2F) decodes to '/' but stays inside its original
+        // segment — it is never re-split into path structure, so routes whose
+        // decoded segments contain '/' are excluded from the exact cache
+        // (whose decoded key could otherwise collide with a differently
+        // segmented plain request path).
+        String[] stored = new String[segments.length];
         boolean hasVariables = false;
-        for (String seg : segments) {
-            if ((seg.startsWith("{") && seg.endsWith("}")) || seg.startsWith(":")) { hasVariables = true; break; }
+        boolean exactCacheable = true;
+        for (int i = 0; i < segments.length; i++) {
+            String seg = segments[i];
+            if ((seg.startsWith("{") && seg.endsWith("}")) || seg.startsWith(":")) {
+                hasVariables = true;
+                stored[i] = seg;
+                continue;
+            }
+            String decoded = PathPattern.decodeSegment(seg);
+            if (decoded == null || decoded.isEmpty()
+                    || PathPattern.isPathTraversalSegment(decoded)
+                    || PathPattern.containsPathTraversal(decoded)) {
+                throw new IllegalArgumentException(
+                    "Invalid literal segment '" + seg + "' in route path: " + path);
+            }
+            if (decoded.contains("/")) {
+                exactCacheable = false;
+            }
+            stored[i] = decoded;
         }
-        if (!hasVariables) {
-            exactCache.put(key + ":" + path, handler);
+        // Populate exact cache for routes without path variables; the key
+        // uses the decoded path so an encoded registration matches a plain
+        // request (e.g. /hello%20world ↔ /hello world) on the fast path too.
+        if (!hasVariables && exactCacheable) {
+            exactCache.put(key + ":" + "/" + String.join("/", stored), handler);
         }
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
-            String seg = segments[i];
+            String seg = stored[i];
             if (seg.startsWith("{") && seg.endsWith("}")) {
                 String inner = seg.substring(1, seg.length() - 1);
                 String name;
@@ -173,7 +205,9 @@ public final class RouteIndex {
             return node.handler == null ? null : new RouteMatch(node.handler, Map.copyOf(vars));
         }
         String seg = PathPattern.decodeSegment(rawSegments[index]);
-        if (seg == null || seg.isEmpty() || PathPattern.isPathTraversalSegment(seg)
+        if (seg == null || seg.isEmpty()
+                || seg.length() > PathPattern.MAX_SEGMENT_LENGTH
+                || PathPattern.isPathTraversalSegment(seg)
                 || PathPattern.containsPathTraversal(seg)) return null;
 
         TrieNode literal = node.literals == null ? null : node.literals.get(seg);

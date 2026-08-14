@@ -51,6 +51,7 @@ public final class StubHttpContext extends AbstractHttpContext {
     private final Map<String, List<String>> queryParams = new LinkedHashMap<>();
     private int status = 200;
     private String body;
+    private String requestBody;
 
     public StubHttpContext() {
         this("GET", "/");
@@ -78,6 +79,12 @@ public final class StubHttpContext extends AbstractHttpContext {
         Objects.requireNonNull(name, "name");
         queryParams.computeIfAbsent(name, k -> new ArrayList<>()).add(
             value != null ? value : "");
+        return this;
+    }
+
+    /** Sets the request body read by {@link #body()} (defaults to empty). */
+    public StubHttpContext requestBody(String requestBody) {
+        this.requestBody = requestBody;
         return this;
     }
 
@@ -146,6 +153,9 @@ public final class StubHttpContext extends AbstractHttpContext {
 
     @Override
     public byte[] body() throws IOException {
+        if (requestBody != null) {
+            return requestBody.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
         return body != null
             ? body.getBytes(java.nio.charset.StandardCharsets.UTF_8)
             : new byte[0];

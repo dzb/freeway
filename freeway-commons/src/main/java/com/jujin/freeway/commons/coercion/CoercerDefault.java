@@ -300,14 +300,7 @@ public final class CoercerDefault implements Coercer {
             // Numeric sources follow the Java (char) cast semantics — code
             // point, not the decimal string's first character. 65 → 'A',
             // and out-of-range values fail loudly instead of truncating.
-            if (
-                (n instanceof Double d && (d.isNaN() || d.isInfinite())) ||
-                (n instanceof Float f && (f.isNaN() || f.isInfinite()))
-            ) {
-                throw new IllegalArgumentException(
-                    "Cannot coerce " + n + " to Character"
-                );
-            }
+            rejectNonFinite(n, "Character");
             // longValue() narrows BigInteger/BigDecimal to the low 64 bits,
             // so the range check must run on the exact value first.
             BigInteger bi = n instanceof BigDecimal bd
@@ -341,14 +334,7 @@ public final class CoercerDefault implements Coercer {
         if (value instanceof BigInteger i) return i;
         if (value instanceof BigDecimal d) return d.toBigInteger();
         if (value instanceof Number n) {
-            if (
-                (n instanceof Double d && (d.isNaN() || d.isInfinite())) ||
-                (n instanceof Float f && (f.isNaN() || f.isInfinite()))
-            ) {
-                throw new IllegalArgumentException(
-                    "Cannot coerce " + n + " to BigInteger"
-                );
-            }
+            rejectNonFinite(n, "BigInteger");
             // Route through the decimal representation: longValue() would
             // silently saturate out-of-range floats (1e30 → Long.MAX_VALUE).
             return new BigDecimal(String.valueOf(n)).toBigInteger();
@@ -424,12 +410,7 @@ public final class CoercerDefault implements Coercer {
         Class<?> targetType
     ) {
         // Guard against NaN/Infinity for integral targets
-        if (n instanceof Double d && (d.isNaN() || d.isInfinite())) {
-            throw new IllegalArgumentException("Cannot coerce " + n + " to " + targetType.getSimpleName());
-        }
-        if (n instanceof Float f && (f.isNaN() || f.isInfinite())) {
-            throw new IllegalArgumentException("Cannot coerce " + n + " to " + targetType.getSimpleName());
-        }
+        rejectNonFinite(n, targetType.getSimpleName());
         // Guard against overflow for integral targets — every source type,
         // not just BigInteger/BigDecimal. Long/Double/Float sources silently
         // wrap via intValue()/shortValue()/byteValue(), corrupting data
@@ -472,23 +453,36 @@ public final class CoercerDefault implements Coercer {
         return null;
     }
 
+    /**
+     * Rejects NaN/Infinite floating-point sources for targets that cannot
+     * represent them. {@code target} is used verbatim in the error message.
+     */
+    private static void rejectNonFinite(Number n, String target) {
+        if (
+            (n instanceof Double d && (d.isNaN() || d.isInfinite())) ||
+            (n instanceof Float f && (f.isNaN() || f.isInfinite()))
+        ) {
+            throw new IllegalArgumentException(
+                "Cannot coerce " + n + " to " + target
+            );
+        }
+    }
+
+    private static void checkRange(BigInteger bi, long min, long max, String typeName) {
+        if (bi.compareTo(BigInteger.valueOf(max)) > 0
+                || bi.compareTo(BigInteger.valueOf(min)) < 0)
+            throw new IllegalArgumentException("Cannot coerce " + bi + " to " + typeName);
+    }
+
     private static void checkRange(BigInteger bi, Class<?> targetType) {
         if (targetType == Integer.class || targetType == int.class) {
-            if (bi.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0
-                    || bi.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0)
-                throw new IllegalArgumentException("Cannot coerce " + bi + " to Integer");
+            checkRange(bi, Integer.MIN_VALUE, Integer.MAX_VALUE, "Integer");
         } else if (targetType == Long.class || targetType == long.class) {
-            if (bi.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0
-                    || bi.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0)
-                throw new IllegalArgumentException("Cannot coerce " + bi + " to Long");
+            checkRange(bi, Long.MIN_VALUE, Long.MAX_VALUE, "Long");
         } else if (targetType == Short.class || targetType == short.class) {
-            if (bi.compareTo(BigInteger.valueOf(Short.MAX_VALUE)) > 0
-                    || bi.compareTo(BigInteger.valueOf(Short.MIN_VALUE)) < 0)
-                throw new IllegalArgumentException("Cannot coerce " + bi + " to Short");
+            checkRange(bi, Short.MIN_VALUE, Short.MAX_VALUE, "Short");
         } else if (targetType == Byte.class || targetType == byte.class) {
-            if (bi.compareTo(BigInteger.valueOf(Byte.MAX_VALUE)) > 0
-                    || bi.compareTo(BigInteger.valueOf(Byte.MIN_VALUE)) < 0)
-                throw new IllegalArgumentException("Cannot coerce " + bi + " to Byte");
+            checkRange(bi, Byte.MIN_VALUE, Byte.MAX_VALUE, "Byte");
         }
     }
 
@@ -512,24 +506,54 @@ public final class CoercerDefault implements Coercer {
             return parseIntegral(text, targetType);
         }
         if (targetType == Double.class) {
-            double d = Double.parseDouble(text);
-            if (Double.isInfinite(d)) {
-                throw new IllegalArgumentException(
-                    "Cannot coerce '" + text + "' to Double: out of range"
-                );
-            }
-            return d;
+            return parseFiniteDouble(text);
         }
         if (targetType == Float.class) {
-            float f = Float.parseFloat(text);
-            if (Float.isInfinite(f)) {
-                throw new IllegalArgumentException(
-                    "Cannot coerce '" + text + "' to Float: out of range"
-                );
-            }
-            return f;
+            return parseFiniteFloat(text);
         }
         return null;
+    }
+
+    /**
+     * Parses a finite double from {@code text}; NaN and Infinity are
+     * rejected instead of returned.
+     */
+    private static double parseFiniteDouble(String text) {
+        double d = Double.parseDouble(text);
+        if (Double.isNaN(d)) {
+            // "NaN" (any case) parses to NaN — reject it exactly like
+            // Infinity so a config value can never silently become
+            // Double.NaN (which later explodes in stringify or coerces
+            // to false).
+            throw new IllegalArgumentException(
+                "Cannot coerce '" + text + "' to Double: not a finite number"
+            );
+        }
+        if (Double.isInfinite(d)) {
+            throw new IllegalArgumentException(
+                "Cannot coerce '" + text + "' to Double: out of range"
+            );
+        }
+        return d;
+    }
+
+    /**
+     * Parses a finite float from {@code text}; NaN and Infinity are
+     * rejected instead of returned.
+     */
+    private static float parseFiniteFloat(String text) {
+        float f = Float.parseFloat(text);
+        if (Float.isNaN(f)) {
+            throw new IllegalArgumentException(
+                "Cannot coerce '" + text + "' to Float: not a finite number"
+            );
+        }
+        if (Float.isInfinite(f)) {
+            throw new IllegalArgumentException(
+                "Cannot coerce '" + text + "' to Float: out of range"
+            );
+        }
+        return f;
     }
 
     /**

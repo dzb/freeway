@@ -75,6 +75,12 @@ final class BatchQueryImpl implements BatchQuery {
             db.checkBound(boundBinding);
         }
         boolean ownConnection = boundBinding == null;
+        if (ownConnection) {
+            // No transaction binding on this thread — if a transaction is
+            // active on another thread, borrowing here would silently run
+            // outside it.
+            db.checkNoForeignTransaction();
+        }
         PooledConnection conn = ownConnection
             ? db.pool().borrow()
             : boundBinding.conn();
@@ -131,15 +137,6 @@ final class BatchQueryImpl implements BatchQuery {
                     raw.commit();
                 }
                 return results;
-            } catch (SQLException e) {
-                if (autoCommitChanged) {
-                    rollbackQuietly(conn);
-                }
-                LOG.warn("Batch execution failed: {}", sql, e);
-                throw new SqlException(
-                    "Batch execution failed: " + e.getMessage(),
-                    e
-                );
             }
         } catch (SQLException e) {
             if (autoCommitChanged) {

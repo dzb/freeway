@@ -12,6 +12,13 @@ import java.util.Objects;
  * Hand-written recursive-descent JSON parser — zero allocations from
  * intermediate DOM nodes. Produces either a raw {@code Map/List/String/Number}
  * or the lightweight {@link JsonObject}/{@link JsonArray} wrappers.
+ *
+ * <p><b>Duplicate object keys:</b> when an object contains the same key more
+ * than once (e.g. {@code {"a":1,"a":2}}), the last occurrence wins — plain
+ * {@code Map.put} semantics, matching {@link JsonObject#put(String, Object)}.
+ * This is a documented contract, not an error: parsing never rejects
+ * duplicates, so callers that need strict uniqueness must validate their
+ * input themselves.
  */
 final class JsonParser {
 
@@ -28,10 +35,27 @@ final class JsonParser {
     private static final int MAX_STRING_LENGTH = 10 * 1024 * 1024;
 
     /**
+     * Maximum length for a single JSON number token.
+     * {@link #parseNumber} would otherwise let an unbounded run of digits
+     * reach {@link BigInteger}/{@link BigDecimal} (super-linear cost),
+     * causing CPU/memory spikes. Matches {@link #MAX_STRING_LENGTH}.
+     */
+    private static final int MAX_NUMBER_LENGTH = MAX_STRING_LENGTH;
+
+    /**
      * Maximum size for JSON input streams.
      * Prevents unbounded memory use while decoding streamed JSON.
      */
     static final int MAX_INPUT_BYTES = 32 * 1024 * 1024;
+
+    /**
+     * Maximum size for a {@link #parse(String)} input, applied to the
+     * character count. The stream path caps raw bytes at
+     * {@link #MAX_INPUT_BYTES}; the string path applies the same budget so a
+     * single parse call cannot drive unbounded work (recursion, string
+     * building, number decoding) from an already-allocated string.
+     */
+    private static final int MAX_INPUT_CHARS = MAX_INPUT_BYTES;
 
     /**
      * Maximum size for JSON arrays.
@@ -100,6 +124,20 @@ final class JsonParser {
 
         private Parser(String text) {
             String t = Objects.requireNonNull(text, "text");
+            if (t.length() > MAX_INPUT_CHARS) {
+                // Applied to every entry path (String and stream alike): a
+                // single parse must not drive unbounded work — recursion,
+                // string building, number decoding — from an input that is
+                // already in memory. The stream path caps raw bytes at
+                // MAX_INPUT_BYTES before decoding; UTF-8 decoding never
+                // expands characters beyond bytes, so this char budget is
+                // consistent with that byte budget.
+                throw new IllegalArgumentException(
+                    "JSON input too large (max " +
+                        MAX_INPUT_CHARS +
+                        " characters)"
+                );
+            }
             this.text = t.startsWith("﻿") ? t.substring(1) : t;
         }
 
@@ -133,6 +171,11 @@ final class JsonParser {
             };
         }
 
+        /**
+         * Parses one JSON object. Duplicate keys follow {@code Map.put}
+         * semantics — the last value for a key wins (see class javadoc);
+         * no duplicate-key diagnostics are produced.
+         */
         private JsonObject parseObjectValue(int depth) {
             expect('{');
             JsonObject result = JsonUtils.object();
@@ -311,13 +354,13 @@ final class JsonParser {
                     throw error("Leading zeros are not allowed");
                 }
             } else {
-                readDigits();
+                readDigits(start);
             }
             boolean decimal = false;
             if (!eof() && peek() == '.') {
                 decimal = true;
                 next();
-                readDigits();
+                readDigits(start);
             }
             if (!eof() && (peek() == 'e' || peek() == 'E')) {
                 decimal = true;
@@ -325,7 +368,7 @@ final class JsonParser {
                 if (!eof() && (peek() == '+' || peek() == '-')) {
                     next();
                 }
-                readDigits();
+                readDigits(start);
             }
             if (decimal) {
                 try {
@@ -350,12 +393,22 @@ final class JsonParser {
             }
         }
 
-        private void readDigits() {
+        private void readDigits(int tokenStart) {
             if (eof() || !isAsciiDigit(peek())) {
                 throw error("Expected digit");
             }
             while (!eof() && isAsciiDigit(peek())) {
                 next();
+                // Bounds-checked inline so an oversized number token aborts as
+                // soon as the limit is crossed, before BigInteger/BigDecimal
+                // ever sees it (their digit processing is super-linear).
+                if (index - tokenStart > MAX_NUMBER_LENGTH) {
+                    throw error(
+                        "JSON number too long (max " +
+                            MAX_NUMBER_LENGTH +
+                            " characters)"
+                    );
+                }
             }
         }
 

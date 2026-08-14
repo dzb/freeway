@@ -256,6 +256,53 @@ class HttpServerOperationalTest {
     }
 
     @Test
+    void customErrorHandlerDoesNotReplaceBuiltInMappings() throws Exception {
+        int port = freePort();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .errorHandler((ctx, ex) -> {
+                if (ex instanceof IllegalStateException) {
+                    ctx.sendJson(418, Map.of("error", "custom"));
+                    return true;
+                }
+                return false;
+            })
+            .route(Route.post("/body", ctx -> {
+                ctx.setMaxBodySize(1);
+                ctx.body();
+                ctx.send(200, "unexpected");
+            }))
+            .route(Route.get("/custom", ctx -> {
+                throw new IllegalStateException("custom boom");
+            }))
+            .build();
+        server.start();
+        try {
+            var client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
+            // Built-in mappings must survive a custom mapper: oversized body → 413.
+            var oversized = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/body"))
+                    .POST(HttpRequest.BodyPublishers.ofString("too large")).build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(413, oversized.statusCode(),
+                "the built-in 413 mapping must stay active alongside a custom mapper");
+            // The custom mapper must take priority for exceptions it handles.
+            var custom = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/custom"))
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(418, custom.statusCode(),
+                "a custom mapper must handle its own exception type first");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void http11RequiresSingleHostHeader() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()

@@ -2,6 +2,7 @@ package com.jujin.freeway.http.engine.http2.hpack;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -24,10 +25,34 @@ class HPackContextTest {
 
     @Test
     void readIntThrowsOnTruncatedBlock() {
-        // 0xFF at prefix=1 triggers multi-byte read but only 1 byte available
-        assertThrows(ArrayIndexOutOfBoundsException.class,
+        // 0xFF at prefix=1 triggers multi-byte read but only 1 byte available.
+        // A truncated HPACK integer is a compression error (RFC 7541 §5.1),
+        // not an ArrayIndexOutOfBoundsException escaping the codec.
+        var ex = assertThrows(Http2Exception.class,
                 () -> HPackContext.readInt(new byte[]{(byte) 0xFF}, 0, 1),
-                "Truncated HPACK block should throw, not silently return");
+                "Truncated HPACK block should throw Http2Exception, not AIOOBE");
+        assertEquals(Http2ErrorCode.COMPRESSION_ERROR, ex.errorCode());
+    }
+
+    @Test
+    void readIntTruncatedContinuationThrowsCompressionError() {
+        // Continuation flag set on every available byte but the stream ends
+        // before the terminating byte arrives: 0xFF (prefix 1, needs
+        // continuation), 0x81 (continuation set, no byte left).
+        var ex = assertThrows(Http2Exception.class,
+                () -> HPackContext.readInt(
+                    new byte[]{(byte) 0xFF, (byte) 0x81}, 0, 1),
+                "a truncated continuation must throw Http2Exception");
+        assertEquals(Http2ErrorCode.COMPRESSION_ERROR, ex.errorCode());
+    }
+
+    @Test
+    void readIntMissingPrefixByteThrowsCompressionError() {
+        // No prefix byte at all — the shortest possible truncation.
+        var ex = assertThrows(Http2Exception.class,
+                () -> HPackContext.readInt(new byte[0], 0, 1),
+                "a missing prefix byte must throw Http2Exception");
+        assertEquals(Http2ErrorCode.COMPRESSION_ERROR, ex.errorCode());
     }
 
     @Test
@@ -95,6 +120,65 @@ class HPackContextTest {
 
         assertNull(hpack.get(62),
             "An entry larger than the table capacity must not be stored");
+    }
+
+    @Test
+    void negativeTableSizeCannotPoisonDecoderState() throws IOException {
+        HPackContext hpack = new HPackContext();
+        // In-memory misuse: a negative SETTINGS_HEADER_TABLE_SIZE must be
+        // clamped, never installed — a negative cap would evict the whole
+        // dynamic table and reject every later in-band size update.
+        hpack.setMaxDynamicTableSize(-1);
+        // A dynamic table size update to 0 plus an indexed field must still
+        // decode: the decoder is not stuck rejecting all subsequent updates.
+        var fields = hpack.decode(new byte[]{(byte) 0x20, (byte) 0x82});
+        assertEquals(1, fields.size());
+        assertEquals(":method", fields.getFirst().name);
+        assertEquals("GET", fields.getFirst().value);
+    }
+
+    @Test
+    void literalHeaderNameWithSpaceIsRejected() {
+        var ex = assertThrows(Http2Exception.class,
+            () -> new HPackContext().decode(literalField("x y", "v")));
+        assertEquals(Http2ErrorCode.PROTOCOL_ERROR, ex.errorCode(),
+            "a lowercase-but-non-token name with a space must be rejected");
+    }
+
+    @Test
+    void literalHeaderNameWithNonAsciiIsRejected() {
+        // 'é' lowercases to itself, so the lowercase check alone lets it
+        // through — the RFC 7230 token check must catch it.
+        var ex = assertThrows(Http2Exception.class,
+            () -> new HPackContext().decode(literalField("é", "v")));
+        assertEquals(Http2ErrorCode.PROTOCOL_ERROR, ex.errorCode(),
+            "a non-ASCII header name must be rejected");
+    }
+
+    @Test
+    void literalHeaderNameWithControlCharIsRejected() {
+        var ex = assertThrows(Http2Exception.class,
+            () -> new HPackContext().decode(literalField("x\u0001y", "v")));
+        assertEquals(Http2ErrorCode.PROTOCOL_ERROR, ex.errorCode(),
+            "a header name with a control character must be rejected");
+    }
+
+    @Test
+    void literalHeaderNameTokenIsAccepted() throws IOException {
+        var fields = new HPackContext().decode(literalField("x-custom", "v"));
+        assertEquals(1, fields.size());
+        assertEquals("x-custom", fields.getFirst().name);
+        assertEquals("v", fields.getFirst().value);
+    }
+
+    @Test
+    void literalPseudoHeaderNameIsAccepted() throws IOException {
+        // ':' is not a token char, but pseudo-header names are exempt here —
+        // HeaderFields validates them against the known pseudo-header set.
+        var fields = new HPackContext().decode(
+            literalField(":protocol", "websocket"));
+        assertEquals(1, fields.size());
+        assertEquals(":protocol", fields.getFirst().name);
     }
 
     @Test
@@ -185,6 +269,16 @@ class HPackContextTest {
             writeString(out, name);
             writeString(out, value);
         }
+        return out.toByteArray();
+    }
+
+    /** Encodes a literal-without-indexing header field with a NEW (index 0)
+     *  literal name — the path {@code decodeName} validates for token chars. */
+    private static byte[] literalField(String name, String value) {
+        var out = new ByteArrayOutputStream();
+        out.write(0x00); // literal without indexing, name index 0
+        writeString(out, name.getBytes(StandardCharsets.UTF_8));
+        writeString(out, value.getBytes(StandardCharsets.UTF_8));
         return out.toByteArray();
     }
 

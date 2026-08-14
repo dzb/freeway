@@ -68,7 +68,7 @@ Freeway 2 keeps its core concepts intentionally small:
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and configurable file logging (single or multi-file) with time+size rotation and GZIP compression. Configured via `freeway-log.properties` or `-D` flags. Zero-dependency fallback; drop in Logback for advanced needs.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and configurable file logging (single or multi-file) with time+size rotation and GZIP compression. Configured via `freeway-log.properties` or `-D` flags. External SLF4J providers (Logback, Log4j, slf4j-simple) are auto-detected at startup and win over the JUL fallback; drop in Logback for advanced needs.
 - Framework-provided implementation names use the **`XDefault` suffix** form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
 
 See [freeway-module.md](docs/freeway-module.md) and [freeway-commons.md](docs/freeway-commons.md) for deeper module notes.
@@ -157,9 +157,9 @@ Shared utilities usable independently of the framework:
 
 Freeway uses **SLF4J 2** as its logging API — `LoggerFactory.getLogger()` everywhere, in framework code and user code alike. No logging framework dependency at compile time.
 
-**Zero-dependency fallback:** When no external SLF4J provider (Logback, Log4j) is on the classpath, `freeway-commons` activates its built-in JUL-backed provider automatically. Console output with ANSI colors, rotating file logging, and per-logger level control all work **with zero configuration** — no XML, no `logging.properties`, no extra dependencies.
+**Automatic provider selection:** At startup `freeway-commons` probes the classpath for an external SLF4J provider — Logback, Log4j, slf4j-simple, in that priority — and pins the `slf4j.provider` system property so the external provider wins deterministically. The built-in JUL-backed provider only activates as the **fallback** when no external provider is present, and an explicit `-Dslf4j.provider` you set yourself is always respected and never overridden. Console output with ANSI colors, rotating file logging, and per-logger level control all work **with zero configuration** — no XML, no `logging.properties`, no extra dependencies.
 
-**Seamless upgrade to Logback:** Add one dependency and SLF4J switches to Logback automatically. No code changes, no config conflicts.
+**Seamless upgrade to Logback:** Add Logback to your dependencies and Freeway selects it automatically at startup — your `logback.xml` is honored, with no classpath-order surprises. No code changes, no config conflicts.
 
 ```xml
 <dependency>
@@ -211,7 +211,7 @@ The IoC module provides the framework core:
 - Injection - constructor and field injection with `@Inject`, `@Symbol`, `@Value`.
 - Value expansion - `${...}` placeholder expansion for external configuration.
 - Type coercion - scalar and domain-specific conversions through contributed coercion rules.
-- Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`. Inject as `List<V>` (all contributions, ordered) or `Map<String, V>` (named contributions, keyed by id). `Extension<V>` is a framework-internal handle, not injectable.
+- Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`. Inject as `List<V>` (all contributions, ordered) or `Map<String, V>` (named contributions, keyed by id) — constructor parameters consume contributions implicitly, fields require `@Inject`. An explicit `@Inject("id")` prefers a bound service of that type/id over contributions (bind your own `List<Foo>`/`Map<String, Foo>` service and inject it by id). `Extension<V>` is a framework-internal handle and is rejected at injection time.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
 - EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, `publishAsync`, a globally ordered `publishOrdered(key, …)` channel, and cumulative `stats()`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
@@ -221,7 +221,7 @@ The IoC module provides the framework core:
 Boot turns a composed container into an application runtime:
 
 - `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
-- Module dedup - `FreewayApp`/`AppBuilder` deduplicates modules by class (an explicit instance wins over an SPI-discovered one). When composing directly with `Freeway.create(...)`, installing two distinct instances of the same module class (e.g. an explicit `new DbModule()` plus SPI discovery) fails fast with an actionable error — remove the duplicate or disable autoDiscovery.
+- Module dedup - installing two **distinct** instances of the same module class fails fast with an actionable error: in `Freeway.create(...)` (e.g. an explicit install plus SPI auto-discovery) and in `FreewayApp`/`AppBuilder` (e.g. two explicitly configured instances). The same instance added twice is tolerated; in `AppBuilder` an explicit instance wins over an SPI-discovered one.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.
 - Startup timing - logs elapsed startup time.
@@ -251,11 +251,12 @@ The HTTP layer stays deliberately thin:
 
 - Routing - explicit `Route` and `RouteGroup` contributions.
 - Route index - trie-based path matching with path variables, regex constraints, and wildcards.
-- Request body binding - `Route.post(path, BodyType.class, handler)` deserializes and validates.
+- Request body binding - `Route.post(path, BodyType.class, handler)` deserializes and validates. A missing or non-JSON `Content-Type` (anything outside `application/json` and `application/*+json`) is a client error mapped to **415**.
 - Static resources - classpath and filesystem mounts.
 - Multipart upload - file upload handling.
 - Filters - `HttpFilter` chain.
 - Exception mapping - `ExceptionMapper` and built-in validation/body-size handling.
+- Protocol hardening - HTTP/1.1 rejects control characters in header values and non-`1*DIGIT` `Content-Length`; HTTP/2 validates pseudo-headers (`:path` must be origin-form, `:authority` follows Host rules). `maxBodySize` is enforced on streaming reads as well as buffered ones. Keep-alive state (principal, attributes, correlation id) is reset between requests on a reused connection.
 - SSE - `HttpContext.sse()` returns `SseEmitter`.
 - WebSocket - listener callbacks for open/text/binary/close/error.
 - Pluggable engines - `FreewayHttpEngine` built-in (high-performance, HTTP/2 + WebSocket); Undertow and Jetty adapters available in [freeway-ext](https://github.com/dzb/freeway-ext). **Switch by adding a module** — the container selects via `.primary()`.
@@ -275,15 +276,15 @@ FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowMod
 A compact JDBC data access layer with ORM:
 
 - `Database` - SQL execution with positional/named parameters and collection expansion.
-- `Orm` - lightweight CRUD: `insert`, `update`, `delete`, `findById`, `findAll`, `save` (upsert).
+- `Orm` - lightweight CRUD: `insert`, `update`, `delete`, `findById`, `findAll`, `save` (upsert). Primitive `@Generated` keys read as zero are treated as unset on `save()`, so auto-increment ids are never clobbered with 0.
 - `Row` - schema-less query result with type-safe column access.
 - `Sql` - programmatic SQL builder: `Sql.insert("t").set("col", v)`.
 - `RowMapper` - auto-mapping for records, beans, and basic types; `@Column` annotation drives column name matching.
-- Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus.
+- Transactions - `db.transaction(() -> { ... })` with ScopedValue isolation, transaction-aware EventBus. DB work must stay on the transaction thread — cross-thread access is detected and rejected with a `SqlException`.
 - Connection pooling - `Pool` interface + `PoolDefault` built-in impl; pluggable via module `.primary()` (same pattern as HTTP engine). HikariCP adapter available in [freeway-ext](https://github.com/dzb/freeway-ext).
-- **Dialect** — config-driven selection via `freeway.db.dialect`, JDBC URL auto-detection. Built-in: `PostgresDialect` (default), `MySqlDialect`, `SqliteDialect`. H2 auto-detected as PostgreSQL-compatible (or MySQL if `MODE=MySQL`).
+- **Dialect** — config-driven selection via `freeway.db.dialect`, JDBC URL auto-detection: `PostgresDialect` (default), `MySqlDialect`, `SqliteDialect`, and `H2Dialect` (plain H2; `MODE=PostgreSQL`/`MODE=MySQL` still map accordingly). Unsupported JDBC URL schemes fail fast at startup with guidance instead of silently falling back to PostgreSQL. Dialect capabilities drive SQL lexing and DDL (e.g. MySQL backslash-escaped strings, transactional-DDL support).
 - **Schema** — `@Table`/`@Column`/`@Id`/`@Generated` annotations + `Schema.ensure()` auto-DDL. Entity groups contributed via `SchemaEntity.of("core", User.class)`, filterable via `freeway.db.schema.groups`.
-- **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation, format enforcement, and database-level concurrency lock. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
+- **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation (raw bytes, plus a CRLF→LF normalized twin for line-ending tolerance), format enforcement, and database-level concurrency lock. On databases without transactional DDL (MySQL/MariaDB), a migration containing DDL is rejected up front with guidance — split it and make statements idempotent. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
 - `DatabaseHub` - multi-datasource routing.
 
 Freeway-db is **independently usable** outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.

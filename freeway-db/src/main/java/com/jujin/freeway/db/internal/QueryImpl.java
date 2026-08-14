@@ -450,7 +450,10 @@ final class QueryImpl implements Query {
         if (value instanceof Collection<?> col) {
             if (col.isEmpty()) {
                 throw new SqlException(
-                    "Cannot expand empty collection for SQL: " + originalSql
+                    "Cannot expand empty collection for SQL: " +
+                        originalSql +
+                        ". Use a conditional branch for empty collections " +
+                        "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
                 );
             }
             appendExpanded(sb, flat, col);
@@ -458,9 +461,7 @@ final class QueryImpl implements Query {
         }
         if (value instanceof Object[] arr) {
             if (arr.length == 0) {
-                throw new SqlException(
-                    "Cannot expand empty array for SQL: " + originalSql
-                );
+                throw emptyExpansionError();
             }
             appendExpanded(sb, flat, Arrays.asList(arr));
             return true;
@@ -475,9 +476,7 @@ final class QueryImpl implements Query {
             // byte[]/char[] stay scalar for BLOB/TEXT parameters.
             int length = Array.getLength(value);
             if (length == 0) {
-                throw new SqlException(
-                    "Cannot expand empty array for SQL: " + originalSql
-                );
+                throw emptyExpansionError();
             }
             boolean first = true;
             for (int i = 0; i < length; i++) {
@@ -493,6 +492,20 @@ final class QueryImpl implements Query {
         sb.append('?');
         flat.add(value);
         return false;
+    }
+
+    /**
+     * The error for an empty array parameter that cannot be expanded into
+     * {@code ?} placeholders (shared by the {@code Object[]} and primitive
+     * array paths).
+     */
+    private SqlException emptyExpansionError() {
+        return new SqlException(
+            "Cannot expand empty collection or array for SQL: " +
+                originalSql +
+                ". Use a conditional branch for empty collections " +
+                "(e.g. a WHERE 1 = 0 guard) to produce an empty result."
+        );
     }
 
     private static void appendExpanded(
@@ -537,6 +550,9 @@ final class QueryImpl implements Query {
             return new ExecuteContext(stmt, null, null);
         }
 
+        // No transaction binding on this thread — if a transaction is active
+        // on another thread, borrowing here would silently run outside it.
+        db.checkNoForeignTransaction();
         PooledConnection conn = db.pool().borrow();
         PreparedStatement stmt = null;
         boolean success = false;

@@ -15,7 +15,12 @@ public enum SettingIdentifier {
 
     public boolean validateValue(long v) {
         return switch (this) {
-            case SETTINGS_HEADER_TABLE_SIZE -> true;
+            // RFC 7540 §6.5.2: SETTINGS_HEADER_TABLE_SIZE is a 32-bit
+            // unsigned value — the wire parse is already unsigned, but a
+            // programmatically constructed setting must not smuggle a
+            // negative (or > uint32) value past validation into the HPACK
+            // decoder, where it would poison the dynamic-table state.
+            case SETTINGS_HEADER_TABLE_SIZE -> v >= 0 && v <= 0xFFFFFFFFL;
             case SETTINGS_INITIAL_WINDOW_SIZE -> true;
             case SETTINGS_MAX_FRAME_SIZE -> v >= 16384 && v <= 16777215;
             case SETTINGS_MAX_HEADER_LIST_SIZE -> v >= 0;

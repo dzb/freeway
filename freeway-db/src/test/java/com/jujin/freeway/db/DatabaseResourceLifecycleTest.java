@@ -100,6 +100,57 @@ class DatabaseResourceLifecycleTest {
     }
 
     @Test
+    void dbWorkFromChildThreadInsideTransactionIsRejected() throws Exception {
+        Database db = singleConnectionDb("tx_child_thread");
+        try (db) {
+            db.execute("create table t (id int)");
+
+            AtomicReference<Throwable> childError = new AtomicReference<>();
+            SqlException ex = assertThrows(SqlException.class, () -> db.transaction(() -> {
+                db.execute("insert into t values (1)");
+                Thread child = Thread.ofVirtual().start(() -> {
+                    try {
+                        // ScopedValue does not propagate — without the guard
+                        // this would borrow an independent connection and
+                        // commit outside the transaction.
+                        db.execute("insert into t values (2)");
+                    } catch (Throwable t) {
+                        childError.set(t);
+                    }
+                });
+                child.join();
+                if (childError.get() == null) {
+                    throw new AssertionError("child-thread DB work was not rejected");
+                }
+                if (childError.get() instanceof RuntimeException re) throw re;
+                throw new RuntimeException(childError.get());
+            }));
+
+            assertTrue(ex.getMessage().contains("transaction thread"),
+                "message must explain the ScopedValue limitation: " + ex.getMessage());
+
+            // The parent's insert rolled back and the child never wrote:
+            assertEquals(0L, db.query("select count(*) from t").one(Long.class).orElseThrow());
+        }
+    }
+
+    @Test
+    void transactionWorkOnSameThreadIsNotBlocked() {
+        Database db = singleConnectionDb("tx_same_thread");
+        try (db) {
+            db.execute("create table t (id int)");
+
+            db.transaction(() -> {
+                db.execute("insert into t values (1)");
+                db.batch("insert into t values (?)").rows(new Object[]{2}).execute();
+                assertEquals(2L, db.query("select count(*) from t").one(Long.class).orElseThrow());
+            });
+
+            assertEquals(2L, db.query("select count(*) from t").one(Long.class).orElseThrow());
+        }
+    }
+
+    @Test
     void concurrentTransactionDoesNotInvalidateInFlightQuery() throws Exception {
         Database db = twoConnectionDb("tx_concurrent");
         try (db) {

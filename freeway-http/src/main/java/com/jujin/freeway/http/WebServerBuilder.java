@@ -169,35 +169,40 @@ public final class WebServerBuilder {
         // Class-based routes resolve via container.create() — they need the IoC
         // HttpModule. Fail fast here instead of blowing up on the first request.
         for (Route r : routes) {
-            if (r.handler() instanceof LazyHandler) {
-                throw new IllegalStateException(
-                    "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
-                        + "which instantiates handler classes with constructor injection. "
-                        + "In standalone WebServerBuilder mode use lambda handlers instead.");
-            }
+            checkNoLazyHandler(r);
         }
         for (RouteGroup group : routeGroups) {
             for (Route r : group.expand()) {
-                if (r.handler() instanceof LazyHandler) {
-                    throw new IllegalStateException(
-                        "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
-                            + "which instantiates handler classes with constructor injection. "
-                            + "In standalone WebServerBuilder mode use lambda handlers instead.");
-                }
+                checkNoLazyHandler(r);
             }
         }
         var routeIndex = new RouteIndex(routes, routeGroups);
         var wsIndex = new WebSocketIndex(webSocketRoutes, webSocketGroups);
-        List<ErrorHandler> errorHandlers = this.errorHandlers.isEmpty()
-            ? List.of(ErrorHandlers.defaultHandler())
-            : List.copyOf(this.errorHandlers);
+        // Custom handlers run first (first handler wins); the built-in
+        // default is always appended so BodyTooLarge→413, Multipart→400 and
+        // Validation→400 keep working alongside custom handlers — matching
+        // the HttpModule contribution semantics
+        // (container.extension() + built-in default).
+        var handlers = new ArrayList<>(this.errorHandlers);
+        handlers.add(ErrorHandlers.defaultHandler());
         var pipeline = new RequestComponents(
             routeIndex, wsIndex, corsFilter, healthFilter,
             List.copyOf(staticMounts),
             List.copyOf(filters),
-            errorHandlers
+            List.copyOf(handlers)
         );
         return new WebServer(engine, config, eventSink, pipeline);
+    }
+
+    /** Class-based routes resolve via container.create() and need the IoC
+     *  HttpModule; standalone builder mode can only use lambda handlers. */
+    private static void checkNoLazyHandler(Route r) {
+        if (r.handler() instanceof LazyHandler) {
+            throw new IllegalStateException(
+                "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
+                    + "which instantiates handler classes with constructor injection. "
+                    + "In standalone WebServerBuilder mode use lambda handlers instead.");
+        }
     }
 
 }

@@ -286,6 +286,36 @@ class HttpServerFeatureTest {
         }
     }
 
+    @Test
+    void staticMountMissingFileContinuesToNextMount(@TempDir Path tempDir) throws Exception {
+        Path firstRoot = Files.createDirectory(tempDir.resolve("first"));
+        Path secondRoot = Files.createDirectory(tempDir.resolve("second"));
+        Files.createDirectories(secondRoot.resolve("sub"));
+        Files.writeString(secondRoot.resolve("sub/index.html"), "second sub index");
+
+        int port = freePort();
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .staticFile(StaticResourceMount.directory("/static", firstRoot))
+            .staticFile(StaticResourceMount.directory("/static", secondRoot))
+            .build();
+        server.start();
+        try {
+            // First mount matches but has no sub/index.html — the dispatch
+            // loop must keep going so the second mount serves it.
+            RawResponse resp = request(port, "/static/sub/", "");
+            assertEquals(200, status(resp.headers));
+            assertEquals("second sub index",
+                new String(resp.body, StandardCharsets.UTF_8));
+
+            // Every matching mount missing the asset → terminal 404.
+            RawResponse missing = request(port, "/static/missing.txt", "");
+            assertEquals(404, status(missing.headers));
+        } finally {
+            server.stop();
+        }
+    }
+
     // ── raw HTTP/1.1 helpers ───────────────────────────────────
 
     private record RawResponse(String headers, byte[] body) {}

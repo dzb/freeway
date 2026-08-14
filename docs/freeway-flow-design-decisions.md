@@ -296,6 +296,100 @@ JSON → GraphSpec.normalize() → new Graph
 
 ---
 
+## Gateway Dead-End Detection
+
+**Decision:** A run that never reaches its END node now fails loudly. Three gateway dead ends — an EXCLUSIVE node that matched no condition and has no default link, and INCLUSIVE/PARALLEL joins that never received all their incoming branches — are recorded on `ExecState` and surfaced as a `FlowException` when the evaluation completes. Previously such runs reported "success" with execution silently stopped short of END.
+
+**Why:** A graph that stops mid-way is a workflow defect; silently returning success hid it from callers and tests. The mechanism:
+
+- `ExecState` keeps a concurrent `Set<DeadEnd>` keyed per `(graphId, nodeId)`. An EXCLUSIVE node records a dead end when it matches no condition and has no default link (still logged as a warning). Joins record a *provisional* dead end each time they are entered but cannot activate; when the final branch arrives, the join clears only its own entry (`deadEndClear`) so a dead end recorded by a sibling branch is not lost.
+- The completion check in `eval()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemptions:** runs ended via `stop()` / `interrupt()` — including interceptor-blocked runs — are not dead ends (stopping is intentional); resume replay walks never mark, because `markDeadEnd` skips `isReverting()` and the replay is only a walk to the resume point.
+- Sub-graph evals share the parent's `ExecState` (passed through `FlowExchanger.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
+
+**See also:** `ExecState.java:DeadEnd`, `FlowEngineImpl.java:eval()` / `exclusive_run_out()` / `inclusive_run_in()` / `parallel_run_in()` (`freeway-flow`)
+
+---
+
+## Expression Short-Circuit Evaluation
+
+**Decision:** `&&` / `||` (and `and` / `or`) evaluate the right operand lazily: `false && (x - 1)` yields `false` without evaluating `(x - 1)`.
+
+**Why:** The previous implementation evaluated both operands eagerly before applying the boolean operator, so a guarded expression like `flag && data.count > 0` could throw on `null` data even when `flag` was false. Short-circuiting matches conventional boolean semantics and makes guards safe. All other operators stay eager.
+
+**See also:** `ExprEvaluator.java:BinaryOp.eval()` (`freeway-flow`)
+
+---
+
+## Unary Minus Support
+
+**Decision:** The expression grammar now supports unary minus (`-x`, `-(a+b)`, `--x`) and unary plus, in addition to `!` / `not`. Unary minus is type-preserving for the boxed numerics: `-5` stays an `Integer`, `-9223372036854775807` stays an exact `Long` (no double rounding), `-1.5` stays a `Double`. Non-numeric operands throw `FlowException("Cannot negate non-numeric value: ...")` — the same error family as binary subtraction.
+
+**Why:** Signed values previously had to be encoded as `0 - x` or parenthesized expressions. Unary chains recurse without passing through `primary()`, so they count against the same nesting-depth budget (`MAX_NESTING_DEPTH`) as `!`, keeping the recursion guard intact.
+
+**See also:** `ExprEvaluator.java:UnaryOp.eval()` / `negate()` (`freeway-flow`)
+
+---
+
+## Mixed Number/String Comparison
+
+**Decision:** Comparing a `Number` with a `String` (e.g. a JSON value like `"score":"90"` against a numeric literal) compares numerically when the string parses as a number — `"10" > 9` is `true`, and `"10" == 10` holds. Non-numeric strings fall back to lexicographic `compareTo` ordering (and to plain equality for `==`), keeping the pure-string and pure-number paths untouched.
+
+**Why:** JSON data arrives as strings; without this, `"10" > 9` compared lexicographically (where `"10" < "9"` is `true`), silently inverting the intended ordering. Parsing tries `Long` first (exact, no precision loss), then `Double`, and returns `null` for non-numeric strings so callers can fall back to the previous behavior.
+
+**See also:** `ExprEvaluator.java:cmp()` / `eq()` / `parseNumericString()` (`freeway-flow`)
+
+---
+
+## Atomic $for LOOP Claim
+
+**Decision:** A `$for` LOOP node is claimed atomically: the "is a sibling branch already running this loop?" check, the `$in` iterator acquisition and the stack push all happen under one stack monitor (`loop_run_claim`). Two PARALLEL branches reaching the same loop concurrently cannot both pass an empty-stack check — the first arrival runs the loop body (task + iterations), later arrivals skip the whole node.
+
+**Why:** Previously, concurrent arrivals could each observe an empty/not-yet-pushed stack and both run the body — a $for loop re-entered from parallel branches double-executed its iteration side effects. Sequential re-entry is handled too: an exhausted iterator left by a completed run is popped first, so a later re-entry (e.g. the node inside another loop's body) re-arms the loop with a fresh iterator — "exhaust → pop → re-arm".
+
+**See also:** `FlowEngineImpl.java:loop_run_claim()` / `loop_run_out()` (`freeway-flow`)
+
+---
+
+## Loop-Body Join Counter Reset
+
+**Decision:** At the start of every `$for` iteration, the engine resets the INCLUSIVE/PARALLEL join counters (and their provisional dead-ends) for every join node inside the loop body. The join set is computed once per (graph, loop node) per evaluation and cached in `ExecState.loopBodyJoins`.
+
+**Why:** Join counters are keyed per (graph, node) and only activation resets them. A fork-join inside a loop body that received fewer arrivals than expected in one iteration would carry that residue into the next — the next iteration could falsely activate early, or twice. Resetting per iteration makes each iteration start from a clean count and re-record a dead end only if the join is still short.
+
+**See also:** `FlowEngineImpl.java:resetLoopBodyJoins()` / `loopBodyJoins()` (`freeway-flow`)
+
+---
+
+## Sub-Graph Per-Eval Interceptor Inheritance
+
+**Decision:** Sub-graph evals inherit the caller's per-eval interceptors: `FlowExchanger.runGraph()` stores the raw per-eval `FlowOptions` on the parent exchanger (`evalOptions`) and re-passes it to the sub-eval, so per-eval interceptors (`interceptFlow` / `onNodeStart` / `onNodeEnd`) cover sub-graph nodes too.
+
+**Why:** Previously a sub-graph call lost the caller's per-eval interceptors — nodes inside the sub-graph ran with only engine-level interceptors. Only the *raw* options are propagated: each eval merges the engine-level interceptor list itself, so nested evals never run engine-level interceptors twice.
+
+**See also:** `FlowExchanger.java:runGraph()` / `evalOptions()`, `FlowEngineImpl.java:eval()` (`freeway-flow`)
+
+---
+
+## Graph.fromText v2 Version Gate
+
+**Decision:** `Graph.fromText()` now routes through `GraphSpec.fromText()` so it shares the same version gate as `GraphSpec`: only canonical v2 documents (`version=2` with `nodes` and `links`) load; anything else fails with the same clear `IllegalArgumentException` (naming the version field and any missing keys).
+
+**Why:** The previous path (`GraphSpec.fromDom` directly) skipped the version check, so `Graph.fromText()` could accept non-canonical documents that `GraphSpec` rejected — the two entry points disagreed about what "a valid graph definition" means.
+
+**See also:** `Graph.java:fromText()`, `GraphSpec.java:fromText()` (`freeway-flow`)
+
+---
+
+## FlowContext.putAll Null Filtering
+
+**Decision:** `FlowContext.putAll(map)` skips `null` values — consistent with `put()`, which does not store `null`. A `null` map argument still fails fast (NPE), exactly like the previous `data().putAll(null)`.
+
+**Why:** `Map.putAll` semantics would store a `null` value for a key, creating entries that `put()` would never create and that downstream readers must defensively handle. Unifying the two paths makes batch and single-key population behave identically.
+
+**See also:** `FlowContext.java:putAll()`, `FlowContextImpl.java:putAll()` (`freeway-flow`)
+
+---
+
 ## Design Philosophy
 
 A summary of the project's architectural values as established in this session:

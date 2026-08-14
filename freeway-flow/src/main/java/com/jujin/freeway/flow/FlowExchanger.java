@@ -36,6 +36,18 @@ public class FlowExchanger {
     private volatile boolean stopped = false;
     private volatile boolean reverting = true;
 
+    /**
+     * The raw per-eval {@link FlowOptions} of the current evaluation, set by
+     * {@link FlowEngineImpl#eval}. {@link #runGraph} re-passes it to the
+     * sub-graph eval so per-eval interceptors cover sub-graph nodes too; only
+     * the raw options are stored so the engine-level interceptor list is not
+     * merged twice on nested evals.
+     */
+    private volatile FlowOptions evalOptions;
+
+    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
+    private volatile boolean subgraphEval = false;
+
     public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount) {
         this(graph, engine, driver, context, steps, stepCount, new ExecState(), new AtomicInteger());
     }
@@ -60,10 +72,6 @@ public class FlowExchanger {
         return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, execState, depth);
     }
 
-    public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, execState, depth);
-    }
-
     /** Enters a node — returns the current recursion depth. */
     int enterNode() {
         return depth.incrementAndGet();
@@ -80,14 +88,22 @@ public class FlowExchanger {
     public FlowContext context() { return context; }
     public ExecState execState() { return execState; }
 
+    /** The raw per-eval options of the current evaluation (see {@link FlowEngineImpl#eval}). */
+    public FlowOptions evalOptions() { return evalOptions; }
+
+    /** Sets the raw per-eval options; called by {@link FlowEngineImpl#eval}. */
+    void evalOptions(FlowOptions options) { this.evalOptions = options; }
+
+    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
+    public boolean isSubgraphEval() { return subgraphEval; }
+
+    /** Marks this exchanger as a sub-graph evaluation. */
+    void markSubgraphEval() { this.subgraphEval = true; }
+
     // --- trace ---
 
     public void recordNode(Graph graph, Node node) {
         context.trace().recordNode(graph, node);
-    }
-
-    public void recordClear() {
-        context.trace().clear();
     }
 
     // --- sub-graph ---
@@ -102,7 +118,14 @@ public class FlowExchanger {
         // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
         FlowExchanger subEx = new FlowExchanger(graph, engine,
             engine.getDriver(graph), context, steps, stepCount, execState, depth);
-        engine.eval(graph, subEx, null);
+        // Sub-graph evals share the live event bus and trace — mark them so
+        // eval() neither clears the parent's subscriptions nor treats the
+        // (record-reset) subgraph as a fresh run.
+        subEx.markSubgraphEval();
+        // Propagate the parent eval's per-eval options (interceptors) so
+        // sub-graph nodes are covered too; the sub-eval re-merges the
+        // engine-level list exactly once (see FlowEngineImpl.eval).
+        engine.eval(graph, subEx, evalOptions);
 
         if (!isStopped()) {
             // Completion is tracked on the exchanger (markEnded), not the
@@ -110,17 +133,6 @@ public class FlowExchanger {
             if (!subEx.isGraphEnded(graph.getId())) {
                 interrupt(); // sub-graph did not end, interrupt the current branch
             }
-        }
-    }
-
-    public void runTask(Node node, String description) throws FlowException {
-        Objects.requireNonNull(node, "node");
-        try {
-            engine.getDriver(node.getGraph()).handleTask(this, new TaskDesc(node, description));
-        } catch (FlowException e) {
-            throw e;
-        } catch (Throwable e) {
-            throw new FlowException(FlowException.TASK_FAILED + ": " + node.getGraph().getId() + " / " + node.getId(), e);
         }
     }
 
@@ -139,8 +151,6 @@ public class FlowExchanger {
     }
 
     // --- step control ---
-
-    public int getSteps() { return steps; }
 
     public void prevStep() {
         if (steps >= 0) stepCount.decrementAndGet();

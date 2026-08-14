@@ -84,14 +84,30 @@ public class FlowModule implements ModuleEx {
             try {
                 return fwContainer.get(TaskComponent.class, componentName);
             } catch (IllegalArgumentException e) {
-                LOG.debug("Failed to resolve @beanName '{}' as TaskComponent", componentName, e);
+                if (!isMissingBinding(e)) throw e;
+                LOG.debug("Failed to resolve @beanName '{}' as TaskComponent: no binding", componentName);
             }
             try {
                 return fwContainer.get(ConditionComponent.class, componentName);
             } catch (IllegalArgumentException e) {
-                LOG.debug("Failed to resolve @beanName '{}' as ConditionComponent", componentName, e);
+                if (!isMissingBinding(e)) throw e;
+                LOG.debug("Failed to resolve @beanName '{}' as ConditionComponent: no binding", componentName);
                 return null;
             }
+        }
+
+        /**
+         * The container's {@code get(type, id)} throws an
+         * {@link IllegalArgumentException} with a "No service registered for
+         * type ..." message only when no binding matches. That is the single
+         * IAE that means "component does not exist" — every other IAE
+         * (multiple services match, advisor unsupported, scope/config or
+         * lifecycle validation errors) is a real container failure and must
+         * propagate instead of being masked as a missing component.
+         */
+        private static boolean isMissingBinding(IllegalArgumentException e) {
+            return e.getMessage() != null
+                && e.getMessage().startsWith("No service registered for type ");
         }
     }
 

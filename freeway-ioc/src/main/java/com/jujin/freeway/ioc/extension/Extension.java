@@ -159,6 +159,55 @@ public final class Extension<V> {
         return "Extension[" + entryType.getSimpleName() + "]";
     }
 
+    /**
+     * Fails fast when any {@code before/after} ordering reference points to
+     * an unknown contribution id. The generic {@link #all()} ordering stays
+     * lenient — unknown references are WARNed and ignored — because a
+     * missing sibling is harmless for most extension points. Strict
+     * consumers (e.g. runtime-hook ordering in the boot layer) call this
+     * before resolving so a typo like {@code after("freeway.http.serve")}
+     * fails startup instead of silently running hooks in the wrong order.
+     *
+     * @throws IllegalStateException naming the missing id, the ordering
+     *         method, and the contribution that declared the reference
+     */
+    public synchronized void validateOrdering() {
+        Map<String, Entry> byId = new LinkedHashMap<>();
+        for (Entry entry : entries) {
+            if (entry.id != null) {
+                byId.put(entry.id, entry);
+            }
+        }
+        for (Entry entry : entries) {
+            for (String id : entry.afterIds) {
+                if (!byId.containsKey(id)) {
+                    throw missingReference(id, "after()", entry);
+                }
+            }
+            for (String id : entry.beforeIds) {
+                if (!byId.containsKey(id)) {
+                    throw missingReference(id, "before()", entry);
+                }
+            }
+        }
+    }
+
+    private IllegalStateException missingReference(
+        String id,
+        String method,
+        Entry entry
+    ) {
+        String owner = entry.id != null
+            ? "contribution '" + entry.id + "'"
+            : "contribution <" + entry.value.getClass().getName() + ">";
+        return new IllegalStateException(
+            "Ordering reference to unknown id '" + id + "' in " + method
+                + " of " + owner + " for extension "
+                + entryType.getSimpleName()
+                + " — check for a typo, or a module that is not installed"
+        );
+    }
+
     private List<V> order() {
         if (entries.isEmpty()) {
             return List.of();

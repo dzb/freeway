@@ -182,4 +182,65 @@ class HttpContextTest {
         assertFalse(meta.startTime().isBefore(before));
         assertFalse(meta.startTime().isAfter(after));
     }
+
+    @Test
+    void headerValuesMustBeIso88591Encodable() {
+        StubHttpContext ctx = new StubHttpContext();
+        assertThrows(IllegalArgumentException.class, () ->
+            ctx.setHeader("X-Filename", "文件名.txt"),
+            "UTF-8 characters outside ISO-8859-1 must be rejected — the "
+                + "HTTP/1.1 writer serializes header values as ISO-8859-1 and "
+                + "would silently replace them with '?'");
+        assertThrows(IllegalArgumentException.class, () ->
+            ctx.setHeader("X-Emoji", "ok \uD83D\uDE00"),
+            "surrogate-pair (emoji) values are not ISO-8859-1 encodable and "
+                + "must be rejected");
+        assertThrows(IllegalArgumentException.class, () ->
+            AbstractHttpContext.validateHeaderValue("中文值"));
+
+        ctx.setHeader("X-Latin", "caf\u00e9");
+        assertEquals("caf\u00e9", ctx.responseHeader("X-Latin"),
+            "é (U+00E9) is inside ISO-8859-1 and must be accepted");
+        AbstractHttpContext.validateHeaderValue("caf\u00e9"); // no throw
+    }
+
+    @Test
+    void bodyAsJsonAcceptsJsonAndStructuredSuffixMediaTypes() throws IOException {
+        StubHttpContext json = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "application/json")
+            .requestBody("{\"name\":\"plain\"}");
+        assertEquals(Map.of("name", "plain"), json.bodyAsJson(Map.class));
+
+        StubHttpContext vendor = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "application/vnd.api+json")
+            .requestBody("{\"name\":\"vendor\"}");
+        assertEquals(Map.of("name", "vendor"), vendor.bodyAsJson(Map.class),
+            "application/*+json structured syntax must be accepted");
+
+        StubHttpContext patch = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "application/json-patch+json")
+            .requestBody("{\"name\":\"patch\"}");
+        assertEquals(Map.of("name", "patch"), patch.bodyAsJson(Map.class));
+
+        StubHttpContext params = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "application/json; charset=utf-8")
+            .requestBody("{\"name\":\"params\"}");
+        assertEquals(Map.of("name", "params"), params.bodyAsJson(Map.class),
+            "parameters after the media type must be ignored");
+    }
+
+    @Test
+    void bodyAsJsonRejectsNonJsonMediaTypesWithClientError() {
+        StubHttpContext text = new StubHttpContext("POST", "/")
+            .requestHeader("Content-Type", "text/plain")
+            .requestBody("{\"name\":\"x\"}");
+        assertThrows(UnsupportedMediaTypeException.class,
+            () -> text.bodyAsJson(Map.class),
+            "text/plain must be rejected with a 4xx-mappable exception, not IllegalStateException");
+
+        StubHttpContext missing = new StubHttpContext("POST", "/");
+        assertThrows(UnsupportedMediaTypeException.class,
+            () -> missing.bodyAsJson(Map.class),
+            "a missing Content-Type must be rejected the same way");
+    }
 }

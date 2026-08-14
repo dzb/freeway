@@ -31,7 +31,6 @@ final class BindingImpl<T> implements Binding<T> {
     private boolean primary;
     private final List<AdviceEntry> advices = new ArrayList<>();
     private final Set<Class<?>> markers = new HashSet<>();
-    private Class<?> sourceModule;
 
     BindingImpl(ContainerImpl container, Class<T> type) {
         this.container = Objects.requireNonNull(container, "container");
@@ -61,14 +60,6 @@ final class BindingImpl<T> implements Binding<T> {
 
     Set<Class<?>> markers() {
         return Collections.unmodifiableSet(markers);
-    }
-
-    Class<?> sourceModule() {
-        return sourceModule;
-    }
-
-    void setSourceModule(Class<?> moduleClass) {
-        this.sourceModule = moduleClass;
     }
 
     /**

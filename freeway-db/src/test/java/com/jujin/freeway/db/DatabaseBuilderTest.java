@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DatabaseBuilderTest {
@@ -155,6 +156,101 @@ class DatabaseBuilderTest {
             assertEquals(expectedId, db.dialect().dialectId(),
                 "URL '" + url + "' must resolve to dialect '" + expectedId + "'");
         }
+    }
+
+    // ====================== 修复 1: 未知 JDBC URL 必须显式报错 ======================
+
+    @Test
+    void unknownUrlSchemeThrowsWithGuidance() {
+        IllegalStateException oracle = assertThrows(IllegalStateException.class,
+            () -> DatabaseBuilder.dialectForUrl("jdbc:oracle:thin:@localhost:1521:xe"));
+        assertTrue(oracle.getMessage().contains("jdbc:oracle"),
+            "message must name the offending URL: " + oracle.getMessage());
+        assertTrue(oracle.getMessage().contains("freeway.db.dialect"),
+            "message must point at the dialect config key: " + oracle.getMessage());
+
+        IllegalStateException sqlserver = assertThrows(IllegalStateException.class,
+            () -> DatabaseBuilder.dialectForUrl("jdbc:sqlserver://localhost:1433;databaseName=app"));
+        assertTrue(sqlserver.getMessage().contains("jdbc:sqlserver"),
+            "message must name the offending URL: " + sqlserver.getMessage());
+    }
+
+    @Test
+    void buildWithUnknownUrlThrowsBeforeAnyConnection() {
+        DatabaseBuilder builder = new DatabaseBuilder()
+            .config(PoolConfig.defaults("jdbc:oracle:thin:@localhost:1521:xe", "sa", ""))
+            .pool(new StubPool());
+        IllegalStateException ex = assertThrows(IllegalStateException.class, builder::build);
+        assertTrue(ex.getMessage().contains("freeway.db.dialect"),
+            "build() must surface the guidance: " + ex.getMessage());
+    }
+
+    @Test
+    void nullAndBlankUrlDefaultToPostgres() {
+        assertEquals("postgresql", DatabaseBuilder.dialectForUrl(null).dialectId());
+        assertEquals("postgresql", DatabaseBuilder.dialectForUrl("").dialectId());
+        assertEquals("postgresql", DatabaseBuilder.dialectForUrl("   ").dialectId());
+    }
+
+    @Test
+    void h2MemUrlResolvesWithoutThrowing() {
+        assertEquals("h2", DatabaseBuilder.dialectForUrl("jdbc:h2:mem:plain").dialectId());
+    }
+
+    @Test
+    void customSchemeWithExplicitDialectIsUsable() {
+        Database db = new DatabaseBuilder()
+            .config(PoolConfig.defaults("jdbc:custom:whatever", "sa", ""))
+            .dialect(new MySqlDialect())
+            .pool(new StubPool())
+            .build();
+        try (db) {
+            assertEquals("mysql", db.dialect().dialectId(),
+                "an explicit dialect must make a custom URL scheme usable");
+        }
+    }
+
+    // ====================== 修复 2: Sql 经 Database 便利方法时校验方言 ======================
+
+    @Test
+    void executeSqlRejectsReturningOnMySqlDialect() {
+        Database db = mysqlDb();
+        try (db) {
+            SqlException ex = assertThrows(SqlException.class,
+                () -> db.execute(Sql.insert("users").set("name", "john").returning("id")));
+            assertTrue(ex.getMessage().contains("RETURNING"),
+                "MySQL must reject RETURNING via execute(Sql): " + ex.getMessage());
+        }
+    }
+
+    @Test
+    void querySqlRejectsReturningOnMySqlDialect() {
+        Database db = mysqlDb();
+        try (db) {
+            SqlException ex = assertThrows(SqlException.class,
+                () -> db.query(Sql.insert("users").set("name", "john").returning("id")));
+            assertTrue(ex.getMessage().contains("RETURNING"),
+                "MySQL must reject RETURNING via query(Sql): " + ex.getMessage());
+        }
+    }
+
+    @Test
+    void executeSqlRejectsOnConflictOnMySqlDialect() {
+        Database db = mysqlDb();
+        try (db) {
+            SqlException ex = assertThrows(SqlException.class,
+                () -> db.execute(Sql.insert("users").set("id", 1).onConflict("id").doNothing()));
+            assertTrue(ex.getMessage().contains("ON CONFLICT"),
+                "MySQL must reject ON CONFLICT via execute(Sql): " + ex.getMessage());
+        }
+    }
+
+    private static Database mysqlDb() {
+        return new DatabaseBuilder()
+            .config(PoolConfig.defaults("jdbc:mysql://localhost:3306/app", "sa", ""))
+            .dialect(new MySqlDialect())
+            .pool(new StubPool())
+            .build();
     }
 
     @Test

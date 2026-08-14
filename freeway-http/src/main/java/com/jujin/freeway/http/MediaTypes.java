@@ -17,10 +17,17 @@ public final class MediaTypes {
 
     private MediaTypes() {}
 
-    /** True when the Content-Type identifies JSON (case-insensitive). */
+    /**
+     * True when the Content-Type identifies JSON: the exact
+     * {@code application/json} media type or a structured syntax suffix
+     * ({@code application/*+json}, e.g. {@code application/vnd.api+json}),
+     * ignoring any parameters. Case-insensitive, null-safe.
+     */
     public static boolean isJson(String contentType) {
-        return contentType != null
-            && contentType.toLowerCase(Locale.ROOT).contains("application/json");
+        if (contentType == null) return false;
+        String mediaType = contentType.toLowerCase(Locale.ROOT).split(";")[0].trim();
+        return "application/json".equals(mediaType)
+            || (mediaType.startsWith("application/") && mediaType.endsWith("+json"));
     }
 
     /** True when the Content-Type identifies multipart/form-data. */

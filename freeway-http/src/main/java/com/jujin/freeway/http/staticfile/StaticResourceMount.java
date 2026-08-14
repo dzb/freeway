@@ -39,6 +39,8 @@ import com.jujin.freeway.http.route.PathPattern;
 public final class StaticResourceMount {
     private static final Logger LOG = LoggerFactory.getLogger(StaticResourceMount.class);
     private static final long DEFAULT_CACHE_MAX_AGE_SECONDS = 86_400L;
+    /** Cap for fully memory-loading an asset; streaming/sendfile paths are
+     *  not size-limited (meta() reports the size and the client consumes it). */
     private static final long MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024L; // 50MB
     private static final DateTimeFormatter HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
 
@@ -119,7 +121,7 @@ public final class StaticResourceMount {
      */
     public boolean serve(HttpRequest request, HttpResponse response)
             throws IOException {
-        String relative = relativePath(request.path());
+        String relative = resolveAssetPath(request.path());
         if (relative == null) {
             return notFound(response);
         }
@@ -261,6 +263,42 @@ public final class StaticResourceMount {
         return true;
     }
 
+    /**
+     * Cheap metadata-only probe: true when this mount holds an asset for the
+     * request path (including the directory → {@code index.html} rule),
+     * without committing any response. The server dispatch loop uses this so
+     * a mount that matches but has no asset cannot shadow later mounts or the
+     * route chain with a premature 404.
+     */
+    public boolean hasResource(String path) throws IOException {
+        String relative = resolveAssetPath(path);
+        if (relative == null) {
+            return false;
+        }
+        return source.meta(relative) != null;
+    }
+
+    /**
+     * Resolves the request path to the mount-relative asset path, applying
+     * the directory → {@code index.html} rule: a request that names a
+     * directory (trailing '/', or a real directory inside the mount root)
+     * serves that directory's {@code index.html}. Returns null when the path
+     * is outside the mount, malformed, or contains traversal segments.
+     */
+    private String resolveAssetPath(String requestPath) throws IOException {
+        String relative = relativePath(requestPath);
+        if (relative == null) {
+            return null;
+        }
+        if (relative.endsWith("/")) {
+            return relative + "index.html";
+        }
+        if (source.isDirectory(relative)) {
+            return relative + "/index.html";
+        }
+        return relative;
+    }
+
     private String relativePath(String path) {
         String normalized = Strings.blankToNull(path);
         if (normalized == null) {
@@ -290,12 +328,21 @@ public final class StaticResourceMount {
         if (normalized.isBlank()) {
             return "index.html";
         }
+        // A single trailing '/' marks a directory request; resolveAssetPath
+        // appends index.html. Interior empty segments stay invalid.
+        boolean directoryRequest = normalized.endsWith("/");
+        if (directoryRequest) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        if (normalized.isBlank()) {
+            return "index.html";
+        }
         for (String segment : normalized.split("/")) {
             if (segment.isBlank() || "..".equals(segment) || segment.contains("\\") || segment.contains("\0")) {
                 return null;
             }
         }
-        return normalized;
+        return directoryRequest ? normalized + "/" : normalized;
     }
 
     private void applyCacheHeaders(HttpResponse response, AssetMeta meta) {
@@ -412,7 +459,12 @@ public final class StaticResourceMount {
         }
         try {
             Instant requested = ZonedDateTime.parse(ifRange, HTTP_DATE).toInstant();
-            Instant lastModified = Instant.ofEpochMilli(meta.lastModifiedMillis());
+            // HTTP dates have second precision, and the Last-Modified header we
+            // emit is truncated to whole seconds — compare on the same
+            // precision or a file whose mtime carries milliseconds would never
+            // satisfy an If-Range echoing its own Last-Modified value.
+            Instant lastModified =
+                Instant.ofEpochMilli(meta.lastModifiedMillis() / 1000 * 1000);
             return !lastModified.isAfter(requested);
         } catch (DateTimeParseException e) {
             return false;
@@ -492,6 +544,14 @@ public final class StaticResourceMount {
         /** Lightweight metadata lookup — does not read file contents. */
         AssetMeta meta(String relative) throws IOException;
 
+        /** True when the relative path resolves to a directory inside the
+         *  mount root (used to resolve directory requests to index.html).
+         *  Classpath sources default to false — only explicit directory
+         *  requests (trailing '/') try index.html there. */
+        default boolean isDirectory(String relative) throws IOException {
+            return false;
+        }
+
         /** Real file backing the resource for the sendfile path; null if the
          *  source is not a plain file (classpath, archives, etc.). */
         default Path file(String relative) throws IOException {
@@ -527,26 +587,21 @@ public final class StaticResourceMount {
         }
 
         @Override
+        public boolean isDirectory(String relative) throws IOException {
+            Path real = resolveReal(relative);
+            return real != null
+                && Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS);
+        }
+
+        @Override
         public AssetMeta meta(String relative) throws IOException {
-            Path candidate = root.resolve(relative).normalize();
-            if (!candidate.startsWith(root)) {
+            Path real = resolveReal(relative);
+            if (real == null || !Files.isRegularFile(real)) {
                 return null;
             }
-            Path realCandidate;
-            try {
-                realCandidate = candidate.toRealPath();
-            } catch (IOException e) {
-                return null;
-            }
-            if (!realCandidate.startsWith(root.toRealPath()) || !Files.isRegularFile(realCandidate)) {
-                return null;
-            }
-            long size = Files.size(realCandidate);
-            if (size > MAX_FILE_SIZE_BYTES) {
-                throw new IOException("File too large: " + candidate.getFileName() + " (" + size + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
-            }
-            long lastModified = Files.getLastModifiedTime(realCandidate).toMillis();
-            return new AssetMeta(realCandidate.getFileName().toString(),
+            long size = Files.size(real);
+            long lastModified = Files.getLastModifiedTime(real).toMillis();
+            return new AssetMeta(real.getFileName().toString(),
                 size, lastModified, etag(lastModified, size));
         }
 
@@ -558,26 +613,23 @@ public final class StaticResourceMount {
             }
             // Re-verify containment on the load path: the file may have been
             // replaced by a symlink between meta() and here (TOCTOU).
-            Path candidate = root.resolve(relative).normalize();
-            Path realCandidate;
-            try {
-                realCandidate = candidate.toRealPath();
-            } catch (IOException e) {
+            Path real = resolveReal(relative);
+            if (real == null || !Files.isRegularFile(real)) {
                 return null;
             }
-            if (!realCandidate.startsWith(root.toRealPath())
-                    || !Files.isRegularFile(realCandidate)) {
-                return null;
+            // Memory path: the 50MB cap applies only to fully loading the
+            // file into RAM — check before reading so an oversized file is
+            // rejected without materializing it.
+            if (Files.size(real) > MAX_FILE_SIZE_BYTES) {
+                throw new IOException("File too large: " + real.getFileName()
+                    + " (" + Files.size(real) + " bytes, max "
+                    + MAX_FILE_SIZE_BYTES + ")");
             }
-            byte[] bytes = Files.readAllBytes(realCandidate);
-            if (bytes.length > MAX_FILE_SIZE_BYTES) {
-                throw new IOException("File too large: " + realCandidate.getFileName()
-                    + " (" + bytes.length + " bytes, max " + MAX_FILE_SIZE_BYTES + ")");
-            }
+            byte[] bytes = Files.readAllBytes(real);
             if (bytes.length != meta.size()) {
                 // File changed between meta() and load() — refresh metadata so
                 // the ETag/Last-Modified headers match the bytes being sent.
-                long lastModified = Files.getLastModifiedTime(realCandidate).toMillis();
+                long lastModified = Files.getLastModifiedTime(real).toMillis();
                 meta = new AssetMeta(
                     meta.name(), bytes.length, lastModified, etag(lastModified, bytes.length));
             }
@@ -660,21 +712,29 @@ public final class StaticResourceMount {
         /** Re-verifies containment on every access path (TOCTOU): the file may
          *  have been replaced by a symlink between meta() and here. */
         private Path resolve(String relative) throws IOException {
+            Path real = resolveReal(relative);
+            return real != null && Files.isRegularFile(real) ? real : null;
+        }
+
+        /** Resolves {@code relative} inside the mount root to its real path,
+         *  verifying after symlink resolution that it still stays within the
+         *  root. Returns null when the path is outside the root, contains a
+         *  non-resolvable component, or does not exist. Called on every
+         *  access path so a file swapped for a symlink between meta() and
+         *  load() is re-checked (TOCTOU). */
+        private Path resolveReal(String relative) throws IOException {
             Path candidate = root.resolve(relative).normalize();
+            if (!candidate.startsWith(root)) {
+                return null;
+            }
             Path realCandidate;
             try {
                 realCandidate = candidate.toRealPath();
             } catch (IOException e) {
                 return null;
             }
-            if (!realCandidate.startsWith(root.toRealPath())
-                    || !Files.isRegularFile(realCandidate)) {
+            if (!realCandidate.startsWith(root.toRealPath())) {
                 return null;
-            }
-            if (Files.size(realCandidate) > MAX_FILE_SIZE_BYTES) {
-                throw new IOException("File too large: " + realCandidate.getFileName()
-                    + " (" + Files.size(realCandidate) + " bytes, max "
-                    + MAX_FILE_SIZE_BYTES + ")");
             }
             return realCandidate;
         }

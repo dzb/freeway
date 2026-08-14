@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.Http2Exception;
 import com.jujin.freeway.http.engine.http2.Http2HeaderField;
@@ -35,24 +36,62 @@ public final class HeaderFields {
 
     public void validate() throws IOException {
         var method = pseudo.get(":method");
-        var authority = pseudo.get(":authority");
-        if (method == null || method.value == null || method.value.isBlank()
-                || authority == null || authority.value == null || authority.value.isBlank())
+        if (method == null || method.value == null || method.value.isBlank())
             throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         boolean connect = "CONNECT".equals(method.value);
         boolean extended = pseudo.containsKey(":protocol");
+        if (!connect && extended)
+            throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+
         if (connect && !extended) {
+            // Plain CONNECT: :authority is required; :scheme/:path must be
+            // absent (RFC 7540 §8.3).
             if (pseudo.containsKey(":scheme") || pseudo.containsKey(":path"))
                 throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         } else {
-            for (String n : Set.of(":path", ":scheme")) {
-                var h = pseudo.get(n);
-                if (h == null || h.value == null || h.value.isBlank())
-                    throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-            }
+            // Non-CONNECT (and extended CONNECT, RFC 8441): :path and
+            // :scheme are required and :path must be a valid origin-form
+            // path (or "*" for OPTIONS) — mirroring HTTP/1.1 request-target
+            // rules that the HTTP/1.1 parser already enforces.
+            var path = pseudo.get(":path");
+            if (path == null || path.value == null || path.value.isBlank()
+                    || invalidPath(method.value, path.value))
+                throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+            var scheme = pseudo.get(":scheme");
+            if (scheme == null || scheme.value == null || scheme.value.isBlank())
+                throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         }
-        if (!connect && extended)
+
+        // RFC 7540 §8.1.2.3: :authority is required for CONNECT and optional
+        // for other requests; when present it must satisfy the same character
+        // rules as an HTTP/1.1 Host header (no @, whitespace, /, \, CTL).
+        var authority = pseudo.get(":authority");
+        if (authority != null && invalidAuthority(authority.value))
             throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+        if (connect && (authority == null || authority.value == null
+                || authority.value.isBlank()))
+            throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+    }
+
+    /** Rejects :path values that do not match HTTP/1.1 origin-form rules:
+     *  must start with "/" ("*" only for OPTIONS), no authority-form
+     *  ("//host/...") or absolute-form ("scheme://..."), no whitespace or
+     *  control characters. */
+    private static boolean invalidPath(String method, String value) {
+        if ("OPTIONS".equals(method) && "*".equals(value)) return false;
+        if (!value.startsWith("/")) return true;
+        if (value.startsWith("//") || value.contains("://")) return true;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c <= 0x20 || c == 0x7F) return true;
+        }
+        return false;
+    }
+
+    /** Mirrors the HTTP/1.1 Host rules (HttpSession.invalidHostHeader):
+     *  rejects @, whitespace, /, \ and control characters. */
+    private static boolean invalidAuthority(String value) {
+        return HttpUtils.invalidHostValue(value);
     }
 
     public List<Http2HeaderField> fields() {

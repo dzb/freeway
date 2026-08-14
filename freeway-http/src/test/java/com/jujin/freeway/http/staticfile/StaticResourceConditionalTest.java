@@ -3,6 +3,7 @@ package com.jujin.freeway.http.staticfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class StaticResourceConditionalTest {
 
@@ -124,5 +126,43 @@ class StaticResourceConditionalTest {
         second.requestHeader("If-Modified-Since", first.responseHeader("Last-Modified"));
         mount.serve(second, second);
         assertEquals(304, second.status());
+    }
+
+    @Test
+    void ifRangeWithEchoedLastModifiedAllowsRange(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("data.txt");
+        Files.writeString(file, "0123456789");
+        // Give the file an mtime with a sub-second component, then verify the
+        // filesystem preserved it — otherwise the comparison is second-aligned
+        // anyway and the regression cannot be reproduced.
+        long subSecond = (System.currentTimeMillis() / 1000) * 1000 + 321;
+        Files.setLastModifiedTime(file, FileTime.fromMillis(subSecond));
+        assumeTrue(Files.getLastModifiedTime(file).toMillis() % 1000 != 0,
+            "filesystem must preserve sub-second mtime for this test");
+
+        StaticResourceMount mount = StaticResourceMount.directory("/files", tempDir);
+
+        StubHttpContext first = new StubHttpContext("GET", "/files/data.txt");
+        assertTrue(mount.serve(first, first));
+        String lastModified = first.responseHeader("Last-Modified");
+        assertNotNull(lastModified);
+
+        // A client echoing the Last-Modified value in If-Range must still get
+        // its range served (206), not a full 200.
+        StubHttpContext range = new StubHttpContext("GET", "/files/data.txt");
+        range.requestHeader("If-Range", lastModified);
+        range.requestHeader("Range", "bytes=0-3");
+        assertTrue(mount.serve(range, range));
+        assertEquals(206, range.status(),
+            "If-Range with the echoed Last-Modified date must allow the range");
+        assertEquals("0123", range.responseBody());
+
+        // The ETag form of If-Range must be unaffected.
+        StubHttpContext etag = new StubHttpContext("GET", "/files/data.txt");
+        etag.requestHeader("If-Range", first.responseHeader("ETag"));
+        etag.requestHeader("Range", "bytes=4-5");
+        assertTrue(mount.serve(etag, etag));
+        assertEquals(206, etag.status());
+        assertEquals("45", etag.responseBody());
     }
 }

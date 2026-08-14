@@ -338,11 +338,7 @@ public final class Http2Connection {
                     continue;
                 }
                 boolean requestEndStream = headerBlock.endStream;
-                byte[] block = headerBlock.combined();
-                var fields = new HeaderFields();
-                for (var field : hpack.decode(block, MAX_HEADER_LIST_SIZE)) {
-                    fields.add(field);
-                }
+                var fields = decodeFields(headerBlock);
                 fields.validate();
 
                 Map<String, List<String>> requestHeaders =
@@ -375,11 +371,7 @@ public final class Http2Connection {
                 // add() still rejects pseudo-headers and connection-specific
                 // fields inside the block; the REQUIRED pseudo-header check
                 // in validate() only applies to request header blocks.
-                byte[] block = headerBlock.combined();
-                var fields = new HeaderFields();
-                for (var field : hpack.decode(block, MAX_HEADER_LIST_SIZE)) {
-                    fields.add(field);
-                }
+                var fields = decodeFields(headerBlock);
                 boolean trailerEndStream = headerBlock.endStream
                     || frame.header().flags().contains(FrameFlag.END_STREAM);
                 headerBlock.reset();
@@ -407,6 +399,18 @@ public final class Http2Connection {
 
             dispatchToStream(target, frame, streamId);
         }
+    }
+
+    /** Decodes a combined HPACK block into {@link HeaderFields}, applying
+     *  per-field validity rules (pseudo-header placement, prohibited
+     *  connection-specific fields). */
+    private HeaderFields decodeFields(HeaderBlockState headerBlock)
+            throws IOException {
+        var fields = new HeaderFields();
+        for (var field : hpack.decode(headerBlock.combined(), MAX_HEADER_LIST_SIZE)) {
+            fields.add(field);
+        }
+        return fields;
     }
 
     /** Rejects a new-stream header block with the given error and clears the
@@ -501,6 +505,15 @@ public final class Http2Connection {
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_FRAME_SIZE) {
                 peerMaxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_HEADER_TABLE_SIZE) {
+                // RFC 7540 §6.5.2: SETTINGS_HEADER_TABLE_SIZE is a 32-bit
+                // unsigned value. The wire parse is unsigned (a wire
+                // "negative" is a large positive), so an out-of-range value
+                // can only reach this point through a programmatically built
+                // SettingsFrame — reject it as a connection error like the
+                // ENABLE_PUSH check below instead of letting a negative cap
+                // poison the HPACK decoder state.
+                if (parameter.value < 0 || parameter.value > 0xFFFFFFFFL)
+                    throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                 hpack.setMaxDynamicTableSize(parameter.value);
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_ENABLE_PUSH) {
                 // RFC 7540 §6.5.2: ENABLE_PUSH is sent by clients (it disables

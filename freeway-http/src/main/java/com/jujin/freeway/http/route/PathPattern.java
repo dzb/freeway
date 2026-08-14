@@ -12,6 +12,17 @@ public final class PathPattern {
 
     static final int MAX_REGEX_LENGTH = 64;
 
+    /**
+     * Upper bound on the decoded length of a single request path segment
+     * that is allowed to reach regex-constrained matching. Enforced before
+     * any {@code Pattern.matcher(...).matches()} call so an attacker-supplied
+     * segment cannot drive catastrophic backtracking (ReDoS) on a
+     * developer-registered constraint pattern — the regex itself is bounded
+     * to {@value #MAX_REGEX_LENGTH} chars, but the input it runs against is
+     * attacker-controlled and unbounded without this cap.
+     */
+    public static final int MAX_SEGMENT_LENGTH = 1024;
+
     private PathPattern() {}
 
     public static void validateRegistrationPath(String path) {

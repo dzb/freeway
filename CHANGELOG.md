@@ -9,6 +9,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **SLF4J provider 选择确定性化（freeway-commons）** — `LogBootstrap.ensureProvider()` 在 SLF4J
+  初始化前探测 classpath 上的外部 provider 并固定 `slf4j.provider` 系统属性（优先序
+  logback > log4j > slf4j-simple），外部 provider 存在时 JUL 回退不再启用。此前 provider
+  由 classpath 顺序决定，freeway-commons 作为基础依赖通常先出现，可能静默顶掉 Logback 使其
+  配置（logback.xml）失效。用户显式设置的 `-Dslf4j.provider` 始终优先、绝不覆盖；JUL 增强
+  只在 JUL 实际生效时配置。
+- **`@Inject("id")` 限定注入（freeway-ioc）** — `List<V>`/`Map<String, V>` 注入点带显式 id 时
+  优先解析同 id 的绑定服务（此前绑定为 `List<X>` 的服务会被贡献集合永久遮蔽），无绑定才回退
+  贡献视图。构造参数仍隐式消费贡献（无注解 `List`/`Map` 参数即贡献集合），字段注入仍需显式
+  `@Inject`；注入 `Extension<V>` 显式拒绝，提示改用
+  `@Inject List<V>` / `@Inject Map<String, V>`。
+- **`${name:-default}` 默认值语义修正（freeway-ioc，行为变更）** — 默认值剥离单个前导 `-`，
+  `${port:-8080}` 解析为 `"8080"` 而非 `"-8080"`，与文档宣传的 shell 语义一致。
+- **CLI 解析严格化（freeway-boot，行为变更）** — 空键参数（裸 `--` / `-D`）与含 `=` 的键
+  （`--=x`）直接拒绝并报错，不再静默产生 `freeway.` / `freeway.=x` 垃圾键；位置参数 WARN
+  忽略并提示使用 `--key=value` / `--key value` / `-Dkey=value` 形式。
+- **空 `application.json` 视为无配置（freeway-boot，行为变更）** — 空/空白 `application.json`
+  不再启动即崩，与空 properties 一致按"无配置"跳过，四层配置文件行为统一。
+- **重复模块 fail-fast（freeway-boot，行为变更）** — 显式传入同一模块类的两个不同实例（如
+  `new DbModule("ds1")` + `new DbModule("ds2")`）启动即失败并给出指引，不再静默丢弃后者的
+  配置；同一实例重复传入与匿名/lambda 模块仍宽容去重；显式实例优先于 SPI 发现。
+- **H2 伪头校验（freeway-http，行为变更）** — HTTP/2 请求 `:path` 必须为 origin-form（以 `/`
+  开头）、`:authority` 按 HTTP/1.1 Host 规则校验（拒 `@`/空白/控制字符）、非 CONNECT 请求
+  `:authority` 可选；非法 `:path`/`:authority` 被拒，与 HTTP/1.1 行为对齐，堵住代理混淆/走私。
+- **HTTP/1.1 控制字符拒绝（freeway-http，行为变更）** — 请求头值中的控制字符/非 token 字节被
+  拒（此前裸 CR 可流入 `X-Request-Id` 回显路径导致整个会话 500，也是弱响应拆分原语）；
+  `Content-Length` 严格 `1*DIGIT`，`+5` 之类不再被接受。
+- **`bodyAsJson` 媒体类型校验（freeway-http，行为变更）** — 类型化 body 读取要求 `Content-Type`
+  为 `application/json` 或 `application/*+json`；缺失或类型不符抛
+  `UnsupportedMediaTypeException`，由内置异常映射为 **415**（此前为非法状态 → 500）。
+- **MySQL DDL 迁移守卫（freeway-db，行为变更）** — 方言不支持事务性 DDL（MySQL/MariaDB）时，
+  含 DDL 语句的迁移在事务前 fail-fast 并给出修复指引（拆分迁移、语句幂等化）；此前 DDL 隐式
+  提交落库而校验和行丢失，下次启动重跑 DDL 直接失败、启动永久卡死。
+- **跨线程事务拒绝（freeway-db，行为变更）** — 事务内从其他线程执行 DB 工作被显式拒绝并抛
+  `SqlException`；此前 `ScopedValue` 不随线程传播，子线程写入跑在独立连接上，父事务回滚后
+  依然提交，原子性静默破裂。
+- **未知 JDBC URL fail-fast（freeway-db，行为变更）** — 无法识别的 JDBC URL scheme 启动即失败
+  并列出受支持的 scheme（mysql/mariadb/sqlite/h2/postgresql），不再静默回退 PostgreSQL 方言
+  （此前 Oracle/SQL Server/DB2 URL 会生成 PG 语法）；普通 `jdbc:h2`（无 MODE）改用原生
+  `H2Dialect`。
+- **方言能力扩展（freeway-db）** — `Dialect` 新增 `backslashEscapesStrings()`（MySQL `\'`
+  反斜杠转义串正确 lex）与 `supportsTransactionalDdl()`（MySQL false）能力；
+  `Schema.ensure()` 在非事务 DDL 方言上于用户事务内显式拒绝；`execute(Sql)`/`query(Sql)`
+  过方言校验，RETURNING 语义文档化。
+- **网关死路抛 `FlowException`（freeway-flow，行为变更）** — EXCLUSIVE 无匹配且无默认分支、
+  join 缺少到达分支时，eval 完成即抛 `FlowException` 指明图与节点；此前仅 WARN、任务静默
+  丢失。拦截器阻断的运行豁免。
+- **表达式求值语义修正（freeway-flow，行为变更）** — `&&`/`||` 短路求值（此前两操作数总是先
+  求值，`false && (x - 1)` 抛异常）；一元负号完整实现（`-x`、`-(a+b)`、`--x`，类型保持）；
+  Number/String 混合比较按数值进行（`"10" > 9` 为 true，此前按字典序失真）。
+- **Graph v2 版本门统一（freeway-flow，行为变更）** — `Graph.fromText` 与 `GraphSpec.fromText`
+  共用同一版本校验，仅 canonical v2 文档（`version: 2` + `nodes`/`links`）可加载；此前 v1
+  文档经主 API 静默加载。
+- **Bean 序列化 getter 读路径（freeway-commons）** — JSON 写出优先走 getter（getter-only/
+  计算属性不再从输出静默消失），支持 `isX()` 布尔约定，getter-only 属性按只读处理。
+- **内部重构（全模块）** — 大量内部去重与死代码清理（共享 helper 抽取、JSON 写容器骨架统一
+  等），行为不变。
 - **移除 `freeway.web.*` 配置键回退（freeway-http）** — v1.2.1 曾使用
   `freeway.web.*` 前缀，v1.2.2 起改为 `freeway.http.*` 并保留旧键回退兼容。
   现移除 legacy 回退（`HttpConfigKeys.LEGACY_PREFIX` 与
@@ -30,6 +87,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **keep-alive 状态隔离（freeway-http，安全）** — 连接复用前 `ExchangeMetaDefault.reset()` 清空
+  principal/attributes、轮换 correlationId、刷新 startTime，`HttpContextDefault.reset()`
+  先清后应用 `X-Request-Id`；此前同 socket 上请求 N 的认证上下文对请求 N+1 可见（未认证请求
+  "被认证"）、correlationId 跨请求复用。
+- **HPACK Huffman 解码重写（freeway-http）** — 静态 `CODE_BY_LENGTH` 前缀码表取代每符号全表
+  扫描，单符号解码降为 O(1) 查找；此前 64KB 恶意头部块约 13 万符号、数十亿次循环，单连接读
+  线程被钉死（未认证攻击面）。
+- **accept 循环自愈（freeway-http）** — 瞬时错误（EMFILE/ENOBUFS/EINTR）50ms 有界退避重试，
+  仅"关闭"条件 break；首错 ERROR、后续 DEBUG 降噪。此前任何瞬时 IOException 永久退出，监听器
+  死透而引擎仍报 started，新连接在 OS backlog 层被静默拒绝。
+- **`maxBodySize` 流式强制（freeway-http）** — `LimitedInputStream` 在流式读取路径按
+  `maxBodySize` 计数过滤，`bodyStream()` 边读边写不再可绕过限制（此前限制只落在
+  `readAll()`/排空路径）。
+- **WebSocket 空闲连接（freeway-http）** — WS 升级后清除 `SO_TIMEOUT`，长空闲连接不再被无
+  close 帧的 1006 强拆（此前空闲超过 readTimeout 即被杀，与 H2 路径行为不一致）。
+- **静态文件与路由修复（freeway-http）** — 子目录 `index.html` 正常服务、无资产的挂载不再阻断
+  后续挂载（hasResource 探测）；路由正则匹配段长上限 1024（ReDoS 缓解）；If-Range 按秒截断
+  比较，修复断点续传被答成完整 200；HEAD + sendfile 只写响应头（RFC 9110）；
+  `WebServerBuilder` 自定义异常映射器改为追加而非整体替换内置映射；`status()` 校验 100-599；
+  注册百分号编码字面段的路由可匹配（编码斜杠防碰撞）；非 ISO-8859-1 响应头值显式拒绝（此前
+  静默变 `?`）。
+- **HTTP/2 协议加固（freeway-http）** — 截断的 HPACK 整数抛 `COMPRESSION_ERROR`（此前
+  `ArrayIndexOutOfBoundsException`，对端收不到错误码）；`SETTINGS_HEADER_TABLE_SIZE` 做
+  uint32 范围校验、解码器负值 clamp；字面头名做 token 校验（伪头豁免）；204/205/304 响应
+  丢弃 `Content-Length`（HEAD 保留）。
+- **`Orm.save()` 原始类型主键（freeway-db）** — 原始类型 `@Generated` 主键的零值视为"未设置"，
+  走 insert 拿自增键并回写；此前 `long` 主键显式写 0 绕过序列（upsert 路径），二次 save 更新
+  0 行。
+- **迁移校验和双轨（freeway-db）** — 校验和以原始字节为准，另按 CRLF→LF 归一化复检，向后
+  兼容；此前文件在 Windows 检出换行即误报 checksum mismatch。`one()` 多行截断、空集合
+  `IN (:ids)` 错误指引、跨库事务无 XA 均文档化并测试固化。
+- **连接池竞态（freeway-db）** — `PoolDefault` borrow/close 竞态修复（`handOut()` 锁内复检），
+  配套确定性竞态测试；introspection 失败 fail-fast，不再被 `Dialect.querySet` 吞成空集后
+  重复建索引。
+- **IoC 容器生命周期（freeway-ioc）** — close/realize 竞态再加固：锁内原子置 closed + 末轮
+  排水，`get()` 统一报 closed（并发慢构造的实例不再成为无 `@PreDestroy` 的孤儿）；THREAD
+  作用域代理 close 后拒绝调用（与单例路径契约一致）；advised PROTOTYPE 每代理懒缓存（同一
+  proxy 上多次调用同一实例，此前每次调用新建目标）；`Binding.id()` 变更迁移缓存（晚变更 id
+  不再实例化出第二个单例）；final 字段携带注入注解 → 构造期 fail-fast（此前静默跳过）。
+- **EventBus 隔离与排空（freeway-ioc）** — 订阅者抛 `Error` 不再逃逸（catch Throwable 继续
+  派发，与此前异常隔离一致）；`@PreDestroy` 抛 Error 不中断 drain；Defer 内 async/ordered
+  发布在总线关闭后静默排空（此前打出虚假告警）；`publish(String)` 是类事件而非 topic 的语义
+  文档化并测试固化。
+- **启动装配（freeway-boot）** — start() 期间重入 close() 状态机正确（hook 完成后复检
+  `shutdownAttempted`，不再覆盖 RUNNING 或补发 `AppStartedEvent`）；`AppBuilder.start()` 单次
+  使用 AtomicBoolean 守卫（并发 start 不再建两个容器两个 shutdown hook）；hook 排序引用未知
+  id → 启动失败（`Extension.validateOrdering()` opt-in，落实 AGENTS.md 回归要求）；
+  `AppConfig.get(ConfigSpec)` 默认以 CoercerDefault 解析（此前无 parser 形式的 spec 抛
+  IllegalStateException）；profile 层剥离 `freeway.profile`（config 读取与 `profiles()` 不再
+  分叉）。
+- **JSON/反射/Defer（freeway-commons）** — 自引用泛型界（`Node<T extends Comparable<T>>`）
+  反序列化以 visited-set 回退 `Object`，不再 StackOverflowError；JSON 数字 token 10MB 上限、
+  `parse(String)` 32MB 输入上限（此前超长数字串经 BigInteger/BigDecimal 造成 CPU/内存尖峰）；
+  `DeferScope` 重复 id 注册期校验，排序失败时按注册序执行全部动作并重抛（此前静默跳过全部
+  延迟动作）；字符串 `"NaN"` 与 Infinity 一致拒绝（此前不对称，NaN 转 boolean 得 false）；
+  JSON 重复键 last-wins 语义文档化并测试固化。
+- **日志文件处理（freeway-commons）** — 同一路径日志文件全局 handler 去重（规范化绝对路径
+  注册表，reset 后自动换新；此前两个 handler 共享文件轮转互踩，记录静默进归档/丢失）；purge
+  排除 `.gz.tmp` 与压缩中源文件（此前压缩原子改名失败、归档静默丢失）；
+  `freeway.log.console.level` 只作用于 freeway 自有 handler（不再覆盖用户自配的
+  ConsoleHandler）。
+- **Flow 执行修复（freeway-flow）** — `$for` LOOP 原子抢占（并发重入不再双执行）；子图继承
+  调用方 per-eval 拦截器（不重复执行）；全新运行清 EventBus 订阅（子图豁免）；`onNodeStart`
+  抛异常时 `onNodeEnd` 仍配对；INCLUSIVE join 计数按迭代重置；`putAll` 过滤 null 与 `put`
+  一致；`IocContainerAdapter` 仅"无绑定"回退 null，真实错误重抛。
 - **事务语义** — 事务内抛 `Error` 正确回滚（此前 restore 连接状态会静默提交失败
   事务）；事务绑定改为按连接身份（并发事务互不误杀对方在途查询）；一个 Database
   的事务不再泄漏到另一 Database（跨库查询此前静默跑在错误连接上）。
@@ -104,6 +226,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **代码审查报告** — 新增 `docs/CODE-REVIEW.md`：三轮修复（S1/S2/S3，共 68 项）的修复状态
+  清单、总体评价、跨模块一致性观察与测试覆盖分析；三轮修复后 **1517 个测试全绿**
+  （commons 374 / ioc 182 / boot 60 / http 349 / db 453 / flow 99）。
 - **Defer 文档补全** — `docs/freeway-defer-summary.md`：DB 事务场景的三方接线、
   提交/派发时序图（mermaid）、时序契约与语义边界；新增与 `ScopedCache` 的
   嵌套契约章节。

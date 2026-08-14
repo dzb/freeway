@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -181,6 +183,84 @@ class FlowEngineTest {
             () -> ExprEvaluator.evalCondition("!".repeat(100) + "true", ctx));
         // Moderate nesting within the limit still works.
         assertTrue(ExprEvaluator.evalCondition("((((score > 80))))", ctx));
+    }
+
+    // --- 混合数值/字符串比较 (Bug 2 回归) ---
+
+    @Test
+    void exprEvaluatorComparesNumericStringsByValue() {
+        // JSON context values arrive as strings ("score":"90") but must
+        // compare numerically against numeric literals, not lexicographically.
+        var ctx = new HashMap<String, Object>();
+        ctx.put("score", "90");
+        assertTrue(ExprEvaluator.evalCondition("\"10\" > 9", ctx),
+            "\"10\" > 9 must be true (numeric, not lexicographic)");
+        assertFalse(ExprEvaluator.evalCondition("9 > \"10\"", ctx));
+        assertFalse(ExprEvaluator.evalCondition("\"10\" < 9", ctx));
+        assertTrue(ExprEvaluator.evalCondition("\"10\" == 10", ctx));
+        assertTrue(ExprEvaluator.evalCondition("10 == \"10\"", ctx));
+        assertTrue(ExprEvaluator.evalCondition("\"1.5\" == 1.5", ctx));
+        // Context-provided numeric strings behave the same way.
+        assertTrue(ExprEvaluator.evalCondition("score > 80", ctx));
+        assertTrue(ExprEvaluator.evalCondition("score == 90", ctx));
+        assertTrue(ExprEvaluator.evalCondition("score >= 90", ctx));
+        // Non-numeric strings keep the lexicographic fallback: 'a' > '9'.
+        assertTrue(ExprEvaluator.evalCondition("\"abc\" > 9", ctx));
+        assertFalse(ExprEvaluator.evalCondition("\"abc\" == 9", ctx));
+    }
+
+    @Test
+    void exprEvaluatorShortCircuitsLogicalOperators() {
+        // The right operand of && / || must only be evaluated when it can
+        // affect the result — a dead right side must not throw.
+        var ctx = new HashMap<String, Object>();
+        assertFalse(ExprEvaluator.evalCondition("false && (x - 1)", ctx),
+            "false && (x - 1) must short-circuit to false without evaluating (x - 1)");
+        assertTrue(ExprEvaluator.evalCondition("true || (x - 1)", ctx),
+            "true || (x - 1) must short-circuit to true without evaluating (x - 1)");
+        // Non-short-circuit cases still evaluate the right operand and throw.
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition("true && (x - 1)", ctx));
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition("false || (x - 1)", ctx));
+        // Word forms short-circuit too.
+        assertFalse(ExprEvaluator.evalCondition("false and (x - 1)", ctx));
+        assertTrue(ExprEvaluator.evalCondition("true or (x - 1)", ctx));
+    }
+
+    @Test
+    void exprEvaluatorSupportsUnaryMinus() {
+        // Full unary minus: -5, -x, -(a+b), --x, plus combinations with
+        // arithmetic and comparisons. Previously only signed literals parsed
+        // and "-x" failed with "Invalid number: '-'".
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put("x", 3);
+        ctx.put("a", 1);
+        ctx.put("b", 2);
+
+        // literal negation keeps exact integer semantics
+        assertTrue(ExprEvaluator.evalCondition("-5", ctx));
+        assertTrue(ExprEvaluator.evalCondition("-5 == -5", ctx));
+        assertFalse(ExprEvaluator.evalCondition("-5 == 5", ctx));
+        // identifier negation
+        assertTrue(ExprEvaluator.evalCondition("-x == -3", ctx));
+        assertFalse(ExprEvaluator.evalCondition("-x > 0", ctx));
+        assertTrue(ExprEvaluator.evalCondition("-x < 0", ctx));
+        assertTrue(ExprEvaluator.evalCondition("-x == -3 && -x + 3 == 0", ctx));
+        // parenthesized expression negation
+        assertTrue(ExprEvaluator.evalCondition("-(a+b) == -3", ctx));
+        assertTrue(ExprEvaluator.evalCondition("-(a+b) < 0", ctx));
+        // double negation cancels out
+        assertTrue(ExprEvaluator.evalCondition("--x == x", ctx));
+        assertTrue(ExprEvaluator.evalCondition("--x > 0", ctx));
+        assertTrue(ExprEvaluator.evalCondition("-(-x) == 3", ctx));
+        // unary minus binds tighter than binary + / -
+        assertTrue(ExprEvaluator.evalCondition("-x + 10 == 7", ctx));
+        assertTrue(ExprEvaluator.evalCondition("5 - -x == 8", ctx));
+        assertTrue(ExprEvaluator.evalCondition("1 - -x == 4", ctx));
+        // non-numeric negation fails loudly, like subtraction
+        assertThrows(FlowException.class, () -> ExprEvaluator.evalCondition("-\"abc\"", ctx));
+        assertThrows(FlowException.class, () -> ExprEvaluator.evalCondition("-true", ctx));
     }
 
     // --- PlantUML ---
@@ -1055,6 +1135,139 @@ class FlowEngineTest {
         assertFalse(executed.contains("false_path"));
     }
 
+    // --- 网关死路静默成功 (Bug 1 回归) ---
+
+    @Test
+    void exclusiveDeadEndWithoutDefaultThrows() {
+        // EXCLUSIVE node whose condition never matches and that has no
+        // default link: the run previously "succeeded" without reaching END.
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec.create("ex_dead", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("gw");
+            spec.addExclusive("gw").task("@dummy")
+                .linkAdd("never", link -> link.when("false == true"));
+            spec.addActivity("never").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        FlowException ex = assertThrows(FlowException.class,
+            () -> engine.eval("ex_dead", FlowContext.of()));
+        assertTrue(ex.getMessage().contains("gw"),
+            "error must name the stuck node, got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("ex_dead"),
+            "error must name the graph, got: " + ex.getMessage());
+        assertFalse(executed.contains("never"), "dead path must not run");
+    }
+
+    @Test
+    void exclusiveDeadEndResolvedByDefaultLink() {
+        // The same gateway shape with a default link must complete normally.
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec.create("ex_default", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("gw");
+            spec.addExclusive("gw").task("@dummy")
+                .linkAdd("never", link -> link.when("false == true"))
+                .linkAdd("fallback");
+            spec.addActivity("never").task("@dummy").linkAdd("e");
+            spec.addActivity("fallback").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        assertDoesNotThrow(() -> engine.eval("ex_default", FlowContext.of()));
+        assertTrue(executed.contains("fallback"), "default link must be taken");
+    }
+
+    @Test
+    void inclusiveJoinMissingArrivalThrows() {
+        // An INCLUSIVE join with two incoming links but only one reachable
+        // branch never activates — the join body and downstream were silently
+        // skipped. It must now fail the run.
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec.create("inc_dead", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("x");
+            // EXCLUSIVE always routes to branch a; branch b is never reached,
+            // so the join below only ever receives one of its two arrivals.
+            spec.addExclusive("x").task("@dummy")
+                .linkAdd("a", link -> link.when("true == true"))
+                .linkAdd("b", link -> link.when("false == true"));
+            spec.addActivity("a").task("@dummy").linkAdd("gw");
+            spec.addActivity("b").task("@dummy").linkAdd("gw");
+            spec.addInclusive("gw").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        FlowException ex = assertThrows(FlowException.class,
+            () -> engine.eval("inc_dead", FlowContext.of()));
+        assertTrue(ex.getMessage().contains("gw"),
+            "error must name the stuck join, got: " + ex.getMessage());
+        assertFalse(executed.contains("e"),
+            "the join body and downstream must not run");
+    }
+
+    @Test
+    void parallelJoinMissingArrivalThrows() {
+        // Same shape for a PARALLEL join node with multiple incoming links.
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec.create("par_dead", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("x");
+            spec.addExclusive("x").task("@dummy")
+                .linkAdd("a", link -> link.when("true == true"))
+                .linkAdd("b", link -> link.when("false == true"));
+            spec.addActivity("a").task("@dummy").linkAdd("j");
+            spec.addActivity("b").task("@dummy").linkAdd("j");
+            spec.addParallel("j").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        FlowException ex = assertThrows(FlowException.class,
+            () -> engine.eval("par_dead", FlowContext.of()));
+        assertTrue(ex.getMessage().contains("j"),
+            "error must name the stuck join, got: " + ex.getMessage());
+        assertFalse(executed.contains("e"),
+            "the join body and downstream must not run");
+    }
+
+    @Test
+    void completedJoinDoesNotThrow() {
+        // A join that receives all its branches activates and clears the
+        // provisional dead-end — the graph completes normally.
+        var executed = new ArrayList<String>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .build());
+        Graph g = GraphSpec.create("join_ok", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("p");
+            spec.addParallel("p").task("@dummy").linkAdd("a").linkAdd("b");
+            spec.addActivity("a").task("@dummy").linkAdd("gw");
+            spec.addActivity("b").task("@dummy").linkAdd("gw");
+            spec.addInclusive("gw").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+        assertDoesNotThrow(() -> engine.eval("join_ok", FlowContext.of()));
+        assertTrue(executed.contains("gw"),
+            "the join must activate once both branches arrive, got " + executed);
+        assertTrue(executed.contains("a") && executed.contains("b"),
+            "both branches must reach the join, got " + executed);
+    }
+
     @Test
     void stepperHalfOpenIntervalSemantics() {
         // [start, end) — end is exclusive, documented in Stepper's javadoc.
@@ -1426,6 +1639,36 @@ class FlowEngineTest {
     }
 
     @Test
+    void flowContextPutAllSkipsNullValuesLikePut() {
+        // put() ignores null values; putAll() must behave the same — a null
+        // value must neither be stored nor wipe an existing key.
+        FlowContext ctx = FlowContext.of();
+        ctx.put("kept", "v");
+
+        Map<String, Object> mixed = new HashMap<>();
+        mixed.put("a", 1);
+        mixed.put("b", null);
+        mixed.put("c", "x");
+        ctx.putAll(mixed);
+
+        assertEquals(1, ctx.get("a"));
+        assertEquals("x", ctx.getAs("c"));
+        assertNull(ctx.getAs("b"), "null values must not be stored by putAll");
+
+        // a null value does not remove an existing key
+        Map<String, Object> nullOnly = new HashMap<>();
+        nullOnly.put("kept", null);
+        ctx.putAll(nullOnly);
+        assertEquals("v", ctx.getAs("kept"));
+
+        // non-null values still overwrite
+        Map<String, Object> overwrite = new HashMap<>();
+        overwrite.put("a", 2);
+        ctx.putAll(overwrite);
+        assertEquals(2, ctx.get("a"));
+    }
+
+    @Test
     void traceResumePositionSurvivesJsonRoundTrip() {
         // The trace's last-node-per-graph position is the resume point for a
         // paused run — losing it across a JSON round-trip silently restarts
@@ -1447,5 +1690,324 @@ class FlowEngineTest {
         FlowContext restored = FlowContextImpl.fromJson(ctx.toJson());
         assertEquals(ctx.lastNodeId(), restored.lastNodeId(),
             "the resume position must survive the JSON round-trip");
+    }
+
+    // ── S2 fixes: $for LOOP concurrency, sub-graph interceptors, stale event
+    //    bus subscriptions, onNodeStart/onNodeEnd pairing, per-iteration join
+    //    counter reset ──────────────────────────────────────────────────────
+
+    @Test
+    void parallelBranchesReachSameForLoopOnlyOnce() throws Exception {
+        // Two PARALLEL branches converge on the same $for LOOP node. The
+        // "is a loop already running?" check and the iterator push must be
+        // atomic: only the first arrival may run the node (task + body), the
+        // second must skip. A barrier releases both branches together and the
+        // body task holds the claiming branch mid-loop so the second arrival
+        // is guaranteed to observe the live iterator.
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            var bodyCount = new AtomicInteger(0);
+            var loopTaskCount = new AtomicInteger(0);
+            for (int i = 0; i < 3; i++) {
+                bodyCount.set(0);
+                loopTaskCount.set(0);
+                CountDownLatch barrier = new CountDownLatch(2);
+                FlowEngine engine = newEngine(FlowDriverDefault.builder()
+                    .executor(executor)
+                    .container(name -> {
+                        if ("barrier".equals(name)) {
+                            return (TaskComponent) (ctx, node) -> {
+                                barrier.countDown();
+                                barrier.await();
+                            };
+                        }
+                        if ("loopTask".equals(name)) {
+                            return (TaskComponent) (ctx, node) -> loopTaskCount.incrementAndGet();
+                        }
+                        return (TaskComponent) (ctx, node) -> {
+                            if ("body".equals(node.getId())) {
+                                bodyCount.incrementAndGet();
+                                // Keep the claiming branch inside the loop so
+                                // the other branch arrives while it is live.
+                                Thread.sleep(30);
+                            }
+                        };
+                    })
+                    .build());
+                Graph g = GraphSpec.create("parloop", spec -> {
+                    spec.entry("s");
+                    spec.addStart("s").linkAdd("p");
+                    spec.addParallel("p").task("@noop").linkAdd("a").linkAdd("b");
+                    spec.addActivity("a").task("@barrier").linkAdd("l");
+                    spec.addActivity("b").task("@barrier").linkAdd("l");
+                    spec.addLoop("l").metaPut("$for", "item")
+                        .metaPut("$in", List.of(1, 2, 3))
+                        .task("@loopTask").linkAdd("body");
+                    spec.addActivity("body").task("@dummy").linkAdd("e");
+                    spec.addEnd("e");
+                }).create();
+                engine.load(g);
+                engine.eval("parloop", FlowContext.of());
+                assertEquals(3, bodyCount.get(),
+                    "the loop body must run exactly once (3 items), not once per branch — got "
+                        + bodyCount.get());
+                assertEquals(1, loopTaskCount.get(),
+                    "only the claiming branch may run the LOOP task — got " + loopTaskCount.get());
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void perEvalInterceptorsCoverSubgraphNodesOnce() {
+        // Per-eval FlowOptions interceptors must apply to sub-graph nodes too
+        // (runGraph previously passed null options, so sub-graph nodes missed
+        // every per-eval onNodeStart/onNodeEnd), and the engine-level
+        // interceptor list must still fire exactly once per node — never
+        // twice on sub-graph nodes because the sub-eval re-merges it.
+        var engineVisits = new ConcurrentLinkedQueue<String>();
+        FlowInterceptor engineLevel = new FlowInterceptor() {
+            @Override
+            public void onNodeStart(FlowContext ctx, Node node) {
+                engineVisits.add(node.getGraph().getId() + ":" + node.getId());
+            }
+        };
+
+        var evalVisits = new ConcurrentLinkedQueue<String>();
+        var flowWraps = new ConcurrentLinkedQueue<String>();
+        FlowInterceptor perEval = new FlowInterceptor() {
+            @Override
+            public void interceptFlow(FlowInvocation inv) {
+                flowWraps.add(inv.getGraph().getId());
+                inv.invoke();
+            }
+
+            @Override
+            public void onNodeStart(FlowContext ctx, Node node) {
+                evalVisits.add(node.getGraph().getId() + ":" + node.getId());
+            }
+        };
+
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (flowCtx, node) -> {})
+            .build());
+        engine.addInterceptor(engineLevel);
+
+        Graph sub = GraphSpec.create("subI", spec -> {
+            spec.entry("cs");
+            spec.addStart("cs").linkAdd("ca");
+            spec.addActivity("ca").task("@dummy").linkAdd("ce");
+            spec.addEnd("ce");
+        }).create();
+        Graph main = GraphSpec.create("mainI", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("call");
+            spec.addActivity("call").task("#subI").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(sub);
+        engine.load(main);
+
+        FlowContext ctx = FlowContext.of();
+        FlowExchanger exchanger = new FlowExchanger(
+            main, engine, engine.getDriver(main), ctx, -1, new AtomicInteger(0));
+        engine.eval(main, exchanger, new FlowOptions().interceptorAdd(perEval));
+
+        assertEquals(Set.of("mainI:s", "mainI:call", "mainI:e", "subI:cs", "subI:ca", "subI:ce"),
+            new HashSet<>(evalVisits),
+            "the per-eval interceptor must observe every node of both graphs, got " + evalVisits);
+        assertTrue(flowWraps.contains("mainI"),
+            "per-eval interceptFlow must wrap the top-level eval");
+        assertTrue(flowWraps.contains("subI"),
+            "per-eval interceptFlow must wrap the sub-graph eval");
+        assertEquals(6, engineVisits.size(),
+            "the engine-level interceptor must fire once per node, got " + engineVisits);
+        assertEquals(6, new HashSet<>(engineVisits).size(),
+            "the engine-level interceptor must not fire twice on any node");
+    }
+
+    @Test
+    void reusedContextClearsStaleEventBusSubscriptionsOnFreshRun() {
+        // A paused run keeps its event-bus subscriptions (resume needs them).
+        // Reusing the same FlowContext for a FRESH run of an unrelated graph
+        // must clear those stale subscriptions — otherwise the old closures
+        // keep firing long after that run is gone.
+        Graph graphA = GraphSpec.create("subA", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("sub");
+            spec.addActivity("sub").task("@subscribe").linkAdd("pub");
+            spec.addActivity("pub").task("@publish").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        Graph graphB = GraphSpec.create("graphB", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+
+        List<String> received = new ArrayList<>();
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> {
+                if ("subscribe".equals(name)) {
+                    return (TaskComponent) (flowCtx, node) ->
+                        flowCtx.eventBus().subscribe("stale.topic", e -> received.add((String) e));
+                }
+                return (TaskComponent) (flowCtx, node) -> {};
+            })
+            .build());
+        engine.load(graphA);
+        engine.load(graphB);
+
+        FlowContext ctx = FlowContext.of();
+        // Pause A mid-run (steps=2 stops at the publish node): the subscribe
+        // task ran, the eval did not complete, so the subscription is kept.
+        engine.eval("subA", 2, ctx);
+        ctx.eventBus().publish("stale.topic", "paused-run");
+        assertEquals(List.of("paused-run"), received,
+            "the subscription must survive a paused run");
+
+        // A fresh run of an unrelated graph with the same context must drop
+        // the stale subscription.
+        engine.eval("graphB", ctx);
+        ctx.eventBus().publish("stale.topic", "after-fresh-run");
+        assertEquals(List.of("paused-run"), received,
+            "stale subscriptions from the paused run must be cleared on a fresh run");
+
+        // Resuming the SAME graph must keep subscriptions: pause again (fresh
+        // context) then resume — the publish node of the resumed run must
+        // still reach the subscriber registered during the paused run.
+        List<String> received2 = new ArrayList<>();
+        FlowEngine engine2 = newEngine(FlowDriverDefault.builder()
+            .container(name -> {
+                if ("subscribe".equals(name)) {
+                    return (TaskComponent) (flowCtx, node) ->
+                        flowCtx.eventBus().subscribe("stale.topic", e -> received2.add((String) e));
+                }
+                if ("publish".equals(name)) {
+                    return (TaskComponent) (flowCtx, node) ->
+                        flowCtx.eventBus().publish("stale.topic", "from-resumed-run");
+                }
+                return (TaskComponent) (flowCtx, node) -> {};
+            })
+            .build());
+        engine2.load(graphA);
+        FlowContext ctx2 = FlowContext.of();
+        engine2.eval("subA", 2, ctx2); // pause again — subscriber registered
+        ctx2.eventBus().publish("stale.topic", "paused-2");
+        assertEquals(List.of("paused-2"), received2);
+
+        engine2.eval("subA", -1, ctx2); // resume — trace keeps the record
+        assertEquals(List.of("paused-2", "from-resumed-run"), received2,
+            "resume of the same graph must keep its subscriptions");
+    }
+
+    @Test
+    void onNodeStartThrowStillPairsOnNodeEnd() {
+        // onNodeStart throwing must still produce exactly one onNodeEnd, and
+        // the original exception must propagate (not be masked).
+        var events = new ArrayList<String>();
+        var taskRan = new AtomicInteger(0);
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> taskRan.incrementAndGet())
+            .build());
+        engine.addInterceptor(new FlowInterceptor() {
+            @Override
+            public void onNodeStart(FlowContext ctx, Node node) {
+                if ("a".equals(node.getId())) {
+                    throw new IllegalStateException("boom at " + node.getId());
+                }
+            }
+
+            @Override
+            public void onNodeEnd(FlowContext ctx, Node node) {
+                events.add("end:" + node.getId());
+            }
+        });
+        Graph g = GraphSpec.create("startThrow", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> engine.eval("startThrow", FlowContext.of()));
+        assertEquals("boom at a", ex.getMessage(), "the original exception must propagate");
+        assertEquals(0, taskRan.get(), "the task must not run after onNodeStart throws");
+        assertTrue(events.contains("end:a"),
+            "onNodeEnd must pair with the failed onNodeStart, got " + events);
+    }
+
+    @Test
+    void onNodeStartFalseStillPairsOnNodeEnd() {
+        // onNodeStart returning false (stopped/interrupted) must still
+        // produce exactly one onNodeEnd for the skipped node.
+        var events = new ArrayList<String>();
+        var taskRan = new AtomicInteger(0);
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> taskRan.incrementAndGet())
+            .build());
+        engine.addInterceptor(new FlowInterceptor() {
+            @Override
+            public void onNodeStart(FlowContext ctx, Node node) {
+                if ("a".equals(node.getId())) {
+                    ctx.stop(); // makes the engine's onNodeStart return false
+                }
+            }
+
+            @Override
+            public void onNodeEnd(FlowContext ctx, Node node) {
+                events.add("end:" + node.getId());
+            }
+        });
+        Graph g = GraphSpec.create("stopStart", spec -> {
+            spec.entry("s");
+            spec.addStart("s").linkAdd("a");
+            spec.addActivity("a").task("@dummy").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+
+        engine.eval("stopStart", FlowContext.of());
+        assertEquals(0, taskRan.get(), "the task must not run when onNodeStart returns false");
+        assertTrue(events.contains("end:a"),
+            "onNodeEnd must pair with a false onNodeStart, got " + events);
+    }
+
+    @Test
+    void inclusiveJoinInsideLoopResetsCounterPerIteration() {
+        // A LOOP whose body contains an INCLUSIVE fork-join: iteration 1
+        // routes only one branch to the join (short arrival — counter 1,
+        // provisional dead-end recorded), iteration 2 routes both. The join
+        // counter must be reset at each iteration start, otherwise the
+        // residue from iteration 1 falsely activates the join early and/or a
+        // spurious dead-end fails the run.
+        var joinExecutions = new AtomicInteger(0);
+        FlowEngine engine = newEngine(FlowDriverDefault.builder()
+            .container(name -> (TaskComponent) (ctx, node) -> {
+                if ("join".equals(node.getId())) joinExecutions.incrementAndGet();
+            })
+            .build());
+        Graph g = GraphSpec.create("loopjoin", spec -> {
+            spec.entry("l");
+            spec.addLoop("l").metaPut("$for", "item")
+                .metaPut("$in", List.of(1, 2))
+                .task("@noop").linkAdd("fork");
+            spec.addInclusive("fork").task("@noop")
+                .linkAdd("a", link -> link.when("item >= 1"))   // both iterations
+                .linkAdd("b", link -> link.when("item == 2"));  // iteration 2 only
+            spec.addActivity("a").task("@noop").linkAdd("join");
+            spec.addActivity("b").task("@noop").linkAdd("join");
+            spec.addInclusive("join").task("@noop").linkAdd("e");
+            spec.addEnd("e");
+        }).create();
+        engine.load(g);
+
+        assertDoesNotThrow(() -> engine.eval("loopjoin", FlowContext.of()));
+        assertEquals(1, joinExecutions.get(),
+            "the join must activate exactly once (iteration 2, after both arrivals), got "
+                + joinExecutions.get());
     }
 }

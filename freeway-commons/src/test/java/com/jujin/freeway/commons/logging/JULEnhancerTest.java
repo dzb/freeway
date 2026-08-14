@@ -1,6 +1,7 @@
 package com.jujin.freeway.commons.logging;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
 
@@ -16,6 +17,8 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JULEnhancerTest {
 
@@ -106,6 +109,205 @@ class JULEnhancerTest {
             }
         }
         return count;
+    }
+
+    private static JULFileHandler firstFileHandler(Logger logger) {
+        for (Handler h : logger.getHandlers()) {
+            if (h instanceof JULFileHandler fh) {
+                return fh;
+            }
+        }
+        return null;
+    }
+
+    private static int occurrences(String haystack, String needle) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = haystack.indexOf(needle, idx)) >= 0) {
+            count++;
+            idx += needle.length();
+        }
+        return count;
+    }
+
+    // ── regression: same file on two loggers shares ONE handler ────
+
+    @Test
+    void twoNamedFilesOnSamePathShareOneHandler(@TempDir Path tempDir)
+            throws IOException {
+        String[] keys = {
+            "freeway.log.file",
+            "freeway.log.files",
+            "freeway.log.file.a.path",
+            "freeway.log.file.a.logger",
+            "freeway.log.file.a.level",
+            "freeway.log.file.a.flush-interval",
+            "freeway.log.file.b.path",
+            "freeway.log.file.b.logger",
+            "freeway.log.file.b.level",
+            "freeway.log.file.b.flush-interval"
+        };
+        Path logFile = tempDir.resolve("shared.log");
+        System.setProperty("freeway.log.file", "off");
+        System.setProperty("freeway.log.files", "a,b");
+        System.setProperty("freeway.log.file.a.path", logFile.toString());
+        System.setProperty("freeway.log.file.a.logger", "com.example.a");
+        System.setProperty("freeway.log.file.a.level", "ALL");
+        System.setProperty("freeway.log.file.a.flush-interval", "0");
+        System.setProperty("freeway.log.file.b.path", logFile.toString());
+        System.setProperty("freeway.log.file.b.logger", "com.example.b");
+        System.setProperty("freeway.log.file.b.level", "ALL");
+        System.setProperty("freeway.log.file.b.flush-interval", "0");
+        try {
+            JULEnhancer.resetForTest();
+            JULEnhancer.configure();
+
+            Logger a = Logger.getLogger("com.example.a");
+            Logger b = Logger.getLogger("com.example.b");
+            assertEquals(1, countFileHandlers(a),
+                "logger a must have exactly one file handler");
+            assertEquals(1, countFileHandlers(b),
+                "logger b must have exactly one file handler");
+            // Two loggers on one file must share the SAME handler — two
+            // independent handlers would rotate the shared file against each
+            // other (records silently moved into archives).
+            assertSame(firstFileHandler(a), firstFileHandler(b),
+                "both loggers must share one handler for one file");
+
+            a.info("from a");
+            b.info("from b");
+            String content = Files.readString(logFile);
+            assertEquals(1, occurrences(content, "from a"),
+                "records from logger a must be written exactly once");
+            assertEquals(1, occurrences(content, "from b"),
+                "records from logger b must be written exactly once");
+        } finally {
+            for (String key : keys) {
+                System.clearProperty(key);
+            }
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    @Test
+    void defaultFileAndNamedFileOnSamePathShareOneHandler(@TempDir Path tempDir)
+            throws IOException {
+        String[] keys = {
+            "freeway.log.file",
+            "freeway.log.files",
+            "freeway.log.file.a.path",
+            "freeway.log.file.a.logger",
+            "freeway.log.file.a.level",
+            "freeway.log.file.a.flush-interval",
+            "freeway.log.file.flush-interval"
+        };
+        Path logFile = tempDir.resolve("shared-default.log");
+        System.setProperty("freeway.log.file", logFile.toString());
+        System.setProperty("freeway.log.file.flush-interval", "0");
+        System.setProperty("freeway.log.files", "a");
+        System.setProperty("freeway.log.file.a.path", logFile.toString());
+        System.setProperty("freeway.log.file.a.logger", "com.example.a");
+        System.setProperty("freeway.log.file.a.level", "ALL");
+        System.setProperty("freeway.log.file.a.flush-interval", "0");
+        try {
+            JULEnhancer.resetForTest();
+            JULEnhancer.configure();
+
+            Logger root = Logger.getLogger("");
+            Logger a = Logger.getLogger("com.example.a");
+            assertEquals(1, countFileHandlers(root),
+                "root must have exactly one file handler");
+            assertEquals(1, countFileHandlers(a),
+                "named logger must have exactly one file handler");
+            // Default file and named file aliasing the same path must share
+            // the single handler for that file.
+            assertSame(firstFileHandler(root), firstFileHandler(a),
+                "default and named file on the same path must share one handler");
+        } finally {
+            for (String key : keys) {
+                System.clearProperty(key);
+            }
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    // ── regression: console level only applies to Freeway's handlers ──
+
+    @Test
+    void consoleLevelDoesNotOverrideUserConsoleHandler() {
+        String[] keys = {
+            "freeway.log.console.level",
+            "freeway.log.file"
+        };
+        System.setProperty("freeway.log.console.level", "FINE");
+        System.setProperty("freeway.log.file", "off");
+        try {
+            JULEnhancer.resetForTest();
+            Logger root = Logger.getLogger("");
+            ConsoleHandler userHandler = new ConsoleHandler();
+            userHandler.setLevel(Level.WARNING);
+            root.addHandler(userHandler);
+            try {
+                JULEnhancer.configure();
+                assertEquals(Level.WARNING, userHandler.getLevel(),
+                    "user-configured ConsoleHandler level must not be overridden");
+            } finally {
+                root.removeHandler(userHandler);
+            }
+        } finally {
+            for (String key : keys) {
+                System.clearProperty(key);
+            }
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    @Test
+    void consoleLevelAppliesToFreewayCreatedHandler() {
+        String[] keys = {
+            "freeway.log.console.level",
+            "freeway.log.file"
+        };
+        System.setProperty("freeway.log.console.level", "FINE");
+        System.setProperty("freeway.log.file", "off");
+        try {
+            JULEnhancer.resetForTest();
+            Logger root = Logger.getLogger("");
+            // Force LogManager initialization first so configure() does not
+            // re-inject the JRE default ConsoleHandler after we remove it,
+            // then clear every existing console handler so Freeway creates
+            // its own.
+            LogManager.getLogManager().getLoggerNames();
+            List<Handler> removed = new ArrayList<>();
+            for (Handler h : List.of(root.getHandlers())) {
+                if (h instanceof ConsoleHandler) {
+                    root.removeHandler(h);
+                    removed.add(h);
+                }
+            }
+            try {
+                JULEnhancer.configure();
+                boolean found = false;
+                for (Handler h : root.getHandlers()) {
+                    if (h instanceof ConsoleHandler) {
+                        assertEquals(Level.FINE, h.getLevel(),
+                            "Freeway-created ConsoleHandler must get the configured level");
+                        found = true;
+                    }
+                }
+                assertTrue(found,
+                    "Freeway should create a ConsoleHandler when none exists");
+            } finally {
+                for (Handler h : removed) {
+                    root.addHandler(h);
+                }
+            }
+        } finally {
+            for (String key : keys) {
+                System.clearProperty(key);
+            }
+            JULEnhancer.resetForTest();
+        }
     }
 
     // ====================== regression fixes ======================

@@ -204,6 +204,26 @@ class DbModuleTest {
     }
 
     @Test
+    void unknownUrlSchemeFailsFastWithGuidance() {
+        // Without an explicit freeway.db.dialect, an unrecognized JDBC URL
+        // scheme (Oracle here) must fail with guidance instead of silently
+        // falling back to PostgreSQL.
+        System.setProperty(URL_KEY, "jdbc:oracle:thin:@localhost:1521:xe");
+        System.setProperty(USER_KEY, "sa");
+        System.setProperty(PASS_KEY, "");
+        System.clearProperty(DIALECT_KEY);
+
+        try (Container container = Freeway.create(new DbModule())) {
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> DbModule.resolveDialect(container));
+            assertTrue(ex.getMessage().contains("jdbc:oracle"),
+                "message must name the offending URL: " + ex.getMessage());
+            assertTrue(ex.getMessage().contains("freeway.db.dialect"),
+                "message must point at the dialect config key: " + ex.getMessage());
+        }
+    }
+
+    @Test
     void dbHubWrapsNamedDatabaseContributions() {
         Database primary = new DatabaseBuilder()
             .config(PoolConfig.defaults("jdbc:h2:mem:primary_" + UUID.randomUUID().toString().replace('-', '_') + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))

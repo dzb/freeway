@@ -34,6 +34,17 @@ public final class DatabaseImpl implements Database {
      */
     private final ScopedValue<TxBinding> tx = ScopedValue.newInstance();
 
+    /**
+     * Thread currently inside a transaction on this Database, or {@code null}.
+     * Set while the transaction work runs and cleared in {@code finally}.
+     * ScopedValue does not propagate to child threads, so this registry is
+     * what lets the borrow guard reject DB calls that would otherwise
+     * silently borrow an independent pooled connection and run outside the
+     * transaction. Nested transactions are already rejected, so a single
+     * value suffices.
+     */
+    private volatile Thread activeTxThread;
+
     private final Pool pool;
     private final RowMapperResolver rowMapperResolver;
     private final Dialect dialect;
@@ -65,6 +76,11 @@ public final class DatabaseImpl implements Database {
     @Override
     public Dialect dialect() {
         return dialect;
+    }
+
+    @Override
+    public boolean inTransaction() {
+        return activeTxThread == Thread.currentThread();
     }
 
     @Override
@@ -109,6 +125,11 @@ public final class DatabaseImpl implements Database {
      * <p>The transaction wraps via {@link Defer#within} so events published
      * during the work are buffered and only drained after commit — if the
      * transaction rolls back, the events are discarded.
+     *
+     * <p>The transaction covers only this {@code Database}'s connection: SQL
+     * executed on other {@code Database} instances (e.g. obtained from a
+     * {@link DatabaseHub}) commits independently and is not rolled back when
+     * this transaction fails.
      */
     @Override
     public void transaction(IsolationLevel isolation, Transactional work) {
@@ -117,6 +138,7 @@ public final class DatabaseImpl implements Database {
         }
         PooledConnection conn = pool.borrow();
         int originalIsolation = -1;
+        activeTxThread = Thread.currentThread();
         try {
             var raw = conn.connection();
             originalIsolation = raw.getTransactionIsolation();
@@ -157,6 +179,7 @@ public final class DatabaseImpl implements Database {
             if (e instanceof Error err) throw err;
             throw new RuntimeException(e);
         } finally {
+            activeTxThread = null;
             restoreConnectionState(conn, originalIsolation);
             pool.release(conn);
         }
@@ -262,6 +285,28 @@ public final class DatabaseImpl implements Database {
                 "Query/BatchQuery created inside a transaction must be consumed "
                     + "on the transaction thread before the transaction ends — "
                     + "the pooled connection is not bound to this thread"
+            );
+        }
+    }
+
+    /**
+     * Guards against DB calls made on a different thread while a transaction
+     * is active on this Database. ScopedValue does not propagate to child
+     * threads, so a child thread's query/execute would otherwise borrow an
+     * independent pooled connection and run outside the transaction —
+     * silently breaking atomicity (and surfacing as a misleading "pool
+     * exhausted" error when maxSize = 1). Called at the pool-borrow entry
+     * points for unbound work; work bound to a transaction already goes
+     * through {@link #checkBound} on the transaction thread.
+     */
+    void checkNoForeignTransaction() {
+        Thread active = activeTxThread;
+        if (active != null && active != Thread.currentThread()) {
+            throw new SqlException(
+                "Transaction work must run on the transaction thread — "
+                    + "ScopedValue does not propagate to child threads; DB calls "
+                    + "made on other threads inside transaction() run outside "
+                    + "the transaction"
             );
         }
     }

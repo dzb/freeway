@@ -45,14 +45,7 @@ final class Http1xParser {
         this.chunkedPrefix = null;
         // Preserve bytes buffered past the previous request's header boundary
         // (a pipelined next request); otherwise they would be lost.
-        if (pos > 0 && pos < end) {
-            System.arraycopy(buf, pos, buf, 0, end - pos);
-            end -= pos;
-        } else if (pos >= end) {
-            end = 0;
-        }
-        // pos == 0 && end > 0 → buffer already compacted; keep it
-        pos = 0;
+        compactBuffer();
         reqLineBuf.setLength(0);
         headerKeyBuf.setLength(0);
         headerValBuf.setLength(0);
@@ -61,15 +54,7 @@ final class Http1xParser {
     ParsedRequest parse() throws IOException {
         // Preserve unread bytes from a previous pipelined request. reset()
         // may already have compacted the buffer (pos == 0 with end > 0).
-        if (pos < end) {
-            if (pos > 0) {
-                System.arraycopy(buf, pos, buf, 0, end - pos);
-                end -= pos;
-            }
-        } else {
-            end = 0;
-        }
-        pos = 0;
+        compactBuffer();
 
         String requestLine = readRequestLine();
         if (requestLine == null) return null;
@@ -133,6 +118,17 @@ final class Http1xParser {
                     String v = entry.getValue().getFirst();
                     if (entry.getValue().size() > 1) throw new IOException("Duplicate Content-Length values");
                     if (v != null) {
+                        // RFC 7230 §3.3.2: Content-Length must be 1*DIGIT.
+                        // Long.parseLong alone would accept "+5" and "-0";
+                        // scan explicitly so any non-digit (sign, whitespace,
+                        // empty) is a malformed request.
+                        if (v.isEmpty()) throw new IOException("Invalid Content-Length: " + v);
+                        for (int i = 0; i < v.length(); i++) {
+                            char c = v.charAt(i);
+                            if (c < '0' || c > '9') {
+                                throw new IOException("Invalid Content-Length: " + v);
+                            }
+                        }
                         try { contentLength = Long.parseLong(v); }
                         catch (NumberFormatException e) { throw new IOException("Invalid Content-Length: " + v); }
                         if (contentLength < 0) throw new IOException("Invalid Content-Length: " + v);
@@ -193,6 +189,21 @@ final class Http1xParser {
         pos = 0;
         end = in.read(buf, 0, buf.length);
         return end > 0;
+    }
+
+    /** Compacts the reusable buffer so unread bytes start at position 0.
+     *  When nothing is left, the buffer is simply emptied. Called from both
+     *  {@link #reset} and {@link #parse} — the latter may already have
+     *  compacted (pos == 0 with end > 0). */
+    private void compactBuffer() {
+        if (pos > 0 && pos < end) {
+            System.arraycopy(buf, pos, buf, 0, end - pos);
+            end -= pos;
+        } else if (pos >= end) {
+            end = 0;
+        }
+        // pos == 0 && end > 0 → buffer already compacted; keep it
+        pos = 0;
     }
 
     // --- request line parser ---
@@ -306,9 +317,11 @@ final class Http1xParser {
                     pos++;
                     return true;
                 }
-                out.append(CR);
-                if (out.length() > maxLen) throw lineTooLong(requestLine, maxLen);
-                crPending = false;
+                // A CR that is not part of the CRLF terminator is a bare
+                // control character — malformed (RFC 7230 §3.2.4).
+                throw new IOException(requestLine
+                    ? "Control character in HTTP request line"
+                    : "Control character in HTTP header");
             }
             int i = pos;
             while (i < end && buf[i] != (byte) '\n') i++;
@@ -336,7 +349,20 @@ final class Http1xParser {
         int len = to - from;
         if (out.length() + len > maxLen) throw lineTooLong(requestLine, maxLen);
         for (int j = from; j < to; j++) {
-            out.append((char) (buf[j] & 0xFF));
+            char c = (char) (buf[j] & 0xFF);
+            // RFC 7230 §3.2.4: request lines and header field values must
+            // not contain control characters — only HTAB (0x09) is an
+            // allowed control; SP (0x20) is ordinary whitespace. Rejecting
+            // bare CR/NUL/CTL here also closes the "raw CR smuggled into a
+            // header value" path (it would previously reach the handler and
+            // break the X-Request-Id echo with a session 500). obs-text
+            // (0x80-0xFF) stays allowed per RFC 7230 §3.2.
+            if ((c < 0x20 && c != '\t') || c == 0x7F) {
+                throw new IOException(requestLine
+                    ? "Control character in HTTP request line"
+                    : "Control character in HTTP header");
+            }
+            out.append(c);
         }
     }
 
@@ -368,7 +394,7 @@ final class Http1xParser {
             pos = end;
             return new SequenceInputStream(chunkedPrefix, in);
         }
-        int prefixLen = bodyLength >= 0 ? (int) Math.min(available, bodyLength) : available;
+        int prefixLen = (int) Math.min(available, bodyLength);
         var prefix = new ByteArrayInputStream(buf, pos, prefixLen);
         pos += prefixLen;
         if (pos < end) {

@@ -19,7 +19,7 @@
 
 ## 概述
 
-`Dialect` 接口位于 `com.jujin.freeway.db.dialect`，**只声明语法特性**：标识符引用（`quoteName`/`identifierQuoteChars`）、identity 子句（`generatedClause`/`generatedTypeOverride`）、类型映射默认值、单子句映射（`upsertClause`/`forUpdateClause`/`offsetOnlyClause`/`truncateTable`）、能力标志（`supports*`、`generatedPrimaryKeyInline`、`dropTableCascade`、`alterAddColumnNotNull`）、词法能力（`hashLineComments`/`dollarQuoting`/`escapeStringPrefix`/`bracketQuoting`）与元数据查询。
+`Dialect` 接口位于 `com.jujin.freeway.db.dialect`，**只声明语法特性**：标识符引用（`quoteName`/`identifierQuoteChars`）、identity 子句（`generatedClause`/`generatedTypeOverride`）、类型映射默认值、单子句映射（`upsertClause`/`forUpdateClause`/`offsetOnlyClause`/`truncateTable`）、能力标志（`supportsTransactionalDdl`/`supportsIndexIfNotExists`/`supportsReturning`/`supportsOnConflict`，及 `generatedPrimaryKeyInline`/`dropTableCascade`/`alterAddColumnNotNull`）、词法能力（`hashLineComments`/`dollarQuoting`/`escapeStringPrefix`/`backslashEscapesStrings`/`bracketQuoting`）与元数据查询。
 
 **DDL 装配（CREATE TABLE / CREATE INDEX / ALTER / DROP）不属于 Dialect**——那是 `com.jujin.freeway.db.schema` 包（`Schema`/`SchemaGenerator`）的职责，它们消费 Dialect 原语生成方言正确的 DDL。Dialect 包自包含：`dialect` 只依赖 `com.jujin.freeway.db.Database`，不反向依赖 `schema`，这样新增方言时只需改 `dialect` 包。
 
@@ -27,7 +27,7 @@
 |------|------|------|
 | 抽象方法（必须实现） | 5 | 编译器强制，不实现无法编译 |
 | 默认方法（必须覆写） | ~6 | 默认值是 PG 偏好，不覆写会出 bug |
-| 默认方法（按需覆写） | 2-4 | 视数据库特性而定 |
+| 默认方法（按需覆写） | 4-6 | 视数据库特性而定（含 `backslashEscapesStrings`/`supportsTransactionalDdl`） |
 | 注册点 | 2 | `DbModule.bind()` + `DatabaseBuilder.dialectForUrl()`（`detectDialect` 委托） |
 
 新增一个方言预计工作量约 **100-150 行代码 + 测试**。
@@ -129,9 +129,12 @@ public Set<String> existingColumns(Database db, String tableName) {
 
 返回该数据库的 SQL 保留字集合（小写）。不覆写则所有标识符都不会被引号包裹。
 
+`buildReserved` 是 `Dialect` 接口上的 **static 方法**（`Dialect.buildReserved(String...)`）：把接口常量 `COMMON_RESERVED`（通用保留字）与传入的方言特有词合并后返回不可变集合。4 个内置方言（Postgres/MySql/Sqlite/H2）都在自己的类里通过它组装保留字集合，自定义方言也应复用——**不要在方言类里另写一套合并逻辑**。
+
 ```java
-private static final Set<String> RESERVED = Set.of(
-    "user", "order", "group", "table", "select", "from", "where",
+private static final Set<String> RESERVED = Dialect.buildReserved(
+    // 只需列出目标数据库特有保留字——通用保留字已由 COMMON_RESERVED 提供
+    "status", "show", "describe", "explain",
     // ... 参考现有方言的集合，加上目标数据库特有保留字
 );
 
@@ -323,6 +326,28 @@ public String effectiveSchema() {
 }
 ```
 
+### 4.10 `backslashEscapesStrings()`
+
+**MySQL 必须覆写为 `true`**：普通单引号字符串字面量里 `\` 是否转义下一个字符（`'it\'s'` = `it's`）。默认 `false`——SQL 标准只定义 `''` 加倍；PostgreSQL 的反斜杠转义走 `E'...'` 前缀（`escapeStringPrefix()`），普通 PG 字符串里 `\` 是字面文本。
+
+```java
+@Override
+public boolean backslashEscapesStrings() {
+    return true; // MySQL / MariaDB
+}
+```
+
+### 4.11 `supportsTransactionalDdl()`
+
+**MySQL 必须覆写为 `false`**：DDL 语句是否参与事务。默认 `true`（PG/H2/SQLite）。MySQL/MariaDB 每条 DDL 都会隐式提交：含 DDL 的迁移无法原子应用（DDL 已提交但校验和行丢失，下次启动会重跑 DDL 而失败），`MigrationRunner` 会直接拒绝这类迁移；`Schema.ensure()`/`Schema.drop()` 在事务内也会被拒。
+
+```java
+@Override
+public boolean supportsTransactionalDdl() {
+    return false; // MySQL / MariaDB（每条 DDL 隐式提交）
+}
+```
+
 ---
 
 ## 步骤 5：注册到 DbModule
@@ -347,6 +372,8 @@ if (url.contains("jdbc:oracle")) return new OracleDialect();
 
 URL 检测的唯一实现在 `DatabaseBuilder.dialectForUrl(String)`（大小写不敏感）——
 独立使用（`DatabaseBuilder`）和 IoC 使用（`DbModule`）共用同一处，新增方言只需改这一个方法。
+
+**未知 scheme 会 fail-fast**：`dialectForUrl` 对无法识别的 JDBC URL（如 `jdbc:oracle:...`）抛 `IllegalStateException`，消息带 `freeway.db.dialect` 指引——**不再静默回退 PostgreSQL**（静默回退会在运行时把 PG 语法发给目标库才暴露错误）。仅当 URL 为 `null` 或空白时才默认返回 `PostgresDialect`。注意 H2 的 MODE 分支：`MODE=PostgreSQL` → PG、`MODE=MySQL`/`MODE=MariaDB` → MySQL。新增方言时在此方法里加上对应的 URL 前缀匹配。
 
 ---
 
@@ -395,7 +422,9 @@ void oracleDialectId() {
 
 - `supportsReturning()`
 - `supportsOnConflict()`
+- `supportsTransactionalDdl()`（覆写时）
 - `supportsIndexIfNotExists()`
+- `backslashEscapesStrings()`（覆写时）
 - `dialectId()`
 - `upsertClause()` — 2-arg 签名
 - `truncateTable()`
@@ -417,9 +446,9 @@ import java.util.*;
 
 public final class XxxDialect implements Dialect {
 
-    private static final Set<String> RESERVED = Set.of(
+    private static final Set<String> RESERVED = Dialect.buildReserved(
         "user", "order", "group", "table", "select", "from", "where"
-        // TODO: 添加目标数据库特有保留字
+        // TODO: 添加目标数据库特有保留字（通用保留字由 COMMON_RESERVED 提供）
     );
 
     // ====================== 抽象方法（5 个） ======================
@@ -458,6 +487,8 @@ public final class XxxDialect implements Dialect {
     // generatedTypeOverride: 如果自增列需要特定类型
     // generatedPrimaryKeyInline: 如果自增主键必须内联（SQLite）
     // alterAddColumnNotNull: 如果 ALTER ADD COLUMN 不能带 NOT NULL（SQLite）
+    // backslashEscapesStrings: 如果普通字符串字面量里 \ 转义下一个字符（MySQL）
+    // supportsTransactionalDdl: 如果 DDL 不参与事务（MySQL → false）
     // dropTableCascade: 如果 DROP TABLE 需要 CASCADE（PG）
     // effectiveSchema: 如果默认 schema 名不是 "public"
 }
@@ -476,7 +507,12 @@ public final class XxxDialect implements Dialect {
 | `defaultBinaryType` | `BYTEA` | `LONGBLOB` | `BLOB` | `BINARY VARYING` |
 | `supportsReturning` | ✓ | ✗ | ✓ | ✓ |
 | `supportsOnConflict` | ✓ | ✗ | ✓ | ✓ |
+| `supportsTransactionalDdl` | ✓（默认） | ✗（覆写） | ✓（默认） | ✓（默认） |
 | `supportsIndexIfNotExists` | ✓ | ✗ | ✓ | ✓ |
+| `hashLineComments` | ✗（默认） | ✓（覆写） | ✗（默认） | ✗（默认） |
+| `dollarQuoting` | ✓（覆写） | ✗（默认） | ✗（默认） | ✓（继承 PG） |
+| `escapeStringPrefix` | ✓（覆写） | ✗（默认） | ✗（默认） | ✓（继承 PG） |
+| `backslashEscapesStrings` | ✗（默认） | ✓（覆写） | ✗（默认） | ✗（默认） |
 | `forUpdateClause` | `FOR UPDATE` | `FOR UPDATE` | `""` | `FOR UPDATE` |
 | `upsertClause` | `ON CONFLICT ... EXCLUDED` | `ON DUPLICATE KEY ... VALUES` | `ON CONFLICT ... EXCLUDED` | `ON CONFLICT ... EXCLUDED`（默认） |
 | `truncateTable` | `TRUNCATE ... RESTART IDENTITY` | `TRUNCATE ...`（默认） | `DELETE FROM ...` | `TRUNCATE ... RESTART IDENTITY` |
@@ -506,9 +542,11 @@ public final class XxxDialect implements Dialect {
 - [ ] `forUpdateClause()` 按需覆写
 - [ ] `generatedTypeOverride()` 按需覆写
 - [ ] `generatedPrimaryKeyInline()` / `dropTableCascade()` / `alterAddColumnNotNull()` 按需覆写
+- [ ] `backslashEscapesStrings()` 按需覆写（MySQL：普通字符串字面量中 `\` 转义）
+- [ ] `supportsTransactionalDdl()` 按需覆写（MySQL：DDL 不参与事务 → `false`）
 - [ ] `effectiveSchema()` 按需覆写
 - [ ] `DbModule.bind()` 注册（`id` 与 `dialectId()` 一致）
-- [ ] `DatabaseBuilder.dialectForUrl()` URL 检测（大小写不敏感）
+- [ ] `DatabaseBuilder.dialectForUrl()` URL 检测（大小写不敏感；未知 scheme 会 fail-fast）
 - [ ] `dialectId()` 单测
 - [ ] `upsertClause()` 单测
 - [ ] DDL 生成集成测试

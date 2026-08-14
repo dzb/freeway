@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +36,11 @@ public final class AppBuilder {
     private boolean autoDiscovery = true;
     private boolean shutdownHook = true;
     private ClassLoader classLoader;
-    private boolean started;
+    // Single-use guard. AtomicBoolean (not a plain boolean) so that two
+    // threads calling start() concurrently cannot both pass a check-then-set
+    // race and build two containers / register two shutdown hooks: exactly
+    // one compareAndSet wins, the other throws below.
+    private final AtomicBoolean started = new AtomicBoolean();
 
     AppBuilder() {
     }
@@ -89,13 +94,12 @@ public final class AppBuilder {
 
     /** Build and start the application. */
     public AppRuntime start() {
-        if (started) {
+        if (!started.compareAndSet(false, true)) {
             throw new IllegalStateException(
                 "AppBuilder.start() has already been called — a builder is "
                     + "single-use (reuse would register a second shutdown "
                     + "hook and build an independent container)");
         }
-        started = true;
         long startNanos = System.nanoTime();
 
         ClassLoader effectiveLoader = resolveClassLoader();
@@ -150,7 +154,7 @@ public final class AppBuilder {
 
         try {
             app.start();
-        } catch (RuntimeException ex) {
+        } catch (Throwable ex) {
             if (shutdownThread != null) {
                 try {
                     Runtime.getRuntime().removeShutdownHook(shutdownThread);
@@ -160,7 +164,7 @@ public final class AppBuilder {
             }
             try {
                 app.close();
-            } catch (RuntimeException closeFailure) {
+            } catch (Throwable closeFailure) {
                 ex.addSuppressed(closeFailure);
             }
             throw ex;
@@ -180,10 +184,40 @@ public final class AppBuilder {
             return;
         }
         if (explicit) {
-            LOG.warn("Ignoring duplicate module: {}", module.getClass().getSimpleName());
-        } else {
-            LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
+            if (existing == module) {
+                // The identical instance was added twice (e.g. add(mod, mod))
+                // — harmless, keep a single copy, mirroring ContainerImpl.
+                LOG.debug(
+                    "Ignoring repeated module instance: {}",
+                    module.getClass().getSimpleName()
+                );
+                return;
+            }
+            // Two distinct instances of the same class would silently drop
+            // one module's configuration (e.g. add(new DbModule("ds1"), new
+            // DbModule("ds2")) keeps only ds1). Fail fast instead.
+            Class<?> moduleClass = module.getClass();
+            if (moduleClass.isAnonymousClass() || moduleClass.isSynthetic()) {
+                // Anonymous/lambda modules have no meaningful class identity —
+                // keep identity-based semantics like ContainerImpl.installModule.
+                LOG.debug(
+                    "Ignoring duplicate module: {}",
+                    moduleClass.getSimpleName()
+                );
+                return;
+            }
+            throw new IllegalStateException(
+                "Module " + moduleClass.getName() + " added twice with "
+                    + "two different instances. Likely cause: the same "
+                    + "module class was added more than once explicitly "
+                    + "(deduplication would silently drop one module's "
+                    + "configuration). Fix: keep a single instance of each "
+                    + "module class."
+            );
         }
+        // Explicit instances win over SPI-discovered ones — the explicit
+        // module was already in the map, so the discovery copy is dropped.
+        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
     }
 
     private ClassLoader resolveClassLoader() {

@@ -53,13 +53,13 @@ public final class HttpModule implements ModuleEx {
         binder.bind(RouteIndex.class).to(container -> {
             var routes = new ArrayList<>(container.extension(Route.class).all());
             for (var r : routes) {
-                if (r.handler() instanceof LazyHandler lh) lh.resolve(container);
+                resolveLazy(r, container);
             }
             // Resolve LazyHandlers from RouteGroup-expanded routes too
             var allRoutes = new ArrayList<>(routes);
             for (RouteGroup group : container.extension(RouteGroup.class).all()) {
                 for (Route expanded : group.expand()) {
-                    if (expanded.handler() instanceof LazyHandler lh) lh.resolve(container);
+                    resolveLazy(expanded, container);
                     allRoutes.add(expanded);
                 }
             }
@@ -185,6 +185,13 @@ public final class HttpModule implements ModuleEx {
 
         binder.contribute(ErrorHandler.class)
             .add(ErrorHandlers.defaultHandler());
+    }
+
+    /** Resolves a {@link LazyHandler} (class-based route) against the
+     *  container, which instantiates the handler class with constructor
+     *  injection. */
+    private static void resolveLazy(Route r, Container c) {
+        if (r.handler() instanceof LazyHandler lh) lh.resolve(c);
     }
 
 }

@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.route;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteIndexTest {
 
@@ -118,6 +120,36 @@ class RouteIndexTest {
     }
 
     @Test
+    void encodedLiteralRegistrationMatchesPlainAndEncodedRequests() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/hello%20world", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        assertNotNull(registry.match("GET", "/hello world"),
+            "an encoded registration must match the plain (decoded) request");
+        assertNotNull(registry.match("GET", "/hello%20world"),
+            "an encoded registration must match the same encoded request");
+    }
+
+    @Test
+    void encodedSlashRegistrationStaysInsideOneSegment() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/files/a%2Fb", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        assertNotNull(registry.match("GET", "/files/a%2Fb"),
+            "an encoded slash must stay inside its original segment");
+        assertNull(registry.match("GET", "/files/a/b"),
+            "an encoded slash must not be treated as a path separator");
+    }
+
+    @Test
+    void rejectsMalformedPercentEncodingAtRegistration() {
+        assertThrows(IllegalArgumentException.class, () ->
+            Route.get("/files/%zz", ctx -> ctx.send(200, "ok")));
+    }
+
+    @Test
     void pathVariablesAreDecoded() {
         RouteIndex registry = new RouteIndex(
             List.of(Route.get("/users/{name}", ctx -> ctx.send(200, "ok"))),
@@ -146,6 +178,41 @@ class RouteIndexTest {
             List.of()
         );
         assertNull(registry.match("GET", "/files/%zz"));
+    }
+
+    @Test
+    void overlongRegexConstrainedSegmentsAreRejectedBeforeRegexMatching() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/id/{id:(a+)+$}", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        // A 4KB+ 'a' segment would drive catastrophic backtracking on
+        // (a+)+$ without the pre-regex segment length cap; it must be
+        // rejected outright, fast, and without throwing.
+        long start = System.nanoTime();
+        assertNull(registry.match("GET", "/id/" + "a".repeat(4096)),
+            "an overlong segment must not match");
+        assertNull(registry.match("GET", "/id/" + "a".repeat(4096) + "!"),
+            "an overlong near-miss segment must not reach the regex");
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertTrue(elapsedMs < 2000,
+            "overlong segments must be rejected quickly (took " + elapsedMs + "ms)");
+        // Normal segments still match the same constraint.
+        RouteIndex.RouteMatch match = registry.match("GET", "/id/aaa");
+        assertNotNull(match);
+        assertEquals("aaa", match.pathVariables().get("id"));
+    }
+
+    @Test
+    void regexConstrainedSegmentsAtTheLengthCapStillMatch() {
+        RouteIndex registry = new RouteIndex(
+            List.of(Route.get("/id/{id:(a+)+$}", ctx -> ctx.send(200, "ok"))),
+            List.of()
+        );
+        String atCap = "a".repeat(PathPattern.MAX_SEGMENT_LENGTH);
+        RouteIndex.RouteMatch match = registry.match("GET", "/id/" + atCap);
+        assertNotNull(match);
+        assertEquals(atCap, match.pathVariables().get("id"));
     }
 
     // ──── handler class registration ────

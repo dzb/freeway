@@ -577,6 +577,61 @@ class CoercerDefaultTest {
     }
 
     @Test
+    void stringNaNRejectedForFloatingTargets() {
+        // "NaN" used to parse into Double.NaN silently (then blowing up in
+        // stringify or coercing to false). It is now rejected like Infinity:
+        // a config value can never silently become NaN.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("NaN", Double.class));
+        assertTrue(ex.getCause() != null
+                && ex.getCause().getMessage().contains("not a finite number"),
+            "NaN rejection must name the reason, got: " + ex.getMessage());
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("NaN", Float.class));
+        // parseDouble accepts case variants ("nan"/"NAN"), so the value-based
+        // check rejects them too — symmetric with case-insensitive Infinity.
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("nan", Double.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("NAN", Double.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("+NaN", Double.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("-NaN", Double.class));
+        // Normal finite numbers are unaffected.
+        assertEquals(Double.valueOf(1.5), coercer.coerce("1.5", Double.class));
+        assertEquals(Float.valueOf(2f), coercer.coerce("2", Float.class));
+    }
+
+    @Test
+    void stringInfinitySpellingsRejectedForFloatingTargets() {
+        // parseDouble("Infinity"/"-Infinity") → ±Infinity, rejected the same
+        // way as overflow literals ("1e400") — both spellings, both targets.
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("Infinity", Double.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("-Infinity", Double.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("+Infinity", Double.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("Infinity", Float.class));
+        assertThrows(IllegalArgumentException.class,
+            () -> coercer.coerce("-Infinity", Float.class));
+    }
+
+    @Test
+    void nanNumberCoercesToFalseBoolean() {
+        // Verified: (int) Double.NaN == 0, so the Number→boolean rule
+        // (intValue() != 0) makes NaN falsy — like any other zero. The string
+        // "NaN" can no longer reach this path (string→Double now rejects it),
+        // but an actual Double.NaN value keeps this documented behavior.
+        // (Infinity is a different case: (int) +Infinity saturates to
+        // Integer.MAX_VALUE, so it is truthy — unchanged by this fix.)
+        assertFalse(coercer.coerce(Double.NaN, boolean.class));
+        assertFalse(coercer.coerce(Double.NaN, Boolean.class));
+    }
+
+    @Test
     void optionalPrimitivesNullAndOverflow() {
         // null → empty() (the entry's dead v == null branch showed intent);
         // oversized values must not wrap through intValue()/longValue().

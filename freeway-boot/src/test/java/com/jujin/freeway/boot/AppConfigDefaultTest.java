@@ -13,6 +13,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppConfigDefaultTest {
 
@@ -78,6 +79,39 @@ class AppConfigDefaultTest {
         assertEquals(Duration.ofSeconds(5),
             timeout.parse("", coercer),
             "blank input falls back to the default");
+    }
+
+    @Test
+    void typedGetResolvesCoercerParsedSpecs() {
+        // Regression: AppConfig.get(spec) threw "has no parser" for specs
+        // created without a per-key parser (ConfigSpec.of(key, type, default)).
+        ConfigSpec<Integer> port = ConfigSpec.of(
+            "server.port", Integer.class, 8080);
+        AppConfig config = new AppConfigDefault(
+            new LinkedHashMap<>(Map.of("server.port", "7070")), List.of());
+
+        assertEquals(7070, config.get(port),
+            "a parser-less spec must resolve via the default Coercer");
+        assertEquals(8080, config.get(
+            ConfigSpec.of("missing.port", Integer.class, 8080)),
+            "absent key falls back to the default");
+
+        ConfigSpec<Duration> timeout = ConfigSpec.of(
+            "pool.timeout", Duration.class, Duration.ofSeconds(5));
+        assertEquals(Duration.ofSeconds(2),
+            new AppConfigDefault(
+                new LinkedHashMap<>(Map.of("pool.timeout", "2s")), List.of())
+                .get(timeout),
+            "the default Coercer resolves duration syntax through AppConfig.get");
+
+        AppConfig absent = new AppConfigDefault(new LinkedHashMap<>(), List.of());
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> absent.get(ConfigSpec.required("db.password", String.class)));
+        assertTrue(ex.getMessage().contains("Missing required")
+                && ex.getMessage().contains("db.password"),
+            "a missing required coercer-parsed key must still fail fast, got: "
+                + ex.getMessage());
     }
 
     @Test

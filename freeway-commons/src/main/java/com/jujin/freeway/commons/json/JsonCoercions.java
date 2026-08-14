@@ -19,9 +19,11 @@ import java.lang.reflect.WildcardType;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -77,10 +79,6 @@ final class JsonCoercions {
         return JsonNormalizer.normalize(value);
     }
 
-    static Object deepCopy(Object value) {
-        return JsonNormalizer.deepCopy(value);
-    }
-
     private static Object coerce(
         Object value,
         Type type,
@@ -121,57 +119,15 @@ final class JsonCoercions {
         Coercer coercer,
         TypeContext context
     ) {
-        Object plain = normalize(value);
-        if (plain == null) {
-            return CoercerDefault.defaultValue(targetType);
-        }
-        if (targetType.isInstance(plain)) {
-            return targetType.cast(plain);
-        }
-        if (
-            plain instanceof JsonObject object &&
-            Map.class.isAssignableFrom(targetType)
-        ) {
-            return coerceToMap(
-                object,
-                targetType,
-                String.class,
-                Object.class,
-                coercer,
-                context
-            );
-        }
-        if (
-            plain instanceof JsonArray array &&
-            Collection.class.isAssignableFrom(targetType)
-        ) {
-            return coerceToCollection(
-                array,
-                targetType,
-                Object.class,
-                coercer,
-                context
-            );
-        }
-        if (
-            plain instanceof JsonObject object &&
-            !targetType.isArray() &&
-            !targetType.isEnum()
-        ) {
-            BeanPlan plan = BeanIntrospector.plan(targetType);
-            return plan.record()
-                ? constructRecord(object, plan, coercer, context)
-                : constructBean(object, plan, coercer, context);
-        }
-        if (plain instanceof JsonArray array && targetType.isArray()) {
-            return coerceToArray(
-                array,
-                targetType.getComponentType(),
-                coercer,
-                context
-            );
-        }
-        return coercer.coerce(plain, targetType);
+        return coerceStructured(
+            value,
+            targetType,
+            String.class,
+            Object.class,
+            Object.class,
+            coercer,
+            context
+        );
     }
 
     private static Object coerceParameterized(
@@ -181,17 +137,42 @@ final class JsonCoercions {
         TypeContext context
     ) {
         Class<?> rawType = Types.rawClass(type.getRawType());
+        Type[] args = type.getActualTypeArguments();
+        return coerceStructured(
+            value,
+            rawType,
+            args.length > 0 ? args[0] : String.class,
+            args.length > 1 ? args[1] : Object.class,
+            args.length > 0 ? args[0] : Object.class,
+            coercer,
+            context
+        );
+    }
+
+    // Shared dispatch chain for Class and ParameterizedType targets. The
+    // isInstance short-circuit must come first (e.g. Object.class targets);
+    // for parameterized targets the raw type can never be a supertype of
+    // JsonObject/JsonArray, so its position is unobservable there.
+    private static Object coerceStructured(
+        Object value,
+        Class<?> rawType,
+        Type keyType,
+        Type valueType,
+        Type elementType,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Object plain = normalize(value);
         if (plain == null) {
             return CoercerDefault.defaultValue(rawType);
+        }
+        if (rawType.isInstance(plain)) {
+            return rawType.cast(plain);
         }
         if (
             plain instanceof JsonObject object &&
             Map.class.isAssignableFrom(rawType)
         ) {
-            Type[] args = type.getActualTypeArguments();
-            Type keyType = args.length > 0 ? args[0] : String.class;
-            Type valueType = args.length > 1 ? args[1] : Object.class;
             return coerceToMap(
                 object,
                 rawType,
@@ -205,10 +186,6 @@ final class JsonCoercions {
             plain instanceof JsonArray array &&
             Collection.class.isAssignableFrom(rawType)
         ) {
-            Type elementType =
-                type.getActualTypeArguments().length > 0
-                    ? type.getActualTypeArguments()[0]
-                    : Object.class;
             return coerceToCollection(
                 array,
                 rawType,
@@ -234,9 +211,6 @@ final class JsonCoercions {
                 coercer,
                 context
             );
-        }
-        if (rawType.isInstance(plain)) {
-            return rawType.cast(plain);
         }
         return coercer.coerce(plain, rawType);
     }
@@ -591,22 +565,41 @@ final class JsonCoercions {
         }
 
         Type resolve(Type type) {
+            return resolve(type, Collections.newSetFromMap(new IdentityHashMap<>()));
+        }
+
+        /**
+         * Resolves a type against the current bindings. {@code seen} tracks
+         * type variables currently being resolved so that cyclic bounds
+         * (e.g. {@code class Node<T extends Comparable<T>>} where a
+         * self-referential field like {@code Node<T> next} binds {@code T} to
+         * {@code Comparable<T>}) fall back to {@code Object.class} instead of
+         * recursing forever into {@code resolve(T) -> resolve(Comparable<T>)
+         * -> resolve(T) -> ...}.
+         */
+        private Type resolve(Type type, Set<TypeVariable<?>> seen) {
             if (type instanceof TypeVariable<?> variable) {
+                if (!seen.add(variable)) {
+                    // Re-entrant type variable — its bound (transitively)
+                    // references the variable itself. Erase to Object so the
+                    // coercion can proceed with the raw bound.
+                    return Object.class;
+                }
                 Type bound = bindings.get(variable);
                 if (bound != null) {
-                    return resolve(bound);
+                    return resolve(bound, seen);
                 }
                 return firstBound(variable);
             }
             if (type instanceof ParameterizedType parameterizedType) {
                 Type ownerType = parameterizedType.getOwnerType();
                 Type resolvedOwner =
-                    ownerType == null ? null : resolve(ownerType);
+                    ownerType == null ? null : resolve(ownerType, seen);
                 Type[] arguments = parameterizedType.getActualTypeArguments();
                 Type[] resolvedArguments = new Type[arguments.length];
                 boolean changed = resolvedOwner != ownerType;
                 for (int i = 0; i < arguments.length; i++) {
-                    resolvedArguments[i] = resolve(arguments[i]);
+                    resolvedArguments[i] = resolve(arguments[i], seen);
                     if (resolvedArguments[i] != arguments[i]) {
                         changed = true;
                     }
@@ -622,7 +615,8 @@ final class JsonCoercions {
             }
             if (type instanceof GenericArrayType arrayType) {
                 Type resolvedComponent = resolve(
-                    arrayType.getGenericComponentType()
+                    arrayType.getGenericComponentType(),
+                    seen
                 );
                 if (resolvedComponent == arrayType.getGenericComponentType()) {
                     return arrayType;
@@ -632,11 +626,11 @@ final class JsonCoercions {
             if (type instanceof WildcardType wildcard) {
                 Type[] upperBounds = wildcard.getUpperBounds();
                 if (upperBounds.length > 0) {
-                    return resolve(upperBounds[0]);
+                    return resolve(upperBounds[0], seen);
                 }
                 Type[] lowerBounds = wildcard.getLowerBounds();
                 if (lowerBounds.length > 0) {
-                    return resolve(lowerBounds[0]);
+                    return resolve(lowerBounds[0], seen);
                 }
                 return Object.class;
             }

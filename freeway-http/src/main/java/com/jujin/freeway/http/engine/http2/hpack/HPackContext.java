@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;
@@ -41,7 +42,13 @@ public final class HPackContext {
     /** Adjusts the decoder's dynamic table cap to the encoder's advertised
      *  SETTINGS_HEADER_TABLE_SIZE (RFC 7541 §4.2). */
     public void setMaxDynamicTableSize(long size) {
-        maxDynamicTableSize = Math.min(size, MAX_INBOUND_DYNAMIC_TABLE_SIZE);
+        // SETTINGS_HEADER_TABLE_SIZE is a 32-bit unsigned value (RFC 7540
+        // §6.5.2), so a negative cap is never legitimate. A negative cap
+        // would evict the whole dynamic table and make every subsequent
+        // in-band size update fail with COMPRESSION_ERROR — permanently
+        // poisoning the decoder state. The wire parse is unsigned, so this
+        // guards only in-memory misuse; clamp defensively.
+        maxDynamicTableSize = Math.min(Math.max(size, 0), MAX_INBOUND_DYNAMIC_TABLE_SIZE);
         trimDynamicTable();
     }
 
@@ -59,6 +66,13 @@ public final class HPackContext {
      * silently wrap and desynchronize the header block.
      */
     static IntR readInt(byte[] b, int p, int bits) throws IOException {
+        // A missing prefix byte is just as truncated as a missing
+        // continuation byte — both must fail as a compression error, never
+        // as an AIOOBE that escapes the codec.
+        if (p >= b.length) {
+            throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                "Truncated HPACK integer");
+        }
         int mask = (1 << bits) - 1;
         long value = b[p] & mask;
         p++;
@@ -68,7 +82,10 @@ public final class HPackContext {
         int shift = 0;
         int x;
         do {
-            if (p >= b.length) throw new ArrayIndexOutOfBoundsException("Truncated HPACK integer");
+            if (p >= b.length) {
+                throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR,
+                    "Truncated HPACK integer");
+            }
             x = b[p] & 0xFF;
             // value += (x & 0x7F) << shift must stay within int range:
             // shift 29+ always overflows; shift == 28 allows up to 7<<28.
@@ -355,6 +372,15 @@ public final class HPackContext {
                 ? Huffman.decode(block, result.position, result.value)
                 : new String(block, result.position, result.value, StandardCharsets.UTF_8);
             if (!name.equals(name.toLowerCase())) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+            // RFC 9113 §8.2 / RFC 9110 §5.1: a literal field name must be a
+            // valid HTTP token (lowercase already enforced above). Lowercase
+            // non-token names — non-ASCII letters, spaces, CTL — would reach
+            // the application header keys and be rejected by the HTTP/1.1
+            // front-end later, so reject them here. Pseudo-header names
+            // start with ':' and are exempt: HeaderFields validates them
+            // against the known pseudo-header set.
+            if (!name.startsWith(":") && !HttpUtils.isToken(name))
+                throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             field.name = name;
             field.normalizedName = Http2HeaderField.normalize(name);
             return result.position + result.value;

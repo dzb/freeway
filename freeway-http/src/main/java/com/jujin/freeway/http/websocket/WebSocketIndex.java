@@ -20,6 +20,12 @@ public final class WebSocketIndex {
 
     private final RouteIndex routes;
 
+    /**
+     * Contribution-consumed routes: both parameter lists are resolved from
+     * {@code binder.contribute(...)} extensions when the container builds
+     * this class (see {@code HttpModule}) — constructor parameters consume
+     * contributions implicitly.
+     */
     public WebSocketIndex(
         List<WebSocketRoute> routes,
         List<WebSocketGroup> groups

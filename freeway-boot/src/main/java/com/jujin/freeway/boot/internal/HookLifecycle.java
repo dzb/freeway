@@ -2,6 +2,7 @@ package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.extension.Extension;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,7 +24,16 @@ public final class HookLifecycle {
 
     private List<RuntimeHook> resolveHooks() {
         if (hooks != null) return hooks;
-        hooks = container.extension(RuntimeHook.class).all();
+        Extension<RuntimeHook> extension = container.extension(
+            RuntimeHook.class
+        );
+        // Fail startup on invalid ordering references (unknown before/after
+        // ids) instead of silently running hooks in insertion order — a typo
+        // like after("freeway.http.serve") would otherwise execute hooks in
+        // the wrong order. The generic Extension ordering stays lenient for
+        // other extension points; this strict check is runtime-hook specific.
+        extension.validateOrdering();
+        hooks = extension.all();
         return hooks;
     }
 
@@ -40,25 +50,40 @@ public final class HookLifecycle {
                 hook.start(container);
                 started.add(hook);
             }
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             LOG.error("Hook start failed: {}", ex.getMessage(), ex);
-            RuntimeException failure = new RuntimeException(
-                "Runtime hook start failed",
-                ex
-            );
             // The failing hook may have acquired resources before throwing —
             // give it a chance to release them, then roll back the started ones.
+            RuntimeException failure = null;
             if (current != null) {
-                RuntimeException failedHookStop = stopFailedHook(current);
-                if (failedHookStop != null) {
-                    failure.addSuppressed(failedHookStop);
-                }
+                failure = stopFailedHook(current);
             }
             RuntimeException rollback = stopStarted();
             if (rollback != null) {
-                failure.addSuppressed(rollback);
+                if (failure == null) {
+                    failure = rollback;
+                } else {
+                    failure.addSuppressed(rollback);
+                }
             }
-            throw failure;
+            // Errors (AssertionError, OOM, ...) propagate as-is with any
+            // rollback failures suppressed, so the caller can distinguish
+            // e.g. AssertionError from an ordinary startup failure. Everything
+            // else keeps the original wrapping behavior.
+            if (ex instanceof Error error) {
+                if (failure != null) {
+                    error.addSuppressed(failure);
+                }
+                throw error;
+            }
+            RuntimeException wrapper = new RuntimeException(
+                "Runtime hook start failed",
+                ex
+            );
+            if (failure != null) {
+                wrapper.addSuppressed(failure);
+            }
+            throw wrapper;
         }
     }
 
@@ -66,7 +91,7 @@ public final class HookLifecycle {
         try {
             hook.stop(container);
             return null;
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             LOG.warn("Hook stop failed after failed start: {}", ex.getMessage(), ex);
             return new RuntimeException("Runtime hook stop failed", ex);
         }
@@ -92,7 +117,7 @@ public final class HookLifecycle {
             LOG.debug("Stopping hook: {}", hook.getClass().getSimpleName());
             try {
                 hook.stop(container);
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 LOG.warn("Hook stop failed: {}", ex.getMessage(), ex);
                 RuntimeException next = new RuntimeException(
                     "Runtime hook stop failed",

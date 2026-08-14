@@ -7,8 +7,10 @@ import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Maps;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +19,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Default {@link ConfigLoader} implementation. Loads configuration from
@@ -31,6 +35,9 @@ import java.util.regex.Pattern;
  * </ol>
  */
 public final class ConfigLoaderDefault implements ConfigLoader {
+    private static final Logger LOG = LoggerFactory.getLogger(
+        ConfigLoaderDefault.class
+    );
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}). */
@@ -83,19 +90,37 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadEnvironment() {
-        // Single configurable prefix. Default FREEWAY_ maps into the freeway.*
-        // namespace (backwards compatible); a custom prefix replaces it and
-        // passes through verbatim (prefix stripped, `_` → `.`), so the app
-        // owns the whole env-to-config mapping — e.g. prefix APP_ gives
-        // APP_SERVER_PORT → server.port and APP_FREEWAY_HTTP_PORT →
-        // freeway.http.port.
+        return loadEnvironment(System.getenv());
+    }
+
+    /**
+     * Maps environment variables to config keys using the
+     * {@code freeway.env.prefix} prefix.
+     *
+     * <p>The prefix is read exclusively from the JVM system property
+     * {@code freeway.env.prefix} (set via {@code -Dfreeway.env.prefix=APP_}).
+     * Configuring that key in {@code application.properties}, a profile file,
+     * the environment, or CLI arguments does NOT change how the environment
+     * layer is mapped — it stays an ordinary config value with no special
+     * effect. This is deliberate: the prefix itself would have to come from
+     * the cascade's env layer, which the prefix configures — a
+     * chicken-and-egg problem — so the JVM property is the only source.</p>
+     *
+     * <p>Default {@code FREEWAY_} maps into the {@code freeway.*} namespace
+     * (backwards compatible); a custom prefix replaces it and passes through
+     * verbatim (prefix stripped, {@code _} → {@code .}), so the app owns the
+     * whole env-to-config mapping — e.g. prefix {@code APP_} gives
+     * {@code APP_SERVER_PORT} → {@code server.port} and
+     * {@code APP_FREEWAY_HTTP_PORT} → {@code freeway.http.port}.</p>
+     */
+    static Map<String, String> loadEnvironment(Map<String, String> environment) {
         String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
         if (prefix.isEmpty()) {
             prefix = "FREEWAY_";
         }
         boolean freewayNamespace = "FREEWAY_".equals(prefix);
         Map<String, String> values = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
+        for (Map.Entry<String, String> entry : environment.entrySet()) {
             String key = entry.getKey();
             if (key.startsWith(prefix)) {
                 values.put(convertEnvKey(key, prefix, freewayNamespace), entry.getValue());
@@ -118,13 +143,10 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadProperties(ClassLoader loader, String resourceName) {
-        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
-        InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
-        if (stream == null) {
-            return Map.of();
-        }
-
-        try (stream; InputStream bounded = ByteStreams.bounded(stream, 16L * 1024 * 1024, resourceName)) {
+        try (InputStream bounded = openBoundedStream(loader, resourceName)) {
+            if (bounded == null) {
+                return Map.of();
+            }
             Properties properties = new Properties();
             properties.load(bounded);
             Map<String, String> values = new LinkedHashMap<>();
@@ -138,19 +160,49 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadJson(ClassLoader loader, String resourceName) {
-        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
-        InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
-        if (stream == null) {
-            return Map.of();
-        }
-
-        try (stream; InputStream bounded = ByteStreams.bounded(
-                stream, 16L * 1024 * 1024, resourceName)) {
-            JsonObject root = JsonUtils.parseObject(bounded);
+        try (InputStream bounded = openBoundedStream(loader, resourceName)) {
+            if (bounded == null) {
+                return Map.of();
+            }
+            byte[] bytes;
+            try {
+                bytes = bounded.readAllBytes();
+            } catch (IOException ex) {
+                // Mirror JsonParser's readText wrapper so the failure chain
+                // stays identical to the direct-parse path.
+                throw new IllegalArgumentException("Unable to read JSON input", ex);
+            }
+            // An empty or whitespace-only JSON resource means "no config",
+            // consistent with an empty application.properties — not a parse
+            // error. Malformed non-blank JSON still fails below.
+            String text = new String(bytes, StandardCharsets.UTF_8);
+            if (text.startsWith("\uFEFF")) {
+                text = text.substring(1); // strip UTF-8 BOM like JsonParser
+            }
+            if (text.isBlank()) {
+                return Map.of();
+            }
+            JsonObject root = JsonUtils.parseObject(
+                new ByteArrayInputStream(bytes)
+            );
             return Maps.flatten(root.toMap(), ".");
         } catch (IOException | RuntimeException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
         }
+    }
+
+    /**
+     * Opens {@code resourceName} on the given (or default) class loader,
+     * wrapping the stream with a 16 MiB read cap. Returns {@code null} when
+     * the resource does not exist, so callers can treat it as "no config".
+     */
+    private static InputStream openBoundedStream(ClassLoader loader, String resourceName) {
+        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
+        InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
+        if (stream == null) {
+            return null;
+        }
+        return ByteStreams.bounded(stream, 16L * 1024 * 1024, resourceName);
     }
 
     private static String resourceName(String baseName, String profile, String suffix) {
@@ -185,36 +237,64 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         Map<String, String> values = new LinkedHashMap<>();
         for (int i = 0; i < list.size(); i++) {
             String arg = list.get(i);
-            if (arg.startsWith("--")) {
+            if (arg.startsWith("--") || arg.startsWith("-D")) {
                 String raw = arg.substring(2);
                 int eq = raw.indexOf('=');
                 if (eq > 0) {
-                    values.put(applyFreewayPrefix(raw.substring(0, eq)), raw.substring(eq + 1));
-                } else if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
-                    values.put(applyFreewayPrefix(raw), list.get(++i));
+                    values.put(validateCliKey(raw.substring(0, eq), arg), raw.substring(eq + 1));
                 } else {
-                    values.put(applyFreewayPrefix(raw), "true");
-                }
-            } else if (arg.startsWith("-D")) {
-                String raw = arg.substring(2);
-                int eq = raw.indexOf('=');
-                if (eq > 0) {
-                    values.put(applyFreewayPrefix(raw.substring(0, eq)), raw.substring(eq + 1));
-                } else if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
-                    values.put(applyFreewayPrefix(raw), list.get(++i));
-                } else {
-                    values.put(applyFreewayPrefix(raw), "true");
+                    ConsumableValue consumed = consumeValueOrTrue(list, i);
+                    values.put(validateCliKey(raw, arg), consumed.value());
+                    i = consumed.nextIndex();
                 }
             } else if (arg.startsWith("-") && arg.length() == 2) {
-                String key = arg.substring(1);
-                if (i + 1 < list.size() && isConsumableValue(list.get(i + 1))) {
-                    values.put(applyFreewayPrefix(key), list.get(++i));
-                } else {
-                    values.put(applyFreewayPrefix(key), "true");
-                }
+                ConsumableValue consumed = consumeValueOrTrue(list, i);
+                values.put(validateCliKey(arg.substring(1), arg), consumed.value());
+                i = consumed.nextIndex();
+            } else {
+                LOG.warn(
+                    "Ignoring positional command-line argument '{}' — "
+                        + "arguments must use --key=value, --key value, or "
+                        + "-Dkey=value form",
+                    arg
+                );
             }
         }
         return values;
+    }
+
+    /**
+     * The value for a flag at {@code index}: the next argument when it is a
+     * consumable value (see {@link #isConsumableValue}), otherwise
+     * {@code "true"} (boolean flag). {@code nextIndex} is the index the
+     * caller should continue scanning from — it skips the consumed value.
+     */
+    private static ConsumableValue consumeValueOrTrue(List<String> list, int index) {
+        if (index + 1 < list.size() && isConsumableValue(list.get(index + 1))) {
+            return new ConsumableValue(list.get(index + 1), index + 1);
+        }
+        return new ConsumableValue("true", index);
+    }
+
+    private record ConsumableValue(String value, int nextIndex) {}
+
+    /**
+     * Rejects CLI arguments whose key is empty (bare {@code --} / {@code -D})
+     * or contains {@code =} (e.g. {@code --=x}), which would otherwise
+     * produce garbage keys like {@code freeway.} or {@code freeway.=x}.
+     */
+    private static String validateCliKey(String key, String originalArg) {
+        if (key.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Invalid command-line argument '" + originalArg
+                    + "': option key must not be empty");
+        }
+        if (key.indexOf('=') >= 0) {
+            throw new IllegalArgumentException(
+                "Invalid command-line argument '" + originalArg
+                    + "': option key must not contain '=' (use --key=value)");
+        }
+        return applyFreewayPrefix(key);
     }
 
     /**
@@ -277,15 +357,45 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             args = Map.copyOf(Objects.requireNonNull(args, "args"));
         }
 
+        /**
+         * Merged view across all layers in ascending priority order:
+         * base properties → base json → profile properties → profile json →
+         * environment → CLI args.
+         *
+         * <p>The profile layers contribute configuration but never the
+         * profile-activation key: {@code freeway.profile} inside a profile
+         * file is redundant — profiles are selected from the base layers
+         * only — and would otherwise fork {@code config().get("freeway.profile")}
+         * from {@code config().profiles()} (a profile layer outranks the base
+         * properties layer). Base-layer {@code freeway.profile}
+         * (application.properties/application.json, env, CLI) is preserved —
+         * that is the activation mechanism.
+         */
         public Map<String, String> merged() {
             Map<String, String> merged = new LinkedHashMap<>();
             merged.putAll(properties);
             merged.putAll(json);
-            merged.putAll(profileProperties);
-            merged.putAll(profileJson);
+            putAllIgnoringProfileActivationKey(merged, profileProperties);
+            putAllIgnoringProfileActivationKey(merged, profileJson);
             merged.putAll(environment);
             merged.putAll(args);
             return Map.copyOf(merged);
+        }
+
+        /**
+         * Copies entries from {@code source} into {@code target}, skipping
+         * the profile-activation key (see {@link #merged()}).
+         */
+        private static void putAllIgnoringProfileActivationKey(
+            Map<String, String> target,
+            Map<String, String> source
+        ) {
+            for (Map.Entry<String, String> entry : source.entrySet()) {
+                if ("freeway.profile".equals(entry.getKey())) {
+                    continue;
+                }
+                target.put(entry.getKey(), entry.getValue());
+            }
         }
     }
 }

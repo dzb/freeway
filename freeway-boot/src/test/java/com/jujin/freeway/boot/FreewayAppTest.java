@@ -1,5 +1,10 @@
 package com.jujin.freeway.boot;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -18,6 +23,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -147,6 +154,44 @@ class FreewayAppTest {
     }
 
     @Test
+    void concurrentStartAllowsExactlyOneWinner() throws Exception {
+        // Regression: the single-use guard was a check-then-set boolean — two
+        // threads calling start() concurrently could both pass it, building
+        // two containers and registering two shutdown hooks. The guard must
+        // be atomic: exactly one call succeeds, the other throws the same
+        // single-use error.
+        AppBuilder builder = FreewayApp.of(new TestBootApp()).shutdownHook(false);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<AppRuntime>> futures = new ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                futures.add(pool.submit(builder::start));
+            }
+            AppRuntime winner = null;
+            int failures = 0;
+            for (Future<AppRuntime> future : futures) {
+                try {
+                    winner = future.get(10, TimeUnit.SECONDS);
+                } catch (ExecutionException ex) {
+                    failures++;
+                    assertInstanceOf(IllegalStateException.class, ex.getCause(),
+                        "the loser must fail with the single-use guard error, got: "
+                            + ex.getCause());
+                }
+            }
+            assertEquals(1, failures, "exactly one concurrent start() must fail");
+            assertNotNull(winner, "exactly one concurrent start() must succeed");
+            assertTrue(winner.isRunning());
+            // The winning app is fully usable — its container resolves services.
+            assertEquals("Hello, World!", winner.get(Greeter.class).greet("World"));
+            winner.close();
+            assertEquals(AppState.STOPPED, winner.state());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void autoDiscoveryCanStartWithoutExplicitModules() {
         AppRuntime app = FreewayApp.of().start();
         try {
@@ -232,6 +277,63 @@ class FreewayAppTest {
         ));
 
         assertTrue(ex.getMessage().contains("Application startup failed"));
+    }
+
+    @Test
+    void runtimeHookOrderingReferenceToUnknownIdFailsStartup() {
+        // Regression (AGENTS.md): invalid hook configuration must fail
+        // startup, not WARN and run hooks in insertion order. A typo like
+        // after("freeway.http.serve") must surface the missing id.
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> FreewayApp.run(
+            new HookUnknownRefModule()
+        ));
+
+        assertTrue(ex.getMessage().contains("Application startup failed"),
+            "got: " + ex.getMessage());
+        Throwable cause = ex.getCause();
+        assertTrue(cause != null && cause.getMessage() != null
+                && cause.getMessage().contains("nonexistent.hook"),
+            "the failure must name the missing id, got: "
+                + (cause == null ? null : cause.getMessage()));
+    }
+
+    @Test
+    void distinctExplicitInstancesOfSameModuleClassFailFast() {
+        // Regression: add(new DbModule("ds1"), new DbModule("ds2")) silently
+        // dropped the second instance (and its configuration).
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> FreewayApp.of(new DupModule("a"), new DupModule("b")).start());
+
+        assertTrue(ex.getMessage().contains("added twice"),
+            "got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains(DupModule.class.getName()),
+            "message must name the module class, got: " + ex.getMessage());
+    }
+
+    @Test
+    void sameExplicitInstanceAddedTwiceIsDeduplicated() {
+        // Re-adding the identical instance is a harmless user mistake — keep
+        // a single copy instead of failing (mirrors ContainerImpl).
+        var module = new DupModule("a");
+        AppRuntime app = FreewayApp.of(module, module).start();
+        try {
+            assertEquals("a", app.get(DupMarker.class).value());
+        } finally {
+            app.close();
+        }
+    }
+
+    @Test
+    void explicitModuleWinsOverSpiDiscoveredSameClass() {
+        // FreewayAppTest$SpiDupModule is registered as an SPI ModuleEx; the
+        // explicitly added instance must win over the discovered one.
+        AppRuntime app = FreewayApp.of().add(new SpiDupModule("explicit")).start();
+        try {
+            assertEquals("explicit", app.get(SpiDupMarker.class).value(),
+                "the explicit instance must win over the SPI-discovered one");
+        } finally {
+            app.close();
+        }
     }
 
     @Test
@@ -372,6 +474,51 @@ class FreewayAppTest {
                 @Override
                 public void start(Container container) {}
             }).after("first");
+        }
+    }
+
+    public static final class HookUnknownRefModule implements ModuleEx {
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(RuntimeHook.class).add("myhook", new RuntimeHook() {
+                @Override
+                public void start(Container container) {}
+            }).after("nonexistent.hook");
+        }
+    }
+
+    public record DupMarker(String value) {}
+
+    public static final class DupModule implements ModuleEx {
+        private final String value;
+
+        DupModule(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public void bind(Binder binder) {
+            binder.bind(DupMarker.class).to(new DupMarker(value));
+        }
+    }
+
+    public record SpiDupMarker(String value) {}
+
+    /** Registered as an SPI ModuleEx provider (see META-INF/services). */
+    public static final class SpiDupModule implements ModuleEx {
+        private final String value;
+
+        public SpiDupModule() {
+            this("spi");
+        }
+
+        public SpiDupModule(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public void bind(Binder binder) {
+            binder.bind(SpiDupMarker.class).to(new SpiDupMarker(value));
         }
     }
 

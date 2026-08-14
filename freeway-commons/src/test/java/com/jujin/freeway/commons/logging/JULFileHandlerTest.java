@@ -387,6 +387,37 @@ class JULFileHandlerTest {
         assertTrue(Files.exists(otherFile), "Other app's files should NOT be purged");
     }
 
+    // ── regression: purge never deletes an in-progress .gz.tmp ─────
+
+    @Test
+    void purgeSkipsGzTmpStagingFile(@TempDir Path tempDir) throws IOException {
+        Path logFile = tempDir.resolve("purge-tmp.log");
+        String oldDate = LocalDate.now().minusDays(5)
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
+        // An expired archive that purge must delete...
+        Path oldArchive = logFile.getParent()
+                .resolve("purge-tmp." + oldDate + ".1.log");
+        Files.writeString(oldArchive, "old");
+
+        // ...and a .gz.tmp staging file from an in-progress compression that
+        // purge must NOT delete: it would orphan the compressor mid-write
+        // and lose the archive it is producing.
+        Path oldTmp = logFile.getParent()
+                .resolve("purge-tmp." + oldDate + ".1.log.gz.tmp");
+        Files.writeString(oldTmp, "partial gzip data");
+
+        // Constructor runs rotateStaleFileOnStartup() → purgeOldFiles().
+        JULFileHandler handler = new JULFileHandler(
+                logFile.toString(), 10 * 1024 * 1024, 1, false);
+
+        assertTrue(Files.exists(oldTmp),
+                "In-progress .gz.tmp staging file must survive purge");
+        assertFalse(Files.exists(oldArchive),
+                "Expired archive must still be purged");
+        handler.close();
+    }
+
     // ── regression: startup rotation enforces max-history ──────────
 
     @Test

@@ -325,7 +325,11 @@ public record ServerConfig(
 - **`@Value("${key:default}")`** — for **optional** configuration. The
   expression is expanded from the config cascade; if the key is missing the
   default value after the colon is used. Use this for settings with sensible
-  fallbacks like timeouts, feature flags, or cosmetic names.
+  fallbacks like timeouts, feature flags, or cosmetic names. The shell-style
+  `:-` separator is also supported: `@Value("${port:-8080}")` strips a single
+  leading dash from the default and yields `"8080"` (not `"-8080"`), while
+  `${port:8080}` keeps the default verbatim and `${port:}`/`${port:-}` both
+  yield the empty string.
 
 ```java
 // Required — startup fails if absent
@@ -340,6 +344,11 @@ public record ServerConfig(
 
 Both paths use the container's type coercion mechanism, so values are
 automatically converted to the target type (`int`, `boolean`, `Duration`, etc.).
+
+Field injection into a **final** field (or any other non-writable property)
+carrying `@Inject`, `@Symbol`, or `@Value` fails fast with a clear error —
+the field would otherwise be silently skipped and keep its default value.
+Use constructor injection for final fields.
 
 To emit a literal `${` in a value (e.g. shell-style text), escape it with a
 backslash — `\${total}` stays as-is and is never expanded. An even run of
@@ -370,7 +379,8 @@ routes.forEach(r -> ...);
 @Inject Map<String, FlowDriver> drivers;  // only named contributions, keyed by id
 FlowDriver custom = drivers.get("custom");
 
-// Or via constructor
+// Or via constructor — constructor parameters consume contributions
+// implicitly, no @Inject required
 public class Router {
     private final List<Route> routes;
     public Router(List<Route> routes) {
@@ -378,6 +388,15 @@ public class Router {
     }
 }
 ```
+
+Contribution injection: **constructor parameters consume contributions
+implicitly** — the constructor is the single mandatory injection point, so
+resolution failure is loud at startup and there is no silent-miss risk.
+Fields require an explicit `@Inject` (they are writable and can be
+forgotten). An explicit `@Inject("id")` on a `List`/`Map` injection point
+prefers a bound service with that id (letting you bind your own
+`List<Foo>`/`Map<String, Foo>` service and inject it by id); only when no
+such binding exists does resolution fall back to the contributed view.
 
 **Choosing between List and Map:**
 
@@ -417,8 +436,8 @@ Rules:
 - `add(value)` preserves insertion order.
 - `add(id, value)` enables `before/after` constraints for topological ordering.
 - `add(Class)` auto-instantiates the contributed class from the container and generates a canonical id as `snake_name@package` (e.g. `email_sender@com.example.flow`). Supports `before`/`after` ordering on the returned `Contribution`.
-- Duplicate ids fail immediately. Unknown order targets throw `IllegalArgumentException` at resolution time. Cycles fail at resolution time.
-- Constructor parameters are auto-resolved; fields require `@Inject`.
+- Duplicate ids fail immediately. Generic `all()` ordering treats unknown order targets leniently — they are WARNed and ignored (a missing sibling is harmless for most extension points); strict consumers call `Extension.validateOrdering()`, which fails fast on any unknown reference (runtime-hook ordering in the boot layer does this, so a typo fails startup). Cycles fail at resolution time.
+- Constructor parameters are auto-resolved; fields require `@Inject`. (Contribution consumption via `List`/`Map` follows the same rule: constructor parameters implicit, fields explicit — see above.)
 
 ### EventBus
 
@@ -445,6 +464,12 @@ bus.publish(new PostCreatedEvent(post));    // class-based
 bus.publish("order.placed", payload);       // string-topic
 bus.publishAsync(new PostCreatedEvent(post)); // fire-and-forget (virtual threads)
 ```
+
+Note the single-argument `publish("order.placed")` is **not** a topic publish —
+a one-arg call dispatches a `String` *class event*, which only subscribers on
+`String.class` (or a supertype) receive. Topic subscribers registered via
+`EventSubscriber.of("order.placed", ...)` or `subscribe("order.placed", ...)`
+only receive two-argument `publish(topic, payload)` calls.
 
 **Key types:**
 
@@ -541,7 +566,7 @@ public final class UserService {
 Logger log = container.get(LoggerSource.class).get(UserService.class);
 ```
 
-`freeway-commons` provides a JUL-backed SLF4J 2 provider — zero-dependency, enabled by default. When no external logger (Logback, Log4j) is on the classpath, SLF4J discovers the JUL provider automatically. Adding Logback switches seamlessly without code changes.
+`freeway-commons` registers a JUL-backed SLF4J 2 provider **unconditionally** via `META-INF/services` — zero-dependency. Because SLF4J 2.x does not prefer any provider on its own, `LogBootstrap.ensureProvider()` runs at startup (`FreewayApp`/`Freeway` static initialization, before any `LoggerFactory.getLogger()` call) and probes the classpath for external SLF4J 2.x providers (Logback, Log4j 2, slf4j-simple, in that priority). When one is present it pins the `slf4j.provider` system property to it, so the external provider deterministically wins over the JUL fallback; the JUL provider takes effect only when no external provider exists. A user-supplied `-Dslf4j.provider` is always respected and never overridden. Adding Logback switches seamlessly without code changes.
 
 Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Configuration is through `freeway-log.properties` on the classpath root (not bundled in the JAR). System properties (`-D`) and env vars override file values — the env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix.
 
@@ -568,6 +593,13 @@ AppRuntime runtime = FreewayApp.run(new String[0], new AppModule(), new HttpModu
 ```
 
 `FreewayApp.run()` accepts command-line args and module instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
+
+Adding the **same module class twice with two different instances** (e.g.
+`add(new DbModule(), new DbModule())`, or an explicit module that SPI
+auto-discovery also loads) fails fast at startup — silently dropping one
+instance's configuration would be worse. The identical instance added twice
+is deduplicated harmlessly, and SPI-discovered duplicates of an explicit
+module are dropped in favor of the explicit one.
 
 For more control, use `AppBuilder`:
 
@@ -603,6 +635,11 @@ binder.contribute(RuntimeHook.class)
 
 Startup invokes hooks in resolved contribution order. Shutdown invokes only started hooks in reverse order, then closes the container.
 
+Hook ordering is **strict**: `before`/`after` references to an unknown hook id
+fail startup (unlike generic extension ordering, which WARNs) — a typo like
+`after("freeway.http.serve")` is caught instead of silently running hooks in
+the wrong order.
+
 ### Config Cascade
 
 Lowest to highest priority:
@@ -619,6 +656,20 @@ prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
 Dotted keys (`--app.name=foo`) pass through unchanged.
 Activate profiles: `--profile=dev` or `--freeway.profile=dev`.
 
+Three CLI styles are supported: `--key=value`, `--key value` / `--key`
+(boolean flag, value defaults to `"true"`; a following negative number like
+`--port -1` is consumed as a value), and `-Dkey=value`. A bare `--` / `-D`
+(empty key) and `--=x` (key containing `=`) are **rejected** with an
+`IllegalArgumentException` — they would otherwise produce garbage keys.
+Anything that is not a flag (a positional argument) is ignored with a WARN.
+
+An empty or whitespace-only `application.json` is treated as "no config"
+(same as a missing file or an empty `application.properties`) — not a parse
+error. Malformed non-blank JSON still fails startup. `freeway.profile` set
+inside a profile file is stripped from the merged config: profiles are
+activated from the base layers (`application.properties`/`application.json`,
+env, CLI) only, so a profile file cannot re-select profiles.
+
 **Environment variables and namespaces:** The `FREEWAY_` prefix maps into the
 `freeway.*` namespace (`FREEWAY_LOG_FILE_MAX_SIZE` → `freeway.log.file.max.size`).
 A single configurable prefix, `freeway.env.prefix` (default `FREEWAY_`), can
@@ -634,6 +685,14 @@ APP_FREEWAY_HTTP_PORT → freeway.http.port
 With a custom prefix, `FREEWAY_*` variables are no longer read by the config
 cascade (logging's own `FREEWAY_LOG_*` env support is a separate mechanism and
 is unaffected).
+
+**Typed access:** `AppConfig.get(ConfigSpec<T>)` resolves a typed value from
+the raw string with the spec's parser (or the spec's default when
+absent/blank). Specs created without a per-key parser
+(`ConfigSpec.of(key, type, default)`) are resolved with the default
+`Coercer`, so built-in conversions (int, boolean, `Duration`, ...) apply;
+user-registered `CoerceRule`s require the container coercer via
+`parse(raw, Coercer)`.
 
 ---
 
@@ -765,6 +824,23 @@ ctx.param("name")       // queryParam → pathVar (convenience)
 ctx.correlationId()     // unique request id
 ```
 
+`bodyAsJson()` validates the request `Content-Type` before deserializing: it
+accepts `application/json` and structured-syntax suffixes
+(`application/*+json`, e.g. `application/vnd.api+json`); any other media type
+(including a missing header) is a client error mapped to **415 Unsupported
+Media Type** — never a 500. `maxBodySize` (default 10 MiB, configurable per
+server and per request via `ctx.maxBodySize(...)`) is enforced on the body
+stream itself, not just on buffered reads: a counting wrapper sits outside the
+framing decision (chunked, fixed-length, and unknown-length), so every byte
+delivered to any consumer — buffered `body()` reads or streaming reads during
+parsing — is counted against the live limit, and an over-limit read throws
+`BodyTooLargeException` → 413.
+
+On a keep-alive connection the context is reused between requests, but all
+per-request exchange state is reset: the security principal, request
+attributes, and the correlation id are cleared and a fresh id is rolled for
+request N+1 (an incoming `X-Request-Id` header is then applied on top).
+
 ### Response
 
 ```java
@@ -775,6 +851,12 @@ ctx.sendJson(200, object);
 ctx.output("text".getBytes());
 ctx.output("text");  // UTF-8 convenience
 ```
+
+Response header values must be **ISO-8859-1 encodable** (the charset the
+HTTP/1.1 writers serialize header values with) and must not contain CR/LF:
+setting a header with a non-Latin-1 character (above U+00FF) or a line break
+throws `IllegalArgumentException` instead of silently writing a corrupted or
+injected header on the wire. Header names must be RFC 7230 tokens.
 
 ### Filters
 
@@ -835,6 +917,16 @@ StaticResourceMount.classpath("/assets", "/static")
     .immutable(true)            // sets Cache-Control: immutable
     .fallthrough(true);         // pass to next handler on 404
 ```
+
+Directory requests serve that directory's `index.html` — both at the mount
+root and in subdirectories (`/docs/` resolves to `docs/index.html`; a request
+naming a real directory without a trailing slash resolves the same way).
+Files up to 50 MB are fully memory-loaded when needed; larger files are
+streamed (sendfile fast path for real files on plain HTTP, otherwise a body
+stream), so large assets never force the whole file into memory. For route
+matching, a single decoded path segment is capped at 1024 characters before
+regex-constrained matching (and constraint regexes at 64 chars), preventing
+ReDoS on developer-registered patterns.
 
 ### Multipart
 
@@ -918,6 +1010,19 @@ FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new UndertowMod
 5. `WebServerBuilder.engine(…)` bypasses container resolution entirely for programmatic override
 
 No config keys needed — just add or remove the extension module. Same `.primary()` pattern used by `freeway-db-hikari` and custom database dialects.
+
+**HTTP/2 request validation:** the built-in engine validates request
+pseudo-headers and rejects malformed ones with a `PROTOCOL_ERROR` — unknown
+pseudo-headers, pseudo-headers appearing after regular headers, duplicate
+pseudo-headers, connection-specific headers (`connection`,
+`transfer-encoding`, `keep-alive`, `proxy-connection`, `upgrade`), a `te`
+header other than `trailers`, and a missing/blank `:method`. `:path` must be
+origin-form (start with `/`, no `//host` or `scheme://` authority/absolute
+forms, no whitespace or control characters; `*` is allowed only for
+`OPTIONS`) and `:scheme` is required for non-CONNECT requests; `:authority`,
+when present, must satisfy the same character rules as an HTTP/1.1 `Host`
+header (no `@`, whitespace, `/`, `\`, or control characters) and is required
+for CONNECT.
 
 ### Testing with HTTP
 
@@ -1039,7 +1144,7 @@ db.transaction(IsolationLevel.SERIALIZABLE, () -> {
 });
 ```
 
-Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection.
+Nested transactions are detected and rejected. Auto-commit is restored on exit. Queries inside the transaction automatically use the same connection. The transaction is **thread-bound** (backed by `ScopedValue`, which does not propagate to child threads): DB calls made on a different thread while a transaction is active, or consuming a `Query`/`BatchQuery` created inside a transaction on another thread (or after the transaction ends), throw a `SqlException` — the work would otherwise silently borrow an independent pooled connection and run outside the transaction, breaking atomicity. Cross-`Database` work (e.g. via `DatabaseHub`) commits independently and is not rolled back with the transaction.
 
 **Transaction-aware side effects:** EventBus events published inside a transaction are automatically deferred and only fire after commit — no manual wiring needed. This is powered by the `Defer` mechanism (see [Defer](#defer--scope-bound-deferred-execution)):
 
@@ -1082,6 +1187,13 @@ orm.deleteById(Post.class, 1L);
 ```
 
 Annotations: `@Table`, `@Column`, `@Id`, `@Generated`, `@Transient`, `@Index`.
+
+`save()` treats an unset `@Generated` id as "insert": a primitive id field
+(`long`, `int`) reads back its type's default (`0`/`0L`/`0.0`/`false`)
+instead of `null`, so a fresh entity with a primitive `@Generated` id is
+recognized as new and inserts through the auto-increment sequence rather than
+upserting an explicit zero id. The generated key is written back onto the
+entity after the insert (boxed types and primitives alike).
 
 ### Connection Pool
 
@@ -1177,29 +1289,51 @@ freeway.db.dialect=mysql
     └─ configured? ──yes──→ container.get(Dialect.class, "mysql")
     │                            │
     │                            ├─ found? ──yes──→ use it
-    │                            └─ not found ──→ warn + fall through
+    │                            └─ not found ──→ fail fast (unknown dialect id)
     │
     └─ not configured ──→ detect from freeway.db.url
                               │
                               ├─ :postgresql:  → "postgresql"
                               ├─ :mysql:       → "mysql"
                               ├─ :mariadb:     → "mysql"
-                              ├─ :h2:          → "h2"
-                              └─ unknown       → ""
-                                   │
-                                   └─→ container.get(Dialect.class)
-                                           → PostgresDialect (primary)
+                              ├─ :h2:          → "h2" (MODE=MySQL/MariaDB → "mysql",
+                              │                  MODE=PostgreSQL → "postgresql")
+                              ├─ :sqlite:      → "sqlite"
+                              └─ unknown scheme → fail fast: "No SQL dialect for
+                                    JDBC URL ..." — an unrecognized URL
+                                    (e.g. jdbc:oracle:...) never silently
+                                    falls back to PostgreSQL
 ```
+
+An explicit `freeway.db.dialect` always wins, and an unknown explicit id fails
+fast. Auto-detection from the JDBC URL is shared between standalone
+`DatabaseBuilder` and `DbModule`; a `null`/blank URL (no database configured
+yet) is the only case that defaults to `PostgresDialect`.
 
 **Built-in dialects:**
 
 | id | Class | Target |
 |----|-------|--------|
-| `postgresql` | `PostgresDialect` | PostgreSQL, H2 (all modes except MySQL) — **default** |
-| `mysql` | `MySqlDialect` | MySQL, MariaDB, H2 with `MODE=MySQL` |
+| `postgresql` | `PostgresDialect` | PostgreSQL — **default** (primary binding) |
+| `mysql` | `MySqlDialect` | MySQL, MariaDB, H2 with `MODE=MySQL`/`MODE=MariaDB` |
+| `h2` | `H2Dialect` | H2 (all modes except MySQL/PostgreSQL) |
 | `sqlite` | `SqliteDialect` | SQLite |
 
-`DbModule` binds `PostgresDialect` as `id("postgresql").primary()`, plus `MySqlDialect` (`id("mysql")`) and `SqliteDialect` (`id("sqlite")`) — all three built-in. Custom dialects can be contributed by users or third-party modules — same pattern as `HikariPoolModule` for pool selection.
+`DbModule` binds all four: `PostgresDialect` as `id("postgresql").primary()`,
+plus `MySqlDialect` (`id("mysql")`), `H2Dialect` (`id("h2")`), and
+`SqliteDialect` (`id("sqlite")`). Custom dialects can be contributed by users
+or third-party modules — same pattern as `HikariPoolModule` for pool
+selection.
+
+**Dialect capabilities:** the `Dialect` interface declares capability flags
+the framework consults at runtime. Notably `supportsTransactionalDdl()`
+(PostgreSQL, H2, SQLite: true; MySQL/MariaDB: false — DDL implicitly commits)
+governs whether DDL can run inside a transaction, and
+`backslashEscapesStrings()` (MySQL/MariaDB: true) tells the SQL scanner that a
+backslash escapes the next character inside ordinary single-quoted literals.
+Other flags cover `CREATE INDEX IF NOT EXISTS`, `RETURNING`, `ON CONFLICT`,
+`ALTER ... ADD COLUMN NOT NULL`, and lexer features (dollar quoting, bracket
+quoting, `#` comments, `E'...'` literals).
 
 **Custom dialect — write once, select via config:**
 
@@ -1237,7 +1371,7 @@ Freeway provides two complementary mechanisms for database evolution: **Schema**
 
 #### Schema — Annotation-Driven Auto-DDL
 
-`Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns.
+`Schema.ensure()` reads `@Table` / `@Column` / `@Id` / `@Generated` / `@Index` annotations and generates the corresponding DDL. It never drops or modifies existing columns. It is **not transactional** — each DDL statement runs on its own connection. On databases without transactional DDL (MySQL/MariaDB, see `Dialect.supportsTransactionalDdl()`), calling `ensure()` inside a user transaction is rejected with a `SqlException` (the DDL would implicitly commit and silently commit the transaction's pending work); on transactional-DDL databases (PostgreSQL, H2, SQLite) wrapping `ensure()` in a transaction is safe and rolls the whole schema back on failure.
 
 ```java
 /// Standalone usage
@@ -1310,7 +1444,17 @@ MigrationRunner runner = container.get(MigrationRunner.class);
 runner.run();  // idempotent — already-applied files are skipped
 ```
 
-Each migration runs in its own database transaction. The tracking table is `_migrations` (configurable). Applied migrations are **immutable** — modifying a SQL file that has already been applied causes a checksum mismatch error at startup.
+Each migration runs in its own database transaction. The tracking table is `_migrations` (configurable). Applied migrations are **immutable** — modifying a SQL file that has already been applied causes a checksum mismatch error at startup. Checksum validation is **dual-track for line-ending compatibility**: the stored SHA-256 of the raw file bytes is compared first, and if that mismatches, the file is compared a second time with CRLF line endings normalized to LF — a pure line-ending change (e.g. a Windows checkout of a file recorded from LF) is accepted, while any real content change still fails. The stored row is never rewritten.
+
+On databases without transactional DDL (MySQL/MariaDB — DDL statements
+implicitly commit there), a migration that **contains DDL is rejected** with a
+`SqlException` before execution: the DDL would commit but the checksum row
+would be lost, and the next startup would re-run the DDL and fail. Split such
+DDL into separate migrations and make statements idempotent (`IF NOT EXISTS`),
+or use a transactional-DDL database. Migrations are also locked against
+concurrent runners (a `__LOCK__` row in the tracking table), and
+already-applied migration files that disappear from the classpath fail fast as
+a packaging error.
 
 Config:
 
@@ -1438,7 +1582,14 @@ Graph graph = Graph.fromText("""
 """);
 ```
 
-`Graph.fromText()` accepts only the canonical format above. `GraphSpec.normalize()` validates link references, requires exactly one entry, and checks BFS reachability at `create()` time.
+`Graph.fromText()` accepts **only** the canonical v2 format above — a document
+must carry `"version": 2` plus `nodes` and `links`; anything else (including
+the legacy solon-flow `layout` format, or a missing/other version field) is
+rejected with an `IllegalArgumentException`. `GraphSpec.normalize()`
+validates link references, requires exactly one entry, checks BFS reachability
+at `create()` time, rejects cycles (LOOP iteration is driven by `$in`, never
+by link back-edges), and rejects duplicate unconditional links between the
+same pair of nodes (multi-edges must carry distinct `when` conditions).
 
 **Task resolution** — nodes use prefix syntax to specify what to execute. Each prefix has different resolution logic:
 
@@ -1458,6 +1609,21 @@ FlowEngine engine = container.get(FlowEngine.class);
 engine.load(graph);
 engine.eval("orderFlow", FlowContext.of());
 ```
+
+**Gateway dead ends fail loudly:** a run that finishes without reaching the
+END node throws a `FlowException` — e.g. an `EXCLUSIVE` node whose conditions
+all evaluated false and that has no default link, or a join gateway that never
+received all its incoming branches (including a `PARALLEL` fork where a branch
+died). The exception names the dead-end node and its graph. Explicitly
+stopped runs and interceptor-blocked runs are exempt.
+
+**Condition expressions** (`when` on nodes/links) are evaluated by
+`ExprEvaluator`: `&&`/`||` (and `and`/`or`) **short-circuit** — the right
+operand is only evaluated when it can affect the result — and unary `-` (plus
+`+`, `!`/`not`) is supported with type-preserving negation. Mixed
+number/string comparisons are numeric when the string parses (`"10" > 9` is
+true; `"10" == 10` is true), otherwise lexicographic; `"true"`/`"1"` are
+truthy and `"false"`/`"0"` falsy in boolean contexts.
 
 **Key types:**
 
@@ -1486,7 +1652,7 @@ binder.contribute(FlowDriver.class)
 
 Graph definition: `{ "driver": "custom", ... }`
 
-Supports PlantUML export, execution tracing with pause/resume, subgraph calls, and interceptor chains.
+Supports PlantUML export, execution tracing with pause/resume, subgraph calls, and interceptor chains. **Sub-graph calls inherit the caller's per-eval interceptors**: the parent evaluation's `FlowOptions` (interceptors added via `interceptorAdd`, covering `interceptFlow`/`onNodeStart`/`onNodeEnd`) are propagated into `#subGraph` evals, so per-eval interceptors cover sub-graph nodes too (the engine-level interceptor list is merged exactly once per eval).
 
 ---
 
@@ -1498,6 +1664,18 @@ Commons contains the shared runtime primitives used across Freeway: JSON, coerci
 - coercion lives in `Coercer` and `CoerceRule`
 - validation lives in `BeanValidator`
 - scoped primitives are described in [freeway-commons.md](freeway-commons.md)
+
+**JSON parsing limits (enforced by the built-in parser):** a single string
+value is capped at 10 MB, a single number token at 10 MB, and streamed input
+at 32 MB total (the string path applies the same 32 MB budget to the char
+count); nesting is capped at 1000 levels and arrays/objects at 1,000,000
+entries. Duplicate object keys are **last-wins** — `{"a":1,"a":2}` parses to
+`a=2`, plain `Map.put` semantics, never an error.
+
+**Bean serialization:** bean properties come from the field set, a
+`getX()`/`isX()` accessor is the preferred read path when the class declares
+one (transforming getters are honored), and getter-only (computed) properties
+serialize as read-only members.
 
 For more detail:
 
@@ -1557,7 +1735,7 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 - **`ScopedCache` triggers:** request-scoped lookup tables, per-scope connections or handles, repeated resolution of thread-scoped services, values that need one cleanup action when the scope exits.
 - Thread-scoped services use **`Scoping.within()`** to enter an execution boundary; the scope auto-closes when the work lambda completes. Backed by JDK 25 `ScopedValue` — no `ThreadLocal` overhead on virtual threads.
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `WebServer`.
-- **`LoggerSource`** is the built-in logger service. Commons provides a JUL-backed SLF4J provider via standard `META-INF/services` discovery; it only activates when no external SLF4J provider is detected.
+- **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly).
 
 ### Naming Rules
 

@@ -6,8 +6,16 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiConsumer;
 
+/**
+ * Lightweight JSON object backed by a {@link LinkedHashMap} — insertion
+ * order is preserved. Both parsing and {@link #put(String, Object)} follow
+ * <b>last-wins</b> semantics: setting an existing key replaces its value, so
+ * {@code {"a":1,"a":2}} parses to {@code {"a":2}} and
+ * {@code object.put("a", 1).put("a", 2)} ends with {@code 2}. No
+ * duplicate-key diagnostics are produced — callers that need strict
+ * uniqueness must validate their input.
+ */
 public final class JsonObject {
 
     private final LinkedHashMap<String, Object> values;
@@ -16,6 +24,11 @@ public final class JsonObject {
         this.values = new LinkedHashMap<>();
     }
 
+    /**
+     * Sets {@code key} to {@code value}, replacing any previous value for the
+     * same key (last-wins, like parsing). The value is
+     * {@link JsonUtils#normalize(Object) normalized} into JSON form.
+     */
     public JsonObject put(String key, Object value) {
         values.put(
             Objects.requireNonNull(key, "key"),
@@ -108,10 +121,6 @@ public final class JsonObject {
     @Override
     public String toString() {
         return JsonUtils.stringify(this);
-    }
-
-    void forEach(BiConsumer<String, Object> consumer) {
-        values.forEach(consumer);
     }
 
     /**

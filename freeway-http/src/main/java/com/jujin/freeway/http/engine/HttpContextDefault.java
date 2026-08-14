@@ -127,6 +127,10 @@ public class HttpContextDefault extends AbstractHttpContext {
         this.requestBody = new RequestBody(
             bodyStream, contentLength, chunked, () -> maxBodySize);
         this.rawOut = rawOut;
+        // Clear principal/attributes and roll a fresh correlation id so
+        // request N+1 on a keep-alive connection never sees request N's
+        // authentication context; the incoming X-Request-Id (if any) is then
+        // applied on top.
         resetExchangeMeta();
         setCorrelationId(correlationId);
         this.http10 = http10;
@@ -215,6 +219,11 @@ public class HttpContextDefault extends AbstractHttpContext {
 
     @Override
     public HttpResponse setStatus(int status) {
+        if (status < 100 || status > 599) {
+            throw new IllegalArgumentException(
+                "Invalid HTTP status code: " + status
+                    + " (must be between 100 and 599)");
+        }
         this.responseStatus = status;
         return this;
     }
@@ -277,12 +286,12 @@ public class HttpContextDefault extends AbstractHttpContext {
             chunkedResponse = true;
             responseHeaders.set("Content-Encoding", "gzip");
             addVaryAcceptEncoding();
-        } else if (contentLength >= 0
-                && !hasResponseHeader("Content-Length")) {
-            responseHeaders.set("Content-Length", Long.toString(contentLength));
-        } else if (contentLength < 0
-                && !hasResponseHeader("Content-Length")) {
-            chunkedResponse = true;
+        } else if (!hasResponseHeader("Content-Length")) {
+            if (contentLength >= 0) {
+                responseHeaders.set("Content-Length", Long.toString(contentLength));
+            } else {
+                chunkedResponse = true;
+            }
         }
         responded = true;
         writer.writeHead(this);
@@ -373,10 +382,18 @@ public class HttpContextDefault extends AbstractHttpContext {
         writer.writeHead(this);
         writer.writeBody(this, new byte[0]); // status + headers, once
         rawOut.flush();
-        try {
-            fileSender.transfer(channel, offset, length);
-        } finally {
+        // HEAD (and bodyless statuses) must not put file bytes on the wire:
+        // the buffered path suppresses them inside the writers, but this
+        // sendfile path transfers straight to the socket — skip it and keep
+        // the same Content-Length as GET (RFC 9110 §9.3.2).
+        if (ResponseFraming.suppressBodyBytes(allowsResponseBody(), method)) {
             channel.close();
+        } else {
+            try {
+                fileSender.transfer(channel, offset, length);
+            } finally {
+                channel.close();
+            }
         }
         writer.end(this);
         return this;

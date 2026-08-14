@@ -3,8 +3,14 @@ import com.jujin.freeway.ioc.annotation.PreDestroy;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,6 +96,56 @@ class ContainerCloseTest {
     }
 
     @Test
+    void errorFromPreDestroyDoesNotAbortShutdown() {
+        // Regression: drainPhase caught only Exception, so an Error
+        // (AssertionError, ...) from one @PreDestroy escaped close() before
+        // closed=true was set and the caches were cleared — a retried close()
+        // re-ran @PreDestroy on already-destroyed singletons. The Error must
+        // accumulate into the close() exception while the drain completes.
+        preDestroyFailureObserved = false;
+        containerRef = Freeway.create(binder -> {
+            binder.bind(ErrorCleanup.class).to(ErrorCleanup.class);
+            binder.bind(ObservingCleanup.class).to(ObservingCleanup.class);
+        });
+        containerRef.get(ErrorCleanup.class);
+        containerRef.get(ObservingCleanup.class);
+
+        RuntimeException ex = assertThrows(RuntimeException.class, containerRef::close,
+            "close() must complete and report the failure, not be aborted by the Error");
+        assertTrue(preDestroyFailureObserved,
+            "the other service's @PreDestroy must still run after an Error");
+        assertTrue(ex.getMessage().contains("Unable to invoke @PreDestroy"),
+            "the Error must surface via the close() exception, got: " + ex.getMessage());
+
+        // The container must now be sealed — a retried close is a no-op and
+        // does NOT re-run @PreDestroy.
+        assertDoesNotThrow(containerRef::close, "close() after an Error must still be idempotent");
+        assertThrows(IllegalStateException.class, () -> containerRef.get(ObservingCleanup.class),
+            "the container must be sealed even though a callback threw an Error");
+    }
+
+    @Test
+    void errorFromAutoCloseableDoesNotAbortShutdown() {
+        // Same contract for the AutoCloseable branch of the drain.
+        preDestroyFailureObserved = false;
+        autoCloseErrorObserved = false;
+        containerRef = Freeway.create(binder -> {
+            binder.bind(ErrorCloseable.class).to(ErrorCloseable.class);
+            binder.bind(ObservingCleanup.class).to(ObservingCleanup.class);
+        });
+        containerRef.get(ErrorCloseable.class);
+        containerRef.get(ObservingCleanup.class);
+
+        RuntimeException ex = assertThrows(RuntimeException.class, containerRef::close);
+        assertTrue(preDestroyFailureObserved,
+            "the other service's @PreDestroy must still run after an AutoCloseable Error");
+        assertTrue(autoCloseErrorObserved,
+            "the failing closeable must still be attempted");
+        assertTrue(ex.getMessage().contains("Unable to close container-managed resource"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
     void threadScopedValueCleanedUpAfterContainerClose() {
         // A THREAD-scope value realized inside an open scope, then the
         // container closes while the scope is still open: scope exit must
@@ -119,11 +175,84 @@ class ContainerCloseTest {
         }
     }
 
+    @Test
+    void concurrentCloseDoesNotOrphanSlowRealize() throws Exception {
+        // Regression: close() drains lifecycle callbacks WITHOUT holding
+        // REALIZE_LOCK (deliberately — user callbacks may join threads that
+        // realize services), then clears the caches and seals. A realize()
+        // that passed its first closed check and is blocked in a slow
+        // constructor could insert a fresh singleton into targetCache AFTER
+        // the drain's last snapshot — an instance that never receives
+        // @PreDestroy. close() must re-drain under the lock after sealing so
+        // such a target is cleaned up in place.
+        raceDestroyed = 0;
+        raceEntered = new CountDownLatch(1);
+        raceRelease = new CountDownLatch(1);
+        Container container = Freeway.create(binder ->
+            binder.bind(SlowRaceService.class).to(SlowRaceService.class));
+
+        AtomicReference<Throwable> realizeError = new AtomicReference<>();
+        Thread realizing = new Thread(() -> {
+            try {
+                container.get(SlowRaceService.class);
+            } catch (Throwable t) {
+                realizeError.set(t);
+            }
+        });
+        realizing.start();
+        assertTrue(raceEntered.await(5, TimeUnit.SECONDS),
+            "realize must enter the slow constructor");
+
+        Thread closer = new Thread(container::close);
+        closer.start();
+        // Give close() time to finish its drain (nothing to drain yet) and
+        // block on REALIZE_LOCK, so the constructor returns strictly after
+        // the drain's last snapshot — the race window.
+        Thread.sleep(200);
+        raceRelease.countDown();
+
+        closer.join(10_000);
+        realizing.join(10_000);
+        assertFalse(closer.isAlive(), "close() must complete");
+        assertFalse(realizing.isAlive(), "the racing realize must complete");
+        assertNull(realizeError.get(),
+            "the racing realize must succeed (it started before close), got: " + realizeError.get());
+
+        assertEquals(1, raceDestroyed,
+            "a singleton realized during close must receive exactly one @PreDestroy — no orphan");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> container.get(SlowRaceService.class));
+        assertTrue(ex.getMessage().contains("Container is closed"),
+            "get() after close must report the sealed container, got: " + ex.getMessage());
+    }
+
+    static class SlowRaceService {
+        SlowRaceService() {
+            raceEntered.countDown();
+            try {
+                raceRelease.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+        }
+
+        @PreDestroy
+        void destroy() {
+            raceDestroyed++;
+        }
+    }
+
     private static Container containerRef;
     private static boolean preDestroyAccessed;
     private static boolean drainRealized;
     private static boolean drainClosed;
     private static boolean preDestroyFailureObserved;
+    private static boolean autoCloseErrorObserved;
+    private static CountDownLatch raceEntered;
+    private static CountDownLatch raceRelease;
+    private static int raceDestroyed;
 
     interface Greeter {
         String greet();
@@ -166,6 +295,21 @@ class ContainerCloseTest {
         @PreDestroy
         void cleanup() {
             throw new IllegalStateException("cleanup failed");
+        }
+    }
+
+    static class ErrorCleanup {
+        @PreDestroy
+        void cleanup() {
+            throw new AssertionError("cleanup blew up");
+        }
+    }
+
+    static class ErrorCloseable implements AutoCloseable {
+        @Override
+        public void close() {
+            autoCloseErrorObserved = true;
+            throw new AssertionError("close blew up");
         }
     }
 

@@ -51,6 +51,20 @@ final class InjectResolver {
         BeanPlan plan = BeanIntrospector.plan(ownerType);
         for (BeanProperty property : plan.properties()) {
             if (!property.isWritable()) {
+                // A non-writable property (final field without setter, or a
+                // getter-only computed value) carrying an injection annotation
+                // would otherwise be silently skipped and keep its default
+                // value until the error surfaces at runtime. Fail fast with a
+                // clear directive instead. Non-writable properties WITHOUT any
+                // injection annotation stay untouched (existing behavior).
+                AnnotationLookup lookup = annotations(property);
+                if (hasInjectionAnnotation(lookup) || hasConfiguredValueAnnotation(lookup)) {
+                    throw new IllegalStateException(
+                        "Cannot inject into final field " + property.name()
+                            + " on " + ownerType.getName()
+                            + " — use constructor injection instead"
+                    );
+                }
                 continue;
             }
             Object value = resolveValue(
@@ -94,9 +108,19 @@ final class InjectResolver {
 
     /**
      * Resolves {@code List<Foo>}, {@code Map<String, Foo>}, and
-     * {@code Extension<Foo>} from the contribution mechanism.
-     * For constructor parameters this fires unconditionally; for fields
-     * it requires an {@code @Inject} annotation.
+     * {@code Extension<Foo>} from the contribution mechanism. Constructor
+     * parameters consume contributions implicitly (the constructor is the
+     * single mandatory injection point — failure is loud at startup, so
+     * there is no silent-miss risk); fields require an explicit
+     * {@code @Inject}. An unannotated {@code List}/{@code Map} constructor
+     * parameter resolves to the contributed view, like any other
+     * contributed-typed parameter.
+     *
+     * <p>An explicit {@code @Inject("id")} on a {@code List}/{@code Map}
+     * injection point prefers a bound service with that id; only when no such
+     * binding exists does resolution fall back to contributions. This lets a
+     * user bind their own {@code List<Foo>}/{@code Map<String, Foo>} service
+     * and inject it by id instead of always receiving the contributed view.
      *
      * <p>{@code Extension<Foo>} is intentionally rejected — inject
      * {@code List<Foo>} or {@code Map<String, Foo>} instead.
@@ -117,10 +141,16 @@ final class InjectResolver {
         if (hasConfiguredValueAnnotation(lookup)) {
             return null;
         }
-        Type[] typeArgs = pt.getActualTypeArguments();
+        // Constructor parameters consume contributions implicitly — the
+        // constructor is the single mandatory injection point, so a
+        // resolution failure is loud at startup and there is no
+        // silent-miss risk. Fields require an explicit @Inject (they are
+        // writable and can be forgotten). An explicit @Inject("id") on
+        // either prefers a bound service of that type/id.
         if (!parameterMode && !hasInjectionAnnotation(lookup)) {
             return null;
         }
+        Type[] typeArgs = pt.getActualTypeArguments();
         if (targetType == Extension.class) {
             throw new IllegalArgumentException(
                 "Extension<V> is not injectable by design. "
@@ -132,6 +162,10 @@ final class InjectResolver {
             if (typeArgs.length < 1 || !(typeArgs[0] instanceof Class<?> entryType)) {
                 return null;
             }
+            Object bound = resolveById(targetType, lookup);
+            if (bound != null) {
+                return bound;
+            }
             return container.extension(entryType).all();
         }
         if (targetType == Map.class) {
@@ -139,7 +173,28 @@ final class InjectResolver {
                 || !(typeArgs[1] instanceof Class<?> entryType)) {
                 return null;
             }
+            Object bound = resolveById(targetType, lookup);
+            if (bound != null) {
+                return bound;
+            }
             return container.extension(entryType).asMap();
+        }
+        return null;
+    }
+
+    /**
+     * Resolves a service explicitly qualified by {@code @Inject("id")} on a
+     * {@code List}/{@code Map} injection point: prefers a bound service of
+     * that exact type/id, falling back to the contributed view when no such
+     * binding exists.
+     */
+    private Object resolveById(Class<?> targetType, AnnotationLookup lookup) {
+        String id = resolveId(lookup);
+        if (id != null) {
+            BindingImpl<?> bound = container.bindingIndex().find(targetType, id);
+            if (bound != null) {
+                return container.get(targetType, id);
+            }
         }
         return null;
     }
@@ -260,22 +315,7 @@ final class InjectResolver {
         // A plain String parameter resolves container.get(String.class) via the
         // same marker/scope path as every other type — no special case that
         // would skip scope-compatibility validation.
-        Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
-        Object service;
-        // Validate before realization: a singleton owner directly injecting a
-        // thread-scoped concrete class must get the dedicated diagnostic even
-        // when no scope is open (otherwise "No open scope" from realize() masks
-        // the real contract violation).
-        validateScopeBeforeResolution(ownerType, targetType);
-        if (!markers.isEmpty()) {
-            @SuppressWarnings("unchecked")
-            Class<? extends Annotation>[] markerArr =
-                    markers.toArray(new Class[0]);
-            service = container.get(targetType, markerArr);
-        } else {
-            service = container.get(targetType);
-        }
-        return service;
+        return resolveService(ownerType, lookup, targetType);
     }
 
     private Object resolveInjected(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {
@@ -287,20 +327,23 @@ final class InjectResolver {
                 "Cannot combine service injection and configured value annotations on " + lookup
             );
         }
-        if (targetType == Logger.class) {
-            String loggerId = resolveId(lookup);
-            return loggerId == null ? container.loggerSource().get(ownerType) : container.loggerSource().get(loggerId);
-        }
         String id = resolveId(lookup);
         if (id != null) {
             validateScopeBeforeResolution(ownerType, targetType);
-            Object service = container.get(targetType, id);
-                return service;
+            return container.get(targetType, id);
         }
         // No explicit id — try marker-based resolution
+        return resolveService(ownerType, lookup, targetType);
+    }
+
+    private Object resolveService(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {
         Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
-        Object service;
+        // Validate before realization: a singleton owner directly injecting a
+        // thread-scoped concrete class must get the dedicated diagnostic even
+        // when no scope is open (otherwise "No open scope" from realize() masks
+        // the real contract violation).
         validateScopeBeforeResolution(ownerType, targetType);
+        Object service;
         if (!markers.isEmpty()) {
             @SuppressWarnings("unchecked")
             Class<? extends Annotation>[] markerArr =
