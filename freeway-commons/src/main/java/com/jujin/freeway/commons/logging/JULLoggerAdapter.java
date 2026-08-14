@@ -9,6 +9,26 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
+/**
+ * SLF4J logger implementation backed by a {@link java.util.logging.Logger}.
+ *
+ * <p><b>Markers:</b> SLF4J {@link Marker Markers} are ignored — JUL has no
+ * marker concept, so marker-bearing calls degrade to plain level filtering
+ * (see {@link #handleNormalizedLoggingCall}). Marker-aware {@code isXEnabled}
+ * variants delegate to the same level check as their markerless forms.
+ *
+ * <p><b>Caller info:</b> source class/method are resolved with a single
+ * short-circuited {@link StackWalker} walk per loggable record — the lazy
+ * walker stops at the first application-code frame past the SLF4J bridge,
+ * so it is bounded by bridge depth (a handful of frames), not stack depth.
+ * The walk is deliberately <em>not</em> cached (e.g. by logger name): a
+ * logger is typically shared by many call sites, and serving a stale call
+ * point would report the wrong caller. It also runs eagerly on the logging
+ * thread so records formatted later by another thread (async handlers) keep
+ * correct source info. When caller info is not needed, disable the walk
+ * entirely with {@code -Dfreeway.log.caller-info=false} (or
+ * {@code FREEWAY_LOG_CALLER_INFO=0}).
+ */
 public final class JULLoggerAdapter extends LegacyAbstractLogger {
 
     /**
@@ -47,6 +67,14 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
     @Override
     protected String getFullyQualifiedCallerName() { return JULLoggerAdapter.class.getName(); }
 
+    /**
+     * Bridges a normalized SLF4J call into JUL.
+     *
+     * <p>The SLF4J {@code marker} is intentionally ignored: JUL has no marker
+     * concept, and {@code freeway.log.*} level configuration is the only
+     * filtering mechanism. Marker-aware {@code isXEnabled(Marker)} checks
+     * behave identically to the markerless variants.
+     */
     @Override
     protected void handleNormalizedLoggingCall(
         org.slf4j.event.Level level,

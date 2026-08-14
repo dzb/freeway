@@ -34,6 +34,18 @@ final class JULEnhancer {
 
     private static volatile boolean configured;
 
+    /**
+     * Absolute normalized path → the {@link JULFileHandler} Freeway created
+     * for that file. Cross-logger dedup: exactly one handler per log file,
+     * even when the same path is configured for several loggers (two named
+     * files, or a named file aliasing the default file). Two independent
+     * handlers on one path would each rotate the shared file: one handler
+     * moving the file out from under the other's open stream silently routes
+     * that handler's records into the archive (or loses them).
+     */
+    private static final ConcurrentHashMap<String, JULFileHandler>
+        fileHandlersByPath = new ConcurrentHashMap<>();
+
     private JULEnhancer() {}
 
     static synchronized void configure() {
@@ -328,17 +340,26 @@ final class JULEnhancer {
 
         // Ensure at least one ConsoleHandler exists
         boolean hasConsole = false;
+        String level = readProperty(
+            fileConfig, "freeway.log.console.level", null
+        );
         for (Handler h : root.getHandlers()) {
             if (h instanceof ConsoleHandler) {
                 hasConsole = true;
-                String level = readProperty(
-                    fileConfig, "freeway.log.console.level", null
-                );
-                if (level != null) {
+                // Only adjust levels of ConsoleHandlers Freeway itself
+                // created. A user-configured ConsoleHandler (via
+                // logging.properties or code) keeps its own level — the same
+                // hands-off contract installFormatters() applies to
+                // formatters, so freeway.log.console.level must not override
+                // a level the user set deliberately.
+                if (freewayHandlers.contains(h) && level != null) {
                     try {
                         h.setLevel(parseLogLevel(level));
                     } catch (IllegalArgumentException e) {
-                        logEarly("Invalid console level '" + level + "': " + e.getMessage());
+                        logEarly(
+                            "Invalid console level '" + level
+                                + "': " + e.getMessage()
+                        );
                     }
                 }
             }
@@ -347,13 +368,11 @@ final class JULEnhancer {
         if (!hasConsole) {
             ConsoleHandler ch = new ConsoleHandler();
             freewayHandlers.add(ch);
-            String level = readProperty(
-                fileConfig, "freeway.log.console.level", "INFO"
-            );
+            String effective = level != null ? level : "INFO";
             try {
-                ch.setLevel(parseLogLevel(level));
+                ch.setLevel(parseLogLevel(effective));
             } catch (IllegalArgumentException e) {
-                logEarly("Invalid console level '" + level + "': " + e.getMessage());
+                logEarly("Invalid console level '" + effective + "': " + e.getMessage());
                 ch.setLevel(Level.INFO); // safe fallback
             }
             root.addHandler(ch);
@@ -424,6 +443,7 @@ final class JULEnhancer {
         configured = false;
         namedFilesApplied = false;
         namedFileConfigs.clear();
+        fileHandlersByPath.clear();
         freewayHandlers.clear();
         LogManager logManager = LogManager.getLogManager();
         var names = logManager.getLoggerNames();
@@ -457,6 +477,33 @@ final class JULEnhancer {
      */
     private static final Set<Handler> freewayHandlers =
         ConcurrentHashMap.newKeySet();
+
+    /**
+     * Returns the registered handler for {@code path}, or {@code null} when
+     * none is usable. A handler closed by {@link LogManager#reset()} (e.g. a
+     * late LogManager initialization sequence) is removed from the registry
+     * so the caller creates a fresh one — re-attaching a closed handler
+     * would silently drop every record.
+     */
+    private static JULFileHandler registeredHandler(Path path) {
+        JULFileHandler existing = fileHandlersByPath.get(path.toString());
+        if (existing != null && existing.isClosed()) {
+            fileHandlersByPath.remove(path.toString(), existing);
+            return null;
+        }
+        return existing;
+    }
+
+    private static void registerHandler(Path path, JULFileHandler handler) {
+        fileHandlersByPath.putIfAbsent(path.toString(), handler);
+    }
+
+    /** Debug-level note; only visible when JUL FINE diagnostics are enabled. */
+    private static void logDedup(String message) {
+        java.util.logging.Logger.getLogger(
+            JULEnhancer.class.getName()
+        ).fine(message);
+    }
 
     /**
      * Re-applies all named file handler configurations. Safe to call any
@@ -493,28 +540,43 @@ final class JULEnhancer {
             Logger target = (cfg.loggerName != null)
                 ? Logger.getLogger(cfg.loggerName)
                 : Logger.getLogger(""); // root
-            Path configuredPath = Paths.get(cfg.path).toAbsolutePath();
+            Path configuredPath = Paths.get(cfg.path).toAbsolutePath().normalize();
 
-            // Dedup: the same named file is attached once at configure()
+            // Local dedup: this logger already carries a handler for the
+            // file. The same named file is attached once at configure()
             // time and re-attached by applyNamedFileConfigs() after the
-            // runtime is up. Without this check the second pass would add a
+            // runtime is up; without this check the second pass would add a
             // second handler writing to the same file — doubling records and
             // giving the two handlers independent rotation states on one
             // file (records lost into archives). Skip when already present.
             for (Handler h : target.getHandlers()) {
                 if (h instanceof JULFileHandler fh
-                        && fh.basePath().equals(configuredPath)) {
+                        && fh.basePath().normalize().equals(configuredPath)) {
                     return;
                 }
             }
 
-            JULFileHandler handler = new JULFileHandler(
-                cfg.path,
-                cfg.maxSize,
-                cfg.maxHistory,
-                cfg.compress,
-                cfg.flushIntervalMs
-            );
+            // Global dedup: another logger may already own this file (two
+            // named files, or a named file aliasing the default file). One
+            // file must have exactly one handler; reuse the registered
+            // handler for the second logger instead of creating a duplicate
+            // with its own rotation state.
+            JULFileHandler handler = registeredHandler(configuredPath);
+            if (handler == null) {
+                handler = new JULFileHandler(
+                    cfg.path,
+                    cfg.maxSize,
+                    cfg.maxHistory,
+                    cfg.compress,
+                    cfg.flushIntervalMs
+                );
+                registerHandler(configuredPath, handler);
+            } else {
+                logDedup(
+                    "Reusing existing handler for log file '" + cfg.path
+                        + "' (same file already owned by another logger)"
+                );
+            }
             freewayHandlers.add(handler);
             if (cfg.level != null) handler.setLevel(cfg.level);
 
@@ -565,37 +627,47 @@ final class JULEnhancer {
             }
 
             try {
-                JULFileHandler fh = new JULFileHandler(
-                    path,
-                    LogConfig.propertyValue(
-                        "freeway.log.file.max-size",
-                        JULFileHandler.DEFAULT_MAX_SIZE,
-                        reader,
-                        Long::parseLong,
-                        true
-                    ),
-                    LogConfig.propertyValue(
-                        "freeway.log.file.max-history",
-                        JULFileHandler.DEFAULT_MAX_HISTORY,
-                        reader,
-                        Integer::parseInt,
-                        true
-                    ),
-                    LogConfig.propertyValue(
-                        "freeway.log.file.compress",
-                        JULFileHandler.DEFAULT_COMPRESS,
-                        reader,
-                        LogConfig::strictBoolean,
-                        true
-                    ),
-                    LogConfig.propertyValue(
-                        "freeway.log.file.flush-interval",
-                        JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
-                        reader,
-                        Long::parseLong,
-                        true
-                    )
-                );
+                Path configuredPath = Paths.get(path).toAbsolutePath().normalize();
+                JULFileHandler fh = registeredHandler(configuredPath);
+                if (fh == null) {
+                    fh = new JULFileHandler(
+                        path,
+                        LogConfig.propertyValue(
+                            "freeway.log.file.max-size",
+                            JULFileHandler.DEFAULT_MAX_SIZE,
+                            reader,
+                            Long::parseLong,
+                            true
+                        ),
+                        LogConfig.propertyValue(
+                            "freeway.log.file.max-history",
+                            JULFileHandler.DEFAULT_MAX_HISTORY,
+                            reader,
+                            Integer::parseInt,
+                            true
+                        ),
+                        LogConfig.propertyValue(
+                            "freeway.log.file.compress",
+                            JULFileHandler.DEFAULT_COMPRESS,
+                            reader,
+                            LogConfig::strictBoolean,
+                            true
+                        ),
+                        LogConfig.propertyValue(
+                            "freeway.log.file.flush-interval",
+                            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
+                            reader,
+                            Long::parseLong,
+                            true
+                        )
+                    );
+                    registerHandler(configuredPath, fh);
+                } else {
+                    logDedup(
+                        "Reusing existing handler for default log file '"
+                            + path + "' (same file already owned by another logger)"
+                    );
+                }
                 freewayHandlers.add(fh);
                 Logger.getLogger("").addHandler(fh);
             } catch (IOException | RuntimeException e) {

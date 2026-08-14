@@ -13,8 +13,10 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.Set;
 import java.util.logging.ErrorManager;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -85,6 +87,16 @@ public final class JULFileHandler extends StreamHandler {
             t.setDaemon(true);
             return t;
         });
+
+    /**
+     * Archive files currently being GZIP-compressed. {@link #purgeOldFiles()}
+     * must not delete a source archive mid-compression: the compressor holds
+     * the file open and its final rename/delete would fail, losing the
+     * archive. The staging {@code .gz.tmp} file is excluded from purge by
+     * filename anyway — this guard protects the source {@code .log} during
+     * the (brief) compression window.
+     */
+    private static final Set<Path> COMPRESSING = ConcurrentHashMap.newKeySet();
 
     private final Path basePath;
     private final long maxSize;
@@ -456,46 +468,55 @@ public final class JULFileHandler extends StreamHandler {
      * only once fully written, so a crash mid-write can never leave a
      * truncated {@code .gz} that looks valid. The staging file is removed
      * on any failure.
+     *
+     * <p>The source archive is tracked in {@link #COMPRESSING} for the
+     * duration so {@link #purgeOldFiles()} never deletes a file that is
+     * still being compressed.
      */
     private void compressFile(Path file) {
-        Path gzFile = file.getParent().resolve(file.getFileName() + ".gz");
-        Path tmpFile = file.getParent().resolve(file.getFileName() + ".gz.tmp");
-        try (
-            FileInputStream fin = new FileInputStream(file.toFile());
-            FileOutputStream fos = new FileOutputStream(tmpFile.toFile());
-            OutputStream gout = new GZIPOutputStream(fos)
-        ) {
-            fin.transferTo(gout);
-            // closing GZIPOutputStream writes the gzip trailer, so the staging
-            // file is complete by the time we exit this block
-        } catch (IOException e) {
-            deleteQuietly(tmpFile);
-            reportError(
-                "Failed to compress " + file.getFileName(),
-                e,
-                ErrorManager.GENERIC_FAILURE
-            );
-            return;
-        }
+        COMPRESSING.add(file);
         try {
-            Files.move(tmpFile, gzFile, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            deleteQuietly(tmpFile);
-            reportError(
-                "Failed to move compressed " + file.getFileName() + " into place",
-                e,
-                ErrorManager.GENERIC_FAILURE
-            );
-            return;
-        }
-        try {
-            Files.delete(file);
-        } catch (IOException e) {
-            reportError(
-                "Failed to delete uncompressed " + file.getFileName(),
-                e,
-                ErrorManager.GENERIC_FAILURE
-            );
+            Path gzFile = file.getParent().resolve(file.getFileName() + ".gz");
+            Path tmpFile = file.getParent().resolve(file.getFileName() + ".gz.tmp");
+            try (
+                FileInputStream fin = new FileInputStream(file.toFile());
+                FileOutputStream fos = new FileOutputStream(tmpFile.toFile());
+                OutputStream gout = new GZIPOutputStream(fos)
+            ) {
+                fin.transferTo(gout);
+                // closing GZIPOutputStream writes the gzip trailer, so the staging
+                // file is complete by the time we exit this block
+            } catch (IOException e) {
+                deleteQuietly(tmpFile);
+                reportError(
+                    "Failed to compress " + file.getFileName(),
+                    e,
+                    ErrorManager.GENERIC_FAILURE
+                );
+                return;
+            }
+            try {
+                Files.move(tmpFile, gzFile, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                deleteQuietly(tmpFile);
+                reportError(
+                    "Failed to move compressed " + file.getFileName() + " into place",
+                    e,
+                    ErrorManager.GENERIC_FAILURE
+                );
+                return;
+            }
+            try {
+                Files.delete(file);
+            } catch (IOException e) {
+                reportError(
+                    "Failed to delete uncompressed " + file.getFileName(),
+                    e,
+                    ErrorManager.GENERIC_FAILURE
+                );
+            }
+        } finally {
+            COMPRESSING.remove(file);
         }
     }
 
@@ -507,6 +528,14 @@ public final class JULFileHandler extends StreamHandler {
         }
     }
 
+    /**
+     * Deletes archives older than the retention window. Files still being
+     * GZIP-compressed are excluded in both forms: the staging
+     * {@code .gz.tmp} (matched by the {@code .tmp} suffix — deleting it
+     * mid-write would orphan the compressor and lose the archive) and the
+     * source archive itself while {@link #compressFile} holds it open
+     * (tracked in {@link #COMPRESSING}).
+     */
     private void purgeOldFiles() {
         String stem = stripExtension(basePath.getFileName().toString());
         int dateStart = stem.length() + 1; // after "stem."
@@ -517,7 +546,9 @@ public final class JULFileHandler extends StreamHandler {
                     String name = p.getFileName().toString();
                     return (
                         name.startsWith(stem + ".") &&
-                        !name.equals(basePath.getFileName().toString())
+                        !name.equals(basePath.getFileName().toString()) &&
+                        !name.endsWith(".tmp") &&
+                        !COMPRESSING.contains(p)
                     );
                 })
                 .forEach(p -> {
@@ -593,6 +624,17 @@ public final class JULFileHandler extends StreamHandler {
      */
     Path basePath() {
         return basePath;
+    }
+
+    /**
+     * Whether {@link #close()} has been called — including a
+     * {@link java.util.logging.LogManager#reset()} that closed this handler.
+     * {@link JULEnhancer}'s path registry uses this to detect handlers that
+     * must be recreated on re-attach instead of reused (a closed handler
+     * silently drops every record).
+     */
+    boolean isClosed() {
+        return closed;
     }
 
     // Visible for testing
