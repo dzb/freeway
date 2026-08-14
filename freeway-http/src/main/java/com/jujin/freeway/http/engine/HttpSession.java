@@ -158,6 +158,15 @@ final class HttpSession implements Runnable {
         return HttpUtils.headerValue(headers, name);
     }
 
+    /** Echoes the correlation id as a response header, ignoring a hostile
+     *  value that would otherwise break the response head. */
+    static void echoRequestId(HttpContextDefault ctx) {
+        try {
+            ctx.setHeader("X-Request-Id", ctx.correlationId());
+        } catch (IllegalArgumentException ignored) {
+        }
+    }
+
     static boolean containsToken(String headerValue, String token) {
         for (String part : headerValue.split(",")) {
             if (token.equalsIgnoreCase(part.trim())) return true;

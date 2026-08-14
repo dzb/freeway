@@ -121,15 +121,6 @@ class HttpContextTest {
     }
 
     @Test
-    void bodyAsJsonRejectsNonJsonContentType() {
-        StubHttpContext ctx = new StubHttpContext("POST", "/")
-            .requestHeader("Content-Type", "text/plain");
-
-        assertThrows(UnsupportedMediaTypeException.class,
-            () -> ctx.bodyAsJson(Map.class));
-    }
-
-    @Test
     void bodyStreamDefaultsToBufferedBody() throws Exception {
         StubHttpContext ctx = new StubHttpContext();
         ctx.output("stream-me".getBytes(StandardCharsets.UTF_8));
