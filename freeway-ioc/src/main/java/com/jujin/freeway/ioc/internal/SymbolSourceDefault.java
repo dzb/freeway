@@ -171,6 +171,14 @@ final class SymbolSourceDefault implements SymbolSource {
             if (colon >= 0) {
                 symbol = expr.substring(0, colon);
                 defaultValue = expr.substring(colon + 1);
+                // ${name:-default} — the ":-" separator (shell semantics)
+                // drops a single leading dash from the default, so
+                // ${port:-8080} yields "8080" not "-8080".
+                // ${name:default} keeps the default verbatim, and
+                // ${name:} / ${name:-} both yield the empty string.
+                if (defaultValue.startsWith("-")) {
+                    defaultValue = defaultValue.substring(1);
+                }
             }
             String value = raw(symbol);
             if (value == null) {

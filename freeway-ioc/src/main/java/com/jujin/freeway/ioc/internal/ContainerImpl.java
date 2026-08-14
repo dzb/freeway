@@ -125,7 +125,7 @@ public final class ContainerImpl implements Container {
         this.injectResolver = new InjectResolver(this);
         this.instanceFactory = new InstanceFactory(this);
         this.scoping = this::scopedWithin;
-        this.shutdown = new Shutdown(serviceCache, targetCache, bindingIndex, coercer);
+        this.shutdown = new Shutdown(targetCache);
         this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);
         infrastructureWiring.put(SymbolProvider.class,
             v -> symbolSource.register((SymbolProvider) v));
@@ -271,7 +271,26 @@ public final class ContainerImpl implements Container {
             // re-snapshot loop; realization after close is rejected inside
             // realize() (it re-checks the closed flag under the lock).
             RuntimeException failure = shutdown.close();
-            closed = true;
+            synchronized (ServiceRuntime.REALIZE_LOCK) {
+                // Seal + final drain + cache clear happen atomically with
+                // respect to realize(). A realize() that passed its first
+                // closed check may still be constructing while the drain runs
+                // (it holds the lock); its target lands in targetCache either
+                // before we acquire the lock (caught by the final drain pass)
+                // or it blocks on the lock and the first closed check rejects
+                // it. Either way no freshly realized singleton can be orphaned
+                // past the cache clear. closed is set BEFORE the final drain so
+                // get()/extension() reject new lookups from this point on, but
+                // PreDestroy callbacks running in the drain's earlier passes
+                // (closed still false) keep the documented "look up services
+                // during close" contract.
+                closed = true;
+                failure = shutdown.drainRemaining(failure);
+                serviceCache.clear();
+                targetCache.clear();
+            }
+            bindingIndex.clear();
+            coercer.clearRules();
             extensions.clear();
             // Thread-scope values are deliberately NOT unregistered here: their
             // lifecycle is bound to the scope, not the container. The global
@@ -292,6 +311,11 @@ public final class ContainerImpl implements Container {
         }
         BindingImpl<T> binding = bindingIndex.findUnique(type);
         if (binding == null) {
+            // A lookup that started before close() sealed may race the index
+            // clear; report the sealed state, not a misleading missing service.
+            if (closed) {
+                throw new IllegalStateException("Container is closed");
+            }
             throw new IllegalArgumentException(
                 "No service registered for type " + type.getName()
             );
@@ -311,6 +335,9 @@ public final class ContainerImpl implements Container {
         }
         BindingImpl<T> binding = bindingIndex.find(type, ServiceIds.normalize(id));
         if (binding == null) {
+            if (closed) {
+                throw new IllegalStateException("Container is closed");
+            }
             throw new IllegalArgumentException(
                 "No service registered for type " + type.getName() + " and id " + id
             );
@@ -329,6 +356,9 @@ public final class ContainerImpl implements Container {
         }
         BindingImpl<T> binding = markerIndex.findByMarker(type, markers);
         if (binding == null) {
+            if (closed) {
+                throw new IllegalStateException("Container is closed");
+            }
             throw new IllegalArgumentException(
                     "No service registered for type " + type.getName()
                             + " with markers " + Arrays.toString(markers)
@@ -359,7 +389,29 @@ public final class ContainerImpl implements Container {
     }
 
     synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {
-        bindingIndex.updateId(binding, previousId, newId);
+        boolean rekeyed = bindingIndex.updateId(binding, previousId, newId);
+        if (!rekeyed) {
+            return;
+        }
+        // The binding was re-keyed after it may already have been realized:
+        // migrate any cached service/target from the old key to the new key.
+        // Without this, the old key keeps serving the stale instance (which
+        // would also receive @PreDestroy on close) while a get() under the new
+        // key realizes a SECOND singleton — two instances, two @PreDestroy.
+        // Migration keeps the "one singleton per binding" invariant. Done under
+        // REALIZE_LOCK so it is serialized with in-flight realize() puts.
+        ServiceKey previousKey = new ServiceKey(binding.type(), previousId);
+        ServiceKey newKey = new ServiceKey(binding.type(), newId);
+        synchronized (ServiceRuntime.REALIZE_LOCK) {
+            Object service = serviceCache.remove(previousKey);
+            if (service != null) {
+                serviceCache.putIfAbsent(newKey, service);
+            }
+            Object target = targetCache.remove(previousKey);
+            if (target != null) {
+                targetCache.putIfAbsent(newKey, target);
+            }
+        }
     }
 
     /** Constructor injection only — no field injection, no @PostConstruct. */

@@ -237,6 +237,75 @@ class EventBusTest {
     }
 
     @Test
+    void subscriberErrorDoesNotEscapePublish() {
+        // Regression: the handler loop caught only Exception, so an Error
+        // (AssertionError, OOM, ...) from one subscriber escaped publish() and
+        // skipped the remaining subscribers. Errors must be isolated and
+        // counted exactly like exceptions.
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> {
+                        throw new AssertionError("boom");
+                    }));
+                binder.contribute(EventSubscriber.class).add(
+                    EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")));
+            }
+        );
+        EventBus bus = new EventBus(container);
+
+        assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))),
+            "a subscriber Error must not escape publish()");
+
+        assertEquals(List.of("survive"), log,
+            "the other subscribers must still receive the event after an Error");
+        assertEquals(1, bus.stats().subscriberFailures(),
+            "the Error must be counted as a subscriber failure");
+        bus.close();
+    }
+
+    @Test
+    void runtimeSubscriberErrorDoesNotEscapePublish() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(PostCreatedEvent.class, (Consumer<PostCreatedEvent>) e -> log.add("survive")))
+        );
+        EventBus bus = new EventBus(container);
+        bus.subscribe(PostCreatedEvent.class, e -> {
+            throw new AssertionError("boom");
+        });
+
+        assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))));
+        assertEquals(List.of("survive"), log);
+        assertEquals(1, bus.stats().subscriberFailures());
+        bus.close();
+    }
+
+    @Test
+    void topicSubscriberErrorDoesNotEscapePublish() {
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of("topic", p -> {
+                        throw new AssertionError("boom");
+                    }));
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of("topic", p -> log.add((String) p)));
+            }
+        );
+        EventBus bus = new EventBus(container);
+
+        assertDoesNotThrow(() -> bus.publish("topic", "payload"),
+            "a topic subscriber Error must not escape publish()");
+        assertEquals(List.of("payload"), log);
+        assertEquals(1, bus.stats().subscriberFailures());
+        bus.close();
+    }
+
+    @Test
     void subscriberExceptionDoesNotTriggerDeadEventForClassPublish() {
         List<DeadEvent> deads = new ArrayList<>();
         Container container = Freeway.create(
@@ -311,6 +380,55 @@ class EventBusTest {
 
         // "comment.added" has no subscriber → DeadEvent
         assertTrue(log.isEmpty());
+    }
+
+    @Test
+    void singleArgStringPublishIsClassEventNotTopic() {
+        // Contract fix: publish("x") dispatches a String CLASS event — topic
+        // subscribers on "x" must NOT receive it, String.class subscribers must.
+        List<String> topicLog = new ArrayList<>();
+        List<String> classLog = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of("x", p -> topicLog.add((String) p)));
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of(String.class, p -> classLog.add(p)));
+            }
+        );
+        EventBus bus = new EventBus(container);
+
+        bus.publish("x");
+
+        assertTrue(topicLog.isEmpty(),
+            "a single-argument publish(String) must not reach topic subscribers");
+        assertEquals(List.of("x"), classLog,
+            "a single-argument publish(String) must dispatch as a String class event");
+        bus.close();
+    }
+
+    @Test
+    void topicPublishDoesNotReachStringClassSubscribers() {
+        // Mirror image: publish("x", payload) is topic delivery — a
+        // String.class subscriber must not receive the topic payload.
+        List<String> classLog = new ArrayList<>();
+        List<String> topicLog = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> {
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of(String.class, p -> classLog.add(p)));
+                binder.contribute(EventSubscriber.class)
+                    .add(EventSubscriber.of("x", p -> topicLog.add((String) p)));
+            }
+        );
+        EventBus bus = new EventBus(container);
+
+        bus.publish("x", "payload");
+
+        assertEquals(List.of("payload"), topicLog, "the topic subscriber must receive the payload");
+        assertTrue(classLog.isEmpty(),
+            "a two-argument topic publish must not reach String.class subscribers");
+        bus.close();
     }
 
     @Test
@@ -626,6 +744,65 @@ class EventBusTest {
             bus.close();
 
         }), "a post-close drain must be a silent no-op, not a spurious failure");
+    }
+
+    @Test
+    void deferredAsyncPublishAfterCloseIsSilentNoOp() {
+        // Regression: the deferred publishAsync lambda called executor() during
+        // a post-close drain; executor() hits requireOpen() and threw, so
+        // DeferScope.drain logged a spurious WARN. Must be a silent no-op, like
+        // the sync path (dispatchEvent checks closed).
+        EventBus bus = new EventBus(Freeway.create());
+
+        assertDoesNotThrow(() -> Defer.within(() -> {
+            bus.publishAsync(new PostCreatedEvent(new Post("x")));
+            bus.close();
+
+        }), "a deferred async publish draining after close must not throw");
+    }
+
+    @Test
+    void deferredAsyncTopicPublishAfterCloseIsSilentNoOp() {
+        EventBus bus = new EventBus(Freeway.create());
+
+        assertDoesNotThrow(() -> Defer.within(() -> {
+            bus.publishAsync("topic", "payload");
+            bus.close();
+
+        }), "a deferred async topic publish draining after close must not throw");
+    }
+
+    @Test
+    void deferredOrderedPublishAfterCloseIsSilentNoOp() {
+        EventBus bus = new EventBus(Freeway.create());
+
+        assertDoesNotThrow(() -> Defer.within(() -> {
+            bus.publishOrdered("key", new PostCreatedEvent(new Post("x")));
+            bus.close();
+
+        }), "a deferred ordered publish draining after close must not throw");
+    }
+
+    @Test
+    void deferredAsyncPublishBeforeCloseStillDelivers() throws Exception {
+        // The closed-guard must not affect the healthy path: an async publish
+        // deferred inside a Defer scope and drained while the bus is still open
+        // must be dispatched normally after commit.
+        List<String> log = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> log.add("event")))
+        );
+        EventBus bus = new EventBus(container);
+
+        Defer.within(() -> {
+            bus.publishAsync(new PostCreatedEvent(new Post("x")));
+        });
+        awaitUntil(2000, () -> log.size() == 1);
+
+        assertEquals(List.of("event"), log,
+            "a deferred async event draining while open must still deliver");
+        bus.close();
     }
 
     @Test

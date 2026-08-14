@@ -36,21 +36,44 @@ final class ProxyFactoryDefault implements ProxyFactory {
         String description,
         List<AdviceEntry> advices
     ) {
+        return createAdvised(interfaceType, provider, description, advices, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <T> T createAdvised(
+        Class<T> interfaceType,
+        Supplier<T> provider,
+        String description,
+        List<AdviceEntry> advices,
+        boolean cacheTarget
+    ) {
         requireInterface(interfaceType);
         Objects.requireNonNull(provider, "provider");
         Objects.requireNonNull(advices, "advices");
-        return newProxy(interfaceType, new AdvisedHandler<>(provider, description, advices));
+        return newProxy(
+            interfaceType,
+            new AdvisedHandler<>(provider, description, advices, cacheTarget)
+        );
     }
 
     private static final class AdvisedHandler<T> implements InvocationHandler {
         private final Supplier<T> provider;
         private final String description;
         private final List<AdviceEntry> advices;
+        private final boolean cacheTarget;
+        private volatile T cachedTarget;
 
-        private AdvisedHandler(Supplier<T> provider, String description, List<AdviceEntry> advices) {
+        private AdvisedHandler(
+            Supplier<T> provider,
+            String description,
+            List<AdviceEntry> advices,
+            boolean cacheTarget
+        ) {
             this.provider = provider;
             this.description = description;
             this.advices = advices;
+            this.cacheTarget = cacheTarget;
         }
 
         @Override
@@ -59,8 +82,34 @@ final class ProxyFactoryDefault implements ProxyFactory {
                 return handleObjectMethod(proxy, method, args, description);
             }
 
-            Object real = provider.get();
-            return invokeAdvised(real, method, args, advices, 0);
+            return invokeAdvised(resolveTarget(), method, args, advices, 0);
+        }
+
+        /**
+         * Per-proxy lazy target resolution. With {@link #cacheTarget} set the
+         * provider runs once (first method call) and the result is reused for
+         * every later call on THIS proxy — giving an advised PROTOTYPE the same
+         * "one instance per get(), state persists across calls" semantics as an
+         * unadvised prototype. A throwing provider is never cached, so a failed
+         * construction is retried on the next call. Double-checked locking keeps
+         * concurrent first calls from creating two targets.
+         */
+        private Object resolveTarget() {
+            if (!cacheTarget) {
+                return provider.get();
+            }
+            T target = cachedTarget;
+            if (target != null) {
+                return target;
+            }
+            synchronized (this) {
+                target = cachedTarget;
+                if (target == null) {
+                    target = provider.get();
+                    cachedTarget = target;
+                }
+                return target;
+            }
         }
 
         private Object invokeAdvised(

@@ -51,6 +51,20 @@ final class InjectResolver {
         BeanPlan plan = BeanIntrospector.plan(ownerType);
         for (BeanProperty property : plan.properties()) {
             if (!property.isWritable()) {
+                // A non-writable property (final field without setter, or a
+                // getter-only computed value) carrying an injection annotation
+                // would otherwise be silently skipped and keep its default
+                // value until the error surfaces at runtime. Fail fast with a
+                // clear directive instead. Non-writable properties WITHOUT any
+                // injection annotation stay untouched (existing behavior).
+                AnnotationLookup lookup = annotations(property);
+                if (hasInjectionAnnotation(lookup) || hasConfiguredValueAnnotation(lookup)) {
+                    throw new IllegalStateException(
+                        "Cannot inject into final field " + property.name()
+                            + " on " + ownerType.getName()
+                            + " — use constructor injection instead"
+                    );
+                }
                 continue;
             }
             Object value = resolveValue(
@@ -94,9 +108,17 @@ final class InjectResolver {
 
     /**
      * Resolves {@code List<Foo>}, {@code Map<String, Foo>}, and
-     * {@code Extension<Foo>} from the contribution mechanism.
-     * For constructor parameters this fires unconditionally; for fields
-     * it requires an {@code @Inject} annotation.
+     * {@code Extension<Foo>} from the contribution mechanism. Contributions
+     * are opt-in: the injection point MUST carry {@code @Inject} — an
+     * unannotated {@code List}/{@code Map} constructor parameter is not
+     * hijacked into a contribution list (it falls through to ordinary service
+     * resolution, like any other unannotated parameter).
+     *
+     * <p>An explicit {@code @Inject("id")} on a {@code List}/{@code Map}
+     * injection point prefers a bound service with that id; only when no such
+     * binding exists does resolution fall back to contributions. This lets a
+     * user bind their own {@code List<Foo>}/{@code Map<String, Foo>} service
+     * and inject it by id instead of always receiving the contributed view.
      *
      * <p>{@code Extension<Foo>} is intentionally rejected — inject
      * {@code List<Foo>} or {@code Map<String, Foo>} instead.
@@ -104,8 +126,7 @@ final class InjectResolver {
     private Object resolveContributed(
         Type memberType,
         Class<?> targetType,
-        AnnotationLookup lookup,
-        boolean parameterMode
+        AnnotationLookup lookup
     ) {
         if (!(memberType instanceof ParameterizedType pt)) {
             return null;
@@ -117,10 +138,11 @@ final class InjectResolver {
         if (hasConfiguredValueAnnotation(lookup)) {
             return null;
         }
-        Type[] typeArgs = pt.getActualTypeArguments();
-        if (!parameterMode && !hasInjectionAnnotation(lookup)) {
+        // @Inject is required for BOTH fields and constructor parameters.
+        if (!hasInjectionAnnotation(lookup)) {
             return null;
         }
+        Type[] typeArgs = pt.getActualTypeArguments();
         if (targetType == Extension.class) {
             throw new IllegalArgumentException(
                 "Extension<V> is not injectable by design. "
@@ -132,12 +154,26 @@ final class InjectResolver {
             if (typeArgs.length < 1 || !(typeArgs[0] instanceof Class<?> entryType)) {
                 return null;
             }
+            String id = resolveId(lookup);
+            if (id != null) {
+                BindingImpl<?> bound = container.bindingIndex().find(targetType, id);
+                if (bound != null) {
+                    return container.get(targetType, id);
+                }
+            }
             return container.extension(entryType).all();
         }
         if (targetType == Map.class) {
             if (typeArgs.length < 2 || typeArgs[0] != String.class
                 || !(typeArgs[1] instanceof Class<?> entryType)) {
                 return null;
+            }
+            String id = resolveId(lookup);
+            if (id != null) {
+                BindingImpl<?> bound = container.bindingIndex().find(targetType, id);
+                if (bound != null) {
+                    return container.get(targetType, id);
+                }
             }
             return container.extension(entryType).asMap();
         }
@@ -241,7 +277,7 @@ final class InjectResolver {
         // List<Foo> / Map<String, Foo> / Extension<Foo> — resolved from
         // the contribution mechanism. Must precede resolveInjected so @Inject
         // on these types does not attempt a broken container.get(...).
-        Object contributed = resolveContributed(memberType, targetType, lookup, parameterMode);
+        Object contributed = resolveContributed(memberType, targetType, lookup);
         if (contributed != null) {
             return contributed;
         }

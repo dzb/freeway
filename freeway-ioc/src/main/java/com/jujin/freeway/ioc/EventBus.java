@@ -95,6 +95,14 @@ public final class EventBus implements AutoCloseable {
      * Publish an event to all class-matched subscribers (module + runtime),
      * then bridge to MQ if configured.
      *
+     * <p>This is the <b>class-event</b> channel: subscribers are matched on
+     * the runtime type of {@code event}. In particular,
+     * {@code publish("x")} dispatches a {@code String} <em>class event</em> —
+     * only subscribers on {@code String.class} (or a supertype) receive it.
+     * Topic subscribers registered via {@code subscribe("x", ...)} or
+     * {@code EventSubscriber.of("x", ...)} do <em>not</em> receive it. For
+     * string-topic semantics use {@link #publish(String, Object)}.
+     *
      * <p>If called inside a {@code Defer} scope (e.g. within a DB transaction),
      * the event is buffered and only published after the scope commits.
      * If no scope is active, the event is published immediately.</p>
@@ -139,7 +147,7 @@ public final class EventBus implements AutoCloseable {
                 handler.accept(event);
                 delivered.increment();
                 cDelivered.increment();
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 subscriberFailures.increment();
                 cSubscriberFailures.increment();
                 LOG.warn(
@@ -156,7 +164,7 @@ public final class EventBus implements AutoCloseable {
                 sub.dispatch(event);
                 delivered.increment();
                 cDelivered.increment();
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 subscriberFailures.increment();
                 cSubscriberFailures.increment();
                 LOG.warn(
@@ -198,6 +206,12 @@ public final class EventBus implements AutoCloseable {
      * {@code EventSubscriber.of("topic", handler)} or
      * {@code bus.subscribe("topic", handler)} receive it.
      *
+     * <p>This is the <b>topic</b> channel: dispatch matches the topic string,
+     * not the payload's class. A single-argument {@code publish("x")}
+     * dispatches a {@code String} <em>class event</em> that topic subscribers
+     * do <em>not</em> receive — use this two-argument form whenever the
+     * topic itself carries the routing meaning.</p>
+     *
      * <p>The payload may be {@code null} (signal semantics — the topic
      * itself carries the meaning); the topic must not be null.
      *
@@ -231,7 +245,7 @@ public final class EventBus implements AutoCloseable {
                 handler.accept(payload);
                 delivered.increment();
                 cDelivered.increment();
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 subscriberFailures.increment();
                 cSubscriberFailures.increment();
                 LOG.warn("Event subscriber failed for topic '{}'", topic, ex);
@@ -243,7 +257,7 @@ public final class EventBus implements AutoCloseable {
                 sub.dispatch(payload);
                 delivered.increment();
                 cDelivered.increment();
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 subscriberFailures.increment();
                 cSubscriberFailures.increment();
                 LOG.warn(
@@ -302,7 +316,16 @@ public final class EventBus implements AutoCloseable {
         // thread does not inherit the Defer ScopedValue binding, so the guard
         // inside publish() would see no scope and dispatch before commit.
         if (Defer.isActive()) {
-            Defer.defer(() -> executor().execute(() -> publish(event)));
+            Defer.defer(() -> {
+                // The scope may commit after close() (e.g. a transaction
+                // scope draining during shutdown): the deferred lambda must
+                // not touch executor()/requireOpen() — a silent no-op matches
+                // the sync path's post-close semantics.
+                if (closed) {
+                    return;
+                }
+                executor().execute(() -> publish(event));
+            });
             return;
         }
         executor().execute(() -> publish(event));
@@ -313,7 +336,12 @@ public final class EventBus implements AutoCloseable {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
         if (Defer.isActive()) {
-            Defer.defer(() -> executor().execute(() -> publish(topic, payload)));
+            Defer.defer(() -> {
+                if (closed) {
+                    return;
+                }
+                executor().execute(() -> publish(topic, payload));
+            });
             return;
         }
         executor().execute(() -> publish(topic, payload));
@@ -340,7 +368,14 @@ public final class EventBus implements AutoCloseable {
         Objects.requireNonNull(event, "event");
         requireOpen();
         if (Defer.isActive()) {
-            Defer.defer(() -> orderedExecutor().execute(() -> publish(event)));
+            Defer.defer(() -> {
+                // Post-close drain: the ordered executor is shut down and
+                // requireOpen() would throw — stay silent like the sync path.
+                if (closed) {
+                    return;
+                }
+                orderedExecutor().execute(() -> publish(event));
+            });
             return;
         }
         orderedExecutor().execute(() -> publish(event));

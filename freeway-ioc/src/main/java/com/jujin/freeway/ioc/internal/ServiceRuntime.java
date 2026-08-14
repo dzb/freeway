@@ -122,6 +122,14 @@ final class ServiceRuntime {
     }
 
     private <T> T realizeThreadScoped(BindingImpl<T> binding) {
+        // Same contract as the singleton path: a proxy obtained before close()
+        // must not silently instantiate a fresh value after the container is
+        // sealed (the singleton path throws from realize(); thread scope
+        // previously did not, so a THREAD proxy kept working after close while
+        // a SINGLETON proxy threw "Container is closed").
+        if (container.isClosed()) {
+            throw new IllegalStateException("Container is closed");
+        }
         if (!ScopedCache.isActive()) {
             throw new IllegalStateException(
                 "No open scope for type " + binding.type().getName()
@@ -156,16 +164,21 @@ final class ServiceRuntime {
     private <T> T createAdvised(BindingImpl<T> binding) {
         // PROTOTYPE targets must not route through realize(): that path caches
         // in targetCache, which would share one target across every proxy and
-        // pull the prototype into container-close lifecycle. Per-call
-        // directInstance() preserves instance independence.
-        Supplier<T> target = binding.scope() == Scope.PROTOTYPE
+        // pull the prototype into container-close lifecycle. The proxy instead
+        // lazily creates ONE target per proxy (first method call) and reuses it
+        // for later calls — matching the unadvised prototype semantics of "one
+        // instance per get(), state persists across calls" — without sharing
+        // across proxies or entering the container's caches.
+        boolean perProxyCache = binding.scope() == Scope.PROTOTYPE;
+        Supplier<T> target = perProxyCache
             ? binding::directInstance
             : () -> realize(binding);
         return proxyFactory.createAdvised(
             binding.type(),
             target,
             binding.type().getSimpleName() + "[" + binding.id() + "]",
-            binding.advices()
+            binding.advices(),
+            perProxyCache
         );
     }
 }

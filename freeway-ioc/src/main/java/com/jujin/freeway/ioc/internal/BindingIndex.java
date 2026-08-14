@@ -56,13 +56,19 @@ final class BindingIndex {
         }
     }
 
-    synchronized void updateId(BindingImpl<?> binding, String previousId, String newId) {
+    /**
+     * Re-keys a registered binding from {@code previousId} to {@code newId}.
+     * Returns {@code true} when the binding was actually re-keyed — the caller
+     * must then migrate any realized service/target cache entries so a late
+     * {@code .id()} change does not orphan the old instance.
+     */
+    synchronized boolean updateId(BindingImpl<?> binding, String previousId, String newId) {
         if (Objects.equals(previousId, newId)) {
-            return;
+            return false;
         }
         ServiceKey previousKey = new ServiceKey(binding.type(), previousId);
         if (bindings.get(previousKey) != binding) {
-            return;
+            return false;
         }
         ServiceKey newKey = new ServiceKey(binding.type(), newId);
         BindingImpl<?> existing = bindings.get(newKey);
@@ -80,7 +86,7 @@ final class BindingIndex {
             }
         }
         if (!replaced) {
-            return;
+            return false;
         }
         bindingOrder.clear();
         bindingOrder.addAll(reordered);
@@ -100,6 +106,7 @@ final class BindingIndex {
                 typeBindings.set(idx, binding);
             }
         }
+        return true;
     }
 
     @SuppressWarnings("unchecked")
