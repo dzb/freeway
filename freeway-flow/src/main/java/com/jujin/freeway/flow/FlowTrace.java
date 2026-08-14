@@ -85,8 +85,9 @@ public class FlowTrace implements Serializable {
 
     /**
      * Returns an immutable snapshot of the per-graph end records. Snapshot
-     * semantics: independent of the trace — later {@link #recordNode} calls
-     * (or mutations of the returned collection) do not affect it.
+     * semantics: independent of the trace — later {@link #recordNode} /
+     * {@link #recordNodeId} calls (or mutations of the returned collection)
+     * do not affect it.
      */
     public Collection<NodeRecord> lastRecords() {
         return List.copyOf(lastRecords.values());

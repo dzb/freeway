@@ -127,17 +127,20 @@ public final class PathPattern {
     }
 
     /** Parsed literal segments (null slot = parameter segment). Package-private
-     *  so {@link RouteIndex} reuses this template parse for its trie. */
+     *  so {@link RouteIndex} reuses this template parse for its trie; do not
+     *  mutate — the arrays back this template. */
     String[] segments() {
         return segments;
     }
 
-    /** Parsed parameter names (null slot = literal segment). Package-private. */
+    /** Parsed parameter names (null slot = literal segment). Package-private;
+     *  do not mutate — the arrays back this template. */
     String[] paramNames() {
         return paramNames;
     }
 
-    /** Compiled regex constraints (null = unconstrained). Package-private. */
+    /** Compiled regex constraints (null = unconstrained). Package-private;
+     *  do not mutate — the arrays back this template. */
     Pattern[] paramPatterns() {
         return paramPatterns;
     }

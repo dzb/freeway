@@ -28,13 +28,14 @@ public class ExecState {
      */
     public record DeadEnd(String graphId, String nodeId) {}
 
+    /** Root-level key prefix for counters that are not graph-scoped. */
+    private static final String ROOT = "_ROOT";
+
     private final Set<DeadEnd> deadEnds = ConcurrentHashMap.newKeySet();
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
     private final Map<String, Stack> stacks = new ConcurrentHashMap<>();
     private final Map<String, List<String>> loopBodyJoins = new ConcurrentHashMap<>();
     private final Map<String, Object> vars = new ConcurrentHashMap<>();
-    /** Root-level key prefix for counters that are not graph-scoped. */
-    private static final String ROOT = "_ROOT";
 
     /**
      * Cached join-node ids inside a LOOP's body, used by the engine to reset
@@ -116,7 +117,7 @@ public class ExecState {
         return counter(graph.getId() + "/" + key).incrementAndGet();
     }
 
-    /** Reads a root-level count (not graph-scoped). */
+    /** Gets a root-level count (not graph-scoped). */
     public int count(String key) {
         return counter(ROOT + "/" + key).get();
     }

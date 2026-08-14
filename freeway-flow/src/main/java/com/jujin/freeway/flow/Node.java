@@ -100,7 +100,8 @@ public class Node {
         if (tmp instanceof Boolean) return (Boolean) tmp;
         if (tmp instanceof String) return Boolean.parseBoolean((String) tmp);
         if (tmp instanceof Number) return ((Number) tmp).doubleValue() > 0;
-        throw new UnsupportedOperationException(key);
+        throw new UnsupportedOperationException(
+            "Cannot read meta '" + key + "' as boolean: " + tmp.getClass().getName());
     }
 
     public Number getMetaAsNumber(String key) {
@@ -108,7 +109,8 @@ public class Node {
         if (tmp == null) return null;
         if (tmp instanceof String) return Double.parseDouble((String) tmp);
         if (tmp instanceof Number) return (Number) tmp;
-        throw new UnsupportedOperationException(key);
+        throw new UnsupportedOperationException(
+            "Cannot read meta '" + key + "' as number: " + tmp.getClass().getName());
     }
 
     public List<Link> getPrevLinks() {

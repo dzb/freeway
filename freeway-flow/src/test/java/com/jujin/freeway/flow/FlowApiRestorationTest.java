@@ -144,6 +144,7 @@ class FlowApiRestorationTest {
                 .metaPut("flag", "true")
                 .metaPut("num", "42")
                 .metaPut("label", "x")
+                .metaPut("blob", List.of(1, 2))
                 .linkAdd("end");
             spec.addEnd("end");
         });
@@ -153,6 +154,12 @@ class FlowApiRestorationTest {
         assertEquals(42.0, mid.getMetaAsNumber("num").doubleValue());
         assertEquals("x", mid.<String>getMetaAs("label"));
         assertEquals("fallback", mid.getMetaOrDefault("absent", "fallback"));
+        assertThrows(UnsupportedOperationException.class,
+            () -> mid.getMetaAsBool("blob"),
+            "a non-coercible meta value must fail with a diagnostic, not coerce silently");
+        assertThrows(UnsupportedOperationException.class,
+            () -> mid.getMetaAsNumber("blob"),
+            "a non-coercible meta value must fail with a diagnostic, not coerce silently");
 
         mid.attachment = "tag";
         assertEquals("tag", mid.attachment);

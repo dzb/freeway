@@ -118,7 +118,7 @@ public class FlowExchanger {
         context.trace().clear();
     }
 
-    /** Returns the number of steps completed in this evaluation. */
+    /** Returns the step budget of this evaluation (-1 = unlimited). */
     public int getSteps() {
         return steps;
     }
