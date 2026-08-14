@@ -32,6 +32,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpRequestHandler;
 import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.engine.http11.Http11Connection;
 import com.jujin.freeway.http.engine.http11.HttpParser;
 import com.jujin.freeway.http.engine.http2.Http2Connection;
@@ -258,9 +259,7 @@ final class HttpSession implements Runnable {
                 // The correlation id is echoed for tracing only — a hostile
                 // value must never break the session. (HTTP/1.1 parsing now
                 // rejects CTL, so this guard is defense-in-depth.)
-                try {
-                    ctx.setHeader("X-Request-Id", ctx.correlationId());
-                } catch (IllegalArgumentException ignored) {}
+                echoRequestId(ctx);
                 // RFC 7231 §5.1.1: acknowledge Expect: 100-continue before
                 // the handler reads the body so clients send it promptly.
                 if ((req.isChunked() || bodyLength > 0)
@@ -285,12 +284,7 @@ final class HttpSession implements Runnable {
                 }
 
                 metrics.counter("freeway.http.requests.total").increment();
-                int status = ctx.status();
-                if (status >= 500) {
-                    metrics.counter("freeway.http.responses.5xx").increment();
-                } else if (status >= 400) {
-                    metrics.counter("freeway.http.responses.4xx").increment();
-                }
+                recordResponseStatus(ctx.status());
 
                 boolean bodyDrained = ctx.drainUnreadBody();
                 if (req.isChunked() && bodyDrained) {
@@ -358,6 +352,21 @@ final class HttpSession implements Runnable {
 
     // --- HTTP/2 upgrade (h2c: ssl=false, h2: ssl=true) ---
 
+    /** Reads the full {@code expected} HTTP/2 connection-preface prefix from
+     *  {@code in}, failing on EOF or a mismatch. */
+    private static void readPreface(InputStream in, String expected)
+            throws IOException {
+        byte[] preface = new byte[expected.length()];
+        int off = 0;
+        while (off < preface.length) {
+            int n = in.read(preface, off, preface.length - off);
+            if (n < 0) throw new IOException("EOF reading HTTP/2 preface");
+            off += n;
+        }
+        if (!expected.equals(new String(preface)))
+            throw new IOException("Invalid HTTP/2 preface");
+    }
+
     private void handleHttp2Upgrade(
         Http11Connection connection,
         boolean ssl,
@@ -377,25 +386,9 @@ final class HttpSession implements Runnable {
                 // The h2c upgrade client still sends the standard 24-byte
                 // connection preface after the 101 response; the SETTINGS
                 // payload was already carried in HTTP2-Settings.
-                byte[] preface = new byte[Http2Connection.PREFACE.length()];
-                int off = 0;
-                while (off < preface.length) {
-                    int n = in.read(preface, off, preface.length - off);
-                    if (n < 0) throw new IOException("EOF reading HTTP/2 preface");
-                    off += n;
-                }
-                if (!Http2Connection.PREFACE.equals(new String(preface)))
-                    throw new IOException("Invalid HTTP/2 preface");
+                readPreface(in, Http2Connection.PREFACE);
             } else if (!ssl) {
-                byte[] preface = new byte[Http2Connection.PARTIAL_PREFACE.length()];
-                int off = 0;
-                while (off < preface.length) {
-                    int n = in.read(preface, off, preface.length - off);
-                    if (n < 0) throw new IOException("EOF reading HTTP/2 preface");
-                    off += n;
-                }
-                if (!Http2Connection.PARTIAL_PREFACE.equals(new String(preface)))
-                    throw new IOException("Invalid HTTP/2 preface");
+                readPreface(in, Http2Connection.PARTIAL_PREFACE);
             }
 
             this.h2Executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -481,17 +474,9 @@ final class HttpSession implements Runnable {
         if (values == null || values.size() != 1) {
             return true;
         }
-        String host = values.getFirst();
-        if (host == null || host.isBlank()) {
-            return true;
-        }
-        for (int i = 0; i < host.length(); i++) {
-            char c = host.charAt(i);
-            if (c == ',' || c == ' ' || c == '\t' || c == '/' || c == '\\' || c == '@') {
-                return true;
-            }
-        }
-        return false;
+        // Control characters other than tab are already rejected by the
+        // HTTP/1.1 parser; HttpUtils.invalidHostValue covers the full rule.
+        return HttpUtils.invalidHostValue(values.getFirst());
     }
 
     private static int timeoutMillis(Duration timeout) {
@@ -638,9 +623,7 @@ final class HttpSession implements Runnable {
             // Echo for tracing only — a hostile value (e.g. CR/LF inside an
             // HPACK-encoded header) must never poison the response head; the
             // stream-level catch below would otherwise reset it.
-            try {
-                ctx.setHeader("X-Request-Id", ctx.correlationId());
-            } catch (IllegalArgumentException ignored) {}
+            echoRequestId(ctx);
             registry.requestsInFlight.incrementAndGet();
             metrics.counter("freeway.http.requests.total").increment();
             long startNanos = System.nanoTime();
@@ -650,12 +633,7 @@ final class HttpSession implements Runnable {
                 registry.requestsInFlight.decrementAndGet();
                 requestTimer.record(System.nanoTime() - startNanos);
             }
-            int status = ctx.status();
-            if (status >= 500) {
-                metrics.counter("freeway.http.responses.5xx").increment();
-            } else if (status >= 400) {
-                metrics.counter("freeway.http.responses.4xx").increment();
-            }
+            recordResponseStatus(ctx.status());
             stream.close();
         } catch (Exception e) {
             LOG.debug("HTTP/2 stream error", e);
@@ -756,6 +734,24 @@ final class HttpSession implements Runnable {
     }
 
     // --- helpers ---
+
+    /** Buckets the response status into the 5xx/4xx response counters
+     *  (other statuses are not counted). */
+    private void recordResponseStatus(int status) {
+        if (status >= 500) {
+            metrics.counter("freeway.http.responses.5xx").increment();
+        } else if (status >= 400) {
+            metrics.counter("freeway.http.responses.4xx").increment();
+        }
+    }
+
+    /** Echoes the correlation id as a response header, ignoring a hostile
+     *  value that would otherwise break the response head. */
+    private static void echoRequestId(HttpContextDefault ctx) {
+        try {
+            ctx.setHeader("X-Request-Id", ctx.correlationId());
+        } catch (IllegalArgumentException ignored) {}
+    }
 
     private static void sendUpgradeError(OutputStream out, int code, String msg)
         throws IOException {

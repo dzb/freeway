@@ -8,6 +8,19 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+/**
+ * A single path template: literal segments, path parameters
+ * ({@code {name}} / {@code :name}), regex-constrained parameters
+ * ({@code {name:regex}}) and terminal wildcards ({@code {path:.*}}).
+ *
+ * <p>This class provides <b>single-template matching</b> for callers that
+ * need to test one path against one pattern outside the route table.
+ * {@link RouteIndex} deliberately does <i>not</i> use it — the router keeps
+ * its own trie-based matcher (O(segments) independent of route count) with
+ * the same segment semantics. Both share the static utilities here
+ * ({@link #splitPath}, {@link #decodeSegment}, {@link #normalizePath},
+ * {@link #validateRegistrationPath}, traversal checks and the length caps).
+ */
 public final class PathPattern {
     private final String template;
     private final String[] segments;

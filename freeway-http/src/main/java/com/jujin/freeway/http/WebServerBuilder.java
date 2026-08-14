@@ -169,21 +169,11 @@ public final class WebServerBuilder {
         // Class-based routes resolve via container.create() — they need the IoC
         // HttpModule. Fail fast here instead of blowing up on the first request.
         for (Route r : routes) {
-            if (r.handler() instanceof LazyHandler) {
-                throw new IllegalStateException(
-                    "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
-                        + "which instantiates handler classes with constructor injection. "
-                        + "In standalone WebServerBuilder mode use lambda handlers instead.");
-            }
+            checkNoLazyHandler(r);
         }
         for (RouteGroup group : routeGroups) {
             for (Route r : group.expand()) {
-                if (r.handler() instanceof LazyHandler) {
-                    throw new IllegalStateException(
-                        "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
-                            + "which instantiates handler classes with constructor injection. "
-                            + "In standalone WebServerBuilder mode use lambda handlers instead.");
-                }
+                checkNoLazyHandler(r);
             }
         }
         var routeIndex = new RouteIndex(routes, routeGroups);
@@ -201,6 +191,17 @@ public final class WebServerBuilder {
             List.copyOf(mappers)
         );
         return new WebServer(engine, config, eventSink, pipeline);
+    }
+
+    /** Class-based routes resolve via container.create() and need the IoC
+     *  HttpModule; standalone builder mode can only use lambda handlers. */
+    private static void checkNoLazyHandler(Route r) {
+        if (r.handler() instanceof LazyHandler) {
+            throw new IllegalStateException(
+                "Class-based routes (Route.get(path, Handler.class)) require the IoC HttpModule, "
+                    + "which instantiates handler classes with constructor injection. "
+                    + "In standalone WebServerBuilder mode use lambda handlers instead.");
+        }
     }
 
 }

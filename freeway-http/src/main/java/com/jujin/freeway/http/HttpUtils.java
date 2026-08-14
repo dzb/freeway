@@ -46,6 +46,22 @@ public final class HttpUtils {
         return current + ", " + token;
     }
 
+    /** True when {@code value} is not a valid single Host / :authority value:
+     *  blank, or containing a character RFC 7230 §5.4 / RFC 7540 §8.1.2.3
+     *  forbid (@, whitespace, /, \, comma, or any control character).
+     *  Shared by the HTTP/1.1 Host check and the HTTP/2 :authority check. */
+    public static boolean invalidHostValue(String value) {
+        if (value == null || value.isBlank()) return true;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < 0x20 || c == 0x7F || c == ' ' || c == ','
+                    || c == '/' || c == '\\' || c == '@') {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Parses a URL query string into a parameter map.
      * Values are URL-decoded. Malformed percent-encoding is left as-is.

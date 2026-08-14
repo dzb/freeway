@@ -146,7 +146,6 @@ public class HttpContextDefault extends AbstractHttpContext {
         this.responded = false;
         this.responseHeaders.clear();
         this.pathVariables.clear();
-        this.bodyLimitExceeded = false;
         this.headersWritten = false;
         this.chunkedResponse = false;
     }
@@ -294,12 +293,12 @@ public class HttpContextDefault extends AbstractHttpContext {
             chunkedResponse = true;
             responseHeaders.set("Content-Encoding", "gzip");
             addVaryAcceptEncoding();
-        } else if (contentLength >= 0
-                && !hasResponseHeader("Content-Length")) {
-            responseHeaders.set("Content-Length", Long.toString(contentLength));
-        } else if (contentLength < 0
-                && !hasResponseHeader("Content-Length")) {
-            chunkedResponse = true;
+        } else if (!hasResponseHeader("Content-Length")) {
+            if (contentLength >= 0) {
+                responseHeaders.set("Content-Length", Long.toString(contentLength));
+            } else {
+                chunkedResponse = true;
+            }
         }
         responded = true;
         writer.writeHead(this);

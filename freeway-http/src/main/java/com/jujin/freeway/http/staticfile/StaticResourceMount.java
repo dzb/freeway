@@ -592,38 +592,20 @@ public final class StaticResourceMount {
 
         @Override
         public boolean isDirectory(String relative) throws IOException {
-            Path candidate = root.resolve(relative).normalize();
-            if (!candidate.startsWith(root)) {
-                return false;
-            }
-            Path realCandidate;
-            try {
-                realCandidate = candidate.toRealPath();
-            } catch (IOException e) {
-                return false;
-            }
-            return realCandidate.startsWith(root.toRealPath())
-                && Files.isDirectory(realCandidate, LinkOption.NOFOLLOW_LINKS);
+            Path real = resolveReal(relative);
+            return real != null
+                && Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS);
         }
 
         @Override
         public AssetMeta meta(String relative) throws IOException {
-            Path candidate = root.resolve(relative).normalize();
-            if (!candidate.startsWith(root)) {
+            Path real = resolveReal(relative);
+            if (real == null || !Files.isRegularFile(real)) {
                 return null;
             }
-            Path realCandidate;
-            try {
-                realCandidate = candidate.toRealPath();
-            } catch (IOException e) {
-                return null;
-            }
-            if (!realCandidate.startsWith(root.toRealPath()) || !Files.isRegularFile(realCandidate)) {
-                return null;
-            }
-            long size = Files.size(realCandidate);
-            long lastModified = Files.getLastModifiedTime(realCandidate).toMillis();
-            return new AssetMeta(realCandidate.getFileName().toString(),
+            long size = Files.size(real);
+            long lastModified = Files.getLastModifiedTime(real).toMillis();
+            return new AssetMeta(real.getFileName().toString(),
                 size, lastModified, etag(lastModified, size));
         }
 
@@ -635,30 +617,23 @@ public final class StaticResourceMount {
             }
             // Re-verify containment on the load path: the file may have been
             // replaced by a symlink between meta() and here (TOCTOU).
-            Path candidate = root.resolve(relative).normalize();
-            Path realCandidate;
-            try {
-                realCandidate = candidate.toRealPath();
-            } catch (IOException e) {
-                return null;
-            }
-            if (!realCandidate.startsWith(root.toRealPath())
-                    || !Files.isRegularFile(realCandidate)) {
+            Path real = resolveReal(relative);
+            if (real == null || !Files.isRegularFile(real)) {
                 return null;
             }
             // Memory path: the 50MB cap applies only to fully loading the
             // file into RAM — check before reading so an oversized file is
             // rejected without materializing it.
-            if (Files.size(realCandidate) > MAX_FILE_SIZE_BYTES) {
-                throw new IOException("File too large: " + realCandidate.getFileName()
-                    + " (" + Files.size(realCandidate) + " bytes, max "
+            if (Files.size(real) > MAX_FILE_SIZE_BYTES) {
+                throw new IOException("File too large: " + real.getFileName()
+                    + " (" + Files.size(real) + " bytes, max "
                     + MAX_FILE_SIZE_BYTES + ")");
             }
-            byte[] bytes = Files.readAllBytes(realCandidate);
+            byte[] bytes = Files.readAllBytes(real);
             if (bytes.length != meta.size()) {
                 // File changed between meta() and load() — refresh metadata so
                 // the ETag/Last-Modified headers match the bytes being sent.
-                long lastModified = Files.getLastModifiedTime(realCandidate).toMillis();
+                long lastModified = Files.getLastModifiedTime(real).toMillis();
                 meta = new AssetMeta(
                     meta.name(), bytes.length, lastModified, etag(lastModified, bytes.length));
             }
@@ -741,15 +716,28 @@ public final class StaticResourceMount {
         /** Re-verifies containment on every access path (TOCTOU): the file may
          *  have been replaced by a symlink between meta() and here. */
         private Path resolve(String relative) throws IOException {
+            Path real = resolveReal(relative);
+            return real != null && Files.isRegularFile(real) ? real : null;
+        }
+
+        /** Resolves {@code relative} inside the mount root to its real path,
+         *  verifying after symlink resolution that it still stays within the
+         *  root. Returns null when the path is outside the root, contains a
+         *  non-resolvable component, or does not exist. Called on every
+         *  access path so a file swapped for a symlink between meta() and
+         *  load() is re-checked (TOCTOU). */
+        private Path resolveReal(String relative) throws IOException {
             Path candidate = root.resolve(relative).normalize();
+            if (!candidate.startsWith(root)) {
+                return null;
+            }
             Path realCandidate;
             try {
                 realCandidate = candidate.toRealPath();
             } catch (IOException e) {
                 return null;
             }
-            if (!realCandidate.startsWith(root.toRealPath())
-                    || !Files.isRegularFile(realCandidate)) {
+            if (!realCandidate.startsWith(root.toRealPath())) {
                 return null;
             }
             return realCandidate;

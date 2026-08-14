@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.jujin.freeway.http.HttpUtils;
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 import com.jujin.freeway.http.engine.http2.util.Http2HeaderField;
@@ -90,15 +91,7 @@ public final class HeaderFields {
     /** Mirrors the HTTP/1.1 Host rules (HttpSession.invalidHostHeader):
      *  rejects @, whitespace, /, \ and control characters. */
     private static boolean invalidAuthority(String value) {
-        if (value == null || value.isBlank()) return true;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c < 0x20 || c == 0x7F || c == ' ' || c == ','
-                    || c == '/' || c == '\\' || c == '@') {
-                return true;
-            }
-        }
-        return false;
+        return HttpUtils.invalidHostValue(value);
     }
 
     public List<Http2HeaderField> fields() {

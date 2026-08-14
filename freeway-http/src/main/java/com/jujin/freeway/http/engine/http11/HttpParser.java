@@ -45,14 +45,7 @@ public final class HttpParser {
         this.chunkedPrefix = null;
         // Preserve bytes buffered past the previous request's header boundary
         // (a pipelined next request); otherwise they would be lost.
-        if (pos > 0 && pos < end) {
-            System.arraycopy(buf, pos, buf, 0, end - pos);
-            end -= pos;
-        } else if (pos >= end) {
-            end = 0;
-        }
-        // pos == 0 && end > 0 → buffer already compacted; keep it
-        pos = 0;
+        compactBuffer();
         reqLineBuf.setLength(0);
         headerKeyBuf.setLength(0);
         headerValBuf.setLength(0);
@@ -61,15 +54,7 @@ public final class HttpParser {
     public ParsedRequest parse() throws IOException {
         // Preserve unread bytes from a previous pipelined request. reset()
         // may already have compacted the buffer (pos == 0 with end > 0).
-        if (pos < end) {
-            if (pos > 0) {
-                System.arraycopy(buf, pos, buf, 0, end - pos);
-                end -= pos;
-            }
-        } else {
-            end = 0;
-        }
-        pos = 0;
+        compactBuffer();
 
         String requestLine = readRequestLine();
         if (requestLine == null) return null;
@@ -204,6 +189,21 @@ public final class HttpParser {
         pos = 0;
         end = in.read(buf, 0, buf.length);
         return end > 0;
+    }
+
+    /** Compacts the reusable buffer so unread bytes start at position 0.
+     *  When nothing is left, the buffer is simply emptied. Called from both
+     *  {@link #reset} and {@link #parse} — the latter may already have
+     *  compacted (pos == 0 with end > 0). */
+    private void compactBuffer() {
+        if (pos > 0 && pos < end) {
+            System.arraycopy(buf, pos, buf, 0, end - pos);
+            end -= pos;
+        } else if (pos >= end) {
+            end = 0;
+        }
+        // pos == 0 && end > 0 → buffer already compacted; keep it
+        pos = 0;
     }
 
     // --- request line parser ---
@@ -394,7 +394,7 @@ public final class HttpParser {
             pos = end;
             return new SequenceInputStream(chunkedPrefix, in);
         }
-        int prefixLen = bodyLength >= 0 ? (int) Math.min(available, bodyLength) : available;
+        int prefixLen = (int) Math.min(available, bodyLength);
         var prefix = new ByteArrayInputStream(buf, pos, prefixLen);
         pos += prefixLen;
         if (pos < end) {

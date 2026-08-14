@@ -443,11 +443,7 @@ public final class Http2Connection {
                     continue;
                 }
                 boolean requestEndStream = headerBlock.endStream;
-                byte[] block = headerBlock.combined();
-                var fields = new HeaderFields();
-                for (var field : hpack.decode(block, MAX_HEADER_LIST_SIZE)) {
-                    fields.add(field);
-                }
+                var fields = decodeFields(headerBlock);
                 fields.validate();
 
                 Map<String, List<String>> requestHeaders =
@@ -480,11 +476,7 @@ public final class Http2Connection {
                 // add() still rejects pseudo-headers and connection-specific
                 // fields inside the block; the REQUIRED pseudo-header check
                 // in validate() only applies to request header blocks.
-                byte[] block = headerBlock.combined();
-                var fields = new HeaderFields();
-                for (var field : hpack.decode(block, MAX_HEADER_LIST_SIZE)) {
-                    fields.add(field);
-                }
+                var fields = decodeFields(headerBlock);
                 boolean trailerEndStream = headerBlock.endStream
                     || frame.header().flags().contains(FrameFlag.END_STREAM);
                 headerBlock.reset();
@@ -512,6 +504,18 @@ public final class Http2Connection {
 
             dispatchToStream(target, frame, streamId);
         }
+    }
+
+    /** Decodes a combined HPACK block into {@link HeaderFields}, applying
+     *  per-field validity rules (pseudo-header placement, prohibited
+     *  connection-specific fields). */
+    private HeaderFields decodeFields(HeaderBlockState headerBlock)
+            throws IOException {
+        var fields = new HeaderFields();
+        for (var field : hpack.decode(headerBlock.combined(), MAX_HEADER_LIST_SIZE)) {
+            fields.add(field);
+        }
+        return fields;
     }
 
     /** Rejects a new-stream header block with the given error and clears the

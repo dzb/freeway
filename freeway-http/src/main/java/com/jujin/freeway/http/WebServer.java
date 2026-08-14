@@ -306,9 +306,7 @@ public final class WebServer implements AutoCloseable {
             if (anyMountMatched && !fallthroughMiss) {
                 // Every matching mount is a non-fallthrough miss — a terminal
                 // 404, mirroring a single mount's direct serve() result.
-                ctx.status(404).setHeader(
-                    "Content-Type", "text/plain; charset=utf-8")
-                    .output(NOT_FOUND_BODY);
+                notFound(ctx);
                 return;
             }
         }
@@ -317,13 +315,18 @@ public final class WebServer implements AutoCloseable {
             ctx.path()
         );
         if (match == null) {
-            ctx.status(404).setHeader(
-                "Content-Type", "text/plain; charset=utf-8")
-                .output(NOT_FOUND_BODY);
+            notFound(ctx);
             return;
         }
         ctx.pathVars(match.pathVariables());
         match.handler().handle(ctx);
+    }
+
+    /** Commits the standard plain-text 404 response. */
+    private void notFound(HttpContext ctx) throws IOException {
+        ctx.status(404).setHeader(
+            "Content-Type", "text/plain; charset=utf-8")
+            .output(NOT_FOUND_BODY);
     }
 
     private boolean handleException(HttpContext ctx, Exception exception) {
