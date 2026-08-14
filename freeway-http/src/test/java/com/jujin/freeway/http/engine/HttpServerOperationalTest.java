@@ -281,22 +281,22 @@ class HttpServerOperationalTest {
             var client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .build();
-            // Built-in mappings must survive a custom mapper: oversized body → 413.
+            // Built-in mappings must survive a custom handler: oversized body → 413.
             var oversized = client.send(
                 HttpRequest.newBuilder()
                     .uri(URI.create("http://127.0.0.1:" + port + "/body"))
                     .POST(HttpRequest.BodyPublishers.ofString("too large")).build(),
                 HttpResponse.BodyHandlers.ofString());
             assertEquals(413, oversized.statusCode(),
-                "the built-in 413 mapping must stay active alongside a custom mapper");
-            // The custom mapper must take priority for exceptions it handles.
+                "the built-in 413 mapping must stay active alongside a custom handler");
+            // The custom handler must take priority for exceptions it handles.
             var custom = client.send(
                 HttpRequest.newBuilder()
                     .uri(URI.create("http://127.0.0.1:" + port + "/custom"))
                     .GET().build(),
                 HttpResponse.BodyHandlers.ofString());
             assertEquals(418, custom.statusCode(),
-                "a custom mapper must handle its own exception type first");
+                "a custom handler must handle its own exception type first");
         } finally {
             server.stop();
         }

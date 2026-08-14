@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -64,7 +65,7 @@ class ContainerCloseTest {
         // published events hit a closed bus, threw IllegalStateException, and
         // failed the whole shutdown. The bus is now closed only after every
         // lifecycle callback has run.
-        var received = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var received = new CopyOnWriteArrayList<String>();
         containerRef = Freeway.create(binder ->
             binder.bind(EventPublishingCleanup.class).to(EventPublishingCleanup.class));
         containerRef.get(EventBus.class).subscribe(String.class, received::add);
@@ -82,7 +83,7 @@ class ContainerCloseTest {
         // EventBus is one of those closeables — before the fix it could be
         // closed before another service's close() ran, so a close() that
         // published events threw IllegalStateException and failed shutdown.
-        var received = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var received = new CopyOnWriteArrayList<String>();
         containerRef = Freeway.create(binder ->
             binder.bind(ClosingPublisher.class).to(ClosingPublisher.class));
         containerRef.get(EventBus.class).subscribe(String.class, received::add);

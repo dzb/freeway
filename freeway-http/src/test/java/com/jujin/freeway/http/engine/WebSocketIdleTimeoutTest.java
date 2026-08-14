@@ -35,9 +35,9 @@ class WebSocketIdleTimeoutTest {
         // 1s read timeout — far below the idle gap this test enforces.
         WebServer server = WebServerBuilder.builder()
             .config(HttpServerConfig.builder()
-            .host("127.0.0.1")
-            .readTimeout(Duration.ofSeconds(1))
-            .build())
+                .host("127.0.0.1")
+                .readTimeout(Duration.ofSeconds(1))
+                .build())
             .webSocketRoute(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP))
             .build();
         server.start();
@@ -86,9 +86,9 @@ class WebSocketIdleTimeoutTest {
         var echoed = new java.util.concurrent.atomic.AtomicReference<String>();
         WebServer server = WebServerBuilder.builder()
             .config(HttpServerConfig.builder()
-            .host("127.0.0.1")
-            .readTimeout(Duration.ofSeconds(1))
-            .build())
+                .host("127.0.0.1")
+                .readTimeout(Duration.ofSeconds(1))
+                .build())
             .webSocketRoute(WebSocketRoute.of("/ws", session -> new WebSocketListener() {
                 @Override
                 public void onText(String text) {

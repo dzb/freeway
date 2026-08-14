@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.annotation.PreDestroy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -90,7 +91,7 @@ class ShutdownTest {
             this.bus = bus;
         }
 
-        @com.jujin.freeway.ioc.annotation.PreDestroy
+        @PreDestroy
         void cleanup() {
             bus.publish("pre-destroy-event");
         }

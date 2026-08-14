@@ -224,6 +224,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **移至 commons.config**（http/db 等模块不依赖 boot 也可声明类型化键）；
   新增 `required()` 工厂（命名经评估：ConfigKey → ConfigSpec，区分裸 key 常量族）（缺失/空白 fail-fast，不再静默回默认）。+10 测试。
 
+- **WebSocket 空闲保活（freeway-http，修复）** — 升级成功的 WebSocket 在 101 响应后
+  清除 socket 读超时：空闲连接不再被默认 30s readTimeout 以 1006 异常关闭（此前
+  无帧交换的连接约 30s 后被强制断开）。死连接仍由 TCP keepalive 探针回收，不发送
+  服务端 ping。`WebSocketIdleTimeoutTest` 修正为真实绑定 1s readTimeout 覆盖该路径。
+- **`HttpServerConfig.builder()`（freeway-http，新增）** — 具名 setter 的配置构造，
+  避免长位置参数把 `Duration` 绑错槽位（如 readTimeout 落到 shutdownGrace）；
+  默认值与 canonical 构造一致，`build()` 走同一套校验。
+- **JSON 媒体类型判断补齐 `+json` 后缀（freeway-http，修复）** — `MediaTypes.isJson`
+  现在接受 `application/*+json` 结构化语法后缀（如 `application/vnd.api+json`、
+  `application/json-patch+json`），与 `bodyAsJson` 415 校验的文档承诺一致。
+- **容器关闭时 EventBus 最后关闭（freeway-ioc，修复）** — `@PreDestroy`/`close()`
+  回调里 publish 事件不再因 EventBus 先于其他服务被关闭而抛
+  `IllegalStateException`、把良性关闭放大成 shutdown 失败；关闭期间发布的事件
+  正常投递。
+- **继承层级 lifecycle 方法冲突 fail-fast（freeway-ioc，行为变更）** — 子类与父类
+  声明**不同名**的 `@PostConstruct`/`@PreDestroy` 时启动即报错并点名两个方法
+  （此前静默只执行子类的、丢弃父类的 init/cleanup）；同名重写仍只执行子类一次
+  （Java 重写语义）。
+- **非可写属性注入报错区分（freeway-ioc，改进）** — `@Inject` 命中不可写属性时，
+  final 字段与 getter-only 派生属性给出各自的准确报错与修复指引（此前统一报
+  "Cannot inject into final field"）。
+
 ### Docs
 
 - **代码审查报告** — 新增 `docs/CODE-REVIEW.md`：三轮修复（S1/S2/S3，共 68 项）的修复状态
