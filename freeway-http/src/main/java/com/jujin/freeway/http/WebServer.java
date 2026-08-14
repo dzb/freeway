@@ -285,10 +285,31 @@ public final class WebServer implements AutoCloseable {
 
     private void dispatchToRoute(HttpContext ctx) throws Exception {
         if (!staticMounts.isEmpty()) {
+            boolean anyMountMatched = false;
+            boolean fallthroughMiss = false;
             for (StaticResourceMount mount : staticMounts) {
-                if (mount.matches(ctx.method(), ctx.path())) {
-                    if (mount.serve(ctx, ctx)) return;
+                if (!mount.matches(ctx.method(), ctx.path())) {
+                    continue;
                 }
+                anyMountMatched = true;
+                if (mount.hasResource(ctx.path())) {
+                    // Only a real asset commits a response here; a mount that
+                    // matched but has no asset must not shadow later mounts or
+                    // the route chain with a premature 404.
+                    mount.serve(ctx, ctx);
+                    return;
+                }
+                if (mount.fallthrough()) {
+                    fallthroughMiss = true;
+                }
+            }
+            if (anyMountMatched && !fallthroughMiss) {
+                // Every matching mount is a non-fallthrough miss — a terminal
+                // 404, mirroring a single mount's direct serve() result.
+                ctx.status(404).setHeader(
+                    "Content-Type", "text/plain; charset=utf-8")
+                    .output(NOT_FOUND_BODY);
+                return;
             }
         }
         RouteIndex.RouteMatch match = routes.match(

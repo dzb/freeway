@@ -4,6 +4,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.body.BodyTooLargeException;
+import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -63,6 +64,13 @@ public abstract class AbstractHttpContext
      *  existing id. */
     protected final void setCorrelationId(String correlationId) {
         exchangeMeta.setCorrelationId(correlationId);
+    }
+
+    /** Resets per-request exchange metadata (principal, attributes,
+     *  correlation id, start time) so a keep-alive context reused for the
+     *  next request never leaks state from the previous one. */
+    protected final void resetExchangeMeta() {
+        exchangeMeta.reset();
     }
 
     @Override
@@ -245,10 +253,14 @@ public abstract class AbstractHttpContext
     }
 
     /**
-     * Validates that a header value does not contain CR or LF characters,
-     * preventing HTTP response header injection.
+     * Validates that a header value does not contain CR or LF characters
+     * (preventing HTTP response header injection) and is fully encodable as
+     * ISO-8859-1 (the charset the HTTP/1.1 writers serialize header values
+     * with — anything above U+00FF would otherwise be silently replaced by
+     * '?' on the wire).
      *
-     * @throws IllegalArgumentException if the value contains CR or LF
+     * @throws IllegalArgumentException if the value contains CR/LF or a
+     *         character that is not representable in ISO-8859-1
      */
     protected static void validateHeaderValue(String value) {
         if (value != null) {
@@ -257,6 +269,15 @@ public abstract class AbstractHttpContext
                 if (c == '\r' || c == '\n') {
                     throw new IllegalArgumentException(
                         "Header value must not contain CR or LF: " +
+                        value.substring(0, Math.min(i + 10, value.length())) + "...");
+                }
+            }
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (c > 0xFF) {
+                    throw new IllegalArgumentException(
+                        "Header value must be ISO-8859-1 encodable (non-Latin-1 character at index "
+                            + i + "): " +
                         value.substring(0, Math.min(i + 10, value.length())) + "...");
                 }
             }
@@ -291,10 +312,25 @@ public abstract class AbstractHttpContext
         }
     }
 
+    /**
+     * Validates that the request Content-Type is JSON before a typed body
+     * read. Accepts {@code application/json} and structured syntax suffixes
+     * ({@code application/*+json}, e.g. {@code application/vnd.api+json});
+     * anything else is a client error ({@link UnsupportedMediaTypeException})
+     * mapped to 415 by {@code ExceptionMappers}, not a 500.
+     */
     private void checkJsonContentType() {
         String ct = header("Content-Type").orElse(null);
-        if (ct == null || !ct.toLowerCase(Locale.ROOT).contains("application/json")) {
-            throw new IllegalStateException("Expected application/json Content-Type");
+        if (ct == null) {
+            throw new UnsupportedMediaTypeException(
+                "Missing Content-Type: expected application/json");
+        }
+        String mediaType = ct.toLowerCase(Locale.ROOT).split(";")[0].trim();
+        boolean isJson = "application/json".equals(mediaType)
+            || (mediaType.startsWith("application/") && mediaType.endsWith("+json"));
+        if (!isJson) {
+            throw new UnsupportedMediaTypeException(
+                "Unsupported Content-Type '" + ct + "': expected application/json");
         }
     }
 

@@ -188,14 +188,17 @@ public final class WebServerBuilder {
         }
         var routeIndex = new RouteIndex(routes, routeGroups);
         var wsIndex = new WebSocketIndex(webSocketRoutes, webSocketGroups);
-        List<ExceptionMapper> mappers = exceptionMappers.isEmpty()
-            ? List.of(ExceptionMappers.defaultMapper())
-            : List.copyOf(exceptionMappers);
+        // Custom mappers run first (first handler wins); the built-in mapper
+        // is always appended so BodyTooLarge→413, Multipart→400 and
+        // Validation→400 keep working alongside custom mappers — matching the
+        // HttpModule contribution semantics (container.extension() + built-in).
+        var mappers = new ArrayList<>(exceptionMappers);
+        mappers.add(ExceptionMappers.defaultMapper());
         var pipeline = new RequestPipeline(
             routeIndex, wsIndex, corsFilter, healthFilter,
             List.copyOf(staticMounts),
             List.copyOf(filters),
-            mappers
+            List.copyOf(mappers)
         );
         return new WebServer(engine, config, eventSink, pipeline);
     }

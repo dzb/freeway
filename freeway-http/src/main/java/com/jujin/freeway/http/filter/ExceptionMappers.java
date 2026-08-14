@@ -3,6 +3,7 @@ package com.jujin.freeway.http.filter;
 import com.jujin.freeway.http.ValidationException;
 import com.jujin.freeway.http.body.BodyTooLargeException;
 import com.jujin.freeway.http.body.MultipartException;
+import com.jujin.freeway.http.body.UnsupportedMediaTypeException;
 
 import java.util.Map;
 
@@ -16,7 +17,8 @@ public final class ExceptionMappers {
     private ExceptionMappers() {}
 
     /** The default mapper: 413 for oversized bodies, 400 for invalid
-     *  multipart requests and failed bean validation. */
+     *  multipart requests and failed bean validation, 415 for bodies whose
+     *  Content-Type does not match what the handler requires. */
     public static ExceptionMapper defaultMapper() {
         return (ctx, ex) -> {
             if (ex instanceof BodyTooLargeException) {
@@ -27,6 +29,12 @@ public final class ExceptionMappers {
             }
             if (ex instanceof MultipartException) {
                 ctx.sendJson(400, Map.of("error", "Invalid Multipart Request"));
+                return true;
+            }
+            if (ex instanceof UnsupportedMediaTypeException) {
+                ctx.sendJson(415, Map.of(
+                    "error", "Unsupported Media Type",
+                    "message", ex.getMessage()));
                 return true;
             }
             if (ex instanceof ValidationException ve) {

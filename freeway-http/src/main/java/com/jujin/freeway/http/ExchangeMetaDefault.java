@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class ExchangeMetaDefault implements ExchangeMeta {
 
     private volatile String correlationId;
-    private final Instant startTime;
+    private volatile Instant startTime;
     private volatile Object principal;
     private volatile ConcurrentHashMap<String, Object> attributes;
 
@@ -23,6 +23,20 @@ public final class ExchangeMetaDefault implements ExchangeMeta {
         this.correlationId = correlationId != null && !correlationId.isBlank()
             ? correlationId : fastCorrelationId();
         this.startTime = Instant.now();
+    }
+
+    /**
+     * Resets per-request state for keep-alive connection reuse: clears the
+     * principal and attributes, rolls a fresh correlation id and refreshes
+     * the start time so per-request timing stats stay accurate. WebSocket
+     * sessions own their exchange for the whole connection lifetime and never
+     * call this.
+     */
+    public void reset() {
+        principal = null;
+        attributes = null;
+        correlationId = fastCorrelationId();
+        startTime = Instant.now();
     }
 
     /** Replaces the correlation id for a reused exchange (keep-alive);
