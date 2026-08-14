@@ -59,10 +59,18 @@ final class InjectResolver {
                 // injection annotation stay untouched (existing behavior).
                 AnnotationLookup lookup = annotations(property);
                 if (hasInjectionAnnotation(lookup) || hasConfiguredValueAnnotation(lookup)) {
+                    if (property.isFieldBacked()) {
+                        throw new IllegalStateException(
+                            "Cannot inject into final field " + property.name()
+                                + " on " + ownerType.getName()
+                                + " — use constructor injection instead"
+                        );
+                    }
                     throw new IllegalStateException(
-                        "Cannot inject into final field " + property.name()
+                        "Cannot inject into non-writable property " + property.name()
                             + " on " + ownerType.getName()
-                            + " — use constructor injection instead"
+                            + " — it is a getter-only derived value; annotate a "
+                            + "writable field or use constructor injection instead"
                     );
                 }
                 continue;

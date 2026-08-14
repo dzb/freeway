@@ -23,6 +23,16 @@ public interface BeanProperty {
     /** Returns true if this property is writable (has a setter or is an immediate field). */
     boolean isWritable();
 
+    /**
+     * Returns true if this property is backed by an instance field (a plain
+     * field or a record component), as opposed to a getter-only computed
+     * value. Lets diagnostics distinguish a final field from a derived
+     * getter property — both are non-writable, but the remedies differ.
+     */
+    default boolean isFieldBacked() {
+        return false;
+    }
+
     /** Reads the property value from the given target instance. */
     Object read(Object target);
 

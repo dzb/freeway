@@ -321,6 +321,11 @@ public final class BeanPlan {
         }
 
         @Override
+        public boolean isFieldBacked() {
+            return true;
+        }
+
+        @Override
         public Object read(Object target) {
             try {
                 return MethodHandleUtils.invoke(accessor, target);
@@ -339,6 +344,10 @@ public final class BeanPlan {
         @Override
         public boolean isWritable() {
             return writable;
+        }
+        @Override
+        public boolean isFieldBacked() {
+            return true;
         }
         @Override
         public Annotation[] annotations() {
