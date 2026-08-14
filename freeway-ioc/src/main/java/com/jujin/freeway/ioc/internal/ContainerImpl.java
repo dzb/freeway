@@ -260,16 +260,16 @@ public final class ContainerImpl implements Container {
                 return;
             }
             LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
-            // Note: shutdown order of container-managed services is
-            // unspecified — the EventBus may be closed before another
-            // service's close()/@PreDestroy runs, so publishing events
-            // during the drain is not reliable (a closed bus rejects them).
-            // Deliberately NOT holding ServiceRuntime.REALIZE_LOCK across the
-            // drain: user lifecycle callbacks may join worker threads that
-            // realize services, and holding the global lock there would
-            // deadlock. Realization during the drain is handled by the
-            // re-snapshot loop; realization after close is rejected inside
-            // realize() (it re-checks the closed flag under the lock).
+            // The container-managed EventBus is closed only after every
+            // lifecycle callback has run (Shutdown defers it), so @PreDestroy
+            // code may still publish events during the drain without the bus
+            // rejecting them. Deliberately NOT holding
+            // ServiceRuntime.REALIZE_LOCK across the drain: user lifecycle
+            // callbacks may join worker threads that realize services, and
+            // holding the global lock there would deadlock. Realization during
+            // the drain is handled by the re-snapshot loop; realization after
+            // close is rejected inside realize() (it re-checks the closed flag
+            // under the lock).
             RuntimeException failure = shutdown.close();
             synchronized (ServiceRuntime.REALIZE_LOCK) {
                 // Seal + final drain + cache clear happen atomically with

@@ -1,8 +1,10 @@
 package com.jujin.freeway.ioc;
+import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,6 +55,43 @@ class ContainerCloseTest {
         containerRef.close();
         assertTrue(preDestroyAccessed,
             "@PreDestroy must be able to look services up during close");
+    }
+
+    @Test
+    void preDestroyCanPublishEventsDuringContainerClose() {
+        // Regression: the container-managed EventBus used to be closed in an
+        // unspecified order relative to other services — a @PreDestroy that
+        // published events hit a closed bus, threw IllegalStateException, and
+        // failed the whole shutdown. The bus is now closed only after every
+        // lifecycle callback has run.
+        var received = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        containerRef = Freeway.create(binder ->
+            binder.bind(EventPublishingCleanup.class).to(EventPublishingCleanup.class));
+        containerRef.get(EventBus.class).subscribe(String.class, received::add);
+        containerRef.get(EventPublishingCleanup.class); // realize so PreDestroy fires on close
+
+        assertDoesNotThrow(containerRef::close,
+            "close() must not fail when @PreDestroy publishes events");
+        assertEquals(List.of("cleanup-event"), received,
+            "the event published from @PreDestroy must be delivered while the bus is still open");
+    }
+
+    @Test
+    void closeCallbackCanPublishEventsDuringContainerClose() {
+        // The AutoCloseable drain runs after the @PreDestroy drain, and the
+        // EventBus is one of those closeables — before the fix it could be
+        // closed before another service's close() ran, so a close() that
+        // published events threw IllegalStateException and failed shutdown.
+        var received = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        containerRef = Freeway.create(binder ->
+            binder.bind(ClosingPublisher.class).to(ClosingPublisher.class));
+        containerRef.get(EventBus.class).subscribe(String.class, received::add);
+        containerRef.get(ClosingPublisher.class); // realize so close() fires on container close
+
+        assertDoesNotThrow(containerRef::close,
+            "close() must not fail when a service close() callback publishes events");
+        assertEquals(List.of("closing-event"), received,
+            "the event published from a close() callback must be delivered while the bus is still open");
     }
 
     @Test
@@ -269,6 +308,26 @@ class ContainerCloseTest {
         void cleanup() {
             containerRef.get(OtherService.class); // must not throw "Container is closed"
             preDestroyAccessed = true;
+        }
+    }
+
+    static class EventPublishingCleanup {
+        @Inject
+        EventBus bus;
+
+        @PreDestroy
+        void cleanup() {
+            bus.publish("cleanup-event");
+        }
+    }
+
+    static class ClosingPublisher implements AutoCloseable {
+        @Inject
+        EventBus bus;
+
+        @Override
+        public void close() {
+            bus.publish("closing-event");
         }
     }
 

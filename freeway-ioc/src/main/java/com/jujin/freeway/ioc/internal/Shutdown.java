@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.jujin.freeway.ioc.EventBus;
+
 final class Shutdown {
     /**
      * Upper bound on drain passes; a healthy shutdown stabilizes in 1-2.
@@ -16,6 +18,14 @@ final class Shutdown {
     private final Map<ServiceKey, Object> targetCache;
     private final Set<Object> preDestroyed = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Object> closed = Collections.newSetFromMap(new IdentityHashMap<>());
+    /**
+     * Container-managed {@link EventBus} instances, closed only after every
+     * lifecycle callback has run: {@code @PreDestroy} code may still publish
+     * events (the documented "look up services during close" contract), and a
+     * bus that was closed mid-drain would turn those publishes into
+     * IllegalStateException failures that abort the whole shutdown.
+     */
+    private final List<EventBus> deferredEventBuses = new ArrayList<>();
     private int iterations;
 
     Shutdown(Map<ServiceKey, Object> targetCache) {
@@ -37,7 +47,19 @@ final class Shutdown {
      * snapshot and escape lifecycle cleanup.
      */
     RuntimeException close() {
-        return drainRemaining(null);
+        RuntimeException failure = drainRemaining(null);
+        // The event bus is the last thing to close: every @PreDestroy/close
+        // callback has already run, so no code can publish into a closed bus.
+        for (EventBus bus : deferredEventBuses) {
+            try {
+                bus.close();
+            } catch (RuntimeException ex) {
+                failure = accumulateFailure(failure,
+                    "Unable to close container-managed EventBus", ex);
+            }
+        }
+        deferredEventBuses.clear();
+        return failure;
     }
 
     /**
@@ -72,6 +94,10 @@ final class Shutdown {
                 try {
                     if (preDestroy) {
                         Lifecycle.invokePreDestroy(value);
+                    } else if (value instanceof EventBus bus) {
+                        // Deferred until every lifecycle callback has run —
+                        // @PreDestroy code may still publish during the drain.
+                        deferredEventBuses.add(bus);
                     } else if (value instanceof AutoCloseable closeable) {
                         closeable.close();
                     }
