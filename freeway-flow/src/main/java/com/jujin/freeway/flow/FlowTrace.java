@@ -41,6 +41,17 @@ public class FlowTrace implements Serializable {
         }
     }
 
+    /** Records a node by id; a null id clears the graph's record. */
+    public void recordNodeId(Graph graph, String nodeId) {
+        if (!enabled) return;
+        Objects.requireNonNull(graph, "graph");
+        if (nodeId == null) {
+            lastRecords.remove(graph.getId());
+        } else {
+            recordNode(graph, graph.getNodeOrThrow(nodeId));
+        }
+    }
+
     public void recordNode(Graph graph, Node node) {
         if (!enabled) return;
         Objects.requireNonNull(graph, "graph");

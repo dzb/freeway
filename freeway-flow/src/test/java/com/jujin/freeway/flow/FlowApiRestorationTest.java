@@ -91,6 +91,20 @@ class FlowApiRestorationTest {
     }
 
     @Test
+    void traceRecordNodeIdAndClear() {
+        Graph graph = Graph.create("g", spec -> {
+            spec.addStart("start").linkAdd("end");
+            spec.addEnd("end");
+        });
+        FlowTrace trace = new FlowTrace();
+        trace.recordNodeId(graph, "start");
+        assertEquals("start", trace.lastNodeId("g"));
+        trace.recordNodeId(graph, null);
+        assertNull(trace.lastNodeId("g"),
+            "recordNodeId with a null id must clear the graph's record");
+    }
+
+    @Test
     void nodeRecordTypedAccessors() {
         Graph graph = Graph.create("g", spec -> {
             spec.addStart("start").title("The Start").linkAdd("end");
