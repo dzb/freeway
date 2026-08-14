@@ -23,20 +23,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FlowApiRestorationTest {
 
     @Test
-    void markerIndexKnownMarkersIsSnapshot() {
+    void markerIndexMarkersIsSnapshot() {
         FlowMarkerIndex index = new FlowMarkerIndex();
         index.register(comp("one"), Set.of("a", "b"));
         index.register(comp("two"), Set.of("c"));
 
-        Set<String> snapshot = index.knownMarkers();
+        Set<String> snapshot = index.markers();
         assertEquals(Set.of("a", "b", "c"), snapshot);
 
         index.register(comp("three"), Set.of("d"));
         assertEquals(Set.of("a", "b", "c"), snapshot,
-            "knownMarkers() must be a snapshot, not a live view");
-        assertEquals(Set.of("a", "b", "c", "d"), index.knownMarkers());
-        assertEquals(index.markers(), index.knownMarkers(),
-            "the new and legacy names must agree");
+            "markers() must be a snapshot, not a live view");
+        assertEquals(Set.of("a", "b", "c", "d"), index.markers());
         assertThrows(UnsupportedOperationException.class, () -> snapshot.add("x"));
     }
 

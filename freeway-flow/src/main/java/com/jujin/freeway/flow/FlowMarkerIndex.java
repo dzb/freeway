@@ -127,14 +127,6 @@ public class FlowMarkerIndex {
     }
 
     /**
-     * Snapshot of all registered marker names (see {@link #markers()}).
-     * Kept under the original name for callers that predate the rename.
-     */
-    public Set<String> knownMarkers() {
-        return markers();
-    }
-
-    /**
      * Extracts marker strings from {@code @FlowMarker} annotations on a class.
      */
     public static Set<String> extractFlowMarkers(Class<?> clazz) {
