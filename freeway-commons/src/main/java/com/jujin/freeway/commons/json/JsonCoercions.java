@@ -119,57 +119,15 @@ final class JsonCoercions {
         Coercer coercer,
         TypeContext context
     ) {
-        Object plain = normalize(value);
-        if (plain == null) {
-            return CoercerDefault.defaultValue(targetType);
-        }
-        if (targetType.isInstance(plain)) {
-            return targetType.cast(plain);
-        }
-        if (
-            plain instanceof JsonObject object &&
-            Map.class.isAssignableFrom(targetType)
-        ) {
-            return coerceToMap(
-                object,
-                targetType,
-                String.class,
-                Object.class,
-                coercer,
-                context
-            );
-        }
-        if (
-            plain instanceof JsonArray array &&
-            Collection.class.isAssignableFrom(targetType)
-        ) {
-            return coerceToCollection(
-                array,
-                targetType,
-                Object.class,
-                coercer,
-                context
-            );
-        }
-        if (
-            plain instanceof JsonObject object &&
-            !targetType.isArray() &&
-            !targetType.isEnum()
-        ) {
-            BeanPlan plan = BeanIntrospector.plan(targetType);
-            return plan.record()
-                ? constructRecord(object, plan, coercer, context)
-                : constructBean(object, plan, coercer, context);
-        }
-        if (plain instanceof JsonArray array && targetType.isArray()) {
-            return coerceToArray(
-                array,
-                targetType.getComponentType(),
-                coercer,
-                context
-            );
-        }
-        return coercer.coerce(plain, targetType);
+        return coerceStructured(
+            value,
+            targetType,
+            String.class,
+            Object.class,
+            Object.class,
+            coercer,
+            context
+        );
     }
 
     private static Object coerceParameterized(
@@ -179,17 +137,42 @@ final class JsonCoercions {
         TypeContext context
     ) {
         Class<?> rawType = Types.rawClass(type.getRawType());
+        Type[] args = type.getActualTypeArguments();
+        return coerceStructured(
+            value,
+            rawType,
+            args.length > 0 ? args[0] : String.class,
+            args.length > 1 ? args[1] : Object.class,
+            args.length > 0 ? args[0] : Object.class,
+            coercer,
+            context
+        );
+    }
+
+    // Shared dispatch chain for Class and ParameterizedType targets. The
+    // isInstance short-circuit must come first (e.g. Object.class targets);
+    // for parameterized targets the raw type can never be a supertype of
+    // JsonObject/JsonArray, so its position is unobservable there.
+    private static Object coerceStructured(
+        Object value,
+        Class<?> rawType,
+        Type keyType,
+        Type valueType,
+        Type elementType,
+        Coercer coercer,
+        TypeContext context
+    ) {
         Object plain = normalize(value);
         if (plain == null) {
             return CoercerDefault.defaultValue(rawType);
+        }
+        if (rawType.isInstance(plain)) {
+            return rawType.cast(plain);
         }
         if (
             plain instanceof JsonObject object &&
             Map.class.isAssignableFrom(rawType)
         ) {
-            Type[] args = type.getActualTypeArguments();
-            Type keyType = args.length > 0 ? args[0] : String.class;
-            Type valueType = args.length > 1 ? args[1] : Object.class;
             return coerceToMap(
                 object,
                 rawType,
@@ -203,10 +186,6 @@ final class JsonCoercions {
             plain instanceof JsonArray array &&
             Collection.class.isAssignableFrom(rawType)
         ) {
-            Type elementType =
-                type.getActualTypeArguments().length > 0
-                    ? type.getActualTypeArguments()[0]
-                    : Object.class;
             return coerceToCollection(
                 array,
                 rawType,
@@ -232,9 +211,6 @@ final class JsonCoercions {
                 coercer,
                 context
             );
-        }
-        if (rawType.isInstance(plain)) {
-            return rawType.cast(plain);
         }
         return coercer.coerce(plain, rawType);
     }
