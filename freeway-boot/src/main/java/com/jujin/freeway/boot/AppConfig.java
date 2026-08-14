@@ -1,5 +1,7 @@
 package com.jujin.freeway.boot;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.config.ConfigSpec;
 
 import java.util.List;
@@ -15,9 +17,18 @@ public interface AppConfig {
      * with the key's parser, or the key's default when absent/blank. Errors
      * (missing required key, malformed value) are reported by the key itself
      * with the key name in the message.
+     *
+     * <p>Specs created without a per-key parser ({@code ConfigSpec.of(key,
+     * type, default)}) are resolved with the default {@link Coercer} — the
+     * container Coercer's built-in conversions apply; user-registered
+     * {@code CoerceRule}s require the container coercer via
+     * {@code parse(raw, Coercer)}.</p>
      */
     default <T> T get(ConfigSpec<T> key) {
-        return key.parse(get(key.key()));
+        if (key.parser() != null) {
+            return key.parse(get(key.key()));
+        }
+        return key.parse(get(key.key()), new CoercerDefault());
     }
 
     /** Returns the active profiles in priority order, as an unmodifiable list. */

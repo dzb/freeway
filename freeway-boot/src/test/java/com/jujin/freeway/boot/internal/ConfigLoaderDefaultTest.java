@@ -1,13 +1,18 @@
 package com.jujin.freeway.boot.internal;
 import java.util.Arrays;
 
+import com.jujin.freeway.boot.AppConfig;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -96,6 +101,78 @@ class ConfigLoaderDefaultTest {
     }
 
     @Test
+    void rejectsBareDoubleDash() {
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> ConfigLoaderDefault.parseArgs("--"));
+        assertTrue(ex.getMessage().contains("--"),
+            "the error must name the offending argument, got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("must not be empty"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
+    void rejectsDoubleDashWithEmptyKey() {
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> ConfigLoaderDefault.parseArgs("--=x"));
+        assertTrue(ex.getMessage().contains("--=x"),
+            "the error must name the offending argument, got: " + ex.getMessage());
+    }
+
+    @Test
+    void rejectsBarePropertyStyleDashD() {
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> ConfigLoaderDefault.parseArgs("-D"));
+        assertTrue(ex.getMessage().contains("-D"),
+            "the error must name the offending argument, got: " + ex.getMessage());
+    }
+
+    @Test
+    void rejectsKeyContainingEqualsSign() {
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> ConfigLoaderDefault.parseArgs("-D=x"));
+        assertTrue(ex.getMessage().contains("-D=x"),
+            "the error must name the offending argument, got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("must not contain '='"),
+            "got: " + ex.getMessage());
+    }
+
+    @Test
+    void equalsInValueIsAllowed() {
+        // '=' inside the VALUE (after the first '=') is legitimate.
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+            "--app.url=http://h/p?a=b&c=d");
+
+        assertEquals("http://h/p?a=b&c=d", args.get("app.url"));
+        assertEquals(1, args.size());
+    }
+
+    @Test
+    void misspelledFlagBecomesHarmlessUnknownKey() {
+        // A typo like --profle=dev must not silently activate the wrong
+        // profile; it stays an unknown (harmless) key — frozen behavior.
+        Map<String, String> args = ConfigLoaderDefault.parseArgs("--profle=dev");
+
+        assertEquals("dev", args.get("freeway.profle"));
+        assertFalse(args.containsKey("freeway.profile"));
+        assertEquals(1, args.size());
+    }
+
+    @Test
+    void positionalArgumentsAreWarnedAndIgnored() {
+        // Positional args are not config — they must not crash the parse,
+        // but they must no longer be silently swallowed without a trace.
+        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+            "positional", "--ok=1", "another");
+
+        assertEquals("1", args.get("freeway.ok"));
+        assertEquals(1, args.size());
+    }
+
+    @Test
     void followingFlagTurnsKeyIntoBoolean() {
         Map<String, String> args = ConfigLoaderDefault.parseArgs(
             "--port", "--verbose"
@@ -126,6 +203,39 @@ class ConfigLoaderDefaultTest {
                 && parserCause.getMessage().contains("Unable to read JSON input"));
         assertTrue(parserCause.getCause() != null
                 && parserCause.getCause().getMessage().contains("exceeds"));
+    }
+
+    @Test
+    void emptyJsonResourceIsTreatedAsNoConfig() {
+        ConfigLoaderDefault.BootConfigLayers layers =
+            ConfigLoaderDefault.loadLayers(new FixedContentLoader("application.json", ""));
+
+        assertTrue(layers.json().isEmpty(),
+            "an empty application.json must be skipped, not crash the load");
+        assertEquals("Freeway Boot", layers.properties().get("app.name"),
+            "the properties layer must still load normally");
+        assertEquals("Freeway Boot", layers.merged().get("app.name"));
+    }
+
+    @Test
+    void blankJsonResourceIsTreatedAsNoConfig() {
+        ConfigLoaderDefault.BootConfigLayers layers =
+            ConfigLoaderDefault.loadLayers(new FixedContentLoader(
+                "application.json", "  \n\t \r\n  "));
+
+        assertTrue(layers.json().isEmpty(),
+            "a whitespace-only application.json must be skipped, not crash the load");
+        assertEquals("Freeway Boot", layers.merged().get("app.name"));
+    }
+
+    @Test
+    void malformedJsonResourceStillFails() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            ConfigLoaderDefault.loadLayers(new FixedContentLoader(
+                "application.json", "{\"bad\": ")));
+
+        assertTrue(ex.getMessage().contains("Unable to load application.json"),
+            "malformed JSON must still fail startup, got: " + ex.getMessage());
     }
 
     @Test
@@ -197,6 +307,50 @@ class ConfigLoaderDefaultTest {
     }
 
     @Test
+    void jvmSystemPropertyDrivesEnvPrefix() {
+        // freeway.env.prefix is read from the JVM system property only
+        // (-Dfreeway.env.prefix=APP_): a custom prefix then maps APP_* vars
+        // and ignores FREEWAY_*.
+        System.setProperty("freeway.env.prefix", "APP_");
+        try {
+            Map<String, String> mapped = ConfigLoaderDefault.loadEnvironment(
+                Map.of("APP_X", "1", "FREEWAY_Y", "2", "OTHER", "3"));
+            assertEquals(Map.of("x", "1"), mapped,
+                "with -Dfreeway.env.prefix=APP_ only APP_* vars map, in passthrough namespace");
+        } finally {
+            System.clearProperty("freeway.env.prefix");
+        }
+    }
+
+    @Test
+    void envPrefixDefaultsToFreewayWithoutSystemProperty() {
+        // No -Dfreeway.env.prefix: the mapping uses FREEWAY_ regardless of
+        // anything else — APP_* vars are ignored, FREEWAY_* map into the
+        // freeway.* namespace.
+        Map<String, String> mapped = ConfigLoaderDefault.loadEnvironment(
+            Map.of("APP_X", "1", "FREEWAY_Y", "2"));
+        assertEquals(Map.of("freeway.y", "2"), mapped);
+    }
+
+    @Test
+    void envPrefixInConfigFileDoesNotChangeEnvMapping() {
+        // Regression (frozen behavior): freeway.env.prefix configured in a
+        // config file is an ordinary config key — it must NOT change how the
+        // environment layer maps vars (still FREEWAY_, JVM-property-driven).
+        ClassLoader loader = new FixedContentLoader(
+            "application.properties", "freeway.env.prefix=APP_\n");
+        ConfigLoaderDefault.BootConfigLayers layers =
+            ConfigLoaderDefault.loadLayers(loader);
+
+        assertEquals("APP_", layers.merged().get("freeway.env.prefix"),
+            "the file value is a normal config key");
+        for (String key : layers.environment().keySet()) {
+            assertTrue(key.startsWith("freeway."),
+                "env mapping must still use the FREEWAY_ prefix, got: " + key);
+        }
+    }
+
+    @Test
     void multipleProfilesParseInOrder() {
         ConfigLoaderDefault.BootConfigLayers layers = ConfigLoaderDefault.loadLayers(
             Thread.currentThread().getContextClassLoader(),
@@ -207,6 +361,41 @@ class ConfigLoaderDefaultTest {
         // dev profile resources exist in the test classpath; prod does not —
         // the missing profile must be skipped, not fail the load.
         assertTrue(layers.merged().containsKey("app.name"));
+    }
+
+    @Test
+    void profileLayerFreewayProfileKeyIsStrippedFromMergedView() {
+        // Regression: profiles are selected from the base layers only, but the
+        // profile layer used to outrank base application.properties in
+        // merged(). A profile file that (re)declares freeway.profile=prod then
+        // made config().get("freeway.profile") report "prod" while profiles()
+        // is ["dev"] — two authoritative views contradicting each other. The
+        // merged view must strip the activation key from the profile layers;
+        // the raw layer keeps it.
+        ClassLoader loader = new ProfileForkLoader(
+            "application.properties",
+            "app.name=Freeway Boot\nfreeway.profile=dev\n",
+            "application-dev.properties",
+            "app.name=Dev Boot\nfreeway.profile=prod\n");
+
+        // Activation via the base properties layer (no CLI override): without
+        // the fix the profile layer's "prod" outranks base "dev" in merged().
+        ConfigLoaderDefault.BootConfigLayers layers =
+            ConfigLoaderDefault.loadLayers(loader);
+        assertEquals(List.of("dev"), layers.profiles());
+        assertEquals("dev", layers.merged().get("freeway.profile"),
+            "merged() must report the base-layer activation value, not the profile layer's");
+        assertEquals("Dev Boot", layers.merged().get("app.name"),
+            "the profile file's other keys must still apply");
+        assertEquals("prod", layers.profileProperties().get("freeway.profile"),
+            "the raw profile layer keeps the key; only the merged view strips it");
+
+        // Activation via CLI --profile=dev: config().profiles() and
+        // config().get("freeway.profile") must agree.
+        AppConfig config = new ConfigLoaderDefault().load(loader, "--profile=dev");
+        assertEquals(List.of("dev"), config.profiles());
+        assertEquals("dev", config.get("freeway.profile"),
+            "config().get(\"freeway.profile\") must agree with config().profiles()");
     }
 
     private static final class OversizedPropertiesLoader extends ClassLoader {
@@ -226,6 +415,50 @@ class ConfigLoaderDefaultTest {
                 return new RepeatingInputStream(16L * 1024 * 1024 + 1);
             }
             return null;
+        }
+    }
+
+    /** Serves fixed content for one named resource, delegating everything else. */
+    private static final class FixedContentLoader extends ClassLoader {
+        private final String resourceName;
+        private final byte[] content;
+
+        private FixedContentLoader(String resourceName, String content) {
+            this.resourceName = resourceName;
+            this.content = content.getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public InputStream getResourceAsStream(String name) {
+            if (resourceName.equals(name)) {
+                return new ByteArrayInputStream(content);
+            }
+            return super.getResourceAsStream(name);
+        }
+    }
+
+    /**
+     * Serves fixed properties content for two named resources (e.g. base and
+     * profile files), delegating everything else to the real classpath.
+     */
+    private static final class ProfileForkLoader extends ClassLoader {
+        private final Map<String, byte[]> overrides = new LinkedHashMap<>();
+
+        private ProfileForkLoader(
+            String firstName, String firstContent,
+            String secondName, String secondContent
+        ) {
+            overrides.put(firstName, firstContent.getBytes(StandardCharsets.UTF_8));
+            overrides.put(secondName, secondContent.getBytes(StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public InputStream getResourceAsStream(String name) {
+            byte[] content = overrides.get(name);
+            if (content != null) {
+                return new ByteArrayInputStream(content);
+            }
+            return super.getResourceAsStream(name);
         }
     }
 
