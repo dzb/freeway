@@ -353,17 +353,17 @@ public final class Extension<V> {
         }
 
         /**
-         * Ordering declared via before()/after() after the {@code sorted}
-         * cache was already built must invalidate it — otherwise the stale
-         * order is silently served forever. Runs under the same lock as the
-         * cache rebuild in {@link #all()}, so the constraint lists and the
-         * cache pointer stay consistent.
+         * Ordering declared via before()/after() invalidates the {@code sorted}
+         * cache and bumps the change counter unconditionally: {@code version()}
+         * is documented as a monotonic counter for ANY contribution change, and
+         * consumers that cache views must not have to know whether the sorted
+         * cache happened to exist. Runs under the same lock as the cache
+         * rebuild in {@link #all()}, so the constraint lists and the cache
+         * pointer stay consistent.
          */
         private void invalidateOrder() {
-            if (Extension.this.sorted != null) {
-                Extension.this.sorted = null;
-                Extension.this.version.incrementAndGet();
-            }
+            Extension.this.sorted = null;
+            Extension.this.version.incrementAndGet();
         }
 
     }

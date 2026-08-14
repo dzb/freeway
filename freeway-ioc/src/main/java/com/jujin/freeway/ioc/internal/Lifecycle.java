@@ -68,10 +68,27 @@ final class Lifecycle {
                 found = m;
             }
             if (found != null) {
-                if (result != null) {
+                if (result == null) {
+                    result = found;
+                } else if (result.getName().equals(found.getName())) {
+                    // The subclass overrides the parent's method (both are
+                    // zero-parameter void by the validation above): run the
+                    // subclass's once, never the parent's — matching Java
+                    // override semantics for the inherited method.
                     continue;
+                } else {
+                    // A parent and a child each declare a lifecycle method
+                    // with a different name. Silently picking one would skip
+                    // the other's cleanup/init — fail loudly instead and let
+                    // the user merge them.
+                    throw new IllegalArgumentException(
+                        "Multiple @" + annotationType.getSimpleName()
+                            + " methods found in the type hierarchy of " + clazz.getName()
+                            + ": " + result.getDeclaringClass().getName() + "." + result.getName()
+                            + " and " + c.getName() + "." + found.getName()
+                            + " — keep one lifecycle method per hierarchy (merge or rename)"
+                    );
                 }
-                result = found;
             }
         }
         return result;

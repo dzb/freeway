@@ -26,7 +26,6 @@ final class Shutdown {
      * IllegalStateException failures that abort the whole shutdown.
      */
     private final List<EventBus> deferredEventBuses = new ArrayList<>();
-    private int iterations;
 
     Shutdown(Map<ServiceKey, Object> targetCache) {
         this.targetCache = targetCache;
@@ -79,6 +78,12 @@ final class Shutdown {
     private RuntimeException drainPhase(RuntimeException failure, boolean preDestroy) {
         Set<Object> done = preDestroy ? preDestroyed : closed;
         List<Object> batch = snapshotTargets();
+        // Iteration budget per phase: the cap guards ONE loop against a
+        // pathological callback chain that realizes a fresh service on every
+        // pass. Phases count independently so a healthy first phase can never
+        // consume the budget a later phase needs (the final locked drain is
+        // bounded to two passes anyway).
+        int iterations = 0;
         while (!batch.isEmpty()) {
             if (++iterations > MAX_DRAIN_ITERATIONS) {
                 return accumulateFailure(failure,
