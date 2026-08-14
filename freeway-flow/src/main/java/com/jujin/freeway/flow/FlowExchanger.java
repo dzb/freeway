@@ -36,6 +36,18 @@ public class FlowExchanger {
     private volatile boolean stopped = false;
     private volatile boolean reverting = true;
 
+    /**
+     * The raw per-eval {@link FlowOptions} of the current evaluation, set by
+     * {@link FlowEngineImpl#eval}. {@link #runGraph} re-passes it to the
+     * sub-graph eval so per-eval interceptors cover sub-graph nodes too; only
+     * the raw options are stored so the engine-level interceptor list is not
+     * merged twice on nested evals.
+     */
+    private volatile FlowOptions evalOptions;
+
+    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
+    private volatile boolean subgraphEval = false;
+
     public FlowExchanger(Graph graph, FlowEngine engine, FlowDriver driver, FlowContext context, int steps, AtomicInteger stepCount) {
         this(graph, engine, driver, context, steps, stepCount, new ExecState(), new AtomicInteger());
     }
@@ -80,6 +92,18 @@ public class FlowExchanger {
     public FlowContext context() { return context; }
     public ExecState execState() { return execState; }
 
+    /** The raw per-eval options of the current evaluation (see {@link FlowEngineImpl#eval}). */
+    public FlowOptions evalOptions() { return evalOptions; }
+
+    /** Sets the raw per-eval options; called by {@link FlowEngineImpl#eval}. */
+    void evalOptions(FlowOptions options) { this.evalOptions = options; }
+
+    /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
+    public boolean isSubgraphEval() { return subgraphEval; }
+
+    /** Marks this exchanger as a sub-graph evaluation. */
+    void markSubgraphEval() { this.subgraphEval = true; }
+
     // --- trace ---
 
     public void recordNode(Graph graph, Node node) {
@@ -102,7 +126,14 @@ public class FlowExchanger {
         // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
         FlowExchanger subEx = new FlowExchanger(graph, engine,
             engine.getDriver(graph), context, steps, stepCount, execState, depth);
-        engine.eval(graph, subEx, null);
+        // Sub-graph evals share the live event bus and trace — mark them so
+        // eval() neither clears the parent's subscriptions nor treats the
+        // (record-reset) subgraph as a fresh run.
+        subEx.markSubgraphEval();
+        // Propagate the parent eval's per-eval options (interceptors) so
+        // sub-graph nodes are covered too; the sub-eval re-merges the
+        // engine-level list exactly once (see FlowEngineImpl.eval).
+        engine.eval(graph, subEx, evalOptions);
 
         if (!isStopped()) {
             // Completion is tracked on the exchanger (markEnded), not the

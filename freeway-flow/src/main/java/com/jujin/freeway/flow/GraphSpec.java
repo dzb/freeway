@@ -294,7 +294,12 @@ public class GraphSpec {
             return fromDom(dom);
         }
 
-        throw new IllegalArgumentException("Expected a v2 graph definition");
+        throw new IllegalArgumentException(
+            "Expected a v2 graph definition (version=" + VERSION
+                + " with 'nodes' and 'links'), found: "
+                + (version == null ? "no version field" : "version " + version)
+                + (dom.containsKey("nodes") ? "" : ", missing 'nodes'")
+                + (dom.containsKey("links") ? "" : ", missing 'links'"));
     }
 
     public static GraphSpec fromDom(JsonObject dom) {

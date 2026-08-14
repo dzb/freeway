@@ -1,13 +1,16 @@
 package com.jujin.freeway.flow;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -135,6 +138,24 @@ public class FlowEngineImpl implements FlowEngine {
         Node lastNode = exchanger.context().trace().lastNode(graph);
         FlowExchanger bak = exchanger.context().exchanger();
 
+        // Propagate the caller's per-eval options to sub-graph calls:
+        // runGraph() reads this and re-passes it, so per-eval interceptors
+        // (interceptFlow / onNodeStart / onNodeEnd) cover sub-graph nodes too.
+        // Only the raw options are stored — the engine-level interceptor list
+        // is merged per eval below, so it is never added twice on nested evals.
+        exchanger.evalOptions(options);
+
+        // A FRESH run (the trace holds no record for this graph) starts with
+        // a clean event bus: a reused FlowContext must not keep firing stale
+        // subscriptions from a paused/interrupted run of another graph (their
+        // closures capture the old execution). Resuming the same graph keeps
+        // its trace record and therefore its subscriptions; sub-graph evals
+        // share the live bus and must never clear it mid-run.
+        if (exchanger.context().trace().lastRecord(graph.getId()) == null
+                && !exchanger.isSubgraphEval()) {
+            exchanger.context().eventBus().clear();
+        }
+
         // Defensive copy — never mutate the caller's FlowOptions instance
         FlowOptions opts = new FlowOptions();
         if (options != null) {
@@ -152,6 +173,20 @@ public class FlowEngineImpl implements FlowEngine {
             // interrupted evals keep theirs — the run continues on resume.
             if (!exchanger.isStopped() && !exchanger.isInterrupted()) {
                 exchanger.context().eventBus().clear();
+                // A gateway dead end (EXCLUSIVE with no match/default, or a
+                // join that never received all its branches) must not report
+                // success: the graph never reached its END node. Stopped and
+                // interrupted runs are exempt — stopping is intentional and
+                // an interceptor-blocked run is not a dead end.
+                ExecState.DeadEnd deadEnd = exchanger.execState().deadEnd();
+                if (deadEnd != null) {
+                    throw new FlowException(
+                        "Graph '" + graph.getId() + "' did not complete: dead end at node '"
+                            + deadEnd.nodeId() + "' in graph '" + deadEnd.graphId()
+                            + "' (an EXCLUSIVE node matched no condition/default link, "
+                            + "or a join gateway never received all its incoming branches)"
+                    );
+                }
             }
             // Resume replay walks from START with tasks skipped until the
             // traced node is reached. If gateway conditions changed since the
@@ -238,9 +273,15 @@ public class FlowEngineImpl implements FlowEngine {
     protected boolean task_exec(FlowExchanger exchanger, FlowOptions options, Node node) throws FlowException {
         if (exchanger.isReverting()) return true;
 
-        if (!onNodeStart(exchanger, options, node)) return false;
         boolean ended = false;
         try {
+            // onNodeStart runs inside the try so the pairing below is
+            // unconditional: whether it succeeds, returns false (stopped /
+            // interrupted) or throws, onNodeEnd is invoked exactly once for
+            // this node — otherwise interceptors/drivers maintaining per-node
+            // state (e.g. a nesting stack) leak a start without an end.
+            if (!onNodeStart(exchanger, options, node)) return false;
+
             if (condition_test(exchanger, node.getWhen(), true)) {
                 try {
                     exchanger.driver().handleTask(exchanger, node.getTask());
@@ -407,6 +448,12 @@ public class FlowEngineImpl implements FlowEngine {
                 "EXCLUSIVE node '{}/{}' matched no condition and has no default link — execution stops at this node",
                 node.getGraph().getId(), node.getId()
             );
+            // The run would otherwise "complete" without reaching END. Mark
+            // the dead end so eval() can fail loudly. Skipped during resume
+            // replay, which is only a walk to the resume point.
+            if (!exchanger.isReverting()) {
+                exchanger.execState().deadEnd(node.getGraph(), node.getId());
+            }
         }
     }
 
@@ -433,7 +480,17 @@ public class FlowEngineImpl implements FlowEngine {
                 int arrived = exchanger.execState().countIncr(node.getGraph(), node.getId());
                 if (arrived >= node.getPrevLinks().size()) {
                     exchanger.execState().countSet(node.getGraph(), node.getId(), 0);
+                    // All branches arrived — the join is not a dead end.
+                    exchanger.execState().deadEndClear(node.getGraph(), node.getId());
                     return true;
+                }
+                // Still waiting for branches. This is normal mid-run, but if
+                // eval completes without activation the graph never reached
+                // END — record the provisional dead end so the completion
+                // check can fail loudly. Skipped during resume replay (walk
+                // only), and cleared above if the join later activates.
+                if (!exchanger.isReverting()) {
+                    exchanger.execState().deadEnd(node.getGraph(), node.getId());
                 }
                 return false;
             }
@@ -460,7 +517,17 @@ public class FlowEngineImpl implements FlowEngine {
 
     protected boolean parallel_run_in(FlowExchanger exchanger, Node node) {
         int count = exchanger.execState().countIncr(node.getGraph(), node.getId());
-        return node.getPrevLinks().size() <= count;
+        if (node.getPrevLinks().size() <= count) {
+            // All branches arrived — the join is not a dead end.
+            exchanger.execState().deadEndClear(node.getGraph(), node.getId());
+            return true;
+        }
+        // Still waiting for branches — provisional dead end, same contract as
+        // the INCLUSIVE join above.
+        if (!exchanger.isReverting()) {
+            exchanger.execState().deadEnd(node.getGraph(), node.getId());
+        }
+        return false;
     }
 
     protected void parallel_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
@@ -513,6 +580,13 @@ public class FlowEngineImpl implements FlowEngine {
             if (!task_exec(exchanger, options, node)) return;
             activity_run_out(exchanger, options, node, startNode);
         } else {
+            // $for LOOP: claim the node atomically before running it. The
+            // claim (skip-if-running check + iterator acquisition + push)
+            // happens under one lock, so two PARALLEL branches reaching this
+            // node concurrently cannot both pass an empty-stack check and each
+            // run the loop body — the first arrival runs it (task and body),
+            // later arrivals skip the whole node.
+            if (!loop_run_claim(exchanger, node)) return;
             if (!task_exec(exchanger, options, node)) return;
             loop_run_out(exchanger, options, node, startNode);
         }
@@ -533,9 +607,39 @@ public class FlowEngineImpl implements FlowEngine {
         return true;
     }
 
+    /**
+     * Atomically claims this $for LOOP for the current arrival: the
+     * "is another branch already running it?" check, the {@code $in} iterator
+     * acquisition and the stack push all happen under the same stack monitor.
+     * Returns {@code false} when a sibling branch is already running the loop
+     * — the arrival then skips the node entirely.
+     *
+     * <p>An exhausted iterator left by a completed run is popped first, so a
+     * later sequential re-entry (e.g. this node inside another loop's body)
+     * re-arms the loop with a fresh run. Dead-end markers (EXCLUSIVE /
+     * gateway joins) are intentionally untouched here.
+     */
     @SuppressWarnings("unchecked")
-    protected void loop_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
-        String forKey = node.getMetaAsString("$for");
+    protected boolean loop_run_claim(FlowExchanger exchanger, Node node) {
+        Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run/" + node.getId());
+        synchronized (stack) {
+            if (!stack.isEmpty()) {
+                Iterator<?> active = stack.peek();
+                if (active.hasNext()) return false; // a sibling branch is running this loop
+                stack.pop();                        // completed run — re-arm below
+            }
+            stack.push(loop_iterator(exchanger, node));
+        }
+        return true;
+    }
+
+    /**
+     * Resolves the {@code $in} meta into an iterator: a list, an iterable, a
+     * context key holding either, or a {@code "start...end"} /
+     * {@code "start:end:step"} range string.
+     */
+    @SuppressWarnings("unchecked")
+    protected Iterator<?> loop_iterator(FlowExchanger exchanger, Node node) {
         Object inKey = node.getMeta("$in");
 
         Object inObj;
@@ -551,19 +655,22 @@ public class FlowEngineImpl implements FlowEngine {
             throw new FlowException("The '$in' must be a list or a string");
         }
 
-        Iterator<?> iter;
-        if (inObj instanceof Iterator) iter = (Iterator<?>) inObj;
-        else if (inObj instanceof Iterable) iter = ((Iterable<?>) inObj).iterator();
-        else throw new FlowException(inKey + " is not a collection");
+        if (inObj instanceof Iterator) return (Iterator<?>) inObj;
+        if (inObj instanceof Iterable) return ((Iterable<?>) inObj).iterator();
+        throw new FlowException(inKey + " is not a collection");
+    }
 
-        // Keyed per node (not per graph) and replaced (not pushed) on every
-        // entry: a $for node re-entered after an exception or a previous run
-        // must not accumulate exhausted iterators, and sibling LOOP nodes in
-        // the same graph must not observe this node's iterator.
+    @SuppressWarnings("unchecked")
+    protected void loop_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
+        String forKey = node.getMetaAsString("$for");
         Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run/" + node.getId());
+        Iterator<?> iter;
         synchronized (stack) {
-            stack.clear();
-            stack.push(iter);
+            // The claiming branch's iterator (pushed by loop_run_claim). The
+            // stack keeps it until the next claim pops/replaces it, so
+            // concurrent arrivals keep skipping while the loop is live.
+            if (stack.isEmpty()) return; // defensive — loop_run_claim always precedes
+            iter = stack.peek();
         }
 
         // Guard against unbounded iteration: a misconfigured or malicious
@@ -588,7 +695,60 @@ public class FlowEngineImpl implements FlowEngine {
             } else {
                 exchanger.context().put(forKey, item);
             }
+            // A new iteration re-enters the body: join counters (and their
+            // provisional dead-ends) left by the previous iteration must not
+            // leak into this one — a fork-join that received fewer arrivals
+            // last iteration would otherwise falsely activate early (or
+            // twice) now.
+            resetLoopBodyJoins(exchanger, node);
             activity_run_out(exchanger, options, node, startNode);
         }
+    }
+
+    // ==================== loop body join hygiene ====================
+
+    /**
+     * Resets the inclusive/parallel join bookkeeping inside this LOOP's body
+     * at the start of every iteration. Counters keyed per (graph, node) would
+     * otherwise carry residue across iterations: a join that received fewer
+     * arrivals than expected in one iteration never reset its counter (only
+     * activation does), so the next iteration could falsely activate early or
+     * twice. The provisional dead-end is cleared too — a new iteration starts
+     * fresh and re-records it if the join is still short.
+     */
+    private void resetLoopBodyJoins(FlowExchanger exchanger, Node loopNode) {
+        String cacheKey = loopNode.getGraph().getId() + "/" + loopNode.getId();
+        List<String> joins = exchanger.execState().loopBodyJoins(cacheKey, k -> loopBodyJoins(loopNode));
+        Graph graph = loopNode.getGraph();
+        for (String joinId : joins) {
+            exchanger.execState().countSet(graph, joinId, 0);
+            exchanger.execState().deadEndClear(graph, joinId);
+        }
+    }
+
+    /**
+     * Collects the ids of join nodes (INCLUSIVE/PARALLEL with more than one
+     * incoming link) reachable from the LOOP node's outgoing links — i.e. the
+     * gateways executed inside each iteration of the loop body. Computed once
+     * per (graph, loop node) per evaluation and cached in {@link ExecState}.
+     */
+    private static List<String> loopBodyJoins(Node loopNode) {
+        Graph graph = loopNode.getGraph();
+        List<String> joins = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        ArrayDeque<Node> queue = new ArrayDeque<>();
+        for (Link l : loopNode.getNextLinks()) queue.add(l.getNextNode());
+        while (!queue.isEmpty()) {
+            Node n = queue.poll();
+            if (!visited.add(n.getId())) continue;
+            if (n == loopNode) continue;               // cycle safety (graphs are DAGs)
+            if (n.getType() == NodeType.END) continue; // the body ends at END
+            if ((n.getType() == NodeType.INCLUSIVE || n.getType() == NodeType.PARALLEL)
+                    && n.getPrevLinks().size() > 1) {
+                joins.add(n.getId());
+            }
+            for (Link l : n.getNextLinks()) queue.add(l.getNextNode());
+        }
+        return joins;
     }
 }

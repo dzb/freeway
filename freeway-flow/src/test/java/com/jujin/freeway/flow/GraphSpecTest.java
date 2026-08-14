@@ -88,6 +88,55 @@ class GraphSpecTest {
     }
 
     @Test
+    void testGraphFromTextRejectsNonV2Documents() {
+        // Graph.fromText must enforce the same version gate as
+        // GraphSpec.fromText — a v1 document (or one missing version/nodes/
+        // links) fails with a clear IllegalArgumentException instead of
+        // parsing through fromDom.
+        String v1 = "{\"version\":1,\"nodes\":[],\"links\":[]}";
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> Graph.fromText(v1));
+        assertTrue(ex.getMessage().contains("v2"),
+            "got: " + ex.getMessage());
+
+        String missingVersion = "{\"nodes\":[],\"links\":[]}";
+        assertThrows(IllegalArgumentException.class, () -> Graph.fromText(missingVersion));
+
+        String missingLinks = "{\"id\":\"g\",\"version\":2,\"nodes\":[]}";
+        assertThrows(IllegalArgumentException.class, () -> Graph.fromText(missingLinks));
+
+        // Both entry points report the same gate error for the same document.
+        assertEquals(
+            assertThrows(IllegalArgumentException.class,
+                () -> GraphSpec.fromText(v1)).getMessage(),
+            ex.getMessage());
+    }
+
+    @Test
+    void testGraphFromTextAcceptsValidV2Document() {
+        // A canonical v2 document still loads through Graph.fromText.
+        String json = """
+                {
+                  "id": "via_graph_api",
+                  "version": 2,
+                  "entry": "start",
+                  "nodes": [
+                    { "id": "start", "type": "START" },
+                    { "id": "end", "type": "END" }
+                  ],
+                  "links": [
+                    { "from": "start", "to": "end" }
+                  ]
+                }
+                """;
+        Graph graph = Graph.fromText(json);
+        assertEquals("via_graph_api", graph.getId());
+        assertEquals("start", graph.getStart().getId());
+        assertEquals(2, graph.getNodes().size());
+    }
+
+    @Test
     void testBlueprintPromotesEntryNodeInRuntimeGraph() {
         GraphSpec blueprint = GraphSpec.create("entry_promote", bp -> {
             bp.entry("task");

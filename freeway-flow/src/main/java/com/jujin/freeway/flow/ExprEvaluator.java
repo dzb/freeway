@@ -15,7 +15,7 @@ import java.util.Map;
  * and_expr    → cmp_expr ("&&" cmp_expr)*
  * cmp_expr    → add_expr (("=="|"!="|">"|"<"|">="|"<=") add_expr)?
  * add_expr    → unary_expr (("+"|"-") unary_expr)*
- * unary_expr  → "!" unary_expr | primary
+ * unary_expr  → ("!" | "-" | "+") unary_expr | primary
  * primary     → NUMBER | STRING | "true" | "false" | "null" | IDENT | "(" expression ")"
  * IDENT       → [a-zA-Z_][a-zA-Z0-9_.]*  (supports data.name path access)
  * </pre>
@@ -109,18 +109,22 @@ public final class ExprEvaluator {
 
     private record BinaryOp(AstNode left, String op, AstNode right) implements AstNode {
         @Override public Object eval(Map<String, Object> ctx) {
-            Object l = left.eval(ctx), r = right.eval(ctx);
+            Object l = left.eval(ctx);
             return switch (op) {
-                case "||", "or" -> toBool(l) || toBool(r);
-                case "&&", "and" -> toBool(l) && toBool(r);
-                case "==" -> eq(l, r);
-                case "!=" -> !eq(l, r);
-                case ">=" -> cmp(l, r) >= 0;
-                case "<=" -> cmp(l, r) <= 0;
-                case ">" -> cmp(l, r) > 0;
-                case "<" -> cmp(l, r) < 0;
-                case "+" -> add(l, r);
-                case "-" -> sub(l, r);
+                // Short-circuit: the right operand is only evaluated when it
+                // can affect the result — `false && (x - 1)` must yield false
+                // without evaluating (x - 1), matching conventional boolean
+                // semantics. All other operators stay eager.
+                case "||", "or" -> toBool(l) || toBool(right.eval(ctx));
+                case "&&", "and" -> toBool(l) && toBool(right.eval(ctx));
+                case "==" -> eq(l, right.eval(ctx));
+                case "!=" -> !eq(l, right.eval(ctx));
+                case ">=" -> cmp(l, right.eval(ctx)) >= 0;
+                case "<=" -> cmp(l, right.eval(ctx)) <= 0;
+                case ">" -> cmp(l, right.eval(ctx)) > 0;
+                case "<" -> cmp(l, right.eval(ctx)) < 0;
+                case "+" -> add(l, right.eval(ctx));
+                case "-" -> sub(l, right.eval(ctx));
                 default -> throw new FlowException("Unknown operator: " + op);
             };
         }
@@ -131,6 +135,8 @@ public final class ExprEvaluator {
             return switch (op) {
                 case "!" -> !toBool(child.eval(ctx));
                 case "not" -> !toBool(child.eval(ctx));
+                case "-" -> negate(child.eval(ctx));
+                case "+" -> child.eval(ctx);
                 default -> throw new FlowException("Unknown unary operator: " + op);
             };
         }
@@ -223,7 +229,11 @@ public final class ExprEvaluator {
 
         private AstNode unaryExpr() {
             skipSpaces();
-            if (match("!")) {
+            String op = null;
+            if (match("!")) op = "!";
+            else if (match("-")) op = "-";
+            else if (match("+")) op = "+";
+            if (op != null) {
                 // Unary chains recurse without passing through primary(),
                 // so count them against the same nesting budget.
                 if (++depth > MAX_NESTING_DEPTH) {
@@ -233,7 +243,7 @@ public final class ExprEvaluator {
                     );
                 }
                 try {
-                    return new UnaryOp("!", unaryExpr());
+                    return new UnaryOp(op, unaryExpr());
                 } finally {
                     depth--;
                 }
@@ -248,9 +258,9 @@ public final class ExprEvaluator {
                         + " terms) in '" + shorten(expr) + "'"
                 );
             }
-            // Depth guard: parenthesized and unary (`!`/`not`) expressions
-            // recurse, and a pathological input (e.g. thousands of nested
-            // parens) would otherwise blow the JVM stack with a raw
+            // Depth guard: parenthesized and unary (`!`/`not`/`-`/`+`)
+            // expressions recurse, and a pathological input (e.g. thousands
+            // of nested parens) would otherwise blow the JVM stack with a raw
             // StackOverflowError during compilation. All recursive paths
             // funnel through primary(), so counting here covers them all.
             if (++depth > MAX_NESTING_DEPTH) {
@@ -392,6 +402,27 @@ public final class ExprEvaluator {
         return Double.compare(a.doubleValue(), b.doubleValue());
     }
 
+    /**
+     * Tries to interpret a string as a number for mixed Number/String
+     * comparisons ("score":"90" from JSON vs a numeric literal). Long first
+     * (exact, no precision loss), then Double. Returns {@code null} for
+     * non-numeric strings so callers can fall back to lexicographic ordering.
+     */
+    private static Number parseNumericString(String s) {
+        String t = s.trim();
+        if (t.isEmpty()) return null;
+        try {
+            return Long.parseLong(t);
+        } catch (NumberFormatException ignored) {
+            // fall through to double
+        }
+        try {
+            return Double.parseDouble(t);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static int cmp(Object a, Object b) {
         if (a == b) return 0;
@@ -399,6 +430,16 @@ public final class ExprEvaluator {
         if (b == null) return 1;
         if (a instanceof Number an && b instanceof Number bn)
             return compareNumbers(an, bn);
+        // Mixed number/string: compare numerically when the string parses,
+        // so "10" > 9 is true instead of lexicographic ("10" < "9"). Keeps
+        // pure-string and pure-number paths untouched.
+        if (a instanceof Number an && b instanceof String bs) {
+            Number bn = parseNumericString(bs);
+            if (bn != null) return compareNumbers(an, bn);
+        } else if (a instanceof String as && b instanceof Number bn) {
+            Number an = parseNumericString(as);
+            if (an != null) return compareNumbers(an, bn);
+        }
         if (a instanceof Comparable ca && b instanceof Comparable cb) {
             try { return ca.compareTo(b); } catch (Exception ignored) {}
         }
@@ -410,6 +451,17 @@ public final class ExprEvaluator {
         if (a == null || b == null) return false;
         if (a instanceof Number an && b instanceof Number bn)
             return compareNumbers(an, bn) == 0;
+        // Mixed number/string: numeric strings equal by value ("10" == 10,
+        // "1.5" == 1.5), consistent with cmp and toBool. Non-numeric strings
+        // fall through to plain equality, preserving current behavior.
+        if (a instanceof Number an && b instanceof String bs) {
+            Number bn = parseNumericString(bs);
+            return bn != null && compareNumbers(an, bn) == 0;
+        }
+        if (a instanceof String as && b instanceof Number bn) {
+            Number an = parseNumericString(as);
+            return an != null && compareNumbers(an, bn) == 0;
+        }
         // Boolean strings compare by value: "false" == false is true,
         // matching truthiness (toBool) so equality and bare-flag routing agree.
         if (a instanceof Boolean ba && b instanceof String sb) return ba == toBool(sb);
@@ -445,5 +497,21 @@ public final class ExprEvaluator {
     private static Object sub(Object l, Object r) {
         if (l instanceof Number ln && r instanceof Number rn) return ln.doubleValue() - rn.doubleValue();
         throw new FlowException("Cannot subtract non-numeric values: " + l + " - " + r);
+    }
+
+    /**
+     * Unary minus. Type-preserving for the boxed numerics the compiler
+     * produces (Integer/Long/Double/Float), so {@code -5} stays an Integer
+     * and {@code -9223372036854775807} stays an exact Long — the same shapes
+     * the old signed-literal path produced. Non-numeric operands throw the
+     * same clear error family as {@link #sub}.
+     */
+    private static Object negate(Object v) {
+        if (v instanceof Integer i) return -i;
+        if (v instanceof Long l) return -l;
+        if (v instanceof Double d) return -d;
+        if (v instanceof Float f) return -f;
+        if (v instanceof Number n) return -n.doubleValue();
+        throw new FlowException("Cannot negate non-numeric value: " + v);
     }
 }

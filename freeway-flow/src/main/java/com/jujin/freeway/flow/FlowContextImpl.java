@@ -226,7 +226,11 @@ public class FlowContextImpl implements FlowContext {
 
     @Override
     public FlowContext putAll(Map<String, Object> vars) {
-        data.putAll(vars);
+        // Consistent with put(): null values are not stored. A null map still
+        // fails fast (NPE) exactly like the previous data.putAll(null).
+        vars.forEach((k, v) -> {
+            if (v != null) data.put(k, v);
+        });
         return this;
     }
 

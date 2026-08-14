@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
 
 import java.util.ArrayList;
@@ -74,8 +73,10 @@ public class Graph {
     }
 
     public static Graph fromText(String text) {
-        JsonObject dom = JsonUtils.parseObject(text);
-        return GraphSpec.fromDom(dom).create();
+        // Route through GraphSpec.fromText so the version gate is shared:
+        // only canonical v2 documents (version=2 with nodes+links) load,
+        // anything else fails with the same clear error as GraphSpec.
+        return GraphSpec.fromText(text).create();
     }
 
     // --- getters ---
