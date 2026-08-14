@@ -13,7 +13,7 @@ import java.util.function.Supplier;
 final class ProxyFactoryDefault implements ProxyFactory {
     @Override
     public <T> T create(Class<T> interfaceType, Supplier<T> provider, String description) {
-        return createAdvised(interfaceType, provider, description, List.of());
+        return createAdvised(interfaceType, provider, description, List.of(), false);
     }
 
     static Object handleObjectMethod(Object proxy, Method method, Object[] args, String toStringValue) {
@@ -26,17 +26,6 @@ final class ProxyFactoryDefault implements ProxyFactory {
             case "equals" -> args != null && args.length > 0 && proxy == args[0];
             default -> throw new UnsupportedOperationException("Unsupported Object method: " + method);
         };
-    }
-
-    @SuppressWarnings("unchecked")
-    @Override
-    public <T> T createAdvised(
-        Class<T> interfaceType,
-        Supplier<T> provider,
-        String description,
-        List<AdviceEntry> advices
-    ) {
-        return createAdvised(interfaceType, provider, description, advices, false);
     }
 
     @SuppressWarnings("unchecked")

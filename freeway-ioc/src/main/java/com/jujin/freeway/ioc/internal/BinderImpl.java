@@ -45,7 +45,6 @@ final class BinderImpl implements Binder {
         BindingImpl<T> binding = new BindingImpl<>(container, type);
         // Propagate module-level markers
         if (currentModule != null) {
-            binding.setSourceModule(currentModule);
             Set<Class<?>> moduleMarkers = MarkerIndex.extractModuleMarkers(currentModule);
             if (!moduleMarkers.isEmpty()) {
                 binding.addMarkers(moduleMarkers);

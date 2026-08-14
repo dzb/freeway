@@ -96,11 +96,7 @@ final class ServiceRuntime {
             return realizeThreadScoped(binding);
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
-        Set<ServiceKey> stack = realizeStack.get();
-        if (!stack.add(key)) {
-            throw new IllegalStateException("Circular dependency detected: " + key);
-        }
-        try {
+        return withCycleGuard(key, () -> {
             synchronized (REALIZE_LOCK) {
                 // A get() that passed the closed check before close() may
                 // block here while close() drains; once the container is
@@ -116,9 +112,7 @@ final class ServiceRuntime {
                 }
                 return binding.type().cast(cached);
             }
-        } finally {
-            stack.remove(key);
-        }
+        });
     }
 
     private <T> T realizeThreadScoped(BindingImpl<T> binding) {
@@ -136,16 +130,25 @@ final class ServiceRuntime {
             );
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
+        return withCycleGuard(key, () -> binding.type().cast(ScopedCache.get(key, () -> {
+            Object created = binding.directInstance();
+            ContainerImpl.manageScopeValue(container, created);
+            return created;
+        })));
+    }
+
+    /**
+     * Runs {@code work} under the circular-dependency guard for {@code key}:
+     * a re-entrant realization of the same key on this thread fails fast
+     * instead of recursing forever; the guard is always released.
+     */
+    private <T> T withCycleGuard(ServiceKey key, Supplier<T> work) {
         Set<ServiceKey> stack = realizeStack.get();
         if (!stack.add(key)) {
             throw new IllegalStateException("Circular dependency detected: " + key);
         }
         try {
-            return binding.type().cast(ScopedCache.get(key, () -> {
-                Object created = binding.directInstance();
-                ContainerImpl.manageScopeValue(container, created);
-                return created;
-            }));
+            return work.get();
         } finally {
             stack.remove(key);
         }

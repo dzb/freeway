@@ -6,13 +6,6 @@ import java.util.function.Supplier;
 interface ProxyFactory {
     <T> T create(Class<T> interfaceType, Supplier<T> provider, String description);
 
-    <T> T createAdvised(
-        Class<T> interfaceType,
-        Supplier<T> provider,
-        String description,
-        List<AdviceEntry> advices
-    );
-
     /**
      * Like {@link #createAdvised}, but when {@code cacheTarget} is set the
      * handler resolves the provider exactly once per proxy and reuses that

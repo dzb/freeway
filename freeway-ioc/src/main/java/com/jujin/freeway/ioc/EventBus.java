@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * In-process event bus with class-based and string-topic subscriptions,
@@ -143,36 +145,20 @@ public final class EventBus implements AutoCloseable {
 
         for (Consumer<Object> handler : moduleHandlers) {
             if (event instanceof Stoppable s && s.isStopped()) break;
-            try {
-                handler.accept(event);
-                delivered.increment();
-                cDelivered.increment();
-            } catch (Throwable ex) {
-                subscriberFailures.increment();
-                cSubscriberFailures.increment();
-                LOG.warn(
-                    "Event subscriber failed for {}",
-                    eventType.getSimpleName(),
-                    ex
-                );
-            }
+            deliver(
+                () -> handler.accept(event),
+                "Event subscriber failed for {}",
+                eventType.getSimpleName()
+            );
         }
 
         for (Subscription<?> sub : runtimeHandlers) {
             if (event instanceof Stoppable s && s.isStopped()) break;
-            try {
-                sub.dispatch(event);
-                delivered.increment();
-                cDelivered.increment();
-            } catch (Throwable ex) {
-                subscriberFailures.increment();
-                cSubscriberFailures.increment();
-                LOG.warn(
-                    "Runtime event subscriber failed for {}",
-                    eventType.getSimpleName(),
-                    ex
-                );
-            }
+            deliver(
+                () -> sub.dispatch(event),
+                "Runtime event subscriber failed for {}",
+                eventType.getSimpleName()
+            );
         }
 
         if (!hasSubscribers && !(event instanceof DeadEvent)) {
@@ -241,31 +227,19 @@ public final class EventBus implements AutoCloseable {
         boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
 
         for (Consumer<Object> handler : moduleHandlers) {
-            try {
-                handler.accept(payload);
-                delivered.increment();
-                cDelivered.increment();
-            } catch (Throwable ex) {
-                subscriberFailures.increment();
-                cSubscriberFailures.increment();
-                LOG.warn("Event subscriber failed for topic '{}'", topic, ex);
-            }
+            deliver(
+                () -> handler.accept(payload),
+                "Event subscriber failed for topic '{}'",
+                topic
+            );
         }
 
         for (Subscription<?> sub : runtimeHandlers) {
-            try {
-                sub.dispatch(payload);
-                delivered.increment();
-                cDelivered.increment();
-            } catch (Throwable ex) {
-                subscriberFailures.increment();
-                cSubscriberFailures.increment();
-                LOG.warn(
-                    "Runtime event subscriber failed for topic '{}'",
-                    topic,
-                    ex
-                );
-            }
+            deliver(
+                () -> sub.dispatch(payload),
+                "Runtime event subscriber failed for topic '{}'",
+                topic
+            );
         }
 
         if (!hasSubscribers) {
@@ -280,6 +254,27 @@ public final class EventBus implements AutoCloseable {
             } catch (Exception ex) {
                 LOG.warn("Event bridge failed for topic '{}'", topic, ex);
             }
+        }
+    }
+
+    /**
+     * Runs one subscriber delivery: increments the delivered counters on
+     * success, or the failure counters plus a warn log on a throwing
+     * subscriber (which is isolated — other subscribers still receive the
+     * event). The throwable is appended as the last warn argument so SLF4J
+     * reports it as the exception.
+     */
+    private void deliver(Runnable delivery, String warnMsg, Object... warnArgs) {
+        try {
+            delivery.run();
+            delivered.increment();
+            cDelivered.increment();
+        } catch (Throwable ex) {
+            subscriberFailures.increment();
+            cSubscriberFailures.increment();
+            Object[] args = Arrays.copyOf(warnArgs, warnArgs.length + 1);
+            args[warnArgs.length] = ex;
+            LOG.warn(warnMsg, args);
         }
     }
 
@@ -312,39 +307,14 @@ public final class EventBus implements AutoCloseable {
     public <E> void publishAsync(E event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        // Defer.isActive() must be evaluated on THIS thread: the executor
-        // thread does not inherit the Defer ScopedValue binding, so the guard
-        // inside publish() would see no scope and dispatch before commit.
-        if (Defer.isActive()) {
-            Defer.defer(() -> {
-                // The scope may commit after close() (e.g. a transaction
-                // scope draining during shutdown): the deferred lambda must
-                // not touch executor()/requireOpen() — a silent no-op matches
-                // the sync path's post-close semantics.
-                if (closed) {
-                    return;
-                }
-                executor().execute(() -> publish(event));
-            });
-            return;
-        }
-        executor().execute(() -> publish(event));
+        executeDeferred(this::executor, () -> publish(event));
     }
 
     /** Async version of {@link #publish(String, Object)}. */
     public void publishAsync(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        if (Defer.isActive()) {
-            Defer.defer(() -> {
-                if (closed) {
-                    return;
-                }
-                executor().execute(() -> publish(topic, payload));
-            });
-            return;
-        }
-        executor().execute(() -> publish(topic, payload));
+        executeDeferred(this::executor, () -> publish(topic, payload));
     }
 
     // ==================== ordered publish ====================
@@ -367,18 +337,33 @@ public final class EventBus implements AutoCloseable {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(event, "event");
         requireOpen();
+        executeDeferred(this::orderedExecutor, () -> publish(event));
+    }
+
+    /**
+     * Executes {@code publish} on the executor supplied by {@code exec},
+     * buffering it in the active {@code Defer} scope when present.
+     *
+     * <p>{@code Defer.isActive()} must be evaluated on THIS thread: the
+     * executor thread does not inherit the Defer ScopedValue binding, so the
+     * guard inside {@code publish} would see no scope and dispatch before
+     * commit. The executor is resolved lazily via {@code exec} so the
+     * deferred path (which may drain after {@code close()}, e.g. a
+     * transaction scope draining during shutdown) never touches
+     * {@code executor()}/{@code requireOpen()} — a silent no-op matches the
+     * sync path's post-close semantics.
+     */
+    private void executeDeferred(Supplier<Executor> exec, Runnable publish) {
         if (Defer.isActive()) {
             Defer.defer(() -> {
-                // Post-close drain: the ordered executor is shut down and
-                // requireOpen() would throw — stay silent like the sync path.
                 if (closed) {
                     return;
                 }
-                orderedExecutor().execute(() -> publish(event));
+                exec.get().execute(publish);
             });
             return;
         }
-        orderedExecutor().execute(() -> publish(event));
+        exec.get().execute(publish);
     }
 
     private ExecutorService orderedExecutor() {

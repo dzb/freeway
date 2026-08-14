@@ -154,12 +154,9 @@ final class InjectResolver {
             if (typeArgs.length < 1 || !(typeArgs[0] instanceof Class<?> entryType)) {
                 return null;
             }
-            String id = resolveId(lookup);
-            if (id != null) {
-                BindingImpl<?> bound = container.bindingIndex().find(targetType, id);
-                if (bound != null) {
-                    return container.get(targetType, id);
-                }
+            Object bound = resolveById(targetType, lookup);
+            if (bound != null) {
+                return bound;
             }
             return container.extension(entryType).all();
         }
@@ -168,14 +165,28 @@ final class InjectResolver {
                 || !(typeArgs[1] instanceof Class<?> entryType)) {
                 return null;
             }
-            String id = resolveId(lookup);
-            if (id != null) {
-                BindingImpl<?> bound = container.bindingIndex().find(targetType, id);
-                if (bound != null) {
-                    return container.get(targetType, id);
-                }
+            Object bound = resolveById(targetType, lookup);
+            if (bound != null) {
+                return bound;
             }
             return container.extension(entryType).asMap();
+        }
+        return null;
+    }
+
+    /**
+     * Resolves a service explicitly qualified by {@code @Inject("id")} on a
+     * {@code List}/{@code Map} injection point: prefers a bound service of
+     * that exact type/id, falling back to the contributed view when no such
+     * binding exists.
+     */
+    private Object resolveById(Class<?> targetType, AnnotationLookup lookup) {
+        String id = resolveId(lookup);
+        if (id != null) {
+            BindingImpl<?> bound = container.bindingIndex().find(targetType, id);
+            if (bound != null) {
+                return container.get(targetType, id);
+            }
         }
         return null;
     }
@@ -296,22 +307,7 @@ final class InjectResolver {
         // A plain String parameter resolves container.get(String.class) via the
         // same marker/scope path as every other type — no special case that
         // would skip scope-compatibility validation.
-        Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
-        Object service;
-        // Validate before realization: a singleton owner directly injecting a
-        // thread-scoped concrete class must get the dedicated diagnostic even
-        // when no scope is open (otherwise "No open scope" from realize() masks
-        // the real contract violation).
-        validateScopeBeforeResolution(ownerType, targetType);
-        if (!markers.isEmpty()) {
-            @SuppressWarnings("unchecked")
-            Class<? extends Annotation>[] markerArr =
-                    markers.toArray(new Class[0]);
-            service = container.get(targetType, markerArr);
-        } else {
-            service = container.get(targetType);
-        }
-        return service;
+        return resolveService(ownerType, lookup, targetType);
     }
 
     private Object resolveInjected(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {
@@ -323,20 +319,23 @@ final class InjectResolver {
                 "Cannot combine service injection and configured value annotations on " + lookup
             );
         }
-        if (targetType == Logger.class) {
-            String loggerId = resolveId(lookup);
-            return loggerId == null ? container.loggerSource().get(ownerType) : container.loggerSource().get(loggerId);
-        }
         String id = resolveId(lookup);
         if (id != null) {
             validateScopeBeforeResolution(ownerType, targetType);
-            Object service = container.get(targetType, id);
-                return service;
+            return container.get(targetType, id);
         }
         // No explicit id — try marker-based resolution
+        return resolveService(ownerType, lookup, targetType);
+    }
+
+    private Object resolveService(Class<?> ownerType, AnnotationLookup lookup, Class<?> targetType) {
         Set<Class<? extends Annotation>> markers = resolveMarkers(ownerType, lookup);
-        Object service;
+        // Validate before realization: a singleton owner directly injecting a
+        // thread-scoped concrete class must get the dedicated diagnostic even
+        // when no scope is open (otherwise "No open scope" from realize() masks
+        // the real contract violation).
         validateScopeBeforeResolution(ownerType, targetType);
+        Object service;
         if (!markers.isEmpty()) {
             @SuppressWarnings("unchecked")
             Class<? extends Annotation>[] markerArr =
