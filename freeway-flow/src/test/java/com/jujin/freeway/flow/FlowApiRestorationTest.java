@@ -126,7 +126,7 @@ class FlowApiRestorationTest {
             engine.getDriver(graph), context, 0, new AtomicInteger(0));
 
         ex.recordClear();
-        assertTrue(ex.getSteps() >= 0);
+        assertTrue(ex.steps() >= 0);
 
         FlowExchanger copy = ex.copy(graph, FlowContext.of());
         assertNotNull(copy);

@@ -119,7 +119,7 @@ public class FlowExchanger {
     }
 
     /** Returns the step budget of this evaluation (-1 = unlimited). */
-    public int getSteps() {
+    public int steps() {
         return steps;
     }
 
