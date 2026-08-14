@@ -379,25 +379,24 @@ routes.forEach(r -> ...);
 @Inject Map<String, FlowDriver> drivers;  // only named contributions, keyed by id
 FlowDriver custom = drivers.get("custom");
 
-// Or via constructor — contribution injection is opt-in: the
-// List/Map parameter MUST carry @Inject to resolve from contributions
+// Or via constructor — constructor parameters consume contributions
+// implicitly, no @Inject required
 public class Router {
     private final List<Route> routes;
-    @Inject
     public Router(List<Route> routes) {
         this.routes = List.copyOf(routes);
     }
 }
 ```
 
-Contribution injection is **opt-in**: an unannotated `List`/`Map` constructor
-parameter or field is *not* hijacked into a contribution list — it falls
-through to ordinary service resolution. Both fields and constructor
-parameters require an explicit `@Inject`. An explicit `@Inject("id")` on a
-`List`/`Map` injection point prefers a bound service with that id (letting
-you bind your own `List<Foo>`/`Map<String, Foo>` service and inject it by
-id); only when no such binding exists does resolution fall back to the
-contributed view.
+Contribution injection: **constructor parameters consume contributions
+implicitly** — the constructor is the single mandatory injection point, so
+resolution failure is loud at startup and there is no silent-miss risk.
+Fields require an explicit `@Inject` (they are writable and can be
+forgotten). An explicit `@Inject("id")` on a `List`/`Map` injection point
+prefers a bound service with that id (letting you bind your own
+`List<Foo>`/`Map<String, Foo>` service and inject it by id); only when no
+such binding exists does resolution fall back to the contributed view.
 
 **Choosing between List and Map:**
 
@@ -438,7 +437,7 @@ Rules:
 - `add(id, value)` enables `before/after` constraints for topological ordering.
 - `add(Class)` auto-instantiates the contributed class from the container and generates a canonical id as `snake_name@package` (e.g. `email_sender@com.example.flow`). Supports `before`/`after` ordering on the returned `Contribution`.
 - Duplicate ids fail immediately. Generic `all()` ordering treats unknown order targets leniently — they are WARNed and ignored (a missing sibling is harmless for most extension points); strict consumers call `Extension.validateOrdering()`, which fails fast on any unknown reference (runtime-hook ordering in the boot layer does this, so a typo fails startup). Cycles fail at resolution time.
-- Constructor parameters are auto-resolved; fields require `@Inject`. (Contribution consumption via `List`/`Map` requires explicit `@Inject` on both fields and constructor parameters — see above.)
+- Constructor parameters are auto-resolved; fields require `@Inject`. (Contribution consumption via `List`/`Map` follows the same rule: constructor parameters implicit, fields explicit — see above.)
 
 ### EventBus
 

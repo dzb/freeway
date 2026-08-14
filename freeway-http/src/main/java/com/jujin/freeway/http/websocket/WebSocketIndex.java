@@ -4,7 +4,6 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.route.RouteIndex;
-import com.jujin.freeway.ioc.annotation.Inject;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,12 +23,12 @@ public final class WebSocketIndex {
     /**
      * Contribution-consumed routes: both parameter lists are resolved from
      * {@code binder.contribute(...)} extensions when the container builds
-     * this class (see {@code HttpModule}); the per-parameter {@code @Inject}
-     * marks this as a contribution consumer.
+     * this class (see {@code HttpModule}) — constructor parameters consume
+     * contributions implicitly.
      */
     public WebSocketIndex(
-        @Inject List<WebSocketRoute> routes,
-        @Inject List<WebSocketGroup> groups
+        List<WebSocketRoute> routes,
+        List<WebSocketGroup> groups
     ) {
         // Groups first, then individuals: individuals override by exact path.
         Map<String, WebSocketRoute> byPath = new LinkedHashMap<>();

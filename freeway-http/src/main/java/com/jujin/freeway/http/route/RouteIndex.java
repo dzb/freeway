@@ -10,8 +10,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-import com.jujin.freeway.ioc.annotation.Inject;
-
 /**
  * Trie-based HTTP route index.
  * <p>
@@ -33,13 +31,9 @@ public final class RouteIndex {
     /**
      * Contribution-consumed routes: both parameter lists are resolved from
      * {@code binder.contribute(...)} extensions when the container builds
-     * this class; the per-parameter {@code @Inject} marks this as a
-     * contribution consumer.
+     * this class — constructor parameters consume contributions implicitly.
      */
-    public RouteIndex(
-        @Inject List<Route> routes,
-        @Inject List<RouteGroup> groups
-    ) {
+    public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
         // Phase 1: collect all routes
         List<Route> all = new ArrayList<>();
         if (routes != null) all.addAll(routes);

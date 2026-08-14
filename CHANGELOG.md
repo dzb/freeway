@@ -15,10 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   由 classpath 顺序决定，freeway-commons 作为基础依赖通常先出现，可能静默顶掉 Logback 使其
   配置（logback.xml）失效。用户显式设置的 `-Dslf4j.provider` 始终优先、绝不覆盖；JUL 增强
   只在 JUL 实际生效时配置。
-- **贡献注入改为显式 `@Inject`（freeway-ioc，行为变更）** — `List<V>`/`Map<String, V>` 注入点
-  必须标注 `@Inject` 才解析为贡献集合；无注解的 List/Map 参数回落到普通服务解析，不再被贡献
-  机制接管（此前绑定为 `List<X>` 的服务会被贡献永久遮蔽）。`@Inject("id")` 优先解析同 id 的
-  绑定服务，无绑定才回退贡献。注入 `Extension<V>` 显式拒绝，提示改用
+- **`@Inject("id")` 限定注入（freeway-ioc）** — `List<V>`/`Map<String, V>` 注入点带显式 id 时
+  优先解析同 id 的绑定服务（此前绑定为 `List<X>` 的服务会被贡献集合永久遮蔽），无绑定才回退
+  贡献视图。构造参数仍隐式消费贡献（无注解 `List`/`Map` 参数即贡献集合），字段注入仍需显式
+  `@Inject`；注入 `Extension<V>` 显式拒绝，提示改用
   `@Inject List<V>` / `@Inject Map<String, V>`。
 - **`${name:-default}` 默认值语义修正（freeway-ioc，行为变更）** — 默认值剥离单个前导 `-`，
   `${port:-8080}` 解析为 `"8080"` 而非 `"-8080"`，与文档宣传的 shell 语义一致。

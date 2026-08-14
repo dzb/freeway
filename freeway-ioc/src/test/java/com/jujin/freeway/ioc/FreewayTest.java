@@ -1486,8 +1486,8 @@ class FreewayTest {
         private final Map<String, AppFlag> flags;
 
         public MixedExtensionCatalog(
-            @Inject List<AppFeature> features,
-            @Inject Map<String, AppFlagEntry> flagEntries
+            List<AppFeature> features,
+            Map<String, AppFlagEntry> flagEntries
         ) {
             this.features = List.copyOf(features);
             Map<String, AppFlag> map = new LinkedHashMap<>();
@@ -1508,7 +1508,7 @@ class FreewayTest {
     public static final class EnumKeyExtensionCatalog {
         private final Map<String, AppFlag> flags;
 
-        public EnumKeyExtensionCatalog(@Inject Map<String, EnumAppFlagEntry> flagEntries) {
+        public EnumKeyExtensionCatalog(Map<String, EnumAppFlagEntry> flagEntries) {
             Map<String, AppFlag> map = new LinkedHashMap<>();
             for (Map.Entry<String, EnumAppFlagEntry> e : flagEntries.entrySet())
                 map.put(e.getKey(), e.getValue().flag());
@@ -2104,21 +2104,19 @@ class FreewayTest {
     }
 
     @Test
-    void unannotatedListParameterIsNotContributionHijacked() {
-        // Regression: resolveContributed fired for ANY List<X> constructor
-        // parameter with no @Inject at all, so a plain `List<String>` parameter
-        // silently received the contribution list. Unannotated parameters now
-        // resolve like every other unannotated parameter — as a service — and
-        // fail with the standard "no service" diagnostic instead.
+    void unannotatedListParameterConsumesContributions() {
+        // Constructor parameters consume contributions implicitly — the
+        // constructor is the single mandatory injection point, so resolution
+        // failure is loud at startup and there is no silent-miss risk; no
+        // @Inject ceremony is required on parameters (fields still require
+        // @Inject). An explicit @Inject("id") prefers a bound service.
         Container container = Freeway.create(
             binder -> binder.contribute(String.class).add("contributed-a")
         );
 
-        RuntimeException ex = assertThrows(RuntimeException.class,
-            () -> container.create(PlainListConsumer.class));
-        assertTrue(ex.getCause().getMessage().contains("No service registered for type java.util.List"),
-            "an unannotated List parameter must not be hijacked by contributions, got: "
-                + ex.getCause().getMessage());
+        PlainListConsumer consumer = container.create(PlainListConsumer.class);
+        assertEquals(List.of("contributed-a"), consumer.values,
+            "an unannotated List constructor parameter must receive the contributed view");
         container.close();
     }
 
@@ -2187,8 +2185,11 @@ class FreewayTest {
     }
 
     public static final class PlainListConsumer {
-        @SuppressWarnings("unused")
-        PlainListConsumer(List<String> values) {}
+        final List<String> values;
+
+        PlainListConsumer(List<String> values) {
+            this.values = values;
+        }
     }
 
     // ========== @PostConstruct / @PreDestroy tests ==========
@@ -2444,7 +2445,7 @@ class FreewayTest {
     public static final class ListFeatureCatalog {
         private final List<AppFeature> features;
 
-        public ListFeatureCatalog(@Inject List<AppFeature> features) {
+        public ListFeatureCatalog(List<AppFeature> features) {
             this.features = List.copyOf(features);
         }
 
@@ -2467,7 +2468,7 @@ class FreewayTest {
     public static final class MapFeatureCatalog {
         private final Map<String, AppFeature> features;
 
-        public MapFeatureCatalog(@Inject Map<String, AppFeature> features) {
+        public MapFeatureCatalog(Map<String, AppFeature> features) {
             this.features = Map.copyOf(features);
         }
 
@@ -2488,7 +2489,7 @@ class FreewayTest {
     // ──── rejected injection patterns ────
 
     public static final class ExtensionConstructorInjection {
-        public ExtensionConstructorInjection(@Inject Extension<AppFeature> features) {}
+        public ExtensionConstructorInjection(Extension<AppFeature> features) {}
     }
 
     public static final class ExtensionFieldInjection {

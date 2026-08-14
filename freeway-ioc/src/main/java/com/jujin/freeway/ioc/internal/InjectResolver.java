@@ -108,11 +108,13 @@ final class InjectResolver {
 
     /**
      * Resolves {@code List<Foo>}, {@code Map<String, Foo>}, and
-     * {@code Extension<Foo>} from the contribution mechanism. Contributions
-     * are opt-in: the injection point MUST carry {@code @Inject} — an
-     * unannotated {@code List}/{@code Map} constructor parameter is not
-     * hijacked into a contribution list (it falls through to ordinary service
-     * resolution, like any other unannotated parameter).
+     * {@code Extension<Foo>} from the contribution mechanism. Constructor
+     * parameters consume contributions implicitly (the constructor is the
+     * single mandatory injection point — failure is loud at startup, so
+     * there is no silent-miss risk); fields require an explicit
+     * {@code @Inject}. An unannotated {@code List}/{@code Map} constructor
+     * parameter resolves to the contributed view, like any other
+     * contributed-typed parameter.
      *
      * <p>An explicit {@code @Inject("id")} on a {@code List}/{@code Map}
      * injection point prefers a bound service with that id; only when no such
@@ -126,7 +128,8 @@ final class InjectResolver {
     private Object resolveContributed(
         Type memberType,
         Class<?> targetType,
-        AnnotationLookup lookup
+        AnnotationLookup lookup,
+        boolean parameterMode
     ) {
         if (!(memberType instanceof ParameterizedType pt)) {
             return null;
@@ -138,8 +141,13 @@ final class InjectResolver {
         if (hasConfiguredValueAnnotation(lookup)) {
             return null;
         }
-        // @Inject is required for BOTH fields and constructor parameters.
-        if (!hasInjectionAnnotation(lookup)) {
+        // Constructor parameters consume contributions implicitly — the
+        // constructor is the single mandatory injection point, so a
+        // resolution failure is loud at startup and there is no
+        // silent-miss risk. Fields require an explicit @Inject (they are
+        // writable and can be forgotten). An explicit @Inject("id") on
+        // either prefers a bound service of that type/id.
+        if (!parameterMode && !hasInjectionAnnotation(lookup)) {
             return null;
         }
         Type[] typeArgs = pt.getActualTypeArguments();
@@ -288,7 +296,7 @@ final class InjectResolver {
         // List<Foo> / Map<String, Foo> / Extension<Foo> — resolved from
         // the contribution mechanism. Must precede resolveInjected so @Inject
         // on these types does not attempt a broken container.get(...).
-        Object contributed = resolveContributed(memberType, targetType, lookup);
+        Object contributed = resolveContributed(memberType, targetType, lookup, parameterMode);
         if (contributed != null) {
             return contributed;
         }
