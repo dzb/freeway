@@ -133,6 +133,17 @@ public final class HttpParser {
                     String v = entry.getValue().getFirst();
                     if (entry.getValue().size() > 1) throw new IOException("Duplicate Content-Length values");
                     if (v != null) {
+                        // RFC 7230 §3.3.2: Content-Length must be 1*DIGIT.
+                        // Long.parseLong alone would accept "+5" and "-0";
+                        // scan explicitly so any non-digit (sign, whitespace,
+                        // empty) is a malformed request.
+                        if (v.isEmpty()) throw new IOException("Invalid Content-Length: " + v);
+                        for (int i = 0; i < v.length(); i++) {
+                            char c = v.charAt(i);
+                            if (c < '0' || c > '9') {
+                                throw new IOException("Invalid Content-Length: " + v);
+                            }
+                        }
                         try { contentLength = Long.parseLong(v); }
                         catch (NumberFormatException e) { throw new IOException("Invalid Content-Length: " + v); }
                         if (contentLength < 0) throw new IOException("Invalid Content-Length: " + v);
@@ -306,9 +317,11 @@ public final class HttpParser {
                     pos++;
                     return true;
                 }
-                out.append(CR);
-                if (out.length() > maxLen) throw lineTooLong(requestLine, maxLen);
-                crPending = false;
+                // A CR that is not part of the CRLF terminator is a bare
+                // control character — malformed (RFC 7230 §3.2.4).
+                throw new IOException(requestLine
+                    ? "Control character in HTTP request line"
+                    : "Control character in HTTP header");
             }
             int i = pos;
             while (i < end && buf[i] != (byte) '\n') i++;
@@ -336,7 +349,20 @@ public final class HttpParser {
         int len = to - from;
         if (out.length() + len > maxLen) throw lineTooLong(requestLine, maxLen);
         for (int j = from; j < to; j++) {
-            out.append((char) (buf[j] & 0xFF));
+            char c = (char) (buf[j] & 0xFF);
+            // RFC 7230 §3.2.4: request lines and header field values must
+            // not contain control characters — only HTAB (0x09) is an
+            // allowed control; SP (0x20) is ordinary whitespace. Rejecting
+            // bare CR/NUL/CTL here also closes the "raw CR smuggled into a
+            // header value" path (it would previously reach the handler and
+            // break the X-Request-Id echo with a session 500). obs-text
+            // (0x80-0xFF) stays allowed per RFC 7230 §3.2.
+            if ((c < 0x20 && c != '\t') || c == 0x7F) {
+                throw new IOException(requestLine
+                    ? "Control character in HTTP request line"
+                    : "Control character in HTTP header");
+            }
+            out.append(c);
         }
     }
 

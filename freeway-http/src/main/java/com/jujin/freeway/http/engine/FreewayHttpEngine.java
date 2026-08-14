@@ -3,10 +3,14 @@ package com.jujin.freeway.http.engine;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
+import java.nio.channels.AsynchronousCloseException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.Objects;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -31,6 +35,23 @@ import com.jujin.freeway.http.HttpServerHandle;
 public final class FreewayHttpEngine implements HttpEngine {
 
     private static final Logger LOG = LoggerFactory.getLogger(FreewayHttpEngine.class);
+
+    /** Bounded backoff between accept() retries after a transient IOException
+     *  (EMFILE/ENOBUFS/EINTR): fixed 50 ms keeps the retry rate low while the
+     *  condition persists. */
+    private static final long ACCEPT_RETRY_BACKOFF_NANOS = 50_000_000L;
+
+    /** Accept source seam for fault-injection tests. When set before
+     *  {@link #start}, the acceptor uses it instead of the engine's own
+     *  server socket; production leaves it null. Package-private on purpose —
+     *  not part of the public API. */
+    AcceptSource acceptSource;
+
+    /** Supplies the next accepted connection. */
+    @FunctionalInterface
+    interface AcceptSource {
+        SocketChannel accept() throws IOException;
+    }
 
     private final JsonCodec jsonCodec;
     private final Coercer coercer;
@@ -117,10 +138,19 @@ public final class FreewayHttpEngine implements HttpEngine {
         // Virtual threads are cheap, so each connection gets its own carrier that
         // parks when idle (blocking I/O). The acceptor itself stays on a platform
         // thread to avoid virtual-thread pinning during accept().
+        AcceptSource source = acceptSource != null ? acceptSource : ss::accept;
         var acceptor = new Thread(() -> {
+            // Transient accept failures (EMFILE/ENOBUFS/EINTR) must not kill
+            // the listener: retry with a bounded backoff so a temporary
+            // condition cannot silently strand the OS backlog. Only shutdown
+            // (finished, or the server socket closed) breaks the loop. The
+            // first consecutive failure is logged at error, the rest at debug
+            // to avoid flooding the log while the condition persists.
+            boolean loggedAcceptFailure = false;
             while (!finished.get()) {
                 try {
-                    var socket = ss.accept().socket();
+                    var socket = source.accept().socket();
+                    loggedAcceptFailure = false;
                     if (permits != null && !permits.tryAcquire()) {
                         // Reject excess connections at accept time so a flood
                         // cannot exhaust fds/threads; the client sees an
@@ -135,8 +165,23 @@ public final class FreewayHttpEngine implements HttpEngine {
                         .start(new HttpSession(socket, handler, jsonCodec, coercer, this,
                             config, registry, permits));
                 } catch (IOException e) {
-                    if (!finished.get()) LOG.error("Accept failed", e);
-                    break;
+                    // ServerSocketChannel.accept() throws ClosedChannelException
+                    // / AsynchronousCloseException when the listener is closed
+                    // (shutdown); those — or an already-closed channel — mean
+                    // the acceptor's work is done. Everything else is treated
+                    // as transient and retried.
+                    if (finished.get() || !ss.isOpen()
+                            || e instanceof ClosedChannelException
+                            || e instanceof AsynchronousCloseException) {
+                        break;
+                    }
+                    if (!loggedAcceptFailure) {
+                        LOG.error("Accept failed (will retry)", e);
+                        loggedAcceptFailure = true;
+                    } else {
+                        LOG.debug("Accept failed (will retry)", e);
+                    }
+                    LockSupport.parkNanos(ACCEPT_RETRY_BACKOFF_NANOS);
                 }
             }
         }, "freeway-http-acceptor");

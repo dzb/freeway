@@ -132,6 +132,16 @@ final class Http11ResponseWriter implements HttpResponseWriter {
         rawOut.write(HttpContextDefault.reasonBytes(ctx.status()));
         rawOut.write(CRLF);
         for (var entry : ctx.responseHeaderEntries()) {
+            // RFC 9110 §8.6: a response without a body (204/205/304) must
+            // not carry Content-Length, regardless of who set it — a
+            // handler-set value must not leak onto the wire next to a
+            // suppressed body. HEAD keeps Content-Length (RFC 9110 §9.3.2:
+            // same headers as GET) because allowsResponseBody() is
+            // status-based, and 1xx never reaches this writer.
+            if (!ctx.allowsResponseBody()
+                    && entry.getKey().equalsIgnoreCase("Content-Length")) {
+                continue;
+            }
             rawOut.write(entry.getKey().getBytes(StandardCharsets.ISO_8859_1));
             rawOut.write(COLSP);
             rawOut.write(entry.getValue().getBytes(StandardCharsets.ISO_8859_1));

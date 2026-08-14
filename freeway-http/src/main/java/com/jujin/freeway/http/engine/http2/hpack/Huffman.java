@@ -3,6 +3,8 @@ package com.jujin.freeway.http.engine.http2.hpack;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.jujin.freeway.http.engine.http2.util.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.util.Http2Exception;
@@ -278,6 +280,37 @@ public final class Huffman {
 
     private Huffman() {}
 
+    /** Symbols indexed by code length (5..30), mapping a code value (read as
+     *  a bit prefix) to its symbol. The HPACK Huffman table is a prefix code,
+     *  so for any bit position exactly one code length matches — the longest
+     *  matching prefix is the actual code. Scanning lengths longest-first and
+     *  taking the first hit turns the decode into a handful of O(1) lookups
+     *  per symbol instead of the previous O(257²) scan. */
+    private static final Map<Integer, Integer>[] CODE_BY_LENGTH =
+        buildCodeByLength();
+
+    private static final int MIN_CODE_LENGTH = 5;
+    private static final int MAX_CODE_LENGTH = 30;
+
+    @SuppressWarnings("unchecked")
+    private static Map<Integer, Integer>[] buildCodeByLength() {
+        Map<Integer, Integer>[] byLength = new Map[MAX_CODE_LENGTH + 1];
+        for (int len = MIN_CODE_LENGTH; len <= MAX_CODE_LENGTH; len++) {
+            byLength[len] = new HashMap<>();
+        }
+        for (int symbol = 0; symbol < CODE_TABLE.length; symbol++) {
+            int[] entry = CODE_TABLE[symbol];
+            if (entry == null) continue;
+            byLength[entry[1]].put(entry[0], symbol);
+        }
+        // Freeze the tables; Map.copyOf also rejects duplicate (length, code)
+        // keys, validating the prefix-code uniqueness at class load time.
+        for (int len = MIN_CODE_LENGTH; len <= MAX_CODE_LENGTH; len++) {
+            byLength[len] = Map.copyOf(byLength[len]);
+        }
+        return byLength;
+    }
+
     /**
      * Encodes a string into its HPACK Huffman representation
      * (RFC 7541 Appendix B), EOS excluded.
@@ -340,31 +373,21 @@ public final class Huffman {
             buffer = (buffer << 8) | (data[i] & 0xFF);
             bitsInBuffer += 8;
 
-            while (bitsInBuffer >= 5) {
+            while (bitsInBuffer >= MIN_CODE_LENGTH) {
                 int matchedSymbol = -1;
-
-                // Find the longest matching code entry
-                for (int candidate = 0; candidate < 257; candidate++) {
-                    int[] codeEntry = CODE_TABLE[candidate];
-                    if (codeEntry == null || codeEntry[1] > bitsInBuffer) continue;
-
-                    if ((buffer >> (bitsInBuffer - codeEntry[1])) == codeEntry[0]) {
-                        // Verify there isn't a longer (more specific) match
-                        boolean hasLongerMatch = false;
-                        for (int otherCandidate = 0; otherCandidate < 257; otherCandidate++) {
-                            int[] otherEntry = CODE_TABLE[otherCandidate];
-                            if (otherEntry == null || otherEntry[1] <= codeEntry[1] || otherEntry[1] > bitsInBuffer)
-                                continue;
-                            if ((buffer >> (bitsInBuffer - otherEntry[1])) == otherEntry[0]) {
-                                hasLongerMatch = true;
-                                break;
-                            }
-                        }
-
-                        if (!hasLongerMatch) {
-                            matchedSymbol = candidate;
-                            break;
-                        }
+                int matchedBits = 0;
+                // The table is a prefix code: the longest prefix present in
+                // CODE_BY_LENGTH is the actual code, so scanning lengths
+                // longest-first and taking the first hit is exact — one map
+                // lookup per length, at most MAX_CODE_LENGTH per symbol.
+                int maxLen = Math.min(bitsInBuffer, MAX_CODE_LENGTH);
+                for (int len = maxLen; len >= MIN_CODE_LENGTH; len--) {
+                    int prefix = (int) (buffer >> (bitsInBuffer - len));
+                    Integer symbol = CODE_BY_LENGTH[len].get(prefix);
+                    if (symbol != null) {
+                        matchedSymbol = symbol;
+                        matchedBits = len;
+                        break;
                     }
                 }
 
@@ -372,8 +395,7 @@ public final class Huffman {
                 if (matchedSymbol == 256) throw new Http2Exception(Http2ErrorCode.COMPRESSION_ERROR);
 
                 output.append((char) matchedSymbol);
-                int codeLength = CODE_TABLE[matchedSymbol][1];
-                bitsInBuffer -= codeLength;
+                bitsInBuffer -= matchedBits;
                 buffer &= (1L << bitsInBuffer) - 1;
             }
         }

@@ -73,8 +73,8 @@ class Http2ProtocolTest {
             // HPACK: indexed :method GET, literal :path "/mismatch",
             // indexed :scheme http, literal :authority "localhost".
             byte[] headerBlock = new byte[] {
-                (byte) 0x82, (byte) 0x44, 0x08,
-                'm', 'i', 's', 'm', 'a', 't', 'c', 'h',
+                (byte) 0x82, (byte) 0x44, 0x09,
+                '/', 'm', 'i', 's', 'm', 'a', 't', 'c', 'h',
                 (byte) 0x86, (byte) 0x41, 0x09,
                 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
             };
@@ -726,8 +726,19 @@ class Http2ProtocolTest {
                 };
                 // Request without END_STREAM: handler parks reading the body.
                 writeFrame(out, headerBlock.length, 0x1, 0x4, 1, headerBlock);
-                // Let the handler start, then RST with NO_ERROR (code 0).
-                Thread.sleep(200);
+                // Wait until the server has actually opened the stream (the
+                // handler is parked on the body read) before RST: an RST on a
+                // still-idle stream is a connection error (RFC 7540 §5.1) and
+                // would tear down the connection instead of testing the
+                // reset-releases-handler path. A fixed sleep is racy under
+                // load, so poll the handler's active flag instead.
+                long started = System.currentTimeMillis();
+                while (active.get() < 1 && System.currentTimeMillis() - started < 3000) {
+                    Thread.sleep(10);
+                }
+                assertEquals(1, active.get(),
+                    "handler must be parked on the body read before RST");
+                // RST with NO_ERROR (code 0).
                 writeFrame(out, 4, 0x3, 0x0, 1, new byte[]{0, 0, 0, 0});
                 out.flush();
 
@@ -1169,6 +1180,45 @@ class Http2ProtocolTest {
             }
             assertTrue(sawGoaway,
                 "a WINDOW_UPDATE frame mid-header-block must trigger GOAWAY(PROTOCOL_ERROR)");
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void h2cAcceptsValidHeaderTableSizeSettings() throws Exception {
+        // RFC 7540 §6.5.2: SETTINGS_HEADER_TABLE_SIZE is a 32-bit unsigned
+        // value — 0 (no dynamic table) and 0xFFFFFFFF (a wire "negative"
+        // would encode as this large positive) are both legal and must not
+        // kill the connection or poison the HPACK decoder.
+        WebServer server = WebServerBuilder.builder()
+            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .route(Route.get("/", ctx -> ctx.send(200, "ok")))
+            .build();
+        server.start();
+        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+            socket.setSoTimeout(5000);
+            var out = socket.getOutputStream();
+            out.write(PREFACE_BYTES);
+            out.flush();
+            consumeSettings(socket.getInputStream());
+
+            // SETTINGS: HEADER_TABLE_SIZE=0 then HEADER_TABLE_SIZE=0xFFFFFFFF.
+            byte[] settingsPayload = new byte[] {
+                0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x01, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF
+            };
+            writeFrame(out, settingsPayload.length, 0x4, 0x0, 0, settingsPayload);
+
+            byte[] headerBlock = new byte[] {
+                (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41, 0x09,
+                'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+            };
+            writeFrame(out, headerBlock.length, 0x1, 0x5, 1, headerBlock);
+
+            assertTrue(waitForStatus200(socket.getInputStream(), 1, 5000),
+                "valid SETTINGS_HEADER_TABLE_SIZE values must not kill the "
+                    + "connection or the HPACK decoder");
         } finally {
             server.stop();
         }

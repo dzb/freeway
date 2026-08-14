@@ -255,7 +255,12 @@ final class HttpSession implements Runnable {
                 ctx.reset(req.method(), req.path(), req.queryString(),
                     req.headers(), bodyStream, bodyLength, req.isChunked(),
                     out, correlationId, req.isHttp10(), req.keepAlive());
-                ctx.setHeader("X-Request-Id", ctx.correlationId());
+                // The correlation id is echoed for tracing only — a hostile
+                // value must never break the session. (HTTP/1.1 parsing now
+                // rejects CTL, so this guard is defense-in-depth.)
+                try {
+                    ctx.setHeader("X-Request-Id", ctx.correlationId());
+                } catch (IllegalArgumentException ignored) {}
                 // RFC 7231 §5.1.1: acknowledge Expect: 100-continue before
                 // the handler reads the body so clients send it promptly.
                 if ((req.isChunked() || bodyLength > 0)
@@ -630,7 +635,12 @@ final class HttpSession implements Runnable {
             ctx.reset(method, path, rawQuery, headers, in, -1, false,
                 out, correlationId, false, false);
             ctx.setWriter(new Http2ResponseWriter(stream));
-            ctx.setHeader("X-Request-Id", ctx.correlationId());
+            // Echo for tracing only — a hostile value (e.g. CR/LF inside an
+            // HPACK-encoded header) must never poison the response head; the
+            // stream-level catch below would otherwise reset it.
+            try {
+                ctx.setHeader("X-Request-Id", ctx.correlationId());
+            } catch (IllegalArgumentException ignored) {}
             registry.requestsInFlight.incrementAndGet();
             metrics.counter("freeway.http.requests.total").increment();
             long startNanos = System.nanoTime();
@@ -712,6 +722,22 @@ final class HttpSession implements Runnable {
             writeLine(out, "");
             out.flush();
             metrics.counter("freeway.http.websocket.connections").increment();
+
+            // A WebSocket is long-lived and must survive idle periods:
+            // clear the socket read timeout before entering the blocking
+            // frame read loop, otherwise SO_TIMEOUT (readTimeout, 30s by
+            // default) kills a healthy connection that simply has nothing
+            // to say — a 1006 abnormal closure with no frames exchanged.
+            // Dead peers are still reclaimed by the TCP keepalive probes
+            // configured at connection setup (setKeepAlive + KEEPALIVE_*),
+            // exactly like HTTP/2 updateReadTimeout() zeroes SO_TIMEOUT for
+            // connections with open streams. No server-side ping is sent.
+            try {
+                connection.socket().setSoTimeout(0);
+            } catch (IOException ignored) {
+                // Best-effort — if the timeout cannot be cleared the read
+                // loop keeps the pre-existing (timeout-kill) behavior.
+            }
 
             InputStream websocketInput = parser.upgradeStream();
             var wsSession = new WebSocketSessionImpl(req.method(), req.path(),

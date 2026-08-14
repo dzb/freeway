@@ -26,6 +26,7 @@ import com.jujin.freeway.http.engine.http2.util.Http2Exception;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Byte-level verification of HTTP/2 frame encoding against RFC 7540 §4-§6
@@ -78,6 +79,25 @@ class H2WireFormatTest {
         byte[] encoded = frame.encode();
         assertEquals("0000080700000000000000002900000000", HEX.formatHex(encoded),
             "len=8, type=0x07, stream=0, last-stream=41, error=0");
+    }
+
+    @Test
+    void settingsHeaderTableSizeValidatesUnsignedRange() {
+        // RFC 7540 §6.5.2: SETTINGS_HEADER_TABLE_SIZE is a 32-bit unsigned
+        // value. The wire parse is unsigned, so only programmatically built
+        // settings can carry a negative or > uint32 value — validation must
+        // reject those before they poison the HPACK decoder state.
+        var id = SettingIdentifier.SETTINGS_HEADER_TABLE_SIZE;
+        assertTrue(!id.validateValue(-1),
+            "a negative table size must be rejected");
+        assertTrue(!id.validateValue(0x1_0000_0000L),
+            "a value beyond uint32 must be rejected");
+        assertTrue(id.validateValue(0),
+            "the RFC minimum (0 = no dynamic table) must be accepted");
+        assertTrue(id.validateValue(4096),
+            "the RFC default must be accepted");
+        assertTrue(id.validateValue(0xFFFFFFFFL),
+            "the full uint32 range must be accepted");
     }
 
     @Test

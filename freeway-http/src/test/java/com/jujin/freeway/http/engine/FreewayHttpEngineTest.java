@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
@@ -13,6 +14,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -1059,6 +1062,50 @@ class FreewayHttpEngineTest {
     }
 
     // ── graceful shutdown drains in-flight requests ───────────────
+
+    @Test
+    void acceptorSurvivesTransientAcceptFailures() throws Exception {
+        // Fault-injection seam: the first two accept() calls throw transient
+        // IOExceptions (simulated EMFILE/ENOBUFS). The acceptor must back off
+        // and keep serving instead of dying with the listener still reported
+        // as started — a dead acceptor would strand new connections in the OS
+        // backlog.
+        FreewayHttpEngine engine = new FreewayHttpEngine(
+            new JsonCodecDefault(), new CoercerDefault());
+        try (ServerSocketChannel listener = ServerSocketChannel.open()) {
+            listener.bind(new InetSocketAddress("127.0.0.1", 0));
+            int port = ((InetSocketAddress) listener.getLocalAddress()).getPort();
+            AtomicInteger transientFailures = new AtomicInteger(2);
+            engine.acceptSource = () -> {
+                if (transientFailures.getAndDecrement() > 0) {
+                    throw new IOException("simulated transient accept failure");
+                }
+                return listener.accept();
+            };
+            var handle = engine.start(
+                new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)),
+                ctx -> ctx.send(200, "ok"));
+            try {
+                var client = HttpClient.newHttpClient();
+                var resp = client.send(
+                    HttpRequest.newBuilder()
+                        .uri(URI.create("http://127.0.0.1:" + port + "/"))
+                        .GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+                assertEquals(200, resp.statusCode(),
+                    "acceptor must keep serving after transient accept failures: "
+                        + resp.body());
+                assertTrue(transientFailures.get() <= 0,
+                    "the injected accept failures must actually have been hit");
+            } finally {
+                // Close the injected listener first so the acceptor's blocked
+                // accept() wakes immediately (AsynchronousCloseException) and
+                // handle.close() can join it without waiting out the timeout.
+                listener.close();
+                handle.close();
+            }
+        }
+    }
 
     @Test
     void closeWaitsForInFlightRequestWithinGrace() throws Exception {

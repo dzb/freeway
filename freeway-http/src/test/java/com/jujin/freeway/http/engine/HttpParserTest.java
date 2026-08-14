@@ -347,6 +347,126 @@ class HttpParserTest {
         assertEquals('x', parser.upgradeStream().readAllBytes()[6] ^ 1);
     }
 
+    // ── Control-character rejection (RFC 7230 §3.2.4) ─────────────
+
+    @Test
+    void rejectsBareCrInHeaderValue() {
+        byte[] raw = ("GET / HTTP/1.1\r\nX-Foo: ab\rcd\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "a bare CR inside a header value must be rejected");
+    }
+
+    @Test
+    void rejectsNulInHeaderValue() {
+        byte[] raw = ("GET / HTTP/1.1\r\nX-Foo: a\u0000b\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "a NUL inside a header value must be rejected");
+    }
+
+    @Test
+    void rejectsControlCharacterInRequestLine() {
+        byte[] raw = ("GET /\u0007x HTTP/1.1\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "a control character in the request line must be rejected");
+    }
+
+    @Test
+    void rejectsBareCrAtBufferBoundaryInHeaderValue() {
+        // The header line is padded so the parser's 4096-byte bulk read ends
+        // exactly on a CR that is NOT followed by LF in the next chunk — the
+        // crPending path must reject it rather than splicing a bare CR into
+        // the header value.
+        String prefix = "GET / HTTP/1.1\r\nX-Foo: " + "a".repeat(4072) + "\r";
+        byte[] rest = "cd\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
+        byte[] raw = new byte[prefix.length() + rest.length];
+        System.arraycopy(prefix.getBytes(StandardCharsets.ISO_8859_1), 0, raw,
+            0, prefix.length());
+        System.arraycopy(rest, 0, raw, prefix.length(), rest.length);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "a bare CR at the bulk-read boundary must be rejected");
+    }
+
+    @Test
+    void obsFoldStillAccepted() throws Exception {
+        byte[] raw = ("GET / HTTP/1.1\r\nHost: localhost\r\n"
+                + "X-Long: part1\r\n part2\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var req = parser.parse();
+        assertNotNull(req);
+        assertEquals("part1 part2", headerValue(req, "x-long"),
+            "obs-fold continuation lines must keep working");
+    }
+
+    @Test
+    void normalRequestUnaffectedByControlCharCheck() throws Exception {
+        byte[] raw = ("GET /a?b=c HTTP/1.1\r\nHost: localhost\r\n"
+                + "Accept: text/html\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var req = parser.parse();
+        assertNotNull(req);
+        assertEquals("/a", req.path());
+        assertEquals("b=c", req.queryString());
+        assertEquals("text/html", headerValue(req, "accept"));
+    }
+
+    // ── Content-Length strict 1*DIGIT (RFC 7230 §3.3.2) ────────────
+
+    @Test
+    void rejectsSignedContentLength() {
+        byte[] raw = ("POST / HTTP/1.1\r\nContent-Length: +5\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "Content-Length: +5 must be rejected");
+    }
+
+    @Test
+    void rejectsNegativeContentLength() {
+        byte[] raw = ("POST / HTTP/1.1\r\nContent-Length: -5\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "Content-Length: -5 must be rejected");
+    }
+
+    @Test
+    void rejectsWhitespaceInsideContentLength() {
+        byte[] raw = ("POST / HTTP/1.1\r\nContent-Length: 4 5\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "whitespace inside Content-Length must be rejected");
+    }
+
+    @Test
+    void rejectsEmptyContentLength() {
+        byte[] raw = ("POST / HTTP/1.1\r\nContent-Length:\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        assertThrows(IOException.class, parser::parse,
+            "an empty Content-Length must be rejected");
+    }
+
+    @Test
+    void plainDigitContentLengthStillParses() throws Exception {
+        byte[] raw = ("POST / HTTP/1.1\r\nHost: localhost\r\n"
+                + "Content-Length: 42\r\n\r\n")
+            .getBytes(StandardCharsets.ISO_8859_1);
+        var parser = new HttpParser(new ByteArrayInputStream(raw));
+        var req = parser.parse();
+        assertNotNull(req);
+        assertEquals(42, req.contentLength());
+    }
+
     private static String headerValue(HttpParser.ParsedRequest req, String name) {
         for (var e : req.headers().entrySet()) {
             if (e.getKey().equalsIgnoreCase(name)) {
