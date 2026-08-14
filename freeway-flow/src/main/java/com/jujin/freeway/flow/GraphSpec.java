@@ -319,23 +319,10 @@ public class GraphSpec {
         }
 
         for (int i = 0; i < nodesDom.size(); i++) {
-            Object item = nodesDom.get(i);
-            if (!(item instanceof JsonObject nodeDom)) {
-                throw new IllegalArgumentException(
-                    "Node at index " + i + " must be an object, got: "
-                        + (item == null ? "null" : item.getClass().getSimpleName()));
-            }
+            JsonObject nodeDom = requireObject(nodesDom, i, "Node");
 
-            String nodeId = nodeDom.getString("id");
-            if (nodeId == null || nodeId.isBlank()) {
-                throw new IllegalArgumentException(
-                    "Node at index " + i + " is missing required 'id' field");
-            }
-            String typeStr = nodeDom.getString("type");
-            if (typeStr == null || typeStr.isBlank()) {
-                throw new IllegalArgumentException(
-                    "Node '" + nodeId + "' is missing required 'type' field");
-            }
+            String nodeId = requireString(nodeDom, "id", "Node at index " + i);
+            String typeStr = requireString(nodeDom, "type", "Node '" + nodeId + "'");
             NodeType nodeType = NodeType.nameOf(typeStr);
             if (nodeType == NodeType.UNKNOWN) {
                 throw new IllegalArgumentException(
@@ -354,23 +341,10 @@ public class GraphSpec {
         JsonArray linksDom = dom.getArray("links");
         if (linksDom != null) {
             for (int i = 0; i < linksDom.size(); i++) {
-                Object item = linksDom.get(i);
-                if (!(item instanceof JsonObject linkDom)) {
-                    throw new IllegalArgumentException(
-                        "Link at index " + i + " must be an object, got: "
-                            + (item == null ? "null" : item.getClass().getSimpleName()));
-                }
+                JsonObject linkDom = requireObject(linksDom, i, "Link");
 
-                String from = linkDom.getString("from");
-                if (from == null || from.isBlank()) {
-                    throw new IllegalArgumentException(
-                        "Link at index " + i + " is missing required 'from' field");
-                }
-                String to = linkDom.getString("to");
-                if (to == null || to.isBlank()) {
-                    throw new IllegalArgumentException(
-                        "Link at index " + i + " is missing required 'to' field");
-                }
+                String from = requireString(linkDom, "from", "Link at index " + i);
+                String to = requireString(linkDom, "to", "Link at index " + i);
                 LinkSpec link = blueprint.link(from, to);
                 link.title(linkDom.getString("title"));
                 link.meta(toMap(linkDom.getObject("meta")));
@@ -684,6 +658,27 @@ public class GraphSpec {
             return null;
         }
         return new LinkedHashMap<>(obj.toMap());
+    }
+
+    /** Fetches array element {@code index} as a JsonObject, or fails with the shared "must be an object" error. */
+    private static JsonObject requireObject(JsonArray array, int index, String kind) {
+        Object item = array.get(index);
+        if (!(item instanceof JsonObject obj)) {
+            throw new IllegalArgumentException(
+                kind + " at index " + index + " must be an object, got: "
+                    + (item == null ? "null" : item.getClass().getSimpleName()));
+        }
+        return obj;
+    }
+
+    /** Reads a required non-blank string field, or fails with the shared "missing required field" error. */
+    private static String requireString(JsonObject obj, String field, String what) {
+        String value = obj.getString(field);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(
+                what + " is missing required '" + field + "' field");
+        }
+        return value;
     }
 
 }

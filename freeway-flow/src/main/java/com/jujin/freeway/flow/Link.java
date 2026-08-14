@@ -21,7 +21,7 @@ public class Link implements Comparable<Link> {
 
     private final String prevId;
     private final ConditionDesc when;
-    private Node prevNode, nextNode;
+    private Node nextNode;
 
     public Link(Graph graph, String prevId, LinkSpec spec) {
         this.graph = graph;
@@ -44,25 +44,10 @@ public class Link implements Comparable<Link> {
     public Map<String, Object> getMetas() { return metas; }
     public Object getMeta(String key) { return metas.get(key); }
 
-    @SuppressWarnings("unchecked")
-    public <T> T getMetaAs(String key) { return (T) metas.get(key); }
-
-    @SuppressWarnings("unchecked")
-    public <T> T getMetaOrDefault(String key, T def) {
-        return (T) metas.getOrDefault(key, def);
-    }
-
     public ConditionDesc getWhen() { return when; }
     public String getPrevId() { return prevId; }
     public String getNextId() { return nextId; }
     public int getPriority() { return priority; }
-
-    public Node getPrevNode() {
-        if (prevNode == null) {
-            prevNode = graph.getNode(getPrevId());
-        }
-        return prevNode;
-    }
 
     public Node getNextNode() {
         if (nextNode == null) {

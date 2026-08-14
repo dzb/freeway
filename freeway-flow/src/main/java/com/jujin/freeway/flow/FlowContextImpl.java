@@ -7,7 +7,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * Flow context implementation.
@@ -209,56 +208,4 @@ public class FlowContextImpl implements FlowContext {
 
     @Override
     public void exchanger(FlowExchanger exchanger) { this.exchanger = exchanger; }
-
-    // --- data access overrides for fluent return ---
-
-    @Override
-    public FlowContext put(String key, Object value) {
-        if (value != null) data.put(key, value);
-        return this;
-    }
-
-    @Override
-    public FlowContext putIfAbsent(String key, Object value) {
-        if (value != null) data.putIfAbsent(key, value);
-        return this;
-    }
-
-    @Override
-    public FlowContext putAll(Map<String, Object> vars) {
-        // Consistent with put(): null values are not stored. A null map still
-        // fails fast (NPE) exactly like the previous data.putAll(null).
-        vars.forEach((k, v) -> {
-            if (v != null) data.put(k, v);
-        });
-        return this;
-    }
-
-    @SuppressWarnings("unchecked")
-    @Override
-    public <T> T computeIfAbsent(String key, Function<String, T> mappingFunction) {
-        return (T) data.computeIfAbsent(key, mappingFunction);
-    }
-
-    @SuppressWarnings("unchecked")
-    @Override
-    public <T> T getAs(String key) {
-        return (T) data.get(key);
-    }
-
-    @SuppressWarnings("unchecked")
-    @Override
-    public <T> T getOrDefault(String key, T def) {
-        return (T) data.getOrDefault(key, def);
-    }
-
-    @Override
-    public void remove(String key) {
-        data.remove(key);
-    }
-
-    @Override
-    public String getInstanceId() {
-        return getAs("instanceId");
-    }
 }

@@ -79,16 +79,7 @@ public class FlowDriverDefault implements FlowDriver {
     }
 
     protected boolean tryAsComponentCondition(FlowExchanger exchanger, String description) throws Throwable {
-        String beanName = description.substring(1);
-        Object component = getContainer().getComponent(beanName);
-
-        if (component == null) {
-            throw new IllegalStateException("The condition component '" + beanName + "' not exist");
-        }
-        if (!(component instanceof ConditionComponent)) {
-            throw new IllegalStateException("The component '" + beanName + "' is not ConditionComponent");
-        }
-        return ((ConditionComponent) component).test(exchanger.context());
+        return resolveComponent(description, ConditionComponent.class, "condition").test(exchanger.context());
     }
 
     protected boolean tryAsExprCondition(FlowExchanger exchanger, String description) {
@@ -165,16 +156,7 @@ public class FlowDriverDefault implements FlowDriver {
     }
 
     protected void tryAsComponentTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
-        String beanName = description.substring(1);
-        Object component = getContainer().getComponent(beanName);
-
-        if (component == null) {
-            throw new IllegalStateException("The task component '" + beanName + "' not exist");
-        }
-        if (!(component instanceof TaskComponent)) {
-            throw new IllegalStateException("The component '" + beanName + "' is not TaskComponent");
-        }
-        ((TaskComponent) component).run(exchanger.context(), task.getNode());
+        resolveComponent(description, TaskComponent.class, "task").run(exchanger.context(), task.getNode());
     }
 
     protected void tryAsMetaTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
@@ -213,6 +195,24 @@ public class FlowDriverDefault implements FlowDriver {
     }
 
     // --- helpers ---
+
+    /**
+     * Resolves an {@code @beanName} description to a component of the required
+     * type. Shared by condition and task resolution — they differ only in the
+     * error wording (kind) and the target interface.
+     */
+    protected <T> T resolveComponent(String description, Class<T> type, String kind) throws Throwable {
+        String beanName = description.substring(1);
+        Object component = getContainer().getComponent(beanName);
+
+        if (component == null) {
+            throw new IllegalStateException("The " + kind + " component '" + beanName + "' not exist");
+        }
+        if (!type.isInstance(component)) {
+            throw new IllegalStateException("The component '" + beanName + "' is not " + type.getSimpleName());
+        }
+        return type.cast(component);
+    }
 
     /**
      * Returns the FlowContainer for {@code @beanName} resolution.

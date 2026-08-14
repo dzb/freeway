@@ -226,27 +226,28 @@ public class FlowEngineImpl implements FlowEngine {
     // ==================== lifecycle hooks ====================
 
     protected boolean onNodeStart(FlowExchanger exchanger, FlowOptions options, Node node) {
-        if (exchanger.isReverting()) return true;
-
-        for (var ri : options.getInterceptorList()) {
-            ri.interceptor().onNodeStart(exchanger.context(), node);
-        }
-        exchanger.driver().onNodeStart(exchanger, node);
-
-        if (exchanger.isStopped()) return false;
-        if (exchanger.isInterrupted()) {
-            return false;
-        }
-        return true;
+        return nodeHook(exchanger, options, node, true);
     }
 
     protected boolean onNodeEnd(FlowExchanger exchanger, FlowOptions options, Node node) {
+        return nodeHook(exchanger, options, node, false);
+    }
+
+    /** Shared body of {@link #onNodeStart} / {@link #onNodeEnd} — they differ only in which hook is invoked. */
+    private boolean nodeHook(FlowExchanger exchanger, FlowOptions options, Node node, boolean start) {
         if (exchanger.isReverting()) return true;
 
-        for (var ri : options.getInterceptorList()) {
-            ri.interceptor().onNodeEnd(exchanger.context(), node);
+        if (start) {
+            for (var ri : options.getInterceptorList()) {
+                ri.interceptor().onNodeStart(exchanger.context(), node);
+            }
+            exchanger.driver().onNodeStart(exchanger, node);
+        } else {
+            for (var ri : options.getInterceptorList()) {
+                ri.interceptor().onNodeEnd(exchanger.context(), node);
+            }
+            exchanger.driver().onNodeEnd(exchanger, node);
         }
-        exchanger.driver().onNodeEnd(exchanger, node);
 
         if (exchanger.isStopped()) return false;
         if (exchanger.isInterrupted()) {
@@ -451,9 +452,13 @@ public class FlowEngineImpl implements FlowEngine {
             // The run would otherwise "complete" without reaching END. Mark
             // the dead end so eval() can fail loudly. Skipped during resume
             // replay, which is only a walk to the resume point.
-            if (!exchanger.isReverting()) {
-                exchanger.execState().deadEnd(node.getGraph(), node.getId());
-            }
+            markDeadEnd(exchanger, node);
+        }
+    }
+
+    private void markDeadEnd(FlowExchanger exchanger, Node node) {
+        if (!exchanger.isReverting()) {
+            exchanger.execState().deadEnd(node.getGraph(), node.getId());
         }
     }
 
@@ -465,7 +470,6 @@ public class FlowEngineImpl implements FlowEngine {
         inclusive_run_out(exchanger, options, node, startNode);
     }
 
-    @SuppressWarnings("unchecked")
     protected boolean inclusive_run_in(FlowExchanger exchanger, Node node) {
         if (node.getPrevLinks().size() > 1) {
             // Join semantics: the gateway activates exactly once, when every
@@ -489,16 +493,13 @@ public class FlowEngineImpl implements FlowEngine {
                 // END — record the provisional dead end so the completion
                 // check can fail loudly. Skipped during resume replay (walk
                 // only), and cleared above if the join later activates.
-                if (!exchanger.isReverting()) {
-                    exchanger.execState().deadEnd(node.getGraph(), node.getId());
-                }
+                markDeadEnd(exchanger, node);
                 return false;
             }
         }
         return true;
     }
 
-    @SuppressWarnings("unchecked")
     protected void inclusive_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
         List<Link> matched = new ArrayList<>();
         for (Link l : node.getNextLinks()) {
@@ -524,9 +525,7 @@ public class FlowEngineImpl implements FlowEngine {
         }
         // Still waiting for branches — provisional dead end, same contract as
         // the INCLUSIVE join above.
-        if (!exchanger.isReverting()) {
-            exchanger.execState().deadEnd(node.getGraph(), node.getId());
-        }
+        markDeadEnd(exchanger, node);
         return false;
     }
 
@@ -573,7 +572,6 @@ public class FlowEngineImpl implements FlowEngine {
 
     // ==================== LOOP ====================
 
-    @SuppressWarnings("unchecked")
     protected void loop_run(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
         if (node.getMetaAsString("$for") == null) {
             if (!loop_run_in(exchanger, node)) return;
@@ -592,19 +590,30 @@ public class FlowEngineImpl implements FlowEngine {
         }
     }
 
-    @SuppressWarnings("unchecked")
     protected boolean loop_run_in(FlowExchanger exchanger, Node node) {
         Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run/" + node.getId());
         // Atomic peek→hasNext→pop: a LOOP node reachable from concurrent
         // PARALLEL branches shares this stack.
         synchronized (stack) {
-            if (!stack.isEmpty()) {
-                Iterator<?> iter = stack.peek();
-                if (iter.hasNext()) return false;
-                stack.pop();
-            }
+            if (loopBusy(stack)) return false;
         }
         return true;
+    }
+
+    /**
+     * True when the top of the loop stack still has items — i.e. a sibling
+     * branch is currently running this $for LOOP. An exhausted iterator left
+     * by a completed run is popped so a later re-entry re-arms the loop.
+     * Must be called while holding the stack monitor ({@code loop_run_in} /
+     * {@code loop_run_claim} invoke it inside their synchronized blocks).
+     */
+    private boolean loopBusy(Stack<Iterator> stack) {
+        if (!stack.isEmpty()) {
+            Iterator<?> iter = stack.peek();
+            if (iter.hasNext()) return true;
+            stack.pop();
+        }
+        return false;
     }
 
     /**
@@ -619,15 +628,10 @@ public class FlowEngineImpl implements FlowEngine {
      * re-arms the loop with a fresh run. Dead-end markers (EXCLUSIVE /
      * gateway joins) are intentionally untouched here.
      */
-    @SuppressWarnings("unchecked")
     protected boolean loop_run_claim(FlowExchanger exchanger, Node node) {
         Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run/" + node.getId());
         synchronized (stack) {
-            if (!stack.isEmpty()) {
-                Iterator<?> active = stack.peek();
-                if (active.hasNext()) return false; // a sibling branch is running this loop
-                stack.pop();                        // completed run — re-arm below
-            }
+            if (loopBusy(stack)) return false; // a sibling branch is running this loop
             stack.push(loop_iterator(exchanger, node));
         }
         return true;
@@ -638,7 +642,6 @@ public class FlowEngineImpl implements FlowEngine {
      * context key holding either, or a {@code "start...end"} /
      * {@code "start:end:step"} range string.
      */
-    @SuppressWarnings("unchecked")
     protected Iterator<?> loop_iterator(FlowExchanger exchanger, Node node) {
         Object inKey = node.getMeta("$in");
 
@@ -660,7 +663,6 @@ public class FlowEngineImpl implements FlowEngine {
         throw new FlowException(inKey + " is not a collection");
     }
 
-    @SuppressWarnings("unchecked")
     protected void loop_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
         String forKey = node.getMetaAsString("$for");
         Stack<Iterator> stack = exchanger.execState().stack(node.getGraph(), "loop_run/" + node.getId());

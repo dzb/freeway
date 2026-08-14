@@ -133,8 +133,7 @@ public final class ExprEvaluator {
     private record UnaryOp(String op, AstNode child) implements AstNode {
         @Override public Object eval(Map<String, Object> ctx) {
             return switch (op) {
-                case "!" -> !toBool(child.eval(ctx));
-                case "not" -> !toBool(child.eval(ctx));
+                case "!", "not" -> !toBool(child.eval(ctx));
                 case "-" -> negate(child.eval(ctx));
                 case "+" -> child.eval(ctx);
                 default -> throw new FlowException("Unknown unary operator: " + op);
@@ -423,6 +422,19 @@ public final class ExprEvaluator {
         }
     }
 
+    /**
+     * Mixed Number/String comparison: parses the string as a number and
+     * compares numerically ("10" > 9). Returns {@code null} for non-numeric
+     * strings so callers can fall back to their non-numeric paths. The
+     * comparison is antisymmetric, so a caller comparing a string operand
+     * against a number operand (string first) must negate the result.
+     */
+    private static Integer compareMixed(Number n, String s) {
+        Number parsed = parseNumericString(s);
+        if (parsed == null) return null;
+        return compareNumbers(n, parsed);
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static int cmp(Object a, Object b) {
         if (a == b) return 0;
@@ -434,11 +446,13 @@ public final class ExprEvaluator {
         // so "10" > 9 is true instead of lexicographic ("10" < "9"). Keeps
         // pure-string and pure-number paths untouched.
         if (a instanceof Number an && b instanceof String bs) {
-            Number bn = parseNumericString(bs);
-            if (bn != null) return compareNumbers(an, bn);
+            Integer r = compareMixed(an, bs);
+            if (r != null) return r;
         } else if (a instanceof String as && b instanceof Number bn) {
-            Number an = parseNumericString(as);
-            if (an != null) return compareNumbers(an, bn);
+            // compareMixed(bn, as) = compareNumbers(bn, parsed-as); the
+            // original compares (parsed-as, bn) — negate to keep the sign.
+            Integer r = compareMixed(bn, as);
+            if (r != null) return -r;
         }
         if (a instanceof Comparable ca && b instanceof Comparable cb) {
             try { return ca.compareTo(b); } catch (Exception ignored) {}
@@ -455,12 +469,12 @@ public final class ExprEvaluator {
         // "1.5" == 1.5), consistent with cmp and toBool. Non-numeric strings
         // fall through to plain equality, preserving current behavior.
         if (a instanceof Number an && b instanceof String bs) {
-            Number bn = parseNumericString(bs);
-            return bn != null && compareNumbers(an, bn) == 0;
+            Integer r = compareMixed(an, bs);
+            if (r != null) return r == 0;
         }
         if (a instanceof String as && b instanceof Number bn) {
-            Number an = parseNumericString(as);
-            return an != null && compareNumbers(an, bn) == 0;
+            Integer r = compareMixed(bn, as);
+            if (r != null) return r == 0;
         }
         // Boolean strings compare by value: "false" == false is true,
         // matching truthiness (toBool) so equality and bare-flag routing agree.

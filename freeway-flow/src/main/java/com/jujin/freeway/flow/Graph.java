@@ -86,12 +86,6 @@ public class Graph {
     public Map<String, Object> getMetas() { return metas; }
     public Object getMeta(String key) { return metas.get(key); }
 
-    @SuppressWarnings("unchecked")
-    public <T> T getMetaAs(String key) { return (T) metas.get(key); }
-
-    @SuppressWarnings("unchecked")
-    public <T> T getMetaOrDefault(String key, T def) { return (T) metas.getOrDefault(key, def); }
-
     public Node getStart() { return start; }
     public Map<String, Node> getNodes() { return nodes; }
     public List<Link> getLinks() { return links; }
@@ -292,12 +286,6 @@ public class Graph {
     public static Graph create(String id, String title, String driver, Consumer<GraphSpec> definition) {
         GraphSpec spec = new GraphSpec(id, title, driver);
         definition.accept(spec);
-        return spec.create();
-    }
-
-    public static Graph copy(Graph graph, Consumer<GraphSpec> modification) {
-        GraphSpec spec = GraphSpec.copy(graph);
-        modification.accept(spec);
         return spec.create();
     }
 

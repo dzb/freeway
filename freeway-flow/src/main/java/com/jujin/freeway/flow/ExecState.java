@@ -19,8 +19,6 @@ import java.util.function.Function;
  * @since 3.0
  */
 public class ExecState {
-    static final String ROOT = "_ROOT";
-
     /**
      * A gateway node the execution got stuck at: an EXCLUSIVE node that
      * matched no condition and has no default link, or an INCLUSIVE/PARALLEL
@@ -33,7 +31,6 @@ public class ExecState {
     private final Set<DeadEnd> deadEnds = ConcurrentHashMap.newKeySet();
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
     private final Map<String, Stack> stacks = new ConcurrentHashMap<>();
-    private final Map<String, Object> vars = new ConcurrentHashMap<>();
     private final Map<String, List<String>> loopBodyJoins = new ConcurrentHashMap<>();
 
     /**
@@ -79,15 +76,6 @@ public class ExecState {
     }
 
     /**
-     * Clears all recorded dead-ends. Available for callers that reuse an
-     * {@code ExecState} across independent evaluations (the engine itself
-     * creates a fresh instance per top-level eval).
-     */
-    public void deadEndReset() {
-        deadEnds.clear();
-    }
-
-    /**
      * Gets a stack
      */
     @SuppressWarnings("unchecked")
@@ -99,46 +87,25 @@ public class ExecState {
      * Gets a count
      */
     public int count(Graph graph, String key) {
-        return counts.computeIfAbsent(graph.getId() + "/" + key, k -> new AtomicInteger(0)).get();
-    }
-
-    public int count(String key) {
-        return counts.computeIfAbsent(ROOT + "/" + key, k -> new AtomicInteger(0)).get();
+        return counter(graph.getId() + "/" + key).get();
     }
 
     /**
      * Sets a count
      */
     public void countSet(Graph graph, String key, int value) {
-        counts.computeIfAbsent(graph.getId() + "/" + key, k -> new AtomicInteger(0)).set(value);
-    }
-
-    public void countSet(String key, int value) {
-        counts.computeIfAbsent(ROOT + "/" + key, k -> new AtomicInteger(0)).set(value);
+        counter(graph.getId() + "/" + key).set(value);
     }
 
     /**
      * Increments a count
      */
     public int countIncr(Graph graph, String key) {
-        return counts.computeIfAbsent(graph.getId() + "/" + key, k -> new AtomicInteger(0)).incrementAndGet();
+        return counter(graph.getId() + "/" + key).incrementAndGet();
     }
 
-    public int countIncr(String key) {
-        return counts.computeIfAbsent(ROOT + "/" + key, k -> new AtomicInteger(0)).incrementAndGet();
-    }
-
-    public int countIncr(String key, int delta) {
-        return counts.computeIfAbsent(ROOT + "/" + key, k -> new AtomicInteger(0)).addAndGet(delta);
-    }
-
-    public Map<String, Object> vars() {
-        return vars;
-    }
-
-    @SuppressWarnings("unchecked")
-    public <T> T varAs(String key) {
-        return (T) vars.get(key);
+    private AtomicInteger counter(String fullKey) {
+        return counts.computeIfAbsent(fullKey, k -> new AtomicInteger(0));
     }
 
     @Override

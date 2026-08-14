@@ -112,13 +112,6 @@ public class FlowMarkerIndex {
     }
 
     /**
-     * Returns all registered marker names.
-     */
-    public Set<String> knownMarkers() {
-        return Collections.unmodifiableSet(markerToEntries.keySet());
-    }
-
-    /**
      * Extracts marker strings from {@code @FlowMarker} annotations on a class.
      */
     public static Set<String> extractFlowMarkers(Class<?> clazz) {

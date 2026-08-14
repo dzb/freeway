@@ -1,7 +1,6 @@
 package com.jujin.freeway.flow;
 
 import java.io.Serializable;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,8 +22,6 @@ public class FlowTrace implements Serializable {
     public String getRootGraphId() { return rootGraphId; }
     public void setRootGraphId(String rootGraphId) { this.rootGraphId = rootGraphId; }
 
-    public Collection<NodeRecord> lastRecords() { return lastRecords.values(); }
-
     public void clear() {
         rootGraphId = null;
         lastRecords.clear();
@@ -39,16 +36,6 @@ public class FlowTrace implements Serializable {
     public void restoreRecord(String graphId, NodeRecord record) {
         if (record != null) {
             lastRecords.put(graphId, record);
-        }
-    }
-
-    public void recordNodeId(Graph graph, String nodeId) {
-        if (!enabled) return;
-        Objects.requireNonNull(graph, "graph");
-        if (nodeId == null) {
-            lastRecords.remove(graph.getId());
-        } else {
-            recordNode(graph, graph.getNodeOrThrow(nodeId));
         }
     }
 
@@ -81,11 +68,5 @@ public class FlowTrace implements Serializable {
     public String lastNodeId(String graphId) {
         NodeRecord tmp = lastRecord(graphId);
         return tmp != null ? tmp.getId() : null;
-    }
-
-    public boolean isEnd(String graphId) {
-        NodeRecord tmp = lastRecord(graphId);
-        if (tmp == null) return false;
-        return tmp.isEnd();
     }
 }

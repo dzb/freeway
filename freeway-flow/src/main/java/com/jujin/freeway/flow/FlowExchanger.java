@@ -72,10 +72,6 @@ public class FlowExchanger {
         return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, execState, depth);
     }
 
-    public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
-        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, execState, depth);
-    }
-
     /** Enters a node — returns the current recursion depth. */
     int enterNode() {
         return depth.incrementAndGet();
@@ -110,10 +106,6 @@ public class FlowExchanger {
         context.trace().recordNode(graph, node);
     }
 
-    public void recordClear() {
-        context.trace().clear();
-    }
-
     // --- sub-graph ---
 
     public void runGraph(Graph graph) {
@@ -144,17 +136,6 @@ public class FlowExchanger {
         }
     }
 
-    public void runTask(Node node, String description) throws FlowException {
-        Objects.requireNonNull(node, "node");
-        try {
-            engine.getDriver(node.getGraph()).handleTask(this, new TaskDesc(node, description));
-        } catch (FlowException e) {
-            throw e;
-        } catch (Throwable e) {
-            throw new FlowException(FlowException.TASK_FAILED + ": " + node.getGraph().getId() + " / " + node.getId(), e);
-        }
-    }
-
     /** Marks a graph as having reached its END node (see {@link FlowEngineImpl#end_run}). */
     void markEnded(Graph graph) {
         graphEnded.add(graph.getId());
@@ -170,8 +151,6 @@ public class FlowExchanger {
     }
 
     // --- step control ---
-
-    public int getSteps() { return steps; }
 
     public void prevStep() {
         if (steps >= 0) stepCount.decrementAndGet();
