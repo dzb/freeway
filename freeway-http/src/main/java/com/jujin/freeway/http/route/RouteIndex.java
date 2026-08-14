@@ -8,7 +8,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 /**
  * Trie-based HTTP route index.
@@ -21,8 +20,6 @@ import java.util.regex.PatternSyntaxException;
  * independent of the total route count.
  */
 public final class RouteIndex {
-
-    private static final int MAX_REGEX_LENGTH = PathPattern.MAX_REGEX_LENGTH;
 
     private final Map<String, TrieNode> methodRoots = new ConcurrentHashMap<>();
     // Fast path: exact match cache for routes without path variables
@@ -76,7 +73,14 @@ public final class RouteIndex {
     private void addRoute(String method, String path, RouteHandler handler) {
         String key = method == null ? "" : method.toUpperCase(Locale.ROOT);
         TrieNode root = methodRoots.computeIfAbsent(key, k -> new TrieNode());
-        String[] segments = PathPattern.splitPath(path);
+        // Parse the template once through PathPattern: parameter/regex/wildcard
+        // extraction, regex-length validation and compilation are all shared
+        // with the single-template matcher, so the two cannot drift.
+        PathPattern template = new PathPattern(path);
+        String[] segments = template.segments();
+        String[] paramNames = template.paramNames();
+        Pattern[] paramPatterns = template.paramPatterns();
+        boolean wildcard = template.wildcard();
         // Literal segments are stored percent-decoded so registration agrees
         // with matching (requests decode each segment before the trie lookup).
         // An encoded slash (%2F) decodes to '/' but stays inside its original
@@ -89,7 +93,7 @@ public final class RouteIndex {
         boolean exactCacheable = true;
         for (int i = 0; i < segments.length; i++) {
             String seg = segments[i];
-            if ((seg.startsWith("{") && seg.endsWith("}")) || seg.startsWith(":")) {
+            if (paramNames[i] != null) {
                 hasVariables = true;
                 stored[i] = seg;
                 continue;
@@ -114,51 +118,12 @@ public final class RouteIndex {
         }
         TrieNode current = root;
         for (int i = 0; i < segments.length; i++) {
-            String seg = stored[i];
-            if (seg.startsWith("{") && seg.endsWith("}")) {
-                String inner = seg.substring(1, seg.length() - 1);
-                String name;
-                Pattern regex = null;
-                boolean isWildcard = false;
-                int colon = inner.indexOf(':');
-                if (colon >= 0) {
-                    name = inner.substring(0, colon);
-                    String regexStr = inner.substring(colon + 1);
-                    if (regexStr.length() > MAX_REGEX_LENGTH) {
-                        throw new IllegalArgumentException(
-                            "Regex constraint too long (max " +
-                                MAX_REGEX_LENGTH +
-                                " chars): '" +
-                                regexStr +
-                                "' in path: " +
-                                path
-                        );
-                    }
-                    if (".*".equals(regexStr) && i == segments.length - 1) {
-                        isWildcard = true;
-                    } else {
-                        try {
-                            regex = Pattern.compile(regexStr);
-                        } catch (PatternSyntaxException e) {
-                            throw new IllegalArgumentException(
-                                "Invalid regex constraint '" +
-                                    regexStr +
-                                    "' for param '" +
-                                    name +
-                                    "' in path: " +
-                                    path,
-                                e
-                            );
-                        }
-                    }
-                } else {
-                    name = inner;
-                }
-                current = current.getOrCreateParam(name, regex, isWildcard);
-            } else if (seg.startsWith(":") && seg.length() > 1) {
-                current = current.getOrCreateParam(seg.substring(1), null, false);
+            if (paramNames[i] != null) {
+                boolean isWildcard = wildcard && i == segments.length - 1;
+                current = current.getOrCreateParam(
+                    paramNames[i], paramPatterns[i], isWildcard);
             } else {
-                current = current.getOrCreateLiteral(seg);
+                current = current.getOrCreateLiteral(stored[i]);
             }
         }
         if (current.handler != null) {

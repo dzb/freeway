@@ -126,6 +126,27 @@ public final class PathPattern {
         return template;
     }
 
+    /** Parsed literal segments (null slot = parameter segment). Package-private
+     *  so {@link RouteIndex} reuses this template parse for its trie. */
+    String[] segments() {
+        return segments;
+    }
+
+    /** Parsed parameter names (null slot = literal segment). Package-private. */
+    String[] paramNames() {
+        return paramNames;
+    }
+
+    /** Compiled regex constraints (null = unconstrained). Package-private. */
+    Pattern[] paramPatterns() {
+        return paramPatterns;
+    }
+
+    /** True when the last segment is a terminal {@code {path:.*}} wildcard. */
+    boolean wildcard() {
+        return wildcard;
+    }
+
     /**
      * Matches a concrete request path against this template, returning the
      * captured path variables, or {@code null} when it does not match.
