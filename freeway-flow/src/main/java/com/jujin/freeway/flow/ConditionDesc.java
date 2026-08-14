@@ -7,9 +7,17 @@ package com.jujin.freeway.flow;
  * @since 3.0
  */
 public class ConditionDesc {
+    /** True when the descriptor is non-null and carries a condition. */
+    public static boolean isNotEmpty(ConditionDesc c) {
+        return c != null && !c.isEmpty();
+    }
+
     private final Graph graph;
     private final String description;
     private final ConditionComponent component;
+
+    /** Arbitrary per-condition attachment for application use. */
+    public Object attachment;
 
     public ConditionDesc(Graph graph, String description) {
         this.graph = graph;

@@ -2,11 +2,27 @@ package com.jujin.freeway.http.route;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
- * Path parsing and validation helpers shared by route registration, static
- * resource mounts, and health checks. Pure static utility — the matching
- * itself lives in {@link RouteIndex}.
+ * A single path template: literal segments, path parameters
+ * ({@code {name}} / {@code :name}), regex-constrained parameters
+ * ({@code {name:regex}}) and terminal wildcards ({@code {path:.*}}).
+ *
+ * <p>This class provides <b>single-template matching</b> for callers that
+ * need to test one path against one pattern outside the route table, plus the
+ * path parsing/validation helpers shared by route registration, static
+ * resource mounts, and health checks.
+ * {@link RouteIndex} deliberately does <i>not</i> use the instance matcher —
+ * the router keeps its own trie-based matcher (O(segments) independent of
+ * route count) with the same segment semantics. Both share the static
+ * utilities here ({@link #splitPath}, {@link #decodeSegment},
+ * {@link #normalizePath}, {@link #validateRegistrationPath}, traversal
+ * checks and the length caps).
  */
 public final class PathPattern {
 
@@ -23,7 +39,61 @@ public final class PathPattern {
      */
     public static final int MAX_SEGMENT_LENGTH = 1024;
 
-    private PathPattern() {}
+    private final String template;
+    private final String[] segments;
+    private final String[] paramNames;
+    private final Pattern[] paramPatterns;
+    private final boolean wildcard;
+
+    public PathPattern(String template) {
+        this.template = PathPattern.normalizePath(template);
+        String[] raw = PathPattern.splitPath(this.template);
+        this.segments = new String[raw.length];
+        this.paramNames = new String[raw.length];
+        this.paramPatterns = new Pattern[raw.length];
+        boolean parsedWildcard = false;
+        for (int i = 0; i < raw.length; i++) {
+            String seg = raw[i];
+            if (seg.startsWith("{") && seg.endsWith("}")) {
+                String inner = seg.substring(1, seg.length() - 1);
+                int colon = inner.indexOf(':');
+                if (colon >= 0) {
+                    String name = inner.substring(0, colon);
+                    if (name.isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "Empty parameter name in path: " + template);
+                    }
+                    String regex = inner.substring(colon + 1);
+                    if (regex.length() > MAX_REGEX_LENGTH) {
+                        throw new IllegalArgumentException(
+                            "Regex constraint too long (max " + MAX_REGEX_LENGTH + " chars): '" + regex + "' in path: " + template);
+                    }
+                    paramNames[i] = name;
+                    if (".*".equals(regex) && i == raw.length - 1) {
+                        parsedWildcard = true;
+                    } else {
+                        try {
+                            paramPatterns[i] = Pattern.compile(regex);
+                        } catch (PatternSyntaxException e) {
+                            throw new IllegalArgumentException(
+                                "Invalid regex constraint '" + regex + "' for param '" + name + "' in path: " + template, e);
+                        }
+                    }
+                } else {
+                    if (inner.isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "Empty parameter name in path: " + template);
+                    }
+                    paramNames[i] = inner;
+                }
+            } else if (seg.startsWith(":") && seg.length() > 1) {
+                paramNames[i] = seg.substring(1);
+            } else {
+                segments[i] = seg;
+            }
+        }
+        this.wildcard = parsedWildcard;
+    }
 
     public static void validateRegistrationPath(String path) {
         String normalized = PathPattern.normalizePath(path);
@@ -50,6 +120,60 @@ public final class PathPattern {
                 }
             }
         }
+    }
+
+    String template() {
+        return template;
+    }
+
+    /**
+     * Matches a concrete request path against this template, returning the
+     * captured path variables, or {@code null} when it does not match.
+     * Overlong or malformed segments never reach the regex matcher.
+     */
+    public Map<String, String> match(String path) {
+        String[] raw = PathPattern.splitPath(path);
+        String[] input = new String[raw.length];
+        for (int i = 0; i < raw.length; i++) {
+            input[i] = PathPattern.decodeSegment(raw[i]);
+            if (input[i] == null) {
+                return null; // malformed percent-encoding
+            }
+            if (input[i].length() > MAX_SEGMENT_LENGTH) {
+                return null; // overlong segment — never run regexes on it
+            }
+        }
+        if (wildcard) {
+            if (input.length < segments.length) {
+                return null;
+            }
+        } else if (input.length != segments.length) {
+            return null;
+        }
+        Map<String, String> vars = new LinkedHashMap<>();
+        for (int i = 0; i < segments.length; i++) {
+            if (segments[i] == null) {
+                if (wildcard && i == segments.length - 1) {
+                    String remainder = String.join("/", Arrays.copyOfRange(input, i, input.length));
+                    if (remainder.isEmpty() || PathPattern.containsPathTraversal(remainder)) {
+                        return null;
+                    }
+                    vars.put(paramNames[i], remainder);
+                } else {
+                    if (input[i].isEmpty() || PathPattern.isPathTraversalSegment(input[i])) {
+                        return null;
+                    }
+                    Pattern p = paramPatterns[i];
+                    if (p != null && !p.matcher(input[i]).matches()) {
+                        return null;
+                    }
+                    vars.put(paramNames[i], input[i]);
+                }
+            } else if (!segments[i].equals(input[i])) {
+                return null;
+            }
+        }
+        return vars;
     }
 
     /**

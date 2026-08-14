@@ -32,6 +32,9 @@ public class ExecState {
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
     private final Map<String, Stack> stacks = new ConcurrentHashMap<>();
     private final Map<String, List<String>> loopBodyJoins = new ConcurrentHashMap<>();
+    private final Map<String, Object> vars = new ConcurrentHashMap<>();
+    /** Root-level key prefix for counters that are not graph-scoped. */
+    private static final String ROOT = "_ROOT";
 
     /**
      * Cached join-node ids inside a LOOP's body, used by the engine to reset
@@ -76,6 +79,15 @@ public class ExecState {
     }
 
     /**
+     * Clears all recorded dead-ends. Available for callers that reuse an
+     * {@code ExecState} across independent evaluations (the engine itself
+     * creates a fresh instance per top-level eval).
+     */
+    public void deadEndReset() {
+        deadEnds.clear();
+    }
+
+    /**
      * Gets a stack
      */
     @SuppressWarnings("unchecked")
@@ -102,6 +114,41 @@ public class ExecState {
      */
     public int countIncr(Graph graph, String key) {
         return counter(graph.getId() + "/" + key).incrementAndGet();
+    }
+
+    /** Reads a root-level count (not graph-scoped). */
+    public int count(String key) {
+        return counter(ROOT + "/" + key).get();
+    }
+
+    /** Sets a root-level count (not graph-scoped). */
+    public void countSet(String key, int value) {
+        counter(ROOT + "/" + key).set(value);
+    }
+
+    /** Increments a root-level count (not graph-scoped). */
+    public int countIncr(String key) {
+        return counter(ROOT + "/" + key).incrementAndGet();
+    }
+
+    /** Adds {@code delta} to a root-level count (not graph-scoped). */
+    public int countIncr(String key, int delta) {
+        return counter(ROOT + "/" + key).addAndGet(delta);
+    }
+
+    /**
+     * Returns the live execution-variable map. Mutations through this map
+     * (e.g. {@code state.vars().put(key, value)}) are visible to the running
+     * evaluation — this is the write path for custom drivers and nodes.
+     */
+    public Map<String, Object> vars() {
+        return vars;
+    }
+
+    /** Reads an execution variable, cast to the requested type. */
+    @SuppressWarnings("unchecked")
+    public <T> T varAs(String key) {
+        return (T) vars.get(key);
     }
 
     private AtomicInteger counter(String fullKey) {

@@ -72,6 +72,13 @@ public class FlowExchanger {
         return new FlowExchanger(graphNew, engine, driver, context, steps, stepCount, execState, depth);
     }
 
+    /** Copies this exchanger onto a new graph and a new context (e.g. for a
+     *  sub-graph run with isolated variables), sharing steps, counters and
+     *  recursion depth. */
+    public FlowExchanger copy(Graph graphNew, FlowContext contextNew) {
+        return new FlowExchanger(graphNew, engine, driver, contextNew, steps, stepCount, execState, depth);
+    }
+
     /** Enters a node — returns the current recursion depth. */
     int enterNode() {
         return depth.incrementAndGet();
@@ -104,6 +111,16 @@ public class FlowExchanger {
 
     public void recordNode(Graph graph, Node node) {
         context.trace().recordNode(graph, node);
+    }
+
+    /** Clears the trace for the current evaluation. */
+    public void recordClear() {
+        context.trace().clear();
+    }
+
+    /** Returns the number of steps completed in this evaluation. */
+    public int getSteps() {
+        return steps;
     }
 
     // --- sub-graph ---
@@ -139,6 +156,23 @@ public class FlowExchanger {
     /** Marks a graph as having reached its END node (see {@link FlowEngineImpl#end_run}). */
     void markEnded(Graph graph) {
         graphEnded.add(graph.getId());
+    }
+
+    /**
+     * Runs the given node's task through its graph's driver, wrapping any
+     * non-{@link FlowException} failure as {@code TASK_FAILED}. Entry point
+     * for custom drivers and node implementations that execute tasks
+     * outside the normal engine dispatch.
+     */
+    public void runTask(Node node, String description) throws FlowException {
+        Objects.requireNonNull(node, "node");
+        try {
+            engine.getDriver(node.getGraph()).handleTask(this, new TaskDesc(node, description));
+        } catch (FlowException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new FlowException(FlowException.TASK_FAILED + ": " + node.getGraph().getId() + " / " + node.getId(), e);
+        }
     }
 
     /**

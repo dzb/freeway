@@ -31,12 +31,24 @@ public class NodeRecord implements Serializable {
         return NodeType.END == type;
     }
 
+    public String getGraphId() {
+        return graphId;
+    }
+
     public String getId() {
         return id;
     }
 
+    public String getTitle() {
+        return title;
+    }
+
     public NodeType getType() {
         return type;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
     }
 
     @Override

@@ -289,6 +289,16 @@ public class Graph {
         return spec.create();
     }
 
+    /**
+     * Copies an existing graph, applying a modification to the copy's spec
+     * before building. The original graph is not touched.
+     */
+    public static Graph copy(Graph graph, Consumer<GraphSpec> modification) {
+        GraphSpec spec = GraphSpec.copy(graph);
+        modification.accept(spec);
+        return spec.create();
+    }
+
     private void doAddNode(NodeSpec nodeSpec, String entryId,
                            Map<String, List<LinkSpec>> outgoing,
                            Map<String, Node> nodeMap, List<Link> linkAry) {

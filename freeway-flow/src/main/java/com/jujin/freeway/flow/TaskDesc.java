@@ -11,9 +11,17 @@ import java.util.Set;
  * @since 3.0
  */
 public class TaskDesc {
+    /** True when the descriptor is non-null and carries a task. */
+    public static boolean isNotEmpty(TaskDesc t) {
+        return t != null && !t.isEmpty();
+    }
+
     private final Node node;
     private final String description;
     private final TaskComponent component;
+
+    /** Arbitrary per-task attachment for application use. */
+    public Object attachment;
 
     public TaskDesc(Node node, String description) {
         this.node = node;

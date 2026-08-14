@@ -31,7 +31,11 @@ public class Node {
     // publish the computed list across threads instead of silently
     // recomputing per thread.
     private volatile List<Node> nextNodes;
+    private volatile List<Node> prevNodes;
     private volatile List<Link> prevLinks;
+
+    /** Arbitrary per-node attachment for application use. */
+    public Object attachment;
 
     public Node(Graph graph, NodeSpec spec, List<Link> links) {
         this(graph, spec, spec.getType(), links);
@@ -74,6 +78,39 @@ public class Node {
         return tmp.toString();
     }
 
+    /** Returns the meta value cast to the requested type. */
+    @SuppressWarnings("unchecked")
+    public <T> T getMetaAs(String key) {
+        return (T) metas.get(key);
+    }
+
+    /** Returns the meta value cast to the requested type, or {@code def}. */
+    @SuppressWarnings("unchecked")
+    public <T> T getMetaOrDefault(String key, T def) {
+        return (T) metas.getOrDefault(key, def);
+    }
+
+    public boolean hasMeta(String key) {
+        return metas.containsKey(key);
+    }
+
+    public Boolean getMetaAsBool(String key) {
+        Object tmp = metas.get(key);
+        if (tmp == null) return null;
+        if (tmp instanceof Boolean) return (Boolean) tmp;
+        if (tmp instanceof String) return Boolean.parseBoolean((String) tmp);
+        if (tmp instanceof Number) return ((Number) tmp).doubleValue() > 0;
+        throw new UnsupportedOperationException(key);
+    }
+
+    public Number getMetaAsNumber(String key) {
+        Object tmp = metas.get(key);
+        if (tmp == null) return null;
+        if (tmp instanceof String) return Double.parseDouble((String) tmp);
+        if (tmp instanceof Number) return (Number) tmp;
+        throw new UnsupportedOperationException(key);
+    }
+
     public List<Link> getPrevLinks() {
         if (prevLinks == null) {
             List<Link> tmp = new ArrayList<>();
@@ -110,6 +147,21 @@ public class Node {
             return getNextNodes().get(0);
         }
         return null;
+    }
+
+    public List<Node> getPrevNodes() {
+        if (prevNodes == null) {
+            List<Node> tmp = new ArrayList<>();
+            if (getType() != NodeType.START) {
+                for (Link l : graph.getLinks()) {
+                    if (getId().equals(l.getNextId())) {
+                        tmp.add(graph.getNode(l.getPrevId()));
+                    }
+                }
+            }
+            prevNodes = Collections.unmodifiableList(tmp);
+        }
+        return prevNodes;
     }
 
     public ConditionDesc getWhen() { return when; }

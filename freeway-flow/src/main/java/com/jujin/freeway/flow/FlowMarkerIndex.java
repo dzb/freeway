@@ -112,6 +112,29 @@ public class FlowMarkerIndex {
     }
 
     /**
+     * Returns an immutable snapshot of all registered marker names.
+     *
+     * <p>Snapshot semantics: the returned set is independent of the index —
+     * subsequent {@link #register} calls (or mutations of the returned set)
+     * do not affect it. Iterating the snapshot is safe even while another
+     * thread registers markers.
+     *
+     * <p>Intended for consistency validation (e.g. checking that every
+     * marker referenced by a graph has a registered handler).
+     */
+    public Set<String> markers() {
+        return Set.copyOf(markerToEntries.keySet());
+    }
+
+    /**
+     * Snapshot of all registered marker names (see {@link #markers()}).
+     * Kept under the original name for callers that predate the rename.
+     */
+    public Set<String> knownMarkers() {
+        return markers();
+    }
+
+    /**
      * Extracts marker strings from {@code @FlowMarker} annotations on a class.
      */
     public static Set<String> extractFlowMarkers(Class<?> clazz) {

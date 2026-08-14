@@ -21,6 +21,7 @@ public class Link implements Comparable<Link> {
 
     private final String prevId;
     private final ConditionDesc when;
+    private Node prevNode;
     private Node nextNode;
 
     public Link(Graph graph, String prevId, LinkSpec spec) {
@@ -54,6 +55,13 @@ public class Link implements Comparable<Link> {
             nextNode = graph.getNode(getNextId());
         }
         return nextNode;
+    }
+
+    public Node getPrevNode() {
+        if (prevNode == null) {
+            prevNode = graph.getNode(getPrevId());
+        }
+        return prevNode;
     }
 
     @Override

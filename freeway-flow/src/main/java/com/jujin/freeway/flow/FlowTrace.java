@@ -1,6 +1,8 @@
 package com.jujin.freeway.flow;
 
 import java.io.Serializable;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -68,5 +70,20 @@ public class FlowTrace implements Serializable {
     public String lastNodeId(String graphId) {
         NodeRecord tmp = lastRecord(graphId);
         return tmp != null ? tmp.getId() : null;
+    }
+
+    /**
+     * Returns an immutable snapshot of the per-graph end records. Snapshot
+     * semantics: independent of the trace — later {@link #recordNode} calls
+     * (or mutations of the returned collection) do not affect it.
+     */
+    public Collection<NodeRecord> lastRecords() {
+        return List.copyOf(lastRecords.values());
+    }
+
+    /** True when the given graph's last recorded node was an END node. */
+    public boolean isEnd(String graphId) {
+        NodeRecord tmp = lastRecord(graphId);
+        return tmp != null && tmp.isEnd();
     }
 }

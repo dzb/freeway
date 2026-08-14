@@ -1393,6 +1393,24 @@ class FlowEngineTest {
     }
 
     @Test
+    void markersReturnsImmutableSnapshot() {
+        FlowMarkerIndex index = new FlowMarkerIndex();
+        index.register(comp("one"), Set.of("a", "b"));
+        index.register(comp("two"), Set.of("c"));
+
+        var snapshot = index.markers();
+        assertEquals(Set.of("a", "b", "c"), snapshot, "must contain all registered markers");
+
+        // 快照语义：后续注册不影响已取快照
+        index.register(comp("three"), Set.of("d"));
+        assertEquals(Set.of("a", "b", "c"), snapshot, "snapshot must not see later registrations");
+        assertEquals(Set.of("a", "b", "c", "d"), index.markers(), "new snapshot sees new markers");
+
+        // 快照不可变
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.add("x"));
+    }
+
+    @Test
     void inclusiveGatewayJoinsMultipleIncomingBranches() {
         var executed = new ConcurrentLinkedQueue<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
