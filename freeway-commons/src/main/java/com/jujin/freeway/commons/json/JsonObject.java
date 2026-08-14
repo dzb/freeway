@@ -6,7 +6,6 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiConsumer;
 
 /**
  * Lightweight JSON object backed by a {@link LinkedHashMap} — insertion
@@ -122,10 +121,6 @@ public final class JsonObject {
     @Override
     public String toString() {
         return JsonUtils.stringify(this);
-    }
-
-    void forEach(BiConsumer<String, Object> consumer) {
-        values.forEach(consumer);
     }
 
     /**

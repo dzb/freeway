@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.function.Supplier;
 
 /**
  * Hand-written JSON serializer.
@@ -93,41 +94,41 @@ final class JsonWriter {
             return;
         }
         if (value instanceof Optional<?> opt) {
-            writeValue(
+            writeOptional(
                 out,
-                opt.isPresent() ? opt.get() : null,
+                () -> opt.isPresent() ? opt.get() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
         }
         if (value instanceof OptionalInt oi) {
-            writeValue(
+            writeOptional(
                 out,
-                oi.isPresent() ? oi.getAsInt() : null,
+                () -> oi.isPresent() ? oi.getAsInt() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
         }
         if (value instanceof OptionalLong ol) {
-            writeValue(
+            writeOptional(
                 out,
-                ol.isPresent() ? ol.getAsLong() : null,
+                () -> ol.isPresent() ? ol.getAsLong() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
         }
         if (value instanceof OptionalDouble od) {
-            writeValue(
+            writeOptional(
                 out,
-                od.isPresent() ? od.getAsDouble() : null,
+                () -> od.isPresent() ? od.getAsDouble() : null,
                 pretty,
-                indent + 1,
+                indent,
                 context
             );
             return;
@@ -145,6 +146,22 @@ final class JsonWriter {
             return;
         }
         writeBean(out, value, pretty, indent, context);
+    }
+
+    /**
+     * Writes the value supplied by {@code unwrapped} one level deeper than
+     * the current indent — the shared shape of the four Optional branches
+     * in {@link #writeValue}. The supplier keeps the {@code isPresent} check
+     * lazy so an empty optional is never unwrapped.
+     */
+    private static void writeOptional(
+        StringBuilder out,
+        Supplier<Object> unwrapped,
+        boolean pretty,
+        int indent,
+        Context context
+    ) {
+        writeValue(out, unwrapped.get(), pretty, indent + 1, context);
     }
 
     private static void writeObject(

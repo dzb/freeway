@@ -49,12 +49,7 @@ public final class ByteStreams {
                     // Cap reached: the content may end exactly at the cap
                     // (EOF) or extend past it (too large) — probe the
                     // underlying stream instead of failing at the boundary.
-                    int read = stream.read();
-                    if (read < 0) {
-                        return -1;
-                    }
-                    count++;
-                    throw tooLarge();
+                    return probeOrThrow();
                 }
                 int read = stream.read();
                 if (read >= 0) {
@@ -72,12 +67,7 @@ public final class ByteStreams {
                 if (count >= maxBytes) {
                     // Cap reached: probe whether the content actually extends
                     // past the cap; if it ends exactly here, signal EOF.
-                    int read = stream.read();
-                    if (read < 0) {
-                        return -1;
-                    }
-                    count++;
-                    throw tooLarge();
+                    return probeOrThrow();
                 }
                 long remaining = maxBytes - count;
                 int allowed = (int) Math.min(len, remaining);
@@ -91,6 +81,19 @@ public final class ByteStreams {
             @Override
             public void close() throws IOException {
                 stream.close();
+            }
+
+            /**
+             * Reads one byte past the cap: EOF means the content ends
+             * exactly at the cap, anything else means it is too large.
+             */
+            private int probeOrThrow() throws IOException {
+                int read = stream.read();
+                if (read < 0) {
+                    return -1;
+                }
+                count++;
+                throw tooLarge();
             }
 
             private IOException tooLarge() {

@@ -220,15 +220,7 @@ public final class JULFileHandler extends StreamHandler {
                     ZoneId.systemDefault()
                 );
                 if (fileDate.isBefore(currentLocalDate)) {
-                    Path archived = archivedPath(DATE_FMT.format(fileDate), 0);
-                    Files.move(
-                        basePath,
-                        archived,
-                        StandardCopyOption.REPLACE_EXISTING
-                    );
-                    if (compress) {
-                        COMPRESSOR.execute(() -> compressFile(archived));
-                    }
+                    archiveCurrentFile(DATE_FMT.format(fileDate), 0);
                 }
             } catch (IOException e) {
                 // best-effort — open the existing file if rotation fails
@@ -379,18 +371,10 @@ public final class JULFileHandler extends StreamHandler {
         // Archive the current file (best-effort)
         try {
             if (Files.exists(basePath) && Files.size(basePath) > 0) {
-                Path archived = archivedPath(
+                archiveCurrentFile(
                     DATE_FMT.format(currentLocalDate),
                     currentIndex
                 );
-                Files.move(
-                    basePath,
-                    archived,
-                    StandardCopyOption.REPLACE_EXISTING
-                );
-                if (compress) {
-                    COMPRESSOR.execute(() -> compressFile(archived));
-                }
             }
         } catch (IOException e) {
             reportError(
@@ -415,6 +399,22 @@ public final class JULFileHandler extends StreamHandler {
     }
 
     // ── file operations ─────────────────────────────────────────────
+
+    /**
+     * Moves the current base file to its date-stamped archive name and,
+     * when compression is enabled, hands the archive to the compressor.
+     */
+    private void archiveCurrentFile(String date, int index) throws IOException {
+        Path archived = archivedPath(date, index);
+        Files.move(
+            basePath,
+            archived,
+            StandardCopyOption.REPLACE_EXISTING
+        );
+        if (compress) {
+            COMPRESSOR.execute(() -> compressFile(archived));
+        }
+    }
 
     /** Builds the archived file name: {@code app.2026-06-30.log} or {@code app.2026-06-30.1.log}. */
     private Path archivedPath(String date, int index) {

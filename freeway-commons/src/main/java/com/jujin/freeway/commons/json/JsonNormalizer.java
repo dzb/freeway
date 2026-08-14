@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.function.Supplier;
 
 /**
  * Normalizes a raw value tree into {@link JsonObject}/{@link JsonArray}/
@@ -126,8 +127,7 @@ final class JsonNormalizer {
         Context context,
         int depth
     ) {
-        context.enter(value);
-        try {
+        return withCycleGuard(context, value, () -> {
             BeanPlan plan = BeanIntrospector.plan(value.getClass());
             JsonObject object = JsonUtils.object();
             for (BeanProperty property : plan.properties()) {
@@ -137,9 +137,7 @@ final class JsonNormalizer {
                 );
             }
             return object;
-        } finally {
-            context.exit(value);
-        }
+        });
     }
 
     private static JsonArray normalizeArray(
@@ -147,17 +145,14 @@ final class JsonNormalizer {
         Context context,
         int depth
     ) {
-        context.enter(array);
-        try {
+        return withCycleGuard(context, array, () -> {
             JsonArray result = JsonUtils.array();
             int length = Array.getLength(array);
             for (int i = 0; i < length; i++) {
                 result.add(normalize(Array.get(array, i), context, depth + 1));
             }
             return result;
-        } finally {
-            context.exit(array);
-        }
+        });
     }
 
     private static JsonArray normalizeIterable(
@@ -165,16 +160,13 @@ final class JsonNormalizer {
         Context context,
         int depth
     ) {
-        context.enter(iterable);
-        try {
+        return withCycleGuard(context, iterable, () -> {
             JsonArray result = JsonUtils.array();
             for (Object item : iterable) {
                 result.add(normalize(item, context, depth + 1));
             }
             return result;
-        } finally {
-            context.exit(iterable);
-        }
+        });
     }
 
     private static JsonObject normalizeMap(
@@ -182,8 +174,7 @@ final class JsonNormalizer {
         Context context,
         int depth
     ) {
-        context.enter(map);
-        try {
+        return withCycleGuard(context, map, () -> {
             JsonObject result = JsonUtils.object();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 Object key = entry.getKey();
@@ -198,8 +189,24 @@ final class JsonNormalizer {
                 );
             }
             return result;
+        });
+    }
+
+    /**
+     * Runs {@code work} with {@code guard} registered as active in
+     * {@code context}, releasing it in a finally block so the cycle guard
+     * is cleared even when the work throws.
+     */
+    private static <T> T withCycleGuard(
+        Context context,
+        Object guard,
+        Supplier<T> work
+    ) {
+        context.enter(guard);
+        try {
+            return work.get();
         } finally {
-            context.exit(map);
+            context.exit(guard);
         }
     }
 

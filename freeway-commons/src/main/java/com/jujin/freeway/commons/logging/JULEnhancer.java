@@ -391,11 +391,7 @@ final class JULEnhancer {
         JULConsoleFormatter consoleFmt = new JULConsoleFormatter();
         JULFileFormatter fileFmt = new JULFileFormatter();
         for (Handler h : freewayHandlers) {
-            if (h instanceof FileHandler || h instanceof JULFileHandler) {
-                h.setFormatter(fileFmt);
-            } else {
-                h.setFormatter(consoleFmt);
-            }
+            applyFormatter(h, fileFmt, consoleFmt);
         }
         // Also upgrade JUL's stock root handlers (e.g. the JVM default console
         // handler): their formatter is the unmodified SimpleFormatter, so the
@@ -410,11 +406,24 @@ final class JULEnhancer {
             if (!stock) {
                 continue;
             }
-            if (h instanceof FileHandler || h instanceof JULFileHandler) {
-                h.setFormatter(fileFmt);
-            } else {
-                h.setFormatter(consoleFmt);
-            }
+            applyFormatter(h, fileFmt, consoleFmt);
+        }
+    }
+
+    /**
+     * Installs Freeway's file formatter on file handlers and the console
+     * formatter on everything else — the same dispatch used for both
+     * framework-created handlers and JUL's stock root handlers.
+     */
+    private static void applyFormatter(
+        Handler h,
+        Formatter fileFmt,
+        Formatter consoleFmt
+    ) {
+        if (h instanceof FileHandler || h instanceof JULFileHandler) {
+            h.setFormatter(fileFmt);
+        } else {
+            h.setFormatter(consoleFmt);
         }
     }
 
@@ -630,36 +639,16 @@ final class JULEnhancer {
                 Path configuredPath = Paths.get(path).toAbsolutePath().normalize();
                 JULFileHandler fh = registeredHandler(configuredPath);
                 if (fh == null) {
+                    FileSettings settings = fileSettings(
+                        "freeway.log.file",
+                        reader
+                    );
                     fh = new JULFileHandler(
                         path,
-                        LogConfig.propertyValue(
-                            "freeway.log.file.max-size",
-                            JULFileHandler.DEFAULT_MAX_SIZE,
-                            reader,
-                            Long::parseLong,
-                            true
-                        ),
-                        LogConfig.propertyValue(
-                            "freeway.log.file.max-history",
-                            JULFileHandler.DEFAULT_MAX_HISTORY,
-                            reader,
-                            Integer::parseInt,
-                            true
-                        ),
-                        LogConfig.propertyValue(
-                            "freeway.log.file.compress",
-                            JULFileHandler.DEFAULT_COMPRESS,
-                            reader,
-                            LogConfig::strictBoolean,
-                            true
-                        ),
-                        LogConfig.propertyValue(
-                            "freeway.log.file.flush-interval",
-                            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
-                            reader,
-                            Long::parseLong,
-                            true
-                        )
+                        settings.maxSize(),
+                        settings.maxHistory(),
+                        settings.compress(),
+                        settings.flushIntervalMs()
                     );
                     registerHandler(configuredPath, fh);
                 } else {
@@ -716,8 +705,41 @@ final class JULEnhancer {
 
         String loggerName = readProperty(fileConfig, prefix + ".logger", null);
         Function<String, String> reader = cascadeReader(fileConfig);
+        FileSettings settings = fileSettings(prefix, reader);
         NamedFileConfig cfg = new NamedFileConfig(
             path,
+            settings.maxSize(),
+            settings.maxHistory(),
+            settings.compress(),
+            settings.flushIntervalMs(),
+            level,
+            loggerName
+        );
+        namedFileConfigs.add(cfg);
+        attachNamedFile(cfg);
+    }
+
+    // ── property helpers ────────────────────────────────────────
+
+    /** Rotation/compression settings parsed for one log file key prefix. */
+    private record FileSettings(
+        long maxSize,
+        int maxHistory,
+        boolean compress,
+        long flushIntervalMs
+    ) {}
+
+    /**
+     * Reads the four rotation/compression settings shared by the default
+     * file and each named file ({@code max-size}, {@code max-history},
+     * {@code compress}, {@code flush-interval}) under {@code prefix},
+     * each falling back to its built-in default.
+     */
+    private static FileSettings fileSettings(
+        String prefix,
+        Function<String, String> reader
+    ) {
+        return new FileSettings(
             LogConfig.propertyValue(
                 prefix + ".max-size",
                 JULFileHandler.DEFAULT_MAX_SIZE,
@@ -745,15 +767,9 @@ final class JULEnhancer {
                 reader,
                 Long::parseLong,
                 true
-            ),
-            level,
-            loggerName
+            )
         );
-        namedFileConfigs.add(cfg);
-        attachNamedFile(cfg);
     }
-
-    // ── property helpers ────────────────────────────────────────
 
     /**
      * The cascade reader used for every {@code freeway.log.*} lookup —

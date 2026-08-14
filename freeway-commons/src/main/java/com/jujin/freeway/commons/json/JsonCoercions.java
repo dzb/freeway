@@ -79,10 +79,6 @@ final class JsonCoercions {
         return JsonNormalizer.normalize(value);
     }
 
-    static Object deepCopy(Object value) {
-        return JsonNormalizer.deepCopy(value);
-    }
-
     private static Object coerce(
         Object value,
         Type type,
