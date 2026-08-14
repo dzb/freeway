@@ -165,6 +165,23 @@ class FlowApiRestorationTest {
     }
 
     @Test
+    void graphAndLinkTypedMetaAccessors() {
+        Graph graph = Graph.create("g", spec -> {
+            spec.metaPut("k", "v").addStart("a")
+                .linkAdd("b", l -> l.metaPut("lk", "lv"));
+            spec.addEnd("b");
+        });
+        assertEquals("v", graph.<String>getMetaAs("k"));
+        assertEquals("fallback", graph.getMetaOrDefault("absent", "fallback"));
+        assertEquals("v", graph.getMetaOrDefault("k", "default"),
+            "an existing key must return its value, not the default");
+
+        Link link = graph.getStart().getNextLinks().getFirst();
+        assertEquals("lv", link.<String>getMetaAs("lk"));
+        assertEquals("fallback", link.getMetaOrDefault("absent", "fallback"));
+    }
+
+    @Test
     void descIsNotEmptyAndAttachments() {
         ConditionDesc empty = new ConditionDesc(null, (String) null);
         ConditionDesc full = new ConditionDesc(null, "x != null");

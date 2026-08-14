@@ -86,6 +86,14 @@ public class Graph {
     public Map<String, Object> getMetas() { return metas; }
     public Object getMeta(String key) { return metas.get(key); }
 
+    /** Returns the meta value cast to the requested type. */
+    @SuppressWarnings("unchecked")
+    public <T> T getMetaAs(String key) { return (T) metas.get(key); }
+
+    /** Returns the meta value cast to the requested type, or {@code def}. */
+    @SuppressWarnings("unchecked")
+    public <T> T getMetaOrDefault(String key, T def) { return (T) metas.getOrDefault(key, def); }
+
     public Node getStart() { return start; }
     public Map<String, Node> getNodes() { return nodes; }
     public List<Link> getLinks() { return links; }
