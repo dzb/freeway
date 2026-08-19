@@ -9,6 +9,7 @@ and convention over configuration.
 mvn test                           # all core modules
 mvn -pl freeway-ioc test           # single module
 mvn -pl freeway-http -am test      # module + upstream deps
+mvn -pl freeway-cloud -am test     # module + upstream deps
 ```
 
 ## Module Map
@@ -21,6 +22,7 @@ mvn -pl freeway-http -am test      # module + upstream deps
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc |
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons |
 | `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution | ioc + commons |
+| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), dynamic config, observability, resilience, health, secrets, storage | ioc + commons + boot + http |
 
 Extension adapters (Undertow, Jetty, HikariCP, Kafka) live in
 [freeway-ext](https://github.com/dzb/freeway-ext). Core modules have zero
@@ -43,7 +45,7 @@ external dependencies.
 
 ## Testing
 
-JUnit 5.12. Tests use `*Test` suffix, live beside the module they cover.
+JUnit 6.1.3. Tests use `*Test` suffix, live beside the module they cover.
 Add regression coverage for failure modes on resource and lifecycle boundaries.
 
 ## Regressions to Watch

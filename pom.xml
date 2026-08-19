@@ -100,6 +100,11 @@
                 <artifactId>freeway-flow</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.jujin8.freeway</groupId>
+                <artifactId>freeway-cloud</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Third-party -->
             <dependency>
@@ -194,6 +199,7 @@
                 <configuration>
                     <publishingServerId>central</publishingServerId>
                     <ignorePublishedComponents>true</ignorePublishedComponents>
+                    <autoPublish>true</autoPublish>
                 </configuration>
             </plugin>
         </plugins>
@@ -206,5 +212,6 @@
         <module>freeway-http</module>
         <module>freeway-db</module>
         <module>freeway-flow</module>
+        <module>freeway-cloud</module>
     </modules>
 </project>

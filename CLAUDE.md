@@ -12,13 +12,14 @@ mvn -pl freeway-ioc -am test      # single module + dependencies
 mvn -pl freeway-http -am test
 mvn -pl freeway-db -am test
 mvn -pl freeway-flow -am test
+mvn -pl freeway-cloud -am test
 mvn test -Dtest=CoercerDefaultTest  # single test class
 ```
 
 Extension modules are in [freeway-ext](https://github.com/dzb/freeway-ext).
 Build core first (`mvn install`), then extensions.
 
-JUnit 5.12, SLF4J 2.0.17.
+JUnit 6.1.3, SLF4J 2.0.18.
 
 ## Module Dependency Graph
 
@@ -27,7 +28,8 @@ freeway-commons         zero deps
  ├─ freeway-ioc         depends on commons
  │   ├─ freeway-boot    depends on ioc
  │   ├─ freeway-http    depends on ioc (+ commons transitive)
- │   └─ freeway-flow    depends on ioc + commons (no extra deps)
+ │   ├─ freeway-flow    depends on ioc + commons (no extra deps)
+ │   └─ freeway-cloud   depends on ioc + commons + boot + http (no extra deps)
  └─ freeway-db          depends on commons (ioc optional)
 ```
 

@@ -36,7 +36,7 @@ Commons provides the small, shared runtime utilities used across Freeway.
 For more details, see:
 
 - [Defer summary](../freeway-defer-summary.md)
-- [DB usage guide](../freeway-db-how-to-use.md)
+- [DB usage guide](../freeway-db.md)
 
 ## JSON
 

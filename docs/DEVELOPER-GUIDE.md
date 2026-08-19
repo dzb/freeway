@@ -1681,7 +1681,7 @@ For more detail:
 
 - [docs/freeway-commons.md](freeway-commons.md)
 - [Defer summary](freeway-defer-summary.md)
-- [DB usage guide](freeway-db-how-to-use.md)
+- [DB usage guide](freeway-db.md)
 
 ---
 

@@ -1,6 +1,12 @@
 # freeway-cloud 实施任务清单
 
 > 目标：按照 `freeway-cloud` 完整设计，分阶段落地一套可运行、可测试、可扩展的云原生基础层。
+> **基线：`freeway-cloud-unified-design.md`（2026-08-19 定稿）**。远程调用为
+> 显式 `CloudHttpClient`（不做 `@CloudClient`/`CloudExporter` 方法级 RPC）；
+> 默认实现统一 `XDefault` 命名。
+>
+> **状态（2026-08-19）**：Phase 0–7 已完成（core，53 个测试全绿）；
+> Phase 8（freeway-ext 云后端适配器）**已记录、后续另做**，清单见定稿 §12.1。
 
 ## 阶段划分
 
@@ -12,14 +18,15 @@
 
 - 新建 `freeway-cloud` Maven 模块
 - 在父 POM 中加入模块
-- 建立基础包结构：
+- 建立基础包结构（对齐定稿 §4）：
+  - `annotation`
   - `context`
   - `config`
+  - `secret`
   - `discovery`
   - `rpc`
   - `observe`
   - `resilience`
-  - `security`
   - `health`
   - `storage`
   - `internal`
@@ -44,42 +51,43 @@
 - 定义 `ServiceInstance`
 - 定义 `InvocationContext`
 - 定义 `CloudConfig`
-- 实现本地默认版：
-  - `ServiceRegistryLocal`
-  - `ServiceDiscoveryLocal`
-  - `LocalConfigStore`
-  - `LocalSecretStore`
-  - `CloudHttpClientJdk`
-  - `TracerNoop` 或等价默认追踪器
-  - `MeterRegistryInMemory`
-- 为所有核心接口绑定 `.primary()`
+- 实现本地默认版（统一 `XDefault` 命名，放 `internal/`）：
+  - `ServiceRegistryDefault` / `ServiceDiscoveryDefault`（进程内注册表）
+  - `CloudConfigDefault`（WatchService 文件热重载）
+  - `SecretStoreDefault`（env/file）
+  - `CloudHttpClientDefault`（JDK HttpClient）
+  - `TracerDefault` / `MeterRegistryDefault`
+- 为所有核心接口绑定 `.primary()`，本地默认统一打 `@Local`
 
 验收：
 
 - 本地环境无需任何外部云组件即可运行
 - 默认实现能通过 IoC 解析
 
-### Phase 2 - 注册发现与 RPC
+### Phase 2 - 注册发现与远程调用
 
 目标是建立最小可用的服务间调用链。
 
 任务：
 
-- 实现 `ServiceRegistry`
-- 实现 `ServiceDiscovery`
-- 实现 `LoadBalancer`
-- 实现 `CloudHttpClient`
-- 实现 `@CloudClient`
-- 实现 `CloudExporter`
-- 实现服务注册 / 注销的 `RuntimeHook`
-- 实现调用上下文传播的入站/出站接线
+- 实现 `ServiceRegistry` / `ServiceDiscovery`
+- 实现 `ServiceDeclaration`（扩展点：各模块声明要注册的端点，统一收集）
+- 实现 `LoadBalancer`（round-robin 默认）
+- 实现 `CloudHttpClient`（`CloudHttpClientDefault`：JDK HttpClient，
+  服务名 + 路径显式调用，注入 trace 头，超时/重试换实例/熔断/限流编排）
+- 实现服务注册 / 注销 / 心跳 renew 的 `RuntimeHook`
+- 实现调用上下文传播的入站（`PropagationFilter`）/出站接线
+
+不做（定稿决策）：`@CloudClient` 接口代理、`CloudExporter` 服务端导出、
+`/rpc/*` 私有协议——被调方是普通 Freeway HTTP 应用，零要求。
 
 验收：
 
-- 服务可注册、发现、注销
-- 声明式客户端可调用服务端导出接口
+- 服务可注册、发现、注销，心跳续约，lastSeen 超时驱逐
+- `CloudHttpClient` 可调用普通 Freeway HTTP 服务的既有路由（被调方
+  不装 cloud）
 - 重试时会重新选择实例
-- RPC 调用包含超时与错误封装
+- 远程调用包含超时与错误封装（`CloudException`，4xx 不重试）
 
 ### Phase 3 - 配置中心
 
@@ -87,12 +95,12 @@
 
 任务：
 
-- 实现 `ConfigStore`
-- 实现 `ConfigRef<T>`
-- 实现 `ConfigStoreLoader`
+- 实现 `CloudConfig`（get / watch / addListener / reload）
+- 实现 `ConfigRef<T>`（显式读最新值）
+- 实现 `CloudConfigDefault`（WatchService 文件热重载）
 - 实现 `ConfigChangedEvent`
 - 让配置变更通过 `EventBus` 发布
-- 让动态配置能参与 `SymbolProvider` 解析
+- 让动态配置贡献为动态 `SymbolProvider`（`@Value`/`@Symbol` 解析最新值）
 
 验收：
 
@@ -130,7 +138,7 @@
 - 实现 `CircuitBreaker`
 - 实现 `RateLimiter`
 - 建立默认策略
-- 让 RPC 出站统一套用韧性策略
+- 让远程调用（`CloudHttpClient`）统一套用韧性策略
 
 验收：
 
@@ -144,16 +152,15 @@
 任务：
 
 - 实现 `PrincipalContext`
-- 实现 token / principal 传播
-- 实现 mTLS 的抽象
-- 实现密钥源抽象
-- 建立 `SecurityFilter`
+- 实现 token / principal 传播（`AuthPropagator` 注入，与 traceparent 同序）
+- 实现 mTLS 的抽象（`TransportSecurity`，JDK `SSLContext` + 文件型证书）
+- 密钥源走 `SecretStore`（Phase 1 已定义），完成 `SecretSymbolSource` 接线
 
 验收：
 
 - 服务间身份可以传播
 - 安全能力可选装
-- 无安全模块时默认拒绝 `/rpc/*`
+- 无安全模块时默认明文开发态（`@None`），生产传输安全由 ext 覆盖
 
 ### Phase 7 - 健康检查
 
@@ -208,8 +215,8 @@
 
 - 模块装配测试
 - 默认实现解析测试
-- 注册 / 发现 / 注销测试
-- RPC 成功 / 超时 / 失败 / 重试测试
+- 注册 / 发现 / 注销 / 心跳驱逐测试
+- 远程调用（`CloudHttpClient`）成功 / 超时 / 失败 / 重试换实例测试
 - 配置变更测试
 - Trace 传播测试
 - 指标输出测试

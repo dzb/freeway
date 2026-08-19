@@ -49,9 +49,15 @@ public void bind(Binder b) {
 ```
 
 `install()` calls the module's `bind()` immediately — its services and extensions
-are registered in the same container. Installing the same module type more than
-once is a no-op (deduplication by `module.getClass()`). Returns this `Binder`
-for method chaining.
+are registered in the same container. Returns this `Binder` for method chaining.
+
+**去重语义（两条路径不同）**：
+
+- `binder.install()` / `Freeway.create()`：按模块**实例身份**去重——同一实例
+  重复安装是 no-op；同 class 的**不同实例**（如 `new HttpModule()` 两次）抛
+  `IllegalStateException`（"installed twice"，匿名/lambda 模块除外）。
+- `FreewayApp` / `AppBuilder`：按模块 **class** 去重（显式模块先注册、SPI
+  后来者不覆盖），同 class 多次添加静默合并。
 
 ### Programmatic via `Freeway.create()` / `FreewayApp.run()`
 
@@ -97,8 +103,10 @@ AppRuntime app = FreewayApp.of(new AppModule())
     .start();
 ```
 
-Discovery deduplicates by module class — an explicitly installed instance
-always takes precedence over a SPI-discovered one of the same type.
+Discovery deduplicates by module class — in the `FreewayApp` path an explicitly
+added instance always takes precedence over a SPI-discovered one of the same
+type (`Freeway.create`/`binder.install` has no such precedence: an explicit
+install plus SPI discovery of the same class fails startup instead).
 
 ## Composition Rules
 
