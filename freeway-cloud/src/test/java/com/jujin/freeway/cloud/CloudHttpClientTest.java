@@ -167,12 +167,72 @@ class CloudHttpClientTest {
         }
     }
 
+    @Test
+    void halfOpenProbeRecoversWhenServiceComesBack() throws Exception {
+        // Full breaker lifecycle over the wire: failures open the circuit,
+        // the OPEN window elapses, the next call is the half-open probe, and
+        // a recovered service closes the circuit again.
+        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "1");
+        try (AppRuntime app = FreewayApp.run(new FlippingModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            app.get(ServiceRegistry.class).register(
+                ServiceInstance.of("flip", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            CloudHttpClient client = app.get(CloudHttpClient.class);
+            FlippingModule.fail.set(true);
+
+            assertThrows(CloudException.class,
+                () -> client.call("flip", CloudRequest.get("/api/flip"))); // failure 1
+            assertThrows(CloudException.class,
+                () -> client.call("flip", CloudRequest.get("/api/flip"))); // failure 2 -> OPEN
+            CloudException opened = assertThrows(CloudException.class,
+                () -> client.call("flip", CloudRequest.get("/api/flip")));
+            assertFalse(opened.retryable(), "circuit open rejects without hitting the wire");
+            assertTrue(opened.getMessage().contains("Circuit"));
+
+            // The service recovers while the circuit is OPEN.
+            FlippingModule.fail.set(false);
+
+            Thread.sleep(1200); // let the 1s open window elapse
+
+            CloudResponse probe = client.call("flip", CloudRequest.get("/api/flip"));
+            assertTrue(probe.is2xx(),
+                "the half-open probe must reach the recovered service and close the circuit");
+            assertTrue(client.call("flip", CloudRequest.get("/api/flip")).is2xx(),
+                "after recovery the circuit stays closed and serves normally");
+        } finally {
+            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW);
+            FlippingModule.fail.set(true);
+        }
+    }
+
     /** A plain Freeway HTTP application — no cloud code. */
     static class EchoModule implements ModuleEx {
         @Override
         public void bind(Binder b) {
             b.contribute(Route.class)
                 .add(Route.get("/api/echo", ctx -> ctx.send(200, "{\"ok\":true}")));
+        }
+    }
+
+    /** Flips between HTTP 500 and 200 under test control. */
+    static class FlippingModule implements ModuleEx {
+        static final java.util.concurrent.atomic.AtomicBoolean fail =
+            new java.util.concurrent.atomic.AtomicBoolean(true);
+
+        @Override
+        public void bind(Binder b) {
+            b.contribute(Route.class)
+                .add(Route.get("/api/flip", ctx -> {
+                    if (fail.get()) {
+                        ctx.send(500, "boom");
+                    } else {
+                        ctx.send(200, "{\"ok\":true}");
+                    }
+                }));
         }
     }
 
