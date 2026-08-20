@@ -18,7 +18,9 @@ public final class CloudContextModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.contribute(Propagator.class).add("trace", new TracePropagator());
-        b.contribute(Propagator.class).add("auth", new AuthPropagator());
+        // Container-created so the auth propagator can read the
+        // freeway.cloud.auth.extract.enabled switch from the SymbolSource.
+        b.contribute(Propagator.class).add(AuthPropagator.class);
         b.contribute(HttpFilter.class).add(PropagationFilter.class);
     }
 }

@@ -24,7 +24,7 @@ import java.time.Duration;
 /**
  * IoC wiring for remote invocation: {@link CloudHttpClient} →
  * {@link CloudHttpClientDefault} (JDK {@code HttpClient}, {@code @Local} +
- * {@code .primary()}). Timeouts resolve from
+ * {@code }). Timeouts resolve from
  * {@code freeway.cloud.rpc.connect-timeout} / {@code request-timeout};
  * resilience policies come from {@code CloudResilienceModule} when installed
  * (otherwise built-in defaults). Transport security defaults to {@code NONE}
@@ -51,7 +51,7 @@ public final class CloudRpcModule implements ModuleEx {
                     trustStore.isBlank() ? null : Path.of(trustStore), trustPassword);
             })
             .marker(None.class)
-            .primary();
+            ;
 
         b.bind(CloudHttpClient.class)
             .to((Container container) -> {
@@ -70,14 +70,20 @@ public final class CloudRpcModule implements ModuleEx {
                     Duration.ofMillis(connectMs));
             })
             .marker(Local.class)
-            .primary();
+            ;
     }
 
     private static <T> T optional(Container container, Class<T> type) {
         try {
             return container.get(type);
-        } catch (RuntimeException e) {
-            return null; // resilience module not installed — client uses defaults
+        } catch (IllegalArgumentException e) {
+            if (e.getMessage() != null
+                    && e.getMessage().startsWith("No service registered")) {
+                return null; // resilience module not installed — client uses defaults
+            }
+            // Any other failure (invalid configuration, constructor error) is
+            // a real problem — fail fast instead of silently degrading.
+            throw e;
         }
     }
 }

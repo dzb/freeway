@@ -37,9 +37,10 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         String host = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_HOST, server.host());
         int port = Integer.parseInt(symbols.resolve(
             CloudConfigKeys.REGISTRY_SERVICE_PORT, String.valueOf(server.port())));
+        String scheme = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_SCHEME, "http");
         String instanceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
             serviceId + "@" + host + ":" + port);
         return ServiceInstance.of(serviceId, instanceId,
-            Endpoint.of("http", host, port), Map.of());
+            Endpoint.of(scheme, host, port), Map.of());
     }
 }

@@ -19,6 +19,13 @@ public final class RateLimiterDefault implements RateLimiter {
     }
 
     public RateLimiterDefault(double permitsPerSecond, double maxBurst) {
+        if (Double.isNaN(permitsPerSecond) || permitsPerSecond <= 0) {
+            throw new IllegalArgumentException(
+                "permitsPerSecond must be positive: " + permitsPerSecond);
+        }
+        if (maxBurst < 1.0 || Double.isNaN(maxBurst)) {
+            throw new IllegalArgumentException("maxBurst must be >= 1: " + maxBurst);
+        }
         this.permitsPerSecond = permitsPerSecond;
         this.maxBurst = maxBurst;
         this.tokens = maxBurst;

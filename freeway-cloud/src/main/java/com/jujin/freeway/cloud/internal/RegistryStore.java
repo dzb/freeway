@@ -5,6 +5,7 @@ import com.jujin.freeway.cloud.discovery.ServiceInstance;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,7 +65,8 @@ public final class RegistryStore {
 
     /**
      * Live && ready instances that have not gone stale. Stale entries are
-     * evicted lazily on read.
+     * evicted (removed) on read, not merely filtered out — the store's size
+     * stays bounded and a dead instance cannot linger indefinitely.
      */
     public List<ServiceInstance> liveReady(String serviceId, Duration maxAge) {
         var instances = byService.get(serviceId);
@@ -72,10 +74,19 @@ public final class RegistryStore {
             return List.of();
         }
         Instant cutoff = Instant.now().minus(maxAge);
-        return instances.values().stream()
-            .filter(e -> e.health.live() && e.health.ready())
-            .filter(e -> !e.health.lastSeen().isBefore(cutoff))
-            .map(e -> e.instance)
-            .toList();
+        List<ServiceInstance> result = new ArrayList<>();
+        for (Map.Entry<String, Entry> me : instances.entrySet()) {
+            Entry e = me.getValue();
+            if (e.health.lastSeen().isBefore(cutoff)) {
+                // Stale — evict so the map cannot grow without bound.
+                instances.remove(me.getKey(), e);
+            } else if (e.health.live() && e.health.ready()) {
+                result.add(e.instance);
+            }
+        }
+        if (instances.isEmpty()) {
+            byService.remove(serviceId, instances);
+        }
+        return result;
     }
 }

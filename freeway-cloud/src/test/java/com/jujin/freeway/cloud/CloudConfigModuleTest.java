@@ -11,6 +11,7 @@ import com.jujin.freeway.ioc.EventSubscriber;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -30,6 +31,11 @@ import static org.junit.jupiter.api.Assertions.fail;
  * ConfigRef tracking and ConfigChangedEvent delivery on the EventBus.
  */
 class CloudConfigModuleTest {
+    @BeforeEach
+    void randomPort() {
+        System.setProperty("server.port", "0");
+    }
+
 
     @TempDir
     Path dir;

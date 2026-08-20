@@ -73,21 +73,34 @@ public final class MeterRegistryDefault implements MeterRegistry {
     public String prometheusText() {
         StringBuilder sb = new StringBuilder();
         counters.forEach((name, adder) -> {
-            sb.append("# TYPE ").append(name).append(" counter\n");
-            sb.append(name).append(' ').append(adder.sum()).append('\n');
+            sb.append("# TYPE ").append(prometheusName(name)).append(" counter\n");
+            sb.append(prometheusName(name)).append(' ').append(adder.sum()).append('\n');
         });
         timers.forEach((name, data) -> {
-            sb.append("# TYPE ").append(name).append("_count counter\n");
-            sb.append(name).append("_count ").append(data.count()).append('\n');
-            sb.append("# TYPE ").append(name).append("_seconds_total counter\n");
-            sb.append(name).append("_seconds_total ")
+            sb.append("# TYPE ").append(prometheusName(name)).append("_count counter\n");
+            sb.append(prometheusName(name)).append("_count ").append(data.count()).append('\n');
+            sb.append("# TYPE ").append(prometheusName(name)).append("_seconds_total counter\n");
+            sb.append(prometheusName(name)).append("_seconds_total ")
                 .append(Double.toString(data.totalNanos() / 1_000_000_000.0)).append('\n');
         });
         gauges.forEach((name, supplier) -> {
-            sb.append("# TYPE ").append(name).append(" gauge\n");
-            sb.append(name).append(' ').append(supplier.get()).append('\n');
+            sb.append("# TYPE ").append(prometheusName(name)).append(" gauge\n");
+            double value;
+            try {
+                value = supplier.get();
+            } catch (RuntimeException ex) {
+                value = Double.NaN; // a broken gauge must not 500 the /metrics route
+            }
+            sb.append(prometheusName(name)).append(' ').append(value).append('\n');
         });
         return sb.toString();
+    }
+
+    /** Sanitizes a metric name to Prometheus label-name rules
+     *  ([a-zA-Z0-9_:]), preventing format-breaking characters (spaces,
+     *  newlines) from reaching the text exposition. */
+    private static String prometheusName(String name) {
+        return name.replaceAll("[^a-zA-Z0-9_:]", "_");
     }
 
     private static final class DefaultCounter implements Counter {
@@ -104,6 +117,10 @@ public final class MeterRegistryDefault implements MeterRegistry {
 
         @Override
         public void increment(double amount) {
+            if (amount < 0) {
+                throw new IllegalArgumentException(
+                    "counter increment must not be negative: " + amount);
+            }
             adder.add(amount);
         }
     }

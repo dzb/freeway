@@ -29,6 +29,8 @@ public final class CloudConfigKeys {
     public static final String REGISTRY_TYPE         = PREFIX + ".registry.type";
     public static final String REGISTRY_SERVICE_ID   = PREFIX + ".registry.service-id";
     public static final String REGISTRY_SERVICE_HOST = PREFIX + ".registry.service-host";
+    /** Scheme registered for this instance (http or https); default http. */
+    public static final String REGISTRY_SERVICE_SCHEME = PREFIX + ".registry.service-scheme";
     public static final String REGISTRY_SERVICE_PORT = PREFIX + ".registry.service-port";
     public static final String REGISTRY_SERVICE_INSTANCE_ID = PREFIX + ".registry.service-instance-id";
     public static final String REGISTRY_HEALTH_PATH  = PREFIX + ".registry.health-path";
@@ -52,6 +54,12 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_KEY_STORE_PASSWORD = PREFIX + ".rpc.tls.key-store-password";
     public static final String RPC_TLS_TRUST_STORE        = PREFIX + ".rpc.tls.trust-store";
     public static final String RPC_TLS_TRUST_STORE_PASSWORD = PREFIX + ".rpc.tls.trust-store-password";
+
+    // ── Auth propagation ────────────────────────────────────
+    /** Off by default: inbound {@code x-principal} extraction trusts client
+     *  headers and must be enabled explicitly (ideally only inside a trusted
+     *  service mesh / with an ext token-verifying security module). */
+    public static final String AUTH_EXTRACT_ENABLED = PREFIX + ".auth.extract.enabled";
 
     // ── Health ─────────────────────────────────────────────
     public static final String HEALTH_ENABLED = PREFIX + ".health.enabled";

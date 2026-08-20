@@ -431,7 +431,8 @@ stop（逆序）:
 - 优雅关停复用既有能力：`freeway.http.server.shutdown-grace` +
   `AppStoppingEvent`（close 时先发布再逆序停 hooks）+ JVM shutdown hook，
   不重造。
-- `CloudHttpClient` 不需要 RuntimeHook（按需调用，无持久连接）。
+- `CloudHttpClient` 持有 JDK `HttpClient`（持久连接池 + selector 线程），通过
+  `@PreDestroy` 在容器关闭时恰好释放一次。
 
 ## 7. 配置键（CloudConfigKeys，吸收 design-A 清单）
 

@@ -3,8 +3,7 @@ package com.jujin.freeway.cloud.context;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.random.RandomGenerator;
-import java.util.random.RandomGeneratorFactory;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Distributed tracing context: traceId / spanId / parentSpanId, encoded as the
@@ -16,9 +15,6 @@ import java.util.random.RandomGeneratorFactory;
  * @param parentSpanId 16 lowercase hex chars, or {@code null} for a root span
  */
 public record TraceContext(String traceId, String spanId, String parentSpanId) {
-
-    private static final RandomGenerator RANDOM =
-        RandomGeneratorFactory.of("L64X128MixRandom").create();
 
     public TraceContext {
         requireHex(traceId, 32, "traceId");
@@ -77,8 +73,11 @@ public record TraceContext(String traceId, String spanId, String parentSpanId) {
     }
 
     private static String randomHex(int chars) {
+        // ThreadLocalRandom: the LXM generators are not thread-safe, and
+        // root()/child() run on every concurrent request thread — a shared
+        // generator produced duplicate trace/span ids under load.
         byte[] bytes = new byte[chars / 2];
-        RANDOM.nextBytes(bytes);
+        ThreadLocalRandom.current().nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
     }
 }

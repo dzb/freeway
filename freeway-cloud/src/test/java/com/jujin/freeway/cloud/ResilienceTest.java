@@ -10,6 +10,7 @@ import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -72,5 +73,71 @@ class ResilienceTest {
         assertTrue(limiter.tryAcquire());
         assertTrue(limiter.tryAcquire());
         assertFalse(limiter.tryAcquire(), "burst exhausted; no refill yet");
+    }
+
+    @Test
+    void lostProbeTimesOutAndRearmsInsteadOfWedging() throws Exception {
+        // A half-open probe that is admitted but never reported (local
+        // rejection before the transport call) must time out and re-arm the
+        // circuit — it must NOT wedge the breaker in HALF_OPEN forever.
+        CircuitBreakerDefault breaker = new CircuitBreakerDefault(1,
+            Duration.ofSeconds(60), Duration.ofMillis(50));
+        breaker.onFailure(); // OPEN
+        Thread.sleep(80);
+        assertTrue(breaker.allowRequest()); // probe admitted
+        assertEquals(CircuitBreaker.State.HALF_OPEN, breaker.state());
+        // No onSuccess/onFailure is ever reported.
+
+        Thread.sleep(80); // probe timeout elapses
+        assertTrue(breaker.allowRequest(),
+            "a lost probe must time out and admit a fresh probe");
+        breaker.onSuccess();
+        assertEquals(CircuitBreaker.State.CLOSED, breaker.state());
+    }
+
+    @Test
+    void staleSuccessWhileOpenIsIgnored() throws Exception {
+        // A success from a call admitted BEFORE the open must not yank the
+        // circuit back to CLOSED, skipping the open window.
+        CircuitBreakerDefault breaker = new CircuitBreakerDefault(1,
+            Duration.ofSeconds(60), Duration.ofMillis(100));
+        assertTrue(breaker.allowRequest()); // call 1 admitted (CLOSED)
+        breaker.onFailure();                // ... fails -> OPEN
+        breaker.onFailure();                // call 2 fails too (stale? no - OPEN ignores)
+        assertEquals(CircuitBreaker.State.OPEN, breaker.state());
+
+        breaker.onSuccess(); // stale success from call 1 returns late
+        assertEquals(CircuitBreaker.State.OPEN, breaker.state(),
+            "a stale success must not close an OPEN circuit");
+
+        Thread.sleep(120);
+        assertTrue(breaker.allowRequest(), "probe must still be admitted");
+        assertEquals(CircuitBreaker.State.HALF_OPEN, breaker.state());
+    }
+
+    @Test
+    void staleFailureWhileOpenDoesNotExtendWindow() throws Exception {
+        CircuitBreakerDefault breaker = new CircuitBreakerDefault(1,
+            Duration.ofSeconds(60), Duration.ofMillis(60));
+        breaker.onFailure(); // OPEN at t0
+        long opened = System.nanoTime();
+        Thread.sleep(30);
+        breaker.onFailure(); // stale failure while OPEN
+        breaker.onFailure();
+        Thread.sleep(70);    // > openWindow from t0
+        assertTrue(breaker.allowRequest(),
+            "stale failures must not re-extend the open window");
+    }
+
+    @Test
+    void constructorValidatesArguments() {
+        assertThrows(IllegalArgumentException.class,
+            () -> new CircuitBreakerDefault(0, Duration.ofSeconds(60), Duration.ofSeconds(30)));
+        assertThrows(IllegalArgumentException.class,
+            () -> new CircuitBreakerDefault(5, Duration.ZERO, Duration.ofSeconds(30)));
+        assertThrows(IllegalArgumentException.class,
+            () -> new RateLimiterDefault(0));
+        assertThrows(IllegalArgumentException.class,
+            () -> new RateLimiterDefault(Double.NaN));
     }
 }

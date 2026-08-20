@@ -17,7 +17,7 @@ import java.time.Duration;
 /**
  * IoC wiring for resilience: {@link Retryer} / {@link CircuitBreaker} /
  * {@link RateLimiter} defaults, configured from {@code freeway.cloud.rpc.*}
- * keys ({@code @Local} + {@code .primary()}). The {@code CloudHttpClient}
+ * keys ({@code @Local} marker). The {@code CloudHttpClient}
  * layer applies them uniformly; Advisor-based weaving for local services is a
  * later, optional addition.
  */
@@ -35,7 +35,7 @@ public final class CloudResilienceModule implements ModuleEx {
                 return new RetryerDefault(max, base, maxMs);
             })
             .marker(Local.class)
-            .primary();
+            ;
 
         b.bind(CircuitBreaker.class)
             .to((Container container) -> {
@@ -49,7 +49,7 @@ public final class CloudResilienceModule implements ModuleEx {
                 return new CircuitBreakerDefault(threshold, Duration.ofSeconds(60), Duration.ofSeconds(openSeconds));
             })
             .marker(Local.class)
-            .primary();
+            ;
 
         b.bind(RateLimiter.class)
             .to((Container container) -> {
@@ -59,6 +59,6 @@ public final class CloudResilienceModule implements ModuleEx {
                 return enabled ? new RateLimiterDefault(perSecond) : new RateLimiterDefault(Double.MAX_VALUE);
             })
             .marker(Local.class)
-            .primary();
+            ;
     }
 }

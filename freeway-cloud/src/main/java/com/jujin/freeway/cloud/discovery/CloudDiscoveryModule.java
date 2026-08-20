@@ -19,7 +19,7 @@ import com.jujin.freeway.ioc.annotation.Marker;
 
 /**
  * IoC wiring for discovery: {@link ServiceRegistry} / {@link ServiceDiscovery}
- * (in-process registry store, {@code @Local} + {@code .primary()}) and
+ * (in-process registry store, {@code @Local} + {@code }) and
  * {@link LoadBalancer} (round-robin default).
  *
  * <p>Lifecycle: {@code freeway.cloud.discovery} (before the HTTP server —
@@ -38,15 +38,15 @@ public final class CloudDiscoveryModule implements ModuleEx {
         b.bind(ServiceRegistry.class)
             .to((Container container) -> new ServiceRegistryDefault(container.get(RegistryStore.class)))
             .marker(Local.class)
-            .primary();
+            ;
         b.bind(ServiceDiscovery.class)
             .to((Container container) -> new ServiceDiscoveryDefault(container.get(RegistryStore.class)))
             .marker(Local.class)
-            .primary();
+            ;
         b.bind(LoadBalancer.class)
             .to(LoadBalancerDefault.class)
             .marker(RoundRobin.class)
-            .primary();
+            ;
 
         b.contribute(ServiceDeclaration.class).add("http", new HttpServiceDeclaration());
         b.contribute(RuntimeHook.class)

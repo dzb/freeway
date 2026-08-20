@@ -19,6 +19,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *   <li>HALF_OPEN — the probe outcome decides: success → CLOSED, failure →
  *       OPEN again.</li>
  * </ul>
+ *
+ * <p>Outcome callbacks are gated on the current state so stale results from
+ * in-flight calls cannot corrupt the machine: a success that returns after
+ * the circuit opened is ignored, and a failure that returns while OPEN does
+ * not re-extend the open window. A half-open probe that is admitted but never
+ * reported (lost request, local rejection before the transport call) times
+ * out after {@code openWindow} and re-arms the circuit, so the breaker can
+ * never wedge in HALF_OPEN.
  */
 public final class CircuitBreakerDefault implements CircuitBreaker {
 
@@ -30,11 +38,22 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
     private final ArrayDeque<Long> failureTimes = new ArrayDeque<>(); // nanos
     private volatile long openedAtNanos;
     private final AtomicBoolean probeInFlight = new AtomicBoolean();
+    private volatile long probeStartedAtNanos;
 
     public CircuitBreakerDefault(int failureThreshold, Duration failureWindow, Duration openWindow) {
+        if (failureThreshold <= 0) {
+            throw new IllegalArgumentException("failureThreshold must be positive: " + failureThreshold);
+        }
+        this.failureWindow = Duration.ofNanos(toPositiveNanos(failureWindow, "failureWindow"));
+        this.openWindow = Duration.ofNanos(toPositiveNanos(openWindow, "openWindow"));
         this.failureThreshold = failureThreshold;
-        this.failureWindow = failureWindow;
-        this.openWindow = openWindow;
+    }
+
+    private static long toPositiveNanos(Duration d, String name) {
+        if (d == null || d.isZero() || d.isNegative()) {
+            throw new IllegalArgumentException(name + " must be positive: " + d);
+        }
+        return d.toNanos();
     }
 
     @Override
@@ -51,16 +70,32 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
         if (current == State.OPEN) {
             if (System.nanoTime() - openedAtNanos >= openWindow.toNanos()
                     && probeInFlight.compareAndSet(false, true)) {
+                probeStartedAtNanos = System.nanoTime();
                 state = State.HALF_OPEN;
                 return true;
             }
             return false;
         }
-        return false; // HALF_OPEN: only the single admitted probe may run
+        // HALF_OPEN: only the single admitted probe may run. A probe that was
+        // admitted but never reported (transport failure outside the callback
+        // contract, local rejection, lost result) times out; the next caller
+        // then becomes the fresh probe instead of the circuit wedging in
+        // HALF_OPEN forever.
+        if (System.nanoTime() - probeStartedAtNanos > openWindow.toNanos()) {
+            probeStartedAtNanos = System.nanoTime(); // re-arm: this call is the new probe
+            return true;
+        }
+        return false;
     }
 
     @Override
     public void onSuccess() {
+        // A success that returns while the circuit is OPEN is stale (the call
+        // was admitted before the open) — it must not yank the circuit back to
+        // CLOSED and skip the open window.
+        if (state == State.OPEN) {
+            return;
+        }
         probeInFlight.set(false);
         synchronized (this) {
             failureTimes.clear();
@@ -70,7 +105,13 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
 
     @Override
     public void onFailure() {
-        if (state == State.HALF_OPEN) {
+        State current = state;
+        // A failure that returns while OPEN is stale (admitted before the
+        // open) — counting it would re-extend the open window forever.
+        if (current == State.OPEN) {
+            return;
+        }
+        if (current == State.HALF_OPEN) {
             probeInFlight.set(false);
             state = State.OPEN;
             openedAtNanos = System.nanoTime();

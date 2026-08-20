@@ -43,6 +43,7 @@ class PrincipalPropagationTest {
     @BeforeEach
     void randomPort() {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(CloudConfigKeys.AUTH_EXTRACT_ENABLED, "true");
     }
 
     @AfterEach

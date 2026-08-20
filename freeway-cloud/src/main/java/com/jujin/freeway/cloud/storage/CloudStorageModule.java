@@ -16,7 +16,7 @@ import java.nio.file.Path;
 /**
  * IoC wiring for the optional object storage subsystem: {@link ObjectStorage}
  * → {@link ObjectStorageDefault} (local file system, {@code @Local} +
- * {@code .primary()}), rooted at {@code freeway.cloud.storage.base-path}
+ * {@code }), rooted at {@code freeway.cloud.storage.base-path}
  * (default {@code cloud-storage} in the working directory). Put/delete emit
  * domain events on the {@link EventBus}. Decoupled from the core
  * discovery/rpc/config/observe/resilience chain.
@@ -35,6 +35,6 @@ public final class CloudStorageModule implements ModuleEx {
                     event -> container.get(EventBus.class).publish(event));
             })
             .marker(Local.class)
-            .primary();
+            ;
     }
 }

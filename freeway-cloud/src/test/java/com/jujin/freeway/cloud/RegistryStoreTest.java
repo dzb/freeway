@@ -38,6 +38,13 @@ class RegistryStoreTest {
         store.register(ServiceInstance.of("svc", "i1", Endpoint.of("http", "h", 8080)));
         // Zero-age cutoff: lastSeen (registration instant) is before cutoff (now).
         assertTrue(store.liveReady("svc", Duration.ZERO).isEmpty());
+
+        // Eviction must REMOVE the stale entry, not just filter it: the store
+        // cannot grow without bound, and a re-registering instance (a fresh
+        // registration, not a heartbeat for a dead entry) becomes discoverable.
+        store.register(ServiceInstance.of("svc", "i1", Endpoint.of("http", "h", 8080)));
+        assertEquals(1, store.liveReady("svc", Duration.ofSeconds(30)).size(),
+            "re-registered instances must be discoverable after lazy eviction");
     }
 
     @Test

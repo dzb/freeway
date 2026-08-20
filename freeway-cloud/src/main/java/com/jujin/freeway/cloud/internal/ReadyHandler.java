@@ -30,7 +30,23 @@ public final class ReadyHandler implements RouteHandler {
         Map<String, Object> cloud = new LinkedHashMap<>();
         boolean healthy = true;
         for (CloudHealthContributor contributor : contributors) {
-            HealthResult result = contributor.check();
+            if (cloud.containsKey(contributor.name())) {
+                throw new IllegalStateException(
+                    "Duplicate CloudHealthContributor name '" + contributor.name() + "'");
+            }
+            HealthResult result;
+            try {
+                result = contributor.check();
+            } catch (Exception ex) {
+                // A failing dependency must mark the probe unhealthy, not take
+                // down the whole endpoint (or the k8s readiness probe with it).
+                healthy = false;
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("healthy", false);
+                entry.put("error", ex.getClass().getSimpleName() + ": " + ex.getMessage());
+                cloud.put(contributor.name(), entry);
+                continue;
+            }
             healthy &= result.healthy();
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("healthy", result.healthy());

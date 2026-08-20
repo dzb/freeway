@@ -28,7 +28,7 @@ public final class CloudSecretModule implements ModuleEx {
         b.bind(SecretStore.class)
             .to((com.jujin.freeway.ioc.Container container) -> new SecretStoreDefault(secretFile()))
             .marker(Local.class)
-            .primary();
+            ;
 
         b.contribute(SymbolProvider.class).add(SecretSymbolSource.class);
     }

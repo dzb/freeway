@@ -21,8 +21,8 @@ public final class CloudObserveModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
-        b.bind(Tracer.class).to(TracerDefault.class).marker(Local.class).primary();
-        b.bind(MeterRegistry.class).to(MeterRegistryDefault.class).marker(Local.class).primary();
+        b.bind(Tracer.class).to(TracerDefault.class).marker(Local.class);
+        b.bind(MeterRegistry.class).to(MeterRegistryDefault.class).marker(Local.class);
         b.contribute(Route.class).add("metrics", Route.get("/metrics", MetricsHandler.class));
     }
 }

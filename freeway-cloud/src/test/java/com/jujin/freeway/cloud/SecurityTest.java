@@ -10,6 +10,7 @@ import com.jujin.freeway.cloud.internal.TransportSecurityDefault;
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,6 +30,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * resolution and file-backed mTLS context building.
  */
 class SecurityTest {
+    @BeforeEach
+    void randomPort() {
+        System.setProperty(com.jujin.freeway.http.HttpConfigKeys.SERVER_PORT, "0");
+    }
+
 
     @TempDir
     Path dir;
@@ -40,20 +46,39 @@ class SecurityTest {
     }
 
     @Test
-    void authPropagatorRoundTripsPrincipalAndRoles() {
-        AuthPropagator propagator = new AuthPropagator();
-        PrincipalContext principal = PrincipalContext.of("alice", List.of("admin", "user"));
-        InvocationContext ctx = InvocationContext.of(null, principal, Baggage.empty());
+    void authPropagatorRoundTripsPrincipalAndRolesWhenEnabled() {
+        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.AUTH_EXTRACT_ENABLED, "true");
+        try {
+            AuthPropagator propagator = new AuthPropagator(sysProps());
+            PrincipalContext principal = PrincipalContext.of("alice", List.of("admin", "user"));
+            InvocationContext ctx = InvocationContext.of(null, principal, Baggage.empty());
 
-        Map<String, String> headers = new HashMap<>();
-        propagator.inject(ctx, headers);
-        assertEquals("alice", headers.get(AuthPropagator.HEADER_PRINCIPAL));
-        assertEquals("admin,user", headers.get(AuthPropagator.HEADER_ROLES));
+            Map<String, String> headers = new HashMap<>();
+            propagator.inject(ctx, headers);
+            assertEquals("alice", headers.get(AuthPropagator.HEADER_PRINCIPAL));
+            assertEquals("admin,user", headers.get(AuthPropagator.HEADER_ROLES));
 
-        InvocationContext extracted = propagator.extract(headers);
-        assertNotNull(extracted.principal());
-        assertEquals("alice", extracted.principal().name());
-        assertTrue(extracted.principal().hasRole("admin"));
+            InvocationContext extracted = propagator.extract(headers);
+            assertNotNull(extracted.principal());
+            assertEquals("alice", extracted.principal().name());
+            assertTrue(extracted.principal().hasRole("admin"));
+        } finally {
+            System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.AUTH_EXTRACT_ENABLED);
+        }
+    }
+
+    @Test
+    void authPropagatorIgnoresInboundIdentityByDefault() {
+        // Security default: a client-supplied x-principal must NOT be trusted
+        // unless extraction was explicitly enabled.
+        AuthPropagator propagator = new AuthPropagator(sysProps());
+        Map<String, String> forged = Map.of(
+            AuthPropagator.HEADER_PRINCIPAL, "admin",
+            AuthPropagator.HEADER_ROLES, "admin,superuser");
+
+        InvocationContext extracted = propagator.extract(forged);
+        assertNull(extracted.principal(),
+            "inbound identity headers must be ignored when extraction is disabled");
     }
 
     @Test
@@ -111,5 +136,35 @@ class SecurityTest {
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         int exit = process.waitFor();
         assertEquals(0, exit, "keytool failed: " + new String(process.getInputStream().readAllBytes()));
+    }
+    /** SymbolSource backed by system properties with ${name:default} expansion
+     *  (mirrors the framework contract AuthPropagator relies on). */
+    private static com.jujin.freeway.ioc.symbol.SymbolSource sysProps() {
+        return new com.jujin.freeway.ioc.symbol.SymbolSource() {
+            @Override
+            public String resolve(String name) {
+                String v = System.getProperty(name);
+                if (v == null) {
+                    throw new IllegalArgumentException("Unknown symbol: " + name);
+                }
+                return v;
+            }
+
+            @Override
+            public String expand(String input) {
+                if (input.startsWith("${") && input.endsWith("}")) {
+                    String inner = input.substring(2, input.length() - 1);
+                    int colon = inner.indexOf(':');
+                    String name = colon < 0 ? inner : inner.substring(0, colon);
+                    String def = colon < 0 ? null : inner.substring(colon + 1);
+                    try {
+                        return resolve(name);
+                    } catch (IllegalArgumentException e) {
+                        return def;
+                    }
+                }
+                return input;
+            }
+        };
     }
 }

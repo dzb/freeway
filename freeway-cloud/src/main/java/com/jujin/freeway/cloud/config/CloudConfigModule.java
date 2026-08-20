@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <ul>
  *   <li>{@link CloudConfig} → {@link CloudConfigDefault} (WatchService file hot
- *       reload, {@code @Local} + {@code .primary()}); change notifications are
+ *       reload, {@code @Local} + {@code }); change notifications are
  *       published as {@link ConfigChangedEvent} on the {@link EventBus}.</li>
  *   <li>Dynamic {@link SymbolProvider} contribution — {@code @Value}/
  *       {@code @Symbol} resolution reads the latest config value. Registered as
@@ -48,7 +48,7 @@ public final class CloudConfigModule implements ModuleEx {
                 return impl;
             })
             .marker(Local.class)
-            .primary();
+            ;
 
         b.contribute(SymbolProvider.class).add(CloudConfigSymbolProvider.class);
 

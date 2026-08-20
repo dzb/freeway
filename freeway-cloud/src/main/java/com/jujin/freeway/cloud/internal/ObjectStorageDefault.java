@@ -73,8 +73,18 @@ public final class ObjectStorageDefault implements ObjectStorage {
     public PutResult put(String bucket, String key, byte[] data, ObjectMetadata metadata) throws StorageException {
         Path target = resolve(bucket, key);
         try {
-            if (!Files.isDirectory(target.getParent())) {
-                Files.createDirectories(target.getParent());
+            Path parent = target.getParent();
+            if (!Files.isDirectory(parent)) {
+                Files.createDirectories(parent);
+            }
+            // Symlink defense (mirrors the read path): after creating the
+            // parent chain, verify its real path still sits inside the real
+            // root — a symlinked intermediate directory (root/bucket -> /etc)
+            // would otherwise let the write escape the mount root.
+            Path rootReal = root.toRealPath();
+            if (!parent.toRealPath().startsWith(rootReal)) {
+                throw new StorageException(
+                    "Path escapes storage root: " + bucket + "/" + key);
             }
             // No symlink poisoning: a link at the target is removed before write.
             if (Files.isSymbolicLink(target)) {
@@ -94,6 +104,12 @@ public final class ObjectStorageDefault implements ObjectStorage {
     public void delete(String bucket, String key) throws StorageException {
         Path target = resolve(bucket, key);
         try {
+            Path parent = target.getParent();
+            if (Files.isDirectory(parent)
+                    && !parent.toRealPath().startsWith(root.toRealPath())) {
+                throw new StorageException(
+                    "Path escapes storage root: " + bucket + "/" + key);
+            }
             if (Files.isSymbolicLink(target)) {
                 Files.delete(target);
             } else if (Files.isRegularFile(target)) {

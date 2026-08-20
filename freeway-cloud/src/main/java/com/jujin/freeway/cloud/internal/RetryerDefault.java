@@ -13,6 +13,16 @@ public final class RetryerDefault implements Retryer {
     private final long maxMillis;
 
     public RetryerDefault(int maxRetries, long baseMillis, long maxMillis) {
+        if (maxRetries < 0) {
+            throw new IllegalArgumentException("maxRetries must be >= 0: " + maxRetries);
+        }
+        if (baseMillis <= 0) {
+            throw new IllegalArgumentException("baseMillis must be positive: " + baseMillis);
+        }
+        if (maxMillis < baseMillis) {
+            throw new IllegalArgumentException(
+                "maxMillis must be >= baseMillis: " + maxMillis + " < " + baseMillis);
+        }
         this.maxRetries = maxRetries;
         this.baseMillis = baseMillis;
         this.maxMillis = maxMillis;
@@ -24,12 +34,18 @@ public final class RetryerDefault implements Retryer {
 
     @Override
     public boolean shouldRetry(int attempt, Throwable failure) {
-        return attempt < maxRetries;
+        return attempt >= 0 && attempt < maxRetries;
     }
 
     @Override
     public long backoffMillis(int attempt) {
-        long shift = attempt >= 62 ? Long.MAX_VALUE : (baseMillis << attempt);
-        return Math.min(shift, maxMillis);
+        if (attempt <= 0) {
+            return baseMillis;
+        }
+        if (attempt >= 62) {
+            return maxMillis; // shift would overflow — already at the cap
+        }
+        long shift = baseMillis << attempt;
+        return shift < 0 ? maxMillis : Math.min(shift, maxMillis);
     }
 }

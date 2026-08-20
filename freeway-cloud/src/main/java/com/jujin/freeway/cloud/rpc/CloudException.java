@@ -35,7 +35,12 @@ public class CloudException extends RuntimeException {
     }
 
     public static CloudException timeout(String serviceId) {
-        return new CloudException("Request timeout for service '" + serviceId + "'", true, -1, null);
+        return timeout(serviceId, null);
+    }
+
+    public static CloudException timeout(String serviceId, Throwable cause) {
+        return new CloudException("Request timeout for service '" + serviceId + "'",
+            true, -1, cause);
     }
 
     public static CloudException http(String serviceId, int status) {
