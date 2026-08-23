@@ -1,12 +1,15 @@
 package com.jujin.freeway.cloud.storage;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
+import com.jujin.freeway.cloud.internal.BackendTypeGuard;
 import com.jujin.freeway.cloud.internal.ObjectStorageDefault;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -15,8 +18,8 @@ import java.nio.file.Path;
 
 /**
  * IoC wiring for the optional object storage subsystem: {@link ObjectStorage}
- * → {@link ObjectStorageDefault} (local file system, {@code @Local} +
- * {@code }), rooted at {@code freeway.cloud.storage.base-path}
+ * → {@link ObjectStorageDefault} (local file system, {@code @Local} marker),
+ * rooted at {@code freeway.cloud.storage.base-path}
  * (default {@code cloud-storage} in the working directory). Put/delete emit
  * domain events on the {@link EventBus}. Decoupled from the core
  * discovery/rpc/config/observe/resilience chain.
@@ -36,5 +39,14 @@ public final class CloudStorageModule implements ModuleEx {
             })
             .marker(Local.class)
             ;
+
+        b.contribute(RuntimeHook.class)
+            .add(CloudHooks.STORAGE, new RuntimeHook() {
+                @Override
+                public void start(Container container) {
+                    BackendTypeGuard.warnIfExternal(
+                        container.get(SymbolSource.class), CloudConfigKeys.STORAGE_TYPE, "storage");
+                }
+            });
     }
 }

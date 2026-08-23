@@ -47,6 +47,8 @@ class HealthEndpointsTest {
             assertEquals(200, ready.statusCode());
             assertTrue(ready.body().contains("\"ok\""));
             assertTrue(ready.body().contains("\"cloud\""));
+            assertTrue(ready.body().contains("registry"),
+                "the built-in registry contributor must be aggregated");
         }
     }
 
@@ -70,10 +72,10 @@ class HealthEndpointsTest {
     static class FailingContributorModule implements ModuleEx {
         @Override
         public void bind(Binder b) {
-            b.contribute(CloudHealthContributor.class).add("registry", new CloudHealthContributor() {
+            b.contribute(CloudHealthContributor.class).add("fake-registry", new CloudHealthContributor() {
                 @Override
                 public String name() {
-                    return "registry";
+                    return "fake-registry";
                 }
 
                 @Override

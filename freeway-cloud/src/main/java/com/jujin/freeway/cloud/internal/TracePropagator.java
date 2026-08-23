@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.context.TraceContext;
@@ -26,6 +25,9 @@ public final class TracePropagator implements Propagator {
     @Override
     public InvocationContext extract(Map<String, String> headers) {
         TraceContext trace = TraceContext.fromTraceparent(headers.get(HEADER_TRACEPARENT)).orElse(null);
-        return InvocationContext.of(trace, null, Baggage.empty());
+        // Unset baggage is null (not Baggage.empty()): the propagation filter
+        // merges parts by "non-null wins", so a later propagator's baggage
+        // must not be clobbered by an empty value here.
+        return InvocationContext.of(trace, null, null);
     }
 }

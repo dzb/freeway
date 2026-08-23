@@ -1,7 +1,9 @@
 package com.jujin.freeway.cloud.config;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
+import com.jujin.freeway.cloud.internal.BackendTypeGuard;
 import com.jujin.freeway.cloud.internal.CloudConfigDefault;
 import com.jujin.freeway.cloud.internal.CloudConfigSymbolProvider;
 import com.jujin.freeway.ioc.Binder;
@@ -12,6 +14,7 @@ import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
@@ -21,14 +24,14 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <ul>
  *   <li>{@link CloudConfig} → {@link CloudConfigDefault} (WatchService file hot
- *       reload, {@code @Local} + {@code }); change notifications are
+ *       reload, {@code @Local} marker); change notifications are
  *       published as {@link ConfigChangedEvent} on the {@link EventBus}.</li>
  *   <li>Dynamic {@link SymbolProvider} contribution — {@code @Value}/
  *       {@code @Symbol} resolution reads the latest config value. Registered as
  *       a class contribution (on-demand facade) and the file path comes from a
  *       system property, so provider lookup never recurses into symbol
  *       resolution.</li>
- *   <li>{@code freeway.cloud.config} {@link RuntimeHook} — stops the watch
+ *   <li>{@link CloudHooks#CONFIG} {@link RuntimeHook} — stops the watch
  *       thread on shutdown (before the HTTP server, per the lifecycle
  *       topology).</li>
  * </ul>
@@ -53,10 +56,16 @@ public final class CloudConfigModule implements ModuleEx {
         b.contribute(SymbolProvider.class).add(CloudConfigSymbolProvider.class);
 
         b.contribute(RuntimeHook.class)
-            .add("freeway.cloud.config", new RuntimeHook() {
+            .add(CloudHooks.CONFIG, new RuntimeHook() {
                 @Override
                 public void start(Container container) {
-                    // No persistent connection for the file backend.
+                    // Type-check must run here, not in the provider: resolving
+                    // SymbolSource inside the provider would instantiate the
+                    // full provider chain (including this module's own
+                    // CloudConfigSymbolProvider) while CloudConfig is still
+                    // being constructed — a circular dependency.
+                    BackendTypeGuard.warnIfExternal(
+                        container.get(SymbolSource.class), CloudConfigKeys.CONFIG_TYPE, "config");
                 }
 
                 @Override
@@ -67,7 +76,7 @@ public final class CloudConfigModule implements ModuleEx {
                     }
                 }
             })
-            .before("freeway.http.server");
+            .before(CloudHooks.HTTP_SERVER);
     }
 
     /**

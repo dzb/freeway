@@ -364,8 +364,10 @@ public interface SecretStore {
 - **传输加密（mTLS）**：`TransportSecurity` 抽象（`rpc/` 包），core 用 JDK
   `SSLContext` + 文件型证书加载（`freeway.cloud.rpc.tls.*` 键，PKCS12
   keystore/truststore）；Vault 动态证书属 ext。默认 `NONE`（开发态明文，
-  `@None`），配置 keystore 后构建 mTLS 上下文（`@Mtls`）。出站
-  `CloudHttpClient` 应用它。
+  不标 marker），配置 keystore 后构建文件型 mTLS 上下文。`@None`/`@Mtls`
+  是 marker 契约面（§6.1），由 ext 适配器交付专用传输安全实现时使用——
+  core 本地绑定不标 marker，因为能力由运行时配置决定，静态 marker
+  表达不了条件能力。出站 `CloudHttpClient` 应用它。
 - **身份传播**：`PrincipalContext` 经 `InvocationContext` +
   `AuthPropagator` 注入/提取 `x-principal` / `x-principal-roles` 头（与
   traceparent 同序，同一管线）。传播**已验证身份**，不传播原始凭据。

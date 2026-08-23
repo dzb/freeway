@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **EventBus 入站通道（freeway-ioc）** — 新增 `publishInbound(Object)` /
+  `publishInbound(String, Object)` 发布外部来源事件（如 MQ 订阅者回灌）:本地分发语义与
+  `publish` 完全一致（含 Defer 缓冲/DeadEvent）,但**绝不回桥接 MQ**——入站事件再桥接会
+  无限循环回队列。`EventBridge` 新增 `Channel` 枚举（CLASS/TOPIC）与三参
+  `send(topic, event, channel)` 默认方法（二参实现不受影响）,桥接适配器可据此在线上信封
+  标记分发通道,入站侧按标记对称分发。配套的 Kafka 适配器改动见 freeway-ext。
+- **`EventBus.Keyed` 分区键（freeway-ioc）** — 事件类可选实现嵌套契约
+  `EventBus.Keyed { String key(); }`（与 `EventBus.Stoppable` 同构）,桥接适配器以其
+  返回值作为消息 key（Kafka record key）:同一聚合的事件跨 JVM 保持有序、消费端可按 key
+  并行处理。未实现的事件仍以 null key 桥接（无跨 JVM 排序保证）。事件与框架零耦合。
+- **cloud type 键校验（freeway-cloud）** — `BackendTypeGuard`:本地后端装配时校验
+  `freeway.cloud.{config,secret,storage,discovery,registry}.type` 键,值为非 `local`
+  且未装对应 ext 适配器时 warn（不再静默忽略）,对齐 marker 回退的"非完全静默"原则。
+- **观测接线（freeway-cloud）** — 安装 `CloudObserveModule` 后 `CloudHttpClient` 调用
+  打 span（`cloud.rpc.<service>`）并记指标（`cloud.rpc.calls`/`failures`/`duration`）;
+  `freeway.cloud.rpc.trace.enabled`（默认 true）控制 span 创建,指标始终记录。
+- **Baggage 跨进程传播（freeway-cloud）** — 实现 `BaggagePropagator`（W3C `baggage`
+  头,k=v 逗号分隔）,应用自有 KV 随 HTTP 请求双向跨越服务边界,兑现 `Baggage` 的
+  "propagated across service boundaries" 承诺;trace/auth propagator 的 extract 空值
+  语义修正（未设置返回 null,不再用空值覆盖后续传播的 baggage）。
+- **cloud 结构清理（freeway-cloud）** — `TransportSecurity` 绑定去掉静态 `@None`
+  marker（能力由运行时配置决定,静态 marker 表达不了条件能力;`@Mtls` 保留为 ext
+  契约面）;hook 名集中到 `CloudHooks` 常量并引用 `HttpModule.SERVER_HOOK`;删除唯一
+  冗余 `.scope(SINGLETON)`（默认即单例）;`PropagationFilter` 下沉 `internal`;
+  `/health/ready` 内置 `RegistryHealthContributor`（registry 连通性 + 实例数,ext
+  后端连通性由适配器提供）;修复 4 处空 `{@code }` javadoc 块。
+
 - **SLF4J provider 选择确定性化（freeway-commons）** — `LogBootstrap.ensureProvider()` 在 SLF4J
   初始化前探测 classpath 上的外部 provider 并固定 `slf4j.provider` 系统属性（优先序
   logback > log4j > slf4j-simple），外部 provider 存在时 JUL 回退不再启用。此前 provider

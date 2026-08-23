@@ -1,6 +1,8 @@
 package com.jujin.freeway.cloud.context;
 
 import com.jujin.freeway.cloud.internal.AuthPropagator;
+import com.jujin.freeway.cloud.internal.BaggagePropagator;
+import com.jujin.freeway.cloud.internal.PropagationFilter;
 import com.jujin.freeway.cloud.internal.TracePropagator;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.ioc.Binder;
@@ -21,6 +23,9 @@ public final class CloudContextModule implements ModuleEx {
         // Container-created so the auth propagator can read the
         // freeway.cloud.auth.extract.enabled switch from the SymbolSource.
         b.contribute(Propagator.class).add(AuthPropagator.class);
+        // After trace/auth: their extract() leaves unset baggage as null, so
+        // the merge keeps the baggage parsed here (null wins only when absent).
+        b.contribute(Propagator.class).add("baggage", new BaggagePropagator());
         b.contribute(HttpFilter.class).add(PropagationFilter.class);
     }
 }

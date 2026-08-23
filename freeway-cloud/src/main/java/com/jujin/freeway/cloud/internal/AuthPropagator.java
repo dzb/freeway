@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.Propagator;
@@ -52,11 +51,11 @@ public final class AuthPropagator implements Propagator {
     public InvocationContext extract(Map<String, String> headers) {
         if (!extractEnabled) {
             // Secure default: untrusted inbound identity headers are ignored.
-            return InvocationContext.of(null, null, Baggage.empty());
+            return InvocationContext.of(null, null, null);
         }
         String name = headers.get(HEADER_PRINCIPAL);
         if (name == null || name.isBlank()) {
-            return InvocationContext.of(null, null, Baggage.empty());
+            return InvocationContext.of(null, null, null);
         }
         String rolesHeader = headers.get(HEADER_ROLES);
         List<String> roles = rolesHeader == null ? List.of()
@@ -64,6 +63,6 @@ public final class AuthPropagator implements Propagator {
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toList();
-        return InvocationContext.of(null, PrincipalContext.of(name, roles), Baggage.empty());
+        return InvocationContext.of(null, PrincipalContext.of(name, roles), null);
     }
 }

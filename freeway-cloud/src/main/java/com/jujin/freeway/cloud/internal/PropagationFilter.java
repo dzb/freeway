@@ -1,5 +1,7 @@
-package com.jujin.freeway.cloud.context;
+package com.jujin.freeway.cloud.internal;
 
+import com.jujin.freeway.cloud.context.InvocationContext;
+import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.RouteHandler;

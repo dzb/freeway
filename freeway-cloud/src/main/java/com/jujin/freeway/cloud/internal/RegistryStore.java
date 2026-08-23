@@ -63,6 +63,15 @@ public final class RegistryStore {
         }
     }
 
+    /** Total registered instances across all services (readiness reporting). */
+    public int instanceCount() {
+        int count = 0;
+        for (Map<String, Entry> instances : byService.values()) {
+            count += instances.size();
+        }
+        return count;
+    }
+
     /**
      * Live && ready instances that have not gone stale. Stale entries are
      * evicted (removed) on read, not merely filtered out — the store's size
