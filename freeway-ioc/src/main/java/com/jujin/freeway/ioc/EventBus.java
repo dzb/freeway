@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  * optional {@code Defer}-scoped buffering, async dispatch, and an optional
  * external event bridge.
  *
- * <p><b>Delivery semantics:</b> at-most-once, best-effort. A throwing
+ * <p>Delivery semantics:</b> at-most-once, best-effort. A throwing
  * subscriber is isolated (other subscribers still receive the event) and
  * counted in {@link #stats()}; the event is not retried. A failing bridge is
  * similarly isolated. Inside a {@code Defer} scope (e.g. a DB transaction),
@@ -40,6 +40,13 @@ import java.util.function.Supplier;
  * ordering guarantee; {@link #publishOrdered} provides a globally ordered
  * channel. Runtime subscribers live until {@link #close()} or explicit
  * {@link #unsubscribe}.
+ *
+ * <p><b>Inbound events:</b> events received from an external source (e.g. an
+ * MQ subscriber) must be published via {@link #publishInbound(Object)} /
+ * {@link #publishInbound(String, Object)} — they are delivered to local
+ * subscribers exactly like {@link #publish}, but are never re-bridged to the
+ * external MQ. Re-bridging inbound traffic would loop the event back into
+ * the queue and re-dispatch it indefinitely.</p>
  */
 public final class EventBus implements AutoCloseable {
 
@@ -116,13 +123,31 @@ public final class EventBus implements AutoCloseable {
         // event that fires when zero subscribers exist, and must not be
         // re-deferred during drain of committed events.
         if (Defer.isActive() && !(event instanceof DeadEvent)) {
-            Defer.defer(() -> dispatchEvent(event));
+            Defer.defer(() -> dispatchEvent(event, true));
             return;
         }
-        dispatchEvent(event);
+        dispatchEvent(event, true);
     }
 
-    private <E> void dispatchEvent(E event) {
+    /**
+     * Publish an event received from an external source (e.g. a Kafka
+     * subscriber). Delivered to local subscribers exactly like
+     * {@link #publish(Object)}, but never re-bridged to the external MQ —
+     * inbound events must not loop back into the queue.
+     *
+     * <p>Respects the active {@code Defer} scope like {@link #publish}.</p>
+     */
+    public <E> void publishInbound(E event) {
+        Objects.requireNonNull(event, "event");
+        requireOpen();
+        if (Defer.isActive() && !(event instanceof DeadEvent)) {
+            Defer.defer(() -> dispatchEvent(event, false));
+            return;
+        }
+        dispatchEvent(event, false);
+    }
+
+    private <E> void dispatchEvent(E event, boolean bridgeToMq) {
         // Events buffered in a Defer scope before close() may drain after
         // close: delivering to module subscribers only (runtime lists are
         // cleared) would be partial, and the zero-subscriber DeadEvent
@@ -167,14 +192,14 @@ public final class EventBus implements AutoCloseable {
             publish(new DeadEvent(this, event));
         }
 
-        if (bridge != null && !(event instanceof DeadEvent)) {
+        if (bridgeToMq && bridge != null && !(event instanceof DeadEvent)) {
             // A stopped event was short-circuited by its subscribers — it must
             // not leave the process via the bridge.
             if (event instanceof Stoppable s && s.isStopped()) {
                 return;
             }
             try {
-                bridge.send(resolveTopic(eventType), event);
+                bridge.send(resolveTopic(eventType), event, EventBridge.Channel.CLASS);
             } catch (Exception ex) {
                 LOG.warn(
                     "Event bridge failed for {}",
@@ -207,13 +232,31 @@ public final class EventBus implements AutoCloseable {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
         if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload));
+            Defer.defer(() -> dispatchTopic(topic, payload, true));
             return;
         }
-        dispatchTopic(topic, payload);
+        dispatchTopic(topic, payload, true);
     }
 
-    private void dispatchTopic(String topic, Object payload) {
+    /**
+     * Publish a payload received from an external source on a string topic.
+     * Delivered to local topic subscribers exactly like
+     * {@link #publish(String, Object)}, but never re-bridged to the external
+     * MQ — inbound events must not loop back into the queue.
+     *
+     * <p>Respects the active {@code Defer} scope like {@link #publish}.</p>
+     */
+    public void publishInbound(String topic, Object payload) {
+        Objects.requireNonNull(topic, "topic");
+        requireOpen();
+        if (Defer.isActive()) {
+            Defer.defer(() -> dispatchTopic(topic, payload, false));
+            return;
+        }
+        dispatchTopic(topic, payload, false);
+    }
+
+    private void dispatchTopic(String topic, Object payload, boolean bridgeToMq) {
         if (closed) {
             return;
         }
@@ -248,9 +291,9 @@ public final class EventBus implements AutoCloseable {
             publish(new DeadEvent(this, payload));
         }
 
-        if (bridge != null) {
+        if (bridgeToMq && bridge != null) {
             try {
-                bridge.send(topic, payload);
+                bridge.send(topic, payload, EventBridge.Channel.TOPIC);
             } catch (Exception ex) {
                 LOG.warn("Event bridge failed for topic '{}'", topic, ex);
             }
@@ -635,5 +678,23 @@ public final class EventBus implements AutoCloseable {
     public interface Stoppable {
         void stop();
         boolean isStopped();
+    }
+
+    /**
+     * Events that carry a partitioning key for cross-JVM ordering.
+     *
+     * <p>Optional contract: when an event type implements this interface,
+     * external event bridges (Kafka, RabbitMQ, ...) use {@link #key()} as the
+     * message key, so the broker keeps events of the same aggregate ordered
+     * and parallel consumers stay per-key serial. Events that do not
+     * implement it are bridged with a null key — no cross-JVM ordering
+     * guarantee and no key-based parallelism on the consuming side.</p>
+     *
+     * <p>Passive contract like {@link Stoppable}: the bus and its bridges
+     * only ever read it; the event type opts in with zero coupling.</p>
+     */
+    public interface Keyed {
+        /** Partitioning key — the ordering domain, e.g. the aggregate id. */
+        String key();
     }
 }
