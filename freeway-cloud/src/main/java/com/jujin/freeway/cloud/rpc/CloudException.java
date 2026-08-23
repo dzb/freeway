@@ -2,9 +2,10 @@ package com.jujin.freeway.cloud.rpc;
 
 /**
  * Remote invocation failure. {@link #retryable()} distinguishes transport
- * failures (connect/timeout, 5xx — retryable) from client errors (4xx — not
- * retryable), and {@link #status()} carries the HTTP status when the failure
- * crossed the wire ({@code -1} for transport failures).
+ * failures (connect/timeout, 5xx — retryable) from client errors (4xx) and
+ * local rejections (no instance / circuit open / rate limited / interrupted —
+ * not retryable), and {@link #status()} carries the HTTP status when the
+ * failure crossed the wire ({@code -1} for transport failures).
  */
 public class CloudException extends RuntimeException {
 
@@ -41,6 +42,12 @@ public class CloudException extends RuntimeException {
     public static CloudException timeout(String serviceId, Throwable cause) {
         return new CloudException("Request timeout for service '" + serviceId + "'",
             true, -1, cause);
+    }
+
+    /** The calling thread was interrupted — never retried (the caller asked to stop). */
+    public static CloudException interrupted(String serviceId, Throwable cause) {
+        return new CloudException("Request interrupted for service '" + serviceId + "'",
+            false, -1, cause);
     }
 
     public static CloudException http(String serviceId, int status) {

@@ -3,12 +3,15 @@ package com.jujin.freeway.cloud;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.cloud.internal.MeterRegistryDefault;
+import com.jujin.freeway.cloud.internal.TracePropagator;
 import com.jujin.freeway.cloud.internal.TracerDefault;
 import com.jujin.freeway.cloud.observe.Tracer;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -59,6 +62,30 @@ class ObserveTest {
         }
         assertNull(MDC.get("traceId"), "span close restores the pre-span MDC state");
         assertNull(MDC.get("spanId"));
+    }
+
+    @Test
+    void nestedSpansChainWithoutScopeAndBindContext() {
+        TracerDefault tracer = new TracerDefault();
+        try (Tracer.Span outer = tracer.start("outer")) {
+            TraceContext outerCtx = InvocationContext.current().orElseThrow().trace();
+            assertEquals(outerCtx.traceId(), MDC.get("traceId"));
+            try (Tracer.Span inner = tracer.start("inner")) {
+                TraceContext innerCtx = InvocationContext.current().orElseThrow().trace();
+                assertEquals(outerCtx.traceId(), innerCtx.traceId(),
+                    "nested spans share the trace instead of becoming sibling roots");
+                assertEquals(outerCtx.spanId(), innerCtx.parentSpanId(),
+                    "nested spans chain parent → child");
+                // Outbound propagation must see the ambient context (the same
+                // lookup CloudHttpClient uses before injecting traceparent).
+                Map<String, String> headers = new HashMap<>();
+                new TracePropagator().inject(InvocationContext.current().orElseThrow(), headers);
+                assertTrue(headers.containsKey(TracePropagator.HEADER_TRACEPARENT),
+                    "outbound injection sees the active trace outside any scoped binding");
+            }
+        }
+        assertNull(MDC.get("traceId"), "MDC restored after nested spans close");
+        assertTrue(InvocationContext.current().isEmpty(), "ambient context cleared on close");
     }
 
     @Test

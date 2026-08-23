@@ -33,7 +33,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 class CloudConfigModuleTest {
     @BeforeEach
     void randomPort() {
-        System.setProperty("server.port", "0");
+        // FreewayApp always starts the HTTP server hook: bind an ephemeral port
+        // so the suite never collides with occupied ports.
+        System.setProperty(com.jujin.freeway.http.HttpConfigKeys.SERVER_PORT, "0");
     }
 
 
@@ -43,6 +45,7 @@ class CloudConfigModuleTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.CONFIG_FILE);
+        System.clearProperty(com.jujin.freeway.http.HttpConfigKeys.SERVER_PORT);
     }
 
     @Test

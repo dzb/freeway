@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
@@ -65,6 +66,42 @@ class CloudConfigDefaultTest {
             assertEquals("k", events.get(0).key());
             assertEquals("v1", events.get(0).oldValue());
             assertEquals("v2", events.get(0).newValue());
+        }
+    }
+
+    @Test
+    void fileDeletionNotifiesRemovals() throws Exception {
+        Path file = dir.resolve("app.properties");
+        Files.writeString(file, "k=v1\n");
+        java.util.List<com.jujin.freeway.cloud.config.ConfigChangedEvent> events =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+        try (CloudConfigDefault config = new CloudConfigDefault(file, events::add)) {
+            AtomicReference<String> seen = new AtomicReference<>("v1");
+            try (ConfigSubscription sub = config.watch("k", seen::set)) {
+                Files.delete(file);
+                await(() -> !events.isEmpty() && events.get(0).newValue() == null);
+                assertEquals("k", events.get(0).key(), "deletion must publish a removal event");
+                assertEquals("v1", events.get(0).oldValue());
+                assertNull(events.get(0).newValue());
+                assertEquals(0, config.asMap().size(), "deleted file yields an empty snapshot");
+                assertEquals("v1", seen.get(),
+                    "value listeners are not invoked with a null removal — the event signals it");
+            }
+        }
+    }
+
+    @Test
+    void keysRemovedByRewriteAreDiffed() throws Exception {
+        Path file = dir.resolve("app.properties");
+        Files.writeString(file, "a=1\nb=2\n");
+        java.util.List<com.jujin.freeway.cloud.config.ConfigChangedEvent> events =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+        try (CloudConfigDefault config = new CloudConfigDefault(file, events::add)) {
+            Files.writeString(file, "b=2\n");
+            await(() -> !events.isEmpty());
+            assertEquals("a", events.get(0).key(), "a key removed by a rewrite must be diffed");
+            assertEquals("1", events.get(0).oldValue());
+            assertNull(events.get(0).newValue());
         }
     }
 

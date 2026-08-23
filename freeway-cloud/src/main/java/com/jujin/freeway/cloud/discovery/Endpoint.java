@@ -36,9 +36,14 @@ public record Endpoint(String scheme, String host, int port, String basePath) {
         return new Endpoint(scheme, host, port, basePath);
     }
 
-    /** Base URI including the basePath. */
+    /**
+     * Base URI including the basePath. IPv6 literal hosts are bracketed per
+     * RFC 3986 ({@code http://[::1]:8080}) — unbracketed, the JDK
+     * {@code HttpClient} rejects the URI outright.
+     */
     public URI uri() {
-        return URI.create(scheme + "://" + host + ":" + port + basePath);
+        String hostPart = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
+        return URI.create(scheme + "://" + hostPart + ":" + port + basePath);
     }
 
     /** New endpoint with the same port/path but a different host (instance identity is preserved). */

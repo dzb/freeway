@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
+import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.cloud.observe.Tracer;
@@ -10,6 +11,14 @@ import org.slf4j.MDC;
  * {@link InvocationContext} (root when absent) and mirrors traceId/spanId
  * into SLF4J MDC for log correlation. MDC is display-only — context itself
  * travels via ScopedValue, never via the ThreadLocal MDC.
+ *
+ * <p>Spans started outside any structured scope additionally bind their child
+ * context as the thread's {@linkplain InvocationContext#replaceAmbient ambient
+ * fallback} (restored on close). Nested {@code start()} calls then chain
+ * parent → child instead of producing sibling roots, and outbound propagation
+ * ({@code CloudHttpClient}) sees the active trace on such threads. The ambient
+ * tier is same-thread only; cross-thread propagation still requires
+ * {@code PropagationFilter}/{@code runWith}.
  */
 public final class TracerDefault implements Tracer {
 
@@ -31,12 +40,17 @@ public final class TracerDefault implements Tracer {
 
         private final String previousTraceId;
         private final String previousSpanId;
+        private final InvocationContext previousAmbient;
 
         MdcSpan(TraceContext child) {
             this.previousTraceId = MDC.get("traceId");
             this.previousSpanId = MDC.get("spanId");
             MDC.put("traceId", child.traceId());
             MDC.put("spanId", child.spanId());
+            // Bind the child so nested start()/outbound injection discover it.
+            // Save/restore keeps out-of-order close sequences correct.
+            this.previousAmbient = InvocationContext.replaceAmbient(
+                InvocationContext.of(child, null, Baggage.empty()));
         }
 
         @Override
@@ -54,6 +68,7 @@ public final class TracerDefault implements Tracer {
         public void close() {
             restore("traceId", previousTraceId);
             restore("spanId", previousSpanId);
+            InvocationContext.replaceAmbient(previousAmbient); // null clears
         }
 
         private static void restore(String key, String previous) {

@@ -30,7 +30,13 @@ import org.slf4j.LoggerFactory;
 /**
  * File-backed {@link CloudConfig} with {@link WatchService} hot reload: a
  * daemon thread watches the file's directory for create/modify/delete events,
- * re-reads the properties file and notifies per-key listeners.
+ * re-reads the properties file and notifies watchers of every diff.
+ *
+ * <p>Notifications cover removals too: a key deleted from the file (or the
+ * whole file deleted) publishes a {@link ConfigChangedEvent} with a
+ * {@code null} newValue; {@code watch()} listeners are value consumers and are
+ * only invoked for keys that still have a value — removals signal via the
+ * event only. The initial load notifies nothing.
  */
 public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
 
@@ -64,14 +70,19 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
                     StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE);
                 thread = new Thread(this::watchLoop, "cloud-config-watch-" + this.file.getFileName());
                 thread.setDaemon(true);
-                thread.start();
             } catch (IOException e) {
                 LOG.warn("Config watch disabled for {}: {}", this.file, e.getMessage());
                 ws = null;
+                thread = null;
             }
         }
+        // Assign the fields BEFORE start(): watchLoop dereferences watchService
+        // on its first take() and can outrun the constructor's tail otherwise.
         this.watchService = ws;
         this.watcher = thread;
+        if (thread != null) {
+            thread.start();
+        }
     }
 
     @Override
@@ -84,6 +95,12 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
         return Map.copyOf(values.get());
     }
 
+    /**
+     * {@code listener} receives every non-null value change of {@code key}.
+     * When the key is removed from the file (or the file is deleted) only the
+     * {@link ConfigChangedEvent} (newValue {@code null}) signals it — value
+     * listeners are not invoked with a null value.
+     */
     @Override
     public ConfigSubscription watch(String key, Consumer<String> listener) {
         listeners.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>()).add(listener);
@@ -91,35 +108,49 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
     }
 
     @Override
-    public void reload() {
+    public synchronized void reload() {
+        Map<String, String> next;
         if (!Files.isRegularFile(file)) {
-            values.set(Map.of());
+            next = Map.of(); // deleted/absent: empty config — removals are notified below
+        } else {
+            Properties props = new Properties();
+            try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                props.load(reader);
+            } catch (IOException e) {
+                LOG.warn("Failed to read config file {}: {}", file, e.getMessage());
+                return; // keep the last good snapshot on a partial/unreadable file
+            }
+            Map<String, String> map = new java.util.HashMap<>();
+            props.forEach((k, v) -> map.put(String.valueOf(k), String.valueOf(v)));
+            next = Map.copyOf(map);
+        }
+        publishDiff(values.getAndSet(next), next);
+    }
+
+    /**
+     * Notifies watchers of every key whose value changed or was removed
+     * (union of both key sets, sorted for deterministic order). The initial
+     * load is not a change and notifies nothing.
+     */
+    private void publishDiff(Map<String, String> previous, Map<String, String> snapshot) {
+        if (!loaded) {
+            loaded = true;
             return;
         }
-        Properties props = new Properties();
-        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            props.load(reader);
-        } catch (IOException e) {
-            LOG.warn("Failed to read config file {}: {}", file, e.getMessage());
-            return;
-        }
-        Map<String, String> previous = values.get();
-        Map<String, String> next = new java.util.HashMap<>();
-        props.forEach((k, v) -> next.put(String.valueOf(k), String.valueOf(v)));
-        Map<String, String> snapshot = Map.copyOf(next);
-        values.set(snapshot);
-        boolean notifyChanges = loaded;
-        loaded = true;
-        for (Map.Entry<String, String> entry : snapshot.entrySet()) {
-            String old = previous.get(entry.getKey());
-            if (!Objects.equals(old, entry.getValue())) {
-                if (notifyChanges) {
-                    Consumer<ConfigChangedEvent> cb = onChange;
-                    if (cb != null) {
-                        cb.accept(new ConfigChangedEvent(entry.getKey(), old, entry.getValue()));
-                    }
-                    notify(entry.getKey(), entry.getValue());
-                }
+        java.util.TreeSet<String> keys = new java.util.TreeSet<>(previous.keySet());
+        keys.addAll(snapshot.keySet());
+        for (String key : keys) {
+            String oldValue = previous.get(key);
+            String newValue = snapshot.get(key);
+            if (Objects.equals(oldValue, newValue)) {
+                continue;
+            }
+            Consumer<ConfigChangedEvent> cb = onChange;
+            if (cb != null) {
+                cb.accept(new ConfigChangedEvent(key, oldValue, newValue)); // null new = removed
+            }
+            if (newValue != null) {
+                notify(key, newValue);
             }
         }
     }

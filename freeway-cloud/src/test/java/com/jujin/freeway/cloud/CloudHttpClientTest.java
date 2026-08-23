@@ -21,6 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -206,6 +208,37 @@ class CloudHttpClientTest {
             System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
             System.clearProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW);
             FlippingModule.fail.set(true);
+        }
+    }
+
+    @Test
+    void interruptedCallIsNotRetried() throws Exception {
+        try (AppRuntime app = FreewayApp.run(new SlowModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            app.get(ServiceRegistry.class).register(
+                ServiceInstance.of("slow", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            CloudHttpClient client = app.get(CloudHttpClient.class);
+
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            AtomicBoolean interruptFlagKept = new AtomicBoolean();
+            Thread caller = Thread.ofPlatform().start(() -> {
+                try {
+                    client.call("slow", CloudRequest.get("/api/slow"));
+                } catch (CloudException ex) {
+                    failure.set(ex);
+                    interruptFlagKept.set(Thread.currentThread().isInterrupted());
+                }
+            });
+            Thread.sleep(300); // let the call block mid-send
+            caller.interrupt();
+            caller.join(5000);
+
+            assertTrue(failure.get() instanceof CloudException, "got: " + failure.get());
+            CloudException ex = (CloudException) failure.get();
+            assertFalse(ex.retryable(),
+                "an interrupted call must surface immediately — the caller asked to stop");
+            assertTrue(ex.getMessage().contains("interrupt"));
+            assertTrue(interruptFlagKept.get(), "interrupt flag preserved for the caller");
         }
     }
 

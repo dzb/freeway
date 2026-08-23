@@ -17,6 +17,16 @@ public final class InvocationContext {
 
     private static final ScopedValue<InvocationContext> CURRENT = ScopedValue.newInstance();
 
+    /**
+     * Ambient fallback for threads running outside any structured scope
+     * (background jobs, startup tasks, tests). Same-thread only — unlike the
+     * ScopedValue tier it never propagates to child threads. Written by
+     * context-aware helpers (e.g. {@code TracerDefault} spans) via
+     * {@link #replaceAmbient}; {@link #current()} reads it when no scoped
+     * binding exists.
+     */
+    private static final ThreadLocal<InvocationContext> AMBIENT = new ThreadLocal<>();
+
     private final TraceContext trace;
     private final PrincipalContext principal;
     private final Baggage baggage;
@@ -32,13 +42,33 @@ public final class InvocationContext {
         return new InvocationContext(trace, principal, baggage);
     }
 
-    /** The context bound to the current virtual thread, if any. */
+    /**
+     * The context bound to the current thread: the structured
+     * {@link ScopedValue} binding when one exists (propagates to virtual-thread
+     * children), otherwise this thread's ambient fallback.
+     */
     public static Optional<InvocationContext> current() {
         try {
-            return Optional.ofNullable(CURRENT.get());
-        } catch (NoSuchElementException e) {
-            return Optional.empty();
+            return Optional.of(CURRENT.get());
+        } catch (NoSuchElementException unscoped) {
+            return Optional.ofNullable(AMBIENT.get());
         }
+    }
+
+    /**
+     * Replaces this thread's ambient fallback and returns the previous one
+     * ({@code null} when none was set). Callers must restore the returned
+     * value when their scope ends — save/restore stays correct even for
+     * out-of-order closes. Pass {@code null} to clear.
+     */
+    public static InvocationContext replaceAmbient(InvocationContext ctx) {
+        InvocationContext previous = AMBIENT.get();
+        if (ctx == null) {
+            AMBIENT.remove();
+        } else {
+            AMBIENT.set(ctx);
+        }
+        return previous;
     }
 
     /** Runs {@code work} with this context bound for the current thread (and its virtual-thread children). */
