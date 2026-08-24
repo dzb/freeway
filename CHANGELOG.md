@@ -5,7 +5,30 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.9] — 2026-08-24
+
+### Added
+
+- **EventBus 流式视图（freeway-ioc）** — 新增 `stream(Class)` / `stream(String)` 返回 JDK
+  `Flow.Publisher`（零外部依赖，规范即 `java.util.concurrent.Flow`）。桥接器基于
+  `SubmissionPublisher`：冷启动懒挂载（首次下游 subscribe 才向总线注册，未消费零泄漏）、
+  背压溢出即弃（不阻塞总线派发线程）、任一下游 cancel 即整体摘除、close 时全部流收到
+  onComplete。活跃流是真实订阅者——被流的主题不再发 DeadEvent，delivered 按桥接计一次。
+- **SSE 流泵接（freeway-http）** — `SseEmitter.from(Flow.Publisher)` /
+  `from(publisher, mapper)` 把事件流直通 SSE 响应：request(1) 单飞背压沿 TCP 逐级上传，
+  阻塞当前虚拟线程直至源结束（配合 handler 的 try-with-resources），源完成关响应、源失败
+  debug 日志后关闭、客户端断开经 latch 事件驱动唤醒并取消上游订阅。心跳在空闲期照常保活。
+- **CallBus 请求-应答总线（freeway-ioc）** — topic 寻址的本地 RPC：提供者
+  `register(mapping, target)`（public 方法即 `mapping.methodName` 主题，槽位式热交换、重载
+  拒绝）；消费方 `consumer(mapping, api)` JDK 动态代理或 `call(topic, List args[, Duration])`
+  直接调用；位置参数编码（不依赖 `-parameters`）；异常统一经 stage 传递（RuntimeException
+  原样、检查型按 join/get 惯例包装）；无监听抛 `DeadCallException`（DeadEvent 的应答侧对
+  应物），代理自动降级到接口 default 方法。事务内调用内联派发、语义等同本地方法调用——
+  提交后才该发生的副作用是事实，发布到 EventBus 的 Defer 缓冲（避免阻塞取答死锁）。
+  Metrics 四计数器（callbus.called/served/failed/dead）镜像 eventbus 风格。
+- **CallBus 调用链切面（freeway-ioc）** — `advise([selector,] advice)` 环绕切面：值空间
+  短路（返回即缓存命中应答 / 抛出即熔断快速失败）、注册序分层次、advice 可见业务异常
+  （反射 ITE 已在终端链节解包）。与 freeway-ioc AOP 的 `MethodAdvice` 同构。
 
 ### Changed
 
