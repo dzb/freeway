@@ -22,14 +22,34 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Flow;
+import java.util.concurrent.SubmissionPublisher;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
  * In-process event bus with class-based and string-topic subscriptions,
- * optional {@code Defer}-scoped buffering, async dispatch, and an optional
- * external event bridge.
+ * optional {@code Defer}-scoped buffering, async dispatch, reactive streams
+ * ({@link #stream(Class)}/{@link #stream(String)}, JDK {@link Flow}), and an
+ * optional external event bridge.
+ *
+ * <p><b>The message domain has three channels:</b></p>
+ * <ul>
+ *   <li>broadcast — {@link #publish}: facts about what happened; topic
+ *       grammar is past tense ({@code user.created});</li>
+ *   <li>request-reply — {@link CallBus#call}/{@link CallBus#consumer}:
+ *       commands and queries; topic grammar is {@code mapping.methodName}
+ *       ({@code user.getUser}); lives in its own registry, never bridged
+ *       to MQ;</li>
+ *   <li>streams — {@link #stream(Class)}/{@link #stream(String)}: a
+ *       {@link Flow.Publisher} view over the same subscriptions as
+ *       broadcast.</li>
+ * </ul>
+ * <p>Broadcast and streams share one subscriber registry; calls are a
+ * separate world. The grammatical split — facts vs commands — is what
+ * keeps the two topic namespaces from tangling.</p>
  *
  * <p>Delivery semantics:</b> at-most-once, best-effort. A throwing
  * subscriber is isolated (other subscribers still receive the event) and
@@ -74,6 +94,9 @@ public final class EventBus implements AutoCloseable {
         new ConcurrentHashMap<>();
     private final Map<String, List<Subscription<?>>> runtimeTopicSubs =
         new ConcurrentHashMap<>();
+    /** Live stream bridges, closed (and detached) on {@link #close()}. */
+    private final Set<EventStreamBridge<?>> streamBridges =
+        ConcurrentHashMap.newKeySet();
 
     @Inject
     public EventBus(Container container) {
@@ -426,6 +449,133 @@ public final class EventBus implements AutoCloseable {
         }
     }
 
+    // ==================== reactive streams (JDK Flow) ====================
+
+    /**
+     * Streams class-matched events as a JDK {@link Flow.Publisher} — the
+     * reactive-streams contract built into the JDK since 9, no external
+     * dependency. The publisher is cold-lazy: the underlying bus
+     * subscription is created on the first downstream {@code subscribe},
+     * so an unconsumed stream holds nothing.
+     *
+     * <p>Backpressure: downstream demand is honored via
+     * {@link SubmissionPublisher}; a consumer that cannot keep up
+     * overflow-drops events (non-blocking) rather than stalling bus
+     * dispatch for everyone else. Dropped events are logged at debug level.</p>
+     *
+     * <p>Lifecycle: any downstream {@code cancel()} ends the whole stream —
+     * the bridge detaches from the bus and further subscribers see
+     * {@code onError}. Fan out by calling {@code stream()} once per
+     * consumer, not by sharing one publisher instance. Events published
+     * inside a {@code Defer} scope reach the stream only after the scope
+     * commits, like every other subscription. {@link #close()} completes
+     * all live streams with {@code onComplete}.</p>
+     *
+     * <p>Observability: a live stream is a real subscriber — publishing to
+     * a streamed topic emits no {@link DeadEvent}, and {@link #stats()}
+     * counts one delivery per event per stream regardless of downstream
+     * fan-out (SubmissionPublisher fans out inside the bridge).</p>
+     *
+     * @param eventType event type to match (with supertypes)
+     */
+    public <E> Flow.Publisher<E> stream(Class<E> eventType) {
+        requireOpen();
+        EventStreamBridge<E> bridge = new EventStreamBridge<>();
+        return downstream -> bridge.startAndSubscribe(
+            () -> subscribe(eventType, bridge::onEvent),
+            downstream
+        );
+    }
+
+    /**
+     * Streams payloads on a string topic as a JDK {@link Flow.Publisher}.
+     * Matching is exact (the topic channel), mirroring
+     * {@link #subscribe(String, Consumer)} semantics.
+     *
+     * <p>{@code null} payloads are legal on the topic channel but forbidden
+     * by the Flow specification — they are skipped by streams. See
+     * {@link #stream(Class)} for backpressure and lifecycle semantics.</p>
+     *
+     * @param topic topic to match exactly
+     */
+    public Flow.Publisher<Object> stream(String topic) {
+        requireOpen();
+        EventStreamBridge<Object> bridge = new EventStreamBridge<>();
+        return downstream -> bridge.startAndSubscribe(
+            () -> subscribe(topic, bridge::onEvent),
+            downstream
+        );
+    }
+
+    /** Demand-ignoring subscription for pre-subscribe failure paths. */
+    private static final Flow.Subscription NOOP_SUBSCRIPTION = new Flow.Subscription() {
+        @Override public void request(long n) {}
+        @Override public void cancel() {}
+    };
+
+    /**
+     * Bridges bus dispatch to JDK Flow semantics: {@link SubmissionPublisher}
+     * provides demand tracking, buffering and per-subscriber delivery;
+     * {@link SubmissionPublisher#offer(Object)} keeps dispatch non-blocking.
+     * Lazily attached — the bus subscription exists only after the first
+     * downstream subscribe. Any downstream cancel closes the bridge, which
+     * unsubscribes from the bus and completes remaining subscribers.
+     */
+    private final class EventStreamBridge<T> extends SubmissionPublisher<T> {
+        private final AtomicBoolean attached = new AtomicBoolean();
+        private volatile Runnable detach;
+
+        void startAndSubscribe(
+            Supplier<Subscription<T>> attach,
+            Flow.Subscriber<? super T> downstream
+        ) {
+            if (attached.compareAndSet(false, true)) {
+                Subscription<T> sub = attach.get();
+                detach = () -> unsubscribe(sub);
+                streamBridges.add(this);
+            }
+            if (isClosed()) {
+                // SubmissionPublisher is silent on post-close subscribe;
+                // make the failure explicit instead.
+                downstream.onSubscribe(NOOP_SUBSCRIPTION);
+                downstream.onError(new IllegalStateException("Stream already closed"));
+                return;
+            }
+            subscribe(new Flow.Subscriber<T>() {
+                @Override public void onSubscribe(Flow.Subscription s) {
+                    downstream.onSubscribe(new Flow.Subscription() {
+                        @Override public void request(long n) { s.request(n); }
+                        @Override public void cancel() {
+                            s.cancel();
+                            close();
+                        }
+                    });
+                }
+                @Override public void onNext(T item) { downstream.onNext(item); }
+                @Override public void onError(Throwable t) { downstream.onError(t); }
+                @Override public void onComplete() { downstream.onComplete(); }
+            });
+        }
+
+        /** Non-blocking feed: overflow-drop instead of stalling dispatch. */
+        void onEvent(T event) {
+            if (event == null) return; // topic channel allows null; Flow forbids it
+            // Drop-immediately predicate: never retry, never block dispatch.
+            int lag = offer(event, (subscriber, item) -> false);
+            if (lag < 0) {
+                LOG.debug("Stream subscriber overflowed; event dropped");
+            }
+        }
+
+        @Override
+        public void close() {
+            streamBridges.remove(this);
+            Runnable d = detach;
+            if (d != null) d.run();
+            super.close(); // onComplete to live subscribers
+        }
+    }
+
     // ==================== stats ====================
 
     /**
@@ -510,6 +660,13 @@ public final class EventBus implements AutoCloseable {
         closed = true;
         runtimeSubs.clear();
         runtimeTopicSubs.clear();
+        // Complete live streams so downstream subscribers are not left
+        // hanging on a dead bus.
+        for (EventStreamBridge<?> bridge : streamBridges.toArray(
+            new EventStreamBridge[0]
+        )) {
+            bridge.close();
+        }
         moduleIndex = null;
         // Same lock as the lazy init in executor(): prevents a publishAsync
         // that passed requireOpen() from creating a fresh default executor
