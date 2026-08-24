@@ -1,7 +1,6 @@
 package com.jujin.freeway.ioc;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
@@ -538,7 +537,7 @@ class EventBusTest {
                 "async publish inside a Defer scope must not deliver before the scope ends");
 
         });
-        awaitUntil(2000, () -> log.size() == 1);
+        Await.until(2000, () -> log.size() == 1);
 
         assertEquals(List.of("event"), log,
             "the deferred async event must be delivered after the scope commits");
@@ -716,7 +715,7 @@ class EventBusTest {
         for (int i = 0; i < 50; i++) {
             bus.publishOrdered("key", i);
         }
-        awaitUntil(5000, () -> log.size() == 50);
+        Await.until(5000, () -> log.size() == 50);
         for (int i = 0; i < 50; i++) {
             assertEquals(Integer.valueOf(i), log.get(i),
                 "ordered events must dispatch in submission order");
@@ -737,7 +736,7 @@ class EventBusTest {
             assertEquals(0, log.size(),
                 "ordered events inside a Defer scope must wait for the scope end");
         });
-        awaitUntil(2000, () -> log.size() == 3);
+        Await.until(2000, () -> log.size() == 3);
 
         assertEquals(List.of(1, 2, 3), log,
             "ordered events must drain in call order after the scope commits");
@@ -870,7 +869,7 @@ class EventBusTest {
         Defer.within(() -> {
             bus.publishAsync(new PostCreatedEvent(new Post("x")));
         });
-        awaitUntil(2000, () -> log.size() == 1);
+        Await.until(2000, () -> log.size() == 1);
 
         assertEquals(List.of("event"), log,
             "a deferred async event draining while open must still deliver");
@@ -1002,14 +1001,4 @@ class EventBusTest {
     }
 
     /** Polls until the condition holds, bounding CI flakiness from fixed sleeps. */
-    private static void awaitUntil(long timeoutMs, BooleanSupplier condition)
-            throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (!condition.getAsBoolean()) {
-            if (System.currentTimeMillis() > deadline) {
-                throw new AssertionError("Condition not met within " + timeoutMs + " ms");
-            }
-            Thread.sleep(10);
-        }
-    }
 }
