@@ -2,6 +2,7 @@ package com.jujin.freeway.db.migration;
 import java.net.URL;
 
 import com.jujin.freeway.db.Database;
+import java.sql.SQLException;
 import com.jujin.freeway.db.DatabaseBuilder;
 import com.jujin.freeway.db.DbConfigKeys;
 import com.jujin.freeway.db.PoolConfig;
@@ -15,6 +16,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -594,14 +596,7 @@ class MigrationRunnerTest {
              Database db = tempDb("freeway_lock")) {
             Thread.currentThread().setContextClassLoader(loader);
             // Ensure the tracking table exists before inserting a fake lock
-            db.execute(
-                "create table if not exists _migrations (" +
-                "version varchar(255) primary key," +
-                "description varchar(512)," +
-                "checksum char(64) not null," +
-                "installed_rank int not null," +
-                "executed_at timestamp default current_timestamp)"
-            );
+            createMigrationTable(db);
             // Simulate another instance holding the lock
             db.execute(
                 "insert into _migrations (version, description, checksum, installed_rank) values ('__LOCK__', '', '', -1)"
@@ -614,6 +609,105 @@ class MigrationRunnerTest {
         } finally {
             Thread.currentThread().setContextClassLoader(previous);
         }
+    }
+
+    @Test
+    void freshLockBlocksEvenWithTtlConfigured(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__step.sql"),
+            "create table ttl_fresh (id bigint primary key)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_ttl_fresh")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            createMigrationTable(db);
+            // A just-acquired lock must never be preempted, however small the TTL.
+            db.execute(
+                "insert into _migrations (version, description, checksum, installed_rank) values ('__LOCK__', '', '', -1)"
+            );
+
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations", Duration.ofSeconds(1));
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("Cannot acquire migration lock"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void staleLockIsTakenOverAfterTtl(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__step.sql"),
+            "create table ttl_stale (id bigint primary key)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_ttl_stale")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            createMigrationTable(db);
+            // Simulate a crashed process: the lock row outlived its holder by far
+            // more than the configured TTL.
+            db.execute(
+                "insert into _migrations (version, description, checksum, installed_rank, executed_at) "
+                    + "values ('__LOCK__', '', '', -1, ?)",
+                java.sql.Timestamp.from(java.time.Instant.now().minus(java.time.Duration.ofHours(2)))
+            );
+
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations", Duration.ofSeconds(30));
+
+            assertEquals(1, runner.run(), "a lock held far beyond the TTL is taken over");
+            assertEquals(0L, db.query(
+                "select count(*) from _migrations where version = '__LOCK__'")
+                .one(Long.class).orElse(-1L), "lock released after successful run");
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
+    void zeroTtlDisablesStaleLockTakeover(@TempDir Path tempDir) throws Exception {
+        Path migrationDir = Files.createDirectories(tempDir.resolve("db/migration"));
+        Files.writeString(
+            migrationDir.resolve("V001__step.sql"),
+            "create table ttl_off (id bigint primary key)"
+        );
+
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
+             Database db = tempDb("freeway_ttl_off")) {
+            Thread.currentThread().setContextClassLoader(loader);
+            createMigrationTable(db);
+            db.execute(
+                "insert into _migrations (version, description, checksum, installed_rank, executed_at) "
+                    + "values ('__LOCK__', '', '', -1, ?)",
+                java.sql.Timestamp.from(java.time.Instant.now().minus(java.time.Duration.ofHours(2)))
+            );
+
+            // TTL=0 opts out of takeover entirely (pre-TTL fail-only behavior).
+            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations", Duration.ZERO);
+
+            SqlException ex = assertThrows(SqlException.class, runner::run);
+            assertTrue(ex.getMessage().contains("Cannot acquire migration lock"));
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    private static void createMigrationTable(Database db) {
+        db.execute(
+            "create table if not exists _migrations (" +
+            "version varchar(255) primary key," +
+            "description varchar(512)," +
+            "checksum char(64) not null," +
+            "installed_rank int not null," +
+            "executed_at timestamp default current_timestamp)"
+        );
     }
 
     @Test
@@ -692,5 +786,36 @@ class MigrationRunnerTest {
     }
 
     public record MigrationRow(String version, int installedRank) {
+    }
+
+    @Test
+    void duplicateKeyDetectionAcrossDriverMessageShapes() {
+        // Real-world shapes: SQLState takes precedence; message keywords are
+        // only the fallback for drivers that leave the state null — and a
+        // bare "violation" (check/not-null constraints) must NOT count.
+        record Case(String desc, String sqlState, String message, boolean expected) {}
+        java.util.List<Case> cases = List.of(
+            new Case("H2 unique index", "23505",
+                "Unique index or primary key violation: \"_migrations.PRIMARY KEY\"", true),
+            new Case("PostgreSQL", "23505",
+                "ERROR: duplicate key value violates unique constraint", true),
+            new Case("MySQL no state", null,
+                "Duplicate entry '1' for key '_migrations.PRIMARY'", true),
+            new Case("SQLite no state", null,
+                "UNIQUE constraint failed: _migrations.version", true),
+            new Case("check constraint is not lock contention", "23513",
+                "ERROR: new row for relation violates check constraint \"positive\"", false),
+            new Case("syntax error", "42000",
+                "Syntax error in SQL statement", false),
+            new Case("null cause", null, null, false)
+        );
+        for (Case c : cases) {
+            SQLException cause = c.sqlState() != null || c.message() != null
+                ? new SQLException(c.message(), c.sqlState())
+                : null;
+            SqlException ex = new SqlException("wrap", cause);
+            assertEquals(c.expected(), MigrationRunner.isDuplicateKey(ex),
+                () -> c.desc());
+        }
     }
 }

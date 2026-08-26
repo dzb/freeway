@@ -32,6 +32,9 @@ public final class DbConfigKeys {
     public static final String MIGRATION_ENABLED = PREFIX + ".migration.enabled";
     public static final String MIGRATION_PATH    = PREFIX + ".migration.path";
     public static final String MIGRATION_TABLE   = PREFIX + ".migration.table";
+    /** ISO-8601 duration (e.g. PT1H); empty = runner default (1 hour).
+     *  Zero or negative disables stale-lock takeover. */
+    public static final String MIGRATION_LOCK_TTL = PREFIX + ".migration.lock-ttl";
 
     // ── Schema ────────────────────────────────────────────────
 

@@ -180,10 +180,25 @@ final class BatchQueryImpl implements BatchQuery {
         } catch (SQLException ignored) {}
     }
 
+    /**
+     * Mirrors {@code DatabaseImpl.restoreConnectionState}: if autoCommit
+     * cannot be restored, the physical connection is destroyed instead of
+     * returned to the pool — an {@code autoCommit=false} connection that
+     * re-enters the pool would leave every later borrower's statements
+     * stranded in a never-committed transaction.
+     */
     private void restoreAutoCommitQuietly(PooledConnection conn) {
         try {
             conn.connection().setAutoCommit(true);
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            LOG.warn(
+                "Failed to restore autoCommit — closing physical connection", e);
+            try {
+                conn.connection().close();
+            } catch (SQLException ignored) {
+                // physical close is best-effort
+            }
+        }
     }
 
     private void bindRow(PreparedStatement stmt, Map<String, Object> row)

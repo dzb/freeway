@@ -229,13 +229,30 @@ final class QueryImpl implements Query {
                     " value(s) provided. SQL: " +
                     originalSql +
                     ". Params: " +
-                    Arrays.toString(positionalParams)
+                    Arrays.toString(positionalParams) +
+                    jsonbQuestionMarkHint(originalSql)
             );
         }
 
         for (int i = 0; i < positionalParams.length; i++) {
             stmt.setObject(i + 1, positionalParams[i]);
         }
+    }
+
+    /**
+     * Teaching hint for PostgreSQL's jsonb {@code ?} existence operator,
+     * which the placeholder lexer cannot distinguish from a JDBC parameter
+     * marker. Suggests the function-call equivalent so the fix is actionable
+     * instead of a bare count mismatch.
+     */
+    private String jsonbQuestionMarkHint(String sql) {
+        if (db.dialect() instanceof com.jujin.freeway.db.dialect.PostgresDialect
+                && sql.contains("?")) {
+            return " — on PostgreSQL, the jsonb '?' existence operator is not a "
+                + "parameter marker; rewrite it as a function call, e.g. "
+                + "jsonb_exists(data, 'key'), jsonb_exists_any(...) or jsonb_exists_all(...)";
+        }
+        return "";
     }
 
     private List<Integer> positionalPlaceholders() {

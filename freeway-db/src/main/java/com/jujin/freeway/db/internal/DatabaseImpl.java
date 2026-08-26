@@ -19,6 +19,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class DatabaseImpl implements Database {
 
@@ -35,15 +37,17 @@ public final class DatabaseImpl implements Database {
     private final ScopedValue<TxBinding> tx = ScopedValue.newInstance();
 
     /**
-     * Thread currently inside a transaction on this Database, or {@code null}.
-     * Set while the transaction work runs and cleared in {@code finally}.
+     * Threads currently inside a transaction on this Database. Added when
+     * {@code transaction()} starts and removed in its {@code finally}.
      * ScopedValue does not propagate to child threads, so this registry is
      * what lets the borrow guard reject DB calls that would otherwise
      * silently borrow an independent pooled connection and run outside the
-     * transaction. Nested transactions are already rejected, so a single
-     * value suffices.
+     * transaction. A set, not a single field: parallel transactions started
+     * by different threads on the same Database (legal — each borrows its own
+     * connection) must not overwrite each other's registration, which would
+     * both defeat the guard early and make {@link #inTransaction()} lie.
      */
-    private volatile Thread activeTxThread;
+    private final Set<Thread> activeTxThreads = ConcurrentHashMap.newKeySet();
 
     private final Pool pool;
     private final RowMapperResolver rowMapperResolver;
@@ -80,7 +84,7 @@ public final class DatabaseImpl implements Database {
 
     @Override
     public boolean inTransaction() {
-        return activeTxThread == Thread.currentThread();
+        return activeTxThreads.contains(Thread.currentThread());
     }
 
     @Override
@@ -138,7 +142,7 @@ public final class DatabaseImpl implements Database {
         }
         PooledConnection conn = pool.borrow();
         int originalIsolation = -1;
-        activeTxThread = Thread.currentThread();
+        activeTxThreads.add(Thread.currentThread());
         try {
             var raw = conn.connection();
             originalIsolation = raw.getTransactionIsolation();
@@ -179,7 +183,7 @@ public final class DatabaseImpl implements Database {
             if (e instanceof Error err) throw err;
             throw new RuntimeException(e);
         } finally {
-            activeTxThread = null;
+            activeTxThreads.remove(Thread.currentThread());
             restoreConnectionState(conn, originalIsolation);
             pool.release(conn);
         }
@@ -300,8 +304,8 @@ public final class DatabaseImpl implements Database {
      * through {@link #checkBound} on the transaction thread.
      */
     void checkNoForeignTransaction() {
-        Thread active = activeTxThread;
-        if (active != null && active != Thread.currentThread()) {
+        Thread current = Thread.currentThread();
+        if (!activeTxThreads.isEmpty() && !activeTxThreads.contains(current)) {
             throw new SqlException(
                 "Transaction work must run on the transaction thread — "
                     + "ScopedValue does not propagate to child threads; DB calls "

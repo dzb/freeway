@@ -187,11 +187,15 @@ public final class DbModule implements ModuleEx {
     private static MigrationRunner buildMigrationRunner(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
         Coercer coercer = container.get(Coercer.class);
+        String lockTtlRaw = s.resolve(DbConfigKeys.MIGRATION_LOCK_TTL, "");
         return new MigrationRunner(
             container.get(Database.class),
             coercer.coerce(s.resolve(DbConfigKeys.MIGRATION_ENABLED, "true"), boolean.class),
             s.resolve(DbConfigKeys.MIGRATION_PATH, "db/migration/"),
-            s.resolve(DbConfigKeys.MIGRATION_TABLE, "_migrations")
+            s.resolve(DbConfigKeys.MIGRATION_TABLE, "_migrations"),
+            lockTtlRaw.isBlank()
+                ? null // runner applies its own default
+                : coercer.coerce(lockTtlRaw.trim(), Duration.class)
         );
     }
 

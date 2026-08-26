@@ -26,6 +26,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +39,10 @@ public final class MigrationRunner {
     );
     static final int MAX_MIGRATION_BYTES = 16 * 1024 * 1024;
     private static final String LOCK_VERSION = "__LOCK__";
+    /** Default lease for a leftover lock row: generous enough for slow
+     *  migrations, short enough that a crashed process self-heals instead of
+     *  failing every subsequent startup until manual cleanup. */
+    public static final Duration DEFAULT_LOCK_TTL = Duration.ofHours(1);
 
     /** Flyway-compatible: V followed by digits and optional separators. */
     private static final String VERSION_PATTERN = "V\\d[\\d._]*";
@@ -45,6 +51,7 @@ public final class MigrationRunner {
     private final boolean enabled;
     private final String path;
     private final String table;
+    private final Duration lockTtl;
 
     public MigrationRunner(
         Database database,
@@ -52,10 +59,26 @@ public final class MigrationRunner {
         String path,
         String table
     ) {
+        this(database, enabled, path, table, DEFAULT_LOCK_TTL);
+    }
+
+    /**
+     * @param lockTtl how long a held lock row may persist before another
+     *                instance treats it as stale and takes it over. Zero or
+     *                negative disables takeover (fail-only, pre-1.4 behavior).
+     */
+    public MigrationRunner(
+        Database database,
+        boolean enabled,
+        String path,
+        String table,
+        Duration lockTtl
+    ) {
         this.database = database;
         this.enabled = enabled;
         this.path = normalizePath(path);
         this.table = normalizeTable(table);
+        this.lockTtl = lockTtl == null ? DEFAULT_LOCK_TTL : lockTtl;
     }
 
     public synchronized int run() {
@@ -290,6 +313,34 @@ public final class MigrationRunner {
     }
 
     private void acquireLock() {
+        if (insertLockRow()) {
+            return;
+        }
+        // The lock slot is taken. Take over only when the holding row is
+        // provably stale — a live migration must never be preempted.
+        if (!lockTtl.isZero() && !lockTtl.isNegative() && takeStaleLock()) {
+            if (insertLockRow()) {
+                LOG.warn(
+                    "Took over stale migration lock (held longer than {})",
+                    lockTtl
+                );
+                return;
+            }
+        }
+        throw new SqlException(
+            "Cannot acquire migration lock — " +
+                "another instance may be running migrations. " +
+                "If no other instance is running, the lock is either fresh " +
+                "or staleness detection was unavailable: " +
+                "delete from " +
+                table +
+                " where version = '" +
+                LOCK_VERSION +
+                "'"
+        );
+    }
+
+    private boolean insertLockRow() {
         try {
             database.execute(
                 "insert into " +
@@ -298,20 +349,45 @@ public final class MigrationRunner {
                     LOCK_VERSION +
                     "', '', '', -1)"
             );
+            return true;
         } catch (SqlException e) {
             if (isDuplicateKey(e)) {
-                throw new SqlException(
-                    "Cannot acquire migration lock — " +
-                        "another instance may be running migrations. " +
-                        "If no other instance is running, the lock may be stale: " +
-                        "delete from " +
-                        table +
-                        " where version = '" +
-                        LOCK_VERSION +
-                        "'"
-                );
+                return false;
             }
             throw e;
+        }
+    }
+
+    /**
+     * Best-effort staleness check: reads the lock row's {@code executed_at}
+     * and deletes the row when it outlived {@link #lockTtl}. Any failure to
+     * read or parse the timestamp (older schema without the column, driver
+     * type surprises) keeps the lock — conservative by construction, because
+     * wrongly stealing an active lock would let two instances migrate
+     * concurrently.
+     */
+    private boolean takeStaleLock() {
+        try {
+            List<LockRow> rows = database
+                .query(
+                    "select executed_at from " +
+                        table +
+                        " where version = '" + LOCK_VERSION + "'"
+                )
+                .list(LockRow.class);
+            if (rows.size() != 1) {
+                return false;
+            }
+            Instant acquiredAt = rows.getFirst().executedAt();
+            if (acquiredAt == null
+                    || acquiredAt.isAfter(Instant.now().minus(lockTtl))) {
+                return false;
+            }
+            releaseLock();
+            return true;
+        } catch (RuntimeException e) {
+            LOG.debug("Could not evaluate migration-lock staleness", e);
+            return false;
         }
     }
 
@@ -325,25 +401,30 @@ public final class MigrationRunner {
         }
     }
 
-    private static boolean isDuplicateKey(SqlException e) {
-        // primary: keyword matching on the cause's message (broad coverage)
+    // Package-visible: pinned by a table-driven test covering real driver
+    // message/SQLState shapes (H2, MySQL, PostgreSQL, SQLite).
+    //
+    // Exact state codes, deliberately NOT a "23xxx family" prefix match:
+    // the class covers all integrity violations — 23513 is a CHECK failure
+    // and 23502 a NOT-NULL failure, neither of which means another instance
+    // holds the migration lock. Only unique/duplicate (23505), the generic
+    // integrity code some drivers map duplicate-key to (23000), and
+    // serialization retries (40001) qualify.
+    static boolean isDuplicateKey(SqlException e) {
+        if (e.getCause() instanceof SQLException se) {
+            String state = se.getSQLState();
+            if ("23505".equals(state) || "23000".equals(state)
+                    || "40001".equals(state)) {
+                return true;
+            }
+        }
         if (e.getCause() != null) {
             String msg = e.getCause().getMessage();
             if (msg != null) {
                 msg = msg.toLowerCase(Locale.ROOT);
-                if (msg.contains("unique")
-                        || msg.contains("duplicate")
-                        || msg.contains("primary key")
-                        || msg.contains("violation")) {
-                    return true;
-                }
-            }
-        }
-        // fallback: SQL standard state codes (driver-agnostic)
-        if (e.getCause() instanceof SQLException se) {
-            String state = se.getSQLState();
-            if (state != null && (state.startsWith("23") || "40001".equals(state))) {
-                return true;
+                return msg.contains("duplicate")
+                        || msg.contains("unique")
+                        || msg.contains("primary key");
             }
         }
         return false;
@@ -566,6 +647,8 @@ public final class MigrationRunner {
     private record ChecksumRow(String version, String checksum) {}
 
     private record RankRow(int installedRank) {}
+
+    private record LockRow(Instant executedAt) {}
 
     private byte[] readResourceBytes(String resourcePath) {
         ClassLoader classLoader = classLoader();
