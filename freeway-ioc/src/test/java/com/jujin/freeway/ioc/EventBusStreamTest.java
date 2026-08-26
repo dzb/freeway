@@ -192,6 +192,37 @@ class EventBusStreamTest {
     }
 
     @Test
+    void publisherFromBeforeBusCloseNotifiesOnErrorAfterClose() throws Exception {
+        // Regression: stream() captured while the bus was open, but the first
+        // downstream subscribe happens after the bus closed. The bridge must
+        // settle the subscriber via onError — not leak the raw
+        // IllegalStateException out of subscribe() (Flow: subscribe must not
+        // throw) and not leave the subscription attached to a dead registry.
+        Container container = Freeway.create();
+        EventBus bus = new EventBus(container);
+        Flow.Publisher<Tick> publisher = bus.stream(Tick.class);
+        bus.close();
+
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        java.util.concurrent.CountDownLatch settled =
+            new java.util.concurrent.CountDownLatch(1);
+        publisher.subscribe(new Flow.Subscriber<>() {
+            @Override public void onSubscribe(Flow.Subscription s) { }
+            @Override public void onNext(Tick item) { }
+            @Override public void onError(Throwable t) {
+                failure.set(t);
+                settled.countDown();
+            }
+            @Override public void onComplete() { settled.countDown(); }
+        });
+
+        assertTrue(settled.await(2, java.util.concurrent.TimeUnit.SECONDS),
+            "the subscriber must be notified, never left hanging");
+        assertTrue(failure.get() instanceof IllegalStateException,
+            "got: " + failure.get());
+    }
+
+    @Test
     void streamedTopicsEmitNoDeadEvents() throws Exception {
         Container container = Freeway.create();
         EventBus bus = new EventBus(container);
