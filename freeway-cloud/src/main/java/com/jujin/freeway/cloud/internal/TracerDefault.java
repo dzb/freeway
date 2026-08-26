@@ -3,8 +3,11 @@ package com.jujin.freeway.cloud.internal;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
+import com.jujin.freeway.cloud.observe.MeterRegistry;
 import com.jujin.freeway.cloud.observe.Tracer;
 import org.slf4j.MDC;
+
+import java.time.Duration;
 
 /**
  * Default {@link Tracer}: creates child spans under the current
@@ -19,8 +22,27 @@ import org.slf4j.MDC;
  * ({@code CloudHttpClient}) sees the active trace on such threads. The ambient
  * tier is same-thread only; cross-thread propagation still requires
  * {@code PropagationFilter}/{@code runWith}.
+ *
+ * <p>When a {@link MeterRegistry} is wired (standard assembly), each closed
+ * span records its wall duration into the {@code tracer.span.duration} timer,
+ * so span latency is visible on {@code /metrics} without an ext backend.
+ * Tags and error details remain backend-tracer concerns (ext).
  */
 public final class TracerDefault implements Tracer {
+
+    private static final String SPAN_DURATION_TIMER = "tracer.span.duration";
+
+    private final MeterRegistry metrics;
+
+    public TracerDefault() {
+        this(null);
+    }
+
+    /** @param metrics nullable — without it spans still carry
+     *  {@link Span#elapsedNanos()} but nothing is exported. */
+    public TracerDefault(MeterRegistry metrics) {
+        this.metrics = metrics;
+    }
 
     @Override
     public Span start(String name) {
@@ -33,7 +55,7 @@ public final class TracerDefault implements Tracer {
     @Override
     public Span start(String name, TraceContext parent) {
         TraceContext child = parent.child();
-        return new MdcSpan(child);
+        return new MdcSpan(child, metrics);
     }
 
     private static final class MdcSpan implements Span {
@@ -41,10 +63,15 @@ public final class TracerDefault implements Tracer {
         private final String previousTraceId;
         private final String previousSpanId;
         private final InvocationContext previousAmbient;
+        private final MeterRegistry metrics;
+        private final long startNanos = System.nanoTime();
+        // Frozen by close(); elapsedNanos() reads live before that.
+        private volatile long durationNanos = -1;
 
-        MdcSpan(TraceContext child) {
+        MdcSpan(TraceContext child, MeterRegistry metrics) {
             this.previousTraceId = MDC.get("traceId");
             this.previousSpanId = MDC.get("spanId");
+            this.metrics = metrics;
             MDC.put("traceId", child.traceId());
             MDC.put("spanId", child.spanId());
             // Bind the child so nested start()/outbound injection discover it.
@@ -65,7 +92,20 @@ public final class TracerDefault implements Tracer {
         }
 
         @Override
+        public long elapsedNanos() {
+            long frozen = durationNanos;
+            return frozen >= 0 ? frozen : System.nanoTime() - startNanos;
+        }
+
+        @Override
         public void close() {
+            if (durationNanos < 0) {
+                durationNanos = System.nanoTime() - startNanos;
+                if (metrics != null) {
+                    metrics.timer(SPAN_DURATION_TIMER)
+                        .record(Duration.ofNanos(durationNanos));
+                }
+            }
             restore("traceId", previousTraceId);
             restore("spanId", previousSpanId);
             InvocationContext.replaceAmbient(previousAmbient); // null clears

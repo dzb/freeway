@@ -45,6 +45,12 @@ public interface Tracer {
 
         void addError(Throwable t);
 
+        /** Nanoseconds elapsed since the span started. Live before
+         *  {@link #close()}, frozen afterwards. */
+        default long elapsedNanos() {
+            return 0;
+        }
+
         @Override
         void close();
     }

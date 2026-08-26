@@ -19,10 +19,7 @@ public final class CloudConfigKeys {
 
     // ── Object Storage ─────────────────────────────────────
     public static final String STORAGE_TYPE       = PREFIX + ".storage.type";
-    public static final String STORAGE_BUCKET     = PREFIX + ".storage.bucket";
     public static final String STORAGE_BASE_PATH  = PREFIX + ".storage.base-path";
-    public static final String STORAGE_REGION     = PREFIX + ".storage.region";
-    public static final String STORAGE_ENDPOINT   = PREFIX + ".storage.endpoint";
 
     // ── Discovery / Registry ───────────────────────────────
     public static final String DISCOVERY_TYPE        = PREFIX + ".discovery.type";
@@ -33,8 +30,6 @@ public final class CloudConfigKeys {
     public static final String REGISTRY_SERVICE_SCHEME = PREFIX + ".registry.service-scheme";
     public static final String REGISTRY_SERVICE_PORT = PREFIX + ".registry.service-port";
     public static final String REGISTRY_SERVICE_INSTANCE_ID = PREFIX + ".registry.service-instance-id";
-    public static final String REGISTRY_HEALTH_PATH  = PREFIX + ".registry.health-path";
-    public static final String REGISTRY_META         = PREFIX + ".registry.meta.";
 
     // ── RPC（远程调用）──────────────────────────────────────
     public static final String RPC_CONNECT_TIMEOUT     = PREFIX + ".rpc.connect-timeout";
@@ -60,10 +55,4 @@ public final class CloudConfigKeys {
      *  headers and must be enabled explicitly (ideally only inside a trusted
      *  service mesh / with an ext token-verifying security module). */
     public static final String AUTH_EXTRACT_ENABLED = PREFIX + ".auth.extract.enabled";
-
-    // ── Health ─────────────────────────────────────────────
-    public static final String HEALTH_ENABLED = PREFIX + ".health.enabled";
-
-    // ── Region（共享）──────────────────────────────────────
-    public static final String REGION = PREFIX + ".region";
 }

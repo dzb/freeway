@@ -65,6 +65,35 @@ class ObserveTest {
     }
 
     @Test
+    void spanTracksElapsedDurationAndRecordsItIntoMetrics() throws Exception {
+        MeterRegistryDefault reg = new MeterRegistryDefault();
+        TracerDefault tracer = new TracerDefault(reg);
+        Tracer.Span span = tracer.start("op");
+        long live = span.elapsedNanos();
+        Thread.sleep(5); // widen the window so elapsed is unambiguous
+        assertTrue(span.elapsedNanos() >= live, "elapsed grows while open");
+        span.close();
+
+        assertTrue(span.elapsedNanos() >= 5_000_000,
+            "duration frozen on close: " + span.elapsedNanos());
+        long before = span.elapsedNanos();
+        Thread.sleep(2);
+        assertEquals(before, span.elapsedNanos(), "frozen after close");
+        assertEquals(1, reg.timerCount("tracer.span.duration"),
+            "closed spans are recorded into the metrics registry");
+    }
+
+    @Test
+    void spanDurationIsAvailableWithoutMetricsWiring() throws Exception {
+        TracerDefault tracer = new TracerDefault(); // no registry
+        Tracer.Span span = tracer.start("op");
+        Thread.sleep(2);
+        span.close();
+        assertTrue(span.elapsedNanos() >= 2_000_000,
+            "duration tracking works without a metrics registry: " + span.elapsedNanos());
+    }
+
+    @Test
     void nestedSpansChainWithoutScopeAndBindContext() {
         TracerDefault tracer = new TracerDefault();
         try (Tracer.Span outer = tracer.start("outer")) {

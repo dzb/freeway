@@ -251,7 +251,7 @@ discovery.getInstances(serviceId)
 - 超时：每调用 `HttpRequest.timeout(Duration)`，键
   `freeway.cloud.rpc.connect-timeout` / `request-timeout`。
 - 默认：`bind(CloudHttpClient).to(CloudHttpClientDefault).primary()`；
-  ext 可换 WebClient/gRPC 传输（`@Http`/`@Grpc` 标记）。
+  ext 可换 WebClient/gRPC 传输（随适配器交付对应 marker，core 不预铺）。
 - 响应侧 `bodyAs(Class, JsonCodec)` 与服务端用同一 `JsonCodec`
   （record/泛型/java.time 支持已验证）。
 - **明确不做**：`@CloudClient` 接口代理、`CloudExporter` 服务端导出、
@@ -363,11 +363,10 @@ public interface SecretStore {
 
 - **传输加密（mTLS）**：`TransportSecurity` 抽象（`rpc/` 包），core 用 JDK
   `SSLContext` + 文件型证书加载（`freeway.cloud.rpc.tls.*` 键，PKCS12
-  keystore/truststore）；Vault 动态证书属 ext。默认 `NONE`（开发态明文，
-  不标 marker），配置 keystore 后构建文件型 mTLS 上下文。`@None`/`@Mtls`
-  是 marker 契约面（§6.1），由 ext 适配器交付专用传输安全实现时使用——
-  core 本地绑定不标 marker，因为能力由运行时配置决定，静态 marker
-  表达不了条件能力。出站 `CloudHttpClient` 应用它。
+  keystore/truststore）；Vault 动态证书属 ext。默认 `NONE`（开发态明文），
+  配置 keystore 后构建文件型 mTLS 上下文——能力由运行时配置决定，静态
+  marker 表达不了条件能力，故 core 不预铺 `@None`/`@Mtls` 注解；ext 适配器
+  交付专用传输安全实现时可随附 marker。出站 `CloudHttpClient` 应用它。
 - **身份传播**：`PrincipalContext` 经 `InvocationContext` +
   `AuthPropagator` 注入/提取 `x-principal` / `x-principal-roles` 头（与
   traceparent 同序，同一管线）。传播**已验证身份**，不传播原始凭据。
@@ -386,11 +385,13 @@ public interface SecretStore {
 
 | 类别 | 注解 |
 |---|---|
-| 后端 | `@Local`（默认）/ `@Nacos` / `@Consul` / `@Kubernetes` |
-| 传输 | `@Http`（默认）/ `@Grpc` |
-| 传输安全 | `@None`（默认，明文）/ `@Mtls` |
-| 策略 | `@RoundRobin`（默认）/ `@Random` / `@Weighted` |
-| 模块级 | `@Cloud`（能力标签）/ `@Canary`（整模块变体） |
+| 后端 | `@Local`（本地默认实现） |
+| 策略 | `@RoundRobin`（负载均衡默认策略） |
+
+core 只保留**实际被装配引用**的标记；其余（`@Nacos` / `@Consul` /
+`@Kubernetes` / `@Grpc` 等）随对应的 freeway-ext 适配器一起交付——遵循
+"Prefer small explicit APIs over future-proof abstractions"，不为尚不存在
+的实现预铺注解面。
 
 规则（基于 ioc `MarkerIndex` 的 `containsAll` 语义）：
 
@@ -438,6 +439,8 @@ stop（逆序）:
 
 ## 7. 配置键（CloudConfigKeys，吸收 design-A 清单）
 
+<!-- 实际键清单与源码同步：见 freeway-cloud/src/main/java/.../CloudConfigKeys.java -->
+
 ```java
 public final class CloudConfigKeys {
     private CloudConfigKeys() {}
@@ -453,20 +456,18 @@ public final class CloudConfigKeys {
 
     // ── Object Storage ─────────────────────────────────────
     public static final String STORAGE_TYPE       = PREFIX + ".storage.type";
-    public static final String STORAGE_BUCKET     = PREFIX + ".storage.bucket";
     public static final String STORAGE_BASE_PATH  = PREFIX + ".storage.base-path";
-    public static final String STORAGE_REGION     = PREFIX + ".storage.region";
-    public static final String STORAGE_ENDPOINT   = PREFIX + ".storage.endpoint";
+    // bucket/region/endpoint 等 S3 族键随 ext 存储适配器交付，core 不预铺
 
     // ── Discovery / Registry ───────────────────────────────
     public static final String DISCOVERY_TYPE        = PREFIX + ".discovery.type";
     public static final String REGISTRY_TYPE         = PREFIX + ".registry.type";
     public static final String REGISTRY_SERVICE_ID   = PREFIX + ".registry.service-id";
     public static final String REGISTRY_SERVICE_HOST = PREFIX + ".registry.service-host";
+    /** Scheme registered for this instance (http or https); default http. */
+    public static final String REGISTRY_SERVICE_SCHEME = PREFIX + ".registry.service-scheme";
     public static final String REGISTRY_SERVICE_PORT = PREFIX + ".registry.service-port";
     public static final String REGISTRY_SERVICE_INSTANCE_ID = PREFIX + ".registry.service-instance-id";
-    public static final String REGISTRY_HEALTH_PATH  = PREFIX + ".registry.health-path";
-    public static final String REGISTRY_META         = PREFIX + ".registry.meta.";
 
     // ── RPC（远程调用）──────────────────────────────────────
     public static final String RPC_CONNECT_TIMEOUT     = PREFIX + ".rpc.connect-timeout";
@@ -487,11 +488,8 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_TRUST_STORE        = PREFIX + ".rpc.tls.trust-store";
     public static final String RPC_TLS_TRUST_STORE_PASSWORD = PREFIX + ".rpc.tls.trust-store-password";
 
-    // ── Health ─────────────────────────────────────────────
-    public static final String HEALTH_ENABLED = PREFIX + ".health.enabled";
-
-    // ── Region（共享）──────────────────────────────────────
-    public static final String REGION = PREFIX + ".region";
+    // ── Auth propagation ────────────────────────────────────
+    public static final String AUTH_EXTRACT_ENABLED = PREFIX + ".auth.extract.enabled";
 }
 ```
 
