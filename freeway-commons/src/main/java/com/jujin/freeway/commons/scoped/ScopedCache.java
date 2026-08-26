@@ -151,11 +151,6 @@ public final class ScopedCache {
     // ==================== cleanup ====================
 
     /**
-     * Registers a global cleanup callback. When any scope exits,
-     * each registered callback is applied to every distinct
-     * cached value (identity-deduplicated).
-     */
-    /**
      * Registers a global close handler invoked with every cached value when a
      * scope exits. Handlers accumulate process-wide; use
      * {@link #removeOnClose(Consumer)} to unregister, or keep registration to

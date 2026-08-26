@@ -49,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **freeway-commons** — `ConfigSpec.parse(raw, coercer)` 在无 parser 且
+  coercer 为 null 时不再裸 NPE，改为带键名的 `IllegalStateException`
+  （附首个 config 包专属测试类 ConfigSpecTest）；`Defer` 延迟供给的
+  compute/get 双份执行逻辑合并（失败缓存与恰好一次语义不变）；
+  `ScopedCache.onClose` 清理叠置的残留 javadoc。
 - **freeway-commons（logging）** — `LogBootstrap.ensureProvider()` 在 SLF4J 已被
   过早的静态 logger 绑定为 JUL 兜底时，不再打印误导性的 "pinning so it wins"，
   而是绑定后核验实际生效的 provider 并给出可操作的 WARN（指认检测到的外部

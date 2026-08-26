@@ -156,6 +156,9 @@ public record ConfigSpec<T>(
      * Parses a raw value using the container {@code Coercer} when the spec
      * has no per-key parser (the {@code of(key, type, default)} form). A
      * spec with an explicit parser uses it regardless of the coercer.
+     *
+     * @throws IllegalStateException when the spec has no parser and no
+     *         {@code coercer} was supplied — the error names the key
      */
     public T parse(String raw, Coercer coercer) {
         if (raw == null || raw.isBlank()) {
@@ -164,6 +167,11 @@ public record ConfigSpec<T>(
                     "Missing required config key '" + key + "'");
             }
             return defaultValue;
+        }
+        if (parser == null && coercer == null) {
+            throw new IllegalStateException(
+                "ConfigSpec '" + key + "' has no parser and no Coercer was"
+                    + " supplied — resolve it via parse(raw, Coercer)");
         }
         String stripped = raw.strip();
         try {

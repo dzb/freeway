@@ -191,41 +191,34 @@ public final class Defer {
         }
 
         synchronized void compute() {
-            if (computed) {
-                return;
-            }
-            if (failure != null) {
-                throw failure;
-            }
-            try {
-                value = callable.call();
-                computed = true;
-            } catch (Throwable t) {
-                // Errors are cached too: a supply whose callable throws an
-                // Error must not re-execute the side-effecting callable on
-                // the next access.
-                failure = new RuntimeException(FAILURE_MESSAGE, t);
-                throw failure;
+            if (!computed) {
+                runOnce();
             }
         }
 
         @Override
         public synchronized T get() {
-            if (computed) {
-                return value;
+            if (!computed) {
+                runOnce();
             }
+            return value;
+        }
+
+        /**
+         * Runs the callable exactly once per supplier: a cached failure is
+         * rethrown without re-execution — Errors included, so a supply whose
+         * callable throws an Error must not re-execute the side-effecting
+         * callable on the next access, and a failed supply must not silently
+         * degrade to null.
+         */
+        private void runOnce() {
             if (failure != null) {
                 throw failure;
             }
             try {
-                T v = callable.call();
-                value = v;
+                value = callable.call();
                 computed = true; // drain must not re-execute after get() succeeded
-                return v;
             } catch (Throwable t) {
-                // Cache the failure so every subsequent access (and the
-                // drain) rethrows it — a failed supply must not silently
-                // degrade to null.
                 failure = new RuntimeException(FAILURE_MESSAGE, t);
                 throw failure;
             }
