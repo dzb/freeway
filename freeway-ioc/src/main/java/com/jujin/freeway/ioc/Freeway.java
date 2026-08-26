@@ -1,6 +1,6 @@
 package com.jujin.freeway.ioc;
-import com.jujin.freeway.commons.logging.LogBootstrap;
 
+import com.jujin.freeway.commons.logging.LogBootstrap;
 import com.jujin.freeway.ioc.internal.ContainerImpl;
 import java.util.Arrays;
 import java.util.Collection;

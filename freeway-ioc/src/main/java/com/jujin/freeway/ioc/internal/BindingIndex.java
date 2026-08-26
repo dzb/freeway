@@ -50,7 +50,7 @@ final class BindingIndex {
     synchronized <T> void register(BindingImpl<T> binding) {
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
         if (bindings.putIfAbsent(key, binding) != null) {
-            throw duplicateMessage(binding.type().getName(), binding.id());
+            throw duplicateBinding(binding.type().getName(), binding.id());
         }
         bindingOrder.addLast(key);
         List<BindingImpl<?>> typeBindings = typeIndex.computeIfAbsent(
@@ -89,7 +89,7 @@ final class BindingIndex {
         ServiceKey newKey = new ServiceKey(binding.type(), newId);
         BindingImpl<?> existing = bindings.get(newKey);
         if (existing != null && existing != binding) {
-            throw duplicateMessage(binding.type().getName(), newId);
+            throw duplicateBinding(binding.type().getName(), newId);
         }
         List<ServiceKey> reordered = new ArrayList<>(bindingOrder.size());
         boolean replaced = false;
@@ -214,7 +214,7 @@ final class BindingIndex {
         return new ScanResult<>(first, primary, multiple, primaryConflict);
     }
 
-    private static IllegalStateException duplicateMessage(String typeName, String id) {
+    private static IllegalStateException duplicateBinding(String typeName, String id) {
         return new IllegalStateException(
             "Duplicate binding for type " + typeName + " and id " + id
         );

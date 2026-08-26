@@ -150,9 +150,7 @@ public final class ContainerImpl implements Container {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Extension<T> extension(Class<T> entryType) {
-        if (closed) {
-            throw new IllegalStateException("Container is closed");
-        }
+        requireOpen();
         return (Extension<T>) extensions.computeIfAbsent(entryType, k -> new Extension<>(k));
     }
 
@@ -229,17 +227,13 @@ public final class ContainerImpl implements Container {
     }
 
     private <T> T scopedWithin(Supplier<T> work) {
-        if (closed) {
-            throw new IllegalStateException("Container is closed");
-        }
+        requireOpen();
         return ScopedCache.within(work);
     }
 
     @Override
     public <T> T create(Class<T> type) {
-        if (closed) {
-            throw new IllegalStateException("Container is closed");
-        }
+        requireOpen();
         // Constructor injection + field injection + @PostConstruct, without
         // registering or caching the instance.
         try {
@@ -250,6 +244,16 @@ public final class ContainerImpl implements Container {
             throw ex;
         } catch (Throwable ex) {
             throw new RuntimeException("Unable to instantiate " + type.getName(), ex);
+        }
+    }
+
+    /**
+     * Pre-composition guard shared by every resolution entry point — the
+     * closed flag is volatile, so the check needs no lock.
+     */
+    private void requireOpen() {
+        if (closed) {
+            throw new IllegalStateException("Container is closed");
         }
     }
 
@@ -312,30 +316,33 @@ public final class ContainerImpl implements Container {
         }
     }
 
+    /**
+     * Missing-binding failure that reports a raced {@link #close()} as the
+     * sealed state instead: a lookup that passed {@link #requireOpen()} may
+     * still race the index clear, and a misleading "missing service" would
+     * point users at composition rather than shutdown. Callers throw the
+     * returned exception so the failure path stays explicit.
+     */
+    private RuntimeException missingOrClosed(String message) {
+        if (closed) {
+            return new IllegalStateException("Container is closed");
+        }
+        return new MissingBindingException(message);
+    }
+
     @Override
     public <T> T get(Class<T> type) {
-        if (closed) {
-            throw new IllegalStateException("Container is closed");
-        }
+        requireOpen();
         BindingImpl<T> binding = bindingIndex.findUnique(type);
         if (binding == null) {
-            // A lookup that started before close() sealed may race the index
-            // clear; report the sealed state, not a misleading missing service.
-            if (closed) {
-                throw new IllegalStateException("Container is closed");
-            }
-            throw new MissingBindingException(
-                "No service registered for type " + type.getName()
-            );
+            throw missingOrClosed("No service registered for type " + type.getName());
         }
         return serviceRuntime.get(binding);
     }
 
     @Override
     public <T> T get(Class<T> type, String id) {
-        if (closed) {
-            throw new IllegalStateException("Container is closed");
-        }
+        requireOpen();
         if (id == null) {
             throw new IllegalArgumentException(
                 "Service id must not be null for type " + type.getName()
@@ -343,10 +350,7 @@ public final class ContainerImpl implements Container {
         }
         BindingImpl<T> binding = bindingIndex.find(type, ServiceIds.normalize(id));
         if (binding == null) {
-            if (closed) {
-                throw new IllegalStateException("Container is closed");
-            }
-            throw new MissingBindingException(
+            throw missingOrClosed(
                 "No service registered for type " + type.getName() + " and id " + id
             );
         }
@@ -356,18 +360,13 @@ public final class ContainerImpl implements Container {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T get(Class<T> type, Class<? extends Annotation>... markers) {
-        if (closed) {
-            throw new IllegalStateException("Container is closed");
-        }
+        requireOpen();
         if (markers == null || markers.length == 0) {
             return get(type);
         }
         BindingImpl<T> binding = markerIndex.findByMarker(type, markers);
         if (binding == null) {
-            if (closed) {
-                throw new IllegalStateException("Container is closed");
-            }
-            throw new MissingBindingException(
+            throw missingOrClosed(
                     "No service registered for type " + type.getName()
                             + " with markers " + Arrays.toString(markers)
             );

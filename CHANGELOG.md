@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **freeway-ioc** — 注入点同时携带服务注入与配置注解时的错误消息改带
+  owner 类型名（此前输出匿名对象 `InjectResolver$1@...`，诊断信息为零）；
+  `normalizedId` 签名收窄为 `Inject`（原 `Annotation` 形态的 else 分支按
+  构造不可达）；`ContainerImpl` 三个 get 重载的 closed 双查与缺失绑定
+  报错提取为 `requireOpen()`/`missingOrClosed()`（命中路径保持零分配）；
+  `BindingIndex.duplicateMessage` 更名 `duplicateBinding`（返回的是异常
+  不是消息）。
 - **freeway-boot** — `AppConfig.get(ConfigSpec)` 不再每次调用分配新
   `CoercerDefault`（嵌套 holder 共享单例）；`loadJson` 复用已解码文本直接
   解析，去掉二次字节流包装；负数 CLI 值识别扩展到指数形式

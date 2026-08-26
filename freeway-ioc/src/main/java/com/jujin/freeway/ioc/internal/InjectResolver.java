@@ -339,7 +339,8 @@ final class InjectResolver {
         }
         if (hasConfiguredValueAnnotation(lookup)) {
             throw new IllegalArgumentException(
-                "Cannot combine service injection and configured value annotations on " + lookup
+                "Cannot combine service injection and configured value annotations on "
+                    + ownerType.getName()
             );
         }
         String id = resolveId(lookup);
@@ -468,16 +469,16 @@ final class InjectResolver {
         }
     }
 
-    private static String normalizedId(Annotation annotation) {
-        if (annotation == null) {
+    /**
+     * The trimmed {@code @Inject("id")} value, or {@code null} when absent.
+     * Takes the concrete annotation type — this method is only ever called
+     * with an {@code Inject}, so there is no other branch to handle.
+     */
+    private static String normalizedId(Inject inject) {
+        if (inject == null) {
             return null;
         }
-        String value;
-        if (annotation instanceof Inject inject) {
-            value = inject.value();
-        } else {
-            return null;
-        }
+        String value = inject.value();
         if (value == null) {
             return null;
         }
