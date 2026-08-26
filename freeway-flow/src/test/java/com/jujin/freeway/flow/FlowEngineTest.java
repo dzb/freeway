@@ -185,6 +185,32 @@ class FlowEngineTest {
         assertTrue(ExprEvaluator.evalCondition("((((score > 80))))", ctx));
     }
 
+    @Test
+    void testExprEvaluatorMultiplicativeOperators() {
+        var ctx = new ConcurrentHashMap<String, Object>();
+        ctx.put("price", 30);
+        ctx.put("qty", 4);
+        ctx.put("total", 120);
+
+        // Multiplication binds tighter than addition/comparison.
+        assertTrue(ExprEvaluator.evalCondition("price * qty > 100", ctx));
+        assertTrue(ExprEvaluator.evalCondition("price * qty == total", ctx));
+        assertTrue(ExprEvaluator.evalCondition("1 + 2 * 3 == 7", ctx));
+        assertTrue(ExprEvaluator.evalCondition("(1 + 2) * 3 == 9", ctx));
+        assertTrue(ExprEvaluator.evalCondition("10 / 4 > 2", ctx));
+        assertTrue(ExprEvaluator.evalCondition("total / price == 4", ctx));
+        assertTrue(ExprEvaluator.evalCondition("total % 7 == 1", ctx));
+        assertTrue(ExprEvaluator.evalCondition("-price * 2 < 0", ctx));
+        // Division/modulo by zero fail loudly instead of producing Infinity/NaN.
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition("total / 0 > 0", ctx));
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition("total % 0 == 0", ctx));
+        // Non-numeric operands are rejected like sub().
+        assertThrows(FlowException.class,
+            () -> ExprEvaluator.evalCondition("name * 2 == 4", ctx));
+    }
+
     // --- 混合数值/字符串比较 (Bug 2 回归) ---
 
     @Test

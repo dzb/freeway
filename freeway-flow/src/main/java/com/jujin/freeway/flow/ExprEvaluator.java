@@ -14,11 +14,22 @@ import java.util.Map;
  * or_expr     → and_expr ("||" and_expr)*
  * and_expr    → cmp_expr ("&&" cmp_expr)*
  * cmp_expr    → add_expr (("=="|"!="|">"|"<"|">="|"<=") add_expr)?
- * add_expr    → unary_expr (("+"|"-") unary_expr)*
+ * add_expr    → mul_expr (("+"|"-") mul_expr)*
+ * mul_expr    → unary_expr (("*"|"/"|"%") unary_expr)*
  * unary_expr  → ("!" | "-" | "+") unary_expr | primary
  * primary     → NUMBER | STRING | "true" | "false" | "null" | IDENT | "(" expression ")"
  * IDENT       → [a-zA-Z_][a-zA-Z0-9_.]*  (supports data.name path access)
  * </pre>
+ *
+ * <p><b>Numeric precision:</b> arithmetic ({@code + - * / %}) routes through
+ * {@code double}, so {@code long} values at/above 2^53 and {@code BigDecimal}
+ * context values lose exactness. This is deliberate for a gateway-condition
+ * evaluator — comparisons use the precision-preserving
+ * {@link #compareNumbers} path, and conditions like
+ * {@code price * qty > 100} never need exact wide arithmetic. Do not route
+ * money math through expressions; compute it in a task and compare the
+ * result.
+ *</p>
  *
  * Expressions are compiled to an AST (abstract syntax tree) on first use; later the same
  * expression is evaluated directly, avoiding repeated parsing.
@@ -125,6 +136,9 @@ public final class ExprEvaluator {
                 case "<" -> cmp(l, right.eval(ctx)) < 0;
                 case "+" -> add(l, right.eval(ctx));
                 case "-" -> sub(l, right.eval(ctx));
+                case "*" -> mul(l, right.eval(ctx));
+                case "/" -> div(l, right.eval(ctx));
+                case "%" -> mod(l, right.eval(ctx));
                 default -> throw new FlowException("Unknown operator: " + op);
             };
         }
@@ -215,10 +229,23 @@ public final class ExprEvaluator {
         }
 
         private AstNode addExpr() {
-            AstNode left = unaryExpr();
+            AstNode left = mulExpr();
             skipSpaces();
             while (match("+") || match("-")) {
                 String op = expr.charAt(pos - 1) == '-' ? "-" : "+";
+                AstNode right = mulExpr();
+                left = new BinaryOp(left, op, right);
+                skipSpaces();
+            }
+            return left;
+        }
+
+        private AstNode mulExpr() {
+            AstNode left = unaryExpr();
+            skipSpaces();
+            while (match("*") || match("/") || match("%")) {
+                String op = expr.charAt(pos - 1) == '*' ? "*"
+                    : expr.charAt(pos - 1) == '/' ? "/" : "%";
                 AstNode right = unaryExpr();
                 left = new BinaryOp(left, op, right);
                 skipSpaces();
@@ -511,6 +538,36 @@ public final class ExprEvaluator {
     private static Object sub(Object l, Object r) {
         if (l instanceof Number ln && r instanceof Number rn) return ln.doubleValue() - rn.doubleValue();
         throw new FlowException("Cannot subtract non-numeric values: " + l + " - " + r);
+    }
+
+    private static Object mul(Object l, Object r) {
+        if (l instanceof Number ln && r instanceof Number rn) return ln.doubleValue() * rn.doubleValue();
+        throw new FlowException("Cannot multiply non-numeric values: " + l + " * " + r);
+    }
+
+    private static Object div(Object l, Object r) {
+        if (l instanceof Number ln && r instanceof Number rn) {
+            double d = rn.doubleValue();
+            if (d == 0d) {
+                // Division by zero must fail the condition loudly — a silent
+                // Infinity would compare as greater than everything and route
+                // branches in surprising ways.
+                throw new FlowException("Division by zero: " + l + " / " + r);
+            }
+            return ln.doubleValue() / d;
+        }
+        throw new FlowException("Cannot divide non-numeric values: " + l + " / " + r);
+    }
+
+    private static Object mod(Object l, Object r) {
+        if (l instanceof Number ln && r instanceof Number rn) {
+            double d = rn.doubleValue();
+            if (d == 0d) {
+                throw new FlowException("Modulo by zero: " + l + " % " + r);
+            }
+            return ln.doubleValue() % d;
+        }
+        throw new FlowException("Cannot apply modulo to non-numeric values: " + l + " % " + r);
     }
 
     /**

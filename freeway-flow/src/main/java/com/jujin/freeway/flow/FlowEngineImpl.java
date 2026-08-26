@@ -15,6 +15,7 @@ import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -532,24 +533,43 @@ public class FlowEngineImpl implements FlowEngine {
     protected void parallel_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {
         // Branches share the same FlowContext — concurrent writes to the same
         // key are a known limitation (see docs/freeway-flow-parallel-context-isolation.md).
+        //
+        // NESTED PARALLEL HAZARD: the join awaits on the CALLING thread. If a
+        // branch itself contains a PARALLEL node and the executor is a
+        // fixed-size pool, outer branches can occupy every worker while
+        // waiting on inner branches that are still queued — classic thread-
+        // starvation deadlock. Use a cached/unbounded executor (or size the
+        // pool >= worst-case concurrent branches) when graphs nest PARALLEL.
         exchanger.execState().countSet(node.getGraph(), node.getId(), 0);
 
         if (exchanger.driver().getExecutor() == null || node.getNextNodes().size() < 2) {
             for (Node n : node.getNextNodes()) node_run(exchanger, options, n, startNode);
         } else {
             CountDownLatch cdl = new CountDownLatch(node.getNextNodes().size());
+            // First failure wins (CAS): deterministic error reporting, and the
+            // fast-path bail below lets queued branches skip work early.
             AtomicReference<Throwable> errorRef = new AtomicReference<>();
             for (Node n : node.getNextNodes()) {
-                exchanger.driver().getExecutor().execute(() -> {
-                    try {
-                        if (errorRef.get() != null) return;
-                        node_run(exchanger, options, n, startNode);
-                    } catch (Throwable ex) {
-                        errorRef.set(ex);
-                    } finally {
-                        cdl.countDown();
-                    }
-                });
+                try {
+                    exchanger.driver().getExecutor().execute(() -> {
+                        try {
+                            if (errorRef.get() != null) return;
+                            node_run(exchanger, options, n, startNode);
+                        } catch (Throwable ex) {
+                            errorRef.compareAndSet(null, ex);
+                        } finally {
+                            cdl.countDown();
+                        }
+                    });
+                } catch (RejectedExecutionException rejected) {
+                    // Executor no longer accepting work (shutting down):
+                    // record and release this branch's latch slot so await()
+                    // below cannot hang on work that will never be scheduled.
+                    // Already-queued branches observe the recorded error via
+                    // the fast-path check above and return immediately.
+                    errorRef.compareAndSet(null, rejected);
+                    cdl.countDown();
+                }
             }
             try {
                 cdl.await();

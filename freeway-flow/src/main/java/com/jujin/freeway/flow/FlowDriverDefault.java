@@ -46,7 +46,17 @@ public class FlowDriverDefault implements FlowDriver {
 
         /** Sets the {@link FlowContainer} for {@code @beanName} resolution. */
         public Builder container(FlowContainer container) { this.container = container; return this; }
-        /** Sets a custom executor for {@code PARALLEL} node fan-out. */
+        /**
+         * Sets a custom executor for {@code PARALLEL} node fan-out.
+         *
+         * <p><b>Pool sizing warning:</b> the parallel join awaits on the
+         * calling thread, so a fixed-size pool deadlocks when graphs nest
+         * {@code PARALLEL} nodes (outer branches occupy all workers while
+         * inner branches sit queued). Use a cached/unbounded executor, or
+         * size the pool to at least the worst-case number of concurrently
+         * running branches. Branches also share one {@code FlowContext} —
+         * see docs/freeway-flow-parallel-context-isolation.md.
+         */
         public Builder executor(ExecutorService executor) { this.executor = executor; return this; }
         public FlowDriverDefault build() { return new FlowDriverDefault(container, executor); }
     }

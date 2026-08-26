@@ -33,7 +33,13 @@ public class ExecState {
 
     private final Set<DeadEnd> deadEnds = ConcurrentHashMap.newKeySet();
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
-    private final Map<String, Stack> stacks = new ConcurrentHashMap<>();
+    /**
+     * Heterogeneous by design: each key owns a stack of a caller-chosen
+     * element type (loop iterators, branch bookkeeping), so the map stores
+     * {@code Stack<Object>} and the typed accessor casts — every key is
+     * used with one consistent element type by its owning code path.
+     */
+    private final Map<String, Stack<Object>> stacks = new ConcurrentHashMap<>();
     private final Map<String, List<String>> loopBodyJoins = new ConcurrentHashMap<>();
     private final Map<String, Object> vars = new ConcurrentHashMap<>();
 
@@ -93,7 +99,7 @@ public class ExecState {
      */
     @SuppressWarnings("unchecked")
     public <T> Stack<T> stack(Graph graph, String key) {
-        return stacks.computeIfAbsent(graph.getId() + "/" + key, k -> new Stack<>());
+        return (Stack<T>) stacks.computeIfAbsent(graph.getId() + "/" + key, k -> new Stack<>());
     }
 
     /**

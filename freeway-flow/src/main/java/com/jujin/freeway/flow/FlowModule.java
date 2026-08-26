@@ -2,6 +2,7 @@ package com.jujin.freeway.flow;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Builtin;
@@ -83,31 +84,15 @@ public class FlowModule implements ModuleEx {
             // as ConditionComponent, not only TaskComponent.
             try {
                 return fwContainer.get(TaskComponent.class, componentName);
-            } catch (IllegalArgumentException e) {
-                if (!isMissingBinding(e)) throw e;
+            } catch (MissingBindingException e) {
                 LOG.debug("Failed to resolve @beanName '{}' as TaskComponent: no binding", componentName);
             }
             try {
                 return fwContainer.get(ConditionComponent.class, componentName);
-            } catch (IllegalArgumentException e) {
-                if (!isMissingBinding(e)) throw e;
+            } catch (MissingBindingException e) {
                 LOG.debug("Failed to resolve @beanName '{}' as ConditionComponent: no binding", componentName);
                 return null;
             }
-        }
-
-        /**
-         * The container's {@code get(type, id)} throws an
-         * {@link IllegalArgumentException} with a "No service registered for
-         * type ..." message only when no binding matches. That is the single
-         * IAE that means "component does not exist" — every other IAE
-         * (multiple services match, advisor unsupported, scope/config or
-         * lifecycle validation errors) is a real container failure and must
-         * propagate instead of being masked as a missing component.
-         */
-        private static boolean isMissingBinding(IllegalArgumentException e) {
-            return e.getMessage() != null
-                && e.getMessage().startsWith("No service registered for type ");
         }
     }
 

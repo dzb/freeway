@@ -21,8 +21,10 @@ public class Link implements Comparable<Link> {
 
     private final String prevId;
     private final ConditionDesc when;
-    private Node prevNode;
-    private Node nextNode;
+    // volatile: PARALLEL branches resolve these lazily from multiple threads —
+    // same contract as Node's cached links (Node.java).
+    private volatile Node prevNode;
+    private volatile Node nextNode;
 
     public Link(Graph graph, String prevId, LinkSpec spec) {
         this.graph = graph;

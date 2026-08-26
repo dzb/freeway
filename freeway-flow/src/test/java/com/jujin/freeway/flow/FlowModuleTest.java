@@ -2,6 +2,7 @@ package com.jujin.freeway.flow;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.MissingBindingException;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -56,8 +57,8 @@ class FlowModuleTest {
 
     @Test
     void iocAdapterPropagatesNonMissingIllegalArgumentFromMock() {
-        // A mock whose IAE does not match the container's "no service
-        // registered" pattern must be treated as a real failure, not a miss.
+        // Any IllegalArgumentException that is NOT a MissingBindingException
+        // is a real container failure and must surface, not become a null.
         Container container = mockContainer(null);
         FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
@@ -99,9 +100,9 @@ class FlowModuleTest {
         );
     }
 
-    /** Simulates the real container's missing-binding IAE message. */
+    /** Simulates the real container's missing-binding failure. */
     private static IllegalArgumentException missingBinding(Class<?> type, String id) {
-        return new IllegalArgumentException(
+        return new MissingBindingException(
             "No service registered for type " + type.getName() + " and id " + id);
     }
 
