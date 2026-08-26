@@ -122,7 +122,10 @@ class ConfigSpecTest {
         AtomicInteger invocations = new AtomicInteger();
         ConfigSpec<Integer> spec = ConfigSpec.of(
             "counter.key", Integer.class, 0,
-            raw -> invocations.incrementAndGet() > 0 ? Integer.parseInt(raw) : -1);
+            raw -> {
+                invocations.incrementAndGet();
+                return Integer.parseInt(raw);
+            });
         assertEquals(7, spec.parse("7", coercer));
         assertEquals(1, invocations.get());
     }

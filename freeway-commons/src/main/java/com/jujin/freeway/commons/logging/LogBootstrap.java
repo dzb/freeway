@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * misbinding go unnoticed.
  *
  * <p>Call {@link #ensureProvider()} early — before any
- * {@code LoggerFactory.getLogger()} call triggers SLF4F initialization.
+ * {@code LoggerFactory.getLogger()} call triggers SLF4J initialization.
  * Both {@code FreewayApp} and {@code Freeway} call it from their static
  * initializers.
  */
@@ -86,8 +86,10 @@ public final class LogBootstrap {
             boolean julIntended = (external == null)
                 && (userProvider == null || isJulProvider(userProvider));
             if (julIntended) {
-                // The external provider owns logging when detected or pinned;
-                // JUL console/file handlers would never be read — skip them.
+                // No external provider (or the user pinned JUL explicitly) —
+                // configure JUL's console/file enhancements. When an external
+                // provider owns logging they would never be read, so this is
+                // skipped above.
                 JULEnhancer.configure();
             }
 

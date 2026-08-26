@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MetricsTest {
 
     private static final class CountingMetrics implements Metrics {
-        final AtomicLong nanos = new AtomicLong();
+        final AtomicLong recordedNanos = new AtomicLong();
 
         @Override public Counter counter(String name) {
             return new Counter() {
@@ -33,16 +33,14 @@ class MetricsTest {
                 long count;
                 @Override public void record(long nanos) {
                     count++;
-                    nanos().addAndGet(nanos);
+                    recordedNanos.addAndGet(nanos);
                 }
                 @Override public long count() { return count; }
-                @Override public long totalNanos() { return nanos.get(); }
+                @Override public long totalNanos() { return recordedNanos.get(); }
             };
         }
 
         @Override public void gauge(String name, java.util.function.Supplier<Number> value) { }
-
-        AtomicLong nanos() { return nanos; }
     }
 
     @Test
