@@ -3,8 +3,8 @@ package com.jujin.freeway.cloud.internal;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.observe.MeterRegistry;
 import com.jujin.freeway.cloud.observe.Tracer;
+import com.jujin.freeway.commons.metrics.Metrics;
 import org.slf4j.MDC;
 
 import java.time.Duration;
@@ -23,7 +23,7 @@ import java.time.Duration;
  * tier is same-thread only; cross-thread propagation still requires
  * {@code PropagationFilter}/{@code runWith}.
  *
- * <p>When a {@link MeterRegistry} is wired (standard assembly), each closed
+ * <p>When a {@link Metrics} registry is wired (standard assembly), each closed
  * span records its wall duration into the {@code tracer.span.duration} timer,
  * so span latency is visible on {@code /metrics} without an ext backend.
  * Tags and error details remain backend-tracer concerns (ext).
@@ -32,7 +32,7 @@ public final class TracerDefault implements Tracer {
 
     private static final String SPAN_DURATION_TIMER = "tracer.span.duration";
 
-    private final MeterRegistry metrics;
+    private final Metrics metrics;
 
     public TracerDefault() {
         this(null);
@@ -40,7 +40,7 @@ public final class TracerDefault implements Tracer {
 
     /** @param metrics nullable — without it spans still carry
      *  {@link Span#elapsedNanos()} but nothing is exported. */
-    public TracerDefault(MeterRegistry metrics) {
+    public TracerDefault(Metrics metrics) {
         this.metrics = metrics;
     }
 
@@ -63,12 +63,12 @@ public final class TracerDefault implements Tracer {
         private final String previousTraceId;
         private final String previousSpanId;
         private final InvocationContext previousAmbient;
-        private final MeterRegistry metrics;
+        private final Metrics metrics;
         private final long startNanos = System.nanoTime();
         // Frozen by close(); elapsedNanos() reads live before that.
         private volatile long durationNanos = -1;
 
-        MdcSpan(TraceContext child, MeterRegistry metrics) {
+        MdcSpan(TraceContext child, Metrics metrics) {
             this.previousTraceId = MDC.get("traceId");
             this.previousSpanId = MDC.get("spanId");
             this.metrics = metrics;

@@ -2,7 +2,7 @@ package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.internal.MeterRegistryDefault;
+import com.jujin.freeway.cloud.internal.MetricsDefault;
 import com.jujin.freeway.cloud.internal.TracePropagator;
 import com.jujin.freeway.cloud.internal.TracerDefault;
 import com.jujin.freeway.cloud.observe.Tracer;
@@ -25,29 +25,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ObserveTest {
 
     @Test
-    void meterRegistryRecords() {
-        MeterRegistryDefault reg = new MeterRegistryDefault();
+    void metricsRegistryRecords() {
+        MetricsDefault reg = new MetricsDefault();
         reg.counter("hits").increment();
-        reg.counter("hits").increment(2.5);
-        assertEquals(3.5, reg.counterValue("hits"));
+        reg.counter("hits").add(2);
+        assertEquals(3, reg.counterValue("hits"));
 
         reg.timer("lat").record(Duration.ofMillis(100));
         assertEquals(1, reg.timerCount("lat"));
         assertTrue(reg.timerTotalSeconds("lat") >= 0.1);
 
-        reg.gauge("depth", () -> 42.0);
+        reg.gauge("depth", () -> 42);
         assertEquals(42.0, reg.gaugeValue("depth"));
     }
 
     @Test
     void prometheusTextRendersAllMeterTypes() {
-        MeterRegistryDefault reg = new MeterRegistryDefault();
-        reg.counter("hits").increment(2.0);
+        MetricsDefault reg = new MetricsDefault();
+        reg.counter("hits").add(2);
         reg.timer("lat").record(Duration.ofMillis(100));
-        reg.gauge("depth", () -> 42.0);
+        reg.gauge("depth", () -> 42);
 
         String text = reg.prometheusText();
-        assertTrue(text.contains("# TYPE hits counter\nhits 2.0"));
+        assertTrue(text.contains("# TYPE hits counter\nhits 2"));
         assertTrue(text.contains("# TYPE lat_count counter\nlat_count 1"));
         assertTrue(text.contains("# TYPE lat_seconds_total counter\nlat_seconds_total 0.1"));
         assertTrue(text.contains("# TYPE depth gauge\ndepth 42.0"));
@@ -66,7 +66,7 @@ class ObserveTest {
 
     @Test
     void spanTracksElapsedDurationAndRecordsItIntoMetrics() throws Exception {
-        MeterRegistryDefault reg = new MeterRegistryDefault();
+        MetricsDefault reg = new MetricsDefault();
         TracerDefault tracer = new TracerDefault(reg);
         Tracer.Span span = tracer.start("op");
         long live = span.elapsedNanos();

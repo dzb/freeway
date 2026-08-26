@@ -7,8 +7,8 @@ import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
 import com.jujin.freeway.cloud.internal.TransportSecurityDefault;
-import com.jujin.freeway.cloud.observe.MeterRegistry;
 import com.jujin.freeway.cloud.observe.Tracer;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.Retryer;
@@ -73,7 +73,9 @@ public final class CloudRpcModule implements ModuleEx {
                     optional(container, RateLimiter.class),
                     container.get(TransportSecurity.class),
                     traceEnabled ? optional(container, Tracer.class) : null,
-                    optional(container, MeterRegistry.class),
+                    // Metrics has a NoopMetrics builtin — always resolvable;
+                    // without CloudObserveModule calls record into the noop.
+                    container.get(Metrics.class),
                     Duration.ofMillis(requestMs),
                     Duration.ofMillis(connectMs));
             })

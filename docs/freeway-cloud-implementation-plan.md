@@ -56,7 +56,7 @@
   - `CloudConfigDefault`（WatchService 文件热重载）
   - `SecretStoreDefault`（env/file）
   - `CloudHttpClientDefault`（JDK HttpClient）
-  - `TracerDefault` / `MeterRegistryDefault`
+  - `TracerDefault` / `MetricsDefault`（实现 commons Metrics）
 - 为所有核心接口绑定 `.primary()`，本地默认统一打 `@Local`
 
 验收：
@@ -118,7 +118,7 @@
 - 实现 `TraceContext`
 - 实现 `Propagator`
 - 实现 MDC 关联
-- 实现 `MeterRegistry`
+- 实现 commons `Metrics`
 - 导出 `/metrics`
 - 支持 traceparent 传播
 

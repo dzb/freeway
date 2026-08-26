@@ -11,7 +11,7 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.cloud.health.CloudHealthModule;
 import com.jujin.freeway.cloud.observe.CloudObserveModule;
-import com.jujin.freeway.cloud.observe.MeterRegistry;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CloudResilienceModule;
 import com.jujin.freeway.cloud.rpc.CloudHttpClient;
@@ -70,7 +70,7 @@ class CloudModuleTest {
             assertNotNull(container.get(CloudConfig.class));
             assertNotNull(container.get(SecretStore.class));
             assertNotNull(container.get(Tracer.class));
-            assertNotNull(container.get(MeterRegistry.class));
+            assertNotNull(container.get(Metrics.class));
 
             // Marker-based selection (@Local default, @RoundRobin strategy)
             assertNotNull(container.get(ServiceDiscovery.class, Local.class));

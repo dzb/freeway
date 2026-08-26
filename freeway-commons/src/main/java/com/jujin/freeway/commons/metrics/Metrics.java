@@ -1,16 +1,18 @@
 package com.jujin.freeway.commons.metrics;
+import java.time.Duration;
 import java.util.function.Supplier;
 
 /**
- * Minimal observable-counters SPI for framework components.
+ * The framework-wide observability SPI: named counters, timers, and gauges.
  *
- * <p>Zero-dependency by design: a counter is a named long accumulator and a
- * gauge is a named sampled value — enough for operational signals
- * (dispatched events, pool borrows, failed subscriptions) without pulling in
- * a metrics library. Implementations are contributed via the IoC container
- * ({@code binder.contribute(Metrics.class)} / primary override); the default
- * is {@link NoopMetrics}, so framework components may call into {@link Metrics}
- * unconditionally.
+ * <p>Zero-dependency by design — enough for operational signals (dispatched
+ * events, request durations, pool depth) without pulling in a metrics
+ * library. Every framework component instruments through this one interface;
+ * richer backends (Prometheus text export, OTLP) implement it rather than
+ * introducing a parallel registry. Implementations are wired via the IoC
+ * container ({@code bind(Metrics.class)...primary()} to override the
+ * {@link NoopMetrics} builtin); framework components may call into
+ * {@link Metrics} unconditionally.
  *
  * <p>Counters are cumulative since JVM start; consumers (health checks,
  * scrapers) sample deltas.
@@ -20,14 +22,15 @@ public interface Metrics {
     /** Returns the named counter, creating it on first access. */
     Counter counter(String name);
 
-    /** Returns the named duration timer (nanoseconds), creating it on first
-     *  access. Defaults to a no-op so existing implementations keep working. */
+    /** Returns the named duration timer, creating it on first access.
+     *  Defaults to a no-op so existing implementations keep working. */
     default Timer timer(String name) {
         return NOOP_TIMER;
     }
 
     /**
-     * A named cumulative counter. Implementations must be thread-safe.
+     * A named cumulative counter with integer semantics. Implementations
+     * must be thread-safe.
      */
     interface Counter {
         /** Increments by one. */
@@ -42,10 +45,26 @@ public interface Metrics {
 
     /**
      * A named cumulative duration recorder. Implementations must be
-     * thread-safe. {@link #record(long)} takes a duration in nanoseconds.
+     * thread-safe; only {@link #record(long)} is abstract — nanoseconds are
+     * the canonical unit, the other overloads normalize onto it.
      */
     interface Timer {
         void record(long nanos);
+
+        /** Records a duration. */
+        default void record(Duration duration) {
+            record(duration.toNanos());
+        }
+
+        /** Records the work's duration and returns its result. */
+        default <T> T record(Supplier<T> work) {
+            long start = System.nanoTime();
+            try {
+                return work.get();
+            } finally {
+                record(System.nanoTime() - start);
+            }
+        }
 
         long count();
 
@@ -59,8 +78,8 @@ public interface Metrics {
     };
 
     /**
-     * Registers a named sampled value; {@link #sample()} is invoked by the
-     * consumer when it reads the value.
+     * Registers a named sampled value; the supplier is invoked when the
+     * value is read (e.g. pool depth, queue size).
      */
     void gauge(String name, Supplier<Number> value);
 }

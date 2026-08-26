@@ -1,28 +1,26 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.observe.MeterRegistry;
+import com.jujin.freeway.commons.metrics.Metrics;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
 /**
- * In-memory {@link MeterRegistry}: counters (DoubleAdder), timers
- * (count + total nanos), gauges (read on demand). Snapshots feed the
- * Prometheus-text {@code /metrics} route (Phase 4).
+ * In-memory {@link Metrics}: counters (LongAdder), timers (count + total
+ * nanos), gauges (read on demand). Snapshots feed the Prometheus-text
+ * {@code /metrics} route.
  */
-public final class MeterRegistryDefault implements MeterRegistry {
+public final class MetricsDefault implements Metrics {
 
-    private final Map<String, DoubleAdder> counters = new ConcurrentHashMap<>();
+    private final Map<String, LongAdder> counters = new ConcurrentHashMap<>();
     private final Map<String, TimerData> timers = new ConcurrentHashMap<>();
-    private final Map<String, Supplier<Double>> gauges = new ConcurrentHashMap<>();
+    private final Map<String, Supplier<Number>> gauges = new ConcurrentHashMap<>();
 
     @Override
     public Counter counter(String name) {
-        return new DefaultCounter(counters.computeIfAbsent(name, k -> new DoubleAdder()));
+        return new DefaultCounter(counters.computeIfAbsent(name, k -> new LongAdder()));
     }
 
     @Override
@@ -31,15 +29,15 @@ public final class MeterRegistryDefault implements MeterRegistry {
     }
 
     @Override
-    public void gauge(String name, Supplier<Double> supplier) {
+    public void gauge(String name, Supplier<Number> supplier) {
         gauges.put(name, supplier);
     }
 
     // ── Snapshot accessors (for /metrics export) ─────────────
 
-    public double counterValue(String name) {
-        DoubleAdder adder = counters.get(name);
-        return adder == null ? 0.0 : adder.sum();
+    public long counterValue(String name) {
+        LongAdder adder = counters.get(name);
+        return adder == null ? 0L : adder.sum();
     }
 
     public long timerCount(String name) {
@@ -53,20 +51,9 @@ public final class MeterRegistryDefault implements MeterRegistry {
     }
 
     public double gaugeValue(String name) {
-        Supplier<Double> supplier = gauges.get(name);
-        return supplier == null ? 0.0 : supplier.get();
-    }
-
-    public Map<String, DoubleAdder> counters() {
-        return counters;
-    }
-
-    public Map<String, TimerData> timers() {
-        return timers;
-    }
-
-    public Map<String, Supplier<Double>> gauges() {
-        return gauges;
+        Supplier<Number> supplier = gauges.get(name);
+        Number value = supplier == null ? null : supplier.get();
+        return value == null ? 0.0 : value.doubleValue();
     }
 
     /** Renders the registry as Prometheus text format ({@code /metrics} route). */
@@ -87,7 +74,8 @@ public final class MeterRegistryDefault implements MeterRegistry {
             sb.append("# TYPE ").append(prometheusName(name)).append(" gauge\n");
             double value;
             try {
-                value = supplier.get();
+                Number number = supplier.get();
+                value = number == null ? Double.NaN : number.doubleValue();
             } catch (RuntimeException ex) {
                 value = Double.NaN; // a broken gauge must not 500 the /metrics route
             }
@@ -104,24 +92,25 @@ public final class MeterRegistryDefault implements MeterRegistry {
     }
 
     private static final class DefaultCounter implements Counter {
-        private final DoubleAdder adder;
+        private final LongAdder adder;
 
-        DefaultCounter(DoubleAdder adder) {
+        DefaultCounter(LongAdder adder) {
             this.adder = adder;
         }
 
         @Override
         public void increment() {
-            adder.add(1.0);
+            adder.increment();
         }
 
         @Override
-        public void increment(double amount) {
-            if (amount < 0) {
-                throw new IllegalArgumentException(
-                    "counter increment must not be negative: " + amount);
-            }
-            adder.add(amount);
+        public void add(long delta) {
+            adder.add(delta);
+        }
+
+        @Override
+        public long value() {
+            return adder.sum();
         }
     }
 
@@ -133,9 +122,19 @@ public final class MeterRegistryDefault implements MeterRegistry {
         }
 
         @Override
-        public void record(Duration duration) {
+        public void record(long nanos) {
             data.count.increment();
-            data.totalNanos.add(duration.toNanos());
+            data.totalNanos.add(nanos);
+        }
+
+        @Override
+        public long count() {
+            return data.count();
+        }
+
+        @Override
+        public long totalNanos() {
+            return data.totalNanos();
         }
     }
 

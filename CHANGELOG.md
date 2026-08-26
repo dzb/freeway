@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **观测 SPI 统一（freeway-commons/cloud）** — `Metrics.Timer` 新增
+  `record(Duration)` 与 `record(Supplier)` 默认重载（nanos 为规范单位），
+  commons 成为全框架唯一观测 SPI。`CloudObserveModule` 的注册表现在以
+  primary 绑定覆盖容器 Noop 内置：安装即把 EventBus/HTTP 引擎等全部
+  框架计数器汇入 `/metrics`（此前 http/ioc 与 cloud 各有一套不兼容的
+  registry，框架计数器默认不可见）。计数器为整数语义
+  （LongAdder），Prometheus 文本中计数值不再带小数点。
 - **结构化绑定异常（freeway-ioc）** — 新增 `AmbiguousBindingException` 与
   `UnknownSymbolException`：多命中/双 primary 与符号未命中现在可按类型捕获，
   无需匹配异常消息文本。两者均继承 `IllegalArgumentException`，既有 catch
@@ -60,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **freeway-cloud**：`observe.MeterRegistry` 接口删除（与 commons `Metrics`
+  双轨并存、类型语义漂移 long/double 与 nanos/Duration）；实现类
+  `MeterRegistryDefault` 更名 `MetricsDefault` 并改为实现 commons
+  `Metrics`，快照访问器与 Prometheus 文本导出不变。自定义观测后端请直接
+  实现 `com.jujin.freeway.commons.metrics.Metrics`。
 - **freeway-ioc**：`Extension.of(...)`（全仓零引用）；`Contributions.add(Class)`
   的 default-throw 实现改为抽象方法（唯一实现方 BinderImpl 本就重写）；
   internal 的 InstanceFactory 类折叠进 ContainerImpl。

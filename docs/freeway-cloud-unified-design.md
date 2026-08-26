@@ -143,7 +143,7 @@ com.jujin.freeway.cloud
 │                              ServiceDeclaration, LoadBalancer
 ├── rpc/                       CloudHttpClient, CloudRequest, CloudResponse,
 │                              CloudException（§5.2）
-├── observe/                   Tracer, MeterRegistry（§5.5）
+├── observe/                   Tracer（Metrics 见 freeway-commons）（§5.5）
 ├── resilience/                CircuitBreaker, RateLimiter, Retryer（§5.6）
 ├── health/                    CloudHealthContributor, HealthResult（§5.7）
 ├── storage/                   ObjectStorage（可选，§5.8）
@@ -308,10 +308,10 @@ public interface SecretStore {
   出站 `CloudHttpClientDefault` 注入当前 `InvocationContext`（无上下文不
   注入——独立任务由被调方自建根 span）。注意：`Extension<V>` 按设计不可
   注入，消费贡献用 `@Inject List<V>` / `Map<String, V>`。
-- `MeterRegistry`（counter/timer/gauge，内存默认）+ 贡献 `/metrics` 路由
+- commons `Metrics`（primary 绑定覆盖 Noop 内置）+ 贡献 `/metrics` 路由
   （Prometheus 文本格式，手写零依赖；timer 输出
   `name_count` / `name_seconds_total`）。
-- 默认 `TracerDefault` / `MeterRegistryDefault`（`internal/`，生产级）；
+- 默认 `TracerDefault` / `MetricsDefault`（`internal/`，生产级）；
   ext：OTel 导出器（OTLP/Prometheus remote-write）。
 
 ### 5.6 韧性（resilience）
@@ -502,7 +502,7 @@ public final class CloudConfigKeys {
 
 - core：`ServiceDiscoveryDefault`/`ServiceRegistryDefault`（进程内注册表）、
   `CloudHttpClientDefault`（JDK HttpClient）、`CloudConfigDefault`
-  （WatchService 文件热重载）、`TracerDefault`/`MeterRegistryDefault`、
+  （WatchService 文件热重载）、`TracerDefault`/`MetricsDefault`、
   `CircuitBreakerDefault`/`RateLimiterDefault`/`RetryerDefault`、
   `SecretStoreDefault`、`ObjectStorageDefault`（文件系统）、
   `TransportSecurityNone`（明文开发态）。
@@ -571,7 +571,7 @@ public final class CloudConfigKeys {
 | `freeway-cloud-nacos` | `ServiceRegistry` / `ServiceDiscovery` / `CloudConfig` | nacos-client | 1 |
 | `freeway-cloud-k8s` | 同上 | fabric8 k8s-client | 2 |
 | `freeway-cloud-consul` | 同上 | consul-client | 3 |
-| `freeway-cloud-otel` | `Tracer` / `MeterRegistry`（OTLP / remote-write） | OpenTelemetry SDK | 4 |
+| `freeway-cloud-otel` | `Tracer` / commons `Metrics` 实现（OTLP / remote-write） | OpenTelemetry SDK | 4 |
 | `freeway-cloud-s3` | `ObjectStorage` | AWS S3 SDK | 5 |
 | `freeway-cloud-vault` | `SecretStore` | Vault client | 6 |
 | `freeway-cloud-grpc` | `CloudHttpClient` 传输（`@Grpc`） | gRPC | 7 |

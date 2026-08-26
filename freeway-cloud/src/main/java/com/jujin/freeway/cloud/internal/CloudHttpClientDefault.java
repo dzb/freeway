@@ -5,7 +5,7 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.observe.MeterRegistry;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
@@ -74,7 +74,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     private final TransportSecurity transport;
     /** Tracing/metrics wiring; null when the observe module is not installed. */
     private final Tracer tracer;
-    private final MeterRegistry metrics;
+    private final Metrics metrics;
     private final HttpClient http;
     /** Per-service shards: one failing service cannot poison the others. An
      *  injected default-implementation breaker/limiter is the configuration
@@ -104,7 +104,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
                                   List<Propagator> propagators,
                                   Retryer retryer, CircuitBreaker breaker, RateLimiter rateLimiter,
                                   TransportSecurity transport,
-                                  Tracer tracer, MeterRegistry metrics,
+                                  Tracer tracer, Metrics metrics,
                                   Duration requestTimeout, Duration connectTimeout) {
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.loadBalancer = Objects.requireNonNull(loadBalancer, "loadBalancer");
