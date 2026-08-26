@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **freeway-boot** — `AppConfig.get(ConfigSpec)` 不再每次调用分配新
+  `CoercerDefault`（嵌套 holder 共享单例）；`loadJson` 复用已解码文本直接
+  解析，去掉二次字节流包装；负数 CLI 值识别扩展到指数形式
+  （`--port -1e5`）；`openBoundedStream` 更名 `findBoundedStream`（可空
+  语义）、`putAllIgnoringProfileActivationKey` 缩名并提取
+  `PROFILE_KEY` 常量；FreewayApp 头部格式对齐。新增
+  `HookLifecycleTest` 覆盖启动失败回滚、Error 透传与抑制链。
 - **freeway-commons** — `ConfigSpec.parse(raw, coercer)` 在无 parser 且
   coercer 为 null 时不再裸 NPE，改为带键名的 `IllegalStateException`
   （附首个 config 包专属测试类 ConfigSpecTest）；`Defer` 延迟供给的

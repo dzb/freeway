@@ -7,7 +7,6 @@ import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Maps;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -40,9 +39,12 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     );
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
-    /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}). */
+    /** The profile-activation key — see {@link BootConfigLayers#merged()}. */
+    private static final String PROFILE_KEY = "freeway.profile";
+
+    /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}, {@code -1e5}). */
     private static final Pattern NEGATIVE_NUMBER_PATTERN =
-        Pattern.compile("-\\d+(\\.\\d+)?");
+        Pattern.compile("-\\d+(\\.\\d+)?([eE][+-]?\\d+)?");
 
     public ConfigLoaderDefault() {
     }
@@ -70,7 +72,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         base.putAll(environment);
         base.putAll(parsedArgs);
 
-        List<String> profiles = parseProfiles(base.get("freeway.profile"));
+        List<String> profiles = parseProfiles(base.get(PROFILE_KEY));
         Map<String, String> profileProperties = new LinkedHashMap<>();
         Map<String, String> profileJson = new LinkedHashMap<>();
         for (String profile : profiles) {
@@ -143,7 +145,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadProperties(ClassLoader loader, String resourceName) {
-        try (InputStream bounded = openBoundedStream(loader, resourceName)) {
+        try (InputStream bounded = findBoundedStream(loader, resourceName)) {
             if (bounded == null) {
                 return Map.of();
             }
@@ -160,7 +162,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     }
 
     private static Map<String, String> loadJson(ClassLoader loader, String resourceName) {
-        try (InputStream bounded = openBoundedStream(loader, resourceName)) {
+        try (InputStream bounded = findBoundedStream(loader, resourceName)) {
             if (bounded == null) {
                 return Map.of();
             }
@@ -168,23 +170,21 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             try {
                 bytes = bounded.readAllBytes();
             } catch (IOException ex) {
-                // Mirror JsonParser's readText wrapper so the failure chain
-                // stays identical to the direct-parse path.
                 throw new IllegalArgumentException("Unable to read JSON input", ex);
             }
-            // An empty or whitespace-only JSON resource means "no config",
-            // consistent with an empty application.properties — not a parse
-            // error. Malformed non-blank JSON still fails below.
+            // Decode once and parse the decoded text — the BOM strip below
+            // mirrors JsonParser's string path.
             String text = new String(bytes, StandardCharsets.UTF_8);
             if (text.startsWith("\uFEFF")) {
                 text = text.substring(1); // strip UTF-8 BOM like JsonParser
             }
+            // An empty or whitespace-only JSON resource means "no config",
+            // consistent with an empty application.properties — not a parse
+            // error. Malformed non-blank JSON still fails at parseObject.
             if (text.isBlank()) {
                 return Map.of();
             }
-            JsonObject root = JsonUtils.parseObject(
-                new ByteArrayInputStream(bytes)
-            );
+            JsonObject root = JsonUtils.parseObject(text);
             return Maps.flatten(root.toMap(), ".");
         } catch (IOException | RuntimeException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
@@ -196,7 +196,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
      * wrapping the stream with a 16 MiB read cap. Returns {@code null} when
      * the resource does not exist, so callers can treat it as "no config".
      */
-    private static InputStream openBoundedStream(ClassLoader loader, String resourceName) {
+    private static InputStream findBoundedStream(ClassLoader loader, String resourceName) {
         ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
         InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
         if (stream == null) {
@@ -375,8 +375,8 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             Map<String, String> merged = new LinkedHashMap<>();
             merged.putAll(properties);
             merged.putAll(json);
-            putAllIgnoringProfileActivationKey(merged, profileProperties);
-            putAllIgnoringProfileActivationKey(merged, profileJson);
+            putAllExceptProfileKey(merged, profileProperties);
+            putAllExceptProfileKey(merged, profileJson);
             merged.putAll(environment);
             merged.putAll(args);
             return Map.copyOf(merged);
@@ -386,12 +386,12 @@ public final class ConfigLoaderDefault implements ConfigLoader {
          * Copies entries from {@code source} into {@code target}, skipping
          * the profile-activation key (see {@link #merged()}).
          */
-        private static void putAllIgnoringProfileActivationKey(
+        private static void putAllExceptProfileKey(
             Map<String, String> target,
             Map<String, String> source
         ) {
             for (Map.Entry<String, String> entry : source.entrySet()) {
-                if ("freeway.profile".equals(entry.getKey())) {
+                if (PROFILE_KEY.equals(entry.getKey())) {
                     continue;
                 }
                 target.put(entry.getKey(), entry.getValue());

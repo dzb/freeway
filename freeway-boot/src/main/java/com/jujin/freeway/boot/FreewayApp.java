@@ -1,6 +1,6 @@
 package com.jujin.freeway.boot;
-import com.jujin.freeway.commons.logging.LogBootstrap;
 
+import com.jujin.freeway.commons.logging.LogBootstrap;
 import com.jujin.freeway.ioc.ModuleEx;
 
 /**

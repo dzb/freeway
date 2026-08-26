@@ -28,7 +28,24 @@ public interface AppConfig {
         if (key.parser() != null) {
             return key.parse(get(key.key()));
         }
-        return key.parse(get(key.key()), new CoercerDefault());
+        return key.parse(get(key.key()), DefaultCoercer.instance());
+    }
+
+    /**
+     * Shared coercer for parser-less specs — {@link CoercerDefault} is
+     * immutable after construction and thread-safe, so one instance serves
+     * every lookup. Held in a nested class because interface fields cannot
+     * be private.
+     */
+    final class DefaultCoercer {
+
+        private static final Coercer INSTANCE = new CoercerDefault();
+
+        private DefaultCoercer() {}
+
+        static Coercer instance() {
+            return INSTANCE;
+        }
     }
 
     /** Returns the active profiles in priority order, as an unmodifiable list. */
