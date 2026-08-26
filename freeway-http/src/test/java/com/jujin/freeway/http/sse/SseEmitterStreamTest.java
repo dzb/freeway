@@ -116,6 +116,12 @@ class SseEmitterStreamTest {
 
         awaitUntil(2000, () -> publisher.getNumberOfSubscribers() == 1);
         publisher.submit(new SseEvent("before-crash"));
+        // submit() only enqueues — delivery is asynchronous via the
+        // publisher's executor. Wait until the event actually reached the
+        // wire, otherwise closeExceptionally can discard the buffer first
+        // and the assertion below becomes a coin flip.
+        awaitUntil(2000, () -> baos.toString(StandardCharsets.UTF_8)
+            .contains("data: before-crash"));
         publisher.closeExceptionally(new RuntimeException("source exploded"));
         pump.join(2000);
 
