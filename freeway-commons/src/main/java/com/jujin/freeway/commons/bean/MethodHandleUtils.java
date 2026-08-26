@@ -6,16 +6,20 @@ import java.lang.invoke.VarHandle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Collections;
 import java.util.Map;
-import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Caching utility for {@link MethodHandle}, {@link VarHandle}, and
  * constructor handles used by the bean introspection framework.
  *
- * <p>All handles are lazily created and cached in concurrent maps. Public
- * methods expose method-handle lookup and invocation for external use
+ * <p>All handles are lazily created and cached in {@link ClassValue}-keyed
+ * concurrent maps: reads are lock-free on every path (including the AOP
+ * invocation hot path), entries drop with their declaring class so
+ * dynamically loaded classes do not leak, and a first-time race simply lets
+ * one winner populate the inner map.
+ *
+ * <p>Public methods expose method-handle lookup and invocation for external use
  * (primarily by the IoC container), while package-private methods support
  * handle creation for fields and constructors used internally by
  * {@link BeanIntrospector}.
@@ -25,16 +29,31 @@ public final class MethodHandleUtils {
     private static final MethodHandles.Lookup PUBLIC =
         MethodHandles.publicLookup();
     /**
-     * Weakly keyed caches: entries are dropped when the reflection objects
-     * (and their declaring classes / classloaders) become unreachable, so
-     * dynamically loaded classes do not leak through these maps.
+     * Per-declaring-class caches: weakly reachable through ClassValue (entries
+     * are collected with the class), internally concurrent so lookups never
+     * block readers.
      */
-    private static final Map<Constructor<?>, MethodHandle> CONSTRUCTOR_HANDLES =
-        Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<Method, MethodHandle> METHOD_HANDLES =
-        Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<Field, VarHandle> VAR_HANDLES =
-        Collections.synchronizedMap(new WeakHashMap<>());
+    private static final ClassValue<Map<Constructor<?>, MethodHandle>> CONSTRUCTOR_HANDLES =
+        new ClassValue<>() {
+            @Override
+            protected Map<Constructor<?>, MethodHandle> computeValue(Class<?> type) {
+                return new ConcurrentHashMap<>();
+            }
+        };
+    private static final ClassValue<Map<Method, MethodHandle>> METHOD_HANDLES =
+        new ClassValue<>() {
+            @Override
+            protected Map<Method, MethodHandle> computeValue(Class<?> type) {
+                return new ConcurrentHashMap<>();
+            }
+        };
+    private static final ClassValue<Map<Field, VarHandle>> VAR_HANDLES =
+        new ClassValue<>() {
+            @Override
+            protected Map<Field, VarHandle> computeValue(Class<?> type) {
+                return new ConcurrentHashMap<>();
+            }
+        };
 
     private MethodHandleUtils() {
     }
@@ -44,20 +63,16 @@ public final class MethodHandleUtils {
     /**
      * Returns a cached MethodHandle for the given method.
      * <p>
-     * Uses a concurrent cache: if a MethodHandle already exists for this
-     * method it is returned directly; otherwise one is created and cached.
+     * Lock-free on the cached path: the declaring class selects the inner
+     * concurrent map and {@code computeIfAbsent} creates at most once under
+     * contention.
      *
      * @param method the reflection method object
      * @return the corresponding MethodHandle
      */
     public static MethodHandle methodHandle(Method method) {
-        MethodHandle cached = METHOD_HANDLES.get(method);
-        if (cached != null) {
-            return cached;
-        }
-        MethodHandle created = createMethodHandle(method);
-        METHOD_HANDLES.put(method, created);
-        return created;
+        return METHOD_HANDLES.get(method.getDeclaringClass())
+            .computeIfAbsent(method, MethodHandleUtils::createMethodHandle);
     }
 
     /**
@@ -111,13 +126,8 @@ public final class MethodHandleUtils {
      * @return the corresponding VarHandle
      */
     static VarHandle varHandle(Field field) {
-        VarHandle cached = VAR_HANDLES.get(field);
-        if (cached != null) {
-            return cached;
-        }
-        VarHandle created = createVarHandle(field);
-        VAR_HANDLES.put(field, created);
-        return created;
+        return VAR_HANDLES.get(field.getDeclaringClass())
+            .computeIfAbsent(field, MethodHandleUtils::createVarHandle);
     }
 
     /**
@@ -127,13 +137,8 @@ public final class MethodHandleUtils {
      * @return the corresponding MethodHandle
      */
     static MethodHandle constructorHandle(Constructor<?> constructor) {
-        MethodHandle cached = CONSTRUCTOR_HANDLES.get(constructor);
-        if (cached != null) {
-            return cached;
-        }
-        MethodHandle created = createConstructorHandle(constructor);
-        CONSTRUCTOR_HANDLES.put(constructor, created);
-        return created;
+        return CONSTRUCTOR_HANDLES.get(constructor.getDeclaringClass())
+            .computeIfAbsent(constructor, MethodHandleUtils::createConstructorHandle);
     }
 
     // -- private factories --

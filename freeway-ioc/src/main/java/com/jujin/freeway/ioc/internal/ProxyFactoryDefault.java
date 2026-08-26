@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 final class ProxyFactoryDefault implements ProxyFactory {
@@ -52,6 +53,10 @@ final class ProxyFactoryDefault implements ProxyFactory {
         private final List<AdviceEntry> advices;
         private final boolean cacheTarget;
         private volatile T cachedTarget;
+        /** Target handles for this proxy's interface methods — keeps the
+         *  invocation hot path free of even a shared-map lookup. Bounded by
+         *  the interface method count. */
+        private final ConcurrentHashMap<Method, MethodHandle> targetHandles = new ConcurrentHashMap<>();
 
         private AdvisedHandler(
             Supplier<T> provider,
@@ -123,20 +128,21 @@ final class ProxyFactoryDefault implements ProxyFactory {
             }
             return invokeTarget(real, method, args);
         }
+
+        private Object invokeTarget(Object real, Method method, Object[] args) throws Throwable {
+            MethodHandle handle = targetHandles.computeIfAbsent(
+                method, MethodHandleUtils::methodHandle);
+            return MethodHandleUtils.invoke(handle, real, args);
+        }
     }
 
     @SuppressWarnings("unchecked")
-    private <T> T newProxy(Class<T> interfaceType, InvocationHandler handler) {
+    private static <T> T newProxy(Class<T> interfaceType, InvocationHandler handler) {
         return (T) Proxy.newProxyInstance(
             interfaceType.getClassLoader(),
             new Class<?>[] { interfaceType },
             handler
         );
-    }
-
-    private static Object invokeTarget(Object real, Method method, Object[] args) throws Throwable {
-        MethodHandle handle = MethodHandleUtils.methodHandle(method);
-        return MethodHandleUtils.invoke(handle, real, args);
     }
 
     private static void requireInterface(Class<?> interfaceType) {
