@@ -40,7 +40,7 @@ final class BatchQueryImpl implements BatchQuery {
         this.boundBinding = boundBinding;
         this.sql = sql;
         this.parsed = SqlTextParser.parseNamed(sql, db.dialect());
-        this.mayHaveGeneratedKeys = DatabaseImpl.startsWithInsert(sql, db.dialect());
+        this.mayHaveGeneratedKeys = SqlTextParser.hasTopLevelInsert(sql, db.dialect());
         this.positionalParameterCount =
             SqlTextParser.paramIndexes(parsed.sql(), db.dialect()).size();
         SqlTextParser.requireNoMixedPlaceholders(sql, db.dialect());

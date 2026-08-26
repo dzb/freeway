@@ -87,11 +87,16 @@ public final class DatabaseImpl implements Database {
         return activeTxThreads.contains(Thread.currentThread());
     }
 
+    /** The caller's transaction binding, or null when outside a transaction. */
+    private TxBinding currentTx() {
+        return tx.isBound() ? tx.get() : null;
+    }
+
     @Override
     public Query query(String sql, Object... params) {
         return new QueryImpl(
             this,
-            tx.isBound() ? tx.get() : null,
+            currentTx(),
             sql,
             params,
             false
@@ -102,10 +107,10 @@ public final class DatabaseImpl implements Database {
     public ExecuteResult execute(String sql, Object... params) {
         return new QueryImpl(
             this,
-            tx.isBound() ? tx.get() : null,
+            currentTx(),
             sql,
             params,
-            startsWithInsert(sql, dialect)
+            SqlTextParser.hasTopLevelInsert(sql, dialect)
         ).execute();
     }
 
@@ -113,7 +118,7 @@ public final class DatabaseImpl implements Database {
     public BatchQuery batch(String sql) {
         return new BatchQueryImpl(
             this,
-            tx.isBound() ? tx.get() : null,
+            currentTx(),
             sql
         );
     }
@@ -216,10 +221,6 @@ public final class DatabaseImpl implements Database {
         } catch (SQLException ignored) {
             // physical close is best-effort
         }
-    }
-
-    static boolean startsWithInsert(String sql, Dialect dialect) {
-        return SqlTextParser.hasTopLevelInsert(sql, dialect);
     }
 
     @Override

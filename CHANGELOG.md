@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **freeway-db** — 删除 `DatabaseImpl.startsWithInsert` 单行包装：其名字
+  描述朴素前缀匹配，实际语义是顶层 INSERT 检测（跳过 CTE/注释），调用点
+  直接使用名字准确的 `SqlTextParser.hasTopLevelInsert`；query/execute/
+  batch 三处重复的事务绑定表达式提取为 `currentTx()`。
 - **freeway-ioc** — 注入点同时携带服务注入与配置注解时的错误消息改带
   owner 类型名（此前输出匿名对象 `InjectResolver$1@...`，诊断信息为零）；
   `normalizedId` 签名收窄为 `Inject`（原 `Annotation` 形态的 else 分支按
