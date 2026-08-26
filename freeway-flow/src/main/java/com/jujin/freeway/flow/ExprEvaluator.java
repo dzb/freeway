@@ -8,6 +8,10 @@ import java.util.Map;
 /**
  * Minimal conditional expression evaluator (zero external dependencies, recursive-descent parsing)
  *
+ * <p>Freeway-specific — no counterpart in solon-flow (which delegates
+ * expression evaluation to liquor-eval/Snel via the Evaluation SPI). This
+ * recursive-descent compiler is an independent implementation.
+ *
  * <p>Supported syntax:
  * <pre>
  * expression  → or_expr
@@ -34,7 +38,6 @@ import java.util.Map;
  * Expressions are compiled to an AST (abstract syntax tree) on first use; later the same
  * expression is evaluated directly, avoiding repeated parsing.
  *
- * @author noear (solon-flow), adapted for freeway
  */
 public final class ExprEvaluator {
 

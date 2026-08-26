@@ -6,7 +6,11 @@
  * <br>Original license: Apache License 2.0</p>
  *
  * <p>Ported and adapted as a freeway framework module, keeping the core orchestration capabilities while adding zero new third-party dependencies.
- * See {@code README.md} in the module root for details.</p>
+ * See {@code README.md} in the module root for details. A few classes are
+ * freeway-specific and noted as such in their javadoc: {@code ExecState},
+ * {@code ExprEvaluator}, {@code FlowEventBus}, {@code FlowMarker}/
+ * {@code FlowMarkerIndex} (the {@code !marker} task syntax), and
+ * {@code FlowModule}.</p>
  *
  * <h3>Core entry points</h3>
  * <ul>

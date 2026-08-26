@@ -19,8 +19,6 @@ import java.util.function.Consumer;
  *   <li>Topic-level publish/unsubscribe capability is kept to support notification, replay and debugging within the same flow execution.</li>
  * </ul>
  * This avoids introducing a global message surface while preserving the original in-flow event model.</p>
- *
- * @since 1.2.2
  */
 public class FlowEventBus {
 

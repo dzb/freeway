@@ -15,8 +15,9 @@ import java.util.function.Function;
  * <p>Shared across {@link FlowExchanger#copy()} boundaries so loop and
  * inclusive-gateway bookkeeping survives sub-graph switches.
  *
- * @author noear
- * @since 3.0
+ * <p>Freeway-specific — no counterpart in solon-flow (which carries similar
+ * state on a `Temporary` class). Reworked here: per-eval counter reset
+ * semantics, dead-end marking, and loop-body join caching.
  */
 public class ExecState {
     /**
