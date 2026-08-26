@@ -5,6 +5,72 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **结构化绑定异常（freeway-ioc）** — 新增 `AmbiguousBindingException` 与
+  `UnknownSymbolException`：多命中/双 primary 与符号未命中现在可按类型捕获，
+  无需匹配异常消息文本。两者均继承 `IllegalArgumentException`，既有 catch
+  站点不受影响。`Container.get` 的 javadoc 同步标注两类抛出。
+- **EventBus 订阅查询（freeway-ioc）** — `hasSubscribers(String)` /
+  `hasSubscribers(Class)` 补齐与 `CallBus.handles` 对称的查询面。
+- **迁移锁 TTL（freeway-db）** — `freeway.db.migration.lock-ttl`（默认 PT1H）：
+  进程崩溃残留的锁行超时后自动接管，无需手工 DELETE；设为 0 显式禁用接管。
+- **表达式乘除模（freeway-flow）** — 条件表达式支持 `*` `/` `%`
+  （优先级介于加减与一元之间；除零/模零显式报错，不产生 Infinity/NaN）。
+
+### Changed
+
+- **CallBus 注册为容器内置服务（freeway-ioc）** — 开箱即用，与 EventBus 同样
+  延迟到全部 @PreDestroy 之后关闭。此前手动 `bind(CallBus.class).to(CallBus::new)`
+  的代码会与之形成二义性，需删除该手动绑定或改为 `.primary()`。
+- **熔断器/限流器按服务分片（freeway-cloud）** — 注入型实例现作为配置模板：
+  每个 serviceId 经 `newShard()` 获得同策略独立状态；一个服务的失败不再污染
+  其他服务。自定义实现经接口默认方法保持共享语义。HALF_OPEN 探针超时重置
+  收敛到单探针不变量（probeLock）。
+- **Tracer span 时长入指标（freeway-cloud）** — span 关闭时冻结时长并写入
+  `tracer.span.duration` timer，`/metrics` 可见；`Span.elapsedNanos()` 可编程读取。
+- **响应侧 header 校验对齐解析侧（freeway-http）** — `validateHeaderValue`
+  拒绝除 HTAB 外的全部 CTL 与 DEL，与 Http1xParser 入站规则完全一致。
+- **性能冒烟断言改为地板阈值（freeway-cloud）** — CloudPerformanceTest 各场景
+  统一为可通过 `-Dcloud.bench.floor` 调整的数量级守门线（默认 1k ops/s），
+  实测数值照常打印，慢 CI 不再误报。
+
+### Fixed
+
+- **freeway-cloud**：注入路径的熔断/限流分片失效（容器代理导致 instanceof
+  失败，所有服务共享同一实例——一个服务打熔断即拒答健康服务）；HALF_OPEN
+  探针丢失后的并发重置竞态。
+- **freeway-ioc**：EventBus 流桥在"取 publisher 后、首次订阅前总线关闭"
+  的窗口内挂死订阅者或让 ISE 冲出 subscribe()（Flow 规范要求不抛）；桥关闭
+  后迟到订阅者现在按 onError 结算。
+- **freeway-flow**：PARALLEL 分支在 executor 已 shutdown 时的 RejectedExecution
+  使 join latch 泄漏（await 永挂）；现记录首个错误并释放对应槽位，后续分支
+  快速跳过。嵌套 PARALLEL + 定长池的死锁风险写入 FlowDriverDefault 文档。
+- **freeway-db**：同一 Database 实例上并行事务互相覆盖线程守卫注册表；
+  BatchQuery autoCommit 恢复失败现销毁物理连接而非归还脏连接；迁移锁重复键
+  判定从 "23xxx 前缀 + 宽泛关键词" 收紧为精确状态码（23505/23000/40001）+
+  窄关键词，check/not-null 违规不再误报为锁竞争（附表驱动回归测试）。
+- **freeway-http**：HPACK header 名校验改用 Locale.ROOT（土耳其语环境不再误判）。
+- **freeway-commons**：AOP 热路径的全局同步 MethodHandle 缓存改为 ClassValue
+  分层并发缓存（读无锁），AdvisedHandler 另加每代理句柄缓存；Coercer 重注册
+  在 assignable-source 索引中留下重复条目；JSON 解析器 BOM 判定的裸 U+FEFF
+  字符改为转义写法。
+
+### Removed
+
+- **freeway-ioc**：`Extension.of(...)`（全仓零引用）；`Contributions.add(Class)`
+  的 default-throw 实现改为抽象方法（唯一实现方 BinderImpl 本就重写）；
+  internal 的 InstanceFactory 类折叠进 ContainerImpl。
+
+### Test
+
+- **freeway-ioc 测试重组** — 2900 行的 FreewayTest 单文件按域拆分为 9 个测试
+  类 + FreewayFixtures/FreewayTestSupport；1000 行的 EventBusTest 拆分为 6 个；
+  流式视图的关闭竞态、SSE 泵的取消竞态各补确定性回归测试。
+
+
 ## [1.3.9] — 2026-08-24
 
 ### Added
