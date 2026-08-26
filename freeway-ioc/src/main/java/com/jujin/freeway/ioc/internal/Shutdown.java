@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.EventBus;
 
 final class Shutdown {
@@ -19,13 +20,13 @@ final class Shutdown {
     private final Set<Object> preDestroyed = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Object> closed = Collections.newSetFromMap(new IdentityHashMap<>());
     /**
-     * Container-managed {@link EventBus} instances, closed only after every
-     * lifecycle callback has run: {@code @PreDestroy} code may still publish
-     * events (the documented "look up services during close" contract), and a
-     * bus that was closed mid-drain would turn those publishes into
-     * IllegalStateException failures that abort the whole shutdown.
+     * Container-managed message services ({@link EventBus}, {@link CallBus}),
+     * closed only after every lifecycle callback has run: {@code @PreDestroy}
+     * code may still publish events and make calls (the documented "look up
+     * services during close" contract), and a bus closed mid-drain would turn
+     * those into failures that abort the whole shutdown.
      */
-    private final List<EventBus> deferredEventBuses = new ArrayList<>();
+    private final List<AutoCloseable> deferredMessageServices = new ArrayList<>();
 
     Shutdown(Map<ServiceKey, Object> targetCache) {
         this.targetCache = targetCache;
@@ -47,17 +48,22 @@ final class Shutdown {
      */
     RuntimeException close() {
         RuntimeException failure = drainRemaining(null);
-        // The event bus is the last thing to close: every @PreDestroy/close
-        // callback has already run, so no code can publish into a closed bus.
-        for (EventBus bus : deferredEventBuses) {
+        // The message services are the last things to close: every
+        // @PreDestroy/close callback has already run, so no code can publish
+        // into a closed event bus or call into a closed call bus.
+        for (AutoCloseable service : deferredMessageServices) {
             try {
-                bus.close();
-            } catch (RuntimeException ex) {
+                service.close();
+            } catch (RuntimeException | Error ex) {
                 failure = accumulateFailure(failure,
-                    "Unable to close container-managed EventBus", ex);
+                    "Unable to close container-managed message service", ex);
+            } catch (Exception ex) {
+                // AutoCloseable.close() declares checked Exception
+                failure = accumulateFailure(failure,
+                    "Unable to close container-managed message service", ex);
             }
         }
-        deferredEventBuses.clear();
+        deferredMessageServices.clear();
         return failure;
     }
 
@@ -99,10 +105,11 @@ final class Shutdown {
                 try {
                     if (preDestroy) {
                         Lifecycle.invokePreDestroy(value);
-                    } else if (value instanceof EventBus bus) {
+                    } else if (value instanceof EventBus || value instanceof CallBus) {
                         // Deferred until every lifecycle callback has run —
-                        // @PreDestroy code may still publish during the drain.
-                        deferredEventBuses.add(bus);
+                        // @PreDestroy code may still publish/call during the
+                        // drain.
+                        deferredMessageServices.add((AutoCloseable) value);
                     } else if (value instanceof AutoCloseable closeable) {
                         closeable.close();
                     }

@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.UnknownSymbolException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -53,7 +54,11 @@ final class SymbolSourceDefault implements SymbolSource {
         if (value != null) {
             return expand(value);
         }
-        throw new IllegalArgumentException("Unknown symbol: " + name);
+        // The typed sentinel is what resolve(name, default) matches on. Only
+        // this top-level miss carries it — an unknown symbol nested inside
+        // another value's expansion (expand() below) stays a plain IAE and
+        // propagates instead of degrading to the default.
+        throw new UnknownSymbolException(name);
     }
 
     private String raw(String name) {

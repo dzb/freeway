@@ -1,5 +1,8 @@
 package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.ioc.AmbiguousBindingException;
+import com.jujin.freeway.ioc.MissingBindingException;
+
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
@@ -13,6 +16,19 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Registry of bindings keyed by (type, id) plus a per-type view.
+ *
+ * <p><b>Threading model.</b> Writes ({@link #register}, {@link #updateId},
+ * {@link #clear}) are mutually exclusive via the monitor; lookups
+ * ({@code find}/{@code findUnique}) are deliberately lock-free because they
+ * sit on every {@code container.get()} path. This split is safe under one
+ * contract: <b>bindings are registered during module composition and looked
+ * up only afterwards</b> — the container publishes itself to application code
+ * strictly after composition completes, so readers always see a frozen index
+ * through the map/deque's own safe-publication semantics. If registration is
+ * ever made concurrent with lookups, the read paths need synchronization too.
+ */
 final class BindingIndex {
     private static final Logger LOG = LoggerFactory.getLogger(BindingIndex.class);
 
@@ -121,7 +137,7 @@ final class BindingIndex {
             false
         );
         if (scan.multiple()) {
-            throw new IllegalArgumentException(
+            throw new AmbiguousBindingException(
                 "Multiple services match type " + type.getName() + " and id " + id
             );
         }
@@ -154,15 +170,16 @@ final class BindingIndex {
             return scan.first();
         }
         if (scan.primaryConflict()) {
-            throw new IllegalArgumentException(
+            throw new AmbiguousBindingException(
                 "Multiple primary services match type " + type.getName()
             );
         }
         if (scan.primary() != null) {
             return scan.primary();
         }
-        throw new IllegalArgumentException(
-            "Multiple services match type " + type.getName() + "; mark one binding as primary()"
+        throw new AmbiguousBindingException(
+            "Multiple services match type " + type.getName()
+                + "; mark one binding as primary()"
         );
     }
 

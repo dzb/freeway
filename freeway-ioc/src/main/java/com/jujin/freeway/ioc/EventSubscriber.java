@@ -62,7 +62,13 @@ public final class EventSubscriber<E> {
         );
     }
 
-    /** Class-based subscriber with id for ordering. */
+    /**
+     * Class-based subscriber with id for ordering.
+     *
+     * @param id contribution id used for {@code before/after} ordering
+     *           (distinct from the string-topic overloads, where the first
+     *           String is the topic)
+     */
     public static <E> EventSubscriber<E> of(
         String id,
         Class<E> eventType,
@@ -76,7 +82,11 @@ public final class EventSubscriber<E> {
         );
     }
 
-    /** String-topic subscriber. */
+    /**
+     * String-topic subscriber. The first parameter is the <b>topic</b>
+     * (e.g. {@code "order.placed"}) — not an ordering id; see the two-id
+     * overload for named topic subscriptions.
+     */
     public static EventSubscriber<Object> of(
         String topic,
         Consumer<Object> handler

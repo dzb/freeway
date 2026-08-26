@@ -36,6 +36,12 @@ public interface SymbolSource {
      * symbol is not found. Delegates to {@link #expand(String)} with the
      * {@code ${name:default}} syntax.
      *
+     * <p>Only a missing top-level symbol maps to {@code defaultValue}
+     * (detected via {@link UnknownSymbolException}, not message text);
+     * expansion errors — depth limit, unclosed expression, or an unknown
+     * symbol nested inside another value — propagate instead of silently
+     * treating a broken config chain as "absent".
+     *
      * @param name         the symbol name
      * @param defaultValue the fallback value (null = return null on miss)
      * @return the resolved value, or defaultValue if not found
@@ -44,16 +50,8 @@ public interface SymbolSource {
         if (defaultValue == null) {
             try {
                 return resolve(name);
-            } catch (IllegalArgumentException e) {
-                // Only a missing top-level symbol maps to null. Expansion
-                // errors (depth limit, nested unknown symbol, unclosed
-                // expression) must propagate — swallowing them would silently
-                // treat a broken config chain as "absent".
-                if (e.getMessage() != null
-                        && e.getMessage().equals("Unknown symbol: " + name)) {
-                    return null;
-                }
-                throw e;
+            } catch (UnknownSymbolException e) {
+                return null;
             }
         }
         return expand("${" + name + ":" + defaultValue + "}");

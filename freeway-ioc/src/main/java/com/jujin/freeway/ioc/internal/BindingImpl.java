@@ -93,7 +93,9 @@ final class BindingImpl<T> implements Binding<T> {
         setProvider(ignored -> {
             try {
                 return container.constructInstance(actual);
-            } catch (Error e) { throw e; } catch (Throwable ex) {
+            } catch (Error e) {
+                throw e;
+            } catch (Throwable ex) {
                 throw new RuntimeException("Unable to construct " + actual.getName(), ex);
             }
         });
@@ -179,7 +181,6 @@ final class BindingImpl<T> implements Binding<T> {
             throw new RuntimeException("Unable to initialize " + type.getName(), ex);
         }
     }
-
     private void requireSingletonScope(String operation) {
         if (scope != Scope.SINGLETON) {
             throw new IllegalStateException(operation + " requires Scope.SINGLETON");

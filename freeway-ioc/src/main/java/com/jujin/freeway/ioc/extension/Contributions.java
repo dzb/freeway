@@ -34,10 +34,7 @@ public interface Contributions<T> {
      * @param implClass the implementation class
      * @return a Contribution handle for declaring before/after constraints
      */
-    default Contribution add(Class<? extends T> implClass) {
-        throw new UnsupportedOperationException(
-            "add(Class) requires a Container-based Contributions implementation");
-    }
+    Contribution add(Class<? extends T> implClass);
 
     /**
      * Adds a named contribution with ordering support. Duplicate ids are

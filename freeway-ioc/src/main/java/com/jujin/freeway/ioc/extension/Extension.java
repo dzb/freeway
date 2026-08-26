@@ -83,21 +83,6 @@ public final class Extension<V> {
     }
 
     /**
-     * Creates an extension pre-populated with values (no ordering).
-     *
-     * @param entryType the entry type
-     * @param values    the values to include
-     * @param <V>       the entry type
-     * @return a new Extension containing the given values
-     */
-    @SafeVarargs
-    public static <V> Extension<V> of(Class<V> entryType, V... values) {
-        Extension<V> ext = new Extension<>(entryType);
-        for (V value : values) ext.add(null, value);
-        return ext;
-    }
-
-    /**
      * Returns the contribution with the given id, or empty.
      *
      * @param id the contribution id

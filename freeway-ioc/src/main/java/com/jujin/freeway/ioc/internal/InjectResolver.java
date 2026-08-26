@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.util.Types;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
@@ -198,13 +199,14 @@ final class InjectResolver {
      */
     private Object resolveById(Class<?> targetType, AnnotationLookup lookup) {
         String id = resolveId(lookup);
-        if (id != null) {
-            BindingImpl<?> bound = container.bindingIndex().find(targetType, id);
-            if (bound != null) {
-                return container.get(targetType, id);
-            }
+        if (id == null) {
+            return null;
         }
-        return null;
+        try {
+            return container.get(targetType, id);
+        } catch (MissingBindingException e) {
+            return null; // no bound service with this id — use contributions
+        }
     }
 
     private static AnnotationLookup annotations(BeanProperty property) {
@@ -287,8 +289,13 @@ final class InjectResolver {
         }
     }
 
-    private static final ConcurrentHashMap.KeySetView<String, Boolean> MARKER_WARNED =
-        ConcurrentHashMap.newKeySet();
+    /**
+     * Per-container warn-once registry for unrecognized injection-point
+     * annotations — instance-scoped so embedded multi-container apps don't
+     * share dedup state (and a closed container's set can't suppress another
+     * container's warnings).
+     */
+    private final Set<String> markerWarned = ConcurrentHashMap.newKeySet();
 
     private Object resolveValue(
         Class<?> ownerType,
@@ -388,7 +395,7 @@ final class InjectResolver {
             // Check if this annotation is a known marker
             if (container.markerIndex().isKnownMarker(annType)) {
                 result.add(annType);
-            } else if (MARKER_WARNED.add(annType.getName() + "#" + ownerType.getName())) {
+            } else if (markerWarned.add(annType.getName() + "#" + ownerType.getName())) {
                 LOG.warn(
                     "Ignoring unrecognized annotation {} at an injection point on {}; "
                         + "register it with .marker({}.class) on the binding, "
@@ -481,8 +488,11 @@ final class InjectResolver {
     private interface AnnotationLookup {
         <A extends Annotation> Optional<A> annotation(Class<A> type);
 
-        default Annotation[] annotations() {
-            return new Annotation[0];
-        }
+        /**
+         * All annotations at the injection point — deliberately abstract so a
+         * new implementation cannot silently lose marker scanning by
+         * inheriting an empty default.
+         */
+        Annotation[] annotations();
     }
 }

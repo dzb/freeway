@@ -1,5 +1,7 @@
 package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.commons.bean.BeanConstructor;
+import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
@@ -8,12 +10,15 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
 import com.jujin.freeway.ioc.Binder;
+import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.annotation.Builtin;
+import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -88,7 +93,6 @@ public final class ContainerImpl implements Container {
     private final Scoping scoping;
     private final ProxyFactory proxyFactory;
     private final InjectResolver injectResolver;
-    private final InstanceFactory instanceFactory;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
     private final Set<ModuleEx> installedModules = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -110,20 +114,9 @@ public final class ContainerImpl implements Container {
     public ContainerImpl(Collection<? extends ModuleEx> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
-        this.loggerSource = new LoggerSource() {
-            @Override
-            public Logger get(Class<?> ownerType) {
-                return LoggerFactory.getLogger(ownerType);
-            }
-
-            @Override
-            public Logger get(String name) {
-                return LoggerFactory.getLogger(name);
-            }
-        };
+        this.loggerSource = LoggerSourceDefault.INSTANCE;
         this.proxyFactory = new ProxyFactoryDefault();
         this.injectResolver = new InjectResolver(this);
-        this.instanceFactory = new InstanceFactory(this);
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(targetCache);
         this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);
@@ -136,7 +129,11 @@ public final class ContainerImpl implements Container {
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
         registerBuiltin(Scoping.class, scoping, "Scoping");
+        // Message domain: both buses are container-managed builtins so the
+        // documented usage (container.get(...)) works out of the box. Their
+        // close is deferred past every lifecycle callback (see Shutdown).
         registerBuiltin(EventBus.class, new EventBus(this), "EventBus");
+        registerBuiltin(CallBus.class, new CallBus(this), "CallBus");
         loadAll(modules);
         LOG.info("Loaded {} module(s): {}", loadedModules.size(),
             loadedModules.stream().map(m -> m.getClass().getSimpleName()).toList());
@@ -243,7 +240,17 @@ public final class ContainerImpl implements Container {
         if (closed) {
             throw new IllegalStateException("Container is closed");
         }
-        return instanceFactory.instantiate(type);
+        // Constructor injection + field injection + @PostConstruct, without
+        // registering or caching the instance.
+        try {
+            T value = constructInstance(type);
+            initialize(value);
+            return value;
+        } catch (Error ex) {
+            throw ex;
+        } catch (Throwable ex) {
+            throw new RuntimeException("Unable to instantiate " + type.getName(), ex);
+        }
     }
 
     @Override
@@ -260,10 +267,11 @@ public final class ContainerImpl implements Container {
                 return;
             }
             LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
-            // The container-managed EventBus is closed only after every
-            // lifecycle callback has run (Shutdown defers it), so @PreDestroy
-            // code may still publish events during the drain without the bus
-            // rejecting them. Deliberately NOT holding
+            // The container-managed message services (EventBus, CallBus) are
+            // closed only after every lifecycle callback has run (Shutdown
+            // defers them), so @PreDestroy code may still publish events and
+            // make calls during the drain without the buses rejecting them.
+            // Deliberately NOT holding
             // ServiceRuntime.REALIZE_LOCK across the drain: user lifecycle
             // callbacks may join worker threads that realize services, and
             // holding the global lock there would deadlock. Realization during
@@ -316,7 +324,7 @@ public final class ContainerImpl implements Container {
             if (closed) {
                 throw new IllegalStateException("Container is closed");
             }
-            throw new IllegalArgumentException(
+            throw new MissingBindingException(
                 "No service registered for type " + type.getName()
             );
         }
@@ -338,7 +346,7 @@ public final class ContainerImpl implements Container {
             if (closed) {
                 throw new IllegalStateException("Container is closed");
             }
-            throw new IllegalArgumentException(
+            throw new MissingBindingException(
                 "No service registered for type " + type.getName() + " and id " + id
             );
         }
@@ -359,7 +367,7 @@ public final class ContainerImpl implements Container {
             if (closed) {
                 throw new IllegalStateException("Container is closed");
             }
-            throw new IllegalArgumentException(
+            throw new MissingBindingException(
                     "No service registered for type " + type.getName()
                             + " with markers " + Arrays.toString(markers)
             );
@@ -414,9 +422,15 @@ public final class ContainerImpl implements Container {
         }
     }
 
-    /** Constructor injection only — no field injection, no @PostConstruct. */
+    /**
+     * Constructor injection only — no field injection, no @PostConstruct.
+     * Constructor selection and argument resolution go through the same
+     * {@code @Inject} rules as every other realization path.
+     */
     <T> T constructInstance(Class<T> type) throws Throwable {
-        return instanceFactory.construct(type);
+        BeanConstructor constructor = BeanIntrospector.selectConstructor(type, Inject.class);
+        Object[] args = injectResolver.resolveArguments(type, constructor.parameters());
+        return type.cast(constructor.newInstance(args));
     }
 
     void initialize(Object instance) {

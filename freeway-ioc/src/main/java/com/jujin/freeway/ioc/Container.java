@@ -34,8 +34,9 @@ public interface Container extends AutoCloseable {
      * @param type the service type
      * @param <T>  the service type
      * @return the service instance
-     * @throws IllegalArgumentException if no binding, multiple bindings
-     *         without a primary, or multiple primaries exist
+     * @throws MissingBindingException if no binding exists
+     * @throws AmbiguousBindingException if multiple bindings exist and none
+     *         is the unique primary (both extend {@link IllegalArgumentException})
      */
     <T> T get(Class<T> type);
 
@@ -46,7 +47,8 @@ public interface Container extends AutoCloseable {
      * @param id   the binding id
      * @param <T>  the service type
      * @return the service instance
-     * @throws IllegalArgumentException if no binding matches
+     * @throws MissingBindingException if no binding matches
+     * @throws AmbiguousBindingException if multiple bindings match
      */
     <T> T get(Class<T> type, String id);
 
@@ -70,7 +72,9 @@ public interface Container extends AutoCloseable {
      * @param markers marker annotation classes to match
      * @param <T>     the service type
      * @return the service instance
-     * @throws IllegalArgumentException if no binding or multiple bindings match
+     * @throws MissingBindingException if no binding matches
+     * @throws AmbiguousBindingException if multiple bindings match and none
+     *         is the unique primary
      */
     <T> T get(Class<T> type, Class<? extends Annotation>... markers);
 

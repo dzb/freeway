@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.ioc.AmbiguousBindingException;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.annotation.NotThreadSafe;
 import com.jujin.freeway.ioc.annotation.Primary;
@@ -127,7 +128,7 @@ final class MarkerIndex {
         for (BindingImpl<?> b : typeMatches) {
             if (b.isPrimary()) {
                 if (primary != null) {
-                    throw new IllegalArgumentException(
+                    throw new AmbiguousBindingException(
                         "Multiple primary services match type " + type.getName()
                             + " with markers " + markerNames(markers)
                     );
@@ -139,7 +140,7 @@ final class MarkerIndex {
             return (BindingImpl<T>) primary;
         }
 
-        throw new IllegalArgumentException(
+        throw new AmbiguousBindingException(
             "Multiple services match type " + type.getName()
                 + " with markers " + markerNames(markers)
                 + "; mark one binding as primary()"
