@@ -49,6 +49,7 @@ class PrincipalPropagationTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
+        System.clearProperty(CloudConfigKeys.AUTH_EXTRACT_ENABLED);
     }
 
     @Test

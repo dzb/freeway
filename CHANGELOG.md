@@ -78,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Test
 
+- **freeway-cloud**：`PrincipalPropagationTest` 的 `@AfterEach` 未清除
+  `freeway.cloud.auth.extract.enabled`，系统属性泄漏到后续测试类，
+  `SecurityTest.authPropagatorIgnoresInboundIdentityByDefault` 在全量套件
+  中按类顺序稳定误报（单独跑通过）——补齐清理。
 - **freeway-ioc 测试重组** — 2900 行的 FreewayTest 单文件按域拆分为 9 个测试
   类 + FreewayFixtures/FreewayTestSupport；1000 行的 EventBusTest 拆分为 6 个；
   流式视图的关闭竞态、SSE 泵的取消竞态各补确定性回归测试。
