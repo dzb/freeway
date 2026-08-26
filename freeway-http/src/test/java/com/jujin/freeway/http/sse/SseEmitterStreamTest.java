@@ -79,6 +79,35 @@ class SseEmitterStreamTest {
     }
 
     @Test
+    void deliveryRacingCloseCutsDemandInsteadOfDrainingSource() throws Exception {
+        // Regression: a close() that races onSubscribe/onNext used to leave
+        // the demand loop running against a dead response — every further
+        // source item was silently dropped but still requested another one.
+        var baos = new ByteArrayOutputStream();
+        var emitter = new SseEmitter(baos, 0);
+        var recording = new RecordingPublisher();
+        Thread pump = Thread.ofVirtual().start(() -> emitter.from(recording));
+
+        awaitUntil(2000, () -> recording.subscribed());
+        recording.deliver(new SseEvent("before"));
+        awaitUntil(2000, () -> baos.toString(StandardCharsets.UTF_8)
+            .contains("data: before"));
+
+        emitter.close(); // cancels upstream; RecordingPublisher keeps delivering anyway
+        int requestsAtClose = recording.requests.size();
+
+        recording.deliver(new SseEvent("late")); // simulates an in-flight item
+        pump.join(2000);
+        assertFalse(pump.isAlive(), "the pump must end once the emitter is closed");
+        assertTrue(recording.isCancelled(), "upstream must be cancelled");
+        assertEquals(requestsAtClose, recording.requests.size(),
+            "a post-close delivery must not trigger further demand");
+        assertEquals("data: before\n\n",
+            baos.toString(StandardCharsets.UTF_8),
+            "nothing may reach the wire after close");
+    }
+
+    @Test
     void sourceFailureClosesEmitter() throws Exception {
         var baos = new ByteArrayOutputStream();
         var emitter = new SseEmitter(baos, 0);

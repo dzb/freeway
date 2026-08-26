@@ -207,10 +207,25 @@ public class SseEmitter implements AutoCloseable {
             @Override public void onSubscribe(Flow.Subscription s) {
                 subscription = s;
                 streamSubscription = s;
+                if (closed) {
+                    // The emitter died between from()'s latch registration and
+                    // this callback: cancel here — an external close() already
+                    // ran cancelStream() against a still-null subscription.
+                    s.cancel();
+                    done.countDown();
+                    return;
+                }
                 s.request(1);
             }
 
             @Override public void onNext(T item) {
+                if (closed) {
+                    // Close raced the delivery: cut demand instead of draining
+                    // the source forever against a dead response.
+                    cancelStream();
+                    done.countDown();
+                    return;
+                }
                 try {
                     send(mapper.apply(item));
                     subscription.request(1);
@@ -218,7 +233,7 @@ public class SseEmitter implements AutoCloseable {
                     // Broken pipe — send() has flipped the emitter closed.
                     done.countDown();
                 } catch (RuntimeException e) {
-                    // Bad event data: drop the connection rather than loop.
+                    // Bad event data: end the stream rather than loop.
                     cancelStream();
                     failure.compareAndSet(null, e);
                     done.countDown();

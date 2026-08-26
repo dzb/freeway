@@ -181,9 +181,9 @@ public final class RouteIndex {
             if (result != null) return result;
         }
         if (node.paramChildren == null) return null;
-        var candidates = new ArrayList<>(node.paramChildren);
-        candidates.sort(Comparator.comparingInt(RouteIndex::parameterSpecificity).reversed());
-        for (TrieNode param : candidates) {
+        // Already specificity-sorted at freeze(); the copy keeps recursion
+        // from observing later iterations' mutations of `vars` ordering.
+        for (TrieNode param : node.paramChildren) {
             Map<String, String> next = new LinkedHashMap<>(vars);
             if (param.wildcard) {
                 StringBuilder remainder = new StringBuilder();
@@ -292,6 +292,11 @@ public final class RouteIndex {
             }
             if (paramChildren != null) {
                 for (TrieNode child : paramChildren) child.freeze();
+                // Specificity order is immutable once frozen — precompute it
+                // so the hot match path never re-sorts per request.
+                paramChildren.sort(
+                    Comparator.comparingInt(RouteIndex::parameterSpecificity).reversed());
+                paramChildren = List.copyOf(paramChildren);
             }
         }
 

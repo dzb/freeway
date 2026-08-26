@@ -371,7 +371,10 @@ public final class HPackContext {
             String name = huffmanEncoded
                 ? Huffman.decode(block, result.position, result.value)
                 : new String(block, result.position, result.value, StandardCharsets.UTF_8);
-            if (!name.equals(name.toLowerCase())) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+            // Locale.ROOT: the lowercase check must be locale-independent —
+            // a Turkish-locale JVM would lower 'I' to 'ı' and mis-validate
+            // token names (encodeResponseHeaders below uses Locale.ROOT too).
+            if (!name.equals(name.toLowerCase(Locale.ROOT))) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
             // RFC 9113 §8.2 / RFC 9110 §5.1: a literal field name must be a
             // valid HTTP token (lowercase already enforced above). Lowercase
             // non-token names — non-ASCII letters, spaces, CTL — would reach

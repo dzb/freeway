@@ -252,22 +252,27 @@ public abstract class AbstractHttpContext implements HttpContext {
     }
 
     /**
-     * Validates that a header value does not contain CR or LF characters
-     * (preventing HTTP response header injection) and is fully encodable as
-     * ISO-8859-1 (the charset the HTTP/1.1 writers serialize header values
-     * with — anything above U+00FF would otherwise be silently replaced by
-     * '?' on the wire).
+     * Validates that a header value contains no control characters except
+     * HTAB — the exact predicate {@code Http1xParser} enforces on inbound
+     * values, so a value we would accept on the way in is also one we are
+     * willing to emit on the way out (preventing header injection and
+     * framing corruption) — and is fully encodable as ISO-8859-1 (the
+     * charset the HTTP/1.1 writers serialize header values with — anything
+     * above U+00FF would otherwise be silently replaced by '?' on the wire).
      *
-     * @throws IllegalArgumentException if the value contains CR/LF or a
-     *         character that is not representable in ISO-8859-1
+     * @throws IllegalArgumentException if the value contains a forbidden
+     *         control character or one that is not representable in ISO-8859-1
      */
     protected static void validateHeaderValue(String value) {
         if (value != null) {
             for (int i = 0; i < value.length(); i++) {
                 char c = value.charAt(i);
-                if (c == '\r' || c == '\n') {
+                // Mirrors Http1xParser's inbound rule: CTLs and DEL rejected,
+                // HTAB allowed (RFC 9110 field-value).
+                if ((c < 0x20 && c != '\t') || c == 0x7F) {
                     throw new IllegalArgumentException(
-                        "Header value must not contain CR or LF: " +
+                        "Header value must not contain control characters (offending char at index "
+                            + i + "): " +
                         value.substring(0, Math.min(i + 10, value.length())) + "...");
                 }
             }
