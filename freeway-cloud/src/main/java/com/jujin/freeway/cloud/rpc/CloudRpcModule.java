@@ -14,6 +14,7 @@ import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
@@ -83,14 +84,10 @@ public final class CloudRpcModule implements ModuleEx {
     private static <T> T optional(Container container, Class<T> type) {
         try {
             return container.get(type);
-        } catch (IllegalArgumentException e) {
-            if (e.getMessage() != null
-                    && e.getMessage().startsWith("No service registered")) {
-                return null; // resilience module not installed — client uses defaults
-            }
-            // Any other failure (invalid configuration, constructor error) is
-            // a real problem — fail fast instead of silently degrading.
-            throw e;
+        } catch (MissingBindingException e) {
+            return null; // resilience module not installed — client uses defaults
         }
+        // Any other failure (invalid configuration, constructor error) is
+        // a real problem — fail fast instead of silently degrading.
     }
 }
