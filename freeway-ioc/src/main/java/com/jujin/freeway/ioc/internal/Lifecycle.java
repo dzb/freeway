@@ -32,7 +32,9 @@ final class Lifecycle {
             return;
         }
         try {
-            MethodHandleUtils.invoke(handle, instance);
+            // Receiver form: the callback handle is (receiver)void, and the
+            // intent must not silently degrade to "single positional arg".
+            MethodHandleUtils.invokeOn(handle, instance, null);
         } catch (Throwable ex) {
             // Errors included: a throwing callback is a failure of that
             // callback, not a reason to skip the rest of the lifecycle drain.

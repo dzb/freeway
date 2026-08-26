@@ -547,8 +547,7 @@ class DeferTest {
     }
 
     @Test
-    void failedSupplyRethrowsOnEveryAccess() {
-        // Regression: a failed in-scope supply used to degrade to a silent
+    void failedSupplyRethrowsOnEveryAccess() {        // Regression: a failed in-scope supply used to degrade to a silent
         // null forever (computed=true in finally); it must cache the failure
         // and rethrow it on every access instead.
         AtomicReference<Supplier<String>> holder = new AtomicReference<>();
@@ -566,5 +565,40 @@ class DeferTest {
             "the cached failure must be rethrown, never a silent null");
     }
 
-}
+    // ==================== result-yielding scope ====================
 
+    @Test
+    void withinSupplierYieldsResultAndDrains() {
+        List<String> order = new ArrayList<>();
+        String result = Defer.within(() -> {
+            Defer.defer(() -> order.add("commit"));
+            order.add("work");
+            return "done";
+        });
+        assertEquals("done", result);
+        assertEquals(List.of("work", "commit"), order);
+    }
+
+    @Test
+    void withinSupplierRollbackYieldsButDiscards() {
+        List<String> order = new ArrayList<>();
+        String result = Defer.within(scope -> {
+            Defer.defer(() -> order.add("commit"));
+            scope.rollback();
+            return "rolled-back";
+        });
+        assertEquals("rolled-back", result);
+        assertTrue(order.isEmpty(), "rollback discards deferred actions");
+    }
+
+    @Test
+    void withinSupplierExceptionDiscardsAndPropagates() {
+        List<String> order = new ArrayList<>();
+        assertThrows(IllegalStateException.class, () ->
+            Defer.within(() -> {
+                Defer.defer(() -> order.add("commit"));
+                throw new IllegalStateException("boom");
+            }));
+        assertTrue(order.isEmpty(), "exception discards deferred actions");
+    }
+}

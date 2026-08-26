@@ -195,7 +195,7 @@ public final class BeanPlan {
                 setters.putIfAbsent(prop, method);
             }
         }
-        Map<String, BeanProperty> unique = new LinkedHashMap<>();
+        Map<String, BeanProperty> properties = new LinkedHashMap<>();
         Class<?> current = type;
         // Stop at JDK classes: their fields live in non-open modules
         // (java.base etc.) where no VarHandle can be created, and they are
@@ -208,11 +208,11 @@ public final class BeanPlan {
                 if (field.isSynthetic() || Modifier.isStatic(field.getModifiers()) || Modifier.isTransient(field.getModifiers())) {
                     continue;
                 }
-                if (unique.containsKey(field.getName())) {
+                if (properties.containsKey(field.getName())) {
                     continue;
                 }
                 Method setter = setters.get(field.getName());
-                unique.put(field.getName(), new FieldBeanProperty(
+                properties.put(field.getName(), new FieldBeanProperty(
                     field.getName(),
                     field.getGenericType(),
                     field.getAnnotations(),
@@ -246,9 +246,9 @@ public final class BeanPlan {
         for (Map.Entry<String, Method> entry : getters.entrySet()) {
             String name = entry.getKey();
             Method getter = entry.getValue();
-            BeanProperty existing = unique.get(name);
+            BeanProperty existing = properties.get(name);
             if (existing instanceof FieldBeanProperty fieldProperty) {
-                unique.put(name, new FieldBeanProperty(
+                properties.put(name, new FieldBeanProperty(
                     fieldProperty.name(),
                     fieldProperty.type(),
                     fieldProperty.annotations(),
@@ -259,7 +259,7 @@ public final class BeanPlan {
                 ));
             } else {
                 Method setter = setters.get(name);
-                unique.put(name, new GetterBeanProperty(
+                properties.put(name, new GetterBeanProperty(
                     name,
                     getter.getGenericReturnType(),
                     getter.getAnnotations(),
@@ -269,7 +269,7 @@ public final class BeanPlan {
                 ));
             }
         }
-        return new BeanPlan(type, false, constructor != null ? BeanConstructor.of(constructor) : null, new ArrayList<>(unique.values()));
+        return new BeanPlan(type, false, constructor != null ? BeanConstructor.of(constructor) : null, new ArrayList<>(properties.values()));
     }
 
     /**

@@ -51,9 +51,9 @@ final class JsonNormalizer {
         ) {
             return value;
         }
-        Object leaf = JsonLeaves.leaf(value);
-        if (leaf != JsonLeaves.UNHANDLED) {
-            return leaf;
+        Object stringForm = JsonLeaves.stringForm(value);
+        if (stringForm != JsonLeaves.UNHANDLED) {
+            return stringForm;
         }
         if (value instanceof Optional<?> opt) {
             return opt.isPresent()

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`Defer.within` 结果形态（freeway-commons）** — 新增 `within(Supplier<T>)` 与
+  `within(Function<DeferScope, T>)`：作用域产出返回值，提交语义不变（正常
+  返回 drain、rollback/异常 discard 后不产出）。与 `ScopedCache.within` 的
+  三形态完全对称。
 - **观测 SPI 统一（freeway-commons/cloud）** — `Metrics.Timer` 新增
   `record(Duration)` 与 `record(Supplier)` 默认重载（nanos 为规范单位），
   commons 成为全框架唯一观测 SPI。`CloudObserveModule` 的注册表现在以
@@ -32,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **命名清晰化（freeway-commons/ioc）** — `MethodHandleUtils` 的
+  `invoke(handle, receiver, args)` 更名 `invokeOn(...)`：与位置参数形态
+  `invoke(handle, args...)` 在调用点不可区分，Lifecycle 曾以
+  `invoke(handle, instance)` 表达接收者语义、靠无参句柄的巧合才正确；
+  `JULLoggerAdapter.fixCallerInfo` → `applyCallerInfo`（"fix" 预设破损，
+  实为设置）；`JsonLeaves.leaf` → `stringForm`。
 - **CallBus 注册为容器内置服务（freeway-ioc）** — 开箱即用，与 EventBus 同样
   延迟到全部 @PreDestroy 之后关闭。此前手动 `bind(CallBus.class).to(CallBus::new)`
   的代码会与之形成二义性，需删除该手动绑定或改为 `.primary()`。

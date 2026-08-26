@@ -29,7 +29,7 @@ final class JsonLeaves {
 
     private JsonLeaves() {}
 
-    static Object leaf(Object value) {
+    static Object stringForm(Object value) {
         if (value instanceof CharSequence cs) return cs.toString();
         if (value instanceof Character c) return String.valueOf(c);
         if (value instanceof Enum<?> e) return e.name();

@@ -3,6 +3,7 @@ package com.jujin.freeway.commons.scoped;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -62,7 +63,20 @@ public final class Defer {
      */
     public static void within(Runnable work) {
         Objects.requireNonNull(work, "work");
-        within(scope -> work.run());
+        withinScope(scope -> {
+            work.run();
+            return null;
+        });
+    }
+
+    /**
+     * Opens a deferred-execution scope that yields the work's result.
+     * Deferred actions drain on normal return (unless rollback was called),
+     * discard on exception — then the result is never produced.
+     */
+    public static <T> T within(Supplier<T> work) {
+        Objects.requireNonNull(work, "work");
+        return withinScope(scope -> work.get());
     }
 
     /**
@@ -81,14 +95,35 @@ public final class Defer {
      */
     public static void within(Consumer<DeferScope> work) {
         Objects.requireNonNull(work, "work");
+        withinScope(scope -> {
+            work.accept(scope);
+            return null;
+        });
+    }
+
+    /**
+     * Opens a deferred-execution scope with a {@link DeferScope} handle for
+     * manual {@link DeferScope#rollback()}, yielding the work's result.
+     *
+     * <p>The same nesting contract with {@link ScopedCache} applies as for
+     * {@link #within(Consumer)} — nest the cache scope outside this one.
+     */
+    public static <T> T within(Function<DeferScope, T> work) {
+        Objects.requireNonNull(work, "work");
+        return withinScope(work);
+    }
+
+    private static <T> T withinScope(Function<DeferScope, T> work) {
+        Objects.requireNonNull(work, "work");
         DeferScope scope = new DeferScope();
         try {
-            ScopedValue.where(CURRENT, scope).run(() -> work.accept(scope));
+            T result = ScopedValue.where(CURRENT, scope).call(() -> work.apply(scope));
             if (!scope.isRolledBack()) {
                 scope.drain();
             } else {
                 scope.discard();
             }
+            return result;
         } catch (Throwable t) {
             scope.discard();
             throw t;

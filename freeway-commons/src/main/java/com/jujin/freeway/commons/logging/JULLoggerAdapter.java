@@ -97,7 +97,7 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
         // the actual application code frame. When caller info is disabled,
         // clear the wrong inferred values instead of walking the stack.
         if (callerInfoEnabled) {
-            fixCallerInfo(record);
+            applyCallerInfo(record);
         } else {
             record.setSourceClassName(null);
             record.setSourceMethodName(null);
@@ -121,13 +121,13 @@ public final class JULLoggerAdapter extends LegacyAbstractLogger {
      * <p>Uses a shared {@link StackWalker} (lazy, no full-array allocation)
      * and stops at the first frame outside the bridge boundary.
      */
-    private static void fixCallerInfo(LogRecord record) {
+    private static void applyCallerInfo(LogRecord record) {
         // Clear first — LogRecord constructor always infers and gets it wrong
         record.setSourceClassName(null);
         record.setSourceMethodName(null);
 
         WALKER.walk(frames -> {
-            frames.skip(1) // skip fixCallerInfo itself
+            frames.skip(1) // skip applyCallerInfo itself
                   .filter(JULLoggerAdapter::isApplicationFrame)
                   .findFirst()
                   .ifPresent(f -> {

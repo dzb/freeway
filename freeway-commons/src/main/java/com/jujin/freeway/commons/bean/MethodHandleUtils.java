@@ -76,7 +76,7 @@ public final class MethodHandleUtils {
     }
 
     /**
-     * Invokes a method handle with varargs.
+     * Invokes a method handle with positional arguments.
      * <p>
      * Convenience wrapper that supports a variable number of arguments.
      * A null argument is treated as an empty array.
@@ -91,12 +91,13 @@ public final class MethodHandleUtils {
     }
 
     /**
-     * Invokes a method handle with a receiver and argument array.
+     * Invokes a method handle on a receiver with the given argument array.
      * <p>
      * Prepends the receiver as the first argument and merges it with the
      * provided argument array before invoking the target method handle.
-     * This is useful for instance methods where the receiver must be
-     * passed as the implicit first argument.
+     * Named separately from {@link #invoke(MethodHandle, Object...)} so a
+     * call site cannot silently mean "receiver" where "single argument"
+     * (or the reverse) is read.
      *
      * @param handle   the method handle to invoke
      * @param receiver the receiver object (the target for instance methods)
@@ -104,7 +105,7 @@ public final class MethodHandleUtils {
      * @return the invocation result
      * @throws Throwable if the invocation fails
      */
-    public static Object invoke(MethodHandle handle, Object receiver, Object[] args) throws Throwable {
+    public static Object invokeOn(MethodHandle handle, Object receiver, Object[] args) throws Throwable {
         // Build the full argument array including the receiver
         Object[] invocationArgs;
         if (args == null || args.length == 0) {

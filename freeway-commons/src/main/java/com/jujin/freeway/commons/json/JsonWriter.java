@@ -88,9 +88,9 @@ final class JsonWriter {
         }
         // Shared scalar-leaf mapping — keeps leaf conversions consistent
         // with JsonNormalizer (single source of truth).
-        Object leaf = JsonLeaves.leaf(value);
-        if (leaf != JsonLeaves.UNHANDLED) {
-            quote(out, (String) leaf);
+        Object stringForm = JsonLeaves.stringForm(value);
+        if (stringForm != JsonLeaves.UNHANDLED) {
+            quote(out, (String) stringForm);
             return;
         }
         if (value instanceof Optional<?> opt) {

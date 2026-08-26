@@ -132,7 +132,7 @@ final class ProxyFactoryDefault implements ProxyFactory {
         private Object invokeTarget(Object real, Method method, Object[] args) throws Throwable {
             MethodHandle handle = targetHandles.computeIfAbsent(
                 method, MethodHandleUtils::methodHandle);
-            return MethodHandleUtils.invoke(handle, real, args);
+            return MethodHandleUtils.invokeOn(handle, real, args);
         }
     }
 
