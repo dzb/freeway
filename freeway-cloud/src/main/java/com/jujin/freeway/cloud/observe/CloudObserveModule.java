@@ -29,7 +29,13 @@ public final class CloudObserveModule implements ModuleEx {
         b.bind(Tracer.class)
             .to((Container container) -> new TracerDefault(container.get(Metrics.class)))
             .marker(Local.class);
-        b.bind(Metrics.class).to(MetricsDefault.class).primary();
+        b.bind(MetricsDefault.class).to(MetricsDefault.class);
+        // The SPI binding points at the concrete binding's instance, so
+        // /metrics (which injects the concrete type) and every Metrics
+        // consumer share one registry.
+        b.bind(Metrics.class)
+            .to((Container container) -> container.get(MetricsDefault.class))
+            .primary();
         b.contribute(Route.class).add("metrics", Route.get("/metrics", MetricsHandler.class));
     }
 }

@@ -1,28 +1,27 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
 /**
- * Exposes the {@link Metrics} registry as Prometheus text format on
- * {@code /metrics}.
+ * Exposes {@link MetricsDefault} as Prometheus text format on
+ * {@code /metrics}. Injects the concrete default — the route is contributed
+ * by {@code CloudObserveModule} alongside it, so they share one lifecycle.
+ * A primary override of the {@code Metrics} binding swaps the SPI instance
+ * without touching this route; exporting from a foreign registry is that
+ * implementation's concern.
  */
 public final class MetricsHandler implements RouteHandler {
 
-    private final Metrics registry;
+    private final MetricsDefault registry;
 
-    public MetricsHandler(Metrics registry) {
+    public MetricsHandler(MetricsDefault registry) {
         this.registry = registry;
     }
 
     @Override
     public void handle(HttpContext ctx) throws Exception {
         ctx.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-        if (registry instanceof MetricsDefault def) {
-            ctx.send(200, def.prometheusText());
-        } else {
-            ctx.send(200, "# metrics unavailable for " + registry.getClass().getName());
-        }
+        ctx.send(200, registry.prometheusText());
     }
 }
