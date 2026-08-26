@@ -138,7 +138,10 @@ final class JsonParser {
                         " characters)"
                 );
             }
-            this.text = t.startsWith("﻿") ? t.substring(1) : t;
+            // \uFEFF as an escape, not a literal: a bare BOM in source is
+            // invisible to review and one editor normalization away from
+            // silently breaking the strip.
+            this.text = t.startsWith("\uFEFF") ? t.substring(1) : t;
         }
 
         private Object parse() {

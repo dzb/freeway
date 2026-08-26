@@ -58,10 +58,19 @@ public final class CoercerDefault implements Coercer {
             throw new IllegalArgumentException("CoerceRule must not be null");
         }
         CoercionKey key = new CoercionKey(rule.sourceType(), rule.targetType());
-        rules.put(key, rule);
-        rulesByTarget
-            .computeIfAbsent(rule.targetType(), k -> new CopyOnWriteArrayList<>())
-            .add(rule);
+        CoerceRule<?, ?> previous = rules.put(key, rule);
+        List<CoerceRule<?, ?>> index = rulesByTarget
+            .computeIfAbsent(rule.targetType(), k -> new CopyOnWriteArrayList<>());
+        if (previous != null) {
+            // Re-registration replaces rather than stacks, so the assignable-
+            // source index cannot accumulate stale duplicates. Remove-then-add
+            // also covers previous == rule (same instance registered twice).
+            // CoerceRule equality compares (source, target, mapping); within
+            // one target list only source differs, so removal cannot touch a
+            // different key's rule.
+            index.remove(previous);
+        }
+        index.add(rule);
         return this;
     }
 
@@ -74,10 +83,15 @@ public final class CoercerDefault implements Coercer {
             throw new IllegalArgumentException("CoerceRule must not be null");
         }
         CoercionKey key = new CoercionKey(rule.sourceType(), rule.targetType());
-        if (rules.containsKey(key)) {
+        // Atomic check-and-insert: a racing registration for the same key
+        // must not slip into either map or duplicate the target index.
+        if (rules.putIfAbsent(key, rule) != null) {
             return this;
         }
-        return register(rule);
+        rulesByTarget
+            .computeIfAbsent(rule.targetType(), k -> new CopyOnWriteArrayList<>())
+            .add(rule);
+        return this;
     }
 
     public void clearRules() {
@@ -450,7 +464,9 @@ public final class CoercerDefault implements Coercer {
             }
             return f;
         }
-        return null;
+        // Exhaustive over the boxed numeric targets routed here by
+        // BUILTIN_COERCERS; a new target must extend the chain above.
+        throw new IllegalStateException("Unhandled numeric target type: " + targetType);
     }
 
     /**
@@ -511,7 +527,9 @@ public final class CoercerDefault implements Coercer {
         if (targetType == Float.class) {
             return parseFiniteFloat(text);
         }
-        return null;
+        // Exhaustive over the boxed numeric targets routed here by
+        // BUILTIN_COERCERS; a new target must extend the chain above.
+        throw new IllegalStateException("Unhandled numeric target type: " + targetType);
     }
 
     /**
