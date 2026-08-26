@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -358,18 +359,29 @@ class LogBootstrapTest {
         System.setProperty("freeway.log.console.enabled", "false");
         System.setProperty("freeway.log.file", "off");
 
+        // Isolation: earlier tests in this JVM may have left handlers on the
+        // root logger (e.g. stock ones upgraded with freeway formatters —
+        // which under the ownership contract now count as customized). Start
+        // from a clean root, like a fresh JVM would.
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        java.util.List<Handler> preExisting = new ArrayList<>(Arrays.asList(root.getHandlers()));
+        for (Handler h : preExisting) {
+            root.removeHandler(h);
+        }
+
         JULEnhancer.resetForTest();
         try {
             JULEnhancer.configure();
 
-            java.util.logging.Logger root =
-                java.util.logging.Logger.getLogger("");
             long consoleHandlers = Arrays.stream(root.getHandlers())
                 .filter(h -> h instanceof ConsoleHandler)
                 .count();
             assertEquals(0, consoleHandlers,
-                "ConsoleHandler should be removed when disabled");
+                "stock and freeway-owned ConsoleHandlers should be removed when disabled");
         } finally {
+            for (Handler h : preExisting) {
+                root.addHandler(h);
+            }
             System.clearProperty("freeway.log.console.enabled");
             System.clearProperty("freeway.log.file");
             JULEnhancer.resetForTest();
@@ -549,5 +561,24 @@ class LogBootstrapTest {
         );
 
         testLogger.removeHandler(testLogger.getHandlers()[0]);
+    }
+
+    @Test
+    void misbindingWarningOnlyFiresForJulFallbackWithExternalPresent() {
+        String logback = "ch.qos.logback.classic.spi.LogbackServiceProvider";
+
+        assertNull(LogBootstrap.misbindingWarning(null, true),
+            "no external provider detected → binding is intentional, no warning");
+        assertNull(LogBootstrap.misbindingWarning(logback, false),
+            "external provider actually bound → intent fulfilled, no warning");
+
+        String warning = LogBootstrap.misbindingWarning(logback, true);
+        assertNotNull(warning,
+            "external on classpath but JUL bound → must warn");
+        assertTrue(warning.contains(logback), "names the detected provider");
+        assertTrue(warning.contains("-Dslf4j.provider=" + logback),
+            "gives the actionable fix");
+        assertTrue(warning.contains("before bootstrap"),
+            "explains the cause (early static logger)");
     }
 }

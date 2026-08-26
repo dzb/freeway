@@ -29,6 +29,21 @@ import java.util.logging.SimpleFormatter;
  * <p>Reads {@code freeway-log.properties} from the classpath root as the
  * primary configuration source. System properties ({@code -D}) with the
  * same keys override file values.
+ *
+ * <h3>Handler ownership contract</h3>
+ * Every handler on the root logger falls into exactly one tier, and each
+ * tier gets consistent treatment across level, format, and removal rules:
+ * <ol>
+ *   <li><b>Freeway-owned</b> (created by this class): fully managed —
+ *       formatter installed, {@code freeway.log.console.level} applied,
+ *       removed by {@code freeway.log.console.enabled=false}.</li>
+ *   <li><b>Stock</b> (not freeway-owned, formatter is an unmodified
+ *       {@link SimpleFormatter}): treated as JVM defaults — freeway's
+ *       console/file formatters are installed over them and they are
+ *       removed by {@code enabled=false}, but their level is left alone.</li>
+ *   <li><b>Customized</b> (any other formatter): hands off — never
+ *       reformatted, re-leveled, or removed.</li>
+ * </ol>
  */
 final class JULEnhancer {
 
@@ -55,8 +70,13 @@ final class JULEnhancer {
         // LogManager is lazily initialized — ensureInitialized() calls
         // readConfiguration() which calls reset(), removing all handlers
         // from all existing loggers. By triggering it here, the reset
-        // happens before our handlers are attached and survives.
-        LogManager.getLogManager().getLoggerNames();
+        // happens before our handlers are attached and survives. Guarded:
+        // a failing LogManager must not abort the whole configuration.
+        try {
+            LogManager.getLogManager().getLoggerNames();
+        } catch (RuntimeException e) {
+            logEarly("LogManager initialization failed: " + e);
+        }
 
         try {
             Properties fileConfig = loadFreewayConfig();
@@ -207,8 +227,8 @@ final class JULEnhancer {
         collectLevelKeys(levelKeys, fileConfig.stringPropertyNames());
         collectLevelKeys(levelKeys, System.getProperties().stringPropertyNames());
         for (String envName : System.getenv().keySet()) {
-            String configKey = envToConfigKey(envName);
-            if (configKey == null) {
+            String candidate = envToConfigKey(envName);
+            if (candidate == null) {
                 continue;
             }
             // Only honor env vars whose key is ALSO configured in the file or
@@ -216,10 +236,8 @@ final class JULEnhancer {
             // CI_LEVEL, ...) must not create a phantom logger or silently
             // override a logger's level. The env value itself still wins via
             // readProperty's cascade.
-            if (
-                fileConfig.containsKey(configKey) ||
-                System.getProperties().containsKey(configKey)
-            ) {
+            String configKey = resolveConfigKey(candidate, fileConfig);
+            if (configKey != null) {
                 collectLevelKeys(levelKeys, List.of(configKey));
             }
         }
@@ -260,6 +278,13 @@ final class JULEnhancer {
      * its config key ({@code FREEWAY_LOG_LEVEL} → {@code freeway.log.level},
      * or {@code APP_FREEWAY_LOG_LEVEL} under a custom prefix {@code APP_}).
      * Returns {@code null} for environment variables outside the prefix.
+     *
+     * <p>The mapping folds separators ({@code -}, {@code _} → {@code .}),
+     * which cannot be reversed uniquely — a dashed config key such as
+     * {@code freeway.log.file.max-size} maps forward to
+     * {@code FREEWAY_LOG_FILE_MAX-SIZE} but folds back to
+     * {@code freeway.log.file.max.size}. Callers that need the real key must
+     * reconcile via {@link #resolveConfigKey}.
      */
     static String envToConfigKey(String envName) {
         String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
@@ -276,6 +301,34 @@ final class JULEnhancer {
             candidate = envName.substring(prefix.length());
         }
         return candidate.toLowerCase(Locale.ROOT).replace('_', '.');
+    }
+
+    /**
+     * Reconciles a folded candidate key (see {@link #envToConfigKey}) against
+     * the keys actually present in the file config and system properties,
+     * returning the real key whose separator-folded form matches — so an env
+     * var for a dashed key ({@code FREEWAY_LOG_FILE_MAX_SIZE}) still finds
+     * {@code freeway.log.file.max-size}. Returns {@code null} when nothing
+     * matches; callers decide which resolved keys they act on.
+     */
+    static String resolveConfigKey(String candidate, Properties fileConfig) {
+        ArrayList<String> known = new ArrayList<>();
+        fileConfig.stringPropertyNames().forEach(known::add);
+        System.getProperties().stringPropertyNames().forEach(known::add);
+        String folded = foldKey(candidate);
+        for (String key : known) {
+            if (foldKey(key).equals(folded)) {
+                return key;
+            }
+        }
+        return null;
+    }
+
+    /** Lowercases and folds {@code -}/{@code _} into {@code .}. */
+    private static String foldKey(String key) {
+        return key.toLowerCase(Locale.ROOT)
+            .replace('-', '.')
+            .replace('_', '.');
     }
 
     /**
@@ -328,9 +381,11 @@ final class JULEnhancer {
         Logger root = Logger.getLogger("");
 
         if (!"true".equalsIgnoreCase(enabled)) {
-            // Remove all ConsoleHandlers
+            // Remove freeway-owned and stock ConsoleHandlers; a customized
+            // one (non-SimpleFormatter formatter) is the user's deliberate
+            // configuration and stays — see the ownership contract.
             for (Handler h : root.getHandlers()) {
-                if (h instanceof ConsoleHandler) {
+                if (h instanceof ConsoleHandler && manageable(h)) {
                     root.removeHandler(h);
                     h.close();
                 }
@@ -401,9 +456,7 @@ final class JULEnhancer {
             if (freewayHandlers.contains(h)) {
                 continue;
             }
-            Formatter fmt = h.getFormatter();
-            boolean stock = fmt == null || fmt instanceof SimpleFormatter;
-            if (!stock) {
+            if (!manageable(h)) {
                 continue;
             }
             applyFormatter(h, fileFmt, consoleFmt);
@@ -425,6 +478,16 @@ final class JULEnhancer {
         } else {
             h.setFormatter(consoleFmt);
         }
+    }
+
+    /**
+     * Whether Freeway may reformat or remove a handler it did not create:
+     * only stock ones (unmodified {@link SimpleFormatter}, i.e. JVM defaults)
+     * — anything customized is the user's deliberate configuration.
+     */
+    private static boolean manageable(Handler h) {
+        Formatter fmt = h.getFormatter();
+        return fmt == null || fmt instanceof SimpleFormatter;
     }
 
     /**

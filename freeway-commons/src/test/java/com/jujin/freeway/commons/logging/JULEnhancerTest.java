@@ -2,6 +2,7 @@ package com.jujin.freeway.commons.logging;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.ConsoleHandler;
+import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
 
@@ -350,4 +351,65 @@ class JULEnhancerTest {
             JULEnhancer.resetForTest();
         }
     }
+
+    // ── ownership contract: enabled=false must not touch customized handlers ──
+
+    @Test
+    void consoleDisabledKeepsCustomizedHandlerRemovesStockOne() {
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        ConsoleHandler custom = new ConsoleHandler();
+        Formatter marker = new Formatter() {
+            @Override public String format(java.util.logging.LogRecord r) {
+                return "custom";
+            }
+        };
+        custom.setFormatter(marker);
+        ConsoleHandler stock = new ConsoleHandler();
+        root.addHandler(custom);
+        root.addHandler(stock);
+        System.setProperty("freeway.log.console.enabled", "false");
+        System.setProperty("freeway.log.file", "off");
+        try {
+            JULEnhancer.resetForTest();
+            JULEnhancer.configure();
+
+            boolean customKept = false;
+            for (Handler h : root.getHandlers()) {
+                if (h == custom) {
+                    customKept = true;
+                }
+            }
+            assertTrue(customKept,
+                "a customized ConsoleHandler is user configuration and survives enabled=false");
+            for (Handler h : root.getHandlers()) {
+                assertFalse(h == stock,
+                    "stock ConsoleHandlers are JVM defaults and are removed by enabled=false");
+            }
+        } finally {
+            root.removeHandler(custom);
+            for (Handler h : root.getHandlers()) {
+                if (h == stock) {
+                    root.removeHandler(stock);
+                }
+            }
+            System.clearProperty("freeway.log.console.enabled");
+            System.clearProperty("freeway.log.file");
+            JULEnhancer.resetForTest();
+        }
+    }
+
+    // ── env reverse mapping reconciles dashed keys ──────────────────
+
+    @Test
+    void resolveConfigKeyReconcilesFoldedEnvCandidates() {
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("freeway.log.file.max-size", "100");
+
+        assertEquals("freeway.log.file.max-size",
+            JULEnhancer.resolveConfigKey("freeway.log.file.max.size", props),
+            "FREEWAY_LOG_FILE_MAX_SIZE folds to max.size and must find the real dashed key");
+        assertNull(JULEnhancer.resolveConfigKey("totally.unrelated.level", props),
+            "no known key matches → no phantom logger");
+    }
 }
+

@@ -49,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **freeway-commons（logging）** — `LogBootstrap.ensureProvider()` 在 SLF4J 已被
+  过早的静态 logger 绑定为 JUL 兜底时，不再打印误导性的 "pinning so it wins"，
+  而是绑定后核验实际生效的 provider 并给出可操作的 WARN（指认检测到的外部
+  provider、说明成因、给出 `-Dslf4j.provider=` 修复指引）；
+  `freeway.log.console.enabled=false` 不再移除用户定制的 ConsoleHandler
+  （formatter 非原版 SimpleFormatter 即视为用户配置），只移除 freeway 自有与
+  JVM 原生态的 handler——所有权契约三级化并文档化（自有/原生态/定制）；
+  env 反解对带连字符键的折叠失配修复（`FREEWAY_LOG_FILE_MAX_SIZE` 现能对账回
+  `freeway.log.file.max-size`）；`configure()` 中强制 LogManager 初始化失败
+  不再中断整个日志配置。
 - **freeway-cloud**：注入路径的熔断/限流分片失效（容器代理导致 instanceof
   失败，所有服务共享同一实例——一个服务打熔断即拒答健康服务）；HALF_OPEN
   探针丢失后的并发重置竞态。
