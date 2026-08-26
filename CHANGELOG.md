@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   框架计数器汇入 `/metrics`（此前 http/ioc 与 cloud 各有一套不兼容的
   registry，框架计数器默认不可见）。计数器为整数语义
   （LongAdder），Prometheus 文本中计数值不再带小数点。
+  `/metrics` 经新能力接口 `MetricsSnapshot` 服务于 primary 注册表——
+  ext 后端替换 `Metrics` 且能自行渲染时导出自动跟随，不能则启动期
+  路由解析即失败。
 - **结构化绑定异常（freeway-ioc）** — 新增 `AmbiguousBindingException` 与
   `UnknownSymbolException`：多命中/双 primary 与符号未命中现在可按类型捕获，
   无需匹配异常消息文本。两者均继承 `IllegalArgumentException`，既有 catch

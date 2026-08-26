@@ -20,6 +20,8 @@ import com.jujin.freeway.ioc.annotation.Marker;
  * {@code /metrics} route. The Metrics binding is primary, overriding the
  * container's {@code NoopMetrics} builtin — installing this module routes
  * every framework counter (event bus, HTTP engine) into {@code /metrics}.
+ * The route serves the primary registry through its
+ * {@link MetricsSnapshot} view.
  */
 @Marker(Builtin.class)
 public final class CloudObserveModule implements ModuleEx {
@@ -29,13 +31,12 @@ public final class CloudObserveModule implements ModuleEx {
         b.bind(Tracer.class)
             .to((Container container) -> new TracerDefault(container.get(Metrics.class)))
             .marker(Local.class);
-        b.bind(MetricsDefault.class).to(MetricsDefault.class);
-        // The SPI binding points at the concrete binding's instance, so
-        // /metrics (which injects the concrete type) and every Metrics
-        // consumer share one registry.
-        b.bind(Metrics.class)
-            .to((Container container) -> container.get(MetricsDefault.class))
-            .primary();
+        b.bind(Metrics.class).to(MetricsDefault.class).primary();
+        // /metrics exports the primary registry's snapshot view — a
+        // backend that replaces Metrics and renders itself is followed
+        // automatically; one that cannot fails route resolution at startup.
+        b.bind(MetricsSnapshot.class)
+            .to((Container container) -> (MetricsSnapshot) container.get(Metrics.class));
         b.contribute(Route.class).add("metrics", Route.get("/metrics", MetricsHandler.class));
     }
 }

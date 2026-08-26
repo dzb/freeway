@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
+import com.jujin.freeway.cloud.observe.MetricsSnapshot;
 import com.jujin.freeway.commons.metrics.Metrics;
 
 import java.util.Map;
@@ -12,7 +13,7 @@ import java.util.function.Supplier;
  * nanos), gauges (read on demand). Snapshots feed the Prometheus-text
  * {@code /metrics} route.
  */
-public final class MetricsDefault implements Metrics {
+public final class MetricsDefault implements Metrics, MetricsSnapshot {
 
     private final Map<String, LongAdder> counters = new ConcurrentHashMap<>();
     private final Map<String, TimerData> timers = new ConcurrentHashMap<>();
