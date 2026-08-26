@@ -6,6 +6,7 @@ import com.jujin.freeway.db.dialect.Dialect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -146,8 +147,12 @@ public final class Schema {
             LOG.debug("Existing tables in schema: {}", existingTables);
         }
 
+        List<TableDef> tableDefs = new ArrayList<>(entityTypes.length);
         for (Class<?> type : entityTypes) {
-            TableDef table = gen.define(type);
+            tableDefs.add(gen.define(type));
+        }
+
+        for (TableDef table : tableDefs) {
             String tableName = table.name();
             String normalizedTableName = tableName.toLowerCase(Locale.ROOT);
 
@@ -213,8 +218,7 @@ public final class Schema {
         }
 
         // Indexes: dialects that do not support IF NOT EXISTS must skip existing indexes.
-        for (Class<?> type : entityTypes) {
-            TableDef table = gen.define(type);
+        for (TableDef table : tableDefs) {
             Set<String> existingIndexes;
             if (dialect.supportsIndexIfNotExists()) {
                 existingIndexes = Set.of();

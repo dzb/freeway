@@ -56,13 +56,6 @@ final class BatchQueryImpl implements BatchQuery {
     }
 
     @Override
-    public BatchQuery rows(List<Object[]> rows) {
-        this.positionalRows = rows == null ? List.of() : List.copyOf(rows);
-        this.namedRows = List.of();
-        return this;
-    }
-
-    @Override
     public BatchQuery named(List<Map<String, Object>> rows) {
         this.namedRows = rows == null ? List.of() : List.copyOf(rows);
         this.positionalRows = List.of();
@@ -102,8 +95,10 @@ final class BatchQueryImpl implements BatchQuery {
             ) {
                 stmt.setQueryTimeout(db.queryTimeoutSeconds());
                 if (!namedRows.isEmpty()) {
-                    for (var row : namedRows) {
-                        bindRow(stmt, row);
+                    for (int i = 0; i < namedRows.size(); i++) {
+                        // Structure (key presence) is identical across rows —
+                        // validate it once, then bind values per row.
+                        bindRow(stmt, namedRows.get(i), i == 0);
                         stmt.addBatch();
                     }
                 } else {
@@ -201,26 +196,34 @@ final class BatchQueryImpl implements BatchQuery {
         }
     }
 
-    private void bindRow(PreparedStatement stmt, Map<String, Object> row)
+    /**
+     * Binds one named-parameter row. {@code validateKeys} runs the full
+     * missing/unknown key validation — pass true for the first row only;
+     * every row shares the same parameter structure, so re-validating each
+     * row is O(rows × params) busywork.
+     */
+    private void bindRow(PreparedStatement stmt, Map<String, Object> row, boolean validateKeys)
         throws SQLException {
-        for (String name : parsed.names()) {
-            if (!row.containsKey(name)) {
-                throw new SqlException(
-                    "Missing value for named parameter '" +
-                        name +
-                        "' in batch SQL: " +
-                        sql
-                );
+        if (validateKeys) {
+            for (String name : parsed.names()) {
+                if (!row.containsKey(name)) {
+                    throw new SqlException(
+                        "Missing value for named parameter '" +
+                            name +
+                            "' in batch SQL: " +
+                            sql
+                    );
+                }
             }
-        }
-        for (String paramName : row.keySet()) {
-            if (!parsed.names().contains(paramName)) {
-                throw new SqlException(
-                    "Unknown named parameter '" +
-                        paramName +
-                        "' in batch SQL: " +
-                        sql
-                );
+            for (String paramName : row.keySet()) {
+                if (!parsed.names().contains(paramName)) {
+                    throw new SqlException(
+                        "Unknown named parameter '" +
+                            paramName +
+                            "' in batch SQL: " +
+                            sql
+                    );
+                }
             }
         }
         for (int i = 0; i < parsed.names().size(); i++) {

@@ -49,15 +49,24 @@ public final class Sql {
     private final boolean compoundQuery;
     private final List<Cte> ctes;
 
-    // INSERT-specific fields
-    private final String insertTable;
-    private final List<String> insertColumns;
-    private final List<Object> insertValues;
-
-    // UPDATE SET-specific fields
-    private final String updateTable;
-    private final List<String> setClauses;
-    private final List<Object> setArgs;
+    /**
+     * DML assignments — one triple serves both INSERT and UPDATE, since a
+     * statement is exactly one of them (never both): {@code head == null}
+     * means INSERT built via {@link #insert(String)}, otherwise UPDATE via
+     * {@link #update(String)}.
+     *
+     * <p>{@code dmlTargets} holds raw column names for INSERT and
+     * {@code "col = ?"} expressions for UPDATE; {@code dmlValues} holds the
+     * corresponding bound values.
+     *
+     * <p>Kept separate from {@link #args} (the WHERE/HAVING values): binding
+     * order must follow SQL text order — SET/VALUES before WHERE — regardless
+     * of the fluent-call order. A single merged list would only work if the
+     * API enforced set-before-where; it deliberately does not.
+     */
+    private final String dmlTable;
+    private final List<String> dmlTargets;
+    private final List<Object> dmlValues;
 
     private Sql(
         String head,
@@ -66,12 +75,9 @@ public final class Sql {
         Object[] args,
         boolean compoundQuery,
         List<Cte> ctes,
-        String insertTable,
-        List<String> insertColumns,
-        List<Object> insertValues,
-        String updateTable,
-        List<String> setClauses,
-        List<Object> setArgs
+        String dmlTable,
+        List<String> dmlTargets,
+        List<Object> dmlValues
     ) {
         this.head = head;
         this.conditions = conditions;
@@ -79,12 +85,9 @@ public final class Sql {
         this.args = args;
         this.compoundQuery = compoundQuery;
         this.ctes = ctes;
-        this.insertTable = insertTable;
-        this.insertColumns = insertColumns;
-        this.insertValues = insertValues;
-        this.updateTable = updateTable;
-        this.setClauses = setClauses;
-        this.setArgs = setArgs;
+        this.dmlTable = dmlTable;
+        this.dmlTargets = dmlTargets;
+        this.dmlValues = dmlValues;
     }
 
     // ====================== static factories ======================
@@ -92,29 +95,25 @@ public final class Sql {
     /** SELECT:{@code Sql.select("id, name").from("users").where(...)} */
     public static Sql select(String columns) {
         return new Sql("SELECT " + columns, List.of(), "", new Object[0],
-            false, List.of(),
-            null, List.of(), List.of(), null, List.of(), List.of());
+            false, List.of(), null, List.of(), List.of());
     }
 
     /** UPDATE:{@code Sql.update("users").set("name = ?", v).where("id = ?", id)} */
     public static Sql update(String tableName) {
         return new Sql("UPDATE " + tableName, List.of(), "", new Object[0],
-            false, List.of(),
-            null, List.of(), List.of(), tableName, List.of(), List.of());
+            false, List.of(), tableName, List.of(), List.of());
     }
 
     /** INSERT:{@code Sql.insert("users").set("name", v).set("status", v)} */
     public static Sql insert(String tableName) {
         return new Sql(null, List.of(), "", new Object[0],
-            false, List.of(),
-            tableName, List.of(), List.of(), null, List.of(), List.of());
+            false, List.of(), tableName, List.of(), List.of());
     }
 
     /** DELETE:{@code Sql.delete("users").where("id = ?", id)} */
     public static Sql delete(String tableName) {
         return new Sql("DELETE FROM " + tableName, List.of(), "", new Object[0],
-            false, List.of(),
-            null, List.of(), List.of(), null, List.of(), List.of());
+            false, List.of(), null, List.of(), List.of());
     }
 
     public Sql with(String name, Sql query) {
@@ -130,10 +129,9 @@ public final class Sql {
         }
         List<Cte> newCtes = new ArrayList<>(ctes);
         newCtes.add(new Cte(trimmed, columns, query));
-        return copy(head, conditions, tail, args,
+        return new Sql(head, conditions, tail, args,
             compoundQuery, newCtes,
-            insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs);
+            dmlTable, dmlTargets, dmlValues);
     }
 
     // ====================== FROM / JOIN ======================
@@ -205,20 +203,17 @@ public final class Sql {
     }
 
     private Sql addCondition(String connector, String expr, Object... values) {
-        Object[] parsed = normalizeArgs(expr, values);
-        String normalized = (String) parsed[0];
-        Object[] extraArgs = (Object[]) parsed[1];
+        NormalizedFragment parsed = normalizeArgs(expr, values);
 
         List<Condition> newConds = new ArrayList<>(conditions);
-        newConds.add(new Condition(connector, normalized));
+        newConds.add(new Condition(connector, parsed.expr()));
 
-        return copy(
+        return new Sql(
             head, newConds, tail,
-            concat(args, extraArgs),
+            concat(args, parsed.args()),
             compoundQuery,
             ctes,
-            insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs);
+            dmlTable, dmlTargets, dmlValues);
     }
 
     private Sql addGroupedCondition(String connector, Consumer<Group> builder) {
@@ -251,17 +246,14 @@ public final class Sql {
         requireSimpleSelect("HAVING");
         requireNoPendingJoin("HAVING");
         requireBeforeLimit("HAVING");
-        Object[] parsed = normalizeArgs(expr, values);
-        String normalized = (String) parsed[0];
-        Object[] extraArgs = (Object[]) parsed[1];
+        NormalizedFragment parsed = normalizeArgs(expr, values);
 
         String t = tail.isEmpty() ? " HAVING " : tail + " HAVING ";
-        return copy(head, conditions, t + normalized,
-            concat(args, extraArgs),
+        return new Sql(head, conditions, t + parsed.expr(),
+            concat(args, parsed.args()),
             compoundQuery,
             ctes,
-            insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs);
+            dmlTable, dmlTargets, dmlValues);
     }
 
     public Sql havingGroup(Consumer<Group> builder) {
@@ -275,12 +267,11 @@ public final class Sql {
         }
 
         String t = tail.isEmpty() ? " HAVING " : tail + " HAVING ";
-        return copy(head, conditions, t + group.sql(),
+        return new Sql(head, conditions, t + group.sql(),
             concat(args, group.args()),
             compoundQuery,
             ctes,
-            insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs);
+            dmlTable, dmlTargets, dmlValues);
     }
 
     // ====================== LIMIT / OFFSET ======================
@@ -367,7 +358,7 @@ public final class Sql {
     public Sql set(String expr, Object value) {
         requireUpdateOrInsert("SET");
         requireNoPendingJoin("SET");
-        if (insertTable != null) {
+        if (head == null) {
             // INSERT mode: set("col", value)
             if (
                 expr.indexOf('?') >= 0 ||
@@ -382,32 +373,24 @@ public final class Sql {
                         + expr + "\" — use set(\"column\", value)"
                 );
             }
-            List<String> newCols = new ArrayList<>(insertColumns);
-            List<Object> newVals = new ArrayList<>(insertValues);
-            newCols.add(expr);
-            newVals.add(value);
-            return copy(head, conditions, tail, args,
-                compoundQuery,
-                ctes,
-                insertTable, newCols, newVals,
-                null, List.of(), List.of());
+            List<String> newTargets = new ArrayList<>(dmlTargets);
+            newTargets.add(expr);
+            List<Object> newValues = new ArrayList<>(dmlValues);
+            newValues.add(value);
+            return new Sql(head, conditions, tail, args,
+                compoundQuery, ctes, dmlTable, newTargets, newValues);
         }
         // UPDATE mode: set("col = ?", value)
-        Object[] parsed = normalizeArgs(expr, value);
-        String normalized = (String) parsed[0];
-        Object[] extraArgs = (Object[]) parsed[1];
+        NormalizedFragment parsed = normalizeArgs(expr, value);
 
-        List<String> newSets = new ArrayList<>(setClauses);
-        newSets.add(normalized);
+        List<String> newTargets = new ArrayList<>(dmlTargets);
+        newTargets.add(parsed.expr());
 
-        List<Object> newSetArgs = new ArrayList<>(setArgs);
-        appendArgs(newSetArgs, extraArgs);
+        List<Object> newValues = new ArrayList<>(dmlValues);
+        appendArgs(newValues, parsed.args());
 
-        return copy(head, conditions, tail, args,
-            compoundQuery,
-            ctes,
-            null, List.of(), List.of(),
-            updateTable, newSets, newSetArgs);
+        return new Sql(head, conditions, tail, args,
+            compoundQuery, ctes, dmlTable, newTargets, newValues);
     }
 
     // ====================== output ======================
@@ -439,17 +422,17 @@ public final class Sql {
 
     private String buildSql() {
         String withClause = renderWithClause();
-        if (insertTable != null) {
-            if (insertColumns.isEmpty()) {
+        if (isInsert()) {
+            if (dmlTargets.isEmpty()) {
                 throw new SqlException(
                     "INSERT requires at least one column — call set(\"column\", value) before building"
                 );
             }
-            var cols = String.join(", ", insertColumns);
-            var placeholders = String.join(", ", insertValues.stream().map(v -> "?").toList());
-            return withClause + "INSERT INTO " + insertTable + " (" + cols + ") VALUES (" + placeholders + ")" + tail;
+            var cols = String.join(", ", dmlTargets);
+            var placeholders = String.join(", ", dmlValues.stream().map(v -> "?").toList());
+            return withClause + "INSERT INTO " + dmlTable + " (" + cols + ") VALUES (" + placeholders + ")" + tail;
         }
-        if (updateTable != null && setClauses.isEmpty()) {
+        if (isUpdate() && dmlTargets.isEmpty()) {
             // Emitting "UPDATE t WHERE ..." without SET would silently touch
             // every matching row on dialects that tolerate the omission.
             throw new SqlException(
@@ -458,9 +441,9 @@ public final class Sql {
         }
         var sb = new StringBuilder(head);
 
-        if (!setClauses.isEmpty()) {
+        if (!dmlTargets.isEmpty()) {
             sb.append(" SET ");
-            sb.append(String.join(", ", setClauses));
+            sb.append(String.join(", ", dmlTargets));
         }
 
         if (!conditions.isEmpty()) {
@@ -480,14 +463,12 @@ public final class Sql {
      */
     public Object[] args() {
         Object[] cteArgs = cteArgs();
-        if (insertTable != null) {
-            return concat(cteArgs, insertValues.toArray());
+        if (isInsert()) {
+            return concat(cteArgs, dmlValues.toArray());
         }
-        if (!setArgs.isEmpty()) {
-            // UPDATE: setArgs before args (SET before WHERE)
-            return concat(cteArgs, concat(setArgs.toArray(), args));
-        }
-        return concat(cteArgs, args);
+        // UPDATE binds SET values before WHERE values; SELECT/DELETE carry no
+        // SET values — concat's empty short-circuit covers that case.
+        return concat(cteArgs, concat(dmlValues.toArray(), args));
     }
 
     // ====================== internals ======================
@@ -495,6 +476,13 @@ public final class Sql {
     private record Condition(String connector, String expr) {}
 
     private record Cte(String name, String columns, Sql query) {}
+
+    /**
+     * Result of normalizing a caller-supplied SQL fragment: the rewritten
+     * text with every placeholder unified to {@code ?}, plus the bound
+     * values in placeholder order.
+     */
+    private record NormalizedFragment(String expr, Object[] args) {}
 
     public static final class Group {
         private final List<Condition> conditions = new ArrayList<>();
@@ -539,9 +527,9 @@ public final class Sql {
         }
 
         private Group addCondition(String connector, String expr, Object... values) {
-            Object[] parsed = normalizeArgs(expr, values);
-            conditions.add(new Condition(connector, (String) parsed[0]));
-            appendArgs(args, (Object[]) parsed[1]);
+            NormalizedFragment parsed = normalizeArgs(expr, values);
+            conditions.add(new Condition(connector, parsed.expr()));
+            appendArgs(args, parsed.args());
             return this;
         }
 
@@ -557,19 +545,15 @@ public final class Sql {
     }
 
     private Sql withHead(String newHead) {
-        return copy(newHead, conditions, tail, args,
-            compoundQuery,
-            ctes,
-            insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs);
+        return new Sql(newHead, conditions, tail, args,
+            compoundQuery, ctes,
+            dmlTable, dmlTargets, dmlValues);
     }
 
     private Sql withTail(String newTail) {
-        return copy(head, conditions, tail + newTail, args,
-            compoundQuery,
-            ctes,
-            insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs);
+        return new Sql(head, conditions, tail + newTail, args,
+            compoundQuery, ctes,
+            dmlTable, dmlTargets, dmlValues);
     }
 
     private String renderWithClause() {
@@ -621,9 +605,7 @@ public final class Sql {
         String combined = "(" + sql() + ") " + operator + " (" + other.sql() + ")";
         Object[] combinedArgs = concat(args(), other.args());
         return new Sql(combined, List.of(), "", combinedArgs,
-            true, List.of(),
-            null, List.of(), List.of(),
-            null, List.of(), List.of());
+            true, List.of(), null, List.of(), List.of());
     }
 
     private void requireSimpleSelect(String operation) {
@@ -689,8 +671,7 @@ public final class Sql {
 
     private boolean isSelect() {
         return head != null
-            && insertTable == null
-            && updateTable == null
+            && dmlTable == null
             && head.startsWith("SELECT ");
     }
 
@@ -699,11 +680,13 @@ public final class Sql {
     }
 
     public boolean isInsert() {
-        return insertTable != null;
+        // head == null identifies the INSERT factory — UPDATE carries its
+        // "UPDATE <table>" head; SELECT/DELETE never hold a dmlTable.
+        return dmlTable != null && head == null;
     }
 
     private boolean isUpdate() {
-        return updateTable != null;
+        return dmlTable != null && head != null;
     }
 
     private boolean isDml() {
@@ -726,27 +709,6 @@ public final class Sql {
             return false;
         }
         return head.indexOf(" ON ", joinIndex) < 0;
-    }
-
-    private static Sql copy(
-        String head,
-        List<Condition> conditions,
-        String tail,
-        Object[] args,
-        boolean compoundQuery,
-        List<Cte> ctes,
-        String insertTable,
-        List<String> insertColumns,
-        List<Object> insertValues,
-        String updateTable,
-        List<String> setClauses,
-        List<Object> setArgs
-    ) {
-        return new Sql(head, conditions, tail, args,
-            compoundQuery,
-            ctes,
-            insertTable, insertColumns, insertValues,
-            updateTable, setClauses, setArgs);
     }
 
     private static String renderConditions(List<Condition> conditions) {
@@ -798,7 +760,7 @@ public final class Sql {
      * placeholder inside the operator's span, or use the {@code ?} operator's
      * function form on the target database.
      */
-    private static Object[] normalizeArgs(String fragment, Object... values) {
+    private static NormalizedFragment normalizeArgs(String fragment, Object... values) {
         var sb = new StringBuilder(fragment.length());
         var matched = new ArrayList<>();
         var seen = new HashMap<String, Object>();
@@ -845,7 +807,7 @@ public final class Sql {
                     + " — " + normalizer.vi + " placeholder(s) but " + values.length + " value(s) provided");
         }
 
-        return new Object[]{sb.toString(), matched.toArray()};
+        return new NormalizedFragment(sb.toString(), matched.toArray());
     }
 
     private static void appendValue(StringBuilder sb, List<Object> matched, Object value) {

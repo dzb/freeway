@@ -44,7 +44,14 @@ public final class DatabaseHubImpl implements DatabaseHub {
     private static Map<String, Database> toMap(List<NamedDatabase> entries) {
         Map<String, Database> map = new LinkedHashMap<>();
         for (NamedDatabase entry : entries) {
-            map.put(entry.name(), entry.db());
+            Database previous = map.put(entry.name(), entry.db());
+            if (previous != null) {
+                // A silent last-wins here would leave half the application
+                // pointed at the wrong database — fail fast instead.
+                throw new IllegalStateException(
+                    "Duplicate database name: '" + entry.name() + "'"
+                );
+            }
         }
         return map;
     }

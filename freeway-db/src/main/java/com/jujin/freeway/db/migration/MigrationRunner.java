@@ -359,18 +359,24 @@ public final class MigrationRunner {
     }
 
     /**
-     * Best-effort staleness check: reads the lock row's {@code executed_at}
-     * and deletes the row when it outlived {@link #lockTtl}. Any failure to
-     * read or parse the timestamp (older schema without the column, driver
-     * type surprises) keeps the lock — conservative by construction, because
-     * wrongly stealing an active lock would let two instances migrate
-     * concurrently.
+     * Best-effort staleness check: compares the lock row's {@code executed_at}
+     * against the database's own {@code current_timestamp} (fetched in the
+     * same query) and deletes the row when it outlived {@link #lockTtl}.
+     *
+     * <p>Both timestamps go through the identical JDBC read path, so their
+     * difference is correct even when the database session timezone differs
+     * from the JVM timezone — comparing the stored timestamp directly against
+     * {@code Instant.now()} would skew by the whole timezone gap and could
+     * steal a live lock. Any failure to read or parse the timestamps (older
+     * schema without the column, driver type surprises) keeps the lock —
+     * conservative by construction, because wrongly stealing an active lock
+     * would let two instances migrate concurrently.
      */
     private boolean takeStaleLock() {
         try {
             List<LockRow> rows = database
                 .query(
-                    "select executed_at from " +
+                    "select executed_at, current_timestamp as db_now from " +
                         table +
                         " where version = '" + LOCK_VERSION + "'"
                 )
@@ -379,8 +385,11 @@ public final class MigrationRunner {
                 return false;
             }
             Instant acquiredAt = rows.getFirst().executedAt();
-            if (acquiredAt == null
-                    || acquiredAt.isAfter(Instant.now().minus(lockTtl))) {
+            Instant dbNow = rows.getFirst().dbNow();
+            if (
+                acquiredAt == null || dbNow == null ||
+                Duration.between(acquiredAt, dbNow).compareTo(lockTtl) < 0
+            ) {
                 return false;
             }
             releaseLock();
@@ -648,7 +657,7 @@ public final class MigrationRunner {
 
     private record RankRow(int installedRank) {}
 
-    private record LockRow(Instant executedAt) {}
+    private record LockRow(Instant executedAt, Instant dbNow) {}
 
     private byte[] readResourceBytes(String resourcePath) {
         ClassLoader classLoader = classLoader();

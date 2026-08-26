@@ -31,11 +31,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `hasSubscribers(Class)` 补齐与 `CallBus.handles` 对称的查询面。
 - **迁移锁 TTL（freeway-db）** — `freeway.db.migration.lock-ttl`（默认 PT1H）：
   进程崩溃残留的锁行超时后自动接管，无需手工 DELETE；设为 0 显式禁用接管。
+- **连接拨号登录超时（freeway-db）** — `PoolDefault` 建连前设置
+  `DriverManager.setLoginTimeout`（取 `freeway.db.pool.health-check-timeout`）：
+  拨号挂死不再无限期占用池许可并阻塞后续借出者。
+- **迁移锁过期判定去时区化（freeway-db）** — 过期检查改为在同一查询内读取
+  锁行 `executed_at` 与数据库自身 `current_timestamp`，两者经同一 JDBC 读
+  路径换算，DB 会话时区 ≠ JVM 时区时的整段时差偏移不再可能提前抢占活锁。
+- **DatabaseHub 重名快速失败（freeway-db）** — `NamedDatabase` 贡献中出现重复
+  名称现在抛 `IllegalStateException`，不再静默后者覆盖前者。
 - **表达式乘除模（freeway-flow）** — 条件表达式支持 `*` `/` `%`
   （优先级介于加减与一元之间；除零/模零显式报错，不产生 Infinity/NaN）。
 
 ### Changed
 
+- **跨线程事务守卫报错澄清（freeway-db）** — `checkNoForeignTransaction` 的
+  异常信息现在明确"另一线程持有本 Database 的事务"并给出两条出路（在事务
+  线程上执行、或用独立 Database 实例并发），不再让无关线程的调用者误读为
+  自身用法错误。
+- **`Orm.of(db)` 补齐 JDBC 强制规则（freeway-db）** — 默认 Coercer 现在与
+  `DatabaseBuilder`/IoC 路径一致地携带 Date/Timestamp/Time → java.time 规则，
+  generated-key 回写等 Orm 内部转换行为不再因构建路径而异。
 - **命名清晰化（freeway-commons/ioc）** — `MethodHandleUtils` 的
   `invoke(handle, receiver, args)` 更名 `invokeOn(...)`：与位置参数形态
   `invoke(handle, args...)` 在调用点不可区分，Lifecycle 曾以
@@ -56,6 +71,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **性能冒烟断言改为地板阈值（freeway-cloud）** — CloudPerformanceTest 各场景
   统一为可通过 `-Dcloud.bench.floor` 调整的数量级守门线（默认 1k ops/s），
   实测数值照常打印，慢 CI 不再误报。
+
+### Removed
+
+- **设计冗余清理（freeway-db）** — 删除 `Orm` 的 `insert/save/update/delete(T, Class<T>)`
+  五个 typed 重载与 `BatchQuery.rows(List<Object[]>)`（均无使用点；varargs
+  形态已是超集）；删除 `DatabaseStats.averageBorrowWaitNanos()/averageBorrowWait()`。
+  同批性能微优化：`Schema.ensure` 每个实体只反射解析一次，命名参数批量执行
+  的结构校验只做首行一次。
 
 ### Fixed
 

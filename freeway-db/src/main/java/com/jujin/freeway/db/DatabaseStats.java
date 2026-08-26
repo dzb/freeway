@@ -1,7 +1,5 @@
 package com.jujin.freeway.db;
 
-import java.time.Duration;
-
 /**
  * Snapshot of connection-pool statistics.
  *
@@ -24,11 +22,4 @@ public record DatabaseStats(
     long borrowCount,
     long borrowWaitNanos
 ) {
-    public long averageBorrowWaitNanos() {
-        return borrowCount == 0 ? 0 : borrowWaitNanos / borrowCount;
-    }
-
-    public Duration averageBorrowWait() {
-        return Duration.ofNanos(averageBorrowWaitNanos());
-    }
 }

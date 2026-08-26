@@ -308,10 +308,12 @@ public final class DatabaseImpl implements Database {
         Thread current = Thread.currentThread();
         if (!activeTxThreads.isEmpty() && !activeTxThreads.contains(current)) {
             throw new SqlException(
-                "Transaction work must run on the transaction thread — "
-                    + "ScopedValue does not propagate to child threads; DB calls "
-                    + "made on other threads inside transaction() run outside "
-                    + "the transaction"
+                "Another thread holds an active transaction on this Database, "
+                    + "and DB calls from other threads are rejected while it runs "
+                    + "(ScopedValue does not propagate; the call would borrow an "
+                    + "independent pooled connection and run outside the transaction). "
+                    + "Run DB work on the transaction thread, or use a separate "
+                    + "Database instance (e.g. via DatabaseHub) for concurrent work"
             );
         }
     }

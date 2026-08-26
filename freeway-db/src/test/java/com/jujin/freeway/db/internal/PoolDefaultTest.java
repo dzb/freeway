@@ -240,7 +240,6 @@ class PoolDefaultTest {
         DatabaseStats stats = pool.stats();
         assertEquals(2L, stats.borrowCount());
         assertTrue(stats.borrowWaitNanos() > 0L);
-        assertTrue(stats.averageBorrowWaitNanos() > 0L);
 
         pool.close();
     }

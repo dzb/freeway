@@ -450,6 +450,13 @@ public final class PoolDefault implements Pool {
     private PooledConnectionDefault createConnection() {
         Connection conn = null;
         try {
+            // Bound the connect+login phase instead of letting it hang on the
+            // driver's default (login timeout 0 = infinite). A dial that
+            // outlives connectionTimeout would hold its pool permit the whole
+            // time and stall every queued borrower behind the fair semaphore.
+            // DriverManager.setLoginTimeout is process-global — acceptable,
+            // since a hung connect is pathological in every case.
+            DriverManager.setLoginTimeout(healthCheckTimeoutSeconds());
             Properties properties = new Properties();
             properties.setProperty("user", config.username());
             properties.setProperty("password", config.password());

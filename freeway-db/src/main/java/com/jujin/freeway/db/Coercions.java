@@ -1,6 +1,9 @@
 package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -22,4 +25,17 @@ final class Coercions {
         );
     }
 
+    /**
+     * A CoercerDefault carrying the JDBC rules (Date/Timestamp/Time →
+     * java.time) that the DatabaseBuilder and IoC paths always contribute.
+     */
+    static Coercer jdbcCoercer() {
+        CoercerDefault coercer = new CoercerDefault();
+        for (var rule : jdbcDefaults()) {
+            coercer.register(rule);
+        }
+        return coercer;
+    }
+
 }
+

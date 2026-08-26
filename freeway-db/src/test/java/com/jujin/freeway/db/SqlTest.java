@@ -322,6 +322,20 @@ class SqlTest {
     }
 
     @Test
+    void updateBindsSetArgsBeforeWhereArgsRegardlessOfCallOrder() {
+        // The split into dmlValues (SET) + args (WHERE) exists precisely so
+        // that binding order follows SQL text order — SET before WHERE — no
+        // matter which fluent call came first. Merging the two lists would
+        // silently reorder bindings when where() precedes set().
+        Sql setFirst = Sql.update("users").set("name = ?", "john").where("id = ?", 7L);
+        Sql whereFirst = Sql.update("users").where("id = ?", 7L).set("name = ?", "john");
+
+        assertEquals(setFirst.sql(), whereFirst.sql());
+        assertArrayEquals(new Object[]{"john", 7L}, setFirst.args());
+        assertArrayEquals(setFirst.args(), whereFirst.args());
+    }
+
+    @Test
     void updateWithNamedParams() {
         Sql q = Sql.update("users")
             .set("name = :name", "john")
