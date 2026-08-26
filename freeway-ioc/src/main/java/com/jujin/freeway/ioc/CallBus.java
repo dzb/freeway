@@ -388,6 +388,11 @@ public final class CallBus implements AutoCloseable {
      * Closes the bus: further calls fail fast, all registrations are dropped,
      * and calls dispatched but not yet drained complete exceptionally with
      * {@link IllegalStateException} so no caller waits forever on shutdown.
+     *
+     * <p>The counterpart {@link EventBus} takes the opposite stance on
+     * purpose: post-close broadcasts are silent no-ops, because a fact nobody
+     * consumes must not abort shutdown — while an unanswered question here is
+     * a caller actively blocked on the reply.
      */
     @Override
     public void close() {

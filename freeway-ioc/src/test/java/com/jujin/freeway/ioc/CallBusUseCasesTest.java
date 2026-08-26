@@ -47,8 +47,7 @@ class CallBusUseCasesTest {
     @Test
     void checkoutComposesThreeModulesWithoutCompileTimeDeps() {
         Container app = Freeway.create(binder -> {
-            binder.bind(CallBus.class).to(CallBus::new);
-
+            // CallBus is a container-managed builtin — no manual bind needed.
             // ---- user module (provider) ----
             binder.bind(UserListener.class).to(container -> {
                 var listener = new UserListener();
@@ -161,7 +160,6 @@ class CallBusUseCasesTest {
     @Test
     void mutualQueriesWithoutCircularBindings() {
         Container app = Freeway.create(binder -> {
-            binder.bind(CallBus.class).to(CallBus::new);
             binder.bind(ValuationListener.class).to(container -> {
                 var listener = new ValuationListener(
                     container.get(CallBus.class).consumer("stock", StockView.class));
