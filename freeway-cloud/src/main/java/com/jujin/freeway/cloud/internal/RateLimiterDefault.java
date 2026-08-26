@@ -43,4 +43,9 @@ public final class RateLimiterDefault implements RateLimiter {
         }
         return false;
     }
+
+    @Override
+    public RateLimiter newShard() {
+        return new RateLimiterDefault(permitsPerSecond, maxBurst);
+    }
 }

@@ -39,6 +39,9 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
     private volatile long openedAtNanos;
     private final AtomicBoolean probeInFlight = new AtomicBoolean();
     private volatile long probeStartedAtNanos;
+    /** Guards only the rare lost-probe re-arm path so exactly one waiter
+     *  becomes the fresh probe (single-probe invariant). */
+    private final Object probeLock = new Object();
 
     public CircuitBreakerDefault(int failureThreshold, Duration failureWindow, Duration openWindow) {
         if (failureThreshold <= 0) {
@@ -80,10 +83,13 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
         // admitted but never reported (transport failure outside the callback
         // contract, local rejection, lost result) times out; the next caller
         // then becomes the fresh probe instead of the circuit wedging in
-        // HALF_OPEN forever.
-        if (System.nanoTime() - probeStartedAtNanos > openWindow.toNanos()) {
-            probeStartedAtNanos = System.nanoTime(); // re-arm: this call is the new probe
-            return true;
+        // HALF_OPEN forever. The lock keeps concurrent waiters from all
+        // deciding they are the fresh probe.
+        synchronized (probeLock) {
+            if (System.nanoTime() - probeStartedAtNanos > openWindow.toNanos()) {
+                probeStartedAtNanos = System.nanoTime(); // re-arm: this call is the new probe
+                return true;
+            }
         }
         return false;
     }
@@ -139,5 +145,10 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
             failureTimes.clear();
         }
         state = State.CLOSED;
+    }
+
+    @Override
+    public CircuitBreaker newShard() {
+        return new CircuitBreakerDefault(failureThreshold, failureWindow, openWindow);
     }
 }

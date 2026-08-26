@@ -242,6 +242,73 @@ class CloudHttpClientTest {
         }
     }
 
+    @Test
+    void circuitOpenOnOneServiceDoesNotPoisonAnother() {
+        // Breakers are sharded per serviceId even when assembled through the
+        // standard injection path (CloudResilienceModule binds one breaker):
+        // exhausting the failure window on "failing" must leave "healthy"
+        // fully servable.
+        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
+        System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
+        System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "60");
+        try (AppRuntime app = FreewayApp.run(new TwoRouteModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            ServiceRegistry registry = app.get(ServiceRegistry.class);
+            registry.register(
+                ServiceInstance.of("failing", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            registry.register(
+                ServiceInstance.of("healthy", "i2", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            CloudHttpClient client = app.get(CloudHttpClient.class);
+
+            assertThrows(CloudException.class, () -> client.call("failing", CloudRequest.get("/api/fail")));
+            assertThrows(CloudException.class, () -> client.call("failing", CloudRequest.get("/api/fail")));
+            CloudException opened = assertThrows(CloudException.class,
+                () -> client.call("failing", CloudRequest.get("/api/fail")));
+            assertFalse(opened.retryable());
+            assertTrue(opened.getMessage().contains("Circuit"), "circuit on 'failing' is open");
+
+            assertTrue(client.call("healthy", CloudRequest.get("/api/echo")).is2xx(),
+                "a healthy service must not be rejected by another service's open circuit");
+        } finally {
+            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            System.clearProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW);
+        }
+    }
+
+    @Test
+    void rateLimitIsPerService() {
+        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
+        try (AppRuntime app = FreewayApp.run(new TwoRouteModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            ServiceRegistry registry = app.get(ServiceRegistry.class);
+            registry.register(
+                ServiceInstance.of("svc-a", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            registry.register(
+                ServiceInstance.of("svc-b", "i2", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            CloudHttpClient client = app.get(CloudHttpClient.class);
+
+            assertTrue(client.call("svc-a", CloudRequest.get("/api/echo")).is2xx(),
+                "svc-a consumes its own burst budget");
+            assertTrue(client.call("svc-b", CloudRequest.get("/api/echo")).is2xx(),
+                "svc-b has its own limiter shard and is not throttled by svc-a");
+        } finally {
+            System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED);
+            System.clearProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND);
+        }
+    }
+
+    /** One application exposing both an echo and an always-failing route. */
+    static class TwoRouteModule implements ModuleEx {
+        @Override
+        public void bind(Binder b) {
+            b.contribute(Route.class)
+                .add(Route.get("/api/echo", ctx -> ctx.send(200, "{\"ok\":true}")))
+                .add(Route.get("/api/fail", ctx -> ctx.send(500, "boom")));
+        }
+    }
+
     /** A plain Freeway HTTP application — no cloud code. */
     static class EchoModule implements ModuleEx {
         @Override

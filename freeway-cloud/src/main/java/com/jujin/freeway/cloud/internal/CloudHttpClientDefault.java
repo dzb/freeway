@@ -55,9 +55,12 @@ import javax.net.ssl.SSLContext;
  * resilience bindings degrade to production defaults.
  *
  * <p>Breakers and rate limiters are sharded per {@code serviceId}: one
- * failing service must not poison calls to healthy services. The underlying
- * JDK {@link HttpClient} owns a persistent connection pool and selector
- * thread; {@link #close()} releases it exactly once.
+ * failing service must not poison calls to healthy services. An injected
+ * {@link CircuitBreakerDefault}/{@link RateLimiterDefault} acts as the
+ * <b>configuration template</b> — every service gets its own instance with
+ * the same settings; any other implementation is shared verbatim (caller's
+ * choice). The underlying JDK {@link HttpClient} owns a persistent connection
+ * pool and selector thread; {@link #close()} releases it exactly once.
  */
 public final class CloudHttpClientDefault implements CloudHttpClient, AutoCloseable {
 
@@ -73,10 +76,10 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     private final Tracer tracer;
     private final MeterRegistry metrics;
     private final HttpClient http;
-    /** Per-service shards; null injected values mean each service gets its
-     *  own fresh default instance, so one failing service cannot poison the
-     *  others. An explicitly injected breaker/limiter is shared (caller's
-     *  choice). */
+    /** Per-service shards: one failing service cannot poison the others. An
+     *  injected default-implementation breaker/limiter is the configuration
+     *  template for each shard; any other implementation (or {@code NOOP})
+     *  is shared verbatim — see {@link #newBreaker()}/{@link #newRateLimiter()}. */
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
     private volatile boolean closed;
@@ -107,9 +110,11 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         this.loadBalancer = Objects.requireNonNull(loadBalancer, "loadBalancer");
         this.propagators = List.copyOf(propagators);
         this.retryer = retryer != null ? retryer : RetryerDefault.withDefaults();
-        // Explicitly injected breakers/limiters act as the shared default for
-        // every service; when nothing was injected, each service gets its own
-        // fresh default instance (see the computeIfAbsent factories below).
+        // Injected breakers/limiters are NOT shared between services: a
+        // default-implementation instance is used as the configuration
+        // template and every service gets its own shard (see the
+        // computeIfAbsent factories in call()). Only non-default custom
+        // implementations fall back to sharing — the caller owns their state.
         this.injectedBreaker = breaker;
         this.injectedRateLimiter = rateLimiter;
         this.transport = transport != null ? transport : TransportSecurity.NONE;
@@ -139,13 +144,8 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
         long startNanos = metrics != null ? System.nanoTime() : 0;
         try {
-            CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k ->
-                injectedBreaker != null ? injectedBreaker
-                    : new CircuitBreakerDefault(DEFAULT_FAILURE_THRESHOLD,
-                        DEFAULT_FAILURE_WINDOW, DEFAULT_OPEN_WINDOW));
-            RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k ->
-                injectedRateLimiter != null ? injectedRateLimiter
-                    : new RateLimiterDefault(DEFAULT_RATE_PER_SECOND));
+            CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
+            RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
             int attempt = 0;
             while (true) {
                 // Rate limit first: a local rejection must not consume a half-open
@@ -212,6 +212,26 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         metrics.counter("cloud.rpc.failures").increment();
         metrics.timer("cloud.rpc.duration")
             .record(Duration.ofNanos(System.nanoTime() - startNanos));
+    }
+
+    /** Per-service breaker shard. No injection → fresh default; an injected
+     *  breaker's {@link CircuitBreaker#newShard()} decides — framework
+     *  implementations clone their policy per service, the default (and
+     *  externally-managed implementations) share {@code this}. */
+    private CircuitBreaker newBreaker() {
+        if (injectedBreaker == null) {
+            return new CircuitBreakerDefault(DEFAULT_FAILURE_THRESHOLD,
+                DEFAULT_FAILURE_WINDOW, DEFAULT_OPEN_WINDOW);
+        }
+        return injectedBreaker.newShard();
+    }
+
+    /** Per-service rate limiter shard — same policy as {@link #newBreaker()}. */
+    private RateLimiter newRateLimiter() {
+        if (injectedRateLimiter == null) {
+            return new RateLimiterDefault(DEFAULT_RATE_PER_SECOND);
+        }
+        return injectedRateLimiter.newShard();
     }
 
     private CloudResponse doCall(ServiceInstance instance, CloudRequest request) {

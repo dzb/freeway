@@ -24,6 +24,15 @@ public interface CircuitBreaker {
     /** Manual reset to CLOSED. */
     void reset();
 
+    /** A per-service shard derived from this breaker: same policy,
+     *  independent state. The default returns {@code this} (shared) for
+     *  stateless or externally-managed implementations; stateful framework
+     *  implementations override it so one failing service cannot poison
+     *  others. */
+    default CircuitBreaker newShard() {
+        return this;
+    }
+
     CircuitBreaker NOOP = new CircuitBreaker() {
         @Override
         public State state() {
