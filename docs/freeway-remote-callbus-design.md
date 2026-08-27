@@ -183,6 +183,11 @@ UserApi api = remote.proxyFor(UserApi.class)
 
 默认抛 `IllegalArgumentException` 要求显式选模式——无静默缺省。
 
+**每调用超时**（原为 deferred 项，已实现）：`timeout(...)` 经
+`CloudHttpClient.callAsync`（异步传输面，`sendAsync` socket 段）+
+`orTimeout` 收窄等待；到期映射为 `CloudException.timeout`（retryable），
+与传输层超时语义一致。
+
 ## 4. 配置键（CloudConfigKeys 新增）
 
 | Key | 默认 | 说明 |
@@ -243,3 +248,8 @@ cloud RPC 调用，不该有自己的第二套治理旋钮。
 | B | `RemoteCaller` + `RemoteInvocationException` + `of()` 工厂；consumer 侧单测（MockWebServer 层面） | cloud 1.3.10 |
 | C | `RpcEndpoint` server 面 + `RemoteProxyFactory` 双模式；契约测试（真实双容器互调） | B |
 | D | ext `freeway-http-*` 合入验证 + 文档进 DEVELOPER-GUIDE | C |
+
+> **状态（2026-08-27）**：A–D 全部完成，另含 `callAsync` 异步传输面与
+> 每调用超时的端到端接线（原 deferred 项）。CloudHttpClient 接口新增
+> `callAsync` 默认方法（default 桥接同步形式，Default 覆盖为 sendAsync
+> 真异步 socket 段），resilience 编排语义两种模式完全一致。
