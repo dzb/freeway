@@ -44,6 +44,12 @@ public final class CloudConfigKeys {
     public static final String RPC_RATE_LIMIT_PER_SECOND = PREFIX + ".rpc.rate-limit.per-second";
     public static final String RPC_TRACE_ENABLED       = PREFIX + ".rpc.trace.enabled";
 
+    // ── Remote CallBus（CallBus 的跨进程桥，见 docs/freeway-remote-callbus-design.md）──
+    public static final String RPC_REMOTE_ENABLED     = PREFIX + ".rpc.remote.enabled";
+    public static final String RPC_REMOTE_PATH_PREFIX = PREFIX + ".rpc.remote.path-prefix";
+    public static final String RPC_REMOTE_VERSION_HEADER = "X-RPC-Version";
+    public static final String RPC_VERSION            = "1";
+
     // ── RPC / TLS ───────────────────────────────────────────
     public static final String RPC_TLS_KEY_STORE          = PREFIX + ".rpc.tls.key-store";
     public static final String RPC_TLS_KEY_STORE_PASSWORD = PREFIX + ".rpc.tls.key-store-password";

@@ -18,6 +18,11 @@ public class CloudException extends RuntimeException {
         this.status = status;
     }
 
+    /** Generic factory for module-internal failure mapping (e.g. the remote-CallBus bridge). */
+    public static CloudException of(String message, boolean retryable, int status, Throwable cause) {
+        return new CloudException(message, retryable, status, cause);
+    }
+
     public static CloudException noInstance(String serviceId) {
         return new CloudException("No live instance for service '" + serviceId + "'", false, -1, null);
     }
