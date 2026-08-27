@@ -64,8 +64,18 @@ stream:
     缺省生成规则）。mesh 全互联去重（双方同时发起时，`origin` 字典序
     大的一方主动关闭自己发起的那条——**保留对端发起的连接**，其
     hello 已携带对端订阅）。
-  - `subscribe`：CE `type` 前缀列表（点分段前缀，如 `order.` 匹配
-    `order.created` / `order.paid`）。空数组 = 不收事件（单向发布者）。
+  - `subscribe`：订阅声明数组，元素为
+    `{ "prefix": "order.", "group": "order-workers" }`（点分段前缀，
+    如 `order.` 匹配 `order.created` / `order.paid`）。空数组 =
+    不收事件（单向发布者）。
+    **`group` 声明投递拓扑**（吸收 solon EventLevel+group 的语义）：
+    - 无 `group` = **广播**：每个收到消息的节点都触发本地订阅者
+      （刷缓存、配置刷新类场景）；
+    - 有 `group` = **竞争**：相同 group 的节点间每条消息只由一个处理
+      （订单处理、发邮件类场景）。v1 中竞争语义由 Kafka 桥兑现
+      （group 直映射 consumerGroup）；WS mesh 通道上竞争消费需要
+      协调机制，记为待定协议扩展——WS 订阅声明现在就携带 group，
+      协议设计期留下最便宜的落位。
   - 对端 ack（服务方回）：
     `{ "proto": 1, "origin": "...", "accept": true }`；拒绝时
     `accept:false` + `reason`，随后关闭。拒绝仅发生在协议不兼容
@@ -82,11 +92,15 @@ stream:
   "time": "2026-08-27T12:00:00Z",
   "datacontenttype": "application/json",
   "fwchannel": "class",              ← 扩展属性：CLASS|TOPIC 回灌路由
+  "fworigin": "freeway-app@…",       ← 扩展属性：出站节点身份（回环防护）
+  "fwtimes": 1,                      ← 扩展属性：投递代数（适配器自增）；
+                                       消费端可读，用于幂等判断与死信诊断
   "data": { …事件对象 JSON… } }
 ```
 
-- `fwchannel` / `fworigin`（出站节点 origin，用于 loop 防护与调试）
-  为 Freeway 扩展属性，不注册到 CNCF registry（内部概念）。
+- `fwchannel` / `fworigin` / `fwtimes` 为 Freeway 扩展属性，不注册到
+  CNCF registry（内部概念）。`fwtimes` 对应 solon 的 `Event.times`
+  投递代数字段——零成本、高价值。
 - `TOPIC` 通道：`type` 为字符串 topic 本身（`"user.created"`），
   `data` 为 payload；`CLASS` 通道：`type` 为类全名。
 - 不满足 CE 约束（id/type/source 缺失）的事件出站即失败并记日志，
@@ -157,8 +171,12 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 ```
 
 - **allowedEventTypes 白名单继续生效**（防任意类实例化，安全边界不变）。
-- `id + source` 幂等去重为**可选装饰**（默认关；启用时用
-  ScopedCache 窗口去重，窗口 = 本地 Defer/缓存作用域寿命）。
+- **拦截器位**（吸收 solon `CloudEventInterceptor`）：入站管道经
+  `contribute(CloudEventInterceptor.class)` 贡献的拦截器链——审计、
+  租户检查、自定义过滤的统一挂点，所有通道共用。
+- `id + source` 幂等去重为**内置拦截器**（吸收自 solon，替代原
+  "可选装饰"表述）：默认关；启用时以 ScopedCache 窗口去重（窗口 =
+  本地 Defer/缓存作用域寿命）。实现即一个内置拦截器，不再是特殊路径。
 - 回环防护：`fworigin == 本节点 origin` 的入站帧丢弃（自身经 mesh
   环回的事件；配合 publishInbound 的"不回桥"语义双保险）。
 
@@ -182,6 +200,7 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 | `CloudEventsEndpoint` | cloud.events | WS 端点：握手/hello/订阅声明/入站管道 |
 | `PeerConnector` | cloud.events | peers 解析（config/discovery 双源）+ 连接生命周期 + 退避重连 |
 | `CloudEventBridge` | cloud.events | 出站钩子：遍历活跃连接、前缀过滤、发送 |
+| `CloudEventInterceptor` | cloud.events | 入站拦截器位（contribution）：幂等去重即内置实现之一 |
 | `CloudEventsModule` | cloud.events | 装配：endpoint route + connector hook + bridge 绑定 |
 
 配置键（`freeway.cloud.events.*`）：`enabled`（默认 false）、`peers`、
@@ -195,6 +214,18 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 - CE filter 表达式完整规范（CNCF subscription spec）：前缀匹配够用。
 - 分布式 RegistryStore / 全局一致成员视图。
 - 发布确认 / ACK 帧：at-most-once 语义下无意义；Kafka 桥有 offset。
+- **显式事件事务**（solon `EventTran` 式）：Defer 已覆盖"随 DB 事务
+  缓冲"的主场景；solon 的额外能力是"无 DB 事务的多事件原子批"，
+  列为远期特性，不进 v1。
+- **qos(0/1/2) 透传**：WS 通道无 ack 概念，at-most-once 是通道立场，
+  不让事件携带框架兑现不了的字段（solon 的 qos 依赖底层协议原生
+  支持，Kafka 适配器同样忽略它）。
+- **scheduled 延迟投递**：依赖 MQ 原生延迟能力（rocketmq/ons 有、
+  kafka 无），适配器差异过大，不作核心模型字段。
+- **@CloudEvent 注解实体 / 强类型 eventplus 层**：以 contribution
+  显式路由替代注解扫描（freeway compose-first 立场）；需求真实
+  存在，若将来提供，形态为 `contribute(EventRoute.class).add(
+  EventRoute.of(EventClass.class, "topic"))`。
 
 ## 8. 实施切分
 
@@ -204,3 +235,8 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 | E1 | `CloudEventEnvelope` 翻译器 + 属性映射单测 | cloud 1.3.10 |
 | E2 | Endpoint + PeerConnector + Bridge + 双节点契约测试（真实 WS 往返、订阅过滤、断线重连、loop 防护） | E1 |
 | E3 | 文档进 DEVELOPER-GUIDE + ext 验证（Nacos 后端场景可选） | E2 |
+
+> **修订记录（2026-08-27，吸收 solon-cloud-event 评审）**：hello 帧的
+> subscribe 携带 `group` 声明投递拓扑（广播/竞争）；信封增加 `fwtimes`
+> 投递代数；幂等去重降为内置拦截器；新增拦截器位；显式事件事务、
+> qos、scheduled、注解实体层列入不做清单（附立场）。
