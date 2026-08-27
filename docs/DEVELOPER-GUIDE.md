@@ -1537,6 +1537,68 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ---
 
+## Remote CallBus (`freeway-cloud.rpc`)
+
+Cross-process request-reply for the `CallBus` channel. A provider registers
+handlers in its own JVM; a consumer calls them through the same interface —
+dispatch rides `CloudHttpClient`, so discovery, load balancing, retry,
+circuit breaking, and propagation all apply.
+
+**Server side — export an explicit mapping:**
+
+```java
+public final class UserRpcModule implements ModuleEx {
+    @Override
+    public void bind(Binder binder) {
+        var bus = new CallBus(new MetricsOnlyContainer()); // or the container builtin
+        bus.register("user", new UserHandlers());          // public methods become topics
+
+        binder.contribute(Route.class)
+            .add("user-rpc", RpcEndpoint.of("user", bus, new JsonCodecDefault()));
+    }
+}
+```
+
+Only mappings passed to `RpcEndpoint.of(...)` are reachable over HTTP —
+nothing is auto-exported. Endpoints serve `POST /rpc/{mapping}/{method}`
+with positional arguments as a JSON array.
+
+**Consumer side — three shapes:**
+
+```java
+RemoteCaller caller = new RemoteCaller(container.get(CloudHttpClient.class),
+    container.get(JsonCodec.class));
+
+// 1. direct call
+Greeting g = caller.invoke("user", "user", "greet", List.of("bob"), Greeting.class);
+
+// 2. typed proxy, always remote
+UserApi api = RemoteProxyFactory.of(null, caller)
+    .serviceId("user").mapping("user").remoteOnly()
+    .build(UserApi.class);
+
+// 3. typed proxy, local-first: same-process modules hit the in-memory bus,
+//    DeadCall falls through to the remote service — the smooth path from
+//    monolith to services.
+UserApi api2 = RemoteProxyFactory.of(callBus, caller)
+    .serviceId("user").mapping("user").localFirst()
+    .build(UserApi.class);
+```
+
+**Error model — two classes, two instincts:**
+
+| Failure | Thrown as | Retry? |
+|---------|-----------|--------|
+| Transport (connect/timeout/5xx) | `CloudException`, `retryable()==true` | yes — Retryer/breaker apply |
+| Remote handler threw | `CloudException` (4xx) with `RemoteInvocationException` as cause | **no** — deterministic |
+
+Remote exceptions are rebuilt by class name and message only; the original
+type is not reconstructed (it may not exist on the caller's classpath).
+Cross-process calls are **outside any local transaction** — post-commit side
+effects belong on the EventBus (Defer buffering), not on RPC.
+
+---
+
 ## Flow (`freeway-flow`)
 
 Lightweight graph-based workflow engine. Graphs are defined by the canonical `GraphSpec` (`nodes`+`links` structure with explicit `entry`). Zero external dependencies beyond commons + ioc. The legacy solon-flow `layout` format was removed — only the canonical shape loads.
