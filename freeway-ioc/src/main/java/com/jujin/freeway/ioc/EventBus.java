@@ -287,8 +287,10 @@ public final class EventBus implements AutoCloseable {
         if (closed) {
             return;
         }
-        published.increment();
-        cPublished.increment();
+        if (!(payload instanceof DeadEvent)) {
+            published.increment();
+            cPublished.increment();
+        }
         List<Consumer<Object>> moduleHandlers = topicSubscribers(topic);
         List<Subscription<?>> runtimeHandlers = runtimeTopicSubs.getOrDefault(
             topic,

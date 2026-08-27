@@ -46,7 +46,7 @@ class RowTest {
             assertEquals(42, r.integer("i"));
             assertEquals(9999L, r.get("l", Long.class));
             assertEquals(3.14, r.get("d", Double.class));
-            assertTrue(r.bool("b"));
+            assertTrue(r.booleanValue("b"));
             assertEquals(new BigDecimal("123.45"), r.decimal("dec"));
         }
     }

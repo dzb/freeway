@@ -98,7 +98,7 @@ class BatchQueryTest {
             assertEquals(2, results.size());
             for (var r : results) {
                 assertEquals(1, r.rows());
-                assertFalse(r.hasKey());
+                assertFalse(r.hasGeneratedKey());
             }
 
             assertEquals(100, (int) db.query("select val from t where id = 1").one(Integer.class).orElseThrow());
@@ -183,7 +183,7 @@ class BatchQueryTest {
             assertEquals(3, results.size());
             for (var r : results) {
                 assertEquals(1, r.rows());
-                assertTrue(r.hasKey());
+                assertTrue(r.hasGeneratedKey());
                 assertTrue(r.longKey() > 0);
             }
             // IDs should be sequential

@@ -24,7 +24,7 @@ class AutoIncrementTest {
 
             var r1 = db.execute(Sql.insert("t_auto").set("label", "first"));
             assertEquals(1, r1.rows());
-            assertTrue(r1.hasKey(), "INSERT should return a non-zero auto-increment ID");
+            assertTrue(r1.hasGeneratedKey(), "INSERT should return a non-zero auto-increment ID");
             assertEquals(1L, r1.longKey(), "First inserted row should have ID = 1");
 
             var r2 = db.execute(Sql.insert("t_auto").set("label", "second"));
@@ -40,7 +40,7 @@ class AutoIncrementTest {
 
             ExecuteResult result = db.execute("insert into t_auto (label) values (?)", "item");
             assertEquals(1, result.rows());
-            assertTrue(result.hasKey(), "Raw INSERT should return generated keys");
+            assertTrue(result.hasGeneratedKey(), "Raw INSERT should return generated keys");
             assertEquals(1L, result.longKey());
 
             Long selected = db.query("select id from t_auto where label = ?", "item")
@@ -58,7 +58,7 @@ class AutoIncrementTest {
 
             var r = db.execute("update t_auto set label = ? where id = ?", "modified", 1L);
             assertEquals(1, r.rows());
-            assertFalse(r.hasKey(), "UPDATE should NOT return an auto-increment ID");
+            assertFalse(r.hasGeneratedKey(), "UPDATE should NOT return an auto-increment ID");
             assertEquals(0L, r.longKey(), "UPDATE's id() should be 0");
         }
     }
@@ -71,7 +71,7 @@ class AutoIncrementTest {
 
             var r = db.execute("update t_auto set label = ? where id = ?", "x", 999L);
             assertEquals(0, r.rows());
-            assertFalse(r.hasKey());
+            assertFalse(r.hasGeneratedKey());
         }
     }
 
@@ -84,7 +84,7 @@ class AutoIncrementTest {
 
             var r = db.execute("delete from t_auto where id = ?", 1L);
             assertTrue(r.rows() > 0, "DELETE should affect rows");
-            assertFalse(r.hasKey(), "DELETE should NOT return an auto-increment ID");
+            assertFalse(r.hasGeneratedKey(), "DELETE should NOT return an auto-increment ID");
             assertEquals(0L, r.longKey(), "DELETE's id() should be 0");
         }
     }
@@ -97,7 +97,7 @@ class AutoIncrementTest {
 
             var r = db.execute(Sql.insert("t_auto").set("label", "builder-test"));
             assertEquals(1, r.rows());
-            assertTrue(r.hasKey(), "SQL builder INSERT should return auto-increment ID");
+            assertTrue(r.hasGeneratedKey(), "SQL builder INSERT should return auto-increment ID");
             assertEquals(1L, r.longKey());
         }
     }
@@ -111,7 +111,7 @@ class AutoIncrementTest {
             db.transaction(() -> {
                 var r = db.execute(Sql.insert("t_auto").set("label", "tx-item"));
                 assertEquals(1, r.rows());
-                assertTrue(r.hasKey(), "INSERT in transaction should return auto-increment ID");
+                assertTrue(r.hasGeneratedKey(), "INSERT in transaction should return auto-increment ID");
                 assertEquals(1L, r.longKey());
             });
 
@@ -129,7 +129,7 @@ class AutoIncrementTest {
             db.transaction(() -> {
                 var r = db.execute("insert into t_auto (label) values (?)", "tx-item");
                 assertEquals(1, r.rows());
-                assertTrue(r.hasKey(), "Raw INSERT in transaction should return auto-increment ID");
+                assertTrue(r.hasGeneratedKey(), "Raw INSERT in transaction should return auto-increment ID");
                 assertEquals(1L, r.longKey());
             });
         }
@@ -148,7 +148,7 @@ class AutoIncrementTest {
                 """, "commented");
 
             assertEquals(1, r.rows());
-            assertTrue(r.hasKey());
+            assertTrue(r.hasGeneratedKey());
             assertEquals(1L, r.longKey());
         }
     }
@@ -164,7 +164,7 @@ class AutoIncrementTest {
             );
 
             assertEquals(1, r.rows());
-            assertTrue(r.hasKey(), "INSERT with leading WITH should still return generated keys");
+            assertTrue(r.hasGeneratedKey(), "INSERT with leading WITH should still return generated keys");
             assertEquals(99L, r.longKey());
             assertEquals(Statement.RETURN_GENERATED_KEYS, flag[0]);
         }
@@ -178,7 +178,7 @@ class AutoIncrementTest {
 
             var r = db.execute(Sql.insert("t_auto").set("id", 100L).set("label", "explicit"));
             assertEquals(1, r.rows());
-            assertTrue(r.hasKey(), "INSERT with explicit PK should still return the generated keys value");
+            assertTrue(r.hasGeneratedKey(), "INSERT with explicit PK should still return the generated keys value");
             assertEquals(100L, r.longKey());
         }
     }
@@ -191,12 +191,12 @@ class AutoIncrementTest {
 
             var insertResult = db.execute(Sql.insert("t_auto").set("label", "combo"));
             long newId = insertResult.longKey();
-            assertTrue(insertResult.hasKey());
+            assertTrue(insertResult.hasGeneratedKey());
             assertTrue(newId > 0);
 
             var updateResult = db.execute("update t_auto set label = ? where id = ?", "combo-edited", newId);
             assertEquals(1, updateResult.rows());
-            assertFalse(updateResult.hasKey());
+            assertFalse(updateResult.hasGeneratedKey());
 
             String label = db.query("select label from t_auto where id = ?", newId)
                 .one(String.class).orElseThrow();

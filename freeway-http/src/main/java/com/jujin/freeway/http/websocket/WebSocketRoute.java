@@ -6,7 +6,7 @@ import com.jujin.freeway.http.route.PathPattern;
 
 public record WebSocketRoute(String path, WebSocketEndpoint endpoint) {
     public WebSocketRoute {
-        path = normalizePath(path);
+        path = PathPattern.normalizePath(path);
         endpoint = Objects.requireNonNull(endpoint, "endpoint");
         PathPattern.validateRegistrationPath(path);
     }
@@ -15,7 +15,4 @@ public record WebSocketRoute(String path, WebSocketEndpoint endpoint) {
         return new WebSocketRoute(path, endpoint);
     }
 
-    private static String normalizePath(String path) {
-        return PathPattern.normalizePath(path);
-    }
 }

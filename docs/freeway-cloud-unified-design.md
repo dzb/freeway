@@ -397,7 +397,7 @@ core 只保留**实际被装配引用**的标记；其余（`@Nacos` / `@Consul`
 
 - 本地默认实现统一 `@Local` + `.primary()`，保证"不指定 marker 必有默认"。
 - 用了 `@Nacos` 等后端标记必须引入对应 ext 适配器，否则回退默认——实际
-  有一次 warning 日志（`InjectResolver` 一次性警告，非完全静默），文档
+  有一次 warning 日志（`InjectionResolver` 一次性警告，非完全静默），文档
   明示该行为，避免误用。
 - marker 是静态注解类型（无值），分类实现/模块；运行时实例属性
   （zone/weight/canary 路由）走 `ServiceInstance.metadata` +
@@ -544,7 +544,7 @@ public final class CloudConfigKeys {
 3. **`AppConfig` 是接口**（`AppConfigDefault` record 实现），承诺不可变
    快照语义——表述修正为"接口 + record 实现"。
 4. **marker 静默回退不彻底静默**：未注册 marker 注解有一次 warning 日志
-   （`InjectResolver` 一次性警告）。规避约定（`@Local`+`.primary()` 兜底）
+   （`InjectionResolver` 一次性警告）。规避约定（`@Local`+`.primary()` 兜底）
    仍然成立。
 5. **`ServiceIds.normalize` 包私有**：cloud 无法直接调用；守卫经
    `Binding.id()` 隐式生效，`ServiceId` 构造守卫语义对齐（§3.1）。

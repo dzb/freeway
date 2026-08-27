@@ -92,7 +92,7 @@ public final class ContainerImpl implements Container {
     private final LoggerSource loggerSource;
     private final Scoping scoping;
     private final ProxyFactory proxyFactory;
-    private final InjectResolver injectResolver;
+    private final InjectionResolver injectResolver;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
     private final Set<ModuleEx> installedModules = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -116,7 +116,7 @@ public final class ContainerImpl implements Container {
         this.coercer = new CoercerDefault();
         this.loggerSource = LoggerSourceDefault.INSTANCE;
         this.proxyFactory = new ProxyFactoryDefault();
-        this.injectResolver = new InjectResolver(this);
+        this.injectResolver = new InjectionResolver(this);
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(targetCache);
         this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);

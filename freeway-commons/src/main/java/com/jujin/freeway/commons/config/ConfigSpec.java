@@ -80,7 +80,7 @@ public record ConfigSpec<T>(
         String description
     ) {
         return new ConfigSpec<>(
-            validate(key, type, parser),
+            normalizedKey(key, type, parser),
             type,
             defaultValue,
             parser,
@@ -114,7 +114,7 @@ public record ConfigSpec<T>(
         String description
     ) {
         return new ConfigSpec<>(
-            validate(key, type, parser),
+            normalizedKey(key, type, parser),
             type,
             null,
             parser,
@@ -123,7 +123,7 @@ public record ConfigSpec<T>(
         );
     }
 
-    private static String validate(
+    private static String normalizedKey(
         String key,
         Class<?> type,
         Function<String, ?> parser

@@ -26,7 +26,7 @@ public final class Http2Stream {
     private static final FrameFlag.FlagSet END_STREAM = FrameFlag.FlagSet.of(FrameFlag.END_STREAM);
 
     /** stream-level send window */
-    public final AtomicLong sendWindow = new AtomicLong(65535);
+    final AtomicLong sendWindow = new AtomicLong(65535);
     private final int streamId;
     private final int initialWindowSize;
     private final Http2Connection connection;

@@ -19,14 +19,14 @@ public final class HeaderFields {
     private static final Set<String> PSEUDO = Set.of(":authority", ":method", ":path", ":scheme", ":protocol");
     private final List<Http2HeaderField> fields = new ArrayList<>();
     private final Map<String, Http2HeaderField> pseudo = new HashMap<>(8);
-    private boolean hasNon;
+    private boolean seenRegularHeader;
 
     public void add(Http2HeaderField f) throws IOException {
         if (f.isPseudoHeader() && !PSEUDO.contains(f.name)) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         if (PROHIBITED.contains(f.name)) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         if ("te".equals(f.name) && !"trailers".equals(f.value)) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
-        if (!f.isPseudoHeader()) hasNon = true;
-        if (f.isPseudoHeader() && hasNon) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
+        if (!f.isPseudoHeader()) seenRegularHeader = true;
+        if (f.isPseudoHeader() && seenRegularHeader) throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
         if (f.isPseudoHeader()) {
             if (pseudo.put(f.name, f) != null)
                 throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);

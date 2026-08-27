@@ -10,10 +10,9 @@ public interface Binder {
     /**
      * Installs a module. The module's {@link ModuleEx#bind(Binder)} is called
      * immediately, so its services and extensions are registered in the same
-     * Installs a nested module during binding. Installing the same module
-     * instance twice is a no-op; installing two distinct instances of the
-     * same module class fails fast (typically an explicit install plus SPI
-     * auto-discovery).
+     * container. Installing the same module instance twice is a no-op;
+     * installing two distinct instances of the same module class fails fast
+     * (typically an explicit install plus SPI auto-discovery).
      *
      * @return this binder, for chaining
      */

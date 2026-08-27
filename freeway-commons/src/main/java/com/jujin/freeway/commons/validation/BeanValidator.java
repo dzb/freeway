@@ -126,7 +126,7 @@ public final class BeanValidator {
                     } else if (ann instanceof Min min) {
                         if (value instanceof Number n
                                 && isFiniteNumber(n)
-                                && compareToMinMax(n).compareTo(BigDecimal.valueOf(min.value())) < 0) {
+                                && toBigDecimal(n).compareTo(BigDecimal.valueOf(min.value())) < 0) {
                             result.addError(
                                 fieldPath,
                                 min.message().replace("{value}", String.valueOf(min.value())),
@@ -136,7 +136,7 @@ public final class BeanValidator {
                     } else if (ann instanceof Max max) {
                         if (value instanceof Number n
                                 && isFiniteNumber(n)
-                                && compareToMinMax(n).compareTo(BigDecimal.valueOf(max.value())) > 0) {
+                                && toBigDecimal(n).compareTo(BigDecimal.valueOf(max.value())) > 0) {
                             result.addError(
                                 fieldPath,
                                 max.message().replace("{value}", String.valueOf(max.value())),
@@ -190,7 +190,7 @@ public final class BeanValidator {
         }
     }
 
-    private static BigDecimal compareToMinMax(Number n) {
+    private static BigDecimal toBigDecimal(Number n) {
         if (n instanceof BigDecimal bd) return bd;
         if (n instanceof BigInteger bi) return new BigDecimal(bi);
         return new BigDecimal(n.toString());

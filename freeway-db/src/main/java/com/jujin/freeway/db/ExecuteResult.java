@@ -9,23 +9,23 @@ package com.jujin.freeway.db;
  * int rows = db.execute("UPDATE users SET status = ? WHERE id = ?", 1, id).rows();
  * }</pre>
  */
-public record ExecuteResult(int rows, Object key) {
+public record ExecuteResult(int rows, Object generatedKey) {
 
     /** Whether a generated key was returned. */
-    public boolean hasKey() {
-        return key != null;
+    public boolean hasGeneratedKey() {
+        return generatedKey != null;
     }
 
     /** Convenience: the generated key as {@code long}, or 0 if no key was generated. */
     public long longKey() {
-        if (key == null) return 0L;
-        if (key instanceof Number n) return n.longValue();
-        throw new IllegalStateException("Generated key is not numeric: " + key);
+        if (generatedKey == null) return 0L;
+        if (generatedKey instanceof Number n) return n.longValue();
+        throw new IllegalStateException("Generated key is not numeric: " + generatedKey);
     }
 
     @Override
     public String toString() {
-        if (key == null) return "ExecuteResult[rows=" + rows + "]";
-        return "ExecuteResult[rows=" + rows + ", key=" + key + "]";
+        if (generatedKey == null) return "ExecuteResult[rows=" + rows + "]";
+        return "ExecuteResult[rows=" + rows + ", key=" + generatedKey + "]";
     }
 }

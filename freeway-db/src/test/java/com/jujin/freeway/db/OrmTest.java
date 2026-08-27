@@ -213,7 +213,7 @@ class OrmTest {
             Post p = new Post("Hello", "World");
             var r = orm.insert(p);
 
-            assertTrue(r.hasKey());
+            assertTrue(r.hasGeneratedKey());
             assertTrue(r.longKey() > 0);
         }
     }
@@ -229,7 +229,7 @@ class OrmTest {
             var r = orm.insert(p);
 
             // records are immutable, id is on the result
-            assertTrue(r.hasKey());
+            assertTrue(r.hasGeneratedKey());
             assertEquals(1L, r.longKey());
         }
     }
@@ -244,7 +244,7 @@ class OrmTest {
             Comment c = new Comment("nice post", 1L);
             var r = orm.insert(c);
 
-            assertTrue(r.hasKey());
+            assertTrue(r.hasGeneratedKey());
             assertNotNull(c.id);
             assertTrue(c.id > 0);
         }
@@ -497,7 +497,7 @@ class OrmTest {
 
             Post p = new Post("Hello", "World");
             var r = orm.save(p);
-            assertTrue(r.hasKey());
+            assertTrue(r.hasGeneratedKey());
         }
     }
 
@@ -551,7 +551,7 @@ class OrmTest {
             // assign the key) instead of upserting an explicit zero id.
             PrimitiveId a = new PrimitiveId("a");
             ExecuteResult ra = orm.save(a);
-            assertTrue(ra.hasKey());
+            assertTrue(ra.hasGeneratedKey());
             assertTrue(ra.longKey() > 0, "generated key must be non-zero");
             assertTrue(a.id > 0, "id must be written back to the entity");
 

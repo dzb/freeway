@@ -56,8 +56,8 @@ public final class Http2Connection {
      * beyond what we advertise. */
     private static final int MAX_HEADER_LIST_SIZE = 64 * 1024;
 
-    public final AtomicLong sendWindow = new AtomicLong(DEFAULT_WINDOW_SIZE);
-    public final AtomicInteger receiveWindow = new AtomicInteger(DEFAULT_WINDOW_SIZE);
+    final AtomicLong sendWindow = new AtomicLong(DEFAULT_WINDOW_SIZE);
+    final AtomicInteger receiveWindow = new AtomicInteger(DEFAULT_WINDOW_SIZE);
 
     private final InputStream inputStream;
     private final Http2FrameWriter writer;
@@ -74,13 +74,13 @@ public final class Http2Connection {
     final ConcurrentHashMap<Integer, Http2Stream> streams = new ConcurrentHashMap<>();
     /** Peer's advertised SETTINGS_MAX_FRAME_SIZE — caps our OUTBOUND DATA chunking. */
     volatile int peerMaxFrameSize = 16384;
-    private final SettingsMap remoteSettings = new SettingsMap();
-    private final SettingsMap localSettings = new SettingsMap();
+    private final Settings remoteSettings = new Settings();
+    private final Settings localSettings = new Settings();
     /** Reused by the single reader thread to avoid per-frame header allocation. */
     private final byte[] frameHeaderBuffer = new byte[9];
     /** Set once GOAWAY has been sent or received — no new streams may be
      *  created afterwards (RFC 7540 §6.8). */
-    private volatile boolean goawayReceived;
+    private volatile boolean goawaySentOrReceived;
 
     /** Threads blocked on connection/stream flow control, unparked on WINDOW_UPDATE. */
     final Set<Thread> windowWaiters = ConcurrentHashMap.newKeySet();
@@ -121,11 +121,11 @@ public final class Http2Connection {
         return closed.get();
     }
 
-    SettingsMap remoteSettings() {
+    Settings remoteSettings() {
         return remoteSettings;
     }
 
-    SettingsMap localSettings() {
+    Settings localSettings() {
         return localSettings;
     }
 
@@ -202,7 +202,7 @@ public final class Http2Connection {
                         throw new IOException("GOAWAY");
                     // RFC 7540 §6.8: after receiving GOAWAY the endpoint must
                     // not create new streams — new HEADERS are RST'd below.
-                    goawayReceived = true;
+                    goawaySentOrReceived = true;
                     continue;
                 }
                 case PING -> {
@@ -332,7 +332,7 @@ public final class Http2Connection {
                 // concurrent-stream cap is reached (RFC 7540 §5.1.2,
                 // streams.size() is the open-stream count because close()
                 // removes from the map).
-                if (goawayReceived || streams.size() >= MAX_CONCURRENT_STREAMS) {
+                if (goawaySentOrReceived || streams.size() >= MAX_CONCURRENT_STREAMS) {
                     rejectNewStream(
                         Http2ErrorCode.REFUSED_STREAM, streamId, headerBlock);
                     continue;
@@ -570,7 +570,7 @@ public final class Http2Connection {
     public void sendGoAway(Http2ErrorCode errorCode) throws IOException {
         // Sending GOAWAY has the same effect as receiving one (RFC 7540
         // §6.8): no new streams may be created afterwards.
-        goawayReceived = true;
+        goawaySentOrReceived = true;
         writeFrame(new GoawayFrame(errorCode, lastSeenStreamId).encode());
     }
 

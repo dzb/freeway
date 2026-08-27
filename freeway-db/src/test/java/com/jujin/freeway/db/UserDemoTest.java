@@ -109,7 +109,7 @@ class UserDemoTest {
 
             // ----- C: Create -----
             ExecuteResult r1 = orm.insert(new User("闪电", 3));
-            assertTrue(r1.hasKey(), "INSERT 应返回自增 ID");
+            assertTrue(r1.hasGeneratedKey(), "INSERT 应返回自增 ID");
             long id1 = r1.longKey();
 
             ExecuteResult r2 = orm.insert(new User("煤球", 5));
@@ -164,7 +164,7 @@ class UserDemoTest {
 
             // INSERT
             ExecuteResult r = db.execute("INSERT INTO t_user (name, age) VALUES (?, ?)", "闪电", 3);
-            assertTrue(r.hasKey());
+            assertTrue(r.hasGeneratedKey());
             long id = r.longKey();
 
             // SELECT → Row

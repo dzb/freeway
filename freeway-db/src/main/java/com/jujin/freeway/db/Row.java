@@ -73,7 +73,7 @@ public final class Row {
 
     public Long longValue(String col) { return get(col, Long.class); }
 
-    public Boolean bool(String col) { return get(col, Boolean.class); }
+    public Boolean booleanValue(String col) { return get(col, Boolean.class); }
 
     public BigDecimal decimal(String col) { return get(col, BigDecimal.class); }
 

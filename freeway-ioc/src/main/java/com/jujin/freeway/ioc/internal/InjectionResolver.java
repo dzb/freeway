@@ -30,12 +30,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-final class InjectResolver {
-    private static final Logger LOG = LoggerFactory.getLogger(InjectResolver.class);
+final class InjectionResolver {
+    private static final Logger LOG = LoggerFactory.getLogger(InjectionResolver.class);
 
     private final ContainerImpl container;
 
-    InjectResolver(ContainerImpl container) {
+    InjectionResolver(ContainerImpl container) {
         this.container = Objects.requireNonNull(container, "container");
     }
 
@@ -58,7 +58,7 @@ final class InjectResolver {
                 // value until the error surfaces at runtime. Fail fast with a
                 // clear directive instead. Non-writable properties WITHOUT any
                 // injection annotation stay untouched (existing behavior).
-                AnnotationLookup lookup = annotations(property);
+                AnnotationLookup lookup = of(property);
                 if (hasInjectionAnnotation(lookup) || hasConfiguredValueAnnotation(lookup)) {
                     if (property.isFieldBacked()) {
                         throw new IllegalStateException(
@@ -78,7 +78,7 @@ final class InjectResolver {
             }
             Object value = resolveValue(
                 ownerType,
-                annotations(property),
+                of(property),
                 property.type(),
                 Types.rawClass(property.type()),
                 false
@@ -100,19 +100,7 @@ final class InjectResolver {
     private Object resolveParameter(Class<?> ownerType, BeanParameter parameter) {
         Type parameterType = parameter.type();
         Class<?> rawType = Types.rawClass(parameterType);
-        return resolveValue(ownerType, annotations(parameter), parameterType, rawType, true);
-    }
-
-    private static AnnotationLookup annotations(AnnotatedElement element) {
-        return new AnnotationLookup() {
-            public <A extends Annotation> Optional<A> annotation(Class<A> type) {
-                return Optional.ofNullable(element.getAnnotation(type));
-            }
-
-            public Annotation[] annotations() {
-                return element.getAnnotations();
-            }
-        };
+        return resolveValue(ownerType, of(parameter), parameterType, rawType, true);
     }
 
     /**
@@ -209,28 +197,43 @@ final class InjectResolver {
         }
     }
 
-    private static AnnotationLookup annotations(BeanProperty property) {
-        return new AnnotationLookup() {
-            public <A extends Annotation> Optional<A> annotation(Class<A> type) {
-                return property.annotation(type);
-            }
-
-            public Annotation[] annotations() {
-                return property.annotations();
-            }
-        };
+    private static AnnotationLookup of(BeanProperty property) {
+        return new AnnotationLookup(property.annotations());
     }
 
-    private static AnnotationLookup annotations(BeanParameter parameter) {
-        return new AnnotationLookup() {
-            public <A extends Annotation> Optional<A> annotation(Class<A> type) {
-                return parameter.annotation(type);
-            }
+    private static AnnotationLookup of(BeanParameter parameter) {
+        return new AnnotationLookup(parameter.annotations());
+    }
 
-            public Annotation[] annotations() {
-                return parameter.annotations();
+    private static AnnotationLookup of(AnnotatedElement element) {
+        return new AnnotationLookup(element.getAnnotations());
+    }
+
+    /**
+     * The annotations at one injection point. All three sources
+     * ({@link BeanProperty}, {@link BeanParameter}, {@link AnnotatedElement})
+     * expose them as a plain array, so lookup is a single scan.
+     */
+    private record AnnotationLookup(Annotation[] all) {
+
+        <A extends Annotation> Optional<A> annotation(Class<A> type) {
+            return find(all, type);
+        }
+
+        Annotation[] annotations() {
+            return all;
+        }
+    }
+
+    private static <A extends Annotation> Optional<A> find(
+        Annotation[] annotations, Class<A> type
+    ) {
+        for (Annotation annotation : annotations) {
+            if (type.isInstance(annotation)) {
+                return Optional.of(type.cast(annotation));
             }
-        };
+        }
+        return Optional.empty();
     }
 
     private Logger resolveLogger(Class<?> ownerType, AnnotationLookup lookup) {
@@ -486,14 +489,4 @@ final class InjectResolver {
         return value.isEmpty() ? null : value;
     }
 
-    private interface AnnotationLookup {
-        <A extends Annotation> Optional<A> annotation(Class<A> type);
-
-        /**
-         * All annotations at the injection point — deliberately abstract so a
-         * new implementation cannot silently lose marker scanning by
-         * inheriting an empty default.
-         */
-        Annotation[] annotations();
-    }
 }

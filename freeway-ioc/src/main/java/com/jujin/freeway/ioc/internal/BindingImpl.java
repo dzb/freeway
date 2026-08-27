@@ -147,8 +147,8 @@ final class BindingImpl<T> implements Binding<T> {
     }
 
     @Override
-    public Binding<T> marker(Class<? extends Annotation>... markerAnnotations) {
-        for (Class<? extends Annotation> m : markerAnnotations) {
+    public Binding<T> marker(Class<? extends Annotation>... markers) {
+        for (Class<? extends Annotation> m : markers) {
             MarkerIndex.validateMarkerAnnotation(m);
             this.markers.add(m);
         }

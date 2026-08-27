@@ -240,8 +240,8 @@ public final class Orm {
      * caller's column info must carry the {@code @Generated} property).
      */
     private void writeBackGeneratedKey(ExecuteResult result, ColumnInfo columns, Object entity, BeanPlan plan) {
-        if (result.hasKey() && columns.generated != null && !plan.record()) {
-            columns.generated.write(entity, coercer.coerce(result.key(), Types.rawClass(columns.generated.type())));
+        if (result.hasGeneratedKey() && columns.generated != null && !plan.record()) {
+            columns.generated.write(entity, coercer.coerce(result.generatedKey(), Types.rawClass(columns.generated.type())));
         }
     }
 

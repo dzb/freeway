@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Defer.within` 结果形态（freeway-commons）** — 新增 `within(Supplier<T>)` 与
   `within(Function<DeferScope, T>)`：作用域产出返回值，提交语义不变（正常
   返回 drain、rollback/异常 discard 后不产出）。与 `ScopedCache.within` 的
-  三形态完全对称。
+  三形态对称，另含 `Consumer<DeferScope>` 无返回值形态。
 - **观测 SPI 统一（freeway-commons/cloud）** — `Metrics.Timer` 新增
   `record(Duration)` 与 `record(Supplier)` 默认重载（nanos 为规范单位），
   commons 成为全框架唯一观测 SPI。`CloudObserveModule` 的注册表现在以
