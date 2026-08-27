@@ -527,7 +527,10 @@ public final class CloudConfigKeys {
 ## 10. 明确不做
 
 - 透明远程 bean / `@CloudClient` 接口代理 / `CloudExporter` 服务端导出 /
-  `/rpc/*` 私有协议。
+  `/rpc/*` **私有**协议（二进制/多路复用面）。注意区分：基于
+  `CloudHttpClient` 的 **JSON 显式 topic RPC**（CallBus 远端桥接，
+  文档见 `freeway-remote-callbus-design.md`）不在排除之列——它以
+  HTTP 为传输、以声明式 mapping 为边界，无注解魔法、无自动导出。
 - classpath 扫描式自动注册（`ServiceLoader` 除外，可关）。
 - 业务数据进入 `InvocationContext`；实例属性进入 `@Marker`。
 - 第三方 SDK 进入 core。
