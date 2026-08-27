@@ -52,7 +52,7 @@ public final class RegistryStore {
         }
     }
 
-    public void deregister(ServiceInstance instance) {
+    public void unregister(ServiceInstance instance) {
         var instances = byService.get(instance.serviceId());
         if (instances == null) {
             return;

@@ -1,9 +1,9 @@
 package com.jujin.freeway.cloud.discovery;
 
 /**
- * Lifecycle side of the registry: register / renew (heartbeat) / deregister.
+ * Lifecycle side of the registry: register / renew (heartbeat) / unregister.
  * Driven by the discovery module's {@code RuntimeHook}s (register on start,
- * deregister on stop, periodic renew in between).
+ * unregister on stop, periodic renew in between).
  */
 public interface ServiceRegistry {
 
@@ -14,5 +14,5 @@ public interface ServiceRegistry {
     void renew(String serviceId, String instanceId);
 
     /** Removes the instance from the registry. */
-    void deregister(ServiceInstance instance);
+    void unregister(ServiceInstance instance);
 }

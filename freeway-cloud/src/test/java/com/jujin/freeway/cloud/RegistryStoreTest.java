@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * In-process registry: register → discover → renew → stale eviction →
- * deregister.
+ * unregister.
  */
 class RegistryStoreTest {
 
@@ -28,7 +28,7 @@ class RegistryStoreTest {
         store.renew("svc", "i1");
         assertEquals(1, store.liveReady("svc", Duration.ofMinutes(1)).size());
 
-        store.deregister(inst);
+        store.unregister(inst);
         assertTrue(store.liveReady("svc", Duration.ofMinutes(1)).isEmpty());
     }
 

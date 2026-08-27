@@ -29,7 +29,7 @@ public final class ServiceRegistryDefault implements ServiceRegistry {
     }
 
     @Override
-    public void deregister(ServiceInstance instance) {
-        store.deregister(instance);
+    public void unregister(ServiceInstance instance) {
+        store.unregister(instance);
     }
 }

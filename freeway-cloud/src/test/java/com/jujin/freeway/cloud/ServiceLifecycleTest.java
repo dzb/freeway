@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Registry lifecycle: built-in HTTP declaration auto-registers after the
- * server starts and deregisters on shutdown; host override for 0.0.0.0 / Pod
+ * server starts and unregisters on shutdown; host override for 0.0.0.0 / Pod
  * IP; startup fails fast when the HTTP module is missing.
  */
 class ServiceLifecycleTest {
@@ -51,7 +51,7 @@ class ServiceLifecycleTest {
             assertEquals(app.get(WebServer.class).port(), instances.get(0).endpoint().port());
         }
         assertTrue(store.liveReady("lifecycle-svc", Duration.ofMinutes(1)).isEmpty(),
-            "shutdown deregisters before the container closes");
+            "shutdown unregisters before the container closes");
     }
 
     @Test

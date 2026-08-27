@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * Registry lifecycle hook: runs AFTER {@code freeway.http.server} so
  * {@code host:port} are known. Collects every {@link ServiceDeclaration}
  * contribution, registers each instance and starts the renew heartbeat; on
- * stop, halts the heartbeat and deregisters everything (traffic is removed
+ * stop, halts the heartbeat and unregisters everything (traffic is removed
  * before the HTTP server shuts down — hooks stop in reverse order).
  */
 public final class RegistryLifecycleHook implements RuntimeHook {
@@ -72,7 +72,7 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         ServiceRegistry registry = container.get(ServiceRegistry.class);
         for (ServiceInstance instance : registered) {
             try {
-                registry.deregister(instance);
+                registry.unregister(instance);
                 LOG.info("Deregistered service '{}' instance '{}'", instance.serviceId(), instance.instanceId());
             } catch (Exception ex) {
                 LOG.warn("Deregister failed for {} instance {}: {}",
