@@ -5,6 +5,7 @@ import com.jujin.freeway.ioc.DeadCallException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -46,6 +47,7 @@ public final class RemoteProxyFactory {
     private String serviceId;
     private String mapping;
     private Mode mode;
+    private Duration timeout;
 
     private RemoteProxyFactory(CallBus callBus, RemoteCaller remote) {
         this.callBus = callBus;
@@ -146,7 +148,7 @@ public final class RemoteProxyFactory {
     private Object remoteDispatch(Method method, Object[] args) throws Throwable {
         try {
             return remote.invoke(serviceId, mapping, method.getName(), asList(args),
-                method.getReturnType());
+                method.getReturnType(), timeout);
         } catch (CloudException e) {
             // Transport failures keep their type; business failures are wrapped
             // (RemoteCallBusinessException) — both land here as CloudException.

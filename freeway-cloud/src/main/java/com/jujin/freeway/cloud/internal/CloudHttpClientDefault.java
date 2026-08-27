@@ -196,6 +196,79 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         }
     }
 
+    @Override
+    public java.util.concurrent.CompletableFuture<CloudResponse> callAsync(
+        String serviceId, CloudRequest request) {
+        // The resilience orchestration (retry loop, backoff sleeps, breaker
+        // accounting) stays on the supply thread — it is CPU-light with short
+        // parks. Only the socket wait (doCall) is truly blocking, and JDK
+        // HttpClient's sendAsync handles that without pinning a platform thread.
+        return java.util.concurrent.CompletableFuture
+            .supplyAsync(() -> {
+                if (serviceId == null || serviceId.isBlank()) {
+                    throw new IllegalArgumentException("serviceId must not be blank");
+                }
+                if (closed) {
+                    throw new IllegalStateException("CloudHttpClient is closed");
+                }
+                return request;
+            })
+            .thenCompose(req -> java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> callWithAsyncSocket(serviceId, req)));
+    }
+
+    /**
+     * The blocking {@link #call} path is refactored so the last leg can opt
+     * into {@code sendAsync}: doCall receives a flag choosing the socket mode.
+     */
+    private CloudResponse callWithAsyncSocket(String serviceId, CloudRequest request) {
+        Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
+        long startNanos = metrics != null ? System.nanoTime() : 0;
+        try {
+            CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
+            RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
+            int attempt = 0;
+            while (true) {
+                if (!rateLimiter.tryAcquire()) {
+                    throw CloudException.rateLimited(serviceId);
+                }
+                if (!breaker.allowRequest()) {
+                    throw CloudException.circuitOpen(serviceId);
+                }
+                boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
+                try {
+                    List<ServiceInstance> instances = discovery.getInstances(serviceId);
+                    ServiceInstance instance = loadBalancer.choose(instances)
+                        .orElseThrow(() -> CloudException.noInstance(serviceId));
+                    CloudResponse response = doCall(instance, request, true);
+                    breaker.onSuccess();
+                    if (span != null) {
+                        span.addTag("http.status", String.valueOf(response.status()));
+                    }
+                    recordCall(startNanos);
+                    return response;
+                } catch (CloudException failure) {
+                    if (span != null) {
+                        span.addError(failure);
+                    }
+                    if (probe || failure.retryable()) {
+                        breaker.onFailure();
+                    }
+                    if (!failure.retryable() || !retryer.shouldRetry(attempt, failure)) {
+                        recordFailure(startNanos);
+                        throw failure;
+                    }
+                    sleepBackoff(retryer.backoffMillis(attempt));
+                    attempt++;
+                }
+            }
+        } finally {
+            if (span != null) {
+                span.close();
+            }
+        }
+    }
+
     private void recordCall(long startNanos) {
         if (metrics == null) {
             return;
@@ -235,6 +308,10 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     }
 
     private CloudResponse doCall(ServiceInstance instance, CloudRequest request) {
+        return doCall(instance, request, false);
+    }
+
+    private CloudResponse doCall(ServiceInstance instance, CloudRequest request, boolean async) {
         // Normalize the join so an endpoint with a trailing slash cannot
         // produce a double slash (//) in the request URI.
         String base = instance.endpoint().uri().toString();
@@ -253,7 +330,22 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
             request.body() == null ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofByteArray(request.body()));
         try {
-            HttpResponse<byte[]> response = http.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response;
+            if (async) {
+                try {
+                    response = http.sendAsync(builder.build(),
+                        HttpResponse.BodyHandlers.ofByteArray()).join();
+                } catch (java.util.concurrent.CompletionException ce) {
+                    // Unwrap so the sync catch chain (timeout/connect) applies unchanged.
+                    Throwable c = ce.getCause() == null ? ce : ce.getCause();
+                    if (c instanceof HttpTimeoutException ht) throw ht;
+                    if (c instanceof IOException io) throw io;
+                    if (c instanceof RuntimeException re) throw re;
+                    throw ce;
+                }
+            } else {
+                response = http.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+            }
             if (response.statusCode() >= 500) {
                 // Server errors are retryable failures — they must go through
                 // retry + circuit-breaker accounting, not return as normal

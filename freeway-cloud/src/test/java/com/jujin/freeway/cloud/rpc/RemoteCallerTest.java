@@ -151,6 +151,23 @@ class RemoteCallerTest {
     }
 
     @Test
+    void perCallTimeoutNarrowsTheWait() {
+        // Server handler sleeps? Use the slow endpoint via a dedicated service:
+        // reuse boom-free greet but with an absurdly short per-call deadline.
+        CloudException ex = assertThrows(CloudException.class, () ->
+            caller.invoke("target", "user", "greet", List.of("bob"), Greeting.class,
+                java.time.Duration.ofNanos(1)));
+        assertTrue(ex.retryable(), "per-call deadline expiry maps to retryable timeout");
+    }
+
+    @Test
+    void zeroTimeoutFallsBackToTransportDefault() {
+        Greeting reply = caller.invoke("target", "user", "greet", List.of("carol"),
+            Greeting.class, java.time.Duration.ZERO);
+        assertEquals(new Greeting("hi carol"), reply);
+    }
+
+    @Test
     void malformedSegmentFailsFastClientSide() {
         assertThrows(IllegalArgumentException.class, () ->
             caller.invoke("target", "us er", "greet", List.of(), String.class));

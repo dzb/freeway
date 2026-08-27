@@ -64,6 +64,23 @@ public final class RemoteCaller {
         List<?> args,
         Class<T> returnType
     ) throws CloudException {
+        return invoke(serviceId, mapping, method, args, returnType, null);
+    }
+
+    /**
+     * As {@link #invoke(String, String, String, List, Class)} with a per-call
+     * deadline. {@code null}/{@code Duration.ZERO} uses the transport's
+     * configured request timeout; a shorter value narrows the wait via the
+     * async transport surface ({@code callAsync} + {@code orTimeout}).
+     */
+    public <T> T invoke(
+        String serviceId,
+        String mapping,
+        String method,
+        List<?> args,
+        Class<T> returnType,
+        java.time.Duration timeout
+    ) throws CloudException {
         validateSegment(mapping, "mapping");
         validateSegment(method, "method");
         List<?> positional = args == null ? List.of() : args;
@@ -82,7 +99,22 @@ public final class RemoteCaller {
                 "Content-Type", CONTENT_TYPE,
                 VERSION_HEADER, VERSION),
             body.getBytes(StandardCharsets.UTF_8));
-        CloudResponse response = http.call(serviceId, request);
+        CloudResponse response;
+        try {
+            if (timeout != null && !timeout.isZero() && !timeout.isNegative()) {
+                response = http.callAsync(serviceId, request)
+                    .orTimeout(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .join();
+            } else {
+                response = http.call(serviceId, request);
+            }
+        } catch (java.util.concurrent.CompletionException ce) {
+            // orTimeout deadline → uniform timeout semantics
+            if (ce.getCause() instanceof java.util.concurrent.TimeoutException) {
+                throw CloudException.timeout(serviceId, ce.getCause());
+            }
+            throw ce.getCause() instanceof RuntimeException re ? re : ce;
+        }
         if (!response.is2xx()) {
             throw businessException(serviceId, response);
         }
