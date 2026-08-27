@@ -199,7 +199,7 @@
                 <configuration>
                     <publishingServerId>central</publishingServerId>
                     <ignorePublishedComponents>true</ignorePublishedComponents>
-                    <autoPublish>true</autoPublish>
+                    <autoPublish>false</autoPublish>
                 </configuration>
             </plugin>
         </plugins>
