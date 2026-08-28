@@ -1599,6 +1599,60 @@ effects belong on the EventBus (Defer buffering), not on RPC.
 
 ---
 
+## CloudEventBus (`freeway-cloud.events`)
+
+Cross-node broadcast for the EventBus fact channel, over a WebSocket mesh —
+CloudEvents 1.0 on the wire. Add `CloudEventsModule` to every node that
+participates:
+
+```java
+FreewayApp.run(new String[0],
+    new AppModule(), new HttpModule(), new CloudEventsModule());
+```
+
+Config (`freeway.cloud.events.*`):
+
+```properties
+freeway.cloud.events.enabled=true              # module is inert without this
+freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080
+freeway.cloud.events.subscriptions=order.,user.created
+freeway.cloud.events.allowed-types=com.acme.OrderCreated
+```
+
+- `peers` — nodes to dial; a registry backend (Nacos) can feed these
+  dynamically instead. The endpoint rides the existing HTTP server at
+  `/cloud/events`.
+- `subscriptions` — CloudEvents `type` prefixes this node pulls from the
+  mesh; empty = outbound-only. Prefixes match the event class FQN and the
+  `@Topic` value.
+- `allowed-types` — CLASS-channel deserialization whitelist; empty = allow all.
+
+**Publishing is unchanged** — the same `EventBus.publish` fans out locally
+and into the mesh; remote events arrive as `publishInbound` on peers:
+
+```java
+@Topic("order.created")
+record OrderCreated(String orderId) implements EventBus.Keyed {
+    @Override public String key() { return orderId; }   // → CE subject: per-key ordering
+}
+
+bus.publish(new OrderCreated("order-42"));
+// → local subscribers + every mesh peer subscribed to "order."
+```
+
+**Delivery semantics:** at-most-once, real-time. A peer offline during a
+publish misses that event (no replay queue) — for durable delivery use the
+Kafka bridge (`freeway-mq-kafka`), which shares the same envelope translator.
+`Stoppable` short-circuits are JVM-local: a vetoed event does not leave the
+node, but remote peers cannot veto each other's copies.
+
+**Error model:** inbound frames run through contributed interceptors
+(`contribute(CloudEventInterceptor.class)`) — audit, tenant checks, and the
+optional `id+source` idempotency dedup live there. Frames for types outside
+the whitelist are dropped, not errors.
+
+---
+
 ## Flow (`freeway-flow`)
 
 Lightweight graph-based workflow engine. Graphs are defined by the canonical `GraphSpec` (`nodes`+`links` structure with explicit `entry`). Zero external dependencies beyond commons + ioc. The legacy solon-flow `layout` format was removed — only the canonical shape loads.

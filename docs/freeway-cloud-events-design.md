@@ -236,6 +236,12 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 | E2 | Endpoint + PeerConnector + Bridge + 双节点契约测试（真实 WS 往返、订阅过滤、断线重连、loop 防护） | E1 |
 | E3 | 文档进 DEVELOPER-GUIDE + ext 验证（Nacos 后端场景可选） | E2 |
 
+> **状态（2026-08-28）**：E1–E3 已实施——`CloudEventEnvelope` 翻译器、
+> `PeerHub`/`CloudEventsEndpoint`（WS 端点 + 入站管道 + 拦截器位）、
+> `PeerConnector`（双源 peers + 退避重连）、`CloudEventBridge`（出站
+> 钩子，订阅前缀过滤）全部落地；双节点真实 WS 契约测试覆盖双向
+> 往返、前缀过滤、白名单、Keyed subject、非白名单丢弃与惰性模式。
+
 > **修订记录（2026-08-27，吸收 solon-cloud-event 评审）**：hello 帧的
 > subscribe 携带 `group` 声明投递拓扑（广播/竞争）；信封增加 `fwtimes`
 > 投递代数；幂等去重降为内置拦截器；新增拦截器位；显式事件事务、

@@ -48,8 +48,17 @@ public final class CloudConfigKeys {
     public static final String RPC_REMOTE_ENABLED     = PREFIX + ".rpc.remote.enabled";
     public static final String RPC_REMOTE_PATH_PREFIX = PREFIX + ".rpc.remote.path-prefix";
     public static final String RPC_REMOTE_VERSION_HEADER = "X-RPC-Version";
+
     public static final String RPC_VERSION            = "1";
 
+    // ── CloudEventBus（EventBus 的跨节点事件网格, 见 docs/freeway-cloud-events-design.md）──
+    public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
+    public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
+    public static final String EVENTS_SUBSCRIPTIONS  = PREFIX + ".events.subscriptions";
+    public static final String EVENTS_ALLOWED_TYPES  = PREFIX + ".events.allowed-types";
+    public static final String EVENTS_KEEPALIVE      = PREFIX + ".events.keepalive";
+    public static final String EVENTS_PATH           = PREFIX + ".events.path";
+    public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
     // ── RPC / TLS ───────────────────────────────────────────
     public static final String RPC_TLS_KEY_STORE          = PREFIX + ".rpc.tls.key-store";
     public static final String RPC_TLS_KEY_STORE_PASSWORD = PREFIX + ".rpc.tls.key-store-password";
