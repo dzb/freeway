@@ -31,6 +31,7 @@ public final class PeerConnector implements AutoCloseable {
     private final Map<String, AtomicInteger> backoffByPeer = new ConcurrentHashMap<>();
     private final List<URI> staticPeers;
     private final Duration connectTimeout;
+    private volatile boolean started;
     private volatile boolean closed;
 
     /** Peers as host:port strings (design §3, zero-dependency start). */
@@ -51,22 +52,35 @@ public final class PeerConnector implements AutoCloseable {
     }
 
     /** As {@link #start()} with additional dynamically-resolved peers. */
-    public void start(List<String> dynamicPeers) {
+    public synchronized void start(List<String> dynamicPeers) {
+        if (started) {
+            // late dynamic peers are handled by setPeers — no double dial
+            setPeers(dynamicPeers);
+            return;
+        }
+        started = true;
         var all = new java.util.LinkedHashMap<URI, Boolean>();
         for (URI peer : staticPeers) all.put(peer, true);
         for (String p : dynamicPeers) all.put(toUri(p), true);
+        for (String k : backoffByPeer.keySet()) all.put(URI.create(k), true);
         for (URI peer : all.keySet()) {
             Thread.ofVirtual().start(() -> dialLoop(peer));
         }
     }
 
-    /** Feeds additional peers (e.g. discovered via an external registry). */
+    /** Feeds additional peers (e.g. discovered via an external registry).
+     *  Safe before or after {@link #start()}: already-dialed endpoints are
+     *  skipped. */
     public void setPeers(List<String> peers) {
         for (URI peer : peers.stream().map(PeerConnector::toUri).toList()) {
-            if (staticPeers.stream().noneMatch(p -> sameEndpoint(p, peer))
-                && backoffByPeer.keySet().stream()
-                    .noneMatch(k -> sameEndpoint(URI.create(k), peer))) {
+            boolean known = staticPeers.stream().anyMatch(p -> sameEndpoint(p, peer))
+                || backoffByPeer.keySet().stream()
+                    .anyMatch(k -> sameEndpoint(URI.create(k), peer));
+            if (!known && started) {
                 Thread.ofVirtual().start(() -> dialLoop(peer));
+            } else if (!known) {
+                // not started yet — start() will pick it up from the map
+                backoffByPeer.put(peer.toString(), new AtomicInteger(0));
             }
         }
     }
@@ -190,8 +204,13 @@ public final class PeerConnector implements AutoCloseable {
                 return;
             }
             List<String> remoteSubs = PeerHub.prefixes(frame.get("subscribe"));
+            // sendText queues the frame; isDone() immediately would be
+            // racy. Queued == accepted: the socket serializes frames in
+            // order, and a transport failure surfaces via onError/onClose
+            // (handleDisconnect → reconnect). False negatives would drop
+            // events, so never report failure for a queued send.
             connection = new PeerConnection(remoteOrigin, remoteSubs,
-                json -> ws != null && ws.sendText(json, true).isDone());
+                json -> { ws.sendText(json, true); return true; });
             hub.register(connection);
             LOG.info("Connected to peer: {} (subscriptions={})", remoteOrigin, remoteSubs);
         }

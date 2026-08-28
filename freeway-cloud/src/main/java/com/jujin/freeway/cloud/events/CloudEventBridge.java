@@ -52,8 +52,12 @@ public final class CloudEventBridge implements EventBridge {
 
         int sent = 0;
         for (PeerConnection peer : hub.connections()) {
+            // Self-connection guard: an origin equal to ours would be a
+            // loop (we dialed ourselves, or a duplicated instanceId). Peers
+            // with a shared instanceId config are thus skipped — prefer
+            // per-node instance ids.
             if (peer.remoteOrigin().equals(origin)) {
-                continue; // self-connection guard
+                continue;
             }
             String type = channel == EventBridge.Channel.CLASS
                 ? event.getClass().getName()

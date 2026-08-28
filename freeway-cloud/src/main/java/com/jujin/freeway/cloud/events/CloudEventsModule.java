@@ -97,6 +97,7 @@ public final class CloudEventsModule implements ModuleEx {
         static final String PEERS = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_PEERS;
         static final String SUBSCRIPTIONS = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_SUBSCRIPTIONS;
         static final String ALLOWED_TYPES = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TYPES;
+        /** Reserved: WS protocol-level ping/pong handles liveness; no active ping loop in v1. */
         static final String KEEPALIVE = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_KEEPALIVE;
 
         private CloudEventsKeys() {}

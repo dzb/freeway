@@ -102,6 +102,9 @@ public final class CloudEventEnvelope {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Unknown fwchannel: " + channelStr);
         }
+        // CE allows a null/absent data: absent → dataJson null (callers
+        // treat as no payload); present-but-null → "null" (JSON null literal,
+        // e.g. TOPIC channel with a null payload — distinct from no data).
         String dataJson = frame.containsKey("data")
             ? Objects.requireNonNullElse(JsonUtils.stringify(frame.get("data")), "null")
             : null;

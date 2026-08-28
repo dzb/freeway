@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud.events;
 
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketListener;
@@ -136,7 +135,7 @@ public final class PeerHub implements WebSocketEndpoint {
 
         @Override
         public void onText(String text) {
-                try {
+            try {
                 var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(text);
                 if (frame.containsKey("proto")) {
                     handshake(frame);
