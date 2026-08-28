@@ -72,7 +72,7 @@ public final class CloudEventModule implements ModuleEx {
                                 CloudEventsKeys.ENABLED);
                         return;
                     }
-                    container.get(EventBus.class).setEventBridge(bridge);
+                    container.get(EventBus.class).addEventBridge(bridge);
                     connector.start(split(symbols.resolve(CloudEventsKeys.PEERS, "")));
                     // keepalive (EVENTS_KEEPALIVE) reserved — WS protocol-level
                     // ping/pong handled by the engine; v1 has no active ping loop

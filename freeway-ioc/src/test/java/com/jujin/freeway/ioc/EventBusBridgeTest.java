@@ -1,4 +1,6 @@
 package com.jujin.freeway.ioc;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
@@ -42,6 +44,25 @@ class EventBusBridgeTest {
 
         assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))),
             "a failing bridge must be isolated like a failing subscriber");
+        bus.close();
+    }
+
+    @Test
+    void addEventBridgeFansOutToEveryBridge() {
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class)
+                .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
+        );
+        EventBus bus = new EventBus(container);
+        var first = new java.util.ArrayList<String>();
+        var second = new java.util.ArrayList<String>();
+        bus.addEventBridge((topic, event) -> first.add(event.getClass().getSimpleName()));
+        bus.addEventBridge((topic, event) -> second.add(event.getClass().getSimpleName()));
+
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(List.of("PostCreatedEvent"), first, "first bridge sees the event");
+        assertEquals(List.of("PostCreatedEvent"), second, "second bridge sees the event too");
         bus.close();
     }
 

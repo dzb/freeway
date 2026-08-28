@@ -84,7 +84,8 @@ public final class EventBus implements AutoCloseable {
     boolean isBusClosed() {
         return closed;
     }
-    private volatile EventBridge bridge;
+    private final java.util.concurrent.CopyOnWriteArrayList<EventBridge> bridges =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile Executor asyncExecutor;
     private volatile ExecutorService defaultAsyncExecutor;
     /** Globally ordered dispatch channel for {@link #publishOrdered}. */
@@ -109,7 +110,9 @@ public final class EventBus implements AutoCloseable {
 
     public EventBus(Container container, EventBridge bridge) {
         this.container = Objects.requireNonNull(container, "container");
-        this.bridge = bridge;
+        if (bridge != null) {
+            this.bridges.add(bridge);
+        }
         // Metrics is a container builtin (NoopMetrics by default) — always
         // resolvable; a contributed/primary implementation observes the bus.
         this.metrics = container.get(Metrics.class);
@@ -119,10 +122,21 @@ public final class EventBus implements AutoCloseable {
         this.cDeadEvents = metrics.counter("eventbus.dead_events");
     }
 
-    /** Wire an event bridge (Kafka, RabbitMQ, etc.) after construction. */
+    /** Wire an event bridge (Kafka, RabbitMQ, etc.) after construction.
+     *  Replaces any previously set single bridge — use
+     *  {@link #addEventBridge} to install several in parallel. */
     public void setEventBridge(EventBridge bridge) {
         requireOpen();
-        this.bridge = Objects.requireNonNull(bridge, "bridge");
+        bridges.clear();
+        bridges.add(Objects.requireNonNull(bridge, "bridge"));
+    }
+
+    /** Adds another bridge alongside existing ones — every bridge receives
+     *  every outbound event (design: fan-out to N channels, e.g. WS mesh +
+     *  Kafka broker simultaneously). */
+    public void addEventBridge(EventBridge bridge) {
+        requireOpen();
+        bridges.add(Objects.requireNonNull(bridge, "bridge"));
     }
 
     // ==================== class-based publish ====================
@@ -219,20 +233,22 @@ public final class EventBus implements AutoCloseable {
             publish(new DeadEvent(this, event));
         }
 
-        if (bridgeToMq && bridge != null && !(event instanceof DeadEvent)) {
+        if (bridgeToMq && !(event instanceof DeadEvent)) {
             // A stopped event was short-circuited by its subscribers — it must
             // not leave the process via the bridge.
             if (event instanceof Stoppable s && s.isStopped()) {
                 return;
             }
-            try {
-                bridge.send(resolveTopic(eventType), event, EventBridge.Channel.CLASS);
-            } catch (Exception ex) {
-                LOG.warn(
-                    "Event bridge failed for {}",
-                    eventType.getSimpleName(),
-                    ex
-                );
+            for (EventBridge bridge : bridges) {
+                try {
+                    bridge.send(resolveTopic(eventType), event, EventBridge.Channel.CLASS);
+                } catch (Exception ex) {
+                    LOG.warn(
+                        "Event bridge failed for {}",
+                        eventType.getSimpleName(),
+                        ex
+                    );
+                }
             }
         }
     }
@@ -325,16 +341,18 @@ public final class EventBus implements AutoCloseable {
             publish(new DeadEvent(this, payload));
         }
 
-        if (bridgeToMq && bridge != null) {
+        if (bridgeToMq) {
             // A stopped payload was short-circuited by its subscribers — it
             // must not leave the process via the bridge.
             if (payload instanceof Stoppable s && s.isStopped()) {
                 return;
             }
-            try {
-                bridge.send(topic, payload, EventBridge.Channel.TOPIC);
-            } catch (Exception ex) {
-                LOG.warn("Event bridge failed for topic '{}'", topic, ex);
+            for (EventBridge bridge : bridges) {
+                try {
+                    bridge.send(topic, payload, EventBridge.Channel.TOPIC);
+                } catch (Exception ex) {
+                    LOG.warn("Event bridge failed for topic '{}'", topic, ex);
+                }
             }
         }
     }
