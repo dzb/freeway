@@ -1602,12 +1602,12 @@ effects belong on the EventBus (Defer buffering), not on RPC.
 ## CloudEventBus (`freeway-cloud.events`)
 
 Cross-node broadcast for the EventBus fact channel, over a WebSocket mesh —
-CloudEvents 1.0 on the wire. Add `CloudEventsModule` to every node that
+CloudEvents 1.0 on the wire. Add `CloudEventModule` to every node that
 participates:
 
 ```java
 FreewayApp.run(new String[0],
-    new AppModule(), new HttpModule(), new CloudEventsModule());
+    new AppModule(), new HttpModule(), new CloudEventModule());
 ```
 
 Config (`freeway.cloud.events.*`):

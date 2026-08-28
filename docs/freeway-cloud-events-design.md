@@ -201,7 +201,7 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 | `PeerConnector` | cloud.events | peers 解析（config/discovery 双源）+ 连接生命周期 + 退避重连 |
 | `CloudEventBridge` | cloud.events | 出站钩子：遍历活跃连接、前缀过滤、发送 |
 | `CloudEventInterceptor` | cloud.events | 入站拦截器位（contribution）：幂等去重即内置实现之一 |
-| `CloudEventsModule` | cloud.events | 装配：endpoint route + connector hook + bridge 绑定 |
+| `CloudEventModule` | cloud.events | 装配：endpoint route + connector hook + bridge 绑定 |
 
 配置键（`freeway.cloud.events.*`）：`enabled`（默认 false）、`peers`、
 `keepalive`、`idempotency`（幂等去重开关）。

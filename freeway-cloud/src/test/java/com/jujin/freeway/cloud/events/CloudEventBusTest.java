@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Design-doc E2 contract tests: two real nodes (each a full FreewayApp with
- * HttpModule + CloudEventsModule) exchanging CloudEvents 1.0 frames over a
+ * HttpModule + CloudEventModule) exchanging CloudEvents 1.0 frames over a
  * real WebSocket mesh — round-trip both directions, subscription filtering,
  * CLASS-channel whitelist, Keyed ordering subject, origin loop protection.
  */
@@ -58,7 +58,7 @@ class CloudEventBusTest {
         if (allowedTypes != null) {
             System.setProperty(CloudConfigKeys.EVENTS_ALLOWED_TYPES, allowedTypes);
         }
-        return FreewayApp.run(new String[0], new HttpModule(), new CloudEventsModule());
+        return FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
     }
 
     /** Starts node A dialing node B. */
@@ -66,7 +66,7 @@ class CloudEventBusTest {
         System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
         System.setProperty(CloudConfigKeys.EVENTS_PEERS, "127.0.0.1:" + bPort);
         System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, subscriptions);
-        return FreewayApp.run(new String[0], new HttpModule(), new CloudEventsModule());
+        return FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
     }
 
     /** Waits until both nodes see the mesh connection established. */
@@ -183,7 +183,7 @@ class CloudEventBusTest {
     @Test
     void disabledModuleIsInert() {
         System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "false");
-        nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventsModule());
+        nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
         // publish with no bridge, no peers — must be a clean local-only no-op
         nodeA.get(EventBus.class).publish("greet.hello", "bob");
         nodeA.get(EventBus.class).publish(new GreetEvent("bob"));

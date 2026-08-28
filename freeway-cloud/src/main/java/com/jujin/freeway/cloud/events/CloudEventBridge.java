@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
  * filtered by each peer's declared subscription prefixes.
  *
  * <p>Implements {@link EventBridge} — installed via
- * {@code EventBus.setEventBridge} by {@link CloudEventsModule}'s hook when
+ * {@code EventBus.setEventBridge} by {@link CloudEventModule}'s hook when
  * enabled. Semantics: at-most-once, best-effort; a failed send is logged and
  * the connection is dropped (reconnect is the connector's job). Events
  * short-circuited by {@code Stoppable} never leave the JVM. This class never

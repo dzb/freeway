@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * The hub: registry of live peer connections + the server-side WS endpoint
  * ({@code /cloud/events}) + the inbound dispatch pipeline.
  *
- * <p>Lifecycle: constructed by {@link CloudEventsModule} at bind time,
+ * <p>Lifecycle: constructed by {@link CloudEventModule} at bind time,
  * {@link #wire(EventBus, JsonCodec, String, List, List, String, boolean)}
  * runs from a RuntimeHook ordered before {@code freeway.http.server}, so
  * the hub is fully wired before the server can accept a single connection.</p>

@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  *
  * <pre>{@code
  * FreewayApp.run(new String[0],
- *     new AppModule(), new HttpModule(), new CloudEventsModule());
+ *     new AppModule(), new HttpModule(), new CloudEventModule());
  * }</pre>
  *
  * <p>Config ({@code freeway.cloud.events.*}): {@code enabled} (default
@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
  * {@code allowed-types} (CLASS-channel deserialization whitelist; empty =
  * allow all), {@code keepalive} (reserved).</p>
  */
-public final class CloudEventsModule implements ModuleEx {
+public final class CloudEventModule implements ModuleEx {
 
     @Override
     public void bind(Binder binder) {
@@ -67,7 +67,7 @@ public final class CloudEventsModule implements ModuleEx {
                         .forEach(hub::addInterceptor);
 
                     if (!enabled) {
-                        org.slf4j.LoggerFactory.getLogger(CloudEventsModule.class)
+                        org.slf4j.LoggerFactory.getLogger(CloudEventModule.class)
                             .info("CloudEventBus disabled ({}=false) — inert",
                                 CloudEventsKeys.ENABLED);
                         return;
