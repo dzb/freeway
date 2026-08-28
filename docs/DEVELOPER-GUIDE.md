@@ -1640,6 +1640,16 @@ bus.publish(new OrderCreated("order-42"));
 // → local subscribers + every mesh peer subscribed to "order."
 ```
 
+**Who receives what — the one rule that bites:** a remote node receives an
+event only if *its own* `subscriptions` declares a matching prefix. A local
+`EventBus.subscribe` alone is **not** enough — a subscriber without a
+declared subscription prefix silently never fires, and the publisher gets no
+error. Same for CLASS events: the receiver's `allowed-types` must contain
+the event class, or the frame is dropped (again silently). Deployment
+checklist per node: module installed + `enabled=true` + `subscriptions`
+declared + `allowed-types` whitelisted — missing any one of the four is a
+silent partition, not an error.
+
 **Delivery semantics:** at-most-once, real-time. A peer offline during a
 publish misses that event (no replay queue) — for durable delivery use the
 Kafka bridge (`freeway-mq-kafka`), which shares the same envelope translator.
