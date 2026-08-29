@@ -133,21 +133,64 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
 
     @Override
     public CloudResponse call(String serviceId, CloudRequest request) throws CloudException {
+        requireUsable(serviceId);
+        return orchestrate(serviceId, request, false, 0L);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<CloudResponse> callAsync(
+        String serviceId, CloudRequest request) {
+        return callAsync(serviceId, request, null);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<CloudResponse> callAsync(
+        String serviceId, CloudRequest request, java.time.Duration deadline) {
+        requireUsable(serviceId);
+        long deadlineNanos = deadline == null || deadline.isZero() || deadline.isNegative()
+            ? 0L
+            : deadline.toNanos();
+        // The resilience orchestration (retry loop, backoff parks, breaker
+        // accounting) stays on the supply thread — it is CPU-light with short
+        // parks. Only the socket wait (doCall) is truly blocking, and JDK
+        // HttpClient's sendAsync handles that without pinning a platform thread.
+        return java.util.concurrent.CompletableFuture.supplyAsync(
+            () -> orchestrate(serviceId, request, true, deadlineNanos));
+    }
+
+    private void requireUsable(String serviceId) {
         if (serviceId == null || serviceId.isBlank()) {
             throw new IllegalArgumentException("serviceId must not be blank");
         }
         if (closed) {
             throw new IllegalStateException("CloudHttpClient is closed");
         }
+    }
+
+    /**
+     * One logical call: rate limit → breaker → discovery/choose → send, with
+     * retries. Single copy shared by the blocking and async paths so a fix to
+     * the retry/breaker accounting cannot land in only one of them.
+     *
+     * @param async         use {@code sendAsync} for the socket wait
+     * @param deadlineNanos end-to-end budget for ALL attempts, {@code 0} = unbounded
+     */
+    private CloudResponse orchestrate(
+        String serviceId, CloudRequest request, boolean async, long deadlineNanos) {
         // One span per logical call (retries included); metrics count the
         // same unit. Both are wired only when CloudObserveModule is installed.
         Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
-        long startNanos = metrics != null ? System.nanoTime() : 0;
+        long callStart = System.nanoTime();
+        long startNanos = metrics != null ? callStart : 0;
         try {
             CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
             RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
             int attempt = 0;
             while (true) {
+                if (deadlineExceeded(callStart, deadlineNanos, 0)) {
+                    recordFailure(startNanos);
+                    throw CloudException.timeout(serviceId);
+                }
                 // Rate limit first: a local rejection must not consume a half-open
                 // probe — only an actual probe outcome may settle the circuit.
                 if (!rateLimiter.tryAcquire()) {
@@ -163,7 +206,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
                     List<ServiceInstance> instances = discovery.getInstances(serviceId);
                     ServiceInstance instance = loadBalancer.choose(instances)
                         .orElseThrow(() -> CloudException.noInstance(serviceId));
-                    CloudResponse response = doCall(instance, request);
+                    CloudResponse response = doCall(instance, request, async);
                     breaker.onSuccess();
                     if (span != null) {
                         span.addTag("http.status", String.valueOf(response.status()));
@@ -185,80 +228,15 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
                         recordFailure(startNanos);
                         throw failure;
                     }
-                    sleepBackoff(retryer.backoffMillis(attempt));
-                    attempt++;
-                }
-            }
-        } finally {
-            if (span != null) {
-                span.close();
-            }
-        }
-    }
-
-    @Override
-    public java.util.concurrent.CompletableFuture<CloudResponse> callAsync(
-        String serviceId, CloudRequest request) {
-        // The resilience orchestration (retry loop, backoff sleeps, breaker
-        // accounting) stays on the supply thread — it is CPU-light with short
-        // parks. Only the socket wait (doCall) is truly blocking, and JDK
-        // HttpClient's sendAsync handles that without pinning a platform thread.
-        return java.util.concurrent.CompletableFuture
-            .supplyAsync(() -> {
-                if (serviceId == null || serviceId.isBlank()) {
-                    throw new IllegalArgumentException("serviceId must not be blank");
-                }
-                if (closed) {
-                    throw new IllegalStateException("CloudHttpClient is closed");
-                }
-                return request;
-            })
-            .thenCompose(req -> java.util.concurrent.CompletableFuture.supplyAsync(
-                () -> callWithAsyncSocket(serviceId, req)));
-    }
-
-    /**
-     * The blocking {@link #call} path is refactored so the last leg can opt
-     * into {@code sendAsync}: doCall receives a flag choosing the socket mode.
-     */
-    private CloudResponse callWithAsyncSocket(String serviceId, CloudRequest request) {
-        Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
-        long startNanos = metrics != null ? System.nanoTime() : 0;
-        try {
-            CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
-            RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
-            int attempt = 0;
-            while (true) {
-                if (!rateLimiter.tryAcquire()) {
-                    throw CloudException.rateLimited(serviceId);
-                }
-                if (!breaker.allowRequest()) {
-                    throw CloudException.circuitOpen(serviceId);
-                }
-                boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
-                try {
-                    List<ServiceInstance> instances = discovery.getInstances(serviceId);
-                    ServiceInstance instance = loadBalancer.choose(instances)
-                        .orElseThrow(() -> CloudException.noInstance(serviceId));
-                    CloudResponse response = doCall(instance, request, true);
-                    breaker.onSuccess();
-                    if (span != null) {
-                        span.addTag("http.status", String.valueOf(response.status()));
-                    }
-                    recordCall(startNanos);
-                    return response;
-                } catch (CloudException failure) {
-                    if (span != null) {
-                        span.addError(failure);
-                    }
-                    if (probe || failure.retryable()) {
-                        breaker.onFailure();
-                    }
-                    if (!failure.retryable() || !retryer.shouldRetry(attempt, failure)) {
+                    long backoff = retryer.backoffMillis(attempt);
+                    // Stop instead of parking past the caller's deadline: once
+                    // orTimeout has fired the result is discarded anyway, and
+                    // retrying keeps the connection pool and breaker busy.
+                    if (deadlineExceeded(callStart, deadlineNanos, backoff)) {
                         recordFailure(startNanos);
-                        throw failure;
+                        throw CloudException.timeout(serviceId);
                     }
-                    sleepBackoff(retryer.backoffMillis(attempt));
+                    sleepBackoff(backoff);
                     attempt++;
                 }
             }
@@ -267,6 +245,13 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
                 span.close();
             }
         }
+    }
+
+    private static boolean deadlineExceeded(long callStart, long deadlineNanos, long pendingMillis) {
+        if (deadlineNanos <= 0) {
+            return false;
+        }
+        return System.nanoTime() - callStart + pendingMillis * 1_000_000L >= deadlineNanos;
     }
 
     private void recordCall(long startNanos) {

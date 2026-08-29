@@ -29,4 +29,11 @@ public interface CloudHttpClient {
         return java.util.concurrent.CompletableFuture.supplyAsync(
             () -> call(serviceId, request));
     }
+    /** Asynchronous call bounded by an end-to-end deadline across every
+     *  attempt (not just one socket wait). Implementations that cannot bound
+     *  the whole orchestration fall back to the per-request timeout. */
+    default java.util.concurrent.CompletableFuture<CloudResponse> callAsync(
+        String serviceId, CloudRequest request, java.time.Duration deadline) {
+        return callAsync(serviceId, request);
+    }
 }

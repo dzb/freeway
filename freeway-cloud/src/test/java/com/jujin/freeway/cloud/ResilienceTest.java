@@ -22,15 +22,36 @@ class ResilienceTest {
     @Test
     void retryerBacksOffExponentiallyWithCap() {
         RetryerDefault retryer = new RetryerDefault(3, 100, 5000);
-        assertEquals(100, retryer.backoffMillis(0));
-        assertEquals(200, retryer.backoffMillis(1));
-        assertEquals(400, retryer.backoffMillis(2));
+        assertBackoffInRange(retryer, 0, 100);
+        assertBackoffInRange(retryer, 1, 200);
+        assertBackoffInRange(retryer, 2, 400);
         assertTrue(retryer.shouldRetry(0, null));
         assertTrue(retryer.shouldRetry(2, null));
         assertFalse(retryer.shouldRetry(3, null), "maxRetries bounds the attempts");
 
         RetryerDefault capped = new RetryerDefault(10, 1000, 2500);
-        assertEquals(2500, capped.backoffMillis(4), "backoff is capped at maxMillis");
+        assertBackoffInRange(capped, 4, 2500);
+    }
+
+    /** Backoff is jittered so concurrent clients do not retry in lockstep:
+     *  it lands in {@code [base/2, base]} and never exceeds the cap. */
+    private static void assertBackoffInRange(RetryerDefault retryer, int attempt, long base) {
+        for (int i = 0; i < 200; i++) {
+            long actual = retryer.backoffMillis(attempt);
+            assertTrue(actual >= base / 2 && actual <= base,
+                "attempt " + attempt + ": " + actual + " outside [" + (base / 2) + ", " + base + "]");
+        }
+    }
+
+    @Test
+    void retryerJitterSpreadsConcurrentClients() {
+        RetryerDefault retryer = new RetryerDefault(3, 100, 5000);
+        long distinct = java.util.stream.LongStream.range(0, 200)
+            .map(i -> retryer.backoffMillis(1))
+            .distinct()
+            .count();
+        assertTrue(distinct > 1,
+            "backoff must vary, or every client retries at the same instant");
     }
 
     @Test

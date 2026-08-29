@@ -147,7 +147,14 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
             }
             Consumer<ConfigChangedEvent> cb = onChange;
             if (cb != null) {
-                cb.accept(new ConfigChangedEvent(key, oldValue, newValue)); // null new = removed
+                // Isolated exactly like a key listener: values are already
+                // swapped, so a throwing consumer must not strand the
+                // remaining keys un-notified.
+                try {
+                    cb.accept(new ConfigChangedEvent(key, oldValue, newValue)); // null new = removed
+                } catch (Exception e) {
+                    LOG.warn("Config change listener failed for {}: {}", key, e.getMessage());
+                }
             }
             if (newValue != null) {
                 notify(key, newValue);

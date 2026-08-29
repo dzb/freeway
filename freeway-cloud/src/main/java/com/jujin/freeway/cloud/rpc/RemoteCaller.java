@@ -102,7 +102,9 @@ public final class RemoteCaller {
         CloudResponse response;
         try {
             if (timeout != null && !timeout.isZero() && !timeout.isNegative()) {
-                response = http.callAsync(serviceId, request)
+                // The deadline rides into the orchestration itself: without it
+                // the retry loop keeps working after the caller has given up.
+                response = http.callAsync(serviceId, request, timeout)
                     .orTimeout(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
                     .join();
             } else {
@@ -139,23 +141,36 @@ public final class RemoteCaller {
     private CloudException businessException(String serviceId, CloudResponse response) {
         String exClass = header(response, EXCEPTION_CLASS_HEADER);
         if (exClass != null) {
-            exClass = java.net.URLDecoder.decode(exClass, StandardCharsets.UTF_8);
-            String message = java.net.URLDecoder.decode(
-                java.util.Objects.requireNonNullElse(
-                    header(response, EXCEPTION_MESSAGE_HEADER), ""),
-                StandardCharsets.UTF_8);
+            exClass = decode(exClass);
+            String message = decode(java.util.Objects.requireNonNullElse(
+                header(response, EXCEPTION_MESSAGE_HEADER), ""));
             return CloudException.of(
                 "Remote handler '" + exClass + "' on '" + serviceId + "' failed"
                     + (message.isEmpty() ? "" : ": " + message),
                 false, response.status(),
                 new RemoteInvocationException(exClass, message));
         }
+        // Only the server-authored reject reason is echoed — never the whole
+        // header map, which routinely carries tokens and cookies into logs.
         var reason = header(response, "X-RPC-Reject-Reason");
         throw CloudException.of(
             "Service '" + serviceId + "' rejected rpc call"
-                + (reason == null ? "" : ": " + reason)
-                + " [headers=" + response.headers() + "]",
+                + (reason == null ? "" : ": " + reason),
             false, response.status(), null);
+    }
+
+    /**
+     * Wire values are form-encoded. A peer can send a malformed escape (a bare
+     * {@code %}) and URLDecoder throws on it — that must not change the
+     * failure type callers see, so an undecodable value degrades to its raw
+     * text instead of escaping as an IllegalArgumentException.
+     */
+    private static String decode(String value) {
+        try {
+            return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException malformed) {
+            return value;
+        }
     }
 
     private static String header(CloudResponse response, String name) {

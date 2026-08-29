@@ -79,6 +79,18 @@ public final class CloudEventModule implements ModuleEx {
                     // keepalive (EVENTS_KEEPALIVE) reserved — WS protocol-level
                     // ping/pong handled by the engine; v1 has no active ping loop
                 }
+
+                @Override
+                public void stop(com.jujin.freeway.ioc.Container container) {
+                    // Release the channel and the dialer: without this the
+                    // bridge stays installed on the bus and the connector's
+                    // HttpClient and retry threads outlive the app.
+                    try {
+                        container.get(EventBus.class).removeEventBridge(bridge);
+                    } finally {
+                        connector.close();
+                    }
+                }
             })
             .before(HttpModule.SERVER_HOOK);
     }

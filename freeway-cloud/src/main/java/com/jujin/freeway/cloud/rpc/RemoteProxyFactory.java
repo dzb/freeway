@@ -34,8 +34,8 @@ import java.util.concurrent.CompletionException;
  * <p>Remote failures surface unchanged: {@link CloudException} for transport
  * failures, and the {@link RemoteCallBusinessException} carried as its cause
  * when the remote handler threw — callers keep one honest catch shape per
- * failure class. Per-call timeouts are deferred until an async transport
- * surface exists (the configured request-timeout governs).</p>
+ * failure class. {@link #timeout(Duration)} bounds the whole call, retries
+ * included; without it only the configured request-timeout applies.</p>
  */
 public final class RemoteProxyFactory {
 
@@ -87,6 +87,17 @@ public final class RemoteProxyFactory {
     /** Every invocation goes over the wire; the CallBus is never consulted. */
     public RemoteProxyFactory remoteOnly() {
         this.mode = Mode.REMOTE_ONLY;
+        return this;
+    }
+
+    /**
+     * End-to-end deadline for every proxied remote call (all retries
+     * included). Without it a proxy is bounded only by the transport's
+     * per-request timeout — a call can occupy a thread for request-timeout ×
+     * attempts plus backoff.
+     */
+    public RemoteProxyFactory timeout(Duration timeout) {
+        this.timeout = timeout;
         return this;
     }
 

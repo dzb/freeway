@@ -30,6 +30,11 @@ public final class PeerConnector implements AutoCloseable {
     private final PeerHub hub;
     private final Map<String, AtomicInteger> backoffByPeer = new ConcurrentHashMap<>();
     private final List<URI> staticPeers;
+    /** Open client sessions, so {@link #close()} can abort their sockets. */
+    private final java.util.Set<ClientSessionHandler> sessions =
+        ConcurrentHashMap.newKeySet();
+    /** Dial/retry threads, so {@link #close()} can interrupt parked backoff. */
+    private final java.util.Set<Thread> dialers = ConcurrentHashMap.newKeySet();
     private final Duration connectTimeout;
     private volatile boolean started;
     private volatile boolean closed;
@@ -64,7 +69,7 @@ public final class PeerConnector implements AutoCloseable {
         for (String p : dynamicPeers) all.put(toUri(p), true);
         for (String k : backoffByPeer.keySet()) all.put(URI.create(k), true);
         for (URI peer : all.keySet()) {
-            Thread.ofVirtual().start(() -> dialLoop(peer));
+            spawnDial(peer);
         }
     }
 
@@ -130,17 +135,51 @@ public final class PeerConnector implements AutoCloseable {
         }
     }
 
+    /** Starts a dial/retry thread and tracks it for interruptible shutdown. */
+    private void spawnDial(URI peer) {
+        Thread dialer = Thread.ofVirtual().unstarted(() -> {
+            try {
+                dialLoop(peer);
+            } finally {
+                dialers.remove(Thread.currentThread());
+            }
+        });
+        dialers.add(dialer);
+        dialer.start();
+    }
+
     /** One dial: build the WebSocket; the listener takes over after onOpen. */
     private java.util.concurrent.CompletableFuture<WebSocket> connect(URI peer) {
+        var handler = new ClientSessionHandler(peer);
+        sessions.add(handler);
         return http.newWebSocketBuilder()
             .subprotocols("freeway.events.v1")
             .connectTimeout(connectTimeout)
-            .buildAsync(peer, new ClientSessionHandler(peer));
+            .buildAsync(peer, handler)
+            .whenComplete((ws, err) -> {
+                if (err != null) {
+                    sessions.remove(handler); // never opened — nothing to abort
+                }
+            });
     }
 
     @Override
     public void close() {
         closed = true;
+        // Abort live sockets first: abort() → handleDisconnect() → no
+        // reconnect, because closed is already set.
+        for (ClientSessionHandler session : sessions) {
+            session.abort();
+        }
+        sessions.clear();
+        // A dialer parked in Thread.sleep(backoff) must not hold shutdown for
+        // up to BACKOFF_MAX_MS.
+        for (Thread dialer : dialers) {
+            dialer.interrupt();
+        }
+        dialers.clear();
+        // Releases the client's selector thread and pooled connections.
+        http.close();
     }
 
     /**
@@ -231,6 +270,7 @@ public final class PeerConnector implements AutoCloseable {
         }
 
         private void handleDisconnect(String cause) {
+            sessions.remove(this);
             if (connection != null) {
                 hub.unregister(connection.remoteOrigin());
                 LOG.info("Peer connection lost: {} ({})", connection.remoteOrigin(), cause);

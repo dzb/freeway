@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.resilience.Retryer;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Exponential-backoff {@link Retryer}: {@code maxRetries} attempts beyond the
@@ -39,6 +40,16 @@ public final class RetryerDefault implements Retryer {
 
     @Override
     public long backoffMillis(int attempt) {
+        long base = baseBackoffMillis(attempt);
+        // Jitter on top of the exponential curve: clients that failed at the
+        // same instant must not retry at the same instant either, or a
+        // recovering service is met by one synchronized wave. Half the base is
+        // kept as a floor so the spacing still grows.
+        long floor = base / 2;
+        return floor + ThreadLocalRandom.current().nextLong(base - floor + 1);
+    }
+
+    private long baseBackoffMillis(int attempt) {
         if (attempt <= 0) {
             return baseMillis;
         }
