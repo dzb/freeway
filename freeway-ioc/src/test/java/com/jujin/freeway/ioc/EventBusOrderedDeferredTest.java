@@ -240,7 +240,7 @@ class EventBusOrderedDeferredTest {
         assertThrows(IllegalStateException.class,
             () -> bus.subscribe("topic", p -> {}));
         assertThrows(IllegalStateException.class,
-            () -> bus.setEventBridge((t, e) -> {}));
+            () -> bus.addEventBridge((t, e) -> {}));
         container.close();
     }
 
@@ -285,7 +285,7 @@ class EventBusOrderedDeferredTest {
         Container container = Freeway.create(binder -> {});
         EventBus bus = container.get(EventBus.class);
         List<String> bridged = new ArrayList<>();
-        bus.setEventBridge(
+        bus.addEventBridge(
             (topic, event) -> bridged.add(topic + "=" + event.getClass().getSimpleName())
         );
 

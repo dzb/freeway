@@ -122,21 +122,44 @@ public final class EventBus implements AutoCloseable {
         this.cDeadEvents = metrics.counter("eventbus.dead_events");
     }
 
-    /** Wire an event bridge (Kafka, RabbitMQ, etc.) after construction.
-     *  Replaces any previously set single bridge — use
-     *  {@link #addEventBridge} to install several in parallel. */
-    public void setEventBridge(EventBridge bridge) {
-        requireOpen();
-        bridges.clear();
-        bridges.add(Objects.requireNonNull(bridge, "bridge"));
-    }
-
-    /** Adds another bridge alongside existing ones — every bridge receives
-     *  every outbound event (design: fan-out to N channels, e.g. WS mesh +
-     *  Kafka broker simultaneously). */
+    /** Adds a bridge alongside existing ones — every bridge receives every
+     *  outbound event (design: fan-out to N channels, e.g. WS mesh + Kafka
+     *  broker simultaneously).
+     *
+     *  <p>Idempotent by identity: installing the same instance twice does not
+     *  deliver the event twice. Distinct instances stay independent, so two
+     *  brokers (or one bridge per channel) still fan out side by side.
+     *
+     *  @throws IllegalStateException if the bus is closed */
     public void addEventBridge(EventBridge bridge) {
         requireOpen();
-        bridges.add(Objects.requireNonNull(bridge, "bridge"));
+        Objects.requireNonNull(bridge, "bridge");
+        synchronized (bridges) {
+            for (EventBridge installed : bridges) {
+                if (installed == bridge) {
+                    return;
+                }
+            }
+            bridges.add(bridge);
+        }
+    }
+
+    /** Detaches a bridge previously installed by {@link #addEventBridge}
+     *  (matched by identity). Allowed after {@link #close()} so a module's
+     *  stop hook can release its channel during shutdown.
+     *
+     *  @return {@code true} if the bridge was installed and is now detached */
+    public boolean removeEventBridge(EventBridge bridge) {
+        Objects.requireNonNull(bridge, "bridge");
+        synchronized (bridges) {
+            for (int i = 0; i < bridges.size(); i++) {
+                if (bridges.get(i) == bridge) {
+                    bridges.remove(i);
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     // ==================== class-based publish ====================
@@ -239,9 +262,12 @@ public final class EventBus implements AutoCloseable {
             if (event instanceof Stoppable s && s.isStopped()) {
                 return;
             }
+            // Resolved once, not once per bridge: getAnnotation() on the
+            // fan-out hot path must not scale with the bridge count.
+            String topic = resolveTopic(eventType);
             for (EventBridge bridge : bridges) {
                 try {
-                    bridge.send(resolveTopic(eventType), event, EventBridge.Channel.CLASS);
+                    bridge.send(topic, event, EventBridge.Channel.CLASS);
                 } catch (Exception ex) {
                     LOG.warn(
                         "Event bridge failed for {}",
@@ -341,7 +367,8 @@ public final class EventBus implements AutoCloseable {
             publish(new DeadEvent(this, payload));
         }
 
-        if (bridgeToMq) {
+        // Mirrors dispatchEvent: a DeadEvent never leaves the process.
+        if (bridgeToMq && !(payload instanceof DeadEvent)) {
             // A stopped payload was short-circuited by its subscribers — it
             // must not leave the process via the bridge.
             if (payload instanceof Stoppable s && s.isStopped()) {
@@ -646,7 +673,12 @@ public final class EventBus implements AutoCloseable {
             return;
         }
         closed = true;
-        runtimeSubs.clear();
+        // Detach every bridge: a closed bus must not keep module channels
+        // (and their sockets) reachable, and post-close publishes are
+        // best-effort no-ops anyway.
+        synchronized (bridges) {
+            bridges.clear();
+        }
         runtimeTopicSubs.clear();
         // Broadcast semantics: post-close publishes are silent no-ops — a
         // fact nobody consumes must not abort shutdown. The counterpart

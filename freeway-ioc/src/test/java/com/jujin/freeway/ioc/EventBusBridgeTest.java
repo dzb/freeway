@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -38,7 +37,7 @@ class EventBusBridgeTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
         );
         EventBus bus = new EventBus(container);
-        bus.setEventBridge((topic, event) -> {
+        bus.addEventBridge((topic, event) -> {
             throw new IllegalStateException("mq down");
         });
 
@@ -76,7 +75,7 @@ class EventBusBridgeTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> e.stop()))
         );
         EventBus bus = new EventBus(container);
-        bus.setEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
+        bus.addEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
@@ -97,7 +96,7 @@ class EventBusBridgeTest {
                 .add(EventSubscriber.of(PostCreatedEvent.class, received::add))
         );
         EventBus bus = new EventBus(container);
-        bus.setEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
+        bus.addEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
 
         bus.publishInbound(new PostCreatedEvent(new Post("remote")));
 
@@ -116,7 +115,7 @@ class EventBusBridgeTest {
         Container container = Freeway.create();
         EventBus bus = new EventBus(container);
         bus.subscribe("order.placed", payload -> received.add(String.valueOf(payload)));
-        bus.setEventBridge((topic, event) -> bridged.add(topic));
+        bus.addEventBridge((topic, event) -> bridged.add(topic));
 
         bus.publishInbound("order.placed", "from-remote");
 
@@ -135,7 +134,7 @@ class EventBusBridgeTest {
         List<EventBridge.Channel> channels = new ArrayList<>();
         Container container = Freeway.create();
         EventBus bus = new EventBus(container);
-        bus.setEventBridge(new EventBridge() {
+        bus.addEventBridge(new EventBridge() {
             @Override
             public void send(String topic, Object event) {
                 channels.add(null);
@@ -155,5 +154,68 @@ class EventBusBridgeTest {
             channels,
             "class events must bridge as CLASS, topic events as TOPIC");
         bus.close();
+    }
+
+    @Test
+    void addEventBridgeIsIdempotentByIdentity() {
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        List<String> seen = new ArrayList<>();
+        EventBridge bridge = (topic, event) -> seen.add(topic);
+        bus.addEventBridge(bridge);
+        bus.addEventBridge(bridge);
+
+        bus.publish("t", "payload");
+
+        assertEquals(List.of("t"), seen,
+            "the same bridge instance installed twice must not receive twice");
+        container.close();
+    }
+
+    @Test
+    void removeEventBridgeDetachesTheChannel() {
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        List<String> seen = new ArrayList<>();
+        EventBridge bridge = (topic, event) -> seen.add(topic);
+        bus.addEventBridge(bridge);
+
+        assertTrue(bus.removeEventBridge(bridge), "an installed bridge is removable");
+        assertFalse(bus.removeEventBridge(bridge), "removing twice is a no-op");
+
+        bus.publish("t", "payload");
+        assertTrue(seen.isEmpty(), "a removed bridge must receive nothing: " + seen);
+        container.close();
+    }
+
+    @Test
+    void closeDetachesBridges() {
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        List<String> seen = new ArrayList<>();
+        bus.addEventBridge((topic, event) -> seen.add(topic));
+
+        bus.close();
+
+        // Removal stays callable during shutdown so a module's stop hook can
+        // release its channel.
+        assertDoesNotThrow(() -> bus.removeEventBridge((topic, event) -> { }));
+        assertTrue(seen.isEmpty(), "close must not leave bridges attached");
+        container.close();
+    }
+
+    @Test
+    void failingBridgeDoesNotStopTheNextOne() {
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        List<String> seen = new ArrayList<>();
+        bus.addEventBridge((topic, event) -> { throw new IllegalStateException("down"); });
+        bus.addEventBridge((topic, event) -> seen.add(topic));
+
+        bus.publish("t", "payload");
+
+        assertEquals(List.of("t"), seen,
+            "a throwing bridge must not starve the bridges after it");
+        container.close();
     }
 }
