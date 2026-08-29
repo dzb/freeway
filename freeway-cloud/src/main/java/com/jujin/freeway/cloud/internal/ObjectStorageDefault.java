@@ -165,7 +165,11 @@ public final class ObjectStorageDefault implements ObjectStorage {
             throw new StorageException("key must not be blank");
         }
         Path relative = Path.of(key).normalize();
-        if (relative.isAbsolute() || relative.startsWith("..")) {
+        // Root component, not isAbsolute(): on Windows "/abs" parses as the
+        // root-relative "\abs" — isAbsolute() is false, yet resolving it
+        // discards the base path entirely ("D:/abs", "D:/evil" for
+        // "/../evil"), which escapes the mount root.
+        if (relative.getRoot() != null || relative.startsWith("..")) {
             throw new StorageException("key escapes storage root: " + key);
         }
         return root.resolve(safeBucket).resolve(relative).normalize();

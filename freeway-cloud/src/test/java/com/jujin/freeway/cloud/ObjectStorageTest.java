@@ -63,6 +63,9 @@ class ObjectStorageTest {
         ObjectStorageDefault storage = new ObjectStorageDefault(dir);
         assertThrows(StorageException.class, () -> storage.put("assets", "../evil", new byte[1], ObjectMetadata.of("")));
         assertThrows(StorageException.class, () -> storage.put("assets", "a/../../evil", new byte[1], ObjectMetadata.of("")));
+        // "/../evil" is the sharp case: on Windows it parses as root-relative
+        // "\evil", so an isAbsolute() check alone lets it escape the root.
+        assertThrows(StorageException.class, () -> storage.put("assets", "/../evil", new byte[1], ObjectMetadata.of("")));
         assertThrows(StorageException.class, () -> storage.get("assets", "/abs"));
         assertThrows(StorageException.class, () -> storage.put("bad..bucket", "k", new byte[1], ObjectMetadata.of("")));
         assertThrows(StorageException.class, () -> storage.put("a/b", "k", new byte[1], ObjectMetadata.of("")));

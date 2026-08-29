@@ -63,11 +63,23 @@ public final class TransportSecurityDefault implements TransportSecurity {
     }
 
     private static KeyStore load(Path path, String password) throws GeneralSecurityException, IOException {
+        // The javadoc promises PKCS12/JKS. A JKS file throws while being parsed
+        // as PKCS12, so retry as JKS before giving up rather than only ever
+        // accepting one format.
         KeyStore store = KeyStore.getInstance("PKCS12");
         try (InputStream in = Files.newInputStream(path)) {
             store.load(in, passwordChars(password));
+            return store;
+        } catch (IOException pkcs12Failed) {
+            KeyStore jks = KeyStore.getInstance("JKS");
+            try (InputStream in = Files.newInputStream(path)) {
+                jks.load(in, passwordChars(password));
+                return jks;
+            } catch (IOException jksFailed) {
+                jksFailed.addSuppressed(pkcs12Failed);
+                throw jksFailed;
+            }
         }
-        return store;
     }
 
     private static char[] passwordChars(String password) {
