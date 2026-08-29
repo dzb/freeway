@@ -5,6 +5,8 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.CallBus;
 import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,24 +24,46 @@ import java.net.URLDecoder;
  */
 public final class RpcEndpoint {
 
+
+    private static final Logger LOG = LoggerFactory.getLogger(RpcEndpoint.class);
     private final String mapping;
     private final CallBus callBus;
     private final JsonCodec codec;
+    /** When false, the handler's free-text message stays on this side. */
+    private final boolean propagateMessage;
 
-    private RpcEndpoint(String mapping, CallBus callBus, JsonCodec codec) {
+    private RpcEndpoint(String mapping, CallBus callBus, JsonCodec codec,
+                        boolean propagateMessage) {
         this.mapping = mapping;
         this.callBus = callBus;
         this.codec = codec;
+        this.propagateMessage = propagateMessage;
     }
 
     /**
-     * Creates the route contribution for one mapping.
+     * Creates the route contribution for one mapping. The handler's exception
+     * message is <b>not</b> sent to the caller — see
+     * {@link #of(String, CallBus, JsonCodec, boolean)}.
      *
      * @param mapping call-topic prefix to expose (e.g. {@code "user"}) —
      *                topics beyond this prefix stay local-only
      */
     public static Route of(String mapping, CallBus callBus, JsonCodec codec) {
-        RpcEndpoint endpoint = new RpcEndpoint(mapping, callBus, codec);
+        return of(mapping, callBus, codec, false);
+    }
+
+    /**
+     * As {@link #of(String, CallBus, JsonCodec)} with an explicit choice about
+     * the exception message. The exception <i>class</i> always crosses — it is
+     * the caller's dispatch contract. The <i>message</i> is free text and
+     * routinely carries SQL, host names and identifiers, so it stays here
+     * unless you opt in on a mesh you control end to end.
+     *
+     * @param propagateMessage send the handler's message to the caller
+     */
+    public static Route of(String mapping, CallBus callBus, JsonCodec codec,
+                           boolean propagateMessage) {
+        RpcEndpoint endpoint = new RpcEndpoint(mapping, callBus, codec, propagateMessage);
         return Route.post("/rpc/{mapping}/{method}", endpoint::serve);
     }
 
@@ -101,14 +125,20 @@ public final class RpcEndpoint {
     }
 
     private void encodeBusinessFailure(HttpContext ctx, Throwable ex) throws IOException {
+        // The detail is always available to operators on THIS side; what
+        // crosses the boundary is the class (the contract) and, only on
+        // request, the free-text message.
+        LOG.warn("RPC handler failed for mapping '{}': {}", mapping, ex.toString());
         String className = ex.getClass().getName();
+        String message = propagateMessage
+            ? String.valueOf(ex.getMessage())
+            : "remote handler failed";
         ctx.setStatus(400);
         ctx.setHeader("Content-Type", "application/json");
         ctx.setHeader(RemoteCaller.EXCEPTION_CLASS_HEADER,
             java.net.URLEncoder.encode(className, StandardCharsets.UTF_8));
         ctx.setHeader(RemoteCaller.EXCEPTION_MESSAGE_HEADER,
-            java.net.URLEncoder.encode(
-                String.valueOf(ex.getMessage()), StandardCharsets.UTF_8));
+            java.net.URLEncoder.encode(message, StandardCharsets.UTF_8));
         ctx.send(400, "{\"error\":\"" + escape(className) + "\"}");
     }
 

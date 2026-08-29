@@ -16,6 +16,9 @@ public final class CloudConfigKeys {
     // ── Secret ─────────────────────────────────────────────
     public static final String SECRET_TYPE        = PREFIX + ".secret.type";
     public static final String SECRET_FILE        = PREFIX + ".secret.file";
+    /** Optional allowlist: when set, only these symbol names resolve from the
+     *  secret store (see {@code SecretSymbolSource} for why that matters). */
+    public static final String SECRET_KEYS        = PREFIX + ".secret.keys";
 
     // ── Object Storage ─────────────────────────────────────
     public static final String STORAGE_TYPE       = PREFIX + ".storage.type";
@@ -47,6 +50,10 @@ public final class CloudConfigKeys {
     // ── Remote CallBus（CallBus 的跨进程桥，见 docs/freeway-remote-callbus-design.md）──
     public static final String RPC_REMOTE_ENABLED     = PREFIX + ".rpc.remote.enabled";
     public static final String RPC_REMOTE_PATH_PREFIX = PREFIX + ".rpc.remote.path-prefix";
+    /** Off by default: the remote handler's exception message is free text and
+     *  routinely carries SQL, host names and identifiers across the trust
+     *  boundary. Enable only on a mesh you control end to end. */
+    public static final String RPC_REMOTE_PROPAGATE_MESSAGE = PREFIX + ".rpc.remote.propagate-message";
     public static final String RPC_REMOTE_VERSION_HEADER = "X-RPC-Version";
 
     public static final String RPC_VERSION            = "1";

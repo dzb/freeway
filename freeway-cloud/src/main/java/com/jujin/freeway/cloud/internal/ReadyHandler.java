@@ -9,6 +9,8 @@ import com.jujin.freeway.http.route.RouteHandler;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@code /health/ready} handler: aggregates every {@link CloudHealthContributor}
@@ -17,6 +19,8 @@ import java.util.Map;
  */
 public final class ReadyHandler implements RouteHandler {
 
+
+    private static final Logger LOG = LoggerFactory.getLogger(ReadyHandler.class);
     private final List<CloudHealthContributor> contributors;
     private final JsonCodec jsonCodec;
 
@@ -40,10 +44,13 @@ public final class ReadyHandler implements RouteHandler {
             } catch (Exception ex) {
                 // A failing dependency must mark the probe unhealthy, not take
                 // down the whole endpoint (or the k8s readiness probe with it).
+                // The reason is logged here, not returned: readiness endpoints
+                // are unauthenticated by convention, and an exception message
+                // from a dependency check is internal detail.
+                LOG.warn("Health contributor '{}' failed", contributor.name(), ex);
                 healthy = false;
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("healthy", false);
-                entry.put("error", ex.getClass().getSimpleName() + ": " + ex.getMessage());
                 cloud.put(contributor.name(), entry);
                 continue;
             }

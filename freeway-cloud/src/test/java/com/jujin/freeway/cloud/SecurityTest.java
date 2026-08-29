@@ -110,6 +110,29 @@ class SecurityTest {
     }
 
     @Test
+    void secretAllowlistConfinesLookupsToDeclaredNames() throws Exception {
+        // The provider answers for every name by default, and the store checks
+        // the environment first — so an unrelated symbol can silently pick up
+        // an environment variable. Declaring keys confines it.
+        Path secrets = dir.resolve("secrets.properties");
+        Files.writeString(secrets, "db.password=secret-value\napi.token=token-value\n");
+        Path config = dir.resolve("config.properties");
+        Files.writeString(config, "api.token=config-token\n");
+        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
+        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.CONFIG_FILE, config.toString());
+        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS, "db.password");
+        try (AppRuntime app = FreewayApp.run(new CloudModule())) {
+            SymbolSource symbols = app.get(SymbolSource.class);
+            assertEquals("secret-value", symbols.resolve("db.password"),
+                "a declared key still resolves from the secret store");
+            assertEquals("config-token", symbols.resolve("api.token"),
+                "an undeclared key falls through to config instead of the secret store");
+        } finally {
+            System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS);
+        }
+    }
+
+    @Test
     void transportSecurityDefaultsToNone() {
         try (AppRuntime app = FreewayApp.run(new CloudModule())) {
             TransportSecurity security = app.get(TransportSecurity.class);
