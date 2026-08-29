@@ -55,25 +55,28 @@ public final class TracerDefault implements Tracer {
     @Override
     public Span start(String name, TraceContext parent) {
         TraceContext child = parent.child();
-        return new MdcSpan(child, metrics);
+        return new MdcSpan(name, child, metrics);
     }
 
     private static final class MdcSpan implements Span {
 
         private final String previousTraceId;
         private final String previousSpanId;
+        private final String previousSpanName;
         private final InvocationContext previousAmbient;
         private final Metrics metrics;
         private final long startNanos = System.nanoTime();
         // Frozen by close(); elapsedNanos() reads live before that.
         private volatile long durationNanos = -1;
 
-        MdcSpan(TraceContext child, Metrics metrics) {
+        MdcSpan(String name, TraceContext child, Metrics metrics) {
             this.previousTraceId = MDC.get("traceId");
             this.previousSpanId = MDC.get("spanId");
+            this.previousSpanName = MDC.get("spanName");
             this.metrics = metrics;
             MDC.put("traceId", child.traceId());
             MDC.put("spanId", child.spanId());
+            MDC.put("spanName", name == null ? "" : name);
             // Bind the child so nested start()/outbound injection discover it.
             // Save/restore keeps out-of-order close sequences correct.
             this.previousAmbient = InvocationContext.replaceAmbient(
@@ -108,6 +111,7 @@ public final class TracerDefault implements Tracer {
             }
             restore("traceId", previousTraceId);
             restore("spanId", previousSpanId);
+            restore("spanName", previousSpanName);
             InvocationContext.replaceAmbient(previousAmbient); // null clears
         }
 

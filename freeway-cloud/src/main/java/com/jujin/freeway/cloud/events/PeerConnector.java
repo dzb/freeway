@@ -36,16 +36,23 @@ public final class PeerConnector implements AutoCloseable {
     /** Dial/retry threads, so {@link #close()} can interrupt parked backoff. */
     private final java.util.Set<Thread> dialers = ConcurrentHashMap.newKeySet();
     private final Duration connectTimeout;
+    private final String scheme;
     private volatile boolean started;
     private volatile boolean closed;
 
     /** Peers as host:port strings (design §3, zero-dependency start). */
     public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout) {
+        this(hub, staticPeers, connectTimeout, "ws");
+    }
+
+    /** Creates a connector with an explicit outbound WS scheme ({@code ws} or {@code wss}). */
+    public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout, String scheme) {
         this.hub = hub;
         this.staticPeers = staticPeers.stream()
-            .map(PeerConnector::toUri)
+            .map(this::toUri)
             .toList();
         this.connectTimeout = connectTimeout;
+        this.scheme = scheme == null || scheme.isBlank() ? "ws" : scheme;
         this.http = HttpClient.newBuilder()
             .connectTimeout(connectTimeout)
             .build();
@@ -77,12 +84,12 @@ public final class PeerConnector implements AutoCloseable {
      *  Safe before or after {@link #start()}: already-dialed endpoints are
      *  skipped. */
     public void setPeers(List<String> peers) {
-        for (URI peer : peers.stream().map(PeerConnector::toUri).toList()) {
+        for (URI peer : peers.stream().map(this::toUri).toList()) {
             boolean known = staticPeers.stream().anyMatch(p -> sameEndpoint(p, peer))
                 || backoffByPeer.keySet().stream()
                     .anyMatch(k -> sameEndpoint(URI.create(k), peer));
             if (!known && started) {
-                Thread.ofVirtual().start(() -> dialLoop(peer));
+                spawnDial(peer);
             } else if (!known) {
                 // not started yet — start() will pick it up from the map
                 backoffByPeer.put(peer.toString(), new AtomicInteger(0));
@@ -94,8 +101,8 @@ public final class PeerConnector implements AutoCloseable {
         return a.getHost().equals(b.getHost()) && a.getPort() == b.getPort();
     }
 
-    /** {@code host:port} → {@code ws://host:port/cloud/events}. */
-    static URI toUri(String peer) {
+    /** {@code host:port} → {@code scheme://host:port/cloud/events}. */
+    private URI toUri(String peer) {
         String host = peer;
         int port = 80;
         int colon = peer.lastIndexOf(':');
@@ -103,7 +110,7 @@ public final class PeerConnector implements AutoCloseable {
             host = peer.substring(0, colon);
             port = Integer.parseInt(peer.substring(colon + 1));
         }
-        return URI.create("ws://" + host + ":" + port + "/cloud/events");
+        return URI.create(scheme + "://" + host + ":" + port + "/cloud/events");
     }
 
     /** Connect-retry loop: dials, then parks for backoff on every failure. */
@@ -192,6 +199,7 @@ public final class PeerConnector implements AutoCloseable {
         private final URI peer;
         private volatile WebSocket ws;
         private volatile PeerConnection connection;
+        private volatile boolean suppressReconnect;
 
         ClientSessionHandler(URI peer) {
             this.peer = peer;
@@ -252,8 +260,22 @@ public final class PeerConnector implements AutoCloseable {
             // (handleDisconnect → reconnect). False negatives would drop
             // events, so never report failure for a queued send.
             connection = new PeerConnection(remoteOrigin, remoteSubs,
-                json -> { ws.sendText(json, true); return true; });
+                json -> { ws.sendText(json, true); return true; },
+                true,
+                () -> {
+                    suppressReconnect = true;
+                    try {
+                        if (ws != null) {
+                            ws.abort();
+                        }
+                    } catch (Exception ignored) {
+                        // already dead
+                    }
+                });
             hub.register(connection);
+            if (connection.isClosed()) {
+                return; // duplicate resolution closed this outbound connection
+            }
             LOG.info("Connected to peer: {} (subscriptions={})", remoteOrigin, remoteSubs);
         }
 
@@ -272,12 +294,14 @@ public final class PeerConnector implements AutoCloseable {
         private void handleDisconnect(String cause) {
             sessions.remove(this);
             if (connection != null) {
-                hub.unregister(connection.remoteOrigin());
+                hub.unregister(connection);
                 LOG.info("Peer connection lost: {} ({})", connection.remoteOrigin(), cause);
             } else {
                 LOG.debug("Peer {} not established: {}", peer, cause);
             }
-            scheduleReconnect();
+            if (!suppressReconnect) {
+                scheduleReconnect();
+            }
         }
 
         private void abort() {
@@ -288,12 +312,14 @@ public final class PeerConnector implements AutoCloseable {
             } catch (Exception ignored) {
                 // already dead
             }
-            scheduleReconnect();
+            if (!suppressReconnect) {
+                scheduleReconnect();
+            }
         }
 
         private void scheduleReconnect() {
             if (!closed) {
-                Thread.ofVirtual().start(() -> dialLoop(peer));
+                spawnDial(peer);
             }
         }
     }

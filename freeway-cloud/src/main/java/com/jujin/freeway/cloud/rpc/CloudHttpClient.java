@@ -21,8 +21,9 @@ public interface CloudHttpClient {
      * only the final socket wait is lifted off the calling thread. The
      * default bridges the synchronous form, so existing implementations
      * need no changes; {@link CloudHttpClientDefault} overrides it with a
-     * true non-blocking send. Completes exceptionally with
-     * {@link CloudException}; never returns {@code null}.
+     * virtual-thread based send that keeps the caller's thread free.
+     * Completes exceptionally with {@link CloudException}; never returns
+     * {@code null}.
      */
     default java.util.concurrent.CompletableFuture<CloudResponse> callAsync(
         String serviceId, CloudRequest request) {

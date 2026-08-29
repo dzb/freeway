@@ -20,7 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * ({@code /cloud/events}) + the inbound dispatch pipeline.
  *
  * <p>Lifecycle: constructed by {@link CloudEventModule} at bind time,
- * {@link #wire(EventBus, JsonCodec, String, List, List, String, boolean)}
+ * {@link #wire(EventBus, JsonCodec, String, String, List, List, List, String)}
  * runs from a RuntimeHook ordered before {@code freeway.http.server}, so
  * the hub is fully wired before the server can accept a single connection.</p>
  *
@@ -104,17 +104,69 @@ public final class PeerHub implements WebSocketEndpoint {
         interceptors.add(Objects.requireNonNull(interceptor, "interceptor"));
     }
 
-    /** Registers/replaces a peer connection (handshake complete). */
+    /**
+     * Registers a peer connection. If another connection to the same origin
+     * already exists, the mesh keeps exactly one: the connection initiated by
+     * the lexicographically smaller origin (both sides apply the same rule,
+     * so simultaneous dials converge on one surviving socket).
+     */
     public void register(PeerConnection connection) {
-        PeerConnection previous = peers.put(connection.remoteOrigin(), connection);
-        if (previous != null && previous != connection) {
-            LOG.debug("Replaced peer connection: {}", connection.remoteOrigin());
+        String remote = connection.remoteOrigin();
+        while (true) {
+            PeerConnection previous = peers.get(remote);
+            if (previous == null) {
+                if (peers.putIfAbsent(remote, connection) == null) {
+                    return;
+                }
+                continue;
+            }
+            if (previous == connection) {
+                return;
+            }
+            PeerConnection toClose = duplicateToClose(previous, connection);
+            if (toClose == connection) {
+                connection.close();
+                return;
+            }
+            if (peers.replace(remote, previous, connection)) {
+                previous.close();
+                return;
+            }
+            // Lost a race with another registration; retry against the new head.
         }
     }
 
-    /** Removes a peer connection (disconnect). */
-    public void unregister(String remoteOrigin) {
-        peers.remove(remoteOrigin);
+    private PeerConnection duplicateToClose(PeerConnection existing, PeerConnection incoming) {
+        String local = origin;
+        String remote = incoming.remoteOrigin();
+        if (local == null || local.equals(remote)) {
+            return incoming; // keep the existing connection by default
+        }
+        boolean localIsSmaller = local.compareTo(remote) < 0;
+        if (localIsSmaller) {
+            // Keep the connection we initiated (outbound); close the inbound one.
+            if (existing.isOutbound()) {
+                return incoming;
+            }
+            if (incoming.isOutbound()) {
+                return existing;
+            }
+        } else {
+            // Keep the connection the peer initiated (inbound); close the outbound one.
+            if (existing.isOutbound()) {
+                return existing;
+            }
+            if (incoming.isOutbound()) {
+                return incoming;
+            }
+        }
+        // Same direction or undecidable: keep the existing connection.
+        return incoming;
+    }
+
+    /** Removes a peer connection if it is still the registered one (disconnect). */
+    public void unregister(PeerConnection connection) {
+        peers.remove(connection.remoteOrigin(), connection);
     }
 
     /** Live peer connections — the bridge iterates this for outbound fan-out. */
@@ -219,8 +271,19 @@ public final class PeerHub implements WebSocketEndpoint {
                     } catch (Exception e) {
                         return false;
                     }
+                },
+                false,
+                () -> {
+                    try {
+                        session.close(1000, "duplicate closed");
+                    } catch (Exception ignored) {
+                        // already closed
+                    }
                 });
             register(connection);
+            if (connection.isClosed()) {
+                return; // duplicate resolution closed this inbound connection
+            }
             // Ack carries OUR hello: accept + origin + own subscriptions.
             var ack = new java.util.LinkedHashMap<String, Object>();
             ack.put("proto", 1);
@@ -234,7 +297,7 @@ public final class PeerHub implements WebSocketEndpoint {
         @Override
         public void onClose(int code, String reason, boolean remote) throws java.io.IOException {
             if (connection != null) {
-                unregister(connection.remoteOrigin());
+                unregister(connection);
                 LOG.info("Peer disconnected: {} (code={}, remote={})",
                     connection.remoteOrigin(), code, remote);
             }

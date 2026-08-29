@@ -7,9 +7,13 @@ import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -113,6 +117,44 @@ class ResilienceTest {
         assertTrue(breaker.allowRequest(),
             "a lost probe must time out and admit a fresh probe");
         breaker.onSuccess();
+        assertEquals(CircuitBreaker.State.CLOSED, breaker.state());
+    }
+
+    @Test
+    void staleProbeResultAfterRearmIsIgnored() throws Exception {
+        CircuitBreakerDefault breaker = new CircuitBreakerDefault(1,
+            Duration.ofSeconds(60), Duration.ofMillis(50));
+        breaker.onFailure(); // OPEN
+        Thread.sleep(80);
+
+        CountDownLatch probeAAdmitted = new CountDownLatch(1);
+        CountDownLatch probeBAdmitted = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread probeA = Thread.ofPlatform().start(() -> {
+            try {
+                if (!breaker.allowRequest()) {
+                    throw new AssertionError("probe A not admitted");
+                }
+                probeAAdmitted.countDown();
+                if (!probeBAdmitted.await(2, TimeUnit.SECONDS)) {
+                    throw new AssertionError("probe B was not admitted");
+                }
+                breaker.onFailure(); // stale A failure must be ignored
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        });
+
+        assertTrue(probeAAdmitted.await(2, TimeUnit.SECONDS));
+        Thread.sleep(80); // let probe A go lost
+        assertTrue(breaker.allowRequest(), "probe B must be admitted after A is lost");
+        probeBAdmitted.countDown();
+        probeA.join(2000);
+
+        assertNull(failure.get(), "probe A thread must not fail: " + failure.get());
+        assertEquals(CircuitBreaker.State.HALF_OPEN, breaker.state(),
+            "stale probe A failure must not open the circuit");
+        breaker.onSuccess(); // probe B succeeds
         assertEquals(CircuitBreaker.State.CLOSED, breaker.state());
     }
 

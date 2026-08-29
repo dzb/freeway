@@ -59,9 +59,11 @@ class ObserveTest {
         try (Tracer.Span span = tracer.start("op")) {
             assertNotNull(MDC.get("traceId"));
             assertNotNull(MDC.get("spanId"));
+            assertEquals("op", MDC.get("spanName"));
         }
         assertNull(MDC.get("traceId"), "span close restores the pre-span MDC state");
         assertNull(MDC.get("spanId"));
+        assertNull(MDC.get("spanName"), "span close restores the pre-span spanName state");
     }
 
     @Test

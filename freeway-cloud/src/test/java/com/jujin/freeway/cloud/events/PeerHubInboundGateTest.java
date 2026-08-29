@@ -8,9 +8,11 @@ import com.jujin.freeway.ioc.Freeway;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -84,6 +86,48 @@ class PeerHubInboundGateTest {
         rig.hub().receive(looped);
 
         assertTrue(rig.inbound().isEmpty(), "our own event looped back must be dropped");
+    }
+
+    @Test
+    void duplicateSimultaneousDialsKeepSingleConnectionByOriginOrder() {
+        Container container = Freeway.create();
+        PeerHub smallerHub = new PeerHub();
+        smallerHub.wire(container.get(EventBus.class), new JsonCodecDefault(),
+            "svc", "a-node", List.of(), List.of(), List.of(), "");
+
+        AtomicBoolean outboundClosed = new AtomicBoolean();
+        AtomicBoolean inboundClosed = new AtomicBoolean();
+        PeerConnection outbound = new PeerConnection("b-node", List.of(),
+            s -> true, true, () -> outboundClosed.set(true));
+        PeerConnection inbound = new PeerConnection("b-node", List.of(),
+            s -> true, false, () -> inboundClosed.set(true));
+
+        smallerHub.register(outbound);
+        smallerHub.register(inbound);
+
+        assertEquals(1, smallerHub.connections().size());
+        assertFalse(outbound.isClosed(), "smaller origin keeps its outbound connection");
+        assertTrue(inbound.isClosed(), "smaller origin closes the peer-initiated duplicate");
+        assertEquals(outbound, smallerHub.connections().get(0));
+
+        // Larger origin applies the mirror rule: keep the inbound connection.
+        PeerHub largerHub = new PeerHub();
+        largerHub.wire(container.get(EventBus.class), new JsonCodecDefault(),
+            "svc", "z-node", List.of(), List.of(), List.of(), "");
+        AtomicBoolean largerOutboundClosed = new AtomicBoolean();
+        AtomicBoolean largerInboundClosed = new AtomicBoolean();
+        PeerConnection largerOutbound = new PeerConnection("a-node", List.of(),
+            s -> true, true, () -> largerOutboundClosed.set(true));
+        PeerConnection largerInbound = new PeerConnection("a-node", List.of(),
+            s -> true, false, () -> largerInboundClosed.set(true));
+
+        largerHub.register(largerInbound);
+        largerHub.register(largerOutbound);
+
+        assertEquals(1, largerHub.connections().size());
+        assertFalse(largerInbound.isClosed(), "larger origin keeps the peer-initiated connection");
+        assertTrue(largerOutbound.isClosed(), "larger origin closes its own outbound duplicate");
+        assertEquals(largerInbound, largerHub.connections().get(0));
     }
 
     @Test

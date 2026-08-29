@@ -47,17 +47,6 @@ public final class CloudConfigKeys {
     public static final String RPC_RATE_LIMIT_PER_SECOND = PREFIX + ".rpc.rate-limit.per-second";
     public static final String RPC_TRACE_ENABLED       = PREFIX + ".rpc.trace.enabled";
 
-    // ── Remote CallBus（CallBus 的跨进程桥，见 docs/freeway-remote-callbus-design.md）──
-    public static final String RPC_REMOTE_ENABLED     = PREFIX + ".rpc.remote.enabled";
-    public static final String RPC_REMOTE_PATH_PREFIX = PREFIX + ".rpc.remote.path-prefix";
-    /** Off by default: the remote handler's exception message is free text and
-     *  routinely carries SQL, host names and identifiers across the trust
-     *  boundary. Enable only on a mesh you control end to end. */
-    public static final String RPC_REMOTE_PROPAGATE_MESSAGE = PREFIX + ".rpc.remote.propagate-message";
-    public static final String RPC_REMOTE_VERSION_HEADER = "X-RPC-Version";
-
-    public static final String RPC_VERSION            = "1";
-
     // ── CloudEventBus（EventBus 的跨节点事件网格, 见 docs/freeway-cloud-events-design.md）──
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
     public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
@@ -66,7 +55,6 @@ public final class CloudConfigKeys {
     public static final String EVENTS_ALLOWED_TOPICS = PREFIX + ".events.allowed-topics";
     /** Shared secret the mesh handshake must present; blank = no peer auth. */
     public static final String EVENTS_TOKEN      = PREFIX + ".events.token";
-    public static final String EVENTS_KEEPALIVE      = PREFIX + ".events.keepalive";
     /** Off by default: dedup changes delivery semantics (an event reaching
      *  this node over two transports is delivered once) and costs memory, so
      *  it is opt-in rather than a side effect of installing a second
@@ -78,7 +66,6 @@ public final class CloudConfigKeys {
      *  slips through; too large and the window costs memory for nothing. */
     public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".events.dedup.capacity";
     public static final String EVENTS_DEDUP_CAPACITY_DEFAULT = "4096";
-    public static final String EVENTS_PATH           = PREFIX + ".events.path";
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
     // ── RPC / TLS ───────────────────────────────────────────
     public static final String RPC_TLS_KEY_STORE          = PREFIX + ".rpc.tls.key-store";

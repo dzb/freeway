@@ -187,6 +187,9 @@ class CloudEventBusTest {
         // publish with no bridge, no peers — must be a clean local-only no-op
         nodeA.get(EventBus.class).publish("greet.hello", "bob");
         nodeA.get(EventBus.class).publish(new GreetEvent("bob"));
+        // The endpoint is not wired, so it cannot accept inbound mesh frames.
+        assertFalse(nodeA.get(PeerHub.class).wired(),
+            "disabled CloudEventModule must not wire the mesh hub");
     }
 
     private static long awaitSeconds() {

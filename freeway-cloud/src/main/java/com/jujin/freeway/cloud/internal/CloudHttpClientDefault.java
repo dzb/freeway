@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLContext;
 
@@ -76,6 +78,9 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     private final Tracer tracer;
     private final Metrics metrics;
     private final HttpClient http;
+    /** Async calls run on virtual threads so blocking HttpClient joins do not
+     *  pin common-pool platform threads. */
+    private final ExecutorService asyncExecutor;
     /** Per-service shards: one failing service cannot poison the others. An
      *  injected default-implementation breaker/limiter is the configuration
      *  template for each shard; any other implementation (or {@code NOOP})
@@ -129,6 +134,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
             builder.sslContext(sslContext);
         }
         this.http = builder.build();
+        this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Override
@@ -150,12 +156,18 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         long deadlineNanos = deadline == null || deadline.isZero() || deadline.isNegative()
             ? 0L
             : deadline.toNanos();
-        // The resilience orchestration (retry loop, backoff parks, breaker
-        // accounting) stays on the supply thread — it is CPU-light with short
-        // parks. Only the socket wait (doCall) is truly blocking, and JDK
-        // HttpClient's sendAsync handles that without pinning a platform thread.
-        return java.util.concurrent.CompletableFuture.supplyAsync(
-            () -> orchestrate(serviceId, request, true, deadlineNanos));
+        // Capture the caller's invocation context before handing the work to
+        // another thread: ScopedValue/ThreadLocal do not propagate implicitly.
+        // The work itself runs on a virtual thread, so blocking HttpClient joins
+        // do not pin common-pool platform threads.
+        InvocationContext ctx = InvocationContext.current().orElse(null);
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            if (ctx == null) {
+                return orchestrate(serviceId, request, true, deadlineNanos);
+            }
+            return InvocationContext.runWith(ctx,
+                () -> orchestrate(serviceId, request, true, deadlineNanos));
+        }, asyncExecutor);
     }
 
     private void requireUsable(String serviceId) {
@@ -366,6 +378,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     public synchronized void close() {
         if (!closed) {
             closed = true;
+            asyncExecutor.shutdownNow();
             http.close();
         }
     }

@@ -3,6 +3,8 @@ package com.jujin.freeway.cloud;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.cloud.context.Baggage;
+import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
@@ -59,6 +61,26 @@ class CloudHttpClientTest {
                 .call("echo", CloudRequest.get("/api/echo"));
             assertTrue(resp.is2xx());
             assertEquals("{\"ok\":true}", resp.bodyAsString());
+        }
+    }
+
+    @Test
+    void asyncCallPreservesInvocationContext() throws Exception {
+        try (AppRuntime app = FreewayApp.run(
+                new HeaderEchoModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            app.get(ServiceRegistry.class).register(
+                ServiceInstance.of("echo", "i1",
+                    Endpoint.of("http", server.host(), server.port()), Map.of()));
+            CloudHttpClient client = app.get(CloudHttpClient.class);
+
+            InvocationContext ctx = InvocationContext.of(
+                null, null, Baggage.of(Map.of("k", "v")));
+            CloudResponse resp = InvocationContext.runWith(ctx, () ->
+                client.callAsync("echo", CloudRequest.get("/api/header")).join());
+            assertTrue(resp.is2xx());
+            assertEquals("k=v", resp.bodyAsString(),
+                "async RPC must propagate the caller's invocation context");
         }
     }
 
@@ -315,6 +337,15 @@ class CloudHttpClientTest {
         public void bind(Binder b) {
             b.contribute(Route.class)
                 .add(Route.get("/api/echo", ctx -> ctx.send(200, "{\"ok\":true}")));
+        }
+    }
+
+    static class HeaderEchoModule implements ModuleEx {
+        @Override
+        public void bind(Binder b) {
+            b.contribute(Route.class)
+                .add(Route.get("/api/header", ctx ->
+                    ctx.send(200, ctx.header("baggage").orElse(""))));
         }
     }
 

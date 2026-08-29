@@ -39,6 +39,10 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
     private volatile long openedAtNanos;
     private final AtomicBoolean probeInFlight = new AtomicBoolean();
     private volatile long probeStartedAtNanos;
+    /** Monotonically increases each time a probe is admitted; callbacks use it
+     *  to ignore results from probes that were superseded by a re-arm. */
+    private long probeEpoch;
+    private final ThreadLocal<Long> admittedProbeEpoch = new ThreadLocal<>();
     /** Guards only the rare lost-probe re-arm path so exactly one waiter
      *  becomes the fresh probe (single-probe invariant). */
     private final Object probeLock = new Object();
@@ -68,12 +72,18 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
     public boolean allowRequest() {
         State current = state;
         if (current == State.CLOSED) {
+            admittedProbeEpoch.remove();
             return true;
         }
         if (current == State.OPEN) {
             if (System.nanoTime() - openedAtNanos >= openWindow.toNanos()
                     && probeInFlight.compareAndSet(false, true)) {
-                probeStartedAtNanos = System.nanoTime();
+                long now = System.nanoTime();
+                synchronized (probeLock) {
+                    probeEpoch++;
+                    probeStartedAtNanos = now;
+                    admittedProbeEpoch.set(probeEpoch);
+                }
                 state = State.HALF_OPEN;
                 return true;
             }
@@ -88,6 +98,8 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
         synchronized (probeLock) {
             if (System.nanoTime() - probeStartedAtNanos > openWindow.toNanos()) {
                 probeStartedAtNanos = System.nanoTime(); // re-arm: this call is the new probe
+                probeEpoch++;
+                admittedProbeEpoch.set(probeEpoch);
                 return true;
             }
         }
@@ -96,6 +108,24 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
 
     @Override
     public void onSuccess() {
+        Long admitted = admittedProbeEpoch.get();
+        if (admitted != null) {
+            admittedProbeEpoch.remove();
+            synchronized (probeLock) {
+                if (admitted != probeEpoch) {
+                    return; // stale probe superseded by a re-arm
+                }
+            }
+            if (state != State.HALF_OPEN) {
+                return; // already settled by another callback
+            }
+            probeInFlight.set(false);
+            synchronized (this) {
+                failureTimes.clear();
+            }
+            state = State.CLOSED;
+            return;
+        }
         // A success that returns while the circuit is OPEN is stale (the call
         // was admitted before the open) — it must not yank the circuit back to
         // CLOSED and skip the open window.
@@ -111,6 +141,22 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
 
     @Override
     public void onFailure() {
+        Long admitted = admittedProbeEpoch.get();
+        if (admitted != null) {
+            admittedProbeEpoch.remove();
+            synchronized (probeLock) {
+                if (admitted != probeEpoch) {
+                    return; // stale probe superseded by a re-arm
+                }
+            }
+            if (state != State.HALF_OPEN) {
+                return; // already settled by another callback
+            }
+            probeInFlight.set(false);
+            state = State.OPEN;
+            openedAtNanos = System.nanoTime();
+            return;
+        }
         State current = state;
         // A failure that returns while OPEN is stale (admitted before the
         // open) — counting it would re-extend the open window forever.

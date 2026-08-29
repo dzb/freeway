@@ -32,7 +32,7 @@ import java.util.concurrent.CompletionException;
  * and never dispatched.</p>
  *
  * <p>Remote failures surface unchanged: {@link CloudException} for transport
- * failures, and the {@link RemoteCallBusinessException} carried as its cause
+ * failures, and the {@link RemoteInvocationException} carried as its cause
  * when the remote handler threw — callers keep one honest catch shape per
  * failure class. {@link #timeout(Duration)} bounds the whole call, retries
  * included; without it only the configured request-timeout applies.</p>
@@ -162,7 +162,7 @@ public final class RemoteProxyFactory {
                 method.getReturnType(), timeout);
         } catch (CloudException e) {
             // Transport failures keep their type; business failures are wrapped
-            // (RemoteCallBusinessException) — both land here as CloudException.
+            // (RemoteInvocationException) — both land here as CloudException.
             throw e;
         }
     }

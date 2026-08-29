@@ -15,7 +15,7 @@ import java.util.List;
  * JSON array. A 200 carries the return value as JSON; business failures of
  * the remote handler map to 4xx plus the {@code X-RPC-Exception} /
  * {@code X-RPC-Message} headers and surface as
- * {@link RemoteCallBusinessException}; everything else reuses the transport
+ * {@link RemoteInvocationException}; everything else reuses the transport
  * failure semantics of {@link CloudException} (retryable per existing rules),
  * so resilience policies configured for plain RPC apply unchanged.</p>
  *

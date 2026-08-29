@@ -80,7 +80,7 @@ public final class CloudEventBridge implements EventBridge {
                 sent++;
             } else {
                 LOG.warn("Send to peer {} failed — dropping connection", peer.remoteOrigin());
-                hub.unregister(peer.remoteOrigin());
+                hub.unregister(peer);
             }
         }
         if (sent == 0) {

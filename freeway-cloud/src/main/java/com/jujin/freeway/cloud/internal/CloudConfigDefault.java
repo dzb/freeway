@@ -45,7 +45,7 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
     private final Path file;
     private final Consumer<ConfigChangedEvent> onChange;
     private final AtomicReference<Map<String, String>> values = new AtomicReference<>(Map.of());
-    private final Map<String, List<Consumer>> listeners = new ConcurrentHashMap<>();
+    private final Map<String, List<Consumer<String>>> listeners = new ConcurrentHashMap<>();
 
     private final WatchService watchService;
     private final Thread watcher;
@@ -104,7 +104,13 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
     @Override
     public ConfigSubscription watch(String key, Consumer<String> listener) {
         listeners.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>()).add(listener);
-        return () -> listeners.getOrDefault(key, List.of()).remove(listener);
+        return () -> listeners.compute(key, (k, list) -> {
+            if (list == null) {
+                return null;
+            }
+            list.remove(listener);
+            return list.isEmpty() ? null : list;
+        });
     }
 
     @Override
@@ -195,7 +201,7 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
     }
 
     private void notify(String key, String value) {
-        for (Consumer listener : listeners.getOrDefault(key, List.of())) {
+        for (Consumer<String> listener : listeners.getOrDefault(key, List.of())) {
             try {
                 listener.accept(value);
             } catch (Exception e) {

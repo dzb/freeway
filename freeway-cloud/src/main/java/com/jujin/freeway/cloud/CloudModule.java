@@ -15,7 +15,10 @@ import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 
 /**
- * Cloud umbrella module: aggregates every {@code freeway-cloud} sub-module.
+ * Cloud umbrella module: aggregates the standard {@code freeway-cloud}
+ * sub-modules. {@link com.jujin.freeway.cloud.events.CloudEventModule} is an
+ * optional add-on and intentionally not installed here; add it explicitly when
+ * the WebSocket event mesh is needed.
  *
  * <p>Install either this module <b>or</b> a subset of the sub-modules — never
  * both: {@link Binder#install} deduplicates by module <em>instance identity</em>
