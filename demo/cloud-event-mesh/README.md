@@ -8,7 +8,7 @@ on another" story:
 ┌────────────────────────┐         WS mesh (CloudEvents 1.0)         ┌────────────────────────┐
 │  Node A  (publisher)   │  ────────────────────────────────────────► │  Node B  (subscriber)  │
 │  port 18081            │                                            │  port 18080            │
-│  CloudEventsModule     │         Kafka broker (freeway-mq-kafka)    │  CloudEventsModule     │
+│  CloudEventModule      │         Kafka broker (freeway-mq-kafka)    │  CloudEventModule      │
 │  KafkaModule           │  ────────────────────────────────────────► │  KafkaModule           │
 └────────────────────────┘        127.0.0.1:9092                      └────────────────────────┘
 ```
@@ -35,8 +35,8 @@ the delivery counter in B's log proves both paths end-to-end.
 - JDK 25
 - Freeway artifacts in the local Maven repo:
   ```bash
-  cd freeway && mvn install -DskipTests        # core (incl. freeway-cloud)
-  cd freeway-ext && mvn install -DskipTests -pl freeway-mq-kafka -am
+  cd freeway && mvn install -DskipTests -Dgpg.skip=true     # core (incl. freeway-cloud)
+  cd freeway-ext && mvn install -DskipTests -Dgpg.skip=true -pl freeway-mq-kafka -am
   ```
 - (Kafka channel only) a broker at `127.0.0.1:9092`. Podman one-liner:
   ```bash
@@ -55,6 +55,37 @@ the delivery counter in B's log proves both paths end-to-end.
   ```
   Without a broker the WS-mesh channel still works; the Kafka subscriber
   simply logs connect retries.
+
+  ### Kafka without a container (Windows)
+
+  No Docker/Podman/WSL needed — Kafka runs natively. Install it with Scoop and
+  start a single-node KRaft broker:
+
+  ```bash
+  scoop install kafka                       # 4.3.1, matches <kafka.version> in freeway-ext
+
+  # In %USERPROFILE%\scoop\persist\kafka\config\server.properties (Scoop persists it):
+  #   advertised.listeners=PLAINTEXT://127.0.0.1:9092,CONTROLLER://127.0.0.1:9093
+  #   log.dirs=<any Windows path>           # default /tmp/... is not valid on Windows
+
+  set KAFKA_CLUSTER_ID=$(kafka-storage random-uuid | tail -1)
+  kafka-storage format --standalone -t %KAFKA_CLUSTER_ID% \
+    -c %USERPROFILE%\scoop\persist\kafka\config\server.properties
+
+  set KAFKA_HEAP_OPTS=-Xmx1G -Xms1G        # see note below
+  kafka-server-start %USERPROFILE%\scoop\persist\kafka\config\server.properties
+  ```
+
+  Two Windows-specific gotchas, both verified on Windows 11 24H2 with Temurin
+  JDK 25:
+
+  - **`KAFKA_HEAP_OPTS` must be set.** `kafka-server-start.bat` shells out to
+    `wmic` to size the default heap, and `wmic` was removed in Windows 11 24H2 —
+    without the variable the script aborts with exit 255.
+  - **Run `run.sh` from Git Bash**, not cmd/PowerShell (it uses `grep`, `seq`
+    and `/tmp`). The JVM inherits the host console code page, so the script
+    pins `stdout.encoding`/`stderr.encoding` to UTF-8 and greps with `-a`;
+    otherwise GNU grep reports "Binary file matches" instead of the log lines.
 
 ## Run
 
