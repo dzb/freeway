@@ -2,6 +2,7 @@ package com.jujin.freeway.cloud.events;
 
 import com.jujin.freeway.ioc.EventBridge;
 import java.util.Objects;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +35,13 @@ public final class CloudEventBridge implements EventBridge {
 
     @Override
     public void send(String topic, Object event, EventBridge.Channel channel) {
+        // No bus-supplied identity — mint one. Reachable only from a direct
+        // caller: the bus always uses the four-argument form.
+        send(topic, event, channel, UUID.randomUUID().toString());
+    }
+
+    @Override
+    public void send(String topic, Object event, EventBridge.Channel channel, String eventId) {
         if (event instanceof com.jujin.freeway.ioc.EventBus.Stoppable s && s.isStopped()) {
             return; // short-circuited locally — a vetoed fact does not broadcast
         }
@@ -43,8 +51,11 @@ public final class CloudEventBridge implements EventBridge {
         }
         String json;
         try {
+            // The bus-minted id, not a fresh one: a peer that receives this
+            // same event over a second transport has to be able to tell it is
+            // the same event, or the duplicate is unrecognizable.
             json = CloudEventEnvelope.translate(
-                event, topic, channel, origin, hub.serviceId(), hub.codec());
+                event, topic, channel, origin, hub.serviceId(), hub.codec(), eventId);
         } catch (RuntimeException e) {
             LOG.error("Event translation failed — not bridged (topic={})", topic, e);
             return;

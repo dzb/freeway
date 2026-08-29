@@ -17,10 +17,16 @@ import java.util.UUID;
  * <p>Attribute mapping: {@code type} = event class name (CLASS channel) or
  * the string topic (TOPIC channel); {@code subject} = {@link EventBus.Keyed#key()}
  * (partition-ordering key, preserved across the wire); {@code source} =
- * {@code freeway://{serviceId}}; {@code id} = outbound UUID (idempotency
- * key); extensions {@code fwchannel}/{@code fworigin}/{@code fwtimes} carry
- * the dispatch channel, the originating node identity, and the delivery
- * generation respectively.</p>
+ * {@code freeway://{serviceId}}; {@code id} = the dispatch identity the bus
+ * minted once and handed to every transport (so the copies can be
+ * correlated); extensions {@code fwchannel}/{@code fworigin}/{@code fwtimes}
+ * carry the dispatch channel, the originating node identity, and the
+ * delivery generation respectively.</p>
+ *
+ * <p><b>Why the id is a parameter, not minted here:</b> this method runs
+ * once per bridge per send. Minting inside it would give every copy of an
+ * event a different id, and no consumer could ever recognize two copies of
+ * the same event as duplicates.</p>
  *
  * <p>Frames failing CE constraints (missing id/type/source) fail loudly —
  * never silently dropped.</p>
@@ -55,12 +61,37 @@ public final class CloudEventEnvelope {
         String serviceId,
         JsonCodec codec
     ) {
+        // Direct caller, not the bus: no shared identity to reuse, so mint
+        // one. Two transports translating the same event through this path
+        // produce unrelated ids — precisely what the bus-supplied id avoids.
+        return translate(
+            event, topic, channel, origin, serviceId, codec,
+            UUID.randomUUID().toString());
+    }
+
+    /**
+     * Translates using {@code eventId} — the identity the bus minted for
+     * this dispatch — instead of minting a fresh one. Every bridge that
+     * receives the dispatch is handed the same id, so an event bridged over
+     * two transports arrives at a peer twice carrying one identity, which is
+     * the only thing that makes it deduplicable.
+     */
+    public static String translate(
+        Object event,
+        String topic,
+        EventBridge.Channel channel,
+        String origin,
+        String serviceId,
+        JsonCodec codec,
+        String eventId
+    ) {
         Objects.requireNonNull(event, "event/payload");
         Objects.requireNonNull(topic, "topic");
+        Objects.requireNonNull(eventId, "eventId");
 
         Map<String, Object> frame = new LinkedHashMap<>();
         frame.put("specversion", SPECVERSION);
-        frame.put("id", UUID.randomUUID().toString());
+        frame.put("id", eventId);
         frame.put("source", "freeway://" + serviceId);
         frame.put("time", java.time.OffsetDateTime.now().toString());
 
