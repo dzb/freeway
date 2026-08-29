@@ -1657,9 +1657,38 @@ Kafka bridge (`freeway-mq-kafka`), which shares the same envelope translator.
 node, but remote peers cannot veto each other's copies.
 
 **Error model:** inbound frames run through contributed interceptors
-(`contribute(CloudEventInterceptor.class)`) — audit, tenant checks, and the
-optional `id+source` idempotency dedup live there. Frames for types outside
-the whitelist are dropped, not errors.
+(`contribute(CloudEventInterceptor.class)`) for audit, tenant checks, and
+custom filtering. Frames for types outside the whitelist are dropped, not
+errors.
+
+**Duplicate delivery — and how to turn it off.** A node reachable over two
+transports (the mesh *and* a Kafka broker) receives every event **once per
+transport**. That is fan-out working as designed, but it means the same event
+reaches local subscribers twice unless they are idempotent.
+
+Every event now carries one id across every transport it is bridged to — the
+publishing `EventBus` mints it once per dispatch and hands it to each bridge,
+rather than each bridge minting its own. When inbound dedup is armed, the
+second copy is recognized and dropped:
+
+```java
+bus.enableInboundDeduplication(4096);   // remember the last 4096 inbound ids
+```
+
+or declaratively, which `CloudEventModule` does on your behalf:
+
+```properties
+freeway.cloud.events.dedup.enabled=true
+freeway.cloud.events.dedup.capacity=4096
+```
+
+Dedup is **off by default**: it changes delivery semantics and costs memory,
+so it must not be a side effect of installing a second transport. `capacity`
+is the window in which a straggling second copy is still recognized — too
+small and a slow copy slips through, too large and the window costs memory
+for nothing. Events arriving with no id (an older producer without the
+`X-Event-Id` header) are always delivered. Dedup applies to inbound events
+only; local `publish` calls are never deduplicated.
 
 ---
 

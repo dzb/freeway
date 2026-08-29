@@ -41,6 +41,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   名称现在抛 `IllegalStateException`，不再静默后者覆盖前者。
 - **表达式乘除模（freeway-flow）** — 条件表达式支持 `*` `/` `%`
   （优先级介于加减与一元之间；除零/模零显式报错，不产生 Infinity/NaN）。
+- **跨传输事件身份与入站去重（freeway-ioc/cloud）** — 一次 `publish` 现在由
+  `EventBus` 铸造**一个**事件 id 并交给每一个 bridge，扇出到 N 个传输的同一
+  事件因此携带同一身份。此前每个 bridge 各铸一个 id，同一事件的两份副本无法
+  被任何消费端关联——跨传输去重在结构上是**不可能**的，而非"尚未实现"。
+  `EventBridge` 新增 `send(topic, event, channel, eventId)` 默认方法（默认
+  委托三参形态，既有实现不受影响）；`CloudEventEnvelope.translate` 新增带
+  `eventId` 的重载。入站侧新增 `publishInboundWithId(event, eventId)` /
+  `(topic, payload, eventId)`，配合 `enableInboundDeduplication(capacity)`
+  开启有界窗口后，经两个传输抵达本节点的同一事件只投递一次。去重默认**关闭**：
+  它改变投递语义且占用内存，不应是安装第二个传输的副作用。配置
+  `freeway.cloud.events.dedup.enabled` / `.dedup.capacity`（默认 4096）。
+  该组方法刻意**不**实现为 `publishInbound` 的重载——`(String, String)` 调用
+  无法在三参 topic 形态与泛型两参形态之间消歧。事件 id 为 null/空白时一律
+  投递，旧版生产者不带 id 头不会被丢事件。
 
 ### Changed
 
@@ -71,6 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **性能冒烟断言改为地板阈值（freeway-cloud）** — CloudPerformanceTest 各场景
   统一为可通过 `-Dcloud.bench.floor` 调整的数量级守门线（默认 1k ops/s），
   实测数值照常打印，慢 CI 不再误报。
+- **`EventBridge.send(topic, event)` 默认通道统一（freeway-cloud/ext）** —
+  `CloudEventBridge` 默认 `Channel.CLASS`、`KafkaEventBridge` 默认
+  `Channel.TOPIC`，两者不一致；统一为 `CLASS`（两参形态收到的是具体事件对象、
+  topic 由类型推导，本就是 class 通道）。总线始终传显式通道，故仅影响直接
+  调用 SPI 的代码。
 
 ### Removed
 
@@ -79,6 +98,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   形态已是超集）；删除 `DatabaseStats.averageBorrowWaitNanos()/averageBorrowWait()`。
   同批性能微优化：`Schema.ensure` 每个实体只反射解析一次，命名参数批量执行
   的结构校验只做首行一次。
+- **`EventBus.setEventBridge`（freeway-ioc，破坏性）** — 单槽 setter 与多
+  bridge 扇出不可共存：后启动的模块会静默卸载先前模块已安装的通道（正是文档
+  所述"静默分区"的成因）。`addEventBridge`/`removeEventBridge` 现为唯一的
+  通道 API，安全性质由 API 形状结构性保证，不再依赖运行期拒绝。调用方改用
+  `addEventBridge`。
+- **`EventBus(Container, EventBridge)` 双参构造函数（freeway-ioc）** — 最后
+  一个单槽接缝，两仓库零调用点（容器用 `new EventBus(this)`）；与新定的
+  多 bridge API 自相矛盾，一并删除。
 
 ### Fixed
 
