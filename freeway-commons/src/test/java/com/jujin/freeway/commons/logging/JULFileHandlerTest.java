@@ -3,7 +3,9 @@ package com.jujin.freeway.commons.logging;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -12,6 +14,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.ErrorManager;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
@@ -515,10 +518,23 @@ class JULFileHandlerTest {
                 logFile.toString(), 200, 30, false, 0);
 
         List<Exception> reported = new ArrayList<>();
+        AtomicBoolean sabotaged = new AtomicBoolean();
         handler.setErrorManager(new ErrorManager() {
             @Override
             public void error(String msg, Exception ex, int code) {
                 reported.add(ex);
+                if (sabotaged.compareAndSet(false, true)) {
+                    try {
+                        // rotate() closes the stream before archiving, so the
+                        // file is free here even on Windows — which refuses to
+                        // delete an open file. Turning it into a directory makes
+                        // the reopen that follows fail on every OS.
+                        Files.delete(logFile);
+                        Files.createDirectory(logFile);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                }
             }
         });
 
@@ -526,22 +542,26 @@ class JULFileHandlerTest {
         big.setMillis(System.currentTimeMillis());
         big.setLoggerName("test");
 
-        // Sabotage: replace the parent directory with a plain file so
-        // Files.createDirectories() fails when rotation reopens the stream.
-        Files.delete(logFile);   // unlink while the stream is open (Linux)
-        Files.delete(logDir);
-        Files.writeString(logDir, "not a directory");
+        // Sabotage: a non-empty directory at the archive target. Files.move()
+        // cannot replace it — POSIX or Windows — so rotation is forced to fail
+        // without relying on unlink-while-open (POSIX-only).
+        Path archived = logDir.resolve("app." + handler.currentDate() + ".log");
+        Files.createDirectories(archived);
+        Files.writeString(archived.resolve("blocker"), "blocked");
 
-        // First publish writes (to the unlinked inode); the second triggers
-        // rotation whose reopen fails — must be reported, not silent.
+        // First publish writes past the size threshold; the second triggers
+        // rotation: the archive move fails, and the reopen fails with it.
         handler.publish(big);
         handler.publish(big);
         assertFalse(reported.isEmpty(),
                 "Rotation failure must be reported, not silently dropped");
+        assertTrue(
+                reported.stream().anyMatch(e -> e instanceof FileNotFoundException),
+                "the failed reopen must be reported too — publish() keeps "
+                    + "retrying it instead of silently dropping records: " + reported);
 
-        // Restore the directory; the next publish must recover automatically.
-        Files.delete(logDir);
-        Files.createDirectory(logDir);
+        // Remove the obstacle; the next publish must recover automatically.
+        Files.delete(logFile); // the directory the sabotage left behind
         LogRecord after = new LogRecord(Level.INFO, "recovered record");
         after.setMillis(System.currentTimeMillis());
         after.setLoggerName("test");
@@ -551,5 +571,8 @@ class JULFileHandlerTest {
         String content = Files.readString(logFile);
         assertTrue(content.contains("recovered record"),
                 "Record after recovery should be written: " + content);
+        // @TempDir teardown must not trip over the sabotage leftovers.
+        Files.delete(archived.resolve("blocker"));
+        Files.delete(archived);
     }
 }

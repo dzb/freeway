@@ -36,8 +36,10 @@ class RegistryStoreTest {
     void staleInstancesEvictedLazily() {
         RegistryStore store = new RegistryStore();
         store.register(ServiceInstance.of("svc", "i1", Endpoint.of("http", "h", 8080)));
-        // Zero-age cutoff: lastSeen (registration instant) is before cutoff (now).
-        assertTrue(store.liveReady("svc", Duration.ZERO).isEmpty());
+        // Negative maxAge puts the cutoff strictly after lastSeen, so the
+        // verdict cannot depend on clock granularity (Windows Instant.now()
+        // is coarse enough that lastSeen == cutoff on a ZERO cutoff).
+        assertTrue(store.liveReady("svc", Duration.ZERO.minusMillis(1)).isEmpty());
 
         // Eviction must REMOVE the stale entry, not just filter it: the store
         // cannot grow without bound, and a re-registering instance (a fresh
