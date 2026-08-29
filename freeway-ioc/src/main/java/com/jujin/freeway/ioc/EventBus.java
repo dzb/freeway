@@ -110,14 +110,7 @@ public final class EventBus implements AutoCloseable {
 
     @Inject
     public EventBus(Container container) {
-        this(container, null);
-    }
-
-    public EventBus(Container container, EventBridge bridge) {
         this.container = Objects.requireNonNull(container, "container");
-        if (bridge != null) {
-            this.bridges.add(bridge);
-        }
         // Metrics is a container builtin (NoopMetrics by default) — always
         // resolvable; a contributed/primary implementation observes the bus.
         this.metrics = container.get(Metrics.class);
