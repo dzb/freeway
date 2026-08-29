@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -217,5 +218,62 @@ class EventBusBridgeTest {
         assertEquals(List.of("t"), seen,
             "a throwing bridge must not starve the bridges after it");
         container.close();
+    }
+
+    @Test
+    void everyBridgeReceivesTheSameEventId() {
+        // The whole point of the 4-arg send: an event fanned out to N
+        // transports must carry ONE identity, or the copies cannot be
+        // correlated by whoever receives two of them.
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        IdRecordingBridge first = new IdRecordingBridge();
+        IdRecordingBridge second = new IdRecordingBridge();
+        bus.addEventBridge(first);
+        bus.addEventBridge(second);
+
+        bus.publish("t", "payload");
+        bus.publish(new PostCreatedEvent(new Post("x")));
+
+        assertEquals(2, first.ids.size(), "topic + class dispatch");
+        assertEquals(first.ids, second.ids,
+            "both bridges must see the same ids — a fresh id per bridge would "
+                + "make the two copies of one event unrelatable");
+        assertFalse(first.ids.get(0).isBlank());
+        // One id per dispatch, not one per event: the two publishes differ.
+        assertNotEquals(first.ids.get(0), first.ids.get(1));
+        container.close();
+    }
+
+    @Test
+    void bridgesSeeNoIdWhenNoneCanBeFannedOut() {
+        // Sanity: the id is minted per dispatch, so two publishes never
+        // share one even through a single bridge.
+        Container container = Freeway.create(binder -> { });
+        EventBus bus = container.get(EventBus.class);
+        IdRecordingBridge bridge = new IdRecordingBridge();
+        bus.addEventBridge(bridge);
+
+        bus.publish("t", "one");
+        bus.publish("t", "two");
+
+        assertEquals(2, bridge.ids.size());
+        assertNotEquals(bridge.ids.get(0), bridge.ids.get(1));
+        container.close();
+    }
+
+    /** Captures the eventId the bus hands it, to assert identity sharing. */
+    private static final class IdRecordingBridge implements EventBridge {
+        final List<String> ids = new ArrayList<>();
+
+        @Override
+        public void send(String topic, Object event) {
+            send(topic, event, Channel.CLASS, null);
+        }
+
+        @Override
+        public void send(String topic, Object event, Channel channel, String eventId) {
+            ids.add(eventId);
+        }
     }
 }

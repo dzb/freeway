@@ -13,10 +13,13 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
@@ -78,6 +81,8 @@ public final class EventBus implements AutoCloseable {
     private final Metrics.Counter cDelivered;
     private final Metrics.Counter cSubscriberFailures;
     private final Metrics.Counter cDeadEvents;
+    /** Bounded window of recent inbound wire ids; null when dedup is off. */
+    private volatile IdWindow inboundIds;
     private volatile boolean closed;
 
     /** Package-private closed probe for {@link EventStreams} bridges. */
@@ -211,6 +216,39 @@ public final class EventBus implements AutoCloseable {
         dispatchEvent(event, false);
     }
 
+    /**
+     * Publish an inbound event together with the wire identity it arrived
+     * with — otherwise identical to {@link #publishInbound(Object)}.
+     *
+     * <p>{@code eventId} is the id the <em>originating</em> bus minted and
+     * stamped onto the frame. It is offered to the dedup window when one is
+     * enabled ({@link #enableInboundDeduplication}): a node reachable over
+     * two transports receives every event once per transport, and because
+     * both copies carry the same id the second arrival is recognized and
+     * dropped. With no id there is nothing to correlate on, so the event is
+     * always delivered. {@code null} degenerates to {@link
+     * #publishInbound(Object)}.
+     *
+     * <p>Transports that stamp an id on the wire should use this form. It is
+     * deliberately <em>not</em> an overload of {@code publishInbound}: a
+     * {@code (String, String)} call cannot be resolved between {@code
+     * publishInbound(E, String)} and the topic-channel {@code
+     * publishInbound(String, Object)}, so every such call site would be a
+     * compile error.</p>
+     */
+    public <E> void publishInboundWithId(E event, String eventId) {
+        Objects.requireNonNull(event, "event");
+        requireOpen();
+        if (!claimInbound(eventId)) {
+            return; // duplicate — already delivered over another channel
+        }
+        if (Defer.isActive() && !(event instanceof DeadEvent)) {
+            Defer.defer(() -> dispatchEvent(event, false));
+            return;
+        }
+        dispatchEvent(event, false);
+    }
+
     private <E> void dispatchEvent(E event, boolean bridgeToMq) {
         // Events buffered in a Defer scope before close() may drain after
         // close: delivering to module subscribers only (runtime lists are
@@ -262,12 +300,22 @@ public final class EventBus implements AutoCloseable {
             if (event instanceof Stoppable s && s.isStopped()) {
                 return;
             }
+            // No bridge installed — skip the topic resolution and the id mint
+            // entirely. The common case pays for neither.
+            if (bridges.isEmpty()) {
+                return;
+            }
             // Resolved once, not once per bridge: getAnnotation() on the
             // fan-out hot path must not scale with the bridge count.
             String topic = resolveTopic(eventType);
+            // One identity per dispatch, shared by every bridge. Minted here
+            // rather than inside each bridge: an event bridged over two
+            // transports has to carry ONE id, or the two copies are
+            // unrelatable and no consumer can ever dedup them.
+            String eventId = UUID.randomUUID().toString();
             for (EventBridge bridge : bridges) {
                 try {
-                    bridge.send(topic, event, EventBridge.Channel.CLASS);
+                    bridge.send(topic, event, EventBridge.Channel.CLASS, eventId);
                 } catch (Exception ex) {
                     LOG.warn(
                         "Event bridge failed for {}",
@@ -325,6 +373,99 @@ public final class EventBus implements AutoCloseable {
         dispatchTopic(topic, payload, false);
     }
 
+    /**
+     * Topic-channel counterpart of {@link #publishInboundWithId(Object,
+     * String)}: identical dispatch, deduped on {@code eventId} when a window
+     * is enabled.
+     */
+    public void publishInboundWithId(String topic, Object payload, String eventId) {
+        Objects.requireNonNull(topic, "topic");
+        requireOpen();
+        if (!claimInbound(eventId)) {
+            return; // duplicate — already delivered over another channel
+        }
+        if (Defer.isActive()) {
+            Defer.defer(() -> dispatchTopic(topic, payload, false));
+            return;
+        }
+        dispatchTopic(topic, payload, false);
+    }
+
+    /**
+     * Drops inbound events whose wire id has already been claimed, so an
+     * event that reaches this node over two transports is delivered once.
+     *
+     * <p>Off by default: dedup changes delivery semantics and costs memory,
+     * so it is a deliberate opt-in rather than a side effect of installing a
+     * second transport. {@code capacity} bounds the window — the last
+     * {@code capacity} ids are remembered, roughly "how far back two copies
+     * of the same event may be spread". Too small a window lets a slow
+     * second copy through; too large one costs memory for nothing.
+     *
+     * <p>Ids are claimed at publish time, so the two copies race freely —
+     * whichever arrives first wins and the other is dropped.</p>
+     *
+     * @param capacity positive bound on the number of remembered ids
+     */
+    public void enableInboundDeduplication(int capacity) {
+        if (capacity <= 0) {
+            throw new IllegalArgumentException("capacity must be positive: " + capacity);
+        }
+        synchronized (this) {
+            if (inboundIds == null || inboundIds.capacity() != capacity) {
+                inboundIds = new IdWindow(capacity);
+            }
+        }
+    }
+
+    /** Turns deduplication off and releases the window. */
+    public void disableInboundDeduplication() {
+        synchronized (this) {
+            inboundIds = null;
+        }
+    }
+
+    /** True when {@code eventId} is new to the window (or dedup is off). */
+    private boolean claimInbound(String eventId) {
+        if (eventId == null || eventId.isBlank()) {
+            return true; // no identity to correlate on — always deliver
+        }
+        IdWindow window = inboundIds;
+        return window == null || window.claim(eventId);
+    }
+
+    /**
+     * Insertion-ordered window of the last {@code capacity} inbound ids.
+     * Insertion order (not access order) is deliberate: the window answers
+     * "have I seen this recently", and re-seeing an id must not extend its
+     * life — otherwise a hot id would pin itself in the window forever.
+     */
+    private static final class IdWindow {
+        private final int capacity;
+        private final LinkedHashSet<String> seen = new LinkedHashSet<>();
+
+        IdWindow(int capacity) {
+            this.capacity = capacity;
+        }
+
+        int capacity() {
+            return capacity;
+        }
+
+        /** @return true if {@code id} was new; false if already present */
+        synchronized boolean claim(String id) {
+            if (!seen.add(id)) {
+                return false;
+            }
+            if (seen.size() > capacity) {
+                Iterator<String> oldest = seen.iterator();
+                oldest.next();
+                oldest.remove();
+            }
+            return true;
+        }
+    }
+
     private void dispatchTopic(String topic, Object payload, boolean bridgeToMq) {
         if (closed) {
             return;
@@ -374,9 +515,17 @@ public final class EventBus implements AutoCloseable {
             if (payload instanceof Stoppable s && s.isStopped()) {
                 return;
             }
+            // No bridge installed — skip the id mint entirely.
+            if (bridges.isEmpty()) {
+                return;
+            }
+            // One identity per dispatch, shared by every bridge — see
+            // dispatchEvent: the two copies of an event bridged over two
+            // transports must be recognizably the same event.
+            String eventId = UUID.randomUUID().toString();
             for (EventBridge bridge : bridges) {
                 try {
-                    bridge.send(topic, payload, EventBridge.Channel.TOPIC);
+                    bridge.send(topic, payload, EventBridge.Channel.TOPIC, eventId);
                 } catch (Exception ex) {
                     LOG.warn("Event bridge failed for topic '{}'", topic, ex);
                 }
