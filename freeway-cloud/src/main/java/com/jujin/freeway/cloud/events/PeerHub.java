@@ -12,6 +12,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The hub: registry of live peer connections + the server-side WS endpoint
@@ -30,13 +32,17 @@ public final class PeerHub implements WebSocketEndpoint {
     private static final Logger LOG = LoggerFactory.getLogger(PeerHub.class);
 
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
-    private final List<CloudEventInterceptor> interceptors = new ArrayList<>();
+    /** Contributed at hook time, read per inbound frame on WS threads —
+     *  copy-on-write keeps add-after-wire safe without external locking. */
+    private final List<CloudEventInterceptor> interceptors = new CopyOnWriteArrayList<>();
     private volatile EventBus bus;
     private volatile JsonCodec codec;
     private volatile String origin;
     private volatile String serviceId;
     private volatile List<String> subscriptions = List.of();
     private volatile List<String> allowedTypes = List.of();
+    private volatile List<String> allowedTopics = List.of();
+    private volatile String token = "";
     private volatile boolean wired;
 
     /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
@@ -46,7 +52,9 @@ public final class PeerHub implements WebSocketEndpoint {
         String serviceId,
         String instanceId,
         List<String> subscriptions,
-        List<String> allowedTypes
+        List<String> allowedTypes,
+        List<String> allowedTopics,
+        String token
     ) {
         this.bus = Objects.requireNonNull(bus, "bus");
         this.codec = Objects.requireNonNull(codec, "codec");
@@ -56,9 +64,39 @@ public final class PeerHub implements WebSocketEndpoint {
             : serviceId + "@" + java.util.UUID.randomUUID();
         this.subscriptions = List.copyOf(subscriptions);
         this.allowedTypes = List.copyOf(allowedTypes);
+        this.allowedTopics = List.copyOf(allowedTopics);
+        this.token = token == null ? "" : token;
         this.wired = true;
-        LOG.info("CloudEventBus wired: origin={} subscriptions={} allowedTypes={}",
-            origin, subscriptions, allowedTypes.size());
+        LOG.info("CloudEventBus wired: origin={} subscriptions={} allowedTypes={} allowedTopics={}",
+            origin, subscriptions, allowedTypes.size(), allowedTopics.size());
+        warnWhenInboundIsUngated();
+    }
+
+    /**
+     * A node that accepts inbound (it declared subscriptions) is reachable by
+     * every peer that can open a socket to it. An empty allowlist or an absent
+     * token means "accept anything", which must be visible at startup rather
+     * than discovered after an incident.
+     */
+    private void warnWhenInboundIsUngated() {
+        if (subscriptions.isEmpty()) {
+            return; // outbound-only: nothing is accepted from peers
+        }
+        if (allowedTypes.isEmpty()) {
+            LOG.warn("CloudEventBus accepts CLASS-channel events of ANY type from "
+                + "connected peers — set {} to restrict deserialization",
+                com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TYPES);
+        }
+        if (allowedTopics.isEmpty()) {
+            LOG.warn("CloudEventBus accepts TOPIC-channel payloads on ANY topic from "
+                + "connected peers — set {} to restrict inbound topics",
+                com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TOPICS);
+        }
+        if (token.isBlank()) {
+            LOG.warn("CloudEventBus has no mesh token — any peer that can reach the "
+                + "endpoint may connect; set {} to require one",
+                com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_TOKEN);
+        }
     }
 
     /** Registers an inbound interceptor (called by the module from contributions). */
@@ -90,6 +128,11 @@ public final class PeerHub implements WebSocketEndpoint {
 
     public String serviceId() {
         return serviceId;
+    }
+
+    /** The mesh token the connector presents on its outbound handshake. */
+    public String token() {
+        return token;
     }
 
     public List<String> subscriptions() {
@@ -162,6 +205,11 @@ public final class PeerHub implements WebSocketEndpoint {
                 session.close(1002, "hello missing origin");
                 return;
             }
+            if (!acceptsToken(frame.getString("token"), token)) {
+                LOG.warn("Peer {} failed the mesh token check — closing", remoteOrigin);
+                session.close(1008, "unauthorized");
+                return;
+            }
             List<String> remoteSubs = prefixes(frame.get("subscribe"));
             connection = new PeerConnection(remoteOrigin, remoteSubs,
                 json -> {
@@ -225,6 +273,12 @@ public final class PeerHub implements WebSocketEndpoint {
                 LOG.error("Inbound event dispatch failed for {}", frame.type(), e);
             }
         } else {
+            // The TOPIC channel is a gate too, not just the CLASS one: the peer
+            // names the topic and supplies the payload.
+            if (!allowedTopics.isEmpty() && !matchesPrefix(allowedTopics, frame.type())) {
+                LOG.debug("Topic not in allowlist — dropped: {}", frame.type());
+                return;
+            }
             Object payload = frame.dataJson() == null
                 ? null
                 : com.jujin.freeway.commons.json.JsonUtils.parse(frame.dataJson());
@@ -251,6 +305,37 @@ public final class PeerHub implements WebSocketEndpoint {
             }
         }
         return prefixes;
+    }
+
+    /** True when {@code value} starts with any of {@code prefixes}. */
+    private static boolean matchesPrefix(List<String> prefixes, String value) {
+        if (value == null) {
+            return false;
+        }
+        for (String prefix : prefixes) {
+            if (value.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Length-independent comparison so the token cannot be probed by timing. */
+    private static boolean constantTimeEquals(String a, String b) {
+        return java.security.MessageDigest.isEqual(
+            a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Whether a peer's presented token satisfies {@code expected}. An absent
+     * expected token disables peer auth entirely (documented default); an
+     * absent presented token never satisfies a configured one.
+     */
+    static boolean acceptsToken(String presented, String expected) {
+        if (expected == null || expected.isBlank()) {
+            return true;
+        }
+        return constantTimeEquals(presented == null ? "" : presented, expected);
     }
 
     /** Codec accessor for the connector (client leg parses acks too). */

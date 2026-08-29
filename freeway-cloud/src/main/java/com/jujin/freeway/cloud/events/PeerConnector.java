@@ -166,6 +166,9 @@ public final class PeerConnector implements AutoCloseable {
             hello.put("origin", hub.origin());
             hello.put("serviceId", hub.serviceId());
             hello.put("subscribe", hub.subscriptions());
+            if (!hub.token().isBlank()) {
+                hello.put("token", hub.token());
+            }
             webSocket.sendText(hub.codec().toJson(hello), true);
             webSocket.request(1);
         }

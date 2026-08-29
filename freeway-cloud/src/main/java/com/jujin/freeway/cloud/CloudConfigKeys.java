@@ -56,6 +56,9 @@ public final class CloudConfigKeys {
     public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
     public static final String EVENTS_SUBSCRIPTIONS  = PREFIX + ".events.subscriptions";
     public static final String EVENTS_ALLOWED_TYPES  = PREFIX + ".events.allowed-types";
+    public static final String EVENTS_ALLOWED_TOPICS = PREFIX + ".events.allowed-topics";
+    /** Shared secret the mesh handshake must present; blank = no peer auth. */
+    public static final String EVENTS_TOKEN      = PREFIX + ".events.token";
     public static final String EVENTS_KEEPALIVE      = PREFIX + ".events.keepalive";
     public static final String EVENTS_PATH           = PREFIX + ".events.path";
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";

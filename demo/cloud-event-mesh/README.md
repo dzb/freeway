@@ -98,6 +98,8 @@ java -cp target/cloud-event-mesh-1.0-SNAPSHOT.jar demo.NodeA
 | `freeway.cloud.events.peers` | `127.0.0.1:18080` | *(none — waits for inbound)* |
 | `freeway.cloud.events.subscriptions` | `""` (outbound-only) | `greet.` |
 | `freeway.cloud.events.allowed-types` | *(none — no inbound)* | `demo.Events$Greeting` |
+| `freeway.cloud.events.allowed-topics` | *(none — no inbound)* | `greet.` |
+| `freeway.cloud.events.token` | *(none — demo runs on loopback)* | *(same value on both nodes)* |
 | `freeway.kafka.bootstrap-servers` | `127.0.0.1:9092` | `127.0.0.1:9092` |
 | `freeway.kafka.client-id` | `node-a` | `node-b` |
 | `freeway.kafka.topics` | `greet.hello` | `greet.hello` |
@@ -109,9 +111,16 @@ Rules that bite (see DEVELOPER-GUIDE, "CloudEventBus"):
    A local `EventBus.subscribe` alone is not enough.
 2. **CLASS events additionally need the receiver's `allowed-types`** — CE
    and Kafka gates are independent; both must name the type.
-3. **The Kafka allowlist gates the TOPIC payload type too** — a `String`
+3. **TOPIC payloads have their own gate**: `allowed-topics` is a prefix list
+   like `subscriptions`, and an empty value accepts every topic. The two
+   allowlists are independent — `allowed-types` says nothing about topics.
+4. **The Kafka allowlist gates the TOPIC payload type too** — a `String`
    payload requires `java.lang.String` in `allowed-event-types`.
-4. Every miss in the checklist above is a **silent partition**, not an error.
+5. Every miss in the checklist above is a **silent partition**, not an error.
+
+A node that declares `subscriptions` logs a warning at startup for each gate
+it left open (no `allowed-types`, no `allowed-topics`, no `token`) — an
+endpoint that accepts inbound from any peer should say so out loud.
 
 ## Cleanup
 

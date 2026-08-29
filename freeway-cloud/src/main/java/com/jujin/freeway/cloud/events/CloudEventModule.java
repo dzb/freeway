@@ -59,7 +59,9 @@ public final class CloudEventModule implements ModuleEx {
                         symbols.resolve(com.jujin.freeway.cloud.CloudConfigKeys.REGISTRY_SERVICE_ID, "freeway-app"),
                         symbols.resolve(com.jujin.freeway.cloud.CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID, ""),
                         split(symbols.resolve(CloudEventsKeys.SUBSCRIPTIONS, "")),
-                        split(symbols.resolve(CloudEventsKeys.ALLOWED_TYPES, "")));
+                        split(symbols.resolve(CloudEventsKeys.ALLOWED_TYPES, "")),
+                        split(symbols.resolve(CloudEventsKeys.ALLOWED_TOPICS, "")),
+                        symbols.resolve(CloudEventsKeys.TOKEN, ""));
 
                     // contributions resolved lazily at lookup — safe even when
                     // the contribution view was built at bind time.
@@ -97,6 +99,8 @@ public final class CloudEventModule implements ModuleEx {
         static final String PEERS = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_PEERS;
         static final String SUBSCRIPTIONS = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_SUBSCRIPTIONS;
         static final String ALLOWED_TYPES = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TYPES;
+        static final String ALLOWED_TOPICS = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TOPICS;
+        static final String TOKEN = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_TOKEN;
         /** Reserved: WS protocol-level ping/pong handles liveness; no active ping loop in v1. */
         static final String KEEPALIVE = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_KEEPALIVE;
 
