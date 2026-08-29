@@ -67,6 +67,17 @@ public final class CloudConfigKeys {
     /** Shared secret the mesh handshake must present; blank = no peer auth. */
     public static final String EVENTS_TOKEN      = PREFIX + ".events.token";
     public static final String EVENTS_KEEPALIVE      = PREFIX + ".events.keepalive";
+    /** Off by default: dedup changes delivery semantics (an event reaching
+     *  this node over two transports is delivered once) and costs memory, so
+     *  it is opt-in rather than a side effect of installing a second
+     *  transport. Only meaningful when inbound events carry the bus-minted
+     *  wire id. */
+    public static final String EVENTS_DEDUP_ENABLED  = PREFIX + ".events.dedup.enabled";
+    /** How many inbound ids to remember — the window in which a second copy
+     *  of an event is still recognized. Too small and a slow second copy
+     *  slips through; too large and the window costs memory for nothing. */
+    public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".events.dedup.capacity";
+    public static final String EVENTS_DEDUP_CAPACITY_DEFAULT = "4096";
     public static final String EVENTS_PATH           = PREFIX + ".events.path";
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
     // ── RPC / TLS ───────────────────────────────────────────

@@ -53,8 +53,9 @@ public final class CloudEventModule implements ModuleEx {
                     var symbols = container.get(SymbolSource.class);
                     boolean enabled = Boolean.parseBoolean(
                         symbols.resolve(CloudEventsKeys.ENABLED, "false"));
+                    EventBus bus = container.get(EventBus.class);
                     hub.wire(
-                        container.get(EventBus.class),
+                        bus,
                         container.get(com.jujin.freeway.commons.json.JsonCodec.class),
                         symbols.resolve(com.jujin.freeway.cloud.CloudConfigKeys.REGISTRY_SERVICE_ID, "freeway-app"),
                         symbols.resolve(com.jujin.freeway.cloud.CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID, ""),
@@ -68,13 +69,26 @@ public final class CloudEventModule implements ModuleEx {
                     container.extension(CloudEventInterceptor.class).all()
                         .forEach(hub::addInterceptor);
 
+                    // Dedup is a property of the bus, not of the mesh: it
+                    // also suppresses a single transport's own redeliveries
+                    // (Kafka hands a record back after a consumer rebalance),
+                    // so it is armed before the `enabled` gate below — with
+                    // the mesh off and Kafka on it is still the right answer.
+                    if (Boolean.parseBoolean(
+                            symbols.resolve(CloudEventsKeys.DEDUP_ENABLED, "false"))) {
+                        bus.enableInboundDeduplication(
+                            Integer.parseInt(symbols.resolve(
+                                CloudEventsKeys.DEDUP_CAPACITY,
+                                CloudEventsKeys.DEDUP_CAPACITY_DEFAULT)));
+                    }
+
                     if (!enabled) {
                         org.slf4j.LoggerFactory.getLogger(CloudEventModule.class)
                             .info("CloudEventBus disabled ({}=false) — inert",
                                 CloudEventsKeys.ENABLED);
                         return;
                     }
-                    container.get(EventBus.class).addEventBridge(bridge);
+                    bus.addEventBridge(bridge);
                     connector.start(split(symbols.resolve(CloudEventsKeys.PEERS, "")));
                     // keepalive (EVENTS_KEEPALIVE) reserved — WS protocol-level
                     // ping/pong handled by the engine; v1 has no active ping loop
@@ -113,6 +127,9 @@ public final class CloudEventModule implements ModuleEx {
         static final String ALLOWED_TYPES = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TYPES;
         static final String ALLOWED_TOPICS = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TOPICS;
         static final String TOKEN = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_TOKEN;
+        static final String DEDUP_ENABLED = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_DEDUP_ENABLED;
+        static final String DEDUP_CAPACITY = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_DEDUP_CAPACITY;
+        static final String DEDUP_CAPACITY_DEFAULT = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_DEDUP_CAPACITY_DEFAULT;
         /** Reserved: WS protocol-level ping/pong handles liveness; no active ping loop in v1. */
         static final String KEEPALIVE = com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_KEEPALIVE;
 
