@@ -24,7 +24,7 @@ class PeerHubInboundGateTest {
 
     private static CloudEventEnvelope.Parsed frame(EventBridge.Channel channel, String type) {
         return new CloudEventEnvelope.Parsed(
-            "id-1", "freeway://svc", type, null, "peer-a", channel, 1, "\"payload\"");
+            "id-1", "freeway://svc", type, null, "peer-a", channel, "\"payload\"");
     }
 
     private record Rig(PeerHub hub, EventBus bus, List<Object> inbound) {}
@@ -79,7 +79,7 @@ class PeerHubInboundGateTest {
         Rig rig = rig(List.of(), List.of());
         CloudEventEnvelope.Parsed looped = new CloudEventEnvelope.Parsed(
             "id-1", "freeway://svc", "greet.hello", null, "inst-1",
-            EventBridge.Channel.TOPIC, 1, "\"payload\"");
+            EventBridge.Channel.TOPIC, "\"payload\"");
 
         rig.hub().receive(looped);
 

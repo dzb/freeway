@@ -19,9 +19,8 @@ import java.util.UUID;
  * (partition-ordering key, preserved across the wire); {@code source} =
  * {@code freeway://{serviceId}}; {@code id} = the dispatch identity the bus
  * minted once and handed to every transport (so the copies can be
- * correlated); extensions {@code fwchannel}/{@code fworigin}/{@code fwtimes}
- * carry the dispatch channel, the originating node identity, and the
- * delivery generation respectively.</p>
+ * correlated); extensions {@code fwchannel}/{@code fworigin} carry the
+ * dispatch channel and the originating node identity.
  *
  * <p><b>Why the id is a parameter, not minted here:</b> this method runs
  * once per bridge per send. Minting inside it would give every copy of an
@@ -38,7 +37,6 @@ public final class CloudEventEnvelope {
     public static final String SPECVERSION = "1.0";
     public static final String EXT_CHANNEL = "fwchannel";
     public static final String EXT_ORIGIN = "fworigin";
-    public static final String EXT_TIMES = "fwtimes";
 
     /** Decoded wire frame — everything a consumer needs to route and rebuild. */
     public record Parsed(
@@ -48,7 +46,6 @@ public final class CloudEventEnvelope {
         String subject,
         String origin,
         EventBridge.Channel channel,
-        int times,
         String dataJson
     ) {}
 
@@ -105,7 +102,6 @@ public final class CloudEventEnvelope {
         }
         frame.put(EXT_CHANNEL, channel.name().toLowerCase(java.util.Locale.ROOT));
         frame.put(EXT_ORIGIN, origin);
-        frame.put(EXT_TIMES, 1);
 
         frame.put("datacontenttype", "application/json");
         // Embed the event as a nested JSON value, NOT as a string — putting
@@ -146,7 +142,6 @@ public final class CloudEventEnvelope {
             frame.getString("subject"),
             java.util.Objects.requireNonNullElse(frame.getString(EXT_ORIGIN), ""),
             channel,
-            frame.containsKey(EXT_TIMES) ? frame.getInt(EXT_TIMES) : 1,
             dataJson);
     }
 

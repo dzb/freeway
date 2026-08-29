@@ -85,7 +85,8 @@ stream:
 
 ```json
 { "specversion": "1.0",
-  "id": "…",                 ← 出站 UUID；消费端幂等去重键（可选启用）
+  "id": "…",                 ← 事件身份：总线每次分发铸一个、交给所有 bridge；
+                               跨传输去重依据（可选启用，见下）
   "source": "freeway://order-service",
   "type": "com.acme.OrderCreated",   ← 入站反序列化路由键（= 事件类名）
   "subject": "order-42",             ← EventBus.Keyed.key()（分区键）
@@ -93,14 +94,12 @@ stream:
   "datacontenttype": "application/json",
   "fwchannel": "class",              ← 扩展属性：CLASS|TOPIC 回灌路由
   "fworigin": "freeway-app@…",       ← 扩展属性：出站节点身份（回环防护）
-  "fwtimes": 1,                      ← 扩展属性：投递代数（适配器自增）；
-                                       消费端可读，用于幂等判断与死信诊断
   "data": { …事件对象 JSON… } }
 ```
 
-- `fwchannel` / `fworigin` / `fwtimes` 为 Freeway 扩展属性，不注册到
-  CNCF registry（内部概念）。`fwtimes` 对应 solon 的 `Event.times`
-  投递代数字段——零成本、高价值。
+- `fwchannel` / `fworigin` 为 Freeway 扩展属性，不注册到 CNCF registry
+  （内部概念）。（`fwtimes` 投递代数曾在此列，2026-08-29 移除——见 §8
+  修订记录。）
 - `TOPIC` 通道：`type` 为字符串 topic 本身（`"user.created"`），
   `data` 为 payload；`CLASS` 通道：`type` 为类全名。
 - 不满足 CE 约束（id/type/source 缺失）的事件出站即失败并记日志，
@@ -246,3 +245,9 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 > subscribe 携带 `group` 声明投递拓扑（广播/竞争）；信封增加 `fwtimes`
 > 投递代数；幂等去重降为内置拦截器；新增拦截器位；显式事件事务、
 > qos、scheduled、注解实体层列入不做清单（附立场）。
+> （2026-08-29 后续修订：上条中的 `fwtimes` 已移除——mesh 内不存在转发
+> （入站走 `publishInbound`、不回桥），跨传输的两份副本代数同为 1，该字段
+> 无法承担幂等判断；幂等改由总线铸造的共享事件 id 加 `EventBus` 入站去重
+> 窗口承担，见 §2.2。同条的「幂等去重降为内置拦截器」亦已改为落在
+> `publishInboundWithId` 这一所有传输共用的漏斗上——拦截器只看得到 mesh
+> 帧，会漏掉经 broker 到达的同一事件。）

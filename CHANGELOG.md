@@ -106,6 +106,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`EventBus(Container, EventBridge)` 双参构造函数（freeway-ioc）** — 最后
   一个单槽接缝，两仓库零调用点（容器用 `new EventBus(this)`）；与新定的
   多 bridge API 自相矛盾，一并删除。
+- **`fwtimes` 信封扩展（freeway-cloud，线格式）** — 恒为 1、两仓库零读取方，
+  且它要承担的两个用途已被取代：mesh 内不存在转发（入站走
+  `publishInbound`、不回桥），跨传输的两份副本代数同为 1，故它无法用于幂等
+  判断；死信诊断实际走 Kafka 的 `X-DLQ-Original-Offset`/`X-DLQ-Reason`。
+  幂等现由总线铸造的共享事件 id 加 `EventBus` 入站去重窗口承担。
+  **线上兼容**：`parse` 只按需读取已知键、忽略其余扩展属性（必填为
+  `specversion`/`id`/`source`/`type`/`fwchannel`），因此未升级节点发来的帧
+  仍带 `fwtimes` 也能正常解析，新旧节点可混跑。
 
 ### Fixed
 
