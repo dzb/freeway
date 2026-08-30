@@ -2,6 +2,7 @@ package com.jujin.freeway.commons.bean;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -11,7 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Caching utility for {@link MethodHandle}, {@link VarHandle}, and
- * constructor handles used by the bean introspection framework.
+ * constructor handles — the framework-wide home for cached reflective
+ * invocation, usable from any module (the IoC container's AOP and lifecycle
+ * callbacks, the call bus's handler dispatch, remote proxies, ...).
  *
  * <p>All handles are lazily created and cached in {@link ClassValue}-keyed
  * concurrent maps: reads are lock-free on every path (including the AOP
@@ -19,10 +22,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * dynamically loaded classes do not leak, and a first-time race simply lets
  * one winner populate the inner map.
  *
- * <p>Public methods expose method-handle lookup and invocation for external use
- * (primarily by the IoC container), while package-private methods support
- * handle creation for fields and constructors used internally by
- * {@link BeanIntrospector}.
+ * <p>Public methods expose method-handle lookup and invocation for external
+ * use; package-private methods support handle creation for fields and
+ * constructors used internally by {@link BeanIntrospector}.
  */
 public final class MethodHandleUtils {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
@@ -41,6 +43,13 @@ public final class MethodHandleUtils {
             }
         };
     private static final ClassValue<Map<Method, MethodHandle>> METHOD_HANDLES =
+        new ClassValue<>() {
+            @Override
+            protected Map<Method, MethodHandle> computeValue(Class<?> type) {
+                return new ConcurrentHashMap<>();
+            }
+        };
+    private static final ClassValue<Map<Method, MethodHandle>> DEFAULT_HANDLES =
         new ClassValue<>() {
             @Override
             protected Map<Method, MethodHandle> computeValue(Class<?> type) {
@@ -73,6 +82,26 @@ public final class MethodHandleUtils {
     public static MethodHandle methodHandle(Method method) {
         return METHOD_HANDLES.get(method.getDeclaringClass())
             .computeIfAbsent(method, MethodHandleUtils::createMethodHandle);
+    }
+
+    /**
+     * Returns a cached MethodHandle for <b>non-virtual</b> dispatch of an
+     * interface default method ({@code findSpecial}). This is the correct
+     * handle shape for invoking a default method on a proxy receiver: the
+     * proxy class overrides every interface method, so the virtual handle
+     * from {@link #methodHandle} would re-enter the proxy (and its handler)
+     * instead of running the default body.
+     *
+     * @param method an interface default method
+     * @return the corresponding MethodHandle
+     * @throws IllegalArgumentException if the method is not a default method
+     */
+    public static MethodHandle defaultMethodHandle(Method method) {
+        if (!method.isDefault()) {
+            throw new IllegalArgumentException("not a default method: " + method);
+        }
+        return DEFAULT_HANDLES.get(method.getDeclaringClass())
+            .computeIfAbsent(method, MethodHandleUtils::createDefaultMethodHandle);
     }
 
     /**
@@ -167,6 +196,19 @@ public final class MethodHandleUtils {
                 .asFixedArity();
         } catch (IllegalAccessException ex) {
             throw new RuntimeException("Cannot access method: " + method, ex);
+        }
+    }
+
+    private static MethodHandle createDefaultMethodHandle(Method method) {
+        try {
+            return MethodHandles.privateLookupIn(method.getDeclaringClass(), LOOKUP)
+                .findSpecial(
+                    method.getDeclaringClass(),
+                    method.getName(),
+                    MethodType.methodType(method.getReturnType(), method.getParameterTypes()),
+                    method.getDeclaringClass());
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException("Cannot access default method: " + method, ex);
         }
     }
 

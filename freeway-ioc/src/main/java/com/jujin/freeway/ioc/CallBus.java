@@ -1,9 +1,9 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.commons.metrics.Metrics;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
@@ -264,9 +264,12 @@ public final class CallBus implements AutoCloseable {
     }
 
     /**
-     * Terminal chain link: handler lookup plus reflective invocation.
-     * Throws rather than completing the stage — the advice chain must see
-     * handler failures to be able to react (map, degrade, reroute).
+     * Terminal chain link: handler lookup plus method-handle dispatch
+     * (handles are resolved once at registration). Throws rather than
+     * completing the stage — the advice chain must see handler failures to
+     * be able to react (map, degrade, reroute). Business exceptions arrive
+     * unwrapped: method handles do not produce InvocationTargetException
+     * artifacts.
      */
     private Object dispatchTarget(String topic, List<?> payload) throws Throwable {
         MethodTarget target = targets.get(topic);
@@ -279,15 +282,10 @@ public final class CallBus implements AutoCloseable {
         Object[] args = payload == null
             ? new Object[0]
             : payload.toArray();
-        try {
-            Object result = target.method().invoke(target.target(), args);
-            served.increment();
-            cServed.increment();
-            return result;
-        } catch (java.lang.reflect.InvocationTargetException e) {
-            // Advices observe business exceptions, not reflection artifacts.
-            throw e.getCause();
-        }
+        Object result = MethodHandleUtils.invokeOn(target.handle(), target.target(), args);
+        served.increment();
+        cServed.increment();
+        return result;
     }
 
     // ==================== provider side ====================
@@ -335,7 +333,8 @@ public final class CallBus implements AutoCloseable {
                     "Overloaded methods are not supported on call topics: "
                         + target.getClass().getName() + "#" + method.getName());
             }
-            targets.put(topic, new MethodTarget(target, method));
+            targets.put(topic, new MethodTarget(target, method,
+                MethodHandleUtils.methodHandle(method)));
         }
     }
 
@@ -356,7 +355,7 @@ public final class CallBus implements AutoCloseable {
             }
             targets.remove(
                 methodTopic(topicMapping, method.getName()),
-                new MethodTarget(target, method));
+                new MethodTarget(target, method, MethodHandleUtils.methodHandle(method)));
         }
     }
 
@@ -525,7 +524,13 @@ public final class CallBus implements AutoCloseable {
 
     // ==================== internals ====================
 
-    private record MethodTarget(Object target, Method method) {}
+    /**
+     * One registered handler: the target instance plus the dispatch handle
+     * resolved at registration. The handle is the {@link MethodHandleUtils}
+     * cached singleton for the method, so the records unregister() rebuilds
+     * for removal compare equal to the registered ones.
+     */
+    private record MethodTarget(Object target, Method method, MethodHandle handle) {}
 
     private record CallAdviceEntry(Predicate<String> topics, CallAdvice advice) {}
 
@@ -534,22 +539,16 @@ public final class CallBus implements AutoCloseable {
     }
 
     /**
-     * Runs a default interface method when no provider is bound. Uses
-     * {@link MethodHandles#privateLookupIn} — no {@code setAccessible} on
-     * JDK 25.
+     * Runs a default interface method when no provider is bound. The
+     * findSpecial handle is cached in commons
+     * ({@link MethodHandleUtils#defaultMethodHandle}) — non-virtual by
+     * construction, so it cannot re-enter the proxy. No
+     * {@code setAccessible} on JDK 25.
      */
     private static Object invokeDefault(Object proxy, Method method, Object[] args)
             throws Throwable {
-        return MethodHandles.privateLookupIn(method.getDeclaringClass(),
-                MethodHandles.lookup())
-            .findSpecial(
-                method.getDeclaringClass(),
-                method.getName(),
-                MethodType.methodType(
-                    method.getReturnType(), method.getParameterTypes()),
-                method.getDeclaringClass())
-            .bindTo(proxy)
-            .invokeWithArguments(args == null ? new Object[0] : args);
+        return MethodHandleUtils.invokeOn(
+            MethodHandleUtils.defaultMethodHandle(method), proxy, args);
     }
 
     private static Object handleObjectMethod(
