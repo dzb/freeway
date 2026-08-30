@@ -6,8 +6,11 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.discovery.Endpoint;
+import com.jujin.freeway.cloud.discovery.LoadBalancer;
+import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
 import com.jujin.freeway.cloud.rpc.CloudException;
 import com.jujin.freeway.cloud.rpc.CloudHttpClient;
 import com.jujin.freeway.cloud.rpc.CloudRequest;
@@ -23,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -92,6 +96,27 @@ class CloudHttpClientTest {
                 () -> client.call("missing", CloudRequest.get("/x")));
             assertFalse(ex.retryable(), "no instance is a configuration error, not a retryable failure");
             assertEquals(-1, ex.status());
+        }
+    }
+
+    @Test
+    void unmappedLocalFailureSurfacesAsCloudException() {
+        // A discovery backend bug must not leak a raw RuntimeException: the
+        // caller sees CloudException (non-retryable, cause attached), and a
+        // half-open probe still gets an outcome instead of being lost.
+        ServiceDiscovery broken = serviceId -> {
+            throw new IllegalStateException("registry backend exploded");
+        };
+        LoadBalancer balancer = instances -> Optional.empty();
+        CloudHttpClientDefault client = new CloudHttpClientDefault(broken, balancer);
+        try {
+            CloudException ex = assertThrows(CloudException.class,
+                () -> client.call("svc", CloudRequest.get("/x")));
+            assertFalse(ex.retryable(), "a dispatch failure is deterministic — never retried");
+            assertEquals(-1, ex.status());
+            assertEquals("registry backend exploded", ex.getCause().getMessage());
+        } finally {
+            client.close();
         }
     }
 

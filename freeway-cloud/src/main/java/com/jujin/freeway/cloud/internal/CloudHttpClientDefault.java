@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
+import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
@@ -52,9 +53,11 @@ import javax.net.ssl.SSLContext;
  * instance" — reports the probe outcome, so the breaker always settles
  * instead of wedging open.
  *
- * <p>Retryable = connect/timeout/5xx; 4xx and local rejections (no instance,
- * circuit open, rate limited, thread interrupted) fail immediately. Missing
- * resilience bindings degrade to production defaults.
+ * <p>Retryable = connect/timeout/5xx; 4xx, dispatch failures and local
+ * rejections (no instance, circuit open, rate limited, thread interrupted)
+ * fail immediately. Every failure mode — including unmapped local exceptions
+ * from discovery or URL building — surfaces as a {@link CloudException}.
+ * Missing resilience bindings degrade to production defaults.
  *
  * <p>Breakers and rate limiters are sharded per {@code serviceId}: one
  * failing service must not poison calls to healthy services. An injected
@@ -89,10 +92,16 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     private final ConcurrentHashMap<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
     private volatile boolean closed;
 
-    private static final int DEFAULT_FAILURE_THRESHOLD = 5;
-    private static final Duration DEFAULT_FAILURE_WINDOW = Duration.ofSeconds(60);
-    private static final Duration DEFAULT_OPEN_WINDOW = Duration.ofSeconds(30);
-    private static final int DEFAULT_RATE_PER_SECOND = 100;
+    /** Library fallbacks (no resilience module installed) — the same values
+     *  the config layer defaults to, from one shared source. */
+    private static final int DEFAULT_FAILURE_THRESHOLD =
+        Integer.parseInt(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT);
+    private static final Duration DEFAULT_FAILURE_WINDOW =
+        Duration.ofSeconds(Long.parseLong(CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT));
+    private static final Duration DEFAULT_OPEN_WINDOW =
+        Duration.ofSeconds(Long.parseLong(CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT));
+    private static final int DEFAULT_RATE_PER_SECOND =
+        Integer.parseInt(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT);
 
     public CloudHttpClientDefault(ServiceDiscovery discovery, LoadBalancer loadBalancer) {
         this(discovery, loadBalancer, List.of(), null, null, null, null, null, null,
@@ -206,19 +215,17 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
                 // Rate limit first: a local rejection must not consume a half-open
                 // probe — only an actual probe outcome may settle the circuit.
                 if (!rateLimiter.tryAcquire()) {
+                    recordFailure(startNanos);
                     throw CloudException.rateLimited(serviceId);
                 }
                 if (!breaker.allowRequest()) {
+                    recordFailure(startNanos);
                     throw CloudException.circuitOpen(serviceId);
                 }
                 boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
                 try {
-                    // Re-choose the instance on every attempt: retries must not
-                    // hammer the same dead instance.
-                    List<ServiceInstance> instances = discovery.getInstances(serviceId);
-                    ServiceInstance instance = loadBalancer.choose(instances)
-                        .orElseThrow(() -> CloudException.noInstance(serviceId));
-                    CloudResponse response = doCall(instance, request, async);
+                    // One transport attempt — discovery, choose, send (see attempt()).
+                    CloudResponse response = attempt(serviceId, request, async);
                     breaker.onSuccess();
                     if (span != null) {
                         span.addTag("http.status", String.valueOf(response.status()));
@@ -304,16 +311,32 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         return injectedRateLimiter.newShard();
     }
 
-    private CloudResponse doCall(ServiceInstance instance, CloudRequest request) {
-        return doCall(instance, request, false);
+    /**
+     * One transport attempt: resolve the instance, send, map transport
+     * failures. The instance is re-chosen on every attempt so retries do not
+     * hammer the same dead endpoint. Any unmapped local failure (bad URL or
+     * header, a discovery backend bug) is converted to a {@link CloudException}
+     * — the caller sees one failure type, and a half-open probe still gets an
+     * outcome instead of being lost to an escaping RuntimeException.
+     */
+    private CloudResponse attempt(String serviceId, CloudRequest request, boolean async) {
+        try {
+            List<ServiceInstance> instances = discovery.getInstances(serviceId);
+            ServiceInstance instance = loadBalancer.choose(instances)
+                .orElseThrow(() -> CloudException.noInstance(serviceId));
+            return doCall(instance, request, async);
+        } catch (CloudException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw CloudException.dispatch(serviceId, e);
+        }
     }
 
     private CloudResponse doCall(ServiceInstance instance, CloudRequest request, boolean async) {
-        // Normalize the join so an endpoint with a trailing slash cannot
-        // produce a double slash (//) in the request URI.
-        String base = instance.endpoint().uri().toString();
-        String url = (base.endsWith("/") ? base.substring(0, base.length() - 1) : base)
-            + request.path();
+        // The endpoint URI never ends in '/' (Endpoint normalizes its base
+        // path) and a CloudRequest path always starts with '/', so a plain
+        // join cannot produce a double slash.
+        String url = instance.endpoint().uri() + request.path();
         Map<String, String> outbound = new HashMap<>(request.headers());
         InvocationContext.current().ifPresent(ctx -> {
             for (Propagator propagator : propagators) {

@@ -42,10 +42,24 @@ public final class CloudConfigKeys {
     public static final String RPC_RETRY_BACKOFF_MAX   = PREFIX + ".rpc.retry.backoff-max";
     public static final String RPC_CB_ENABLED          = PREFIX + ".rpc.circuit-breaker.enabled";
     public static final String RPC_CB_FAILURE_THRESHOLD = PREFIX + ".rpc.circuit-breaker.failure-threshold";
+    /** Seconds a failure stays in the sliding window before it drops out of the count. */
+    public static final String RPC_CB_FAILURE_WINDOW   = PREFIX + ".rpc.circuit-breaker.failure-window";
     public static final String RPC_CB_OPEN_WINDOW      = PREFIX + ".rpc.circuit-breaker.open-window";
     public static final String RPC_RATE_LIMIT_ENABLED  = PREFIX + ".rpc.rate-limit.enabled";
     public static final String RPC_RATE_LIMIT_PER_SECOND = PREFIX + ".rpc.rate-limit.per-second";
     public static final String RPC_TRACE_ENABLED       = PREFIX + ".rpc.trace.enabled";
+
+    // Canonical resilience defaults — the single source shared by
+    // CloudResilienceModule (config fallbacks) and CloudHttpClientDefault
+    // (library fallback when the resilience module is not installed), so the
+    // two layers cannot drift apart.
+    public static final String RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = "3";
+    public static final String RPC_RETRY_BACKOFF_BASE_DEFAULT    = "100";
+    public static final String RPC_RETRY_BACKOFF_MAX_DEFAULT     = "5000";
+    public static final String RPC_CB_FAILURE_THRESHOLD_DEFAULT  = "5";
+    public static final String RPC_CB_FAILURE_WINDOW_DEFAULT     = "60";
+    public static final String RPC_CB_OPEN_WINDOW_DEFAULT        = "30";
+    public static final String RPC_RATE_LIMIT_PER_SECOND_DEFAULT = "100";
 
     // ── CloudEventBus（EventBus 的跨节点事件网格, 见 docs/freeway-cloud-events-design.md）──
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";

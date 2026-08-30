@@ -1,12 +1,19 @@
 package com.jujin.freeway.cloud.events;
 
+import com.jujin.freeway.cloud.CloudConfigKeys;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +32,10 @@ public final class PeerConnector implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnector.class);
     private static final long BACKOFF_BASE_MS = 1_000;
     private static final long BACKOFF_MAX_MS = 30_000;
+    /** A peer that accepts the socket but never answers the hello must not
+     *  pin a half-open connection forever — abort and let the dial loop
+     *  retry with backoff. */
+    private static final Duration HANDSHAKE_TIMEOUT = Duration.ofSeconds(10);
 
     private final HttpClient http;
     private final PeerHub hub;
@@ -35,6 +46,9 @@ public final class PeerConnector implements AutoCloseable {
         ConcurrentHashMap.newKeySet();
     /** Dial/retry threads, so {@link #close()} can interrupt parked backoff. */
     private final java.util.Set<Thread> dialers = ConcurrentHashMap.newKeySet();
+    /** Arms the per-connection handshake watchdogs. */
+    private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(
+        Thread.ofVirtual().name("cloud-events-handshake-", 0).factory());
     private final Duration connectTimeout;
     private final String scheme;
     private volatile boolean started;
@@ -98,19 +112,60 @@ public final class PeerConnector implements AutoCloseable {
     }
 
     private static boolean sameEndpoint(URI a, URI b) {
-        return a.getHost().equals(b.getHost()) && a.getPort() == b.getPort();
+        return Objects.equals(a.getHost(), b.getHost()) && a.getPort() == b.getPort();
     }
 
-    /** {@code host:port} → {@code scheme://host:port/cloud/events}. */
-    private URI toUri(String peer) {
-        String host = peer;
-        int port = 80;
-        int colon = peer.lastIndexOf(':');
-        if (colon > 0) {
-            host = peer.substring(0, colon);
-            port = Integer.parseInt(peer.substring(colon + 1));
+    /**
+     * {@code host:port} → {@code scheme://host:port/cloud/events}. IPv6
+     * literals are accepted in brackets ({@code [::1]:7001}) or bare
+     * ({@code fe80::1} — multiple colons imply no port component); the host
+     * is bracketed in the rendered URI per RFC 3986.
+     */
+    URI toUri(String peer) {
+        if (peer == null || peer.isBlank()) {
+            throw new IllegalArgumentException("peer must not be blank");
         }
-        return URI.create(scheme + "://" + host + ":" + port + "/cloud/events");
+        String host;
+        int port = 80;
+        if (peer.startsWith("[")) {
+            int close = peer.indexOf(']');
+            if (close < 0) {
+                throw new IllegalArgumentException("unclosed IPv6 literal: " + peer);
+            }
+            host = peer.substring(1, close);
+            if (close + 1 < peer.length()) {
+                if (peer.charAt(close + 1) != ':') {
+                    throw new IllegalArgumentException("expected :port after ']': " + peer);
+                }
+                port = parsePort(peer.substring(close + 2));
+            }
+        } else {
+            int colon = peer.indexOf(':');
+            if (colon >= 0 && colon == peer.lastIndexOf(':')) {
+                host = peer.substring(0, colon);
+                port = parsePort(peer.substring(colon + 1));
+            } else {
+                host = peer; // plain hostname or bare IPv6 literal
+            }
+        }
+        if (host.isBlank()) {
+            throw new IllegalArgumentException("peer host must not be blank: " + peer);
+        }
+        String hostPart = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
+        return URI.create(scheme + "://" + hostPart + ":" + port + CloudConfigKeys.EVENTS_PATH_DEFAULT);
+    }
+
+    private static int parsePort(String raw) {
+        int port;
+        try {
+            port = Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("peer port is not a number: '" + raw + "'");
+        }
+        if (port < 1 || port > 65535) {
+            throw new IllegalArgumentException("peer port out of range: " + port);
+        }
+        return port;
     }
 
     /** Connect-retry loop: dials, then parks for backoff on every failure. */
@@ -185,6 +240,7 @@ public final class PeerConnector implements AutoCloseable {
             dialer.interrupt();
         }
         dialers.clear();
+        watchdog.shutdownNow();
         // Releases the client's selector thread and pooled connections.
         http.close();
     }
@@ -198,6 +254,7 @@ public final class PeerConnector implements AutoCloseable {
     private final class ClientSessionHandler implements WebSocket.Listener {
         private final URI peer;
         private volatile WebSocket ws;
+        private volatile ScheduledFuture<?> handshakeTimer;
         private volatile PeerConnection connection;
         private volatile boolean suppressReconnect;
 
@@ -208,6 +265,14 @@ public final class PeerConnector implements AutoCloseable {
         @Override
         public void onOpen(WebSocket webSocket) {
             ws = webSocket;
+            // The socket being open says nothing about the mesh handshake:
+            // a peer that never answers the hello is aborted and retried.
+            handshakeTimer = watchdog.schedule(() -> {
+                if (connection == null && !closed) {
+                    LOG.warn("Peer {} never completed the mesh handshake — aborting", peer);
+                    abort();
+                }
+            }, HANDSHAKE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
             var hello = new java.util.LinkedHashMap<String, Object>();
             hello.put("proto", 1);
             hello.put("origin", hub.origin());
@@ -254,6 +319,12 @@ public final class PeerConnector implements AutoCloseable {
                 return;
             }
             List<String> remoteSubs = PeerHub.prefixes(frame.get("subscribe"));
+            // The handshake completed — disarm the watchdog before its race
+            // window can abort a healthy connection.
+            ScheduledFuture<?> timer = handshakeTimer;
+            if (timer != null) {
+                timer.cancel(false);
+            }
             // sendText queues the frame; isDone() immediately would be
             // racy. Queued == accepted: the socket serializes frames in
             // order, and a transport failure surfaces via onError/onClose

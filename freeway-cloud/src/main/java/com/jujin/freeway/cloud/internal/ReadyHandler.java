@@ -6,9 +6,11 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,7 +26,19 @@ public final class ReadyHandler implements RouteHandler {
     private final List<CloudHealthContributor> contributors;
     private final JsonCodec jsonCodec;
 
+    /**
+     * @throws IllegalStateException on duplicate contributor names — a wiring
+     *                               error, so it surfaces at construction
+     *                               instead of failing every readiness probe
+     */
     public ReadyHandler(List<CloudHealthContributor> contributors, JsonCodec jsonCodec) {
+        Set<String> names = new HashSet<>();
+        for (CloudHealthContributor contributor : contributors) {
+            if (!names.add(contributor.name())) {
+                throw new IllegalStateException(
+                    "Duplicate CloudHealthContributor name '" + contributor.name() + "'");
+            }
+        }
         this.contributors = List.copyOf(contributors);
         this.jsonCodec = jsonCodec;
     }
@@ -34,10 +48,6 @@ public final class ReadyHandler implements RouteHandler {
         Map<String, Object> cloud = new LinkedHashMap<>();
         boolean healthy = true;
         for (CloudHealthContributor contributor : contributors) {
-            if (cloud.containsKey(contributor.name())) {
-                throw new IllegalStateException(
-                    "Duplicate CloudHealthContributor name '" + contributor.name() + "'");
-            }
             HealthResult result;
             try {
                 result = contributor.check();

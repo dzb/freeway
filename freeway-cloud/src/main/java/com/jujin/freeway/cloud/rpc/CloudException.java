@@ -55,6 +55,17 @@ public class CloudException extends RuntimeException {
             false, -1, cause);
     }
 
+    /**
+     * A local failure that never reached the transport (bad URL/header,
+     * discovery backend bug) — deterministic, so never retried. Keeps the
+     * caller's failure surface uniform: every {@code call()} outcome is a
+     * {@code CloudException}, and a half-open probe still gets an outcome.
+     */
+    public static CloudException dispatch(String serviceId, Throwable cause) {
+        return new CloudException("Dispatch failure for service '" + serviceId + "': " + cause,
+            false, -1, cause);
+    }
+
     public static CloudException http(String serviceId, int status) {
         return new CloudException("Service '" + serviceId + "' returned HTTP " + status,
             status >= 500, status, null);

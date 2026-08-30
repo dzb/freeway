@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
+import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -29,8 +30,14 @@ public final class RetryerDefault implements Retryer {
         this.maxMillis = maxMillis;
     }
 
+    /** The library default retry policy. The values come from the shared
+     *  {@code freeway.cloud.rpc.retry.*} defaults ({@link CloudConfigKeys}),
+     *  the same source the config layer falls back to. */
     public static RetryerDefault withDefaults() {
-        return new RetryerDefault(3, 100, 5000);
+        return new RetryerDefault(
+            Integer.parseInt(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT),
+            Long.parseLong(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT),
+            Long.parseLong(CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT));
     }
 
     @Override

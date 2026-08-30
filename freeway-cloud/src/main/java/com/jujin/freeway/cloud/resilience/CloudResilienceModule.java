@@ -3,6 +3,7 @@ package com.jujin.freeway.cloud.resilience;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.CircuitBreakerDefault;
+import com.jujin.freeway.cloud.internal.ConfigValues;
 import com.jujin.freeway.cloud.internal.RateLimiterDefault;
 import com.jujin.freeway.cloud.internal.RetryerDefault;
 import com.jujin.freeway.ioc.Binder;
@@ -29,10 +30,13 @@ public final class CloudResilienceModule implements ModuleEx {
         b.bind(Retryer.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
-                int max = Integer.parseInt(symbols.resolve(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "3"));
-                long base = Long.parseLong(symbols.resolve(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "100"));
-                long maxMs = Long.parseLong(symbols.resolve(CloudConfigKeys.RPC_RETRY_BACKOFF_MAX, "5000"));
-                return new RetryerDefault(max, base, maxMs);
+                return new RetryerDefault(
+                    ConfigValues.intValue(symbols, CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS,
+                        CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT),
+                    ConfigValues.longValue(symbols, CloudConfigKeys.RPC_RETRY_BACKOFF_BASE,
+                        CloudConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT),
+                    ConfigValues.longValue(symbols, CloudConfigKeys.RPC_RETRY_BACKOFF_MAX,
+                        CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT));
             })
             .marker(Local.class)
             ;
@@ -44,9 +48,14 @@ public final class CloudResilienceModule implements ModuleEx {
                 if (!enabled) {
                     return CircuitBreaker.NOOP;
                 }
-                int threshold = Integer.parseInt(symbols.resolve(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "5"));
-                long openSeconds = Long.parseLong(symbols.resolve(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "30"));
-                return new CircuitBreakerDefault(threshold, Duration.ofSeconds(60), Duration.ofSeconds(openSeconds));
+                int threshold = ConfigValues.intValue(symbols, CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD,
+                    CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT);
+                long windowSeconds = ConfigValues.longValue(symbols, CloudConfigKeys.RPC_CB_FAILURE_WINDOW,
+                    CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT);
+                long openSeconds = ConfigValues.longValue(symbols, CloudConfigKeys.RPC_CB_OPEN_WINDOW,
+                    CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT);
+                return new CircuitBreakerDefault(threshold,
+                    Duration.ofSeconds(windowSeconds), Duration.ofSeconds(openSeconds));
             })
             .marker(Local.class)
             ;
@@ -55,7 +64,8 @@ public final class CloudResilienceModule implements ModuleEx {
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 boolean enabled = Boolean.parseBoolean(symbols.resolve(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "false"));
-                double perSecond = Double.parseDouble(symbols.resolve(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "100"));
+                double perSecond = ConfigValues.doubleValue(symbols, CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND,
+                    CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT);
                 return enabled ? new RateLimiterDefault(perSecond) : new RateLimiterDefault(Double.MAX_VALUE);
             })
             .marker(Local.class)

@@ -7,6 +7,7 @@ import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.cloud.internal.BaggagePropagator;
 import com.jujin.freeway.cloud.rpc.CloudHttpClient;
 import com.jujin.freeway.cloud.rpc.CloudRequest;
 import com.jujin.freeway.http.HttpConfigKeys;
@@ -24,6 +25,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -107,6 +109,37 @@ class BaggagePropagationTest {
             assertNull(BaggageModule.ENTRY_SEEN.get(),
                 "no baggage header must not fabricate baggage");
         }
+    }
+
+    @Test
+    void wireCodecRoundTripsValuesThatWouldCorruptTheHeader() {
+        // Separator characters, whitespace, non-ASCII and the escape char
+        // itself must travel as data, not corrupt the wire structure.
+        BaggagePropagator propagator = new BaggagePropagator();
+        Baggage baggage = Baggage.of(Map.of(
+            "tenant", "acme,corp",
+            "k=v", "tricky",
+            "note", "hello world",
+            "unicode", "café\u2603",
+            "percent", "50%"));
+        InvocationContext ctx = InvocationContext.of(null, null, baggage);
+
+        Map<String, String> headers = new HashMap<>();
+        propagator.inject(ctx, headers);
+
+        Baggage restored = propagator.extract(headers).baggage();
+        assertEquals(baggage.values(), restored.values(),
+            "the wire codec must round-trip arbitrary application baggage");
+    }
+
+    @Test
+    void malformedEscapeDegradesToRawText() {
+        // A foreign peer's malformed escape must not change the failure type
+        // the caller sees — extraction degrades to the raw text.
+        BaggagePropagator propagator = new BaggagePropagator();
+        Baggage restored = propagator.extract(Map.of("baggage", "k=%zz,ok=fine")).baggage();
+        assertEquals("%zz", restored.get("k"));
+        assertEquals("fine", restored.get("ok"));
     }
 
     static class BaggageModule implements ModuleEx {

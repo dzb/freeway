@@ -21,6 +21,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -37,6 +41,11 @@ import org.slf4j.LoggerFactory;
  * {@code null} newValue; {@code watch()} listeners are value consumers and are
  * only invoked for keys that still have a value — removals signal via the
  * event only. The initial load notifies nothing.
+ *
+ * <p>Change notifications are delivered asynchronously on a dedicated
+ * single-thread executor, in change order: {@code reload()} swaps the snapshot
+ * immediately (readers never wait on listeners) and a slow or throwing
+ * listener cannot delay the file watcher or the next reload.</p>
  */
 public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
 
@@ -46,10 +55,13 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
     private final Consumer<ConfigChangedEvent> onChange;
     private final AtomicReference<Map<String, String>> values = new AtomicReference<>(Map.of());
     private final Map<String, List<Consumer<String>>> listeners = new ConcurrentHashMap<>();
+    private final AtomicBoolean loaded = new AtomicBoolean();
+    /** Serializes change delivery; the only thread listeners ever run on. */
+    private final ExecutorService delivery = Executors.newSingleThreadExecutor(
+        Thread.ofVirtual().name("cloud-config-notify-", 0).factory());
 
     private final WatchService watchService;
     private final Thread watcher;
-    private volatile boolean loaded;
 
     public CloudConfigDefault(Path file) {
         this(file, null);
@@ -114,57 +126,79 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
     }
 
     @Override
-    public synchronized void reload() {
-        Map<String, String> next;
-        if (!Files.isRegularFile(file)) {
-            next = Map.of(); // deleted/absent: empty config — removals are notified below
-        } else {
-            Properties props = new Properties();
-            try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-                props.load(reader);
-            } catch (IOException e) {
-                LOG.warn("Failed to read config file {}: {}", file, e.getMessage());
-                return; // keep the last good snapshot on a partial/unreadable file
-            }
-            Map<String, String> map = new java.util.HashMap<>();
-            props.forEach((k, v) -> map.put(String.valueOf(k), String.valueOf(v)));
-            next = Map.copyOf(map);
+    public void reload() {
+        Map<String, String> next = readSnapshot();
+        if (next == null) {
+            return; // unreadable — keep the last good snapshot
         }
-        publishDiff(values.getAndSet(next), next);
+        Map<String, String> previous = values.getAndSet(next);
+        if (loaded.compareAndSet(false, true)) {
+            return; // the initial load is not a change and notifies nothing
+        }
+        deliver(previous, next);
+    }
+
+    /** Reads the properties file. {@code null} signals "unreadable". */
+    private Map<String, String> readSnapshot() {
+        if (!Files.isRegularFile(file)) {
+            return Map.of(); // deleted/absent: empty config — the diff signals removals
+        }
+        Properties props = new Properties();
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            props.load(reader);
+        } catch (IOException e) {
+            LOG.warn("Failed to read config file {}: {}", file, e.getMessage());
+            return null;
+        }
+        Map<String, String> map = new java.util.HashMap<>();
+        props.forEach((k, v) -> map.put(String.valueOf(k), String.valueOf(v)));
+        return Map.copyOf(map);
     }
 
     /**
-     * Notifies watchers of every key whose value changed or was removed
-     * (union of both key sets, sorted for deterministic order). The initial
-     * load is not a change and notifies nothing.
+     * Queues the diff of {@code previous} → {@code snapshot} for delivery on
+     * the notification thread. The swap above is already visible to readers;
+     * only the callbacks wait for the queue.
      */
-    private void publishDiff(Map<String, String> previous, Map<String, String> snapshot) {
-        if (!loaded) {
-            loaded = true;
-            return;
+    private void deliver(Map<String, String> previous, Map<String, String> snapshot) {
+        List<ConfigChangedEvent> changes = diff(previous, snapshot);
+        try {
+            delivery.execute(() -> changes.forEach(this::emit));
+        } catch (RejectedExecutionException closed) {
+            // close() raced the watch loop — the notification is moot
         }
+    }
+
+    /**
+     * Every key whose value changed or was removed (union of both key sets,
+     * sorted for deterministic order).
+     */
+    private static List<ConfigChangedEvent> diff(Map<String, String> previous, Map<String, String> snapshot) {
+        List<ConfigChangedEvent> changes = new java.util.ArrayList<>();
         java.util.TreeSet<String> keys = new java.util.TreeSet<>(previous.keySet());
         keys.addAll(snapshot.keySet());
         for (String key : keys) {
             String oldValue = previous.get(key);
             String newValue = snapshot.get(key);
-            if (Objects.equals(oldValue, newValue)) {
-                continue;
+            if (!Objects.equals(oldValue, newValue)) {
+                changes.add(new ConfigChangedEvent(key, oldValue, newValue)); // null new = removed
             }
-            Consumer<ConfigChangedEvent> cb = onChange;
-            if (cb != null) {
-                // Isolated exactly like a key listener: values are already
-                // swapped, so a throwing consumer must not strand the
-                // remaining keys un-notified.
-                try {
-                    cb.accept(new ConfigChangedEvent(key, oldValue, newValue)); // null new = removed
-                } catch (Exception e) {
-                    LOG.warn("Config change listener failed for {}: {}", key, e.getMessage());
-                }
+        }
+        return changes;
+    }
+
+    /** Delivers one change: the event callback, then the key listeners. */
+    private void emit(ConfigChangedEvent event) {
+        Consumer<ConfigChangedEvent> cb = onChange;
+        if (cb != null) {
+            try {
+                cb.accept(event);
+            } catch (Exception e) {
+                LOG.warn("Config change listener failed for {}: {}", event.key(), e.getMessage());
             }
-            if (newValue != null) {
-                notify(key, newValue);
-            }
+        }
+        if (event.newValue() != null) {
+            notify(event.key(), event.newValue());
         }
     }
 
@@ -179,6 +213,7 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
                 LOG.debug("WatchService close failed", e);
             }
         }
+        delivery.shutdown(); // let in-flight change notifications drain
     }
 
     private void watchLoop() {

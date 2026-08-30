@@ -108,4 +108,31 @@ class ObjectStorageTest {
         assertTrue(events.get(1) instanceof com.jujin.freeway.cloud.storage.ObjectDeletedEvent deleted
             && "k.txt".equals(deleted.key()));
     }
+
+    @Test
+    void deleteAbsentKeyIsANoopWithoutAnEvent() {
+        List<Object> events = new CopyOnWriteArrayList<>();
+        ObjectStorageDefault storage = new ObjectStorageDefault(dir, events::add);
+
+        storage.delete("assets", "never-existed.txt");
+
+        assertTrue(events.isEmpty(),
+            "an absent key is a no-op — no phantom deletion event");
+    }
+
+    @Test
+    void listSkipsSymlinksPointingOutsideTheRoot() throws Exception {
+        ObjectStorageDefault storage = new ObjectStorageDefault(dir);
+        Path outside = dir.resolveSibling("outside-list.txt");
+        Files.writeString(outside, "secret");
+        Path bucket = dir.resolve("assets");
+        Files.createDirectories(bucket);
+        Files.createSymbolicLink(bucket.resolve("leak.txt"), outside);
+        storage.put("assets", "owned.txt", new byte[]{1}, ObjectMetadata.of(""));
+
+        List<ObjectEntry> entries = storage.list("assets", "");
+
+        assertEquals(List.of("owned.txt"), entries.stream().map(ObjectEntry::key).toList(),
+            "an out-of-root symlink must not appear in listings");
+    }
 }

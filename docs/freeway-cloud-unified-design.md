@@ -329,9 +329,13 @@ public interface SecretStore {
   （限流重试会立即再失败）。`@Retry`/`@CircuitBreak`/`@RateLimit` 注解 +
   `Advisor` 织入本地接口服务为后期可选（AOP 仅接口→实现约束）。
 - 配置键：`freeway.cloud.rpc.retry.*` / `circuit-breaker.*` /
-  `rate-limit.*`；`circuit-breaker.enabled=false` → NOOP、
+  `rate-limit.*`（熔断滑动窗口秒数由
+  `circuit-breaker.failure-window` 控制，默认 60）；
+  `circuit-breaker.enabled=false` → NOOP、
   `rate-limit.enabled=false` → 无限。CloudResilienceModule 未安装时
-  client 退化到内置默认（max 3 重试 / 100ms 起退避 / 阈值 5 / 无限限流）。
+  client 退化到内置默认（max 3 重试 / 100ms 起退避 / 阈值 5 / 无限限流），
+  默认值与配置层同源于 `CloudConfigKeys` 的 `*_DEFAULT` 常量。
+  数字键解析失败以 `IllegalArgumentException` 快速失败，消息携带键名与原值。
 
 ### 5.7 健康检查（health）
 
@@ -477,10 +481,24 @@ public final class CloudConfigKeys {
     public static final String RPC_RETRY_BACKOFF_MAX   = PREFIX + ".rpc.retry.backoff-max";
     public static final String RPC_CB_ENABLED          = PREFIX + ".rpc.circuit-breaker.enabled";
     public static final String RPC_CB_FAILURE_THRESHOLD = PREFIX + ".rpc.circuit-breaker.failure-threshold";
+    /** Seconds a failure stays in the sliding window before it drops out of the count. */
+    public static final String RPC_CB_FAILURE_WINDOW   = PREFIX + ".rpc.circuit-breaker.failure-window";
     public static final String RPC_CB_OPEN_WINDOW      = PREFIX + ".rpc.circuit-breaker.open-window";
     public static final String RPC_RATE_LIMIT_ENABLED  = PREFIX + ".rpc.rate-limit.enabled";
     public static final String RPC_RATE_LIMIT_PER_SECOND = PREFIX + ".rpc.rate-limit.per-second";
     public static final String RPC_TRACE_ENABLED       = PREFIX + ".rpc.trace.enabled";
+
+    // Canonical resilience defaults — the single source shared by
+    // CloudResilienceModule (config fallbacks) and CloudHttpClientDefault
+    // (library fallback when the resilience module is not installed), so the
+    // two layers cannot drift apart.
+    public static final String RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = "3";
+    public static final String RPC_RETRY_BACKOFF_BASE_DEFAULT    = "100";
+    public static final String RPC_RETRY_BACKOFF_MAX_DEFAULT     = "5000";
+    public static final String RPC_CB_FAILURE_THRESHOLD_DEFAULT  = "5";
+    public static final String RPC_CB_FAILURE_WINDOW_DEFAULT     = "60";
+    public static final String RPC_CB_OPEN_WINDOW_DEFAULT        = "30";
+    public static final String RPC_RATE_LIMIT_PER_SECOND_DEFAULT = "100";
 
     // ── RPC / TLS ───────────────────────────────────────────
     public static final String RPC_TLS_KEY_STORE          = PREFIX + ".rpc.tls.key-store";

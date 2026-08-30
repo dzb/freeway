@@ -6,6 +6,7 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
+import com.jujin.freeway.cloud.internal.ConfigValues;
 import com.jujin.freeway.cloud.internal.TransportSecurityDefault;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -60,8 +61,10 @@ public final class CloudRpcModule implements ModuleEx {
         b.bind(CloudHttpClient.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
-                long requestMs = Long.parseLong(symbols.resolve(CloudConfigKeys.RPC_REQUEST_TIMEOUT, "10000"));
-                long connectMs = Long.parseLong(symbols.resolve(CloudConfigKeys.RPC_CONNECT_TIMEOUT, "3000"));
+                long requestMs = ConfigValues.longValue(symbols,
+                    CloudConfigKeys.RPC_REQUEST_TIMEOUT, "10000");
+                long connectMs = ConfigValues.longValue(symbols,
+                    CloudConfigKeys.RPC_CONNECT_TIMEOUT, "3000");
                 boolean traceEnabled = Boolean.parseBoolean(
                     symbols.resolve(CloudConfigKeys.RPC_TRACE_ENABLED, "true"));
                 return new CloudHttpClientDefault(

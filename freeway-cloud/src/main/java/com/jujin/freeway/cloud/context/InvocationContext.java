@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud.context;
 
 import java.lang.ScopedValue;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 
 /**
@@ -48,11 +47,10 @@ public final class InvocationContext {
      * children), otherwise this thread's ambient fallback.
      */
     public static Optional<InvocationContext> current() {
-        try {
+        if (CURRENT.isBound()) {
             return Optional.of(CURRENT.get());
-        } catch (NoSuchElementException unscoped) {
-            return Optional.ofNullable(AMBIENT.get());
         }
+        return Optional.ofNullable(AMBIENT.get());
     }
 
     /**

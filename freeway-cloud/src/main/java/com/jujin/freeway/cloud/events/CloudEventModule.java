@@ -2,6 +2,7 @@ package com.jujin.freeway.cloud.events;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.cloud.internal.ConfigValues;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -72,10 +73,10 @@ public final class CloudEventModule implements ModuleEx {
                     // armed even when the WS mesh is off.
                     if (Boolean.parseBoolean(
                             symbols.resolve(CloudConfigKeys.EVENTS_DEDUP_ENABLED, "false"))) {
-                        bus.enableInboundDeduplication(
-                            Integer.parseInt(symbols.resolve(
-                                CloudConfigKeys.EVENTS_DEDUP_CAPACITY,
-                                CloudConfigKeys.EVENTS_DEDUP_CAPACITY_DEFAULT)));
+                        bus.enableInboundDeduplication(ConfigValues.intValue(
+                            symbols,
+                            CloudConfigKeys.EVENTS_DEDUP_CAPACITY,
+                            CloudConfigKeys.EVENTS_DEDUP_CAPACITY_DEFAULT));
                     }
 
                     if (!enabled) {

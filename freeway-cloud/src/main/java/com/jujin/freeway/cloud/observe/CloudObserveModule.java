@@ -34,9 +34,18 @@ public final class CloudObserveModule implements ModuleEx {
         b.bind(Metrics.class).to(MetricsDefault.class).primary();
         // /metrics exports the primary registry's snapshot view — a
         // backend that replaces Metrics and renders itself is followed
-        // automatically; one that cannot fails route resolution at startup.
+        // automatically; one that cannot fails startup with a named error
+        // instead of a bare ClassCastException.
         b.bind(MetricsSnapshot.class)
-            .to((Container container) -> (MetricsSnapshot) container.get(Metrics.class));
+            .to((Container container) -> {
+                Metrics metrics = container.get(Metrics.class);
+                if (metrics instanceof MetricsSnapshot snapshot) {
+                    return snapshot;
+                }
+                throw new IllegalStateException("Metrics implementation "
+                    + metrics.getClass().getName() + " does not implement "
+                    + MetricsSnapshot.class.getName() + " — /metrics has no export view");
+            });
         b.contribute(Route.class).add("metrics", Route.get("/metrics", MetricsHandler.class));
     }
 }

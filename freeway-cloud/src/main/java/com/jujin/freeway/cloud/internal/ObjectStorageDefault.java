@@ -8,8 +8,10 @@ import com.jujin.freeway.cloud.storage.StorageException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -27,13 +29,15 @@ import org.slf4j.LoggerFactory;
  * <p>Path safety (mirrors the freeway-http staticfile regression bar):
  * bucket/key are validated against traversal ({@code ..}, absolute paths,
  * separators in buckets); reads verify the resolved real path stays inside
- * the mount root; writes delete a pre-existing symlink at the target (no
- * symlink poisoning), so a resolved path can never escape the root.
+ * the mount root; writes go through a temp file and an atomic replace, so a
+ * symlink planted at the target (or between check and write) is replaced as
+ * a link, never followed.
  *
  * <p>{@code presignedUrl} has no meaning on a local file system — empty.
  * Domain events ({@link com.jujin.freeway.cloud.storage.ObjectStoredEvent} /
  * {@link com.jujin.freeway.cloud.storage.ObjectDeletedEvent}) are emitted via
- * the optional {@code events} consumer.
+ * the optional {@code events} consumer — the deleted event only when an
+ * object was actually removed.
  */
 public final class ObjectStorageDefault implements ObjectStorage {
 
@@ -77,20 +81,34 @@ public final class ObjectStorageDefault implements ObjectStorage {
             if (!Files.isDirectory(parent)) {
                 Files.createDirectories(parent);
             }
-            // Symlink defense (mirrors the read path): after creating the
-            // parent chain, verify its real path still sits inside the real
-            // root — a symlinked intermediate directory (root/bucket -> /etc)
-            // would otherwise let the write escape the mount root.
+            // A symlinked intermediate directory (root/bucket -> /etc) must
+            // not steer the write out of the mount root.
             Path rootReal = root.toRealPath();
             if (!parent.toRealPath().startsWith(rootReal)) {
                 throw new StorageException(
                     "Path escapes storage root: " + bucket + "/" + key);
             }
-            // No symlink poisoning: a link at the target is removed before write.
-            if (Files.isSymbolicLink(target)) {
-                Files.delete(target);
+            // Write-then-rename: the final move is atomic within the bucket
+            // and replaces whatever sits at the target (including a symlink
+            // planted after the check above) without following it.
+            Path temp = Files.createTempFile(parent, ".upload-", ".tmp");
+            try {
+                Files.write(temp, data);
+                try {
+                    Files.move(temp, target,
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException unsupported) {
+                    Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException writeFailed) {
+                throw new StorageException("Failed to write " + bucket + "/" + key, writeFailed);
+            } finally {
+                try {
+                    Files.deleteIfExists(temp); // no-op after a successful move
+                } catch (IOException cleanupFailed) {
+                    // best-effort cleanup — never mask the primary failure
+                }
             }
-            Files.write(target, data);
         } catch (IOException e) {
             throw new StorageException("Failed to write " + bucket + "/" + key, e);
         }
@@ -103,6 +121,7 @@ public final class ObjectStorageDefault implements ObjectStorage {
     @Override
     public void delete(String bucket, String key) throws StorageException {
         Path target = resolve(bucket, key);
+        boolean deleted = false;
         try {
             Path parent = target.getParent();
             if (Files.isDirectory(parent)
@@ -110,15 +129,17 @@ public final class ObjectStorageDefault implements ObjectStorage {
                 throw new StorageException(
                     "Path escapes storage root: " + bucket + "/" + key);
             }
-            if (Files.isSymbolicLink(target)) {
+            // A symlink is removed as a link (never followed); a regular file
+            // is removed directly. Anything else — absent key, directory —
+            // stays untouched, so no event is emitted for it.
+            if (Files.isSymbolicLink(target) || Files.isRegularFile(target)) {
                 Files.delete(target);
-            } else if (Files.isRegularFile(target)) {
-                Files.delete(target);
+                deleted = true;
             }
         } catch (IOException e) {
             throw new StorageException("Failed to delete " + bucket + "/" + key, e);
         }
-        if (!Files.exists(target)) {
+        if (deleted) {
             emit(new com.jujin.freeway.cloud.storage.ObjectDeletedEvent(bucket, key));
         }
     }
@@ -131,19 +152,31 @@ public final class ObjectStorageDefault implements ObjectStorage {
         if (!Files.isDirectory(dir)) {
             return List.of();
         }
-        try (Stream<Path> stream = Files.walk(dir)) {
-            return stream
-                .filter(Files::isRegularFile)
-                .map(path -> {
-                    String relative = dir.relativize(path).toString().replace('\\', '/');
-                    return relative;
-                })
-                .filter(relative -> relative.startsWith(safePrefix))
-                .map(relative -> entry(dir, relative))
-                .sorted(Comparator.comparing(ObjectEntry::key))
-                .toList();
+        try {
+            Path rootReal = root.toRealPath();
+            try (Stream<Path> stream = Files.walk(dir)) {
+                return stream
+                    .filter(Files::isRegularFile)
+                    // A symlinked file pointing outside the root is skipped:
+                    // get() would refuse it, so listing it would leak names.
+                    .filter(path -> insideRoot(path, rootReal))
+                    .map(path -> dir.relativize(path).toString().replace('\\', '/'))
+                    .filter(relative -> relative.startsWith(safePrefix))
+                    .map(relative -> entry(dir, relative))
+                    .sorted(Comparator.comparing(ObjectEntry::key))
+                    .toList();
+            }
         } catch (IOException e) {
             throw new StorageException("Failed to list " + bucket + "/" + safePrefix, e);
+        }
+    }
+
+    /** True when the entry's real path stays inside the mount root. */
+    private boolean insideRoot(Path path, Path rootReal) {
+        try {
+            return path.toRealPath().startsWith(rootReal);
+        } catch (IOException inaccessible) {
+            return false; // vanished or unreadable mid-walk — not listable
         }
     }
 

@@ -6,9 +6,13 @@ import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Built-in {@link ServiceDeclaration} for the HTTP endpoint: registers the
@@ -23,23 +27,33 @@ import java.util.Map;
  */
 public final class HttpServiceDeclaration implements ServiceDeclaration {
 
+    private static final Logger LOG = LoggerFactory.getLogger(HttpServiceDeclaration.class);
+
+    /** Bind-all addresses: reachable locally, unreachable from other nodes. */
+    private static final Set<String> UNROUTABLE_HOSTS = Set.of("0.0.0.0", "::", "");
+
     @Override
     public ServiceInstance resolve(Container container) {
         WebServer server;
         try {
             server = container.get(WebServer.class);
-        } catch (Exception e) {
+        } catch (MissingBindingException e) {
             return null; // no HTTP module — nothing to register
         }
         SymbolSource symbols = container.get(SymbolSource.class);
         String serviceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_ID,
             symbols.resolve("freeway.app.name", "freeway-app"));
         String host = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_HOST, server.host());
-        int port = Integer.parseInt(symbols.resolve(
-            CloudConfigKeys.REGISTRY_SERVICE_PORT, String.valueOf(server.port())));
+        int port = ConfigValues.intValue(symbols,
+            CloudConfigKeys.REGISTRY_SERVICE_PORT, String.valueOf(server.port()));
         String scheme = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_SCHEME, "http");
         String instanceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
             serviceId + "@" + host + ":" + port);
+        if (UNROUTABLE_HOSTS.contains(host)) {
+            LOG.warn("Registering unroutable host '{}' for service '{}' — peers cannot call it;"
+                    + " set {} to the address other nodes should use (e.g. a Pod IP)",
+                host, serviceId, CloudConfigKeys.REGISTRY_SERVICE_HOST);
+        }
         return ServiceInstance.of(serviceId, instanceId,
             Endpoint.of(scheme, host, port), Map.of());
     }
