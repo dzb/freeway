@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -130,10 +131,14 @@ public final class ContainerImpl implements Container {
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
         registerBuiltin(Scoping.class, scoping, "Scoping");
         // Message domain: both buses are container-managed builtins so the
-        // documented usage (container.get(...)) works out of the box. Their
-        // close is deferred past every lifecycle callback (see Shutdown).
-        registerBuiltin(EventBus.class, new EventBus(this), "EventBus");
-        registerBuiltin(CallBus.class, new CallBus(this), "CallBus");
+        // documented usage (container.get(...)) works out of the box. They
+        // realize lazily on first resolution — always after every module has
+        // bound — so a module-supplied primary Metrics observes their
+        // counters instead of the buses freezing the pre-load NoopMetrics
+        // builtin. Their close is deferred past every lifecycle callback
+        // (see Shutdown); a bus that was never resolved has nothing to close.
+        registerBuiltinLazy(EventBus.class, EventBus::new, "EventBus");
+        registerBuiltinLazy(CallBus.class, CallBus::new, "CallBus");
         loadAll(modules);
         LOG.info("Loaded {} module(s): {}", loadedModules.size(),
             loadedModules.stream().map(m -> m.getClass().getSimpleName()).toList());
@@ -157,6 +162,19 @@ public final class ContainerImpl implements Container {
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
         BindingImpl<T> binding = new BindingImpl<>(this, type);
         binding.id(id).to(instance);
+        binding.addMarkers(Set.of(Builtin.class));
+        register(binding);
+    }
+
+    /**
+     * A builtin whose instance realizes on first resolution through the
+     * standard singleton path (target cache, shutdown lifecycle). Used for
+     * builtins whose dependencies come from module bindings — realizing
+     * eagerly would freeze whatever the pre-load builtins hold.
+     */
+    private <T> void registerBuiltinLazy(Class<T> type, Function<Container, T> factory, String id) {
+        BindingImpl<T> binding = new BindingImpl<>(this, type);
+        binding.id(id).to(factory);
         binding.addMarkers(Set.of(Builtin.class));
         register(binding);
     }
