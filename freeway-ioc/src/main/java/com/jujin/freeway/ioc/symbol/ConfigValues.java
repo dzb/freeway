@@ -1,14 +1,15 @@
-package com.jujin.freeway.cloud.internal;
-
-import com.jujin.freeway.ioc.symbol.SymbolSource;
+package com.jujin.freeway.ioc.symbol;
 
 import java.util.function.Function;
 
 /**
- * Typed config parsing with the key named in every failure — a malformed
- * numeric value surfaces as {@code freeway.cloud.rpc.connect-timeout must be
- * an integer: 'soon'} instead of a bare {@code NumberFormatException} with no
- * context. Startup still fails fast; the message just says where.
+ * Typed bind-time config parsing with the key named in every failure — a
+ * malformed numeric value surfaces as {@code freeway.cloud.rpc.connect-timeout
+ * must be an integer: 'soon'} instead of a bare {@code NumberFormatException}
+ * with no context. Parsing still fails fast; the message just says where.
+ *
+ * <p>Lives beside {@link SymbolSource} because it consumes it, and every
+ * module that resolves config depends on this package.
  */
 public final class ConfigValues {
 

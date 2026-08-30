@@ -3,7 +3,6 @@ package com.jujin.freeway.cloud.resilience;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.CircuitBreakerDefault;
-import com.jujin.freeway.cloud.internal.ConfigValues;
 import com.jujin.freeway.cloud.internal.RateLimiterDefault;
 import com.jujin.freeway.cloud.internal.RetryerDefault;
 import com.jujin.freeway.ioc.Binder;
@@ -11,8 +10,8 @@ import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.ConfigValues;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-
 import java.time.Duration;
 
 /**

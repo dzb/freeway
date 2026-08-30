@@ -1,7 +1,5 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.ioc.symbol;
 
-import com.jujin.freeway.cloud.internal.ConfigValues;
-import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -11,8 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Typed config parsing: fallbacks apply when unset, whitespace is trimmed,
- * and a malformed value fails fast with the key named in the message.
+ * Typed bind-time config parsing: fallbacks apply when unset, whitespace is
+ * trimmed, and a malformed value fails fast with the key named in the message.
  */
 class ConfigValuesTest {
 
@@ -44,14 +42,16 @@ class ConfigValuesTest {
             "the rejected value must be quoted: " + ex.getMessage());
     }
 
-    /** Minimal in-memory SymbolSource (mirrors the framework contract). */
+    /** Minimal in-memory SymbolSource (mirrors the framework contract:
+     *  a miss carries {@link UnknownSymbolException} so the typed
+     *  resolve(name, default) fallback applies). */
     private static SymbolSource symbolsOf(Map<String, String> values) {
         return new SymbolSource() {
             @Override
             public String resolve(String name) {
                 String value = values.get(name);
                 if (value == null) {
-                    throw new IllegalArgumentException("Unknown symbol: " + name);
+                    throw new UnknownSymbolException(name);
                 }
                 return value;
             }

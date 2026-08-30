@@ -6,7 +6,6 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
-import com.jujin.freeway.cloud.internal.ConfigValues;
 import com.jujin.freeway.cloud.internal.TransportSecurityDefault;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -19,8 +18,8 @@ import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.ConfigValues;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-
 import java.nio.file.Path;
 import java.time.Duration;
 

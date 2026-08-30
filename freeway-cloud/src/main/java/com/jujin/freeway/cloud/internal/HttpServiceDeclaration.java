@@ -7,6 +7,7 @@ import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
+import com.jujin.freeway.ioc.symbol.ConfigValues;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
