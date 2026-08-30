@@ -75,8 +75,8 @@ mvn test -Dtest=CoercerDefaultTest    # single test class
 ## Module Dependency Graph
 
 ```
-freeway-commons          shared utilities: JSON, coercion, scoped primitives, beans, validation
-freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, extensions
+freeway-commons          shared utilities: JSON, coercion, scoped primitives, beans, validation, config specs
+freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, extensions, symbol config
 freeway-boot             launcher, config cascade, profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
   └ built-in              FreewayHttpEngine (HTTP/1.1 + HTTP/2 + WebSocket + HTTPS)
@@ -84,6 +84,8 @@ freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SS
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
   └ connection pool       HikariCP adapter → see freeway-ext
 freeway-flow             Graph workflow engine — 7 node types, JSON graphs, tracing
+freeway-cloud            Cloud-native foundation: discovery, remote RPC, dynamic config,
+                         observability, resilience, health, secrets, object storage
 freeway-mq-kafka         Kafka adapter for EventBus → see freeway-ext
 ```
 
@@ -1550,7 +1552,7 @@ circuit breaking, and propagation all apply.
 public final class UserRpcModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
-        var bus = new CallBus(new MetricsOnlyContainer()); // or the container builtin
+        var bus = container.get(CallBus.class);            // container builtin
         bus.register("user", new UserHandlers());          // public methods become topics
 
         binder.contribute(Route.class)
@@ -1617,15 +1619,21 @@ freeway.cloud.events.enabled=true              # module is inert without this
 freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080
 freeway.cloud.events.subscriptions=order.,user.created
 freeway.cloud.events.allowed-types=com.acme.OrderCreated
+freeway.cloud.events.allowed-topics=order.
+freeway.cloud.events.token=mesh-secret         # blank = no peer auth (warned at startup)
 ```
 
 - `peers` — nodes to dial; a registry backend (Nacos) can feed these
   dynamically instead. The endpoint rides the existing HTTP server at
-  `/cloud/events`.
+  `/cloud/events`. IPv6 literals work bracketed (`[::1]:8080`) or bare.
 - `subscriptions` — CloudEvents `type` prefixes this node pulls from the
   mesh; empty = outbound-only. Prefixes match the event class FQN and the
   `@Topic` value.
-- `allowed-types` — CLASS-channel deserialization whitelist; empty = allow all.
+- `allowed-types` / `allowed-topics` — CLASS/TOPIC channel inbound
+  whitelists; empty = allow all (warned at startup).
+- `token` — shared secret every peer must present in the hello frame;
+  compared constant-time. Blank (default) disables peer auth — any host
+  that can reach the endpoint may connect.
 
 **Publishing is unchanged** — the same `EventBus.publish` fans out locally
 and into the mesh; remote events arrive as `publishInbound` on peers:

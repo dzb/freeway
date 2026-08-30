@@ -27,6 +27,7 @@ good taste** still have a place.
 | `freeway-http` | HTTP layer: routing, filters, static, multipart, WebSocket |
 | `freeway-db` | JDBC data access: ORM, pooling, transactions, migrations |
 | `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
+| `freeway-cloud` | Cloud-native foundation: service discovery, RPC (JDK HttpClient), dynamic config, observability, resilience, health, secrets, object storage |
 | `freeway-mq-kafka` | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have **zero external dependencies.** Third-party adapters live in

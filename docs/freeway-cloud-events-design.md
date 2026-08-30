@@ -1,6 +1,7 @@
 # CloudEventBus 设计（freeway-cloud 事件网格）
 
-> 状态：**A 阶段契约文档** — 定协议与组件形态，不含实现。
+> 状态：**已实现（E1–E3 完成，见文末状态注）** — 协议与组件形态均已
+> 落地；与早期草案的偏差以正文与修订记录为准。
 > 目标：装载 `freeway-cloud` 后，`EventBus` 获得"跨 JVM 事件通道"：
 > A 节点 publish 的事件，以 CloudEvents 1.0 格式实时推送到所有订阅的
 > 对端节点并触发本地订阅者。
@@ -77,9 +78,10 @@ stream:
       协调机制，记为待定协议扩展——WS 订阅声明现在就携带 group，
       协议设计期留下最便宜的落位。
   - 对端 ack（服务方回）：
-    `{ "proto": 1, "origin": "...", "accept": true }`；拒绝时
-    `accept:false` + `reason`，随后关闭。拒绝仅发生在协议不兼容
-    （proto 版本）或重复连接被决断关闭时。
+    `{ "proto": 1, "origin": "...", "accept": true, "subscribe": [...] }`
+    （ack 携带服务方自己的 hello）。拒绝不发 accept:false 帧——直接以
+    WS 关闭码表达：`1008`（token 校验失败/未授权）、`1002`（协议错误：
+    origin 缺失或未知帧），随后关闭。重复连接按 origin 字典序决断关闭。
 
 ### 2.2 事件帧（CE 1.0 JSON 格式，Json content mode）
 
@@ -107,9 +109,11 @@ stream:
 
 ### 2.3 心跳与保活
 
-复用既有 WS ping/pong（`WebSocketSession.ping`），间隔沿用
-`freeway.cloud.rpc` 心跳节奏或独立键（`freeway.cloud.events.keepalive`，
-默认 30s）。连续 miss 即判死 → 关闭 → 走重连。
+v1 未实现应用层心跳（`freeway.cloud.events.keepalive` 键未实现）：
+连接活性依赖 TCP/WS 层行为、发送失败检测（出站 send 失败即摘除连接）
+与对端 close 即时感知。客户端侧有**握手看门狗**：socket 打开后 10s 内
+未完成 hello/ack 即中止并走退避重连，半开连接不会悬挂。应用层心跳
+列为待定扩展。
 
 ## 3. 节点发现与连接生命周期（connection-as-fact）
 
@@ -120,20 +124,19 @@ stream:
 1. HTTP server 启动（承载 /cloud/events WS 端点）——已有
 2. ServiceDeclaration → RegistryStore / 外部注册表（已有, 零改动）
 3. PeerConnector: 解析 peers → 逐个发起 WS 连接（握手 + hello）
-4. 服务侧接受连接 → RegistryStore 写入虚拟实例:
-     serviceId  = "cloud-events"
-     instanceId = hello.origin
-     metadata   = {prefixes, endpoint}
-5. 双向可用。对端关闭/心跳超时 → 移除虚拟实例 → "下线"
+4. 服务侧接受连接 → PeerHub 连接表登记（key = hello.origin，
+   ConcurrentHashMap 形状；不写 RegistryStore——早期草案的"虚拟实例"
+   方案未采用，连接状态即事实本身）
+5. 双向可用。对端关闭/握手失败 → unregister → "下线"
 
 peers 解析（双源）:
-  a. freewey.cloud.events.peers=host:port,…（静态配置，@Local 后端的引导输入）
-  b. 有外部 registry 后端（Nacos…）时: 发现 serviceId="cloud-events"
-     的实例列表动态扩展（周期轮询, 2-5s；外部后端自带的 push 能力
-     由适配器接，core 不做 watch）
+  a. freeway.cloud.events.peers=host:port,…（静态配置，@Local 后端的引导输入；
+     IPv6 字面量支持方括号与裸写两种形态）
+  b. 有外部 registry 后端（Nacos…）时: 经 setPeers 动态喂入
+     （外部后端自带的 push 能力由适配器接，core 不做 watch）
 ```
 
-- 断线重连：指数退避（复用 retry backoff 风格），重连成功重走握手
+- 断线重连：指数退避（1s 起、30s 封顶），重连成功重走握手
   （订阅状态在连接里，天然重置）。
 - 节点关闭：deregister（既有 hook）+ 主动 close 所有 WS（对端立即
   感知，不等心跳超时）。
@@ -165,45 +168,59 @@ publish(event)
 
 ```
 onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
-       → CLASS: 按类型白名单反序列化 → publishInbound(event)
-         TOPIC: publishInbound(topic, payload)
+       → 拦截器链（全部放行才继续）
+       → CLASS: 类型白名单放行后反序列化 → publishInboundWithId(event, id)
+         TOPIC: topic 白名单放行 → publishInboundWithId(topic, payload, id)
 ```
 
-- **allowedEventTypes 白名单继续生效**（防任意类实例化，安全边界不变）。
+- **allowedEventTypes / allowedTopics 双白名单继续生效**（CLASS 防任意
+  类实例化、TOPIC 防任意 topic 注入，两道门独立——空列表 = 放行全部，
+  wire 时有启动告警）。
 - **拦截器位**（吸收 solon `CloudEventInterceptor`）：入站管道经
   `contribute(CloudEventInterceptor.class)` 贡献的拦截器链——审计、
   租户检查、自定义过滤的统一挂点，所有通道共用。
-- `id + source` 幂等去重为**内置拦截器**（吸收自 solon，替代原
-  "可选装饰"表述）：默认关；启用时以 ScopedCache 窗口去重（窗口 =
-  本地 Defer/缓存作用域寿命）。实现即一个内置拦截器，不再是特殊路径。
+- 跨传输幂等去重**不在拦截器**（拦截器只看得到 mesh 帧，会漏掉经
+  broker 到达的同一事件）：落在 `publishInboundWithId` 这一所有传输
+  共用的漏斗上，`EventBus.enableInboundDeduplication(capacity)` 显式
+  开启（`events.dedup.enabled`，窗口容量 `events.dedup.capacity`，
+  默认 4096），依据是总线铸造的共享事件 id。
 - 回环防护：`fworigin == 本节点 origin` 的入站帧丢弃（自身经 mesh
   环回的事件；配合 publishInbound 的"不回桥"语义双保险）。
 
 ## 5. 与 EventBridge SPI 的关系
 
-**新增平行的 `CloudEventBridge`，不修改 `EventBridge`**：
+**`CloudEventBridge` 实现 `EventBridge` SPI**（经
+`EventBus.addEventBridge` 安装，`EventBus` 核心零改动）：
 
 - `EventBridge` 是 broker 语义（send-and-forget 到持久通道），由 ext
-  适配器实现；`publish` 内部钩子位置相同，但两者互斥安装（同一总线
-  同时装 Kafka 桥与 CE-WS 桥 = 双倍出栈，属用户显式选择，框架不禁止
-  但文档标注）。
+  适配器实现；CE-WS 桥与 Kafka 桥**可以并存**——总线对每个 bridge 都
+  派发（fan-out），同一事件经两条通道到达同一节点时由共享事件 id +
+  入站去重窗口收敛（`events.dedup.enabled`）。双通道并存属用户显式
+  选择，框架支持。
 - CE 翻译器（envelope）作为独立纯函数类放在 `cloud.events` 子包；
   将来 Kafka 桥想发 CE 格式，可直接复用翻译器（ext 可选依赖 cloud）。
-- `EventBus` 核心零改动（桥接口既存，安装面在 cloud 模块）。
+- 出站派发在发布线程上同步执行（JDK WS `sendText` 为排队式非阻塞），
+  at-most-once、best-effort：发送失败的连接被摘除，重连是 connector
+  的职责。
 
 ## 6. 组件清单
 
 | 组件 | 包 | 职责 |
 |---|---|---|
 | `CloudEventEnvelope` | cloud.events | CE 1.0 翻译器：translate/parse，属性映射表见 §2.2 |
-| `CloudEventsEndpoint` | cloud.events | WS 端点：握手/hello/订阅声明/入站管道 |
-| `PeerConnector` | cloud.events | peers 解析（config/discovery 双源）+ 连接生命周期 + 退避重连 |
-| `CloudEventBridge` | cloud.events | 出站钩子：遍历活跃连接、前缀过滤、发送 |
-| `CloudEventInterceptor` | cloud.events | 入站拦截器位（contribution）：幂等去重即内置实现之一 |
-| `CloudEventModule` | cloud.events | 装配：endpoint route + connector hook + bridge 绑定 |
+| `PeerHub` | cloud.events | WS 端点（`WebSocketEndpoint`）：握手/hello/token 门禁/订阅声明/入站管道 + 连接表（按 origin 去重） |
+| `PeerConnector` | cloud.events | peers 解析（config/discovery 双源）+ 连接生命周期 + 退避重连 + 握手看门狗 |
+| `PeerConnection` | cloud.events | 一条活跃连接：对端身份、订阅前缀、发送器（close 恰好一次） |
+| `CloudEventBridge` | cloud.events | 出站钩子（实现 `EventBridge`）：遍历活跃连接、前缀过滤、发送 |
+| `CloudEventInterceptor` | cloud.events | 入站拦截器位（contribution）：审计/租户/自定义过滤 |
+| `CloudEventModule` | cloud.events | 装配：endpoint route + connector hook + bridge 安装 + 去重开关 |
 
-配置键（`freeway.cloud.events.*`）：`enabled`（默认 false）、`peers`、
-`keepalive`、`idempotency`（幂等去重开关）。
+配置键（`freeway.cloud.events.*`，全部已在 `CloudConfigKeys` 落地）：
+`enabled`（默认 false）、`peers`、`subscriptions`（本节点出站订阅
+声明）、`allowed-types` / `allowed-topics`（入站双白名单）、`token`
+（mesh 握手共享密钥，常量时间比较）、`dedup.enabled` /
+`dedup.capacity`（默认 4096）。无 `keepalive` / `idempotency` 键
+（§2.3、§4.2）。
 
 ## 7. 明确不做（v1）
 
@@ -236,7 +253,7 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 | E3 | 文档进 DEVELOPER-GUIDE + ext 验证（Nacos 后端场景可选） | E2 |
 
 > **状态（2026-08-28）**：E1–E3 已实施——`CloudEventEnvelope` 翻译器、
-> `PeerHub`/`CloudEventsEndpoint`（WS 端点 + 入站管道 + 拦截器位）、
+> `PeerHub`（WS 端点 + 入站管道 + 拦截器位）、
 > `PeerConnector`（双源 peers + 退避重连）、`CloudEventBridge`（出站
 > 钩子，订阅前缀过滤）全部落地；双节点真实 WS 契约测试覆盖双向
 > 往返、前缀过滤、白名单、Keyed subject、非白名单丢弃与惰性模式。

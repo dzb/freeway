@@ -8,6 +8,9 @@ Commons provides the small, shared runtime utilities used across Freeway.
 - `Defer` / `ScopedCache`
 - `BeanValidator`
 - `Coercer` / `CoerceRule`
+- `MethodHandleUtils` — cached `MethodHandle`/`VarHandle`/constructor handles for reflective invocation hot paths (`methodHandle`, `defaultMethodHandle`, `invokeOn`)
+- `ConfigSpec` — typed, defaulted `AppConfig` keys with per-key parsers
+- `ContextExecutor` — explicit cross-thread propagation of `ScopedValue`-based context
 - `JULFileHandler`
 - `LogBootstrap`
 
@@ -35,8 +38,8 @@ Commons provides the small, shared runtime utilities used across Freeway.
 
 For more details, see:
 
-- [Defer summary](../freeway-defer-summary.md)
-- [DB usage guide](../freeway-db.md)
+- [Defer summary](freeway-defer-summary.md)
+- [DB usage guide](freeway-db.md)
 
 ## JSON
 
@@ -119,4 +122,4 @@ Console colors auto-detected from TTY. Force on/off with `-Dfreeway.log.color=al
 
 ### Reference Template
 
-See [`docs/freeway-log.properties.reference`](../freeway-log.properties.reference) for annotated examples with best practices.
+See [`docs/freeway-log.properties.reference`](freeway-log.properties.reference) for annotated examples with best practices.

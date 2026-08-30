@@ -71,13 +71,16 @@ serviceId 是**普通字符串**，不设计为公开类型（遵循 CLAUDE.md�
 ### 3.2 Endpoint —— 结构化定位符
 
 ```java
-public record Endpoint(String scheme, String host, String port, String basePath) {
+public record Endpoint(String scheme, String host, int port, String basePath) {
     public URI uri() { ... }
 }
 ```
 
 覆盖 scheme/port/basePath、DNS 名、K8s Service FQDN、mesh sidecar、非 IP
-定位。不做裸字符串拼接。
+定位。不做裸字符串拼接。basePath 构造期规范化（空 → `""`、补 `/` 前缀、
+去尾斜杠），整个元组在构造期校验能否渲染为合法 URI——坏定位符在装配期
+报错，绝不留到请求线程。IPv6 字面量按 RFC 3986 加方括号（容忍已带括号
+的入参）。
 
 ### 3.3 ServiceInstance —— 实例模型
 
@@ -110,12 +113,16 @@ public final class InvocationContext {
 ```
 
 - 不承载业务数据、配置快照、对象缓存。
-- 传播统一由 `Propagator` 处理：`extract(headers, ic)` / `inject(ic, headers)`。
+- 传播统一由 `Propagator` 处理：`extract(headers)`（返回部分上下文，
+  由 `PropagationFilter` 按"非空胜出"合并）/ `inject(ctx, headers)`。
   内置 `TracePropagator`（W3C `traceparent`：`00-traceid-spanid-flags`）、
-  `AuthPropagator`（`Authorization: Bearer <token>`）、`BaggagePropagator`。
-  新增关注点 = 贡献一个 `Propagator`，不改 core。
+  `AuthPropagator`（`x-principal` / `x-principal-roles`，只传播已验证
+  身份，见 §5.9）、`BaggagePropagator`（W3C `baggage`，键值百分号编码，
+  任意值无损往返）。新增关注点 = 贡献一个 `Propagator`，不改 core。
 - 两个边界应用点：`PropagationFilter`（`HttpFilter`，入站
-  `extract` → `enter(ic)`）与 `CloudHttpClientDefault`（出站注入当前 ic）。
+  `extract` → 合并 → `InvocationContext.runWith` 绑定请求作用域）与
+  `CloudHttpClientDefault`（出站注入当前 ic；`callAsync` 在派发前捕获
+  调用方上下文，虚拟线程上以 `runWith` 恢复）。
 - 进程内传播：`ScopedValue` 承载；异步跨线程用 `ContextExecutor`
   （freeway-commons）显式传播。**MDC 只作显示层**（`JULMDCAdapter` 是
   ThreadLocal 型、不跨线程、虚拟线程终止即清理），上下文载体必须是
@@ -136,13 +143,16 @@ com.jujin.freeway.cloud
 ├── annotation/                后端/策略/能力标记（§6.1）
 ├── context/                   InvocationContext, TraceContext, PrincipalContext,
 │                              Baggage, Propagator (+ 内置 Propagator)
-├── config/                    CloudConfig, ConfigRef, ConfigChangedEvent
-├── secret/                    SecretStore, SecretSymbolSource（§5.4）
-├── discovery/                 ServiceInstance, Endpoint, Health,
-│                              ServiceDiscovery, ServiceRegistry,
-│                              ServiceDeclaration, LoadBalancer
-├── rpc/                       CloudHttpClient, CloudRequest, CloudResponse,
-│                              CloudException（§5.2）
+├── config/                      CloudConfig, ConfigRef, ConfigSubscription,
+│                                ConfigChangedEvent
+├── secret/                      SecretStore, SecretSymbolSource（§5.4）
+├── discovery/                   ServiceInstance, Endpoint, Health,
+│                                ServiceDiscovery, ServiceRegistry,
+│                                ServiceDeclaration, LoadBalancer
+├── rpc/                         CloudHttpClient, CloudRequest, CloudResponse,
+│                                CloudException（§5.2）；CallBus 远端桥接
+│                                RemoteCaller / RemoteProxyFactory /
+│                                RpcEndpoint（见 freeway-remote-callbus-design.md）
 ├── observe/                   Tracer（Metrics 见 freeway-commons）（§5.5）
 ├── resilience/                CircuitBreaker, RateLimiter, Retryer（§5.6）
 ├── health/                    CloudHealthContributor, HealthResult（§5.7）
@@ -185,7 +195,8 @@ public final class CloudModule implements ModuleEx {
 接口职责固定：
 
 - `ServiceRegistry`：register / renew / deregister（生命周期）
-- `ServiceDiscovery`：getInstances / subscribe（查询）
+- `ServiceDiscovery`：getInstances（查询；另有无次序的 `getInstance`
+  default 便捷方法）
 - `ServiceDeclaration`（吸收 design-A）：扩展点——任何模块声明
   "本次启动要注册什么端点"（HTTP/gRPC/自定义协议/多端口），
   `CloudDiscoveryModule` 的注册 Hook 统一收集注册：
@@ -233,14 +244,16 @@ public record CloudResponse(int status, Map<String,List<String>> headers, byte[]
 **调用链**（`CloudHttpClientDefault`，`internal/`，包 JDK `HttpClient`）：
 
 ```
-discovery.getInstances(serviceId)
+rateLimiter.tryAcquire()
+  → breaker.allowRequest()
+  → discovery.getInstances(serviceId)
   → loadBalancer.choose(instances, ctx)      // 只选 live && ready
   → endpoint + path 拼 URL
   → 注入 InvocationContext（traceparent / principal / baggage 头）
-  → 韧性编排（retry → circuit-breaker → rate-limit → 超时）
   → httpClient.send(...)                     // 虚拟线程同步阻塞
   → CloudResponse
 ```
+（重试从 rate-limit 步重新开始；每次尝试重选实例。）
 
 - **被调方零要求**：就是普通 Freeway HTTP 应用，Route 照常贡献。
   无 `/rpc/*` 私有协议、无方法级派发、无跨边界异常序列化。
@@ -250,8 +263,9 @@ discovery.getInstances(serviceId)
   不重试）。`CloudException` 携带 retryable 标志。
 - 超时：每调用 `HttpRequest.timeout(Duration)`，键
   `freeway.cloud.rpc.connect-timeout` / `request-timeout`。
-- 默认：`bind(CloudHttpClient).to(CloudHttpClientDefault).primary()`；
-  ext 可换 WebClient/gRPC 传输（随适配器交付对应 marker，core 不预铺）。
+- 默认：`bind(CloudHttpClient)` → `CloudHttpClientDefault`，标记
+  `@Local`；ext 可换 WebClient/gRPC 传输（随适配器交付对应 marker，
+  core 不预铺）。
 - 响应侧 `bodyAs(Class, JsonCodec)` 与服务端用同一 `JsonCodec`
   （record/泛型/java.time 支持已验证）。
 - **明确不做**：`@CloudClient` 接口代理、`CloudExporter` 服务端导出、
@@ -261,9 +275,10 @@ discovery.getInstances(serviceId)
 ### 5.3 配置中心（config）
 
 - `CloudConfig`：`get(key)` / `asMap()`（受控快照）/ `watch(key, listener)`
-  / `addListener(ConfigListener)` / `reload()`。
+  （返回 `ConfigSubscription`，可注销）/ `reload()`。
 - `ConfigRef<T>`：包装显式读最新值（主动拉取，无"字段自动变"魔法）。
-- 变更发布 `ConfigChangedEvent` 到 `EventBus`（响应式重绑的钩子）。
+- 变更发布 `ConfigChangedEvent` 到 `EventBus`（响应式重绑的钩子）；
+  值监听器只收到非空新值，键删除仅经事件（newValue=null） signaling。
 - 贡献为**动态 `SymbolProvider`**：`@Value`/`@Symbol` 解析时读取最新值
   （contributed 优先级高于 system/env 默认链，`SymbolSourceDefault`
   已支持），不破坏 `AppConfig` 启动快照。
@@ -323,10 +338,14 @@ public interface SecretStore {
   30s）后放行单个半开探测，成功回 CLOSED、失败重开；成功重置失败窗口。
   `RateLimiterDefault`：令牌桶，burst 默认 1（严格速率）。
 - **默认优先在 `CloudHttpClient` 层统一生效**（最稳定、最容易落地的
-  路径，见 §5.2 编排）。编排顺序：breaker → rate-limiter → 选实例 →
+  路径，见 §5.2 编排）。编排顺序：rate-limiter → breaker → 选实例 →
   发送；5xx/连接/超时进重试+熔断，重试重新选实例。**本地拒绝语义**：
   circuit-open / rate-limited 是 retryable=false 的 `CloudException`
-  （限流重试会立即再失败）。`@Retry`/`@CircuitBreak`/`@RateLimit` 注解 +
+  （限流重试会立即再失败），且计入 `cloud.rpc.failures` 指标；
+  限流先于熔断——本地拒绝不消耗半开探针名额。派发期的非预期本地异常
+  （坏 URL/头、discovery 后端缺陷）统一映射为
+  `CloudException.dispatch`（retryable=false），保证调用面单一、半开
+  探针总有结局。`@Retry`/`@CircuitBreak`/`@RateLimit` 注解 +
   `Advisor` 织入本地接口服务为后期可选（AOP 仅接口→实现约束）。
 - 配置键：`freeway.cloud.rpc.retry.*` / `circuit-breaker.*` /
   `rate-limit.*`（熔断滑动窗口秒数由
@@ -354,11 +373,16 @@ public interface SecretStore {
 - `ObjectMetadata` / `ObjectEntry` / `PutResult` / `StorageException`。
 - 默认 `ObjectStorageDefault`：本地文件系统（`root/bucket/key`）。**路径
   安全**（对照 freeway-http staticfile 回归要求）：bucket 校验（禁
-  `..`/分隔符）、key normalize 后禁绝对路径与 `..` 前缀、读路径
-  `toRealPath` 必须落在挂载根内、写前删除目标处的已存在 symlink（防
-  投毒）。`presignedUrl` 本地无签名语义返回 empty；etag 为 SHA-256、
-  versionId 每次写入新 UUID。`storage.base-path` 默认工作目录下
-  `cloud-storage`。
+  `..`/分隔符）、key normalize 后禁绝对路径与 `..` 前缀、读写删路径均
+  `toRealPath` 校验落在挂载根内；**写入走临时文件 + 原子替换**
+  （ATOMIC_MOVE，降级 REPLACE_EXISTING）——目标处即使被植入 symlink 也
+  是被替换为链接本身而非被跟随，检查与写入之间无 TOCTOU 窗口；
+  `list` 跳过指向根外的 symlink（与 get 的拒绝语义一致，避免泄露外部
+  文件名）。`delete` 仅在真实移除（symlink 或普通文件）时发
+  `ObjectDeletedEvent`——**不存在的键是 no-op，不发幽灵删除事件**。
+  `presignedUrl` 本地无签名语义返回 empty；etag 为 SHA-256、
+  versionId 每次写入新 UUID（`list` 条目的 etag 是 size+mtime 派生值，
+  非内容哈希）。`storage.base-path` 默认工作目录下 `cloud-storage`。
 - 领域事件 `ObjectStoredEvent` / `ObjectDeletedEvent`（EventBus，经构造
   注入的发布回调）。
 - 与主链路（discovery/rpc/config/observe/resilience）解耦，可独立安装。
@@ -434,7 +458,8 @@ stop（逆序）:
   `freeway.cloud.registry.service-id` → `freeway.app.name`；host 由
   `registry.service-host` 覆盖（0.0.0.0 / K8s POD_IP 注入）；instanceId
   默认派生键（`service-id@host:port`），可经
-  `registry.service-instance-id` 钉住。
+  `registry.service-instance-id` 钉住。注册 bind-all 地址
+  （`0.0.0.0` / `::`）时启动告警，提示配置其他节点可达的 service-host。
 - 优雅关停复用既有能力：`freeway.http.server.shutdown-grace` +
   `AppStoppingEvent`（close 时先发布再逆序停 hooks）+ JVM shutdown hook，
   不重造。
@@ -508,6 +533,18 @@ public final class CloudConfigKeys {
 
     // ── Auth propagation ────────────────────────────────────
     public static final String AUTH_EXTRACT_ENABLED = PREFIX + ".auth.extract.enabled";
+
+    // ── CloudEventBus（WS 事件网格，见 freeway-cloud-events-design.md）──
+    public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
+    public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
+    public static final String EVENTS_SUBSCRIPTIONS  = PREFIX + ".events.subscriptions";
+    public static final String EVENTS_ALLOWED_TYPES  = PREFIX + ".events.allowed-types";
+    public static final String EVENTS_ALLOWED_TOPICS = PREFIX + ".events.allowed-topics";
+    public static final String EVENTS_TOKEN          = PREFIX + ".events.token";
+    public static final String EVENTS_DEDUP_ENABLED  = PREFIX + ".events.dedup.enabled";
+    public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".events.dedup.capacity";
+    public static final String EVENTS_DEDUP_CAPACITY_DEFAULT = "4096";
+    public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
 }
 ```
 
@@ -577,9 +614,9 @@ public final class CloudConfigKeys {
 
 ## 12. 实施状态与后续工作
 
-**core 已完成（2026-08-19，53 个测试全绿）**：Phase 0–7 全部落地——
-脚手架、核心对象与本地默认、注册发现与远程调用、配置中心、可观测性、
-韧性、安全、对象存储。实现细节与偏差见各 § 与 §11。
+**core 已完成（2026-08-19 定稿；当前 115 个测试全绿）**：Phase 0–7 全部
+落地——脚手架、核心对象与本地默认、注册发现与远程调用、配置中心、
+可观测性、韧性、安全、对象存储。实现细节与偏差见各 § 与 §11。
 
 ### 12.1 Phase 8（freeway-ext，后续另做）
 

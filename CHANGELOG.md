@@ -5,7 +5,7 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.11] — 2026-08-30
 
 ### Added
 
@@ -55,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   该组方法刻意**不**实现为 `publishInbound` 的重载——`(String, String)` 调用
   无法在三参 topic 形态与泛型两参形态之间消歧。事件 id 为 null/空白时一律
   投递，旧版生产者不带 id 头不会被丢事件。
+- **`MethodHandleUtils.defaultMethodHandle`（freeway-commons）** — 缓存的
+  非虚派发方法句柄（`findSpecial`）：在代理接收者上调用接口 default 方法
+  的正确句柄形态（`methodHandle` 的虚派发会命中代理自身，无限递归）。
+  按 Method 缓存、Lock-free 读取，与既有句柄缓存同构。
+- **`ConfigValues`（freeway-ioc，`symbol` 包）** — bind 期类型化配置解析：
+  `intValue`/`longValue`/`doubleValue` 以键名+原值报错（如
+  `freeway.cloud.rpc.connect-timeout must be an integer: 'soon'`），取代
+  散落的裸 `Integer.parseInt`。cloud 四个模块与 ext `freeway-mq-kafka`
+  已接入；紧邻其消费的 `SymbolSource`，所有解析配置的模块均可直接使用。
 
 ### Changed
 
@@ -90,6 +99,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Channel.TOPIC`，两者不一致；统一为 `CLASS`（两参形态收到的是具体事件对象、
   topic 由类型推导，本就是 class 通道）。总线始终传显式通道，故仅影响直接
   调用 SPI 的代码。
+- **CallBus 派发走缓存方法句柄（freeway-ioc）** — 热路径从裸
+  `Method.invoke` 切换为注册期解析的 `MethodHandleUtils.invokeOn`，与
+  AOP/Lifecycle 的既有惯例一致；业务异常不再经
+  `InvocationTargetException` 拆包（方法句柄直接抛原异常），DeadCall
+  时的 default 方法降级改用共享缓存的非虚句柄。行为差异仅一处：直接
+  `call(topic, payload)` 参数个数/类型不匹配时失败类型由
+  `IllegalArgumentException` 变为 `WrongMethodTypeException`/
+  `ClassCastException`（同为 RuntimeException，无契约依赖）。
 
 ### Removed
 
@@ -168,6 +185,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   分层并发缓存（读无锁），AdvisedHandler 另加每代理句柄缓存；Coercer 重注册
   在 assignable-source 索引中留下重复条目；JSON 解析器 BOM 判定的裸 U+FEFF
   字符改为转义写法。
+- **freeway-ioc**：EventBus/CallBus 从容器构造期急切实例化改为**首次解析时
+  惰性 realize**（标准单例路径）——此前构造期 `container.get(Metrics)`
+  冻结预加载的 NoopMetrics，模块供给的 primary 注册表永远收不到
+  `eventbus.*`/`callbus.*` 计数（与观测模块的文档承诺相悖）；Shutdown
+  语义不变（未解析的总线无需关闭，close 期间解析的仍走延迟关闭）。
+  新增 `BuiltinMetricsWiringTest` 固化行为。
+- **freeway-cloud**（审计修复批）——`ObjectStorageDefault`：`delete` 仅在
+  真实移除对象时发 `ObjectDeletedEvent`（此前对不存在的键也发幽灵删除
+  事件，违背接口 no-op 契约）；`put` 改为临时文件 + 原子替换
+  （ATOMIC_MOVE 降级 REPLACE_EXISTING），目标处 symlink 被替换链接本身
+  而非被跟随，检查与写入间不再有 TOCTOU 窗口；`list` 跳过指向根外的
+  symlink（与 get 的拒绝语义对齐，不再泄露外部文件名）。
+  `BaggagePropagator`：键值百分号编码（RFC 3986 unreserved 之外的
+  UTF-8 字节全转义），含 `,`/`=`/空格/非 ASCII 的 baggage 无损往返，
+  不再损坏线上结构；提取对畸形转义容忍降级。`CloudHttpClientDefault`：
+  派发期非预期本地异常（坏 URL/头、discovery 后端缺陷）统一映射为
+  `CloudException.dispatch`（retryable=false）——半开探针不再因异常
+  逃逸而丢失结局；限流/熔断拒绝计入 `cloud.rpc.failures` 与 duration。
+  `Endpoint`：构造期校验 URI 可渲染性并规范化 basePath（补 `/` 前缀、
+  去尾斜杠、IPv6 括号容忍），client 侧相应移除尾斜杠兼容拼接。
+  `PeerConnector`：peer 地址解析支持 IPv6（方括号/裸字面量）并校验端口，
+  新增握手看门狗（socket 打开 10s 未完成 hello/ack 即中止重连）。
+  `CloudConfigDefault`：变更通知改为专用单线程按序投递——`reload()`
+  换快照不再被慢监听器阻塞。`CloudObserveModule`：primary `Metrics`
+  不实现 `MetricsSnapshot` 时启动期报命名错误（原为裸 ClassCastException）。
+  `ReadyHandler`：贡献者重名改为构造期失败（原先每次健康探测 500）。
+  `HttpServiceDeclaration`：注册 bind-all 地址（`0.0.0.0`/`::`）时启动
+  告警提示 service-host 覆盖；WebServer 缺绑定判定精确捕获
+  `MissingBindingException`。
 
 ### Removed
 

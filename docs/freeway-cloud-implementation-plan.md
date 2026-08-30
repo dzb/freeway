@@ -5,7 +5,7 @@
 > 显式 `CloudHttpClient`（不做 `@CloudClient`/`CloudExporter` 方法级 RPC）；
 > 默认实现统一 `XDefault` 命名。
 >
-> **状态（2026-08-19）**：Phase 0–7 已完成（core，53 个测试全绿）；
+> **状态（2026-08-19 定稿；当前 115 个测试全绿）**：Phase 0–7 已完成（core）；
 > Phase 8（freeway-ext 云后端适配器）**已记录、后续另做**，清单见定稿 §12.1。
 
 ## 阶段划分

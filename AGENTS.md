@@ -17,7 +17,7 @@ mvn -pl freeway-cloud -am test     # module + upstream deps
 | Module | Purpose | Dependencies |
 |--------|---------|-------------|
 | `freeway-commons` | JSON, coercion, defer, scoped cache, validation, logging | zero |
-| `freeway-ioc` | Container, binding DSL, scopes, injection, extensions | commons |
+| `freeway-ioc` | Container, binding DSL, scopes, injection, extensions, symbol config | commons |
 | `freeway-boot` | Launcher, runtime lifecycle, profiles, config cascade | ioc |
 | `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc |
 | `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons |

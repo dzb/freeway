@@ -1,6 +1,6 @@
 # 远程 CallBus 桥接设计（Remote RPC over CloudHttpClient）
 
-> 状态：**设计稿（A 阶段）** — 本文档只定契约，不含实现。
+> 状态：**已实现（2026-08-27，A–D 阶段完成，见文末状态注）**。
 > 范围：把 `freeway-ioc` 的 `CallBus` 请求-应答通道接到
 > `freeway-cloud` 的 `CloudHttpClient` 传输面，实现"同一份接口代码，
 > 本地走内存槽位、远端走带韧性的 HTTP"。
@@ -36,7 +36,7 @@ CallBus 保持**纯本地、零网络感知**。远端化是 cloud 层对
             │              同一 JVM 内                 │
             │                                         │
             │   EventBus.publish (fact, 过去时)        │
-            │   CallBus.call      (question, 方法对)   │──本地槽位→ handler 反射
+             │   CallBus.call      (question, 方法对)   │──本地槽位→ handler 方法句柄派发
             │   EventBus.stream   (Flow.Publisher 视图)│
             └──────┬──────────────────────────────────┘
                    │ 出栈(两者用不同传输,各自独立)
@@ -88,20 +88,25 @@ Content-Type: application/json
 
 ```
 400 Bad Request        ← handler 抛出的任何业务异常(不含 500)
-X-RPC-Exception: com.acme.InsufficientBalance   ← 异常类全名
-X-RPC-Message: <URL-encoded exception message>
-(body 为空)
+X-RPC-Exception: com.acme.InsufficientBalance   ← 异常类全名(URL-encoded)
+X-RPC-Message: <URL-encoded exception message>  ← 仅 propagateMessage=true
+(body 为 {"error":"<异常类名>"})
 ```
 
 - 选择 400 族而非 500：500 会被传输层韧性策略当作基础设施错误重试，
   而业务异常重放是无意义的（余额不足不会因为你再试一次就够）。
   这与 `CloudException.retryable()` 的既有分型（transport=retryable /
   client error=not retryable）严丝合缝——**业务异常天然落在 not-retryable 一侧**。
-- 异常按类名+message 重建为 `RemoteInvocationException(RuntimeException)`
-  在调用方抛出——**绝不尝试还原原类**（对端类可能不存在，且原本的类型
-  收敛只会制造虚假的成功捕获）。需要针对特定业务异常写 catch 的场景，
-  应该通过返回代数类型（ sealed interface / result record ）而不是依赖
-  跨进程异常透传——这与本地用法同构，也是文档要强调的使用纪律。
+- 异常类名总是跨边界（调用方派发契约的一部分）；**自由文本 message
+  默认不跨边界**（服务端回 `"remote handler failed"` 占位，原文只留在
+  服务端日志），`RpcEndpoint.of(..., propagateMessage=true)` 显式开启
+  才回传——消息常携带 SQL、主机名等内部细节。
+- 调用方侧重建为 `RemoteInvocationException(RuntimeException)`，作为
+  非 retryable `CloudException` 的 **cause** 携带（见 §2.4/§6）——**绝不
+  尝试还原原类**（对端类可能不存在，且原本的类型收敛只会制造虚假的
+  成功捕获）。需要针对特定业务异常写 catch 的场景，应该通过返回代数
+  类型（ sealed interface / result record ）而不是依赖跨进程异常
+  透传——这与本地用法同构，也是文档要强调的使用纪律。
 
 ### 2.4 响应 — 传输失败
 
@@ -113,9 +118,10 @@ X-RPC-Message: <URL-encoded exception message>
 | 对端 5xx 或超时 | retryable `CloudException`（可被 Retryer 重试） |
 | 对端 400 族 | not-retryable `CloudException` |
 
-三个失败源在调用方的 catch 里以类型区分：
-`CloudException`(传输层) → 重试/熔断语汇；
-`RemoteInvocationException`(业务层) → 具体 catch 语汇。
+三个失败源在调用方的 catch 里以同一顶层类型区分：
+`CloudException` 一律是顶层异常——传输失败（连接/超时/5xx）retryable、
+无 RIE cause；业务失败 retryable=false 且 **cause 为
+`RemoteInvocationException`**（`remoteClass()` 携带对端异常类名）。
 两层不会混淆。
 
 ### 2.5 版本与兼容
@@ -141,24 +147,29 @@ public final class RemoteCaller {
     public <T> T invoke(
         String serviceId, String mapping, String method,
         List<?> args, Class<T> returnType, Duration timeout)
-        throws CloudException, RemoteInvocationException;
+        throws CloudException;
 }
 ```
 
 - 内部构造 `CloudRequest.post("/rpc/" + mapping + "/" + method, json)`。
-- 超时取 min(`freeway.cloud.rpc.request-timeout`, 调用方传入值)。
+- 传入的每调用超时经 `callAsync` + `orTimeout` 收敛为端到端预算
+  （重试含内），到期映射为 retryable `CloudException.timeout`（§3.3）。
 - 服务发现的 serviceId 来自消费方的绑定 id 约定（见 §4）。
 
-### 3.2 server 侧：`RpcRouteContributor`（cloud 新增）
+### 3.2 server 侧：`RpcEndpoint`（cloud 新增）
 
 ```java
 /** 把本容器注册过的 mapping 发布为 HTTP 端点。 */
-binder.contribute(Route.class).add(RpcEndpoint.of("user", /* serviceId */));
+binder.contribute(Route.class)
+    .add(RpcEndpoint.of("user", callBus, codec));          // message 不跨边界
+binder.contribute(Route.class)
+    .add(RpcEndpoint.of("user", callBus, codec, true));    // 回传异常消息
 ```
 
-- `RpcEndpoint.of(mapping, ...)` 生成的 route 匹配 `/rpc/{mapping}/{method}`，
-  反查 CallBus 注册表（经 `handles(topic)`/新增的包私有查询面，见 §5）
-  → `call` → JSON 回写 / 2.3 错误映射。
+- `RpcEndpoint.of(mapping, callBus, codec[, propagateMessage])` 返回
+  `Route.post("/rpc/{mapping}/{method}", ...)`：反查 CallBus
+  （`handles(topic)` 门禁 + 声明前缀匹配）→ `call` → JSON 回写 /
+  2.3 错误映射。
 - 只发布**显式列出**的 mapping：不提供"导出全部槽位"的开关（防误暴露，
   呼应 §10 "无 CloudExporter" 的保守立场）。
 - 安全归属传输层已有的 mTLS 配置（`freeway.cloud.rpc.tls.*`）；本文档
@@ -168,11 +179,12 @@ binder.contribute(Route.class).add(RpcEndpoint.of("user", /* serviceId */));
 
 ```java
 // 用户视角——与本地 consumer() 同款手感:
-UserApi api = remote.proxyFor(UserApi.class)
-    .serviceId("user")            // 目标服务的 discovery id
+UserApi api = RemoteProxyFactory.of(callBus, remoteCaller)
+    .serviceId("user")            // 目标服务的 discovery id（remoteOnly 必需）
     .mapping("user")              // call topic 前缀
-    .fallbackFromDefaults()       // 可选:DeadCall(本地未命中)才出网
-    .build();
+    .localFirst()                 // 或 .remoteOnly()——显式选模式，无静默缺省
+    .timeout(Duration.ofSeconds(5)) // 可选:端到端预算(重试含内)
+    .build(UserApi.class);
 ```
 
 两种模式：
@@ -181,24 +193,23 @@ UserApi api = remote.proxyFor(UserApi.class)
    `DeadCallException` 才转远端——单体内嵌服务与拆分后形态一致的
    平滑迁移路径。
 
-默认抛 `IllegalArgumentException` 要求显式选模式——无静默缺省。
+默认要求显式选模式（`localFirst()` / `remoteOnly()`，未选时
+`build()` 抛 `IllegalStateException`）——无静默缺省。
 
 **每调用超时**（原为 deferred 项，已实现）：`timeout(...)` 经
 `CloudHttpClient.callAsync`（异步传输面，`sendAsync` socket 段）+
 `orTimeout` 收窄等待；到期映射为 `CloudException.timeout`（retryable），
 与传输层超时语义一致。
 
-## 4. 配置键（CloudConfigKeys 新增）
+## 4. 配置键（无新增）
 
-| Key | 默认 | 说明 |
-|---|---|---|
-| `freeway.cloud.rpc.remote.enabled` | `false` | 总开关；不装 `RemoteRpcModule` 则一切照旧 |
-| `freeway.cloud.rpc.remote.path-prefix` | `/rpc` | server 端点前缀 |
-| `freeway.cloud.rpc.remote.serialization` | `json` | 预留扩展位（仅 enum 校验，v1 只有 json） |
-
-沿用既有的 `rpc.connect-timeout` / `rpc.request-timeout` / `rpc.tls.*`
-/ 韧性三件套，**不新增超时或 TLS 键**——远程 CallBus 就是一次普通
-cloud RPC 调用，不该有自己的第二套治理旋钮。
+v1 实现**未引入**本节早期草案中的 `rpc.remote.enabled` /
+`remote.path-prefix` / `remote.serialization` 键：导出面由显式的
+`RpcEndpoint.of(mapping, ...)` 声明决定（比全局开关更保守，呼应
+"无 CloudExporter"），路径固定 `/rpc/{mapping}/{method}`，序列化仅
+JSON。沿用既有的 `rpc.connect-timeout` / `rpc.request-timeout` /
+`rpc.tls.*` / 韧性三件套，**不新增超时或 TLS 键**——远程 CallBus 就是
+一次普通 cloud RPC 调用，不该有自己的第二套治理旋钮。
 
 ## 5. 对 freeway-ioc 的最小请求
 
@@ -216,15 +227,15 @@ cloud RPC 调用，不该有自己的第二套治理旋钮。
 | 对端情形 | consumer 抛出 | retryable |
 |---|---|---|
 | handler 正常返回 | 返回值 JSON 反序列化 | — |
-| handler 抛业务异常 | `RemoteInvocationException(classFqn, message)` | no |
+| handler 抛业务异常 | `CloudException`(cause=`RemoteInvocationException(classFqn, message)`) | no |
 | 连接/超时/5xx | `CloudException` | per 既有规则 |
 | 4xx 非 2.3 结构 | `CloudException(status)` | no |
 | 回复体无法反序列化为 returnType | `CloudException(deserialization)` | no（确定性失败） |
-| 未知 `X-RPC-Version` | `CloudException(unsupported version)` | no |
+| 未知 `X-RPC-Version` | `CloudException(rejected)` | no |
 
 `RemoteInvocationException extends RuntimeException`，字段：
-`String exceptionClass`, `String message`, 重写 `toString` 带
-"Failing class from remote handler"。**不设 getCause() 到原始类**
+`String remoteClass`（对端异常类全名，accessor `remoteClass()`），
+message 为对端消息。**不伪造原类型继承链**
 （还原不可能，伪造会造成 instanceof 误导）。
 
 ## 7. 明确不做（本文档范围外）
