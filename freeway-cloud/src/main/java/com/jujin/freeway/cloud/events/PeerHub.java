@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.events;
 
 import com.jujin.freeway.commons.json.JsonCodec;
-import com.jujin.freeway.ioc.EventBus;
+import com.jujin.freeway.ioc.EventBusInbound;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
 import com.jujin.freeway.http.websocket.WebSocketListener;
 import com.jujin.freeway.http.websocket.WebSocketSession;
@@ -20,7 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * ({@code /cloud/events}) + the inbound dispatch pipeline.
  *
  * <p>Lifecycle: constructed by {@link CloudEventModule} at bind time,
- * {@link #wire(EventBus, JsonCodec, String, String, List, List, List, String)}
+ * {@link #wire(EventBusInbound, JsonCodec, String, String, List, List, List, String)}
  * runs from a RuntimeHook ordered before {@code freeway.http.server}, so
  * the hub is fully wired before the server can accept a single connection.</p>
  *
@@ -35,7 +35,7 @@ public final class PeerHub implements WebSocketEndpoint {
     /** Contributed at hook time, read per inbound frame on WS threads —
      *  copy-on-write keeps add-after-wire safe without external locking. */
     private final List<CloudEventInterceptor> interceptors = new CopyOnWriteArrayList<>();
-    private volatile EventBus bus;
+    private volatile EventBusInbound bus;
     private volatile JsonCodec codec;
     private volatile String origin;
     private volatile String serviceId;
@@ -47,7 +47,7 @@ public final class PeerHub implements WebSocketEndpoint {
 
     /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
     public void wire(
-        EventBus bus,
+        EventBusInbound bus,
         JsonCodec codec,
         String serviceId,
         String instanceId,

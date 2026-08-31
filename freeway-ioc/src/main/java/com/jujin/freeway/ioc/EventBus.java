@@ -59,7 +59,7 @@ import java.util.function.Supplier;
  * external MQ. Re-bridging inbound traffic would loop the event back into
  * the queue and re-dispatch it indefinitely.</p>
  */
-public final class EventBus implements AutoCloseable {
+public final class EventBus implements EventBusInbound, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(EventBus.class);
 
@@ -145,7 +145,7 @@ public final class EventBus implements AutoCloseable {
      * If no scope is active, the event is published immediately.</p>
      */
     public <E> void publish(E event) {
-        publishEvent(event, true, UUID.randomUUID().toString(), false);
+        publishEvent(event, new PublishContext(true, UUID.randomUUID().toString(), false));
     }
 
     /**
@@ -154,19 +154,15 @@ public final class EventBus implements AutoCloseable {
      * the same event arriving over multiple transports can be deduplicated.
      * Business code should use {@link #publish(Object)} instead.
      */
+    @Override
     public <E> void publishInbound(E event, String eventId) {
-        publishEvent(event, false, eventId, true);
+        publishEvent(event, new PublishContext(false, eventId, true));
     }
 
-    private <E> void publishEvent(
-        E event,
-        boolean bridge,
-        String eventId,
-        boolean inbound
-    ) {
+    private <E> void publishEvent(E event, PublishContext ctx) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        if (inbound && !claimInbound(eventId)) {
+        if (ctx.inbound() && !claimInbound(ctx.eventId())) {
             return; // duplicate — already delivered over another channel
         }
         // DeadEvent always dispatches immediately — it is a diagnostic
@@ -174,9 +170,9 @@ public final class EventBus implements AutoCloseable {
         // re-deferred during drain of committed events.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
         if (defer) {
-            Defer.defer(() -> dispatchEvent(event, bridge, eventId));
+            Defer.defer(() -> dispatchEvent(event, ctx.bridge(), ctx.eventId()));
         } else {
-            dispatchEvent(event, bridge, eventId);
+            dispatchEvent(event, ctx.bridge(), ctx.eventId());
         }
     }
 
@@ -203,7 +199,7 @@ public final class EventBus implements AutoCloseable {
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
     public void publish(String topic, Object payload) {
-        publishTopic(topic, payload, true, UUID.randomUUID().toString(), false);
+        publishTopic(topic, payload, new PublishContext(true, UUID.randomUUID().toString(), false));
     }
 
     /**
@@ -212,26 +208,21 @@ public final class EventBus implements AutoCloseable {
      * same event can be deduplicated. Business code should use
      * {@link #publish(String, Object)} instead.
      */
+    @Override
     public void publishInbound(String topic, Object payload, String eventId) {
-        publishTopic(topic, payload, false, eventId, true);
+        publishTopic(topic, payload, new PublishContext(false, eventId, true));
     }
 
-    private void publishTopic(
-        String topic,
-        Object payload,
-        boolean bridge,
-        String eventId,
-        boolean inbound
-    ) {
+    private void publishTopic(String topic, Object payload, PublishContext ctx) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        if (inbound && !claimInbound(eventId)) {
+        if (ctx.inbound() && !claimInbound(ctx.eventId())) {
             return; // duplicate — already delivered over another channel
         }
         if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload, bridge, eventId));
+            Defer.defer(() -> dispatchTopic(topic, payload, ctx.bridge(), ctx.eventId()));
         } else {
-            dispatchTopic(topic, payload, bridge, eventId);
+            dispatchTopic(topic, payload, ctx.bridge(), ctx.eventId());
         }
     }
 
@@ -318,6 +309,8 @@ public final class EventBus implements AutoCloseable {
             return true;
         }
     }
+
+    private record PublishContext(boolean bridge, String eventId, boolean inbound) {}
 
     // ==================== async ====================
 
