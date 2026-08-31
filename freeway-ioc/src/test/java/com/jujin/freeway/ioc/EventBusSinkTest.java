@@ -1,30 +1,16 @@
 package com.jujin.freeway.ioc;
+
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.LongAdder;
-import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
-
-import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.commons.scoped.Defer;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-
-    // ==================== event types ====================
 
 /** EventBusSinkTest: split from the former EventBusTest monolith (behavior-preserving move). */
 class EventBusSinkTest {
@@ -67,7 +53,7 @@ class EventBusSinkTest {
     }
 
     @Test
-    void stoppedEventIsNotSinkd() {
+    void stoppedEventIsNotSentToSink() {
         // A Stoppable event short-circuited by its subscribers must not leave
         // the process via the sink.
         List<String> sent = new ArrayList<>();
@@ -86,7 +72,7 @@ class EventBusSinkTest {
     }
 
     @Test
-    void inboundClassEventIsDeliveredLocallyButNotSinkd() {
+    void inboundClassEventIsDeliveredLocallyButNotSentToSink() {
         // publishInbound must reach local class subscribers yet never echo
         // back through the sink — sending inbound traffic back out would loop
         // the event around the MQ indefinitely.
@@ -110,7 +96,7 @@ class EventBusSinkTest {
     }
 
     @Test
-    void inboundTopicEventIsDeliveredLocallyButNotSinkd() {
+    void inboundTopicEventIsDeliveredLocallyButNotSentToSink() {
         List<String> received = new ArrayList<>();
         List<String> sent = new ArrayList<>();
         Container container = Freeway.create();

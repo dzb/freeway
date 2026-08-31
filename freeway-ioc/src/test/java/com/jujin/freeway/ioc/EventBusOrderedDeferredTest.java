@@ -281,7 +281,7 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
-    void deadEventIsNotSinkd() {
+    void deadEventIsNotSentToSink() {
         Container container = Freeway.create(binder -> {});
         EventBus bus = container.get(EventBus.class);
         List<String> sent = new ArrayList<>();

@@ -42,7 +42,7 @@ import java.util.function.Supplier;
  * separate world. The grammatical split — facts vs commands — is what
  * keeps the two topic namespaces from tangling.</p>
  *
- * <p>Delivery semantics:</b> at-most-once, best-effort. A throwing
+ * <p><b>Delivery semantics:</b> at-most-once, best-effort. A throwing
  * subscriber is isolated (other subscribers still receive the event) and
  * counted in {@link #stats()}; the event is not retried. A failing sink is
  * similarly isolated. Inside a {@code Defer} scope (e.g. a DB transaction),
@@ -57,8 +57,8 @@ import java.util.function.Supplier;
  * {@link EventBusInbound#publishInbound(Object, String)} /
  * {@link EventBusInbound#publishInbound(String, Object, String)} — they are
  * delivered to local subscribers exactly like {@link #publish}, but are never
- * sent back out to the external MQ. Re-bridging inbound traffic would loop the
- * event back into the queue and re-dispatch it indefinitely.</p>
+ * sent back out to the external MQ. Sending inbound traffic back out would
+ * loop the event back into the queue and re-dispatch it indefinitely.</p>
  */
 public final class EventBus implements EventBusInbound, AutoCloseable {
 
@@ -72,14 +72,14 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     /** Bounded window of recent inbound wire ids; null when dedup is off. */
     private volatile IdWindow inboundIds;
     private volatile boolean closed;
+    private final EventExecutorSupport executors;
+    /** Live stream subscriptions, closed (and detached) on {@link #close()}. */
+    private final EventStreams streams = new EventStreams(this);
 
-    /** Package-private closed probe for {@link EventStreams} sinks. */
+    /** Package-private closed probe for {@link EventStreams} subscriptions. */
     boolean isBusClosed() {
         return closed;
     }
-    private final EventExecutorSupport executors;
-    /** Live stream sinks, closed (and detached) on {@link #close()}. */
-    private final EventStreams streams = new EventStreams(this);
 
     @Inject
     public EventBus(Container container) {
@@ -426,7 +426,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * dispatch for everyone else. Dropped events are logged at debug level.</p>
      *
      * <p>Lifecycle: any downstream {@code cancel()} ends the whole stream —
-     * the sink detaches from the bus and further subscribers see
+     * the subscription detaches from the bus and further subscribers see
      * {@code onError}. Fan out by calling {@code stream()} once per
      * consumer, not by sharing one publisher instance. Events published
      * inside a {@code Defer} scope reach the stream only after the scope
@@ -436,7 +436,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * <p>Observability: a live stream is a real subscriber — publishing to
      * a streamed topic emits no {@link DeadEvent}, and {@link #stats()}
      * counts one delivery per event per stream regardless of downstream
-     * fan-out (SubmissionPublisher fans out inside the sink).</p>
+     * fan-out (SubmissionPublisher fans out inside the subscription).</p>
      *
      * @param eventType event type to match (with supertypes)
      */
