@@ -53,27 +53,7 @@ final class EventDispatcher {
         List<Subscription<?>> runtimeHandlers = subscriptions.runtimeClassSubs(eventType);
         boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
 
-        for (Consumer<Object> handler : moduleHandlers) {
-            if (event instanceof EventBus.Stoppable s && s.isStopped()) {
-                break;
-            }
-            deliver(
-                () -> handler.accept(event),
-                "Event subscriber failed for {}",
-                eventType.getSimpleName()
-            );
-        }
-
-        for (Subscription<?> sub : runtimeHandlers) {
-            if (event instanceof EventBus.Stoppable s && s.isStopped()) {
-                break;
-            }
-            deliver(
-                () -> sub.dispatch(event),
-                "Runtime event subscriber failed for {}",
-                eventType.getSimpleName()
-            );
-        }
+        deliverTo(event, moduleHandlers, runtimeHandlers, eventType.getSimpleName());
 
         if (!hasSubscribers && !(event instanceof DeadEvent)) {
             stats.deadEvent();
@@ -84,17 +64,8 @@ final class EventDispatcher {
             if (event instanceof EventBus.Stoppable s && s.isStopped()) {
                 return;
             }
-            if (bridges.isEmpty()) {
-                return;
-            }
-            String topic = topicResolver.apply(eventType);
-            for (EventBridge bridge : bridges.snapshot()) {
-                try {
-                    bridge.send(topic, event, EventBridge.Channel.CLASS, eventId);
-                } catch (Exception ex) {
-                    LOG.warn("Event bridge failed for {}", eventType.getSimpleName(), ex);
-                }
-            }
+            fanOut(topicResolver.apply(eventType), event,
+                EventBridge.Channel.CLASS, eventId, eventType.getSimpleName());
         }
     }
 
@@ -109,27 +80,7 @@ final class EventDispatcher {
         List<Subscription<?>> runtimeHandlers = subscriptions.runtimeTopicSubs(topic);
         boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
 
-        for (Consumer<Object> handler : moduleHandlers) {
-            if (payload instanceof EventBus.Stoppable s && s.isStopped()) {
-                break;
-            }
-            deliver(
-                () -> handler.accept(payload),
-                "Event subscriber failed for topic '{}'",
-                topic
-            );
-        }
-
-        for (Subscription<?> sub : runtimeHandlers) {
-            if (payload instanceof EventBus.Stoppable s && s.isStopped()) {
-                break;
-            }
-            deliver(
-                () -> sub.dispatch(payload),
-                "Runtime event subscriber failed for topic '{}'",
-                topic
-            );
-        }
+        deliverTo(payload, moduleHandlers, runtimeHandlers, "topic '" + topic + "'");
 
         if (!hasSubscribers) {
             stats.deadEvent();
@@ -140,15 +91,45 @@ final class EventDispatcher {
             if (payload instanceof EventBus.Stoppable s && s.isStopped()) {
                 return;
             }
-            if (bridges.isEmpty()) {
-                return;
+            fanOut(topic, payload, EventBridge.Channel.TOPIC, eventId, "topic '" + topic + "'");
+        }
+    }
+
+    private void deliverTo(
+        Object payload,
+        List<Consumer<Object>> moduleHandlers,
+        List<Subscription<?>> runtimeHandlers,
+        String label
+    ) {
+        for (Consumer<Object> handler : moduleHandlers) {
+            if (payload instanceof EventBus.Stoppable s && s.isStopped()) {
+                break;
             }
-            for (EventBridge bridge : bridges.snapshot()) {
-                try {
-                    bridge.send(topic, payload, EventBridge.Channel.TOPIC, eventId);
-                } catch (Exception ex) {
-                    LOG.warn("Event bridge failed for topic '{}'", topic, ex);
-                }
+            deliver(() -> handler.accept(payload), "Event subscriber failed for {}", label);
+        }
+        for (Subscription<?> sub : runtimeHandlers) {
+            if (payload instanceof EventBus.Stoppable s && s.isStopped()) {
+                break;
+            }
+            deliver(() -> sub.dispatch(payload), "Runtime event subscriber failed for {}", label);
+        }
+    }
+
+    private void fanOut(
+        String topic,
+        Object payload,
+        EventBridge.Channel channel,
+        String eventId,
+        String label
+    ) {
+        if (bridges.isEmpty()) {
+            return;
+        }
+        for (EventBridge bridge : bridges.snapshot()) {
+            try {
+                bridge.send(topic, payload, channel, eventId);
+            } catch (Exception ex) {
+                LOG.warn("Event bridge failed for {}", label, ex);
             }
         }
     }

@@ -53,11 +53,12 @@ import java.util.function.Supplier;
  * {@link #unsubscribe}.
  *
  * <p><b>Inbound events:</b> events received from an external source (e.g. an
- * MQ subscriber) must be published via {@link #publishInbound(Object)} /
- * {@link #publishInbound(String, Object)} — they are delivered to local
- * subscribers exactly like {@link #publish}, but are never re-bridged to the
- * external MQ. Re-bridging inbound traffic would loop the event back into
- * the queue and re-dispatch it indefinitely.</p>
+ * MQ subscriber) are injected through the adapter SPI
+ * {@link EventBusInbound#publishInbound(Object, String)} /
+ * {@link EventBusInbound#publishInbound(String, Object, String)} — they are
+ * delivered to local subscribers exactly like {@link #publish}, but are never
+ * re-bridged to the external MQ. Re-bridging inbound traffic would loop the
+ * event back into the queue and re-dispatch it indefinitely.</p>
  */
 public final class EventBus implements EventBusInbound, AutoCloseable {
 
@@ -169,11 +170,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // event that fires when zero subscribers exist, and must not be
         // re-deferred during drain of committed events.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
-        if (defer) {
-            Defer.defer(() -> dispatchEvent(event, inbound, eventId));
-        } else {
-            dispatchEvent(event, inbound, eventId);
-        }
+        deferOrRun(defer, () -> dispatchEvent(event, inbound, eventId));
     }
 
     private <E> void dispatchEvent(E event, boolean inbound, String eventId) {
@@ -224,11 +221,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         if (inbound && !claimInbound(eventId)) {
             return; // duplicate — already delivered over another channel
         }
-        if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload, inbound, eventId));
-        } else {
-            dispatchTopic(topic, payload, inbound, eventId);
-        }
+        deferOrRun(Defer.isActive(), () -> dispatchTopic(topic, payload, inbound, eventId));
     }
 
     private void dispatchTopic(
@@ -312,6 +305,14 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
                 oldest.remove();
             }
             return true;
+        }
+    }
+
+    private void deferOrRun(boolean defer, Runnable action) {
+        if (defer) {
+            Defer.defer(action);
+        } else {
+            action.run();
         }
     }
 
