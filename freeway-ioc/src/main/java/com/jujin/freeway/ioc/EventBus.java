@@ -5,6 +5,7 @@ import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
 import com.jujin.freeway.ioc.internal.EventBridgeRegistry;
+import com.jujin.freeway.ioc.internal.EventExecutorSupport;
 import com.jujin.freeway.ioc.internal.EventStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,8 +15,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -76,10 +75,7 @@ public final class EventBus implements AutoCloseable {
     boolean isBusClosed() {
         return closed;
     }
-    private volatile Executor asyncExecutor;
-    private volatile ExecutorService defaultAsyncExecutor;
-    /** Globally ordered dispatch channel for {@link #publishOrdered}. */
-    private volatile ExecutorService orderedExecutor;
+    private final EventExecutorSupport executors;
     /** Live stream bridges, closed (and detached) on {@link #close()}. */
     private final EventStreams streams = new EventStreams(this);
 
@@ -98,6 +94,10 @@ public final class EventBus implements AutoCloseable {
             this::publish,
             EventBus::resolveTopic
         );
+        this.executors = new EventExecutorSupport(() -> {
+            requireOpen();
+            return true;
+        });
     }
 
     /** Adds a bridge alongside existing ones — every bridge receives every
@@ -359,38 +359,21 @@ public final class EventBus implements AutoCloseable {
     /** Set a custom executor for async dispatch. Defaults to virtual threads. */
     public void setAsyncExecutor(Executor executor) {
         requireOpen();
-        this.asyncExecutor = Objects.requireNonNull(executor, "executor");
-    }
-
-    private Executor executor() {
-        Executor e = asyncExecutor;
-        if (e != null) return e;
-        Executor d = defaultAsyncExecutor;
-        if (d != null) return d;
-        synchronized (this) {
-            d = defaultAsyncExecutor;
-            if (d == null) {
-                // A publishAsync that passed requireOpen() before close() must
-                // not create a fresh executor after close() nulled the field.
-                requireOpen();
-                d = defaultAsyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
-            }
-            return d;
-        }
+        executors.setAsyncExecutor(executor);
     }
 
     /** Async version of {@link #publish(Object)}. */
     public <E> void publishAsync(E event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        executeDeferred(this::executor, () -> publish(event));
+        executeDeferred(executors::asyncExecutor, () -> publish(event));
     }
 
     /** Async version of {@link #publish(String, Object)}. */
     public void publishAsync(String topic, Object payload) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        executeDeferred(this::executor, () -> publish(topic, payload));
+        executeDeferred(executors::asyncExecutor, () -> publish(topic, payload));
     }
 
     // ==================== ordered publish ====================
@@ -412,7 +395,7 @@ public final class EventBus implements AutoCloseable {
     public void publishOrdered(Object event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        executeDeferred(this::orderedExecutor, () -> publish(event));
+        executeDeferred(executors::orderedExecutor, () -> publish(event));
     }
 
     /**
@@ -464,23 +447,6 @@ public final class EventBus implements AutoCloseable {
             return;
         }
         exec.get().execute(guarded);
-    }
-
-    private ExecutorService orderedExecutor() {
-        ExecutorService e = orderedExecutor;
-        if (e != null) {
-            return e;
-        }
-        synchronized (this) {
-            e = orderedExecutor;
-            if (e == null) {
-                requireOpen();
-                e = orderedExecutor = Executors.newSingleThreadExecutor(
-                    Thread.ofVirtual().factory()
-                );
-            }
-            return e;
-        }
     }
 
     // ==================== reactive streams (JDK Flow) ====================
@@ -631,27 +597,7 @@ public final class EventBus implements AutoCloseable {
         // Complete live streams so downstream subscribers are not left
         // hanging on a dead bus.
         streams.closeAll();
-        // Same lock as the lazy init in executor(): prevents a publishAsync
-        // that passed requireOpen() from creating a fresh default executor
-        // after this method observed null and skipped shutdown.
-        synchronized (this) {
-            if (defaultAsyncExecutor != null) {
-                try {
-                    defaultAsyncExecutor.close();
-                } catch (RuntimeException e) {
-                    LOG.warn("Failed to close default async executor", e);
-                }
-                defaultAsyncExecutor = null;
-            }
-            if (orderedExecutor != null) {
-                try {
-                    orderedExecutor.close();
-                } catch (RuntimeException e) {
-                    LOG.warn("Failed to close ordered executor", e);
-                }
-                orderedExecutor = null;
-            }
-        }
+        executors.close();
     }
 
     private void requireOpen() {

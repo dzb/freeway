@@ -1,18 +1,15 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.ioc.internal.CallAdviceChain;
+import com.jujin.freeway.ioc.internal.CallProxyFactory;
 import com.jujin.freeway.ioc.internal.CallStats;
 import com.jujin.freeway.ioc.internal.CallTargetRegistry;
 
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -104,43 +101,7 @@ public final class CallBus implements AutoCloseable {
      */
     public <T> T consumer(String topicMapping, Class<T> api) {
         requireOpen();
-        Objects.requireNonNull(topicMapping, "topicMapping");
-        Objects.requireNonNull(api, "api");
-        if (!api.isInterface()) {
-            throw new IllegalArgumentException(
-                "CallBus can only proxy interfaces: " + api.getName());
-        }
-        return api.cast(Proxy.newProxyInstance(
-            api.getClassLoader(),
-            new Class<?>[]{api},
-            (proxy, method, args) -> invokeViaBus(topicMapping, api, proxy, method, args)
-        ));
-    }
-
-    private Object invokeViaBus(
-        String topicMapping,
-        Class<?> api,
-        Object proxy,
-        Method method,
-        Object[] args
-    ) throws Throwable {
-        if (method.getDeclaringClass() == Object.class) {
-            return handleObjectMethod(proxy, method, args, topicMapping, api);
-        }
-        try {
-            return call(methodTopic(topicMapping, method.getName()),
-                    args == null ? List.of() : List.of(args))
-                .toCompletableFuture()
-                .join();
-        } catch (CompletionException e) {
-            // join() wraps every failure uniformly: the cause is the failure.
-            Throwable cause = e.getCause();
-            if (cause instanceof DeadCallException && method.isDefault()) {
-                // No provider bound: degrade to the interface default.
-                return invokeDefault(proxy, method, args);
-            }
-            throw cause;
-        }
+        return CallProxyFactory.INSTANCE.create(this, topicMapping, api);
     }
 
     // ==================== call ====================
@@ -431,39 +392,4 @@ public final class CallBus implements AutoCloseable {
         Object around(CallChain chain) throws Throwable;
     }
 
-    // ==================== internals ====================
-
-    private static String methodTopic(String topicMapping, String methodName) {
-        return topicMapping + "." + methodName;
-    }
-
-    /**
-     * Runs a default interface method when no provider is bound. The
-     * findSpecial handle is cached in commons
-     * ({@link MethodHandleUtils#defaultMethodHandle}) — non-virtual by
-     * construction, so it cannot re-enter the proxy. No
-     * {@code setAccessible} on JDK 25.
-     */
-    private static Object invokeDefault(Object proxy, Method method, Object[] args)
-            throws Throwable {
-        return MethodHandleUtils.invokeOn(
-            MethodHandleUtils.defaultMethodHandle(method), proxy, args);
-    }
-
-    private static Object handleObjectMethod(
-        Object proxy,
-        Method method,
-        Object[] args,
-        String topicMapping,
-        Class<?> api
-    ) {
-        return switch (method.getName()) {
-            case "toString" -> api.getSimpleName()
-                + "$CallProxy{topic='" + topicMapping + ".*'}";
-            case "hashCode" -> System.identityHashCode(proxy);
-            case "equals" -> args != null && args.length > 0 && proxy == args[0];
-            default -> throw new IllegalStateException(
-                "Unsupported Object method: " + method.getName());
-        };
-    }
 }
