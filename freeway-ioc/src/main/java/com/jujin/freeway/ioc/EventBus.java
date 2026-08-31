@@ -145,7 +145,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * If no scope is active, the event is published immediately.</p>
      */
     public <E> void publish(E event) {
-        publishEvent(event, new PublishContext(UUID.randomUUID().toString(), false));
+        publishEvent(event, UUID.randomUUID().toString(), false);
     }
 
     /**
@@ -156,13 +156,13 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      */
     @Override
     public <E> void publishInbound(E event, String eventId) {
-        publishEvent(event, new PublishContext(eventId, true));
+        publishEvent(event, eventId, true);
     }
 
-    private <E> void publishEvent(E event, PublishContext ctx) {
+    private <E> void publishEvent(E event, String eventId, boolean inbound) {
         Objects.requireNonNull(event, "event");
         requireOpen();
-        if (ctx.inbound() && !claimInbound(ctx.eventId())) {
+        if (inbound && !claimInbound(eventId)) {
             return; // duplicate — already delivered over another channel
         }
         // DeadEvent always dispatches immediately — it is a diagnostic
@@ -170,9 +170,9 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // re-deferred during drain of committed events.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
         if (defer) {
-            Defer.defer(() -> dispatchEvent(event, ctx.inbound(), ctx.eventId()));
+            Defer.defer(() -> dispatchEvent(event, inbound, eventId));
         } else {
-            dispatchEvent(event, ctx.inbound(), ctx.eventId());
+            dispatchEvent(event, inbound, eventId);
         }
     }
 
@@ -199,7 +199,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
     public void publish(String topic, Object payload) {
-        publishTopic(topic, payload, new PublishContext(UUID.randomUUID().toString(), false));
+        publishTopic(topic, payload, UUID.randomUUID().toString(), false);
     }
 
     /**
@@ -210,19 +210,24 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      */
     @Override
     public void publishInbound(String topic, Object payload, String eventId) {
-        publishTopic(topic, payload, new PublishContext(eventId, true));
+        publishTopic(topic, payload, eventId, true);
     }
 
-    private void publishTopic(String topic, Object payload, PublishContext ctx) {
+    private void publishTopic(
+        String topic,
+        Object payload,
+        String eventId,
+        boolean inbound
+    ) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        if (ctx.inbound() && !claimInbound(ctx.eventId())) {
+        if (inbound && !claimInbound(eventId)) {
             return; // duplicate — already delivered over another channel
         }
         if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload, ctx.inbound(), ctx.eventId()));
+            Defer.defer(() -> dispatchTopic(topic, payload, inbound, eventId));
         } else {
-            dispatchTopic(topic, payload, ctx.inbound(), ctx.eventId());
+            dispatchTopic(topic, payload, inbound, eventId);
         }
     }
 
@@ -309,8 +314,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             return true;
         }
     }
-
-    private record PublishContext(String eventId, boolean inbound) {}
 
     // ==================== async ====================
 
