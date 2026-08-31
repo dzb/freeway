@@ -5,6 +5,7 @@ import com.jujin.freeway.ioc.DeadCallException;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,13 +20,7 @@ public final class CallTargetRegistry {
 
     public void register(String topicMapping, Object target) {
         Map<String, Method> seen = new HashMap<>();
-        for (Method method : target.getClass().getMethods()) {
-            int mods = method.getModifiers();
-            if (method.getDeclaringClass() == Object.class
-                    || Modifier.isStatic(mods)
-                    || method.isSynthetic()) {
-                continue;
-            }
+        for (Method method : eligibleMethods(target)) {
             String topic = methodTopic(topicMapping, method.getName());
             if (seen.put(method.getName(), method) != null) {
                 throw new IllegalArgumentException(
@@ -38,13 +33,7 @@ public final class CallTargetRegistry {
     }
 
     public void unregister(String topicMapping, Object target) {
-        for (Method method : target.getClass().getMethods()) {
-            int mods = method.getModifiers();
-            if (method.getDeclaringClass() == Object.class
-                    || Modifier.isStatic(mods)
-                    || method.isSynthetic()) {
-                continue;
-            }
+        for (Method method : eligibleMethods(target)) {
             targets.remove(
                 methodTopic(topicMapping, method.getName()),
                 new MethodTarget(target, method, MethodHandleUtils.methodHandle(method)));
@@ -69,6 +58,20 @@ public final class CallTargetRegistry {
 
     public void clear() {
         targets.clear();
+    }
+
+    private static List<Method> eligibleMethods(Object target) {
+        List<Method> methods = new ArrayList<>();
+        for (Method method : target.getClass().getMethods()) {
+            int mods = method.getModifiers();
+            if (method.getDeclaringClass() == Object.class
+                    || Modifier.isStatic(mods)
+                    || method.isSynthetic()) {
+                continue;
+            }
+            methods.add(method);
+        }
+        return methods;
     }
 
     private static String methodTopic(String topicMapping, String methodName) {
