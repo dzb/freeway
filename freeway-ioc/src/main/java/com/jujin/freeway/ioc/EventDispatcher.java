@@ -1,6 +1,6 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.internal.EventBridgeRegistry;
+import com.jujin.freeway.ioc.internal.EventSinkRegistry;
 import com.jujin.freeway.ioc.internal.EventStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,14 +12,14 @@ import java.util.function.Function;
 
 /**
  * Internal dispatch engine for {@link EventBus}. Owns class/topic delivery,
- * subscriber isolation, DeadEvent emission and bridge fan-out.
+ * subscriber isolation, DeadEvent emission and sink fan-out.
  */
 final class EventDispatcher {
 
     private static final Logger LOG = LoggerFactory.getLogger(EventDispatcher.class);
 
     private final EventSubscriptionIndex subscriptions;
-    private final EventBridgeRegistry bridges;
+    private final EventSinkRegistry sinks;
     private final EventStats stats;
     private final BooleanSupplier isClosed;
     private final Consumer<Object> deadEventPublisher;
@@ -27,14 +27,14 @@ final class EventDispatcher {
 
     EventDispatcher(
         EventSubscriptionIndex subscriptions,
-        EventBridgeRegistry bridges,
+        EventSinkRegistry sinks,
         EventStats stats,
         BooleanSupplier isClosed,
         Consumer<Object> deadEventPublisher,
         Function<Class<?>, String> topicResolver
     ) {
         this.subscriptions = subscriptions;
-        this.bridges = bridges;
+        this.sinks = sinks;
         this.stats = stats;
         this.isClosed = isClosed;
         this.deadEventPublisher = deadEventPublisher;
@@ -64,8 +64,8 @@ final class EventDispatcher {
             if (event instanceof EventBus.Stoppable s && s.isStopped()) {
                 return;
             }
-            fanOut(topicResolver.apply(eventType), event,
-                EventBridge.Channel.CLASS, eventId, eventType.getSimpleName());
+            sendToSinks(topicResolver.apply(eventType), event,
+                EventSink.Channel.CLASS, eventId, eventType.getSimpleName());
         }
     }
 
@@ -91,7 +91,7 @@ final class EventDispatcher {
             if (payload instanceof EventBus.Stoppable s && s.isStopped()) {
                 return;
             }
-            fanOut(topic, payload, EventBridge.Channel.TOPIC, eventId, "topic '" + topic + "'");
+            sendToSinks(topic, payload, EventSink.Channel.TOPIC, eventId, "topic '" + topic + "'");
         }
     }
 
@@ -115,21 +115,21 @@ final class EventDispatcher {
         }
     }
 
-    private void fanOut(
+    private void sendToSinks(
         String topic,
         Object payload,
-        EventBridge.Channel channel,
+        EventSink.Channel channel,
         String eventId,
         String label
     ) {
-        if (bridges.isEmpty()) {
+        if (sinks.isEmpty()) {
             return;
         }
-        for (EventBridge bridge : bridges.snapshot()) {
+        for (EventSink sink : sinks.snapshot()) {
             try {
-                bridge.send(topic, payload, channel, eventId);
+                sink.send(topic, payload, channel, eventId);
             } catch (Exception ex) {
-                LOG.warn("Event bridge failed for {}", label, ex);
+                LOG.warn("Event sink failed for {}", label, ex);
             }
         }
     }

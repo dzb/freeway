@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Assembles the CloudEventBus: a WS endpoint at {@code /cloud/events}, the
- * peer connector, and the outbound bridge — wired so that a loaded module
+ * peer connector, and the outbound sink — wired so that a loaded module
  * turns {@code EventBus.publish} into a cross-node CloudEvents 1.0 broadcast.
  *
  * <p>Requires {@link com.jujin.freeway.http.HttpModule} (the WS endpoint rides
@@ -50,7 +50,7 @@ public final class CloudEventModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
         var hub = new PeerHub();
-        var bridge = new CloudEventBridge(hub);
+        var sink = new CloudEventSink(hub);
 
         binder.bind(PeerHub.class).to(hub);
 
@@ -106,17 +106,17 @@ public final class CloudEventModule implements ModuleEx {
                         CloudConfigKeys.REGISTRY_SERVICE_SCHEME, "http");
                     String wsScheme = "https".equalsIgnoreCase(registryScheme) ? "wss" : "ws";
                     connector = new PeerConnector(hub, List.of(), Duration.ofSeconds(3), wsScheme);
-                    bus.addEventBridge(bridge);
+                    bus.addEventSink(sink);
                     connector.start(split(symbols.resolve(CloudConfigKeys.EVENTS_PEERS, "")));
                 }
 
                 @Override
                 public void stop(Container container) {
                     // Release the channel and the dialer: without this the
-                    // bridge stays installed on the bus and the connector's
+                    // sink stays installed on the bus and the connector's
                     // HttpClient and retry threads outlive the app.
                     try {
-                        container.get(EventBus.class).removeEventBridge(bridge);
+                        container.get(EventBus.class).removeEventSink(sink);
                     } finally {
                         if (connector != null) {
                             connector.close();

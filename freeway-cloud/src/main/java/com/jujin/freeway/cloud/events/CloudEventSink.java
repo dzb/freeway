@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.events;
 
-import com.jujin.freeway.ioc.EventBridge;
+import com.jujin.freeway.ioc.EventSink;
 import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -11,37 +11,37 @@ import org.slf4j.LoggerFactory;
  * into CloudEvents 1.0 frames and fans them out to live peer connections,
  * filtered by each peer's declared subscription prefixes.
  *
- * <p>Implements {@link EventBridge} — installed via
- * {@code EventBus.addEventBridge} by {@link CloudEventModule}'s hook when
+ * <p>Implements {@link EventSink} — installed via
+ * {@code EventBus.addEventSink} by {@link CloudEventModule}'s hook when
  * enabled. Semantics: at-most-once, best-effort; a failed send is logged and
  * the connection is dropped (reconnect is the connector's job). Events
  * short-circuited by {@code Stoppable} never leave the JVM. This class never
  * blocks the publishing thread beyond a socket write.</p>
  */
-public final class CloudEventBridge implements EventBridge {
+public final class CloudEventSink implements EventSink {
 
-    private static final Logger LOG = LoggerFactory.getLogger(CloudEventBridge.class);
+    private static final Logger LOG = LoggerFactory.getLogger(CloudEventSink.class);
 
     private final PeerHub hub;
 
-    public CloudEventBridge(PeerHub hub) {
+    public CloudEventSink(PeerHub hub) {
         this.hub = Objects.requireNonNull(hub, "hub");
     }
 
     @Override
     public void send(String topic, Object event) {
-        send(topic, event, EventBridge.Channel.CLASS);
+        send(topic, event, EventSink.Channel.CLASS);
     }
 
     @Override
-    public void send(String topic, Object event, EventBridge.Channel channel) {
+    public void send(String topic, Object event, EventSink.Channel channel) {
         // No bus-supplied identity — mint one. Reachable only from a direct
         // caller: the bus always uses the four-argument form.
         send(topic, event, channel, UUID.randomUUID().toString());
     }
 
     @Override
-    public void send(String topic, Object event, EventBridge.Channel channel, String eventId) {
+    public void send(String topic, Object event, EventSink.Channel channel, String eventId) {
         if (event instanceof com.jujin.freeway.ioc.EventBus.Stoppable s && s.isStopped()) {
             return; // short-circuited locally — a vetoed fact does not broadcast
         }
@@ -57,7 +57,7 @@ public final class CloudEventBridge implements EventBridge {
             json = CloudEventEnvelope.translate(
                 event, topic, channel, origin, hub.serviceId(), hub.codec(), eventId);
         } catch (RuntimeException e) {
-            LOG.error("Event translation failed — not bridged (topic={})", topic, e);
+            LOG.error("Event translation failed — not sent (topic={})", topic, e);
             return;
         }
 
@@ -70,7 +70,7 @@ public final class CloudEventBridge implements EventBridge {
             if (peer.remoteOrigin().equals(origin)) {
                 continue;
             }
-            String type = channel == EventBridge.Channel.CLASS
+            String type = channel == EventSink.Channel.CLASS
                 ? event.getClass().getName()
                 : null;
             if (!peer.matches(type, topic)) {
@@ -84,7 +84,7 @@ public final class CloudEventBridge implements EventBridge {
             }
         }
         if (sent == 0) {
-            LOG.debug("No peers interested in '{}' — not bridged", topic);
+            LOG.debug("No peers interested in '{}' — not sent", topic);
         }
     }
 }

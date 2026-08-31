@@ -3,7 +3,7 @@ package com.jujin.freeway.cloud.events;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
-import com.jujin.freeway.ioc.EventBridge;
+import com.jujin.freeway.ioc.EventSink;
 import com.jujin.freeway.ioc.EventBus;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,7 +23,7 @@ import java.util.UUID;
  * dispatch channel and the originating node identity.
  *
  * <p><b>Why the id is a parameter, not minted here:</b> this method runs
- * once per bridge per send. Minting inside it would give every copy of an
+ * once per sink per send. Minting inside it would give every copy of an
  * event a different id, and no consumer could ever recognize two copies of
  * the same event as duplicates.</p>
  *
@@ -45,7 +45,7 @@ public final class CloudEventEnvelope {
         String type,
         String subject,
         String origin,
-        EventBridge.Channel channel,
+        EventSink.Channel channel,
         String dataJson
     ) {}
 
@@ -53,7 +53,7 @@ public final class CloudEventEnvelope {
     public static String translate(
         Object event,
         String topic,
-        EventBridge.Channel channel,
+        EventSink.Channel channel,
         String origin,
         String serviceId,
         JsonCodec codec
@@ -68,15 +68,15 @@ public final class CloudEventEnvelope {
 
     /**
      * Translates using {@code eventId} — the identity the bus minted for
-     * this dispatch — instead of minting a fresh one. Every bridge that
-     * receives the dispatch is handed the same id, so an event bridged over
+     * this dispatch — instead of minting a fresh one. Every sink that
+     * receives the dispatch is handed the same id, so an event sent over
      * two transports arrives at a peer twice carrying one identity, which is
      * the only thing that makes it deduplicable.
      */
     public static String translate(
         Object event,
         String topic,
-        EventBridge.Channel channel,
+        EventSink.Channel channel,
         String origin,
         String serviceId,
         JsonCodec codec,
@@ -92,7 +92,7 @@ public final class CloudEventEnvelope {
         frame.put("source", "freeway://" + serviceId);
         frame.put("time", java.time.OffsetDateTime.now().toString());
 
-        if (channel == EventBridge.Channel.CLASS) {
+        if (channel == EventSink.Channel.CLASS) {
             frame.put("type", event.getClass().getName());
             if (event instanceof EventBus.Keyed k) {
                 frame.put("subject", k.key());
@@ -123,9 +123,9 @@ public final class CloudEventEnvelope {
         String source = require(frame, "source");
         String type = require(frame, "type");
         String channelStr = require(frame, EXT_CHANNEL);
-        EventBridge.Channel channel;
+        EventSink.Channel channel;
         try {
-            channel = EventBridge.Channel.valueOf(channelStr.toUpperCase(java.util.Locale.ROOT));
+            channel = EventSink.Channel.valueOf(channelStr.toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Unknown fwchannel: " + channelStr);
         }

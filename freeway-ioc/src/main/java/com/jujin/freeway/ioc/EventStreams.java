@@ -11,8 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Owns {@link EventBus}'s reactive-stream surface: the per-publisher bridges
- * from bus dispatch to JDK {@link Flow}, and the live-bridge registry that
+ * Owns {@link EventBus}'s reactive-stream surface: the per-publisher subscriptions
+ * from bus dispatch to JDK {@link Flow}, and the live-subscription registry that
  * bus shutdown completes. Extracted from {@code EventBus} so the broadcast
  * core stays readable; the public contract is documented on
  * {@link EventBus#stream(Class)}/{@link EventBus#stream(String)}.
@@ -22,33 +22,33 @@ final class EventStreams {
     private static final Logger LOG = LoggerFactory.getLogger(EventStreams.class);
 
     private final EventBus bus;
-    private final Set<EventStreamBridge<?>> bridges = ConcurrentHashMap.newKeySet();
+    private final Set<StreamSubscription<?>> subscriptions = ConcurrentHashMap.newKeySet();
 
     EventStreams(EventBus bus) {
         this.bus = bus;
     }
 
     <E> Flow.Publisher<E> stream(Class<E> eventType) {
-        EventStreamBridge<E> bridge = new EventStreamBridge<>();
-        return downstream -> bridge.startAndSubscribe(
-            () -> bus.subscribe(eventType, bridge::onEvent),
+        StreamSubscription<E> subscription = new StreamSubscription<>();
+        return downstream -> subscription.startAndSubscribe(
+            () -> bus.subscribe(eventType, subscription::onEvent),
             downstream
         );
     }
 
     Flow.Publisher<Object> stream(String topic) {
-        EventStreamBridge<Object> bridge = new EventStreamBridge<>();
-        return downstream -> bridge.startAndSubscribe(
-            () -> bus.subscribe(topic, bridge::onEvent),
+        StreamSubscription<Object> subscription = new StreamSubscription<>();
+        return downstream -> subscription.startAndSubscribe(
+            () -> bus.subscribe(topic, subscription::onEvent),
             downstream
         );
     }
 
-    /** Completes every live bridge (bus shutdown): subscribers must not be
+    /** Completes every live subscription (bus shutdown): subscribers must not be
      *  left hanging on a dead bus. */
     void closeAll() {
-        for (EventStreamBridge<?> bridge : bridges.toArray(new EventStreamBridge[0])) {
-            bridge.close();
+        for (StreamSubscription<?> subscription : subscriptions.toArray(new StreamSubscription[0])) {
+            subscription.close();
         }
     }
 
@@ -59,14 +59,14 @@ final class EventStreams {
     };
 
     /**
-     * Bridges bus dispatch to JDK Flow semantics: {@link SubmissionPublisher}
+     * Connects bus dispatch to JDK Flow semantics: {@link SubmissionPublisher}
      * provides demand tracking, buffering and per-subscriber delivery;
      * {@link SubmissionPublisher#offer(Object)} keeps dispatch non-blocking.
      * Lazily attached — the bus subscription exists only after the first
-     * downstream subscribe. Any downstream cancel closes the bridge, which
+     * downstream subscribe. Any downstream cancel closes the subscription, which
      * unsubscribes from the bus and completes remaining subscribers.
      */
-    private final class EventStreamBridge<T> extends SubmissionPublisher<T> {
+    private final class StreamSubscription<T> extends SubmissionPublisher<T> {
         private final AtomicBoolean attached = new AtomicBoolean();
         private volatile Runnable detach;
 
@@ -74,7 +74,7 @@ final class EventStreams {
             Supplier<Subscription<T>> attach,
             Flow.Subscriber<? super T> downstream
         ) {
-            // Two distinct closed states: THIS bridge (a cancelled stream
+            // Two distinct closed states: THIS subscription (a cancelled stream
             // rejects late subscribers via onError — clean-close would give
             // them a misleading onComplete) and the BUS (detach whatever we
             // own, then settle). Checked up front and again after attach.
@@ -84,7 +84,7 @@ final class EventStreams {
             }
             // Attach once, atomically. Registration into the live set must
             // precede the second check below: a concurrent bus close()
-            // either snapshots this bridge into its shutdown pass or has
+            // either snapshots this subscription into its shutdown pass or has
             // already set closed before we registered — both orderings end
             // settled, none leaves a live subscription on a dead bus.
             if (attached.compareAndSet(false, true)) {
@@ -99,7 +99,7 @@ final class EventStreams {
                     downstream.onError(e);
                     return;
                 }
-                bridges.add(this);
+                subscriptions.add(this);
                 if (isClosed() || bus.isBusClosed()) {
                     close(); // release the just-created bus subscription
                     settleClosed(downstream);
@@ -147,7 +147,7 @@ final class EventStreams {
 
         @Override
         public void close() {
-            bridges.remove(this);
+            subscriptions.remove(this);
             Runnable d = detach;
             if (d != null) d.run();
             super.close(); // onComplete to live subscribers

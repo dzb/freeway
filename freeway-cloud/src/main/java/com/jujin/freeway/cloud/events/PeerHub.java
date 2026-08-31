@@ -169,7 +169,7 @@ public final class PeerHub implements WebSocketEndpoint {
         peers.remove(connection.remoteOrigin(), connection);
     }
 
-    /** Live peer connections — the bridge iterates this for outbound fan-out. */
+    /** Live peer connections — the sink iterates this for outbound fan-out. */
     public List<PeerConnection> connections() {
         return List.copyOf(peers.values());
     }
@@ -321,7 +321,7 @@ public final class PeerHub implements WebSocketEndpoint {
                 return; // dropped by interceptor
             }
         }
-        if (frame.channel() == com.jujin.freeway.ioc.EventBridge.Channel.CLASS) {
+        if (frame.channel() == com.jujin.freeway.ioc.EventSink.Channel.CLASS) {
             if (!allowedTypes.isEmpty() && !allowedTypes.contains(frame.type())) {
                 LOG.debug("Type not in allowlist — dropped: {}", frame.type());
                 return;

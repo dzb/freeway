@@ -184,7 +184,7 @@ class CloudEventBusTest {
     void disabledModuleIsInert() {
         System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "false");
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
-        // publish with no bridge, no peers — must be a clean local-only no-op
+        // publish with no sink, no peers — must be a clean local-only no-op
         nodeA.get(EventBus.class).publish("greet.hello", "bob");
         nodeA.get(EventBus.class).publish(new GreetEvent("bob"));
         // The endpoint is not wired, so it cannot accept inbound mesh frames.

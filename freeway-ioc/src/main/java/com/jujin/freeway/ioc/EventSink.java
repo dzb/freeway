@@ -1,7 +1,7 @@
 package com.jujin.freeway.ioc;
 
 /**
- * Bridge from the local event bus to an external message queue (Kafka, RabbitMQ, etc.).
+ * Sink from the local event bus to an external message queue (Kafka, RabbitMQ, etc.).
  *
  * <p>Implementations may override the channel-aware {@link
  * #send(String, Object, Channel)} to stamp the wire envelope with the
@@ -10,9 +10,9 @@ package com.jujin.freeway.ioc;
  * default to the narrower form, so existing implementations keep working
  * unchanged.
  */
-public interface EventBridge {
+public interface EventSink {
 
-    /** Dispatch channel of the bridged event. */
+    /** Dispatch channel of the sent event. */
     enum Channel {
         /** Class-based dispatch: the topic is derived from the event type. */
         CLASS,
@@ -33,9 +33,9 @@ public interface EventBridge {
 
     /**
      * Identity-carrying send. {@code eventId} is the id the bus minted once
-     * for this dispatch and handed to <em>every</em> bridge — so the same
+     * for this dispatch and handed to <em>every</em> sink — so the same
      * logical event carries one identity across every transport it is
-     * bridged to. Without it each bridge mints its own, and no consumer can
+     * sent to. Without it each sink mints its own, and no consumer can
      * ever correlate the copies.
      *
      * <p>Reusing it is what makes cross-transport dedup possible at all:

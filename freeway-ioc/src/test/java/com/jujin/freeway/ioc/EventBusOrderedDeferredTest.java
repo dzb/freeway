@@ -240,7 +240,7 @@ class EventBusOrderedDeferredTest {
         assertThrows(IllegalStateException.class,
             () -> bus.subscribe("topic", p -> {}));
         assertThrows(IllegalStateException.class,
-            () -> bus.addEventBridge((t, e) -> {}));
+            () -> bus.addEventSink((t, e) -> {}));
         container.close();
     }
 
@@ -281,20 +281,20 @@ class EventBusOrderedDeferredTest {
     }
 
     @Test
-    void deadEventIsNotBridged() {
+    void deadEventIsNotSinkd() {
         Container container = Freeway.create(binder -> {});
         EventBus bus = container.get(EventBus.class);
-        List<String> bridged = new ArrayList<>();
-        bus.addEventBridge(
-            (topic, event) -> bridged.add(topic + "=" + event.getClass().getSimpleName())
+        List<String> sent = new ArrayList<>();
+        bus.addEventSink(
+            (topic, event) -> sent.add(topic + "=" + event.getClass().getSimpleName())
         );
 
         bus.publish(new PostCreatedEvent(new Post("x"))); // zero subscribers -> DeadEvent
 
-        assertFalse(bridged.stream().anyMatch(s -> s.startsWith("DeadEvent")),
-            "DeadEvent diagnostics must not reach the MQ bridge: " + bridged);
-        assertEquals(1, bridged.size(),
-            "the original event should still be bridged: " + bridged);
+        assertFalse(sent.stream().anyMatch(s -> s.startsWith("DeadEvent")),
+            "DeadEvent diagnostics must not reach the MQ sink: " + sent);
+        assertEquals(1, sent.size(),
+            "the original event should still be sent: " + sent);
         container.close();
     }
 

@@ -122,7 +122,7 @@ class EventBusStreamTest {
         bus.publish(new Tick("first"));
         Await.until(2000, () -> received.size() == 1);
 
-        // Cancel must detach the bridge: the next publish finds zero
+        // Cancel must detach the sink: the next publish finds zero
         // subscribers and emits a DeadEvent instead of feeding a zombie.
         handle.get().cancel();
         Await.until(2000, () -> {
@@ -132,12 +132,12 @@ class EventBusStreamTest {
     }
 
     @Test
-    void closedBridgeRejectsLateSubscribers() throws Exception {
+    void closedSinkRejectsLateSubscribers() throws Exception {
         Container container = Freeway.create();
         EventBus bus = new EventBus(container);
 
         Flow.Publisher<Tick> publisher = bus.stream(Tick.class);
-        // Subscribe and cancel through the real path to close the bridge.
+        // Subscribe and cancel through the real path to close the sink.
         AtomicReference<Flow.Subscription> handle = new AtomicReference<>();
         publisher.subscribe(new Flow.Subscriber<Tick>() {
             @Override public void onSubscribe(Flow.Subscription s) {
@@ -194,7 +194,7 @@ class EventBusStreamTest {
     @Test
     void publisherFromBeforeBusCloseNotifiesOnErrorAfterClose() throws Exception {
         // Regression: stream() captured while the bus was open, but the first
-        // downstream subscribe happens after the bus closed. The bridge must
+        // downstream subscribe happens after the bus closed. The sink must
         // settle the subscriber via onError — not leak the raw
         // IllegalStateException out of subscribe() (Flow: subscribe must not
         // throw) and not leave the subscription attached to a dead registry.
@@ -232,7 +232,7 @@ class EventBusStreamTest {
         List<Object> received = new CopyOnWriteArrayList<>();
         bus.stream("market.ticker").subscribe(collecting(received));
 
-        // Warm up until the lazy bridge is attached (attachment is async),
+        // Warm up until the lazy sink is attached (attachment is async),
         // discarding any pre-attach diagnostics from the race window.
         Await.until(2000, () -> {
             bus.publish("market.ticker", "warmup");

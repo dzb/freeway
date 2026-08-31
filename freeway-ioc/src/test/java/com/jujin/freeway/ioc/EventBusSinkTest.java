@@ -26,29 +26,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
     // ==================== event types ====================
 
-/** EventBusBridgeTest: split from the former EventBusTest monolith (behavior-preserving move). */
-class EventBusBridgeTest {
+/** EventBusSinkTest: split from the former EventBusTest monolith (behavior-preserving move). */
+class EventBusSinkTest {
     @Test
-    void bridgeFailureDoesNotEscapePublish() {
-        // Regression: bridge.send sat outside any try/catch, so a failing
-        // bridge escaped publish() to the caller in the immediate path while
+    void sinkFailureDoesNotEscapePublish() {
+        // Regression: sink.send sat outside any try/catch, so a failing
+        // sink escaped publish() to the caller in the immediate path while
         // the Defer path only warn-logged it — asymmetric behavior.
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
         );
         EventBus bus = new EventBus(container);
-        bus.addEventBridge((topic, event) -> {
+        bus.addEventSink((topic, event) -> {
             throw new IllegalStateException("mq down");
         });
 
         assertDoesNotThrow(() -> bus.publish(new PostCreatedEvent(new Post("x"))),
-            "a failing bridge must be isolated like a failing subscriber");
+            "a failing sink must be isolated like a failing subscriber");
         bus.close();
     }
 
     @Test
-    void addEventBridgeFansOutToEveryBridge() {
+    void addEventSinkFansOutToEverySink() {
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> { }))
@@ -56,93 +56,93 @@ class EventBusBridgeTest {
         EventBus bus = new EventBus(container);
         var first = new java.util.ArrayList<String>();
         var second = new java.util.ArrayList<String>();
-        bus.addEventBridge((topic, event) -> first.add(event.getClass().getSimpleName()));
-        bus.addEventBridge((topic, event) -> second.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event) -> first.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event) -> second.add(event.getClass().getSimpleName()));
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
-        assertEquals(List.of("PostCreatedEvent"), first, "first bridge sees the event");
-        assertEquals(List.of("PostCreatedEvent"), second, "second bridge sees the event too");
+        assertEquals(List.of("PostCreatedEvent"), first, "first sink sees the event");
+        assertEquals(List.of("PostCreatedEvent"), second, "second sink sees the event too");
         bus.close();
     }
 
     @Test
-    void stoppedEventIsNotBridged() {
+    void stoppedEventIsNotSinkd() {
         // A Stoppable event short-circuited by its subscribers must not leave
-        // the process via the bridge.
-        List<String> bridged = new ArrayList<>();
+        // the process via the sink.
+        List<String> sent = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, e -> e.stop()))
         );
         EventBus bus = new EventBus(container);
-        bus.addEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event) -> sent.add(event.getClass().getSimpleName()));
 
         bus.publish(new PostCreatedEvent(new Post("x")));
 
-        assertEquals(0, bridged.size(),
-            "a stopped event must not reach the bridge");
+        assertEquals(0, sent.size(),
+            "a stopped event must not reach the sink");
         bus.close();
     }
 
     @Test
-    void inboundClassEventIsDeliveredLocallyButNotBridged() {
+    void inboundClassEventIsDeliveredLocallyButNotSinkd() {
         // publishInbound must reach local class subscribers yet never echo
-        // back through the bridge — re-bridging inbound traffic would loop
+        // back through the sink — sending inbound traffic back out would loop
         // the event around the MQ indefinitely.
         List<PostCreatedEvent> received = new ArrayList<>();
-        List<String> bridged = new ArrayList<>();
+        List<String> sent = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class)
                 .add(EventSubscriber.of(PostCreatedEvent.class, received::add))
         );
         EventBus bus = new EventBus(container);
-        bus.addEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
+        bus.addEventSink((topic, event) -> sent.add(event.getClass().getSimpleName()));
 
         bus.publishInbound(new PostCreatedEvent(new Post("remote")), "remote-1");
 
         assertEquals(List.of("remote"),
             received.stream().map(e -> e.post().title()).toList(),
             "inbound event must be delivered to local class subscribers");
-        assertEquals(0, bridged.size(),
-            "inbound events must never be re-bridged to the MQ");
+        assertEquals(0, sent.size(),
+            "inbound events must never be sent back out to the MQ");
         bus.close();
     }
 
     @Test
-    void inboundTopicEventIsDeliveredLocallyButNotBridged() {
+    void inboundTopicEventIsDeliveredLocallyButNotSinkd() {
         List<String> received = new ArrayList<>();
-        List<String> bridged = new ArrayList<>();
+        List<String> sent = new ArrayList<>();
         Container container = Freeway.create();
         EventBus bus = new EventBus(container);
         bus.subscribe("order.placed", payload -> received.add(String.valueOf(payload)));
-        bus.addEventBridge((topic, event) -> bridged.add(topic));
+        bus.addEventSink((topic, event) -> sent.add(topic));
 
         bus.publishInbound("order.placed", "from-remote", "remote-1");
 
         assertEquals(List.of("from-remote"), received,
             "inbound topic event must be delivered to local topic subscribers");
-        assertEquals(0, bridged.size(),
-            "inbound topic events must never be re-bridged to the MQ");
+        assertEquals(0, sent.size(),
+            "inbound topic events must never be sent back out to the MQ");
         bus.close();
     }
 
     @Test
-    void bridgeReceivesDispatchChannel() {
-        // The bridge must learn whether an event was published on the
+    void sinkReceivesDispatchChannel() {
+        // The sink must learn whether an event was published on the
         // class channel or the topic channel so adapters can stamp the
         // wire envelope accordingly (inbound dispatch must mirror it).
-        List<EventBridge.Channel> channels = new ArrayList<>();
+        List<EventSink.Channel> channels = new ArrayList<>();
         Container container = Freeway.create();
         EventBus bus = new EventBus(container);
-        bus.addEventBridge(new EventBridge() {
+        bus.addEventSink(new EventSink() {
             @Override
             public void send(String topic, Object event) {
                 channels.add(null);
             }
 
             @Override
-            public void send(String topic, Object event, EventBridge.Channel channel) {
+            public void send(String topic, Object event, EventSink.Channel channel) {
                 channels.add(channel);
             }
         });
@@ -151,93 +151,93 @@ class EventBusBridgeTest {
         bus.publish("order.placed", "payload");
 
         assertEquals(
-            List.of(EventBridge.Channel.CLASS, EventBridge.Channel.TOPIC),
+            List.of(EventSink.Channel.CLASS, EventSink.Channel.TOPIC),
             channels,
-            "class events must bridge as CLASS, topic events as TOPIC");
+            "class events must be sent as CLASS, topic events as TOPIC");
         bus.close();
     }
 
     @Test
-    void addEventBridgeIsIdempotentByIdentity() {
+    void addEventSinkIsIdempotentByIdentity() {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        EventBridge bridge = (topic, event) -> seen.add(topic);
-        bus.addEventBridge(bridge);
-        bus.addEventBridge(bridge);
+        EventSink sink = (topic, event) -> seen.add(topic);
+        bus.addEventSink(sink);
+        bus.addEventSink(sink);
 
         bus.publish("t", "payload");
 
         assertEquals(List.of("t"), seen,
-            "the same bridge instance installed twice must not receive twice");
+            "the same sink instance installed twice must not receive twice");
         container.close();
     }
 
     @Test
-    void removeEventBridgeDetachesTheChannel() {
+    void removeEventSinkDetachesTheChannel() {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        EventBridge bridge = (topic, event) -> seen.add(topic);
-        bus.addEventBridge(bridge);
+        EventSink sink = (topic, event) -> seen.add(topic);
+        bus.addEventSink(sink);
 
-        assertTrue(bus.removeEventBridge(bridge), "an installed bridge is removable");
-        assertFalse(bus.removeEventBridge(bridge), "removing twice is a no-op");
+        assertTrue(bus.removeEventSink(sink), "an installed sink is removable");
+        assertFalse(bus.removeEventSink(sink), "removing twice is a no-op");
 
         bus.publish("t", "payload");
-        assertTrue(seen.isEmpty(), "a removed bridge must receive nothing: " + seen);
+        assertTrue(seen.isEmpty(), "a removed sink must receive nothing: " + seen);
         container.close();
     }
 
     @Test
-    void closeDetachesBridges() {
+    void closeDetachesSinks() {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        bus.addEventBridge((topic, event) -> seen.add(topic));
+        bus.addEventSink((topic, event) -> seen.add(topic));
 
         bus.close();
 
         // Removal stays callable during shutdown so a module's stop hook can
         // release its channel.
-        assertDoesNotThrow(() -> bus.removeEventBridge((topic, event) -> { }));
-        assertTrue(seen.isEmpty(), "close must not leave bridges attached");
+        assertDoesNotThrow(() -> bus.removeEventSink((topic, event) -> { }));
+        assertTrue(seen.isEmpty(), "close must not leave sinks attached");
         container.close();
     }
 
     @Test
-    void failingBridgeDoesNotStopTheNextOne() {
+    void failingSinkDoesNotStopTheNextOne() {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> seen = new ArrayList<>();
-        bus.addEventBridge((topic, event) -> { throw new IllegalStateException("down"); });
-        bus.addEventBridge((topic, event) -> seen.add(topic));
+        bus.addEventSink((topic, event) -> { throw new IllegalStateException("down"); });
+        bus.addEventSink((topic, event) -> seen.add(topic));
 
         bus.publish("t", "payload");
 
         assertEquals(List.of("t"), seen,
-            "a throwing bridge must not starve the bridges after it");
+            "a throwing sink must not starve the sinks after it");
         container.close();
     }
 
     @Test
-    void everyBridgeReceivesTheSameEventId() {
+    void everySinkReceivesTheSameEventId() {
         // The whole point of the 4-arg send: an event fanned out to N
         // transports must carry ONE identity, or the copies cannot be
         // correlated by whoever receives two of them.
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
-        IdRecordingBridge first = new IdRecordingBridge();
-        IdRecordingBridge second = new IdRecordingBridge();
-        bus.addEventBridge(first);
-        bus.addEventBridge(second);
+        IdRecordingSink first = new IdRecordingSink();
+        IdRecordingSink second = new IdRecordingSink();
+        bus.addEventSink(first);
+        bus.addEventSink(second);
 
         bus.publish("t", "payload");
         bus.publish(new PostCreatedEvent(new Post("x")));
 
         assertEquals(2, first.ids.size(), "topic + class dispatch");
         assertEquals(first.ids, second.ids,
-            "both bridges must see the same ids — a fresh id per bridge would "
+            "both sinks must see the same ids — a fresh id per sink would "
                 + "make the two copies of one event unrelatable");
         assertFalse(first.ids.get(0).isBlank());
         // One id per dispatch, not one per event: the two publishes differ.
@@ -246,24 +246,24 @@ class EventBusBridgeTest {
     }
 
     @Test
-    void bridgesSeeNoIdWhenNoneCanBeFannedOut() {
+    void sinksSeeNoIdWhenNoneCanBeFannedOut() {
         // Sanity: the id is minted per dispatch, so two publishes never
-        // share one even through a single bridge.
+        // share one even through a single sink.
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
-        IdRecordingBridge bridge = new IdRecordingBridge();
-        bus.addEventBridge(bridge);
+        IdRecordingSink sink = new IdRecordingSink();
+        bus.addEventSink(sink);
 
         bus.publish("t", "one");
         bus.publish("t", "two");
 
-        assertEquals(2, bridge.ids.size());
-        assertNotEquals(bridge.ids.get(0), bridge.ids.get(1));
+        assertEquals(2, sink.ids.size());
+        assertNotEquals(sink.ids.get(0), sink.ids.get(1));
         container.close();
     }
 
     /** Captures the eventId the bus hands it, to assert identity sharing. */
-    private static final class IdRecordingBridge implements EventBridge {
+    private static final class IdRecordingSink implements EventSink {
         final List<String> ids = new ArrayList<>();
 
         @Override

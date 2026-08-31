@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
-import com.jujin.freeway.ioc.internal.EventBridgeRegistry;
+import com.jujin.freeway.ioc.internal.EventSinkRegistry;
 import com.jujin.freeway.ioc.internal.EventExecutorSupport;
 import com.jujin.freeway.ioc.internal.EventStats;
 import org.slf4j.Logger;
@@ -24,7 +24,7 @@ import java.util.function.Supplier;
  * In-process event bus with class-based and string-topic subscriptions,
  * optional {@code Defer}-scoped buffering, async dispatch, reactive streams
  * ({@link #stream(Class)}/{@link #stream(String)}, JDK {@link Flow}), and an
- * optional external event bridge.
+ * optional external event sink.
  *
  * <p><b>The message domain has three channels:</b></p>
  * <ul>
@@ -32,7 +32,7 @@ import java.util.function.Supplier;
  *       grammar is past tense ({@code user.created});</li>
  *   <li>request-reply — {@link CallBus#call}/{@link CallBus#consumer}:
  *       commands and queries; topic grammar is {@code mapping.methodName}
- *       ({@code user.getUser}); lives in its own registry, never bridged
+ *       ({@code user.getUser}); lives in its own registry, never sent
  *       to MQ;</li>
  *   <li>streams — {@link #stream(Class)}/{@link #stream(String)}: a
  *       {@link Flow.Publisher} view over the same subscriptions as
@@ -44,7 +44,7 @@ import java.util.function.Supplier;
  *
  * <p>Delivery semantics:</b> at-most-once, best-effort. A throwing
  * subscriber is isolated (other subscribers still receive the event) and
- * counted in {@link #stats()}; the event is not retried. A failing bridge is
+ * counted in {@link #stats()}; the event is not retried. A failing sink is
  * similarly isolated. Inside a {@code Defer} scope (e.g. a DB transaction),
  * events are buffered and dispatched only after the scope commits — a
  * rollback discards them. Async dispatch ({@link #publishAsync}) has no
@@ -57,7 +57,7 @@ import java.util.function.Supplier;
  * {@link EventBusInbound#publishInbound(Object, String)} /
  * {@link EventBusInbound#publishInbound(String, Object, String)} — they are
  * delivered to local subscribers exactly like {@link #publish}, but are never
- * re-bridged to the external MQ. Re-bridging inbound traffic would loop the
+ * sent back out to the external MQ. Re-bridging inbound traffic would loop the
  * event back into the queue and re-dispatch it indefinitely.</p>
  */
 public final class EventBus implements EventBusInbound, AutoCloseable {
@@ -66,19 +66,19 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
 
     private final Container container;
     private final EventStats stats;
-    private final EventBridgeRegistry bridgeRegistry = new EventBridgeRegistry();
+    private final EventSinkRegistry sinkRegistry = new EventSinkRegistry();
     private final EventSubscriptionIndex subscriptions;
     private final EventDispatcher dispatcher;
     /** Bounded window of recent inbound wire ids; null when dedup is off. */
     private volatile IdWindow inboundIds;
     private volatile boolean closed;
 
-    /** Package-private closed probe for {@link EventStreams} bridges. */
+    /** Package-private closed probe for {@link EventStreams} sinks. */
     boolean isBusClosed() {
         return closed;
     }
     private final EventExecutorSupport executors;
-    /** Live stream bridges, closed (and detached) on {@link #close()}. */
+    /** Live stream sinks, closed (and detached) on {@link #close()}. */
     private final EventStreams streams = new EventStreams(this);
 
     @Inject
@@ -90,7 +90,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         this.subscriptions = new EventSubscriptionIndex(container);
         this.dispatcher = new EventDispatcher(
             subscriptions,
-            bridgeRegistry,
+            sinkRegistry,
             stats,
             () -> closed,
             this::publish,
@@ -102,36 +102,36 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         });
     }
 
-    /** Adds a bridge alongside existing ones — every bridge receives every
+    /** Adds a sink alongside existing ones — every sink receives every
      *  outbound event (design: fan-out to N channels, e.g. WS mesh + Kafka
      *  broker simultaneously).
      *
      *  <p>Idempotent by identity: installing the same instance twice does not
      *  deliver the event twice. Distinct instances stay independent, so two
-     *  brokers (or one bridge per channel) still fan out side by side.
+     *  brokers (or one sink per channel) still fan out side by side.
      *
      *  @throws IllegalStateException if the bus is closed */
-    public void addEventBridge(EventBridge bridge) {
+    public void addEventSink(EventSink sink) {
         requireOpen();
-        Objects.requireNonNull(bridge, "bridge");
-        bridgeRegistry.add(bridge);
+        Objects.requireNonNull(sink, "sink");
+        sinkRegistry.add(sink);
     }
 
-    /** Detaches a bridge previously installed by {@link #addEventBridge}
+    /** Detaches a sink previously installed by {@link #addEventSink}
      *  (matched by identity). Allowed after {@link #close()} so a module's
      *  stop hook can release its channel during shutdown.
      *
-     *  @return {@code true} if the bridge was installed and is now detached */
-    public boolean removeEventBridge(EventBridge bridge) {
-        Objects.requireNonNull(bridge, "bridge");
-        return bridgeRegistry.remove(bridge);
+     *  @return {@code true} if the sink was installed and is now detached */
+    public boolean removeEventSink(EventSink sink) {
+        Objects.requireNonNull(sink, "sink");
+        return sinkRegistry.remove(sink);
     }
 
     // ==================== class-based publish ====================
 
     /**
      * Publish an event to all class-matched subscribers (module + runtime),
-     * then bridge to MQ if configured.
+     * then send to external sinks if configured.
      *
      * <p>This is the <b>class-event</b> channel: subscribers are matched on
      * the runtime type of {@code event}. In particular,
@@ -426,7 +426,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * dispatch for everyone else. Dropped events are logged at debug level.</p>
      *
      * <p>Lifecycle: any downstream {@code cancel()} ends the whole stream —
-     * the bridge detaches from the bus and further subscribers see
+     * the sink detaches from the bus and further subscribers see
      * {@code onError}. Fan out by calling {@code stream()} once per
      * consumer, not by sharing one publisher instance. Events published
      * inside a {@code Defer} scope reach the stream only after the scope
@@ -436,7 +436,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * <p>Observability: a live stream is a real subscriber — publishing to
      * a streamed topic emits no {@link DeadEvent}, and {@link #stats()}
      * counts one delivery per event per stream regardless of downstream
-     * fan-out (SubmissionPublisher fans out inside the bridge).</p>
+     * fan-out (SubmissionPublisher fans out inside the sink).</p>
      *
      * @param eventType event type to match (with supertypes)
      */
@@ -546,10 +546,10 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             return;
         }
         closed = true;
-        // Detach every bridge: a closed bus must not keep module channels
+        // Detach every sink: a closed bus must not keep module channels
         // (and their sockets) reachable, and post-close publishes are
         // best-effort no-ops anyway.
-        bridgeRegistry.clear();
+        sinkRegistry.clear();
         subscriptions.clearRuntime();
         // Broadcast semantics: post-close publishes are silent no-ops — a
         // fact nobody consumes must not abort shutdown. The counterpart
@@ -580,7 +580,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * processing subsequent subscribers. Published by subscriber in a
      * multi-handler chain to short-circuit remaining handlers. Applies to
      * both channels: class events and string-topic payloads — a stopped
-     * message is also withheld from the outbound {@link EventBridge}.
+     * message is also withheld from the outbound {@link EventSink}.
      */
     public interface Stoppable {
         void stop();
@@ -591,13 +591,13 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * Events that carry a partitioning key for cross-JVM ordering.
      *
      * <p>Optional contract: when an event type implements this interface,
-     * external event bridges (Kafka, RabbitMQ, ...) use {@link #key()} as the
+     * external event sinks (Kafka, RabbitMQ, ...) use {@link #key()} as the
      * message key, so the broker keeps events of the same aggregate ordered
      * and parallel consumers stay per-key serial. Events that do not
-     * implement it are bridged with a null key — no cross-JVM ordering
+     * implement it are sent with a null key — no cross-JVM ordering
      * guarantee and no key-based parallelism on the consuming side.</p>
      *
-     * <p>Passive contract like {@link Stoppable}: the bus and its bridges
+     * <p>Passive contract like {@link Stoppable}: the bus and its sinks
      * only ever read it; the event type opts in with zero coupling.</p>
      */
     public interface Keyed {

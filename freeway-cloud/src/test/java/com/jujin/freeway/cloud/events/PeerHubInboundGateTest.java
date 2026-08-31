@@ -2,7 +2,7 @@ package com.jujin.freeway.cloud.events;
 
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.ioc.Container;
-import com.jujin.freeway.ioc.EventBridge;
+import com.jujin.freeway.ioc.EventSink;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.Freeway;
 
@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PeerHubInboundGateTest {
 
-    private static CloudEventEnvelope.Parsed frame(EventBridge.Channel channel, String type) {
+    private static CloudEventEnvelope.Parsed frame(EventSink.Channel channel, String type) {
         return new CloudEventEnvelope.Parsed(
             "id-1", "freeway://svc", type, null, "peer-a", channel, "\"payload\"");
     }
@@ -48,11 +48,11 @@ class PeerHubInboundGateTest {
     void topicChannelIsGatedByTheTopicAllowlist() {
         Rig rig = rig(List.of(), List.of("greet."));
 
-        rig.hub().receive(frame(EventBridge.Channel.TOPIC, "other.topic"));
+        rig.hub().receive(frame(EventSink.Channel.TOPIC, "other.topic"));
         assertTrue(rig.inbound().isEmpty(),
             "a topic outside the allowlist must not reach the local bus");
 
-        rig.hub().receive(frame(EventBridge.Channel.TOPIC, "greet.hello"));
+        rig.hub().receive(frame(EventSink.Channel.TOPIC, "greet.hello"));
         assertEquals1(rig.inbound(), "an allowlisted topic must be delivered");
     }
 
@@ -62,7 +62,7 @@ class PeerHubInboundGateTest {
 
         // Not on this classpath at all — the allowlist must reject it before
         // any type resolution is attempted.
-        rig.hub().receive(frame(EventBridge.Channel.CLASS, "com.evil.Gadget"));
+        rig.hub().receive(frame(EventSink.Channel.CLASS, "com.evil.Gadget"));
         assertTrue(rig.inbound().isEmpty(),
             "a class outside the allowlist must never be resolved");
     }
@@ -72,7 +72,7 @@ class PeerHubInboundGateTest {
         // Documented default: an empty list disables the gate. It warns loudly
         // at wire() time instead of silently tightening under an upgrade.
         Rig rig = rig(List.of(), List.of());
-        rig.hub().receive(frame(EventBridge.Channel.TOPIC, "other.topic"));
+        rig.hub().receive(frame(EventSink.Channel.TOPIC, "other.topic"));
         assertEquals1(rig.inbound(), "empty allowlist = documented accept-all");
     }
 
@@ -81,7 +81,7 @@ class PeerHubInboundGateTest {
         Rig rig = rig(List.of(), List.of());
         CloudEventEnvelope.Parsed looped = new CloudEventEnvelope.Parsed(
             "id-1", "freeway://svc", "greet.hello", null, "inst-1",
-            EventBridge.Channel.TOPIC, "\"payload\"");
+            EventSink.Channel.TOPIC, "\"payload\"");
 
         rig.hub().receive(looped);
 
