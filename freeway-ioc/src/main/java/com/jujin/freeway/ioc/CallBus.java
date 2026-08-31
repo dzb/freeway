@@ -2,23 +2,19 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.ioc.internal.CallAdviceChain;
+import com.jujin.freeway.ioc.internal.CallStats;
+import com.jujin.freeway.ioc.internal.CallTargetRegistry;
 
-import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Predicate;
 
 /**
@@ -69,38 +65,22 @@ import java.util.function.Predicate;
  */
 public final class CallBus implements AutoCloseable {
 
-    private final Metrics metrics;
-    private final Metrics.Counter cCalled;
-    private final Metrics.Counter cServed;
-    private final Metrics.Counter cFailed;
-    private final Metrics.Counter cDead;
-
+    private final CallStats stats;
     /** Handler slot per fully-qualified method topic (last registration wins). */
-    private final ConcurrentHashMap<String, MethodTarget> targets =
-        new ConcurrentHashMap<>();
+    private final CallTargetRegistry targets = new CallTargetRegistry();
     /** Call-chain advices in registration order; last link is raw dispatch. */
-    private final CopyOnWriteArrayList<CallAdviceEntry> advices =
-        new CopyOnWriteArrayList<>();
+    private final CallAdviceChain adviceChain = new CallAdviceChain();
     /** Calls dispatched but not yet completed — failed explicitly on close. */
     private final ConcurrentLinkedQueue<CompletableFuture<Object>> pending =
         new ConcurrentLinkedQueue<>();
     private volatile boolean closed;
-
-    private final LongAdder called = new LongAdder();
-    private final LongAdder served = new LongAdder();
-    private final LongAdder failed = new LongAdder();
-    private final LongAdder dead = new LongAdder();
 
     /**
      * Creates a call bus observing the container's {@link Metrics} builtin.
      */
     public CallBus(Container container) {
         Objects.requireNonNull(container, "container");
-        this.metrics = container.get(Metrics.class);
-        this.cCalled = metrics.counter("callbus.called");
-        this.cServed = metrics.counter("callbus.served");
-        this.cFailed = metrics.counter("callbus.failed");
-        this.cDead = metrics.counter("callbus.dead");
+        this.stats = new CallStats(container.get(Metrics.class));
     }
 
     // ==================== consumer side ====================
@@ -224,8 +204,7 @@ public final class CallBus implements AutoCloseable {
         }
         pending.add(sink);
         sink.whenComplete((r, t) -> pending.remove(sink));
-        called.increment();
-        cCalled.increment();
+        stats.called();
 
         // Dispatch inline — always, Defer scope or not: a call is a
         // question asked now. Its reply is typically consumed inline (the
@@ -246,7 +225,7 @@ public final class CallBus implements AutoCloseable {
             return;
         }
         try {
-            Object result = runChain(topic, payload, 0);
+            Object result = adviceChain.invoke(topic, payload, targets, stats);
             // Counted inside the terminal link: an advice short-circuit is
             // a completed call but not a served one.
             sink.complete(result);
@@ -257,35 +236,9 @@ public final class CallBus implements AutoCloseable {
             // Advice failures and handler failures reach the caller; the
             // JDK wraps non-Completion types per join()/get() (Completion-
             // Exception / ExecutionException), keeping one unwrapping rule.
-            failed.increment();
-            cFailed.increment();
+            stats.failed();
             sink.completeExceptionally(t);
         }
-    }
-
-    /**
-     * Terminal chain link: handler lookup plus method-handle dispatch
-     * (handles are resolved once at registration). Throws rather than
-     * completing the stage — the advice chain must see handler failures to
-     * be able to react (map, degrade, reroute). Business exceptions arrive
-     * unwrapped: method handles do not produce InvocationTargetException
-     * artifacts.
-     */
-    private Object dispatchTarget(String topic, List<?> payload) throws Throwable {
-        MethodTarget target = targets.get(topic);
-        if (target == null) {
-            dead.increment();
-            cDead.increment();
-            throw new DeadCallException(topic);
-        }
-        // Compile-time List contract — no instanceof guessing here.
-        Object[] args = payload == null
-            ? new Object[0]
-            : payload.toArray();
-        Object result = MethodHandleUtils.invokeOn(target.handle(), target.target(), args);
-        served.increment();
-        cServed.increment();
-        return result;
     }
 
     // ==================== provider side ====================
@@ -319,23 +272,7 @@ public final class CallBus implements AutoCloseable {
         requireOpen();
         Objects.requireNonNull(topicMapping, "topicMapping");
         Objects.requireNonNull(target, "target");
-        Map<String, Method> seen = new HashMap<>();
-        for (Method method : target.getClass().getMethods()) {
-            int mods = method.getModifiers();
-            if (method.getDeclaringClass() == Object.class
-                || Modifier.isStatic(mods)
-                || method.isSynthetic()) {
-                continue;
-            }
-            String topic = methodTopic(topicMapping, method.getName());
-            if (seen.put(method.getName(), method) != null) {
-                throw new IllegalArgumentException(
-                    "Overloaded methods are not supported on call topics: "
-                        + target.getClass().getName() + "#" + method.getName());
-            }
-            targets.put(topic, new MethodTarget(target, method,
-                MethodHandleUtils.methodHandle(method)));
-        }
+        targets.register(topicMapping, target);
     }
 
     /**
@@ -346,22 +283,12 @@ public final class CallBus implements AutoCloseable {
     public void unregister(String topicMapping, Object target) {
         Objects.requireNonNull(topicMapping, "topicMapping");
         Objects.requireNonNull(target, "target");
-        for (Method method : target.getClass().getMethods()) {
-            int mods = method.getModifiers();
-            if (method.getDeclaringClass() == Object.class
-                || Modifier.isStatic(mods)
-                || method.isSynthetic()) {
-                continue;
-            }
-            targets.remove(
-                methodTopic(topicMapping, method.getName()),
-                new MethodTarget(target, method, MethodHandleUtils.methodHandle(method)));
-        }
+        targets.unregister(topicMapping, target);
     }
 
     /** Returns true if some handler is currently registered for {@code topic}. */
     public boolean handles(String topic) {
-        return targets.containsKey(topic);
+        return targets.handles(topic);
     }
 
     // ==================== stats / lifecycle ====================
@@ -380,7 +307,7 @@ public final class CallBus implements AutoCloseable {
     /** Snapshot of cumulative dispatch counters, mirroring {@link EventBus#stats}. */
     public CallBusStats stats() {
         return new CallBusStats(
-            called.sum(), served.sum(), failed.sum(), dead.sum());
+            stats.calledCount(), stats.servedCount(), stats.failedCount(), stats.deadCount());
     }
 
     /**
@@ -400,7 +327,7 @@ public final class CallBus implements AutoCloseable {
         }
         closed = true;
         targets.clear();
-        advices.clear();
+        adviceChain.clear();
         for (CompletableFuture<Object> stage : List.copyOf(pending)) {
             stage.completeExceptionally(
                 new IllegalStateException("CallBus is closed"));
@@ -457,26 +384,7 @@ public final class CallBus implements AutoCloseable {
         requireOpen();
         Objects.requireNonNull(topics, "topics");
         Objects.requireNonNull(advice, "advice");
-        advices.add(new CallAdviceEntry(topics, advice));
-    }
-
-    /** Runs matching advices in registration order; tail is raw dispatch. */
-    private Object runChain(String topic, List<?> payload, int from) throws Throwable {
-        for (int i = from; i < advices.size(); i++) {
-            CallAdviceEntry entry = advices.get(i);
-            if (!entry.topics().test(topic)) {
-                continue;
-            }
-            int index = i; // captured by the chain below
-            return entry.advice().around(new CallChain() {
-                @Override public String topic() { return topic; }
-                @Override public Object payload() { return payload; }
-                @Override public Object proceed() throws Throwable {
-                    return runChain(topic, payload, index + 1);
-                }
-            });
-        }
-        return dispatchTarget(topic, payload);
+        adviceChain.add(topics, advice);
     }
 
     /**
@@ -524,16 +432,6 @@ public final class CallBus implements AutoCloseable {
     }
 
     // ==================== internals ====================
-
-    /**
-     * One registered handler: the target instance plus the dispatch handle
-     * resolved at registration. The handle is the {@link MethodHandleUtils}
-     * cached singleton for the method, so the records unregister() rebuilds
-     * for removal compare equal to the registered ones.
-     */
-    private record MethodTarget(Object target, Method method, MethodHandle handle) {}
-
-    private record CallAdviceEntry(Predicate<String> topics, CallAdvice advice) {}
 
     private static String methodTopic(String topicMapping, String methodName) {
         return topicMapping + "." + methodName;

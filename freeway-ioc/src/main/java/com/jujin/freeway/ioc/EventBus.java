@@ -4,31 +4,19 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
+import com.jujin.freeway.ioc.internal.EventBridgeRegistry;
+import com.jujin.freeway.ioc.internal.EventStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
-
-
-import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -76,11 +64,10 @@ public final class EventBus implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(EventBus.class);
 
     private final Container container;
-    private final Metrics metrics;
-    private final Metrics.Counter cPublished;
-    private final Metrics.Counter cDelivered;
-    private final Metrics.Counter cSubscriberFailures;
-    private final Metrics.Counter cDeadEvents;
+    private final EventStats stats;
+    private final EventBridgeRegistry bridgeRegistry = new EventBridgeRegistry();
+    private final EventSubscriptionIndex subscriptions;
+    private final EventDispatcher dispatcher;
     /** Bounded window of recent inbound wire ids; null when dedup is off. */
     private volatile IdWindow inboundIds;
     private volatile boolean closed;
@@ -89,22 +76,10 @@ public final class EventBus implements AutoCloseable {
     boolean isBusClosed() {
         return closed;
     }
-    private final java.util.concurrent.CopyOnWriteArrayList<EventBridge> bridges =
-        new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile Executor asyncExecutor;
     private volatile ExecutorService defaultAsyncExecutor;
     /** Globally ordered dispatch channel for {@link #publishOrdered}. */
     private volatile ExecutorService orderedExecutor;
-    private final LongAdder published = new LongAdder();
-    private final LongAdder delivered = new LongAdder();
-    private final LongAdder subscriberFailures = new LongAdder();
-    private final LongAdder deadEvents = new LongAdder();
-    /** Atomic snapshot of the module-contributed subscriber index. */
-    private volatile ModuleIndex moduleIndex;
-    private final Map<Class<?>, List<Subscription<?>>> runtimeSubs =
-        new ConcurrentHashMap<>();
-    private final Map<String, List<Subscription<?>>> runtimeTopicSubs =
-        new ConcurrentHashMap<>();
     /** Live stream bridges, closed (and detached) on {@link #close()}. */
     private final EventStreams streams = new EventStreams(this);
 
@@ -113,11 +88,16 @@ public final class EventBus implements AutoCloseable {
         this.container = Objects.requireNonNull(container, "container");
         // Metrics is a container builtin (NoopMetrics by default) — always
         // resolvable; a contributed/primary implementation observes the bus.
-        this.metrics = container.get(Metrics.class);
-        this.cPublished = metrics.counter("eventbus.published");
-        this.cDelivered = metrics.counter("eventbus.delivered");
-        this.cSubscriberFailures = metrics.counter("eventbus.subscriber_failures");
-        this.cDeadEvents = metrics.counter("eventbus.dead_events");
+        this.stats = new EventStats(container.get(Metrics.class));
+        this.subscriptions = new EventSubscriptionIndex(container);
+        this.dispatcher = new EventDispatcher(
+            subscriptions,
+            bridgeRegistry,
+            stats,
+            () -> closed,
+            this::publish,
+            EventBus::resolveTopic
+        );
     }
 
     /** Adds a bridge alongside existing ones — every bridge receives every
@@ -132,14 +112,7 @@ public final class EventBus implements AutoCloseable {
     public void addEventBridge(EventBridge bridge) {
         requireOpen();
         Objects.requireNonNull(bridge, "bridge");
-        synchronized (bridges) {
-            for (EventBridge installed : bridges) {
-                if (installed == bridge) {
-                    return;
-                }
-            }
-            bridges.add(bridge);
-        }
+        bridgeRegistry.add(bridge);
     }
 
     /** Detaches a bridge previously installed by {@link #addEventBridge}
@@ -149,15 +122,7 @@ public final class EventBus implements AutoCloseable {
      *  @return {@code true} if the bridge was installed and is now detached */
     public boolean removeEventBridge(EventBridge bridge) {
         Objects.requireNonNull(bridge, "bridge");
-        synchronized (bridges) {
-            for (int i = 0; i < bridges.size(); i++) {
-                if (bridges.get(i) == bridge) {
-                    bridges.remove(i);
-                    return true;
-                }
-            }
-            return false;
-        }
+        return bridgeRegistry.remove(bridge);
     }
 
     // ==================== class-based publish ====================
@@ -243,81 +208,7 @@ public final class EventBus implements AutoCloseable {
     }
 
     private <E> void dispatchEvent(E event, boolean bridgeToMq) {
-        // Events buffered in a Defer scope before close() may drain after
-        // close: delivering to module subscribers only (runtime lists are
-        // cleared) would be partial, and the zero-subscriber DeadEvent
-        // publish would throw requireOpen. Silent no-op is the cleanest
-        // post-close semantics.
-        if (closed) {
-            return;
-        }
-        if (!(event instanceof DeadEvent)) {
-            published.increment();
-            cPublished.increment();
-        }
-        Class<?> eventType = event.getClass();
-        List<Consumer<Object>> moduleHandlers = classSubscribers(eventType);
-        List<Subscription<?>> runtimeHandlers = matchingSubscriptions(
-            runtimeSubs,
-            eventType
-        );
-        boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
-
-        for (Consumer<Object> handler : moduleHandlers) {
-            if (event instanceof Stoppable s && s.isStopped()) break;
-            deliver(
-                () -> handler.accept(event),
-                "Event subscriber failed for {}",
-                eventType.getSimpleName()
-            );
-        }
-
-        for (Subscription<?> sub : runtimeHandlers) {
-            if (event instanceof Stoppable s && s.isStopped()) break;
-            deliver(
-                () -> sub.dispatch(event),
-                "Runtime event subscriber failed for {}",
-                eventType.getSimpleName()
-            );
-        }
-
-        if (!hasSubscribers && !(event instanceof DeadEvent)) {
-            deadEvents.increment();
-            cDeadEvents.increment();
-            publish(new DeadEvent(this, event));
-        }
-
-        if (bridgeToMq && !(event instanceof DeadEvent)) {
-            // A stopped event was short-circuited by its subscribers — it must
-            // not leave the process via the bridge.
-            if (event instanceof Stoppable s && s.isStopped()) {
-                return;
-            }
-            // No bridge installed — skip the topic resolution and the id mint
-            // entirely. The common case pays for neither.
-            if (bridges.isEmpty()) {
-                return;
-            }
-            // Resolved once, not once per bridge: getAnnotation() on the
-            // fan-out hot path must not scale with the bridge count.
-            String topic = resolveTopic(eventType);
-            // One identity per dispatch, shared by every bridge. Minted here
-            // rather than inside each bridge: an event bridged over two
-            // transports has to carry ONE id, or the two copies are
-            // unrelatable and no consumer can ever dedup them.
-            String eventId = UUID.randomUUID().toString();
-            for (EventBridge bridge : bridges) {
-                try {
-                    bridge.send(topic, event, EventBridge.Channel.CLASS, eventId);
-                } catch (Exception ex) {
-                    LOG.warn(
-                        "Event bridge failed for {}",
-                        eventType.getSimpleName(),
-                        ex
-                    );
-                }
-            }
-        }
+        dispatcher.dispatchClass(event, bridgeToMq);
     }
 
     // ==================== string-topic publish ====================
@@ -460,91 +351,7 @@ public final class EventBus implements AutoCloseable {
     }
 
     private void dispatchTopic(String topic, Object payload, boolean bridgeToMq) {
-        if (closed) {
-            return;
-        }
-        if (!(payload instanceof DeadEvent)) {
-            published.increment();
-            cPublished.increment();
-        }
-        List<Consumer<Object>> moduleHandlers = topicSubscribers(topic);
-        List<Subscription<?>> runtimeHandlers = runtimeTopicSubs.getOrDefault(
-            topic,
-            List.of()
-        );
-        boolean hasSubscribers = !moduleHandlers.isEmpty() || !runtimeHandlers.isEmpty();
-
-        // Stoppable works identically on the topic channel: a payload that
-        // carries stop state short-circuits remaining deliveries, matching
-        // the event-channel loop below.
-        for (Consumer<Object> handler : moduleHandlers) {
-            if (payload instanceof Stoppable s && s.isStopped()) break;
-            deliver(
-                () -> handler.accept(payload),
-                "Event subscriber failed for topic '{}'",
-                topic
-            );
-        }
-
-        for (Subscription<?> sub : runtimeHandlers) {
-            if (payload instanceof Stoppable s && s.isStopped()) break;
-            deliver(
-                () -> sub.dispatch(payload),
-                "Runtime event subscriber failed for topic '{}'",
-                topic
-            );
-        }
-
-        if (!hasSubscribers) {
-            deadEvents.increment();
-            cDeadEvents.increment();
-            publish(new DeadEvent(this, payload));
-        }
-
-        // Mirrors dispatchEvent: a DeadEvent never leaves the process.
-        if (bridgeToMq && !(payload instanceof DeadEvent)) {
-            // A stopped payload was short-circuited by its subscribers — it
-            // must not leave the process via the bridge.
-            if (payload instanceof Stoppable s && s.isStopped()) {
-                return;
-            }
-            // No bridge installed — skip the id mint entirely.
-            if (bridges.isEmpty()) {
-                return;
-            }
-            // One identity per dispatch, shared by every bridge — see
-            // dispatchEvent: the two copies of an event bridged over two
-            // transports must be recognizably the same event.
-            String eventId = UUID.randomUUID().toString();
-            for (EventBridge bridge : bridges) {
-                try {
-                    bridge.send(topic, payload, EventBridge.Channel.TOPIC, eventId);
-                } catch (Exception ex) {
-                    LOG.warn("Event bridge failed for topic '{}'", topic, ex);
-                }
-            }
-        }
-    }
-
-    /**
-     * Runs one subscriber delivery: increments the delivered counters on
-     * success, or the failure counters plus a warn log on a throwing
-     * subscriber (which is isolated — other subscribers still receive the
-     * event). The throwable is appended as the last warn argument so SLF4J
-     * reports it as the exception.
-     */
-    private void deliver(Runnable delivery, String warnMsg, Object... warnArgs) {
-        try {
-            delivery.run();
-            delivered.increment();
-            cDelivered.increment();
-        } catch (Throwable ex) {
-            subscriberFailures.increment();
-            cSubscriberFailures.increment();
-            Object[] args = Arrays.copyOf(warnArgs, warnArgs.length + 1);
-            args[warnArgs.length] = ex;
-            LOG.warn(warnMsg, args);
-        }
+        dispatcher.dispatchTopic(topic, payload, bridgeToMq);
     }
 
     // ==================== async ====================
@@ -751,10 +558,10 @@ public final class EventBus implements AutoCloseable {
      */
     public EventBusStats stats() {
         return new EventBusStats(
-            published.sum(),
-            delivered.sum(),
-            subscriberFailures.sum(),
-            deadEvents.sum()
+            stats.publishedCount(),
+            stats.deliveredCount(),
+            stats.subscriberFailureCount(),
+            stats.deadEventCount()
         );
     }
 
@@ -765,11 +572,7 @@ public final class EventBus implements AutoCloseable {
         Consumer<E> handler
     ) {
         requireOpen();
-        Subscription<E> sub = new Subscription<>(eventType, handler);
-        runtimeSubs
-            .computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
-            .add(sub);
-        return sub;
+        return subscriptions.subscribeClass(eventType, handler);
     }
 
     // ==================== string-topic runtime subscribe ====================
@@ -779,34 +582,13 @@ public final class EventBus implements AutoCloseable {
         Consumer<Object> handler
     ) {
         requireOpen();
-        Subscription<Object> sub = new Subscription<>(
-            Object.class,
-            handler,
-            topic
-        );
-        runtimeTopicSubs
-            .computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>())
-            .add(sub);
-        return sub;
+        return subscriptions.subscribeTopic(topic, handler);
     }
 
     // ==================== unsubscribe ====================
 
     public void unsubscribe(Subscription<?> sub) {
-        // computeIfPresent drops the list once it empties — long-running apps
-        // subscribe/unsubscribe dynamically and must not accumulate a shell
-        // entry (and its COW allocation) per ever-used key.
-        if (sub.topic() != null) {
-            runtimeTopicSubs.computeIfPresent(sub.topic(), (key, subs) -> {
-                subs.remove(sub);
-                return subs.isEmpty() ? null : subs;
-            });
-        } else {
-            runtimeSubs.computeIfPresent(sub.eventType(), (key, subs) -> {
-                subs.remove(sub);
-                return subs.isEmpty() ? null : subs;
-            });
-        }
+        subscriptions.unsubscribe(sub);
     }
 
     // ==================== subscriber queries ====================
@@ -818,8 +600,7 @@ public final class EventBus implements AutoCloseable {
      */
     public boolean hasSubscribers(String topic) {
         requireOpen();
-        boolean module = !topicSubscribers(topic).isEmpty();
-        return module || !runtimeTopicSubs.getOrDefault(topic, List.of()).isEmpty();
+        return subscriptions.hasTopicSubscribers(topic);
     }
 
     /**
@@ -828,9 +609,7 @@ public final class EventBus implements AutoCloseable {
      */
     public boolean hasSubscribers(Class<?> eventType) {
         requireOpen();
-        List<Consumer<Object>> module = classSubscribers(eventType);
-        List<Subscription<?>> runtime = matchingSubscriptions(runtimeSubs, eventType);
-        return !module.isEmpty() || !runtime.isEmpty();
+        return subscriptions.hasClassSubscribers(eventType);
     }
 
     @Override
@@ -842,10 +621,8 @@ public final class EventBus implements AutoCloseable {
         // Detach every bridge: a closed bus must not keep module channels
         // (and their sockets) reachable, and post-close publishes are
         // best-effort no-ops anyway.
-        synchronized (bridges) {
-            bridges.clear();
-        }
-        runtimeTopicSubs.clear();
+        bridgeRegistry.clear();
+        subscriptions.clearRuntime();
         // Broadcast semantics: post-close publishes are silent no-ops — a
         // fact nobody consumes must not abort shutdown. The counterpart
         // CallBus takes the opposite stance deliberately: pending calls fail
@@ -854,7 +631,6 @@ public final class EventBus implements AutoCloseable {
         // Complete live streams so downstream subscribers are not left
         // hanging on a dead bus.
         streams.closeAll();
-        moduleIndex = null;
         // Same lock as the lazy init in executor(): prevents a publishAsync
         // that passed requireOpen() from creating a fresh default executor
         // after this method observed null and skipped shutdown.
@@ -885,129 +661,6 @@ public final class EventBus implements AutoCloseable {
     }
 
     // ==================== internals ====================
-
-    private List<Consumer<Object>> classSubscribers(Class<?> eventType) {
-        ensureIndexed();
-        ModuleIndex idx = moduleIndex;
-        if (idx == null) {
-            return List.of();
-        }
-        return matchingSubscriptions(idx.classIdx(), eventType);
-    }
-
-    /**
-     * Returns subscriptions for {@code eventType} and every supertype
-     * (superclasses and interfaces, excluding {@code Object}): a subscriber
-     * declared on a parent type receives events of any subtype, but a
-     * subscriber declared on a subtype never receives parent events.
-     */
-    private static <T> List<T> matchingSubscriptions(
-        Map<Class<?>, List<T>> index,
-        Class<?> eventType
-    ) {
-        List<T> direct = index.get(eventType);
-        List<T> result = direct != null ? new ArrayList<>(direct) : null;
-        for (Class<?> sup : SUPER_TYPES.get(eventType)) {
-            List<T> subs = index.get(sup);
-            if (subs != null) {
-                if (result == null) {
-                    result = new ArrayList<>();
-                }
-                result.addAll(subs);
-            }
-        }
-        return result != null ? result : List.of();
-    }
-
-    /**
-     * Supertype chain (superclasses + interfaces, transitive, excluding
-     * {@code Object} and the type itself), cached per event class. A
-     * subscriber on {@code Object.class} receives nothing — subscribing to
-     * every event requires an explicit marker type.
-     */
-    private static final ClassValue<List<Class<?>>> SUPER_TYPES =
-        new ClassValue<>() {
-            @Override
-            protected List<Class<?>> computeValue(Class<?> type) {
-                List<Class<?>> result = new ArrayList<>();
-                Set<Class<?>> seen = new HashSet<>();
-                Deque<Class<?>> queue = new ArrayDeque<>();
-                queue.add(type);
-                while (!queue.isEmpty()) {
-                    Class<?> c = queue.poll();
-                    Class<?> sup = c.getSuperclass();
-                    if (sup != null && sup != Object.class && seen.add(sup)) {
-                        result.add(sup);
-                        queue.add(sup);
-                    }
-                    for (Class<?> iface : c.getInterfaces()) {
-                        if (seen.add(iface)) {
-                            result.add(iface);
-                            queue.add(iface);
-                        }
-                    }
-                }
-                return List.copyOf(result);
-            }
-        };
-
-    private List<Consumer<Object>> topicSubscribers(String topic) {
-        ensureIndexed();
-        ModuleIndex idx = moduleIndex;
-        List<Consumer<Object>> subs = idx != null ? idx.topicIdx().get(topic) : null;
-        return subs != null ? subs : List.of();
-    }
-
-    /**
-     * Rebuilds the module-subscriber index when the contribution version
-     * changes. Double-checked: the publish hot path reads the volatile
-     * snapshot lock-free and only enters the synchronized block when the
-     * index is stale.
-     */
-    private void ensureIndexed() {
-        Extension<?> ext = container.extension(EventSubscriber.class);
-        long version = ext.version();
-        ModuleIndex idx = moduleIndex;
-        if (idx != null && idx.version() == version) {
-            return;
-        }
-        synchronized (this) {
-            idx = moduleIndex;
-            version = ext.version();
-            if (idx != null && idx.version() == version) {
-                return;
-            }
-            var classIdx = new HashMap<Class<?>, List<Consumer<Object>>>();
-            var topicIdx = new HashMap<String, List<Consumer<Object>>>();
-            for (Object entry : ext.all()) {
-                if (!(entry instanceof EventSubscriber<?> sub)) continue;
-                Consumer<Object> handler = adapt(sub);
-                if (sub.topic() == null) {
-                    classIdx
-                        .computeIfAbsent(sub.eventType(), k -> new ArrayList<>())
-                        .add(handler);
-                } else {
-                    topicIdx
-                        .computeIfAbsent(sub.topic(), k -> new ArrayList<>())
-                        .add(handler);
-                }
-            }
-            moduleIndex = new ModuleIndex(classIdx, topicIdx, version);
-        }
-    }
-
-    /** Immutable snapshot of the module-subscriber index. */
-    private record ModuleIndex(
-        Map<Class<?>, List<Consumer<Object>>> classIdx,
-        Map<String, List<Consumer<Object>>> topicIdx,
-        long version
-    ) {}
-
-    private static <E> Consumer<Object> adapt(EventSubscriber<E> sub) {
-        Class<E> eventType = sub.eventType();
-        Consumer<E> handler = sub.handler();
-        return event -> handler.accept(eventType.cast(event));
-    }
 
     private static String resolveTopic(Class<?> eventType) {
         Topic topic = eventType.getAnnotation(Topic.class);
