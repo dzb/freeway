@@ -9,7 +9,7 @@ package com.jujin.freeway.cloud.events;
  * interceptor only ever sees mesh frames, so it would miss the same event
  * arriving over a second transport — which is the case that actually
  * produces duplicates. Dedup lives at the one funnel every transport passes
- * through: {@code EventBus.publishInboundWithId(...)} plus {@code
+ * through: {@code EventBus.publishInbound(..., eventId)} plus {@code
  * EventBus.enableInboundDeduplication(capacity)}.
  */
 public interface CloudEventInterceptor {

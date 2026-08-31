@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -42,7 +41,7 @@ final class EventDispatcher {
         this.topicResolver = topicResolver;
     }
 
-    void dispatchClass(Object event, boolean bridgeToMq) {
+    void dispatchClass(Object event, boolean bridgeToMq, String eventId) {
         if (isClosed.getAsBoolean()) {
             return;
         }
@@ -89,7 +88,6 @@ final class EventDispatcher {
                 return;
             }
             String topic = topicResolver.apply(eventType);
-            String eventId = UUID.randomUUID().toString();
             for (EventBridge bridge : bridges.snapshot()) {
                 try {
                     bridge.send(topic, event, EventBridge.Channel.CLASS, eventId);
@@ -100,7 +98,7 @@ final class EventDispatcher {
         }
     }
 
-    void dispatchTopic(String topic, Object payload, boolean bridgeToMq) {
+    void dispatchTopic(String topic, Object payload, boolean bridgeToMq, String eventId) {
         if (isClosed.getAsBoolean()) {
             return;
         }
@@ -145,7 +143,6 @@ final class EventDispatcher {
             if (bridges.isEmpty()) {
                 return;
             }
-            String eventId = UUID.randomUUID().toString();
             for (EventBridge bridge : bridges.snapshot()) {
                 try {
                     bridge.send(topic, payload, EventBridge.Channel.TOPIC, eventId);

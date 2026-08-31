@@ -14,6 +14,7 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.function.Consumer;
@@ -144,71 +145,43 @@ public final class EventBus implements AutoCloseable {
      * If no scope is active, the event is published immediately.</p>
      */
     public <E> void publish(E event) {
+        publishEvent(event, true, UUID.randomUUID().toString(), false);
+    }
+
+    /**
+     * Adapter SPI: publishes an event received from an external transport.
+     * The {@code eventId} must be the id carried on the wire, so copies of
+     * the same event arriving over multiple transports can be deduplicated.
+     * Business code should use {@link #publish(Object)} instead.
+     */
+    public <E> void publishInbound(E event, String eventId) {
+        publishEvent(event, false, eventId, true);
+    }
+
+    private <E> void publishEvent(
+        E event,
+        boolean bridge,
+        String eventId,
+        boolean inbound
+    ) {
         Objects.requireNonNull(event, "event");
         requireOpen();
+        if (inbound && !claimInbound(eventId)) {
+            return; // duplicate — already delivered over another channel
+        }
         // DeadEvent always dispatches immediately — it is a diagnostic
         // event that fires when zero subscribers exist, and must not be
         // re-deferred during drain of committed events.
-        if (Defer.isActive() && !(event instanceof DeadEvent)) {
-            Defer.defer(() -> dispatchEvent(event, true));
-            return;
+        boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
+        if (defer) {
+            Defer.defer(() -> dispatchEvent(event, bridge, eventId));
+        } else {
+            dispatchEvent(event, bridge, eventId);
         }
-        dispatchEvent(event, true);
     }
 
-    /**
-     * Publish an event received from an external source (e.g. a Kafka
-     * subscriber). Delivered to local subscribers exactly like
-     * {@link #publish(Object)}, but never re-bridged to the external MQ —
-     * inbound events must not loop back into the queue.
-     *
-     * <p>Respects the active {@code Defer} scope like {@link #publish}.</p>
-     */
-    public <E> void publishInbound(E event) {
-        Objects.requireNonNull(event, "event");
-        requireOpen();
-        if (Defer.isActive() && !(event instanceof DeadEvent)) {
-            Defer.defer(() -> dispatchEvent(event, false));
-            return;
-        }
-        dispatchEvent(event, false);
-    }
-
-    /**
-     * Publish an inbound event together with the wire identity it arrived
-     * with — otherwise identical to {@link #publishInbound(Object)}.
-     *
-     * <p>{@code eventId} is the id the <em>originating</em> bus minted and
-     * stamped onto the frame. It is offered to the dedup window when one is
-     * enabled ({@link #enableInboundDeduplication}): a node reachable over
-     * two transports receives every event once per transport, and because
-     * both copies carry the same id the second arrival is recognized and
-     * dropped. With no id there is nothing to correlate on, so the event is
-     * always delivered. {@code null} degenerates to {@link
-     * #publishInbound(Object)}.
-     *
-     * <p>Transports that stamp an id on the wire should use this form. It is
-     * deliberately <em>not</em> an overload of {@code publishInbound}: a
-     * {@code (String, String)} call cannot be resolved between {@code
-     * publishInbound(E, String)} and the topic-channel {@code
-     * publishInbound(String, Object)}, so every such call site would be a
-     * compile error.</p>
-     */
-    public <E> void publishInboundWithId(E event, String eventId) {
-        Objects.requireNonNull(event, "event");
-        requireOpen();
-        if (!claimInbound(eventId)) {
-            return; // duplicate — already delivered over another channel
-        }
-        if (Defer.isActive() && !(event instanceof DeadEvent)) {
-            Defer.defer(() -> dispatchEvent(event, false));
-            return;
-        }
-        dispatchEvent(event, false);
-    }
-
-    private <E> void dispatchEvent(E event, boolean bridgeToMq) {
-        dispatcher.dispatchClass(event, bridgeToMq);
+    private <E> void dispatchEvent(E event, boolean bridgeToMq, String eventId) {
+        dispatcher.dispatchClass(event, bridgeToMq, eventId);
     }
 
     // ==================== string-topic publish ====================
@@ -230,49 +203,45 @@ public final class EventBus implements AutoCloseable {
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
     public void publish(String topic, Object payload) {
-        Objects.requireNonNull(topic, "topic");
-        requireOpen();
-        if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload, true));
-            return;
-        }
-        dispatchTopic(topic, payload, true);
+        publishTopic(topic, payload, true, UUID.randomUUID().toString(), false);
     }
 
     /**
-     * Publish a payload received from an external source on a string topic.
-     * Delivered to local topic subscribers exactly like
-     * {@link #publish(String, Object)}, but never re-bridged to the external
-     * MQ — inbound events must not loop back into the queue.
-     *
-     * <p>Respects the active {@code Defer} scope like {@link #publish}.</p>
+     * Adapter SPI: publishes a topic payload received from an external
+     * transport. The {@code eventId} must be the wire id so copies of the
+     * same event can be deduplicated. Business code should use
+     * {@link #publish(String, Object)} instead.
      */
-    public void publishInbound(String topic, Object payload) {
-        Objects.requireNonNull(topic, "topic");
-        requireOpen();
-        if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload, false));
-            return;
-        }
-        dispatchTopic(topic, payload, false);
+    public void publishInbound(String topic, Object payload, String eventId) {
+        publishTopic(topic, payload, false, eventId, true);
     }
 
-    /**
-     * Topic-channel counterpart of {@link #publishInboundWithId(Object,
-     * String)}: identical dispatch, deduped on {@code eventId} when a window
-     * is enabled.
-     */
-    public void publishInboundWithId(String topic, Object payload, String eventId) {
+    private void publishTopic(
+        String topic,
+        Object payload,
+        boolean bridge,
+        String eventId,
+        boolean inbound
+    ) {
         Objects.requireNonNull(topic, "topic");
         requireOpen();
-        if (!claimInbound(eventId)) {
+        if (inbound && !claimInbound(eventId)) {
             return; // duplicate — already delivered over another channel
         }
         if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload, false));
-            return;
+            Defer.defer(() -> dispatchTopic(topic, payload, bridge, eventId));
+        } else {
+            dispatchTopic(topic, payload, bridge, eventId);
         }
-        dispatchTopic(topic, payload, false);
+    }
+
+    private void dispatchTopic(
+        String topic,
+        Object payload,
+        boolean bridgeToMq,
+        String eventId
+    ) {
+        dispatcher.dispatchTopic(topic, payload, bridgeToMq, eventId);
     }
 
     /**
@@ -348,10 +317,6 @@ public final class EventBus implements AutoCloseable {
             }
             return true;
         }
-    }
-
-    private void dispatchTopic(String topic, Object payload, boolean bridgeToMq) {
-        dispatcher.dispatchTopic(topic, payload, bridgeToMq);
     }
 
     // ==================== async ====================

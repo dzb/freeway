@@ -99,7 +99,7 @@ class EventBusBridgeTest {
         EventBus bus = new EventBus(container);
         bus.addEventBridge((topic, event) -> bridged.add(event.getClass().getSimpleName()));
 
-        bus.publishInbound(new PostCreatedEvent(new Post("remote")));
+        bus.publishInbound(new PostCreatedEvent(new Post("remote")), "remote-1");
 
         assertEquals(List.of("remote"),
             received.stream().map(e -> e.post().title()).toList(),
@@ -118,7 +118,7 @@ class EventBusBridgeTest {
         bus.subscribe("order.placed", payload -> received.add(String.valueOf(payload)));
         bus.addEventBridge((topic, event) -> bridged.add(topic));
 
-        bus.publishInbound("order.placed", "from-remote");
+        bus.publishInbound("order.placed", "from-remote", "remote-1");
 
         assertEquals(List.of("from-remote"), received,
             "inbound topic event must be delivered to local topic subscribers");

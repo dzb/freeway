@@ -28,8 +28,8 @@ class EventBusInboundDedupTest {
         bus.enableInboundDeduplication(16);
 
         // One event, two transports, one id — one delivery.
-        bus.publishInboundWithId("hello", "evt-1");
-        bus.publishInboundWithId("hello", "evt-1");
+        bus.publishInbound("hello", "evt-1");
+        bus.publishInbound("hello", "evt-1");
 
         assertEquals(List.of("hello"), received,
             "the second copy must be dropped — same id, already delivered");
@@ -44,9 +44,9 @@ class EventBusInboundDedupTest {
         bus.subscribe(String.class, received::add);
         bus.enableInboundDeduplication(16);
 
-        bus.publishInboundWithId("one", "evt-1");
-        bus.publishInboundWithId("two", "evt-2");
-        bus.publishInboundWithId("three", "evt-3");
+        bus.publishInbound("one", "evt-1");
+        bus.publishInbound("two", "evt-2");
+        bus.publishInbound("three", "evt-3");
 
         assertEquals(List.of("one", "two", "three"), received,
             "dedup keyed on the id must not swallow distinct events");
@@ -62,8 +62,8 @@ class EventBusInboundDedupTest {
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
 
-        bus.publishInboundWithId("hello", "evt-1");
-        bus.publishInboundWithId("hello", "evt-1");
+        bus.publishInbound("hello", "evt-1");
+        bus.publishInbound("hello", "evt-1");
 
         assertEquals(List.of("hello", "hello"), received,
             "with no window armed, both copies are delivered");
@@ -78,9 +78,9 @@ class EventBusInboundDedupTest {
         bus.subscribe(String.class, received::add);
 
         bus.enableInboundDeduplication(16);
-        bus.publishInboundWithId("hello", "evt-1");
+        bus.publishInbound("hello", "evt-1");
         bus.disableInboundDeduplication();
-        bus.publishInboundWithId("hello", "evt-1");
+        bus.publishInbound("hello", "evt-1");
 
         assertEquals(List.of("hello", "hello"), received);
         container.close();
@@ -96,10 +96,10 @@ class EventBusInboundDedupTest {
         bus.subscribe(String.class, received::add);
         bus.enableInboundDeduplication(16);
 
-        bus.publishInboundWithId("a", null);
-        bus.publishInboundWithId("a", null);
-        bus.publishInboundWithId("b", "");
-        bus.publishInboundWithId("b", "");
+        bus.publishInbound("a", null);
+        bus.publishInbound("a", null);
+        bus.publishInbound("b", "");
+        bus.publishInbound("b", "");
 
         assertEquals(List.of("a", "a", "b", "b"), received,
             "an event with no identity must never be deduped away");
@@ -114,10 +114,10 @@ class EventBusInboundDedupTest {
         bus.subscribe(String.class, received::add);
         bus.enableInboundDeduplication(2);
 
-        bus.publishInboundWithId("a", "id-a");
-        bus.publishInboundWithId("b", "id-b");
-        bus.publishInboundWithId("c", "id-c");      // evicts id-a
-        bus.publishInboundWithId("a again", "id-a"); // evicted, so delivered
+        bus.publishInbound("a", "id-a");
+        bus.publishInbound("b", "id-b");
+        bus.publishInbound("c", "id-c");      // evicts id-a
+        bus.publishInbound("a again", "id-a"); // evicted, so delivered
 
         assertEquals(List.of("a", "b", "c", "a again"), received,
             "a capacity-2 window remembers only the last two ids");
@@ -132,8 +132,8 @@ class EventBusInboundDedupTest {
         bus.subscribe("orders", payload -> received.add(String.valueOf(payload)));
         bus.enableInboundDeduplication(16);
 
-        bus.publishInboundWithId("orders", "first", "evt-1");
-        bus.publishInboundWithId("orders", "second", "evt-1");
+        bus.publishInbound("orders", "first", "evt-1");
+        bus.publishInbound("orders", "second", "evt-1");
 
         assertEquals(List.of("first"), received,
             "the topic channel dedups on the same wire id");

@@ -329,7 +329,7 @@ public final class PeerHub implements WebSocketEndpoint {
             try {
                 Class<?> type = Class.forName(frame.type(), false, getClass().getClassLoader());
                 Object event = codec.fromJson(frame.dataJson(), type);
-                bus.publishInboundWithId(event, frame.id());
+                bus.publishInbound(event, frame.id());
             } catch (ClassNotFoundException e) {
                 LOG.debug("Event type not on this node's classpath — dropped: {}", frame.type());
             } catch (RuntimeException e) {
@@ -345,7 +345,7 @@ public final class PeerHub implements WebSocketEndpoint {
             Object payload = frame.dataJson() == null
                 ? null
                 : com.jujin.freeway.commons.json.JsonUtils.parse(frame.dataJson());
-            bus.publishInboundWithId(frame.type(), payload, frame.id());
+            bus.publishInbound(frame.type(), payload, frame.id());
         }
     }
 
