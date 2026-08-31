@@ -145,7 +145,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * If no scope is active, the event is published immediately.</p>
      */
     public <E> void publish(E event) {
-        publishEvent(event, new PublishContext(true, UUID.randomUUID().toString(), false));
+        publishEvent(event, new PublishContext(UUID.randomUUID().toString(), false));
     }
 
     /**
@@ -156,7 +156,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      */
     @Override
     public <E> void publishInbound(E event, String eventId) {
-        publishEvent(event, new PublishContext(false, eventId, true));
+        publishEvent(event, new PublishContext(eventId, true));
     }
 
     private <E> void publishEvent(E event, PublishContext ctx) {
@@ -170,14 +170,14 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         // re-deferred during drain of committed events.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
         if (defer) {
-            Defer.defer(() -> dispatchEvent(event, ctx.bridge(), ctx.eventId()));
+            Defer.defer(() -> dispatchEvent(event, ctx.inbound(), ctx.eventId()));
         } else {
-            dispatchEvent(event, ctx.bridge(), ctx.eventId());
+            dispatchEvent(event, ctx.inbound(), ctx.eventId());
         }
     }
 
-    private <E> void dispatchEvent(E event, boolean bridgeToMq, String eventId) {
-        dispatcher.dispatchEvent(event, bridgeToMq, eventId);
+    private <E> void dispatchEvent(E event, boolean inbound, String eventId) {
+        dispatcher.dispatchEvent(event, inbound, eventId);
     }
 
     // ==================== string-topic publish ====================
@@ -199,7 +199,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * <p>Like {@link #publish(Object)}, respects the active {@code Defer} scope.</p>
      */
     public void publish(String topic, Object payload) {
-        publishTopic(topic, payload, new PublishContext(true, UUID.randomUUID().toString(), false));
+        publishTopic(topic, payload, new PublishContext(UUID.randomUUID().toString(), false));
     }
 
     /**
@@ -210,7 +210,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      */
     @Override
     public void publishInbound(String topic, Object payload, String eventId) {
-        publishTopic(topic, payload, new PublishContext(false, eventId, true));
+        publishTopic(topic, payload, new PublishContext(eventId, true));
     }
 
     private void publishTopic(String topic, Object payload, PublishContext ctx) {
@@ -220,19 +220,19 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             return; // duplicate — already delivered over another channel
         }
         if (Defer.isActive()) {
-            Defer.defer(() -> dispatchTopic(topic, payload, ctx.bridge(), ctx.eventId()));
+            Defer.defer(() -> dispatchTopic(topic, payload, ctx.inbound(), ctx.eventId()));
         } else {
-            dispatchTopic(topic, payload, ctx.bridge(), ctx.eventId());
+            dispatchTopic(topic, payload, ctx.inbound(), ctx.eventId());
         }
     }
 
     private void dispatchTopic(
         String topic,
         Object payload,
-        boolean bridgeToMq,
+        boolean inbound,
         String eventId
     ) {
-        dispatcher.dispatchTopic(topic, payload, bridgeToMq, eventId);
+        dispatcher.dispatchTopic(topic, payload, inbound, eventId);
     }
 
     /**
@@ -310,7 +310,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         }
     }
 
-    private record PublishContext(boolean bridge, String eventId, boolean inbound) {}
+    private record PublishContext(String eventId, boolean inbound) {}
 
     // ==================== async ====================
 

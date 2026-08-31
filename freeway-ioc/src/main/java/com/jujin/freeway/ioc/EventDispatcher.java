@@ -41,7 +41,7 @@ final class EventDispatcher {
         this.topicResolver = topicResolver;
     }
 
-    void dispatchEvent(Object event, boolean bridgeToMq, String eventId) {
+    void dispatchEvent(Object event, boolean inbound, String eventId) {
         if (isClosed.getAsBoolean()) {
             return;
         }
@@ -80,7 +80,7 @@ final class EventDispatcher {
             deadEventPublisher.accept(new DeadEvent(this, event));
         }
 
-        if (bridgeToMq && !(event instanceof DeadEvent)) {
+        if (!inbound && !(event instanceof DeadEvent)) {
             if (event instanceof EventBus.Stoppable s && s.isStopped()) {
                 return;
             }
@@ -98,7 +98,7 @@ final class EventDispatcher {
         }
     }
 
-    void dispatchTopic(String topic, Object payload, boolean bridgeToMq, String eventId) {
+    void dispatchTopic(String topic, Object payload, boolean inbound, String eventId) {
         if (isClosed.getAsBoolean()) {
             return;
         }
@@ -136,7 +136,7 @@ final class EventDispatcher {
             deadEventPublisher.accept(new DeadEvent(this, payload));
         }
 
-        if (bridgeToMq && !(payload instanceof DeadEvent)) {
+        if (!inbound && !(payload instanceof DeadEvent)) {
             if (payload instanceof EventBus.Stoppable s && s.isStopped()) {
                 return;
             }
