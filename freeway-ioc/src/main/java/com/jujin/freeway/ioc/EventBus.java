@@ -177,7 +177,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     }
 
     private <E> void dispatchEvent(E event, boolean bridgeToMq, String eventId) {
-        dispatcher.dispatchClass(event, bridgeToMq, eventId);
+        dispatcher.dispatchEvent(event, bridgeToMq, eventId);
     }
 
     // ==================== string-topic publish ====================

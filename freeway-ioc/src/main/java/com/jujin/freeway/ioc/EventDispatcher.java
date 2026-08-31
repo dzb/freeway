@@ -41,7 +41,7 @@ final class EventDispatcher {
         this.topicResolver = topicResolver;
     }
 
-    void dispatchClass(Object event, boolean bridgeToMq, String eventId) {
+    void dispatchEvent(Object event, boolean bridgeToMq, String eventId) {
         if (isClosed.getAsBoolean()) {
             return;
         }
