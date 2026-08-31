@@ -589,7 +589,7 @@ public final class CloudConfigKeys {
 - classpath 扫描式自动注册（`ServiceLoader` 除外，可关）。
 - 业务数据进入 `InvocationContext`；实例属性进入 `@Marker`。
 - 第三方 SDK 进入 core。
-- 分布式事务、分布式锁（协调型，超范围）；MQ/事件桥接（`EventBridge`
+- 分布式事务、分布式锁（协调型，超范围）；MQ/事件桥接（`EventSink`
   接缝已有，适配器在 ext）；API 网关/服务网格/Serverless/分布式调度。
 
 ## 11. 事实修正记录（相对早期文档，均已对照现有代码核实）

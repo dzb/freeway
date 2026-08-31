@@ -196,6 +196,6 @@
 # freeway.kafka.bootstrap-servers=localhost:9092
 # freeway.kafka.group-id=freeway
 # Comma-separated topic names for EventBus ↔ Kafka bridging.
-# KafkaEventBridge sends matching events to these topics;
+# KafkaEventSink sends matching events to these topics;
 # KafkaSubscriber polls these topics and publishes to local EventBus.
 # freeway.kafka.topics=

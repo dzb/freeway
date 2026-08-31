@@ -37,8 +37,8 @@
 ```
 fact 通道:
   同 JVM   → publish → 本地订阅者（对象直递, Stoppable 短路有效）
-  跨 JVM   → CloudEventBridge(WS) → 对端 /cloud/events → publishInbound
-           → KafkaEventBridge（ext, 并存）→ broker → 订阅者
+  跨 JVM   → CloudEventSink(WS) → 对端 /cloud/events → publishInbound
+           → KafkaEventSink（ext, 并存）→ broker → 订阅者
 question 通道:
   同 JVM   → CallBus → 本地槽位
   跨 JVM   → RemoteCaller → /rpc/*（RemoteProxyFactory.localFirst）
@@ -151,7 +151,7 @@ peers 解析（双源）:
 ```
 publish(event)
   ├─ 本地派发（不变, 对象直递）
-  └─ 桥钩子（等价 EventBridge.send 的位置, 见 §5）:
+  └─ 出站钩子（等价 EventSink.send 的位置, 见 §5）:
        POJO → CloudEventEnvelope.translate(event, channel, origin)
             → 遍历活跃连接: 按 hello.subscribe 前缀过滤 type
             → session.sendText(CE-JSON)
@@ -187,13 +187,13 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 - 回环防护：`fworigin == 本节点 origin` 的入站帧丢弃（自身经 mesh
   环回的事件；配合 publishInbound 的"不回桥"语义双保险）。
 
-## 5. 与 EventBridge SPI 的关系
+## 5. 与 EventSink SPI 的关系
 
-**`CloudEventBridge` 实现 `EventBridge` SPI**（经
-`EventBus.addEventBridge` 安装，`EventBus` 核心零改动）：
+**`CloudEventSink` 实现 `EventSink` SPI**（经
+`EventBus.addEventSink` 安装，`EventBus` 核心零改动）：
 
-- `EventBridge` 是 broker 语义（send-and-forget 到持久通道），由 ext
-  适配器实现；CE-WS 桥与 Kafka 桥**可以并存**——总线对每个 bridge 都
+- `EventSink` 是 broker 语义（send-and-forget 到持久通道），由 ext
+  适配器实现；CE-WS 桥与 Kafka 桥**可以并存**——总线对每个 sink 都
   派发（fan-out），同一事件经两条通道到达同一节点时由共享事件 id +
   入站去重窗口收敛（`events.dedup.enabled`）。双通道并存属用户显式
   选择，框架支持。
@@ -211,9 +211,9 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 | `PeerHub` | cloud.events | WS 端点（`WebSocketEndpoint`）：握手/hello/token 门禁/订阅声明/入站管道 + 连接表（按 origin 去重） |
 | `PeerConnector` | cloud.events | peers 解析（config/discovery 双源）+ 连接生命周期 + 退避重连 + 握手看门狗 |
 | `PeerConnection` | cloud.events | 一条活跃连接：对端身份、订阅前缀、发送器（close 恰好一次） |
-| `CloudEventBridge` | cloud.events | 出站钩子（实现 `EventBridge`）：遍历活跃连接、前缀过滤、发送 |
+| `CloudEventSink` | cloud.events | 出站钩子（实现 `EventSink`）：遍历活跃连接、前缀过滤、发送 |
 | `CloudEventInterceptor` | cloud.events | 入站拦截器位（contribution）：审计/租户/自定义过滤 |
-| `CloudEventModule` | cloud.events | 装配：endpoint route + connector hook + bridge 安装 + 去重开关 |
+| `CloudEventModule` | cloud.events | 装配：endpoint route + connector hook + sink 安装 + 去重开关 |
 
 配置键（`freeway.cloud.events.*`，全部已在 `CloudConfigKeys` 落地）：
 `enabled`（默认 false）、`peers`、`subscriptions`（本节点出站订阅
@@ -254,7 +254,7 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 
 > **状态（2026-08-28）**：E1–E3 已实施——`CloudEventEnvelope` 翻译器、
 > `PeerHub`（WS 端点 + 入站管道 + 拦截器位）、
-> `PeerConnector`（双源 peers + 退避重连）、`CloudEventBridge`（出站
+> `PeerConnector`（双源 peers + 退避重连）、`CloudEventSink`（出站
 > 钩子，订阅前缀过滤）全部落地；双节点真实 WS 契约测试覆盖双向
 > 往返、前缀过滤、白名单、Keyed subject、非白名单丢弃与惰性模式。
 

@@ -41,7 +41,7 @@ CallBus 保持**纯本地、零网络感知**。远端化是 cloud 层对
             └──────┬──────────────────────────────────┘
                    │ 出栈(两者用不同传输,各自独立)
         fact 走 MQ │            question 走 HTTP
-        EventBridge│          RemoteCaller(cloud)
+        EventSink  │          RemoteCaller(cloud)
         (Kafka 等) │          ┌────────────────┐
                    └─────────→│ 对端进程        │
                               │ fact→EventBus  │

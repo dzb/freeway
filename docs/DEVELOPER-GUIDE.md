@@ -481,7 +481,7 @@ only receive two-argument `publish(topic, payload)` calls.
 | `EventSubscriber<E>` | Module-level subscriber: carries event type, handler, and ordering |
 | `Subscription<E>` | Handle returned by `subscribe()`, used to `unsubscribe()` |
 | `DeadEvent` | Published when an event has zero subscribers — subscribe for diagnostics |
-| `EventBridge` | Bridge to external MQ: `EventBridge.send(topic, event)` |
+| `EventSink` | Sends events to an external MQ: `EventSink.send(topic, event)` |
 | `@Topic("kafka.topic")` | Maps an event class to a cross-JVM topic name |
 | `EventBus.Stoppable` | Events implementing this can `stop()` the subscriber chain |
 
@@ -530,7 +530,7 @@ binder.contribute(EventSubscriber.class)
 
 **Transaction-aware:** Events published inside a `db.transaction()` are automatically deferred and fire only after commit. No manual wiring needed — powered by the `Defer` mechanism (see [Defer](#defer--scope-bound-deferred-execution)).
 
-**Cross-JVM:** Add `@Topic("kafka.topic")` on an event class + `KafkaModule` for distributed pub/sub via the `EventBridge` mechanism (see [Kafka](#kafka-freeway-mq-kafka)).
+**Cross-JVM:** Add `@Topic("kafka.topic")` on an event class + `KafkaModule` for distributed pub/sub via the `EventSink` mechanism (see [Kafka](#kafka-freeway-mq-kafka)).
 
 ### Type Coercion
 
@@ -1520,12 +1520,12 @@ freeway.kafka.topics=post.created,order.placed
 
 | Type | Purpose |
 |------|---------|
-| `KafkaEventBridge` | Implements `EventBridge`, sends events to Kafka |
+| `KafkaEventSink` | Implements `EventSink`, sends events to Kafka |
 | `KafkaSubscriber` | Polls Kafka, publishes to local `EventBus` |
 | `KafkaConfig` | Bootstrap servers, group-id, topic list |
 | `KafkaModule` | Registers all services + `RuntimeHook` wiring |
 
-**Sending:** EventBus automatically bridges to Kafka when an `EventBridge` is configured:
+**Sending:** EventBus automatically sends to Kafka when an `EventSink` is configured:
 
 ```java
 @Topic("post.created")
