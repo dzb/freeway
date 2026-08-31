@@ -602,11 +602,21 @@ public final class EventBus implements AutoCloseable {
      * ordered regardless of key. Subscriber failures are isolated and
      * counted, never propagated to the submitter.
      */
-    public void publishOrdered(Object key, Object event) {
-        Objects.requireNonNull(key, "key");
+    public void publishOrdered(Object event) {
         Objects.requireNonNull(event, "event");
         requireOpen();
         executeDeferred(this::orderedExecutor, () -> publish(event));
+    }
+
+    /**
+     * @deprecated Use {@link #publishOrdered(Object)}. The {@code key}
+     * parameter is reserved for future per-key ordering; the current
+     * implementation is globally serialized and ignores it.
+     */
+    @Deprecated
+    public void publishOrdered(Object key, Object event) {
+        Objects.requireNonNull(key, "key");
+        publishOrdered(event);
     }
 
     /**
@@ -623,16 +633,30 @@ public final class EventBus implements AutoCloseable {
      * sync path's post-close semantics.
      */
     private void executeDeferred(Supplier<Executor> exec, Runnable publish) {
+        Runnable guarded = () -> {
+            if (closed) {
+                return;
+            }
+            try {
+                publish.run();
+            } catch (IllegalStateException e) {
+                // A task that passed requireOpen() before close() must not
+                // surface as a spurious async failure after the bus is gone.
+                if (!closed) {
+                    throw e;
+                }
+            }
+        };
         if (Defer.isActive()) {
             Defer.defer(() -> {
                 if (closed) {
                     return;
                 }
-                exec.get().execute(publish);
+                exec.get().execute(guarded);
             });
             return;
         }
-        exec.get().execute(publish);
+        exec.get().execute(guarded);
     }
 
     private ExecutorService orderedExecutor() {

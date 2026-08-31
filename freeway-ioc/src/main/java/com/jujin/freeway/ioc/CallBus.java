@@ -400,6 +400,7 @@ public final class CallBus implements AutoCloseable {
         }
         closed = true;
         targets.clear();
+        advices.clear();
         for (CompletableFuture<Object> stage : List.copyOf(pending)) {
             stage.completeExceptionally(
                 new IllegalStateException("CallBus is closed"));
