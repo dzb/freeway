@@ -77,6 +77,36 @@ class PrincipalPropagationTest {
         }
     }
 
+    @Test
+    void rolesContainingCommasSurviveTheWire() throws Exception {
+        // Regression: roles were joined with a bare ",", so a role like
+        // "admin,root" arrived as two roles on the receiving side — silent
+        // permission drift. Roles share the baggage percent codec now.
+        try (AppRuntime app = FreewayApp.run(
+            new IdentityModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            app.get(ServiceRegistry.class).register(
+                ServiceInstance.of("svc", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder(
+                    URI.create("http://127.0.0.1:" + server.port() + "/api/call"))
+                .header(AuthPropagator.HEADER_PRINCIPAL, "alice")
+                .header(AuthPropagator.HEADER_ROLES, "admin%2Croot,dev")
+                .GET()
+                .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+
+            PrincipalContext entry = IdentityModule.ENTRY_PRINCIPAL.get();
+            assertTrue(entry.hasRole("admin,root"),
+                "an encoded comma is role data, not a separator");
+            assertTrue(entry.hasRole("dev"));
+            assertTrue(IdentityModule.CALLEE_PRINCIPAL.get().hasRole("admin,root"),
+                "the callee sees the same roles after re-injection");
+        }
+    }
+
     static class IdentityModule implements ModuleEx {
         static final AtomicReference<PrincipalContext> ENTRY_PRINCIPAL = new AtomicReference<>();
         static final AtomicReference<PrincipalContext> CALLEE_PRINCIPAL = new AtomicReference<>();

@@ -146,7 +146,7 @@ public final class RemoteCaller {
                 header(response, EXCEPTION_MESSAGE_HEADER), ""));
             return CloudException.of(
                 "Remote handler '" + exClass + "' on '" + serviceId + "' failed"
-                    + (message.isEmpty() ? "" : ": " + message),
+                    + (message.isEmpty() ? "" : ": " + sanitizePeerText(message)),
                 false, response.status(),
                 new RemoteInvocationException(exClass, message));
         }
@@ -155,8 +155,18 @@ public final class RemoteCaller {
         var reason = header(response, "X-RPC-Reject-Reason");
         throw CloudException.of(
             "Service '" + serviceId + "' rejected rpc call"
-                + (reason == null ? "" : ": " + reason),
+                + (reason == null ? "" : ": " + sanitizePeerText(decode(reason))),
             false, response.status(), null);
+    }
+
+    /**
+     * Peer-authored text bound for exception messages (and therefore logs):
+     * stripped of control characters — decoded escapes could otherwise forge
+     * log lines — and length-capped so a hostile peer cannot bloat the log.
+     */
+    private static String sanitizePeerText(String value) {
+        String cleaned = value.replaceAll("\\p{Cntrl}", "");
+        return cleaned.length() > 200 ? cleaned.substring(0, 200) + "..." : cleaned;
     }
 
     /**

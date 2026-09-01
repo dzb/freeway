@@ -162,4 +162,36 @@ class SymbolExpansionTest {
         assertTrue(ex.getMessage().contains("depth"),
             "expected depth-limit error, got: " + ex.getMessage());
     }
+
+    @Test
+    void literalBracesInsideDefaultAreKept() {
+        // Regression: the closing-brace search depth-tracked only '${', so a
+        // literal '{' inside a default ended the expression early —
+        // ${a:x{y}z} parsed the default as "x{y" and leaked "z}" verbatim.
+        // Every '{' now counts, so balanced literal braces stay whole.
+        Container container = Freeway.create();
+        try {
+            SymbolSource symbols = container.get(SymbolSource.class);
+            assertEquals("x{y}z", symbols.expand("${freeway.test.missing.template:x{y}z}"),
+                "balanced literal braces inside a default must be kept whole");
+        } finally {
+            container.close();
+        }
+    }
+
+    @Test
+    void whitespaceAroundSymbolNameIsIgnored() {
+        // ${ port } is formatting, not identity: the name is trimmed before
+        // lookup. Defaults keep their verbatim value.
+        System.setProperty(PORT_KEY, "1234");
+        Container container = Freeway.create();
+        try {
+            SymbolSource symbols = container.get(SymbolSource.class);
+            assertEquals("1234", symbols.expand("${ " + PORT_KEY + " }"),
+                "formatting whitespace around the symbol name must not change lookup");
+        } finally {
+            System.clearProperty(PORT_KEY);
+            container.close();
+        }
+    }
 }

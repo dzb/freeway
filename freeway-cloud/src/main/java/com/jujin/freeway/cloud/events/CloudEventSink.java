@@ -81,6 +81,11 @@ public final class CloudEventSink implements EventSink {
             } else {
                 LOG.warn("Send to peer {} failed — dropping connection", peer.remoteOrigin());
                 hub.unregister(peer);
+                // Unregistering only detaches the route; the socket stays
+                // open and keeps pushing inbound events we no longer trust
+                // with outbound traffic. Close it (idempotent) so the
+                // connection state converges.
+                peer.close();
             }
         }
         if (sent == 0) {

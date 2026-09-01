@@ -120,4 +120,38 @@ class LifecycleCallbackTest {
 
         assertTrue(bean.parentInit, "parent @PostConstruct should be inherited");
     }
+
+    @Test
+    void instanceBindingsGetFullLifecycle() {
+        // Regression: .to(instance) skipped field injection and @PostConstruct
+        // while the instance still received @PreDestroy on close — a funeral
+        // without a baptism. Instance bindings now run the same lifecycle as
+        // every other binding.
+        InstanceLifecycleBean instance = new InstanceLifecycleBean();
+        Container container = Freeway.create(binder ->
+            binder.bind(InstanceLifecycleBean.class).to(instance)
+        );
+        assertFalse(instance.initialized, "lifecycle starts at realization, not at bind");
+        assertTrue(container.get(InstanceLifecycleBean.class) == instance,
+            "an instance binding resolves to the provided instance");
+        assertTrue(instance.initialized, "@PostConstruct must run for instance bindings");
+        assertFalse(instance.destroyed);
+        container.close();
+        assertTrue(instance.destroyed, "@PreDestroy must still run for instance bindings");
+    }
+
+    static class InstanceLifecycleBean {
+        boolean initialized;
+        boolean destroyed;
+
+        @PostConstruct
+        void init() {
+            initialized = true;
+        }
+
+        @PreDestroy
+        void shutdown() {
+            destroyed = true;
+        }
+    }
 }

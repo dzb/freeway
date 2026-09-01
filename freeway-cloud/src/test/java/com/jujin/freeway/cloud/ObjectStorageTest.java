@@ -46,6 +46,36 @@ class ObjectStorageTest {
     }
 
     @Test
+    void invalidKeysFailAsStorageException() {
+        // A key containing a byte the filesystem forbids must surface as the
+        // declared StorageException — not leak an InvalidPathException past
+        // the storage contract.
+        ObjectStorageDefault storage = new ObjectStorageDefault(dir);
+        assertThrows(StorageException.class, () -> storage.get("assets", "bad\u0000key"));
+        assertThrows(StorageException.class,
+            () -> storage.put("assets", "bad\u0000key", new byte[]{1}, null));
+        assertThrows(StorageException.class, () -> storage.delete("assets", "bad\u0000key"));
+    }
+
+    @Test
+    void dotBucketIsRejected() {
+        // "." would resolve the bucket to the storage root itself, letting
+        // keys bypass bucket isolation.
+        ObjectStorageDefault storage = new ObjectStorageDefault(dir);
+        assertThrows(StorageException.class, () -> storage.put(".", "x", new byte[]{1}, null));
+        assertThrows(StorageException.class, () -> storage.get(".", "x"));
+        assertThrows(StorageException.class, () -> storage.list(".", ""));
+    }
+
+    @Test
+    void nullDataFailsFast() {
+        ObjectStorageDefault storage = new ObjectStorageDefault(dir);
+        assertThrows(NullPointerException.class,
+            () -> storage.put("assets", "x", null, null),
+            "a null body is a caller bug — fail at the call site, not mid-write");
+    }
+
+    @Test
     void listFiltersByPrefix() {
         ObjectStorageDefault storage = new ObjectStorageDefault(dir);
         storage.put("assets", "img/a.png", new byte[]{1}, ObjectMetadata.of("image/png"));

@@ -20,13 +20,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *       OPEN again.</li>
  * </ul>
  *
- * <p>Outcome callbacks are gated on the current state so stale results from
- * in-flight calls cannot corrupt the machine: a success that returns after
- * the circuit opened is ignored, and a failure that returns while OPEN does
- * not re-extend the open window. A half-open probe that is admitted but never
- * reported (lost request, local rejection before the transport call) times
- * out after {@code openWindow} and re-arms the circuit, so the breaker can
- * never wedge in HALF_OPEN.
+ * <p><b>Threading model.</b> All state transitions (state, failure window,
+ * probe bookkeeping) happen under a single {@code probeLock}; the volatile
+ * {@code state} read outside the lock is a fast-path filter only, and every
+ * transition re-reads the state under the lock before acting. This makes the
+ * machine race-free: a stale success can no longer skip the open window, a
+ * re-arm cannot admit a call while the circuit is OPEN, and callers admitted
+ * before the circuit opened (no probe epoch) can no longer settle HALF_OPEN
+ * — their late outcomes are ignored, exactly like stale OPEN-era outcomes.
+ * A half-open probe that is admitted but never reported (lost request, local
+ * rejection before the transport call) times out after {@code openWindow}
+ * and re-arms the circuit, so the breaker can never wedge in HALF_OPEN.
  */
 public final class CircuitBreakerDefault implements CircuitBreaker {
 
@@ -34,17 +38,18 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
     private final Duration failureWindow;
     private final Duration openWindow;
 
+    /** Fast-path read-only view; every transition happens under {@link #probeLock}. */
     private volatile State state = State.CLOSED;
     private final ArrayDeque<Long> failureTimes = new ArrayDeque<>(); // nanos
     private volatile long openedAtNanos;
+    /** Fast-path admission gate for the OPEN→HALF_OPEN probe; transitions under {@link #probeLock}. */
     private final AtomicBoolean probeInFlight = new AtomicBoolean();
     private volatile long probeStartedAtNanos;
     /** Monotonically increases each time a probe is admitted; callbacks use it
      *  to ignore results from probes that were superseded by a re-arm. */
     private long probeEpoch;
     private final ThreadLocal<Long> admittedProbeEpoch = new ThreadLocal<>();
-    /** Guards only the rare lost-probe re-arm path so exactly one waiter
-     *  becomes the fresh probe (single-probe invariant). */
+    /** Single lock for ALL state transitions and counter access. */
     private final Object probeLock = new Object();
 
     public CircuitBreakerDefault(int failureThreshold, Duration failureWindow, Duration openWindow) {
@@ -76,26 +81,37 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
             return true;
         }
         if (current == State.OPEN) {
-            if (System.nanoTime() - openedAtNanos >= openWindow.toNanos()
-                    && probeInFlight.compareAndSet(false, true)) {
-                long now = System.nanoTime();
-                synchronized (probeLock) {
-                    probeEpoch++;
-                    probeStartedAtNanos = now;
-                    admittedProbeEpoch.set(probeEpoch);
-                }
-                state = State.HALF_OPEN;
-                return true;
+            if (System.nanoTime() - openedAtNanos < openWindow.toNanos()
+                    || !probeInFlight.compareAndSet(false, true)) {
+                return false;
             }
-            return false;
+            synchronized (probeLock) {
+                // The state may have settled between the volatile read / CAS
+                // and this lock (another callback finishing, reset()). Acting
+                // on the stale snapshot would bypass the breaker or wedge the
+                // probe bookkeeping — re-read before arming.
+                if (state != State.OPEN) {
+                    probeInFlight.set(false);
+                    return false;
+                }
+                probeEpoch++;
+                probeStartedAtNanos = System.nanoTime();
+                admittedProbeEpoch.set(probeEpoch);
+                state = State.HALF_OPEN;
+            }
+            return true;
         }
         // HALF_OPEN: only the single admitted probe may run. A probe that was
         // admitted but never reported (transport failure outside the callback
         // contract, local rejection, lost result) times out; the next caller
         // then becomes the fresh probe instead of the circuit wedging in
-        // HALF_OPEN forever. The lock keeps concurrent waiters from all
-        // deciding they are the fresh probe.
+        // HALF_OPEN forever. Re-reading the state under the lock keeps a
+        // circuit that settled (probe failure → OPEN) from admitting a call.
         synchronized (probeLock) {
+            if (state != State.HALF_OPEN) {
+                admittedProbeEpoch.remove();
+                return false;
+            }
             if (System.nanoTime() - probeStartedAtNanos > openWindow.toNanos()) {
                 probeStartedAtNanos = System.nanoTime(); // re-arm: this call is the new probe
                 probeEpoch++;
@@ -112,31 +128,25 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
         if (admitted != null) {
             admittedProbeEpoch.remove();
             synchronized (probeLock) {
-                if (admitted != probeEpoch) {
-                    return; // stale probe superseded by a re-arm
+                if (admitted != probeEpoch || state != State.HALF_OPEN) {
+                    return; // stale probe superseded by a re-arm or already settled
                 }
-            }
-            if (state != State.HALF_OPEN) {
-                return; // already settled by another callback
-            }
-            probeInFlight.set(false);
-            synchronized (this) {
+                probeInFlight.set(false);
                 failureTimes.clear();
+                state = State.CLOSED;
             }
-            state = State.CLOSED;
             return;
         }
-        // A success that returns while the circuit is OPEN is stale (the call
-        // was admitted before the open) — it must not yank the circuit back to
-        // CLOSED and skip the open window.
-        if (state == State.OPEN) {
-            return;
-        }
-        probeInFlight.set(false);
-        synchronized (this) {
+        // A caller without a probe epoch was admitted before the circuit
+        // opened: while OPEN its success is stale (must not skip the open
+        // window), and while HALF_OPEN the outcome belongs to the admitted
+        // probe — ignoring it here keeps the probe's verdict authoritative.
+        synchronized (probeLock) {
+            if (state != State.CLOSED) {
+                return;
+            }
             failureTimes.clear();
         }
-        state = State.CLOSED;
     }
 
     @Override
@@ -145,31 +155,22 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
         if (admitted != null) {
             admittedProbeEpoch.remove();
             synchronized (probeLock) {
-                if (admitted != probeEpoch) {
-                    return; // stale probe superseded by a re-arm
+                if (admitted != probeEpoch || state != State.HALF_OPEN) {
+                    return; // stale probe superseded by a re-arm or already settled
                 }
+                probeInFlight.set(false);
+                state = State.OPEN;
+                openedAtNanos = System.nanoTime();
             }
-            if (state != State.HALF_OPEN) {
-                return; // already settled by another callback
+            return;
+        }
+        // Same gate as onSuccess: pre-open callers are stale in every state
+        // but CLOSED (OPEN = stale failure that must not re-extend the window;
+        // HALF_OPEN = the probe owns the outcome).
+        synchronized (probeLock) {
+            if (state != State.CLOSED) {
+                return;
             }
-            probeInFlight.set(false);
-            state = State.OPEN;
-            openedAtNanos = System.nanoTime();
-            return;
-        }
-        State current = state;
-        // A failure that returns while OPEN is stale (admitted before the
-        // open) — counting it would re-extend the open window forever.
-        if (current == State.OPEN) {
-            return;
-        }
-        if (current == State.HALF_OPEN) {
-            probeInFlight.set(false);
-            state = State.OPEN;
-            openedAtNanos = System.nanoTime();
-            return;
-        }
-        synchronized (this) {
             long now = System.nanoTime();
             failureTimes.addLast(now);
             while (!failureTimes.isEmpty()
@@ -186,11 +187,14 @@ public final class CircuitBreakerDefault implements CircuitBreaker {
 
     @Override
     public void reset() {
-        probeInFlight.set(false);
-        synchronized (this) {
+        synchronized (probeLock) {
+            // Bump the epoch so a still-in-flight probe's callbacks become
+            // stale instead of settling a circuit that reset() just closed.
+            probeEpoch++;
+            probeInFlight.set(false);
             failureTimes.clear();
+            state = State.CLOSED;
         }
-        state = State.CLOSED;
     }
 
     @Override

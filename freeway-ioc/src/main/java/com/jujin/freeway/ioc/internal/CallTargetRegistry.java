@@ -33,10 +33,13 @@ public final class CallTargetRegistry {
     }
 
     public void unregister(String topicMapping, Object target) {
+        // Match the STORED entry by handler identity, not by a freshly-built
+        // MethodTarget: Method/MethodHandle equality is identity, and new
+        // reflection copies are not guaranteed to equal the ones captured at
+        // register time. Comparing the handler keeps unregister reliable.
         for (Method method : eligibleMethods(target)) {
-            targets.remove(
-                methodTopic(topicMapping, method.getName()),
-                new MethodTarget(target, method, MethodHandleUtils.methodHandle(method)));
+            targets.computeIfPresent(methodTopic(topicMapping, method.getName()),
+                (topic, existing) -> existing.target() == target ? null : existing);
         }
     }
 

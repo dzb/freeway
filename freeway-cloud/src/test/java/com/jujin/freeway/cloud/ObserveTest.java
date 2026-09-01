@@ -1,6 +1,8 @@
 package com.jujin.freeway.cloud;
 
+import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
+import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.cloud.internal.MetricsDefault;
 import com.jujin.freeway.cloud.internal.TracePropagator;
@@ -16,6 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -127,5 +130,70 @@ class ObserveTest {
             assertEquals(trace, InvocationContext.current().orElseThrow().trace());
         });
         assertTrue(InvocationContext.current().isEmpty(), "context not visible outside the scope");
+    }
+
+    @Test
+    void outOfOrderSpanClosesLeaveNoStaleContext() {
+        // Regression: spans restored the snapshot captured at start, so an
+        // out-of-order close sequence left a CLOSED span's context installed
+        // on the thread forever — the next task on the pooled thread (and its
+        // outbound calls) inherited a dead trace/baggage. Closes now recompute
+        // the ambient from the live span stack.
+        TracerDefault tracer = new TracerDefault();
+        Tracer.Span outer = tracer.start("outer");
+        Tracer.Span inner = tracer.start("inner");
+
+        outer.close(); // out of order — inner is still open
+        assertEquals("inner", MDC.get("spanName"),
+            "the innermost still-open span owns the MDC state");
+        assertTrue(InvocationContext.current().isPresent(),
+            "the ambient stays on the open span");
+        inner.close();
+        assertTrue(InvocationContext.current().isEmpty(),
+            "the last close restores the pre-span ambient");
+        assertNull(MDC.get("traceId"), "full unwind restores the pre-span MDC");
+        assertNull(MDC.get("spanName"));
+    }
+
+    @Test
+    void spanStartInheritsAmbientBaggageAndPrincipal() {
+        // Regression: starting a span replaced the ambient with an empty
+        // baggage and no principal, silently dropping identity/business
+        // context for the span's duration (and for outbound propagation).
+        Baggage baggage = Baggage.of(Map.of("tenant", "acme"));
+        InvocationContext prior = InvocationContext.of(
+            null, PrincipalContext.of("alice", java.util.List.of()), baggage);
+        TracerDefault tracer = new TracerDefault();
+        InvocationContext.runWith(prior, () -> {
+            try (Tracer.Span span = tracer.start("op")) {
+                InvocationContext current = InvocationContext.current().orElseThrow();
+                assertEquals("acme", current.baggage().get("tenant"),
+                    "starting a span must not drop ambient baggage");
+                assertEquals("alice", current.principal().name(),
+                    "starting a span must not drop the ambient principal");
+            }
+        });
+    }
+
+    @Test
+    void metricNamesThatRenderIdenticallyAreRejected() {
+        // Regression: prometheusName folds '.', '-', '/' onto '_', so
+        // differently-named metrics could render duplicate series — a scrape
+        // the Prometheus parser rejects wholesale. Registration now fails fast.
+        MetricsDefault reg = new MetricsDefault();
+        reg.counter("a.b").increment();
+        assertThrows(IllegalArgumentException.class, () -> reg.counter("a-b"),
+            "sanitized-name collisions within a kind must fail fast");
+        assertThrows(IllegalArgumentException.class, () -> reg.gauge("a/b", () -> 1),
+            "counter/gauge share the plain-series namespace");
+        assertThrows(IllegalArgumentException.class, () -> reg.gauge("a.b", () -> 1),
+            "same raw name, different kind — still one plain series");
+        reg.timer("a.b").record(Duration.ofMillis(1)); // timers render suffixed series — no collision
+        assertThrows(IllegalArgumentException.class, () -> reg.timer("a-b"),
+            "sanitized-name collisions within timers must fail fast");
+
+        MetricsDefault fresh = new MetricsDefault();
+        fresh.gauge("depth", () -> 1);
+        fresh.gauge("depth", () -> 2); // gauge refresh is not a collision
     }
 }

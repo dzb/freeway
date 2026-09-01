@@ -30,7 +30,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * W3C {@code baggage} end-to-end: inbound extraction restores the baggage
@@ -140,6 +142,44 @@ class BaggagePropagationTest {
         Baggage restored = propagator.extract(Map.of("baggage", "k=%zz,ok=fine")).baggage();
         assertEquals("%zz", restored.get("k"));
         assertEquals("fine", restored.get("ok"));
+    }
+
+    @Test
+    void propagationStopsAtTheEntryLimit() {
+        // Regression: no entry/length caps meant every hop multiplied header
+        // size and memory unboundedly (W3C recommends implementation limits).
+        // Injection drops entries beyond the cap; extraction truncates too.
+        BaggagePropagator propagator = new BaggagePropagator();
+        Map<String, String> oversized = new HashMap<>();
+        for (int i = 0; i < BaggagePropagator.MAX_ENTRIES + 10; i++) {
+            oversized.put("k" + i, "v" + i);
+        }
+        InvocationContext ctx = InvocationContext.of(null, null, Baggage.of(oversized));
+
+        Map<String, String> headers = new HashMap<>();
+        propagator.inject(ctx, headers);
+        String header = headers.get(BaggagePropagator.HEADER_BAGGAGE);
+        assertNotNull(header);
+        assertTrue(header.split(",").length <= BaggagePropagator.MAX_ENTRIES,
+            "injected baggage never exceeds the entry cap");
+
+        Baggage restored = propagator.extract(headers).baggage();
+        assertTrue(restored.values().size() <= BaggagePropagator.MAX_ENTRIES,
+            "extracted baggage never exceeds the entry cap");
+    }
+
+    @Test
+    void propagationStopsAtTheLengthLimit() {
+        BaggagePropagator propagator = new BaggagePropagator();
+        Map<String, String> huge = new HashMap<>();
+        huge.put("big", "x".repeat(BaggagePropagator.MAX_ENCODED_LENGTH));
+        InvocationContext ctx = InvocationContext.of(null, null, Baggage.of(huge));
+
+        Map<String, String> headers = new HashMap<>();
+        propagator.inject(ctx, headers);
+        String header = headers.get(BaggagePropagator.HEADER_BAGGAGE);
+        assertNull(header,
+            "a single entry past the length cap must not be injected at all");
     }
 
     static class BaggageModule implements ModuleEx {

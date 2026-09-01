@@ -6,6 +6,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Dynamic {@link SymbolProvider} backed by {@link SecretStore}: makes secrets
  * resolvable via {@code @Symbol("db.password")} (and any symbol lookup), with
@@ -26,6 +29,8 @@ import java.util.Objects;
  */
 public final class SecretSymbolSource implements SymbolProvider {
 
+    private static final Logger LOG = LoggerFactory.getLogger(SecretSymbolSource.class);
+
     private final SecretStore store;
     /** {@code null} = answer for any name (the documented default). */
     private final List<String> allowedKeys;
@@ -34,6 +39,18 @@ public final class SecretSymbolSource implements SymbolProvider {
         this.store = Objects.requireNonNull(store, "store");
         this.allowedKeys = parseAllowedKeys(
             System.getProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS));
+        if (allowedKeys == null) {
+            // Same visible-at-startup stance as PeerHub's ungated-mesh
+            // warning: the permissive default answers for EVERY name, so any
+            // symbol whose name matches an environment variable silently
+            // resolves to it (path → PATH, user → USER), outranking config
+            // files. Operators should see that they are on the sharp edge.
+            LOG.warn("SecretSymbolSource has no allowlist (set {} as a comma-separated "
+                    + "system property) — every symbol name is checked against the "
+                    + "environment first, which can shadow config keys with "
+                    + "unrelated variables",
+                com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS);
+        }
     }
 
     @Override

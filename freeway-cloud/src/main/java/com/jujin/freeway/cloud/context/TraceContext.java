@@ -13,8 +13,13 @@ import java.util.concurrent.ThreadLocalRandom;
  * @param traceId      32 lowercase hex chars
  * @param spanId       16 lowercase hex chars
  * @param parentSpanId 16 lowercase hex chars, or {@code null} for a root span
+ * @param flags        2 lowercase hex chars (W3C trace flags); the sampled
+ *                     bit travels with the context so a peer's sampling
+ *                     decision survives the hop
  */
-public record TraceContext(String traceId, String spanId, String parentSpanId) {
+public record TraceContext(String traceId, String spanId, String parentSpanId, String flags) {
+
+    private static final String DEFAULT_FLAGS = "01";
 
     public TraceContext {
         requireHex(traceId, 32, "traceId");
@@ -22,21 +27,28 @@ public record TraceContext(String traceId, String spanId, String parentSpanId) {
         if (parentSpanId != null) {
             requireHex(parentSpanId, 16, "parentSpanId");
         }
+        requireHex(flags, 2, "flags");
+        flags = flags.toLowerCase(Locale.ROOT);
+    }
+
+    /** Convenience for callers that do not track trace flags ({@code 01}). */
+    public TraceContext(String traceId, String spanId, String parentSpanId) {
+        this(traceId, spanId, parentSpanId, DEFAULT_FLAGS);
     }
 
     /** Creates a root context with a fresh traceId and spanId. */
     public static TraceContext root() {
-        return new TraceContext(randomHex(32), randomHex(16), null);
+        return new TraceContext(randomHex(32), randomHex(16), null, DEFAULT_FLAGS);
     }
 
-    /** Creates a child span of this context: same traceId, new spanId, this spanId as parent. */
+    /** Creates a child span of this context: same traceId/flags, new spanId, this spanId as parent. */
     public TraceContext child() {
-        return new TraceContext(traceId, randomHex(16), spanId);
+        return new TraceContext(traceId, randomHex(16), spanId, flags);
     }
 
     /** Encodes this context as a W3C {@code traceparent} header value. */
     public String toTraceparent() {
-        return "00-" + traceId + "-" + spanId + "-01";
+        return "00-" + traceId + "-" + spanId + "-" + flags;
     }
 
     /** Parses a W3C {@code traceparent} header value; empty if malformed or unsupported version. */
@@ -56,7 +68,7 @@ public record TraceContext(String traceId, String spanId, String parentSpanId) {
             return Optional.empty();
         }
         return Optional.of(new TraceContext(parts[1].toLowerCase(Locale.ROOT),
-            parts[2].toLowerCase(Locale.ROOT), null));
+            parts[2].toLowerCase(Locale.ROOT), null, parts[3].toLowerCase(Locale.ROOT)));
     }
 
     private static void requireHex(String value, int length, String name) {

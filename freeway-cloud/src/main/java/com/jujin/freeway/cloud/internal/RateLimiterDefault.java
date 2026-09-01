@@ -34,7 +34,10 @@ public final class RateLimiterDefault implements RateLimiter {
     @Override
     public synchronized boolean tryAcquire() {
         long now = System.nanoTime();
-        double elapsedSeconds = (now - lastNanos) / 1_000_000_000.0;
+        // nanoTime is monotonic per spec, but virtualized clocks have been
+        // observed stepping back — a negative elapsed must not deduct tokens
+        // and push the next admission into "debt repayment".
+        double elapsedSeconds = Math.max(0, now - lastNanos) / 1_000_000_000.0;
         lastNanos = now;
         tokens = Math.min(maxBurst, tokens + elapsedSeconds * permitsPerSecond);
         if (tokens >= 1.0) {

@@ -75,6 +75,7 @@ public final class ObjectStorageDefault implements ObjectStorage {
 
     @Override
     public PutResult put(String bucket, String key, byte[] data, ObjectMetadata metadata) throws StorageException {
+        java.util.Objects.requireNonNull(data, "data");
         Path target = resolve(bucket, key);
         try {
             Path parent = target.getParent();
@@ -197,7 +198,15 @@ public final class ObjectStorageDefault implements ObjectStorage {
         if (key == null || key.isBlank()) {
             throw new StorageException("key must not be blank");
         }
-        Path relative = Path.of(key).normalize();
+        // A key with bytes the filesystem forbids (NUL, invalid UTF-16 for
+        // the platform) must fail as a StorageException like every other
+        // invalid key — not leak an InvalidPathException past the contract.
+        Path relative;
+        try {
+            relative = Path.of(key).normalize();
+        } catch (java.nio.file.InvalidPathException e) {
+            throw new StorageException("key is not a valid path: " + key, e);
+        }
         // Root component, not isAbsolute(): on Windows "/abs" parses as the
         // root-relative "\abs" — isAbsolute() is false, yet resolving it
         // discards the base path entirely ("D:/abs", "D:/evil" for
@@ -210,7 +219,10 @@ public final class ObjectStorageDefault implements ObjectStorage {
 
     private static String requireBucket(String bucket) {
         if (bucket == null || bucket.isBlank()
-                || bucket.contains("..") || bucket.contains("/") || bucket.contains("\\")) {
+                || bucket.contains("..") || bucket.contains("/") || bucket.contains("\\")
+                // "." would resolve the bucket to the storage root itself,
+                // letting keys bypass bucket isolation.
+                || bucket.equals(".")) {
             throw new StorageException("invalid bucket name: " + bucket);
         }
         return bucket;

@@ -58,9 +58,7 @@ public final class RegistryStore {
             return;
         }
         instances.remove(instance.instanceId());
-        if (instances.isEmpty()) {
-            byService.remove(instance.serviceId(), instances);
-        }
+        evictServiceMapIfEmpty(instance.serviceId());
     }
 
     /** Total registered instances across all services (readiness reporting). */
@@ -94,8 +92,20 @@ public final class RegistryStore {
             }
         }
         if (instances.isEmpty()) {
-            byService.remove(serviceId, instances);
+            evictServiceMapIfEmpty(serviceId);
         }
         return result;
+    }
+
+    /**
+     * Drops the service's map when empty, atomically with respect to
+     * {@link #register}'s {@code computeIfAbsent}: both lock the same bin, so
+     * a registration racing the eviction either lands before the compute
+     * (map no longer empty — kept) or after (fresh map — kept). A
+     * check-then-remove pair here would delete a map that a concurrent
+     * register had just repopulated, silently dropping the registration.
+     */
+    private void evictServiceMapIfEmpty(String serviceId) {
+        byService.compute(serviceId, (k, v) -> (v == null || v.isEmpty()) ? null : v);
     }
 }

@@ -50,4 +50,23 @@ class TraceContextTest {
         assertThrows(IllegalArgumentException.class,
             () -> new TraceContext("a".repeat(32), "short", null), "spanId must be 16 hex");
     }
+
+    @Test
+    void flagsRoundTripThroughTheHeader() {
+        // Regression: inbound flags were validated and then dropped, and
+        // outbound always wrote "-01" — a peer's sampling decision never
+        // survived the hop. Flags now travel with the context.
+        TraceContext parsed = TraceContext.fromTraceparent(
+            "00-" + "a".repeat(32) + "-" + "b".repeat(16) + "-00").orElseThrow();
+        assertEquals("00", parsed.flags(), "the sampled flag must survive extraction");
+
+        String header = parsed.toTraceparent();
+        assertTrue(header.endsWith("-00"), "outbound keeps the extracted flags: " + header);
+        assertEquals(parsed, TraceContext.fromTraceparent(header).orElseThrow(),
+            "encode → decode round-trips the full context");
+
+        assertEquals("01", TraceContext.root().flags(), "fresh spans default to sampled");
+        assertEquals(parsed.flags(), parsed.child().flags(),
+            "a child span inherits the trace flags");
+    }
 }

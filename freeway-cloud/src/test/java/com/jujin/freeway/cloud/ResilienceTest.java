@@ -193,6 +193,58 @@ class ResilienceTest {
     }
 
     @Test
+    void staleClosedEraOutcomesDoNotSettleHalfOpen() throws Exception {
+        // Regression: a caller admitted before the circuit opened (no probe
+        // epoch) could settle HALF_OPEN by reporting late — a stale failure
+        // re-opened the circuit under a live probe, and a stale success closed
+        // it while the real probe was still in flight. Pre-open outcomes are
+        // now ignored in every non-CLOSED state.
+        CircuitBreakerDefault breaker = new CircuitBreakerDefault(1,
+            Duration.ofSeconds(60), Duration.ofMillis(50));
+        assertTrue(breaker.allowRequest()); // CLOSED-era call
+        breaker.onFailure();                // → OPEN
+        Thread.sleep(80);
+        assertTrue(breaker.allowRequest()); // probe admitted (epoch on this thread)
+        assertEquals(CircuitBreaker.State.HALF_OPEN, breaker.state());
+
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread stale = Thread.ofPlatform().start(() -> {
+            try {
+                breaker.onFailure(); // stale CLOSED-era failure — no probe epoch
+                breaker.onSuccess(); // stale CLOSED-era success
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        });
+        stale.join(2000);
+        assertNull(failure.get(), "stale callback thread must not fail: " + failure.get());
+        assertEquals(CircuitBreaker.State.HALF_OPEN, breaker.state(),
+            "stale outcomes must not settle a circuit the probe owns");
+
+        breaker.onSuccess(); // the real probe succeeds
+        assertEquals(CircuitBreaker.State.CLOSED, breaker.state());
+    }
+
+    @Test
+    void resetInvalidatesLiveProbes() throws Exception {
+        CircuitBreakerDefault breaker = new CircuitBreakerDefault(1,
+            Duration.ofSeconds(60), Duration.ofMillis(50));
+        breaker.onFailure(); // OPEN
+        Thread.sleep(80);
+        assertTrue(breaker.allowRequest()); // probe admitted on this thread
+        assertEquals(CircuitBreaker.State.HALF_OPEN, breaker.state());
+
+        breaker.reset();
+        assertEquals(CircuitBreaker.State.CLOSED, breaker.state());
+        // The probe's late outcome carries a superseded epoch — it must not
+        // settle (let alone open) the freshly reset circuit.
+        breaker.onFailure();
+        assertEquals(CircuitBreaker.State.CLOSED, breaker.state(),
+            "a reset-superseded probe outcome must be ignored");
+        assertTrue(breaker.allowRequest());
+    }
+
+    @Test
     void constructorValidatesArguments() {
         assertThrows(IllegalArgumentException.class,
             () -> new CircuitBreakerDefault(0, Duration.ofSeconds(60), Duration.ofSeconds(30)));

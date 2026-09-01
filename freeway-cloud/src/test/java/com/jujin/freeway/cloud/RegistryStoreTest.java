@@ -54,4 +54,26 @@ class RegistryStoreTest {
         RegistryStore store = new RegistryStore();
         assertTrue(store.liveReady("missing", Duration.ofMinutes(1)).isEmpty());
     }
+
+    @Test
+    void serviceMapEvictionKeepsConcurrentRegistrationsDiscoverable() {
+        // Regression: unregister/liveReady dropped the empty per-service map
+        // with a check-then-remove pair. A register() landing between the
+        // empty-check and the removal lost its entry with the map (and
+        // renew() became a no-op forever). The eviction is now atomic with
+        // register's computeIfAbsent, so a fresh registration always sticks.
+        RegistryStore store = new RegistryStore();
+        ServiceInstance first = ServiceInstance.of("svc", "i1", Endpoint.of("http", "h", 8080));
+        store.register(first);
+        store.unregister(first);
+        assertTrue(store.liveReady("svc", Duration.ofMinutes(1)).isEmpty());
+
+        ServiceInstance second = ServiceInstance.of("svc", "i2", Endpoint.of("http", "h", 8080));
+        store.register(second);
+        assertEquals(java.util.List.of(second), store.liveReady("svc", Duration.ofMinutes(1)),
+            "a registration after map eviction must be discoverable");
+        store.renew("svc", "i2");
+        assertEquals(1, store.liveReady("svc", Duration.ofMinutes(1)).size(),
+            "renewal keeps working after re-registration");
+    }
 }

@@ -96,16 +96,17 @@ final class SymbolSourceDefault implements SymbolSource {
 
     /**
      * Finds the closing {@code }} for the expression starting at
-     * {@code ${} at {@code from}-1. Nested {@code ${...}} references inside
-     * a default value are tracked by depth, so {@code ${a:${b}}} parses as
-     * symbol {@code a} with default {@code ${b}} instead of ending at the
-     * inner brace.
+     * {@code ${} at {@code from}-1. Every {@code {} — nested {@code ${...}}
+     * references and literal braces inside a default value alike — is
+     * tracked by depth, so {@code ${a:${b}}} and {@code ${a:x{y}z}} parse
+     * as symbol {@code a} with the full default {@code ${b}} / {@code x{y}z}
+     * instead of ending at the inner brace.
      */
     private static int closingBrace(String input, int from) {
         int depth = 0;
         for (int i = from; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == '{' && i > 0 && input.charAt(i - 1) == '$') {
+            if (c == '{') {
                 depth++;
             } else if (c == '}') {
                 if (depth == 0) {
@@ -185,6 +186,9 @@ final class SymbolSourceDefault implements SymbolSource {
                     defaultValue = defaultValue.substring(1);
                 }
             }
+            // Whitespace around the symbol name is formatting, not identity:
+            // ${ port } looks up "port". Defaults keep their verbatim value.
+            symbol = symbol.trim();
             String value = raw(symbol);
             if (value == null) {
                 value = defaultValue;

@@ -87,6 +87,11 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
                 ws = null;
                 thread = null;
             }
+        } else {
+            // A missing parent directory disables hot reload for good — the
+            // watcher never re-registers on its own. Make that visible at
+            // startup instead of a config change being silently ignored.
+            LOG.warn("Config watch disabled for {}: parent directory does not exist", this.file);
         }
         // Assign the fields BEFORE start(): watchLoop dereferences watchService
         // on its first take() and can outrun the constructor's tail otherwise.
@@ -217,9 +222,18 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
     }
 
     private void watchLoop() {
-        try {
-            while (!Thread.currentThread().isInterrupted()) {
-                WatchKey key = watchService.take();
+        while (!Thread.currentThread().isInterrupted()) {
+            WatchKey key;
+            try {
+                key = watchService.take();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return; // close() interrupts — the only expected exit
+            } catch (Exception terminal) {
+                // WatchService closed underneath us — nothing left to watch.
+                return;
+            }
+            try {
                 for (WatchEvent<?> event : key.pollEvents()) {
                     Object ctx = event.context();
                     if (ctx instanceof Path changed && changed.getFileName().equals(file.getFileName())) {
@@ -227,11 +241,13 @@ public final class CloudConfigDefault implements CloudConfig, AutoCloseable {
                     }
                 }
                 key.reset();
+            } catch (RuntimeException e) {
+                // One failed event/reload must not kill the watcher: exiting
+                // here would silently end hot reload for the process. Log and
+                // keep watching; a closed WatchService surfaces on the next
+                // take() and exits above.
+                LOG.warn("Config watch iteration failed, continuing: {}", e.getMessage());
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            LOG.warn("Config watch loop stopped: {}", e.getMessage());
         }
     }
 

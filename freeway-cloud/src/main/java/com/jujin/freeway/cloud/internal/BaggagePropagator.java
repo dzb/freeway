@@ -10,6 +10,9 @@ import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * W3C {@code baggage} propagation (RFC 7071 semantics): injects the current
  * {@link Baggage} as a {@code baggage} header ({@code k=v,k2=v2}), extracts
@@ -25,7 +28,16 @@ import java.util.Map;
  */
 public final class BaggagePropagator implements Propagator {
 
+    private static final Logger LOG = LoggerFactory.getLogger(BaggagePropagator.class);
+
     public static final String HEADER_BAGGAGE = "baggage";
+
+    /** Upper bound on entries carried in one header (W3C recommends
+     *  implementation limits; without one, hops multiply memory and header
+     *  size unboundedly). */
+    public static final int MAX_ENTRIES = 64;
+    /** Upper bound on the encoded header value (bytes). */
+    public static final int MAX_ENCODED_LENGTH = 4096;
 
     @Override
     public void inject(InvocationContext ctx, Map<String, String> headers) {
@@ -34,13 +46,26 @@ public final class BaggagePropagator implements Propagator {
             return;
         }
         StringBuilder sb = new StringBuilder();
+        int entries = 0;
         for (Map.Entry<String, String> entry : baggage.values().entrySet()) {
+            String encodedKey = encode(entry.getKey());
+            String encodedValue = encode(entry.getValue());
+            int grew = sb.length() == 0 ? 0 : 1;
+            grew += encodedKey.length() + 1 + encodedValue.length();
+            if (entries >= MAX_ENTRIES || sb.length() + grew > MAX_ENCODED_LENGTH) {
+                LOG.debug("Baggage entry dropped at propagation limit ({} entries / {} chars): {}",
+                    MAX_ENTRIES, MAX_ENCODED_LENGTH, entry.getKey());
+                break;
+            }
             if (sb.length() > 0) {
                 sb.append(',');
             }
-            sb.append(encode(entry.getKey())).append('=').append(encode(entry.getValue()));
+            sb.append(encodedKey).append('=').append(encodedValue);
+            entries++;
         }
-        headers.put(HEADER_BAGGAGE, sb.toString());
+        if (sb.length() > 0) {
+            headers.put(HEADER_BAGGAGE, sb.toString());
+        }
     }
 
     @Override
@@ -50,11 +75,17 @@ public final class BaggagePropagator implements Propagator {
             return null;
         }
         Map<String, String> values = new HashMap<>();
+        int entries = 0;
         for (String pair : raw.split(",")) {
+            if (entries >= MAX_ENTRIES) {
+                LOG.debug("Baggage truncated at propagation limit ({} entries)", MAX_ENTRIES);
+                break;
+            }
             int eq = pair.indexOf('=');
             if (eq > 0) {
                 values.put(decode(pair.substring(0, eq).trim()),
                     decode(pair.substring(eq + 1).trim()));
+                entries++;
             }
         }
         if (values.isEmpty()) {
@@ -66,8 +97,9 @@ public final class BaggagePropagator implements Propagator {
     // ── wire codec ─────────────────────────────────────────────────────────
 
     /** RFC 3986 unreserved characters survive verbatim; every other byte is
-     *  percent-encoded, so it can never be mistaken for wire structure. */
-    private static String encode(String raw) {
+     *  percent-encoded, so it can never be mistaken for wire structure.
+     *  Package-visible so the other header propagators share one codec. */
+    static String encode(String raw) {
         StringBuilder out = new StringBuilder(raw.length());
         for (byte b : raw.getBytes(StandardCharsets.UTF_8)) {
             char c = (char) (b & 0xFF);
@@ -88,8 +120,9 @@ public final class BaggagePropagator implements Propagator {
     /** Lenient inverse of {@link #encode}: a malformed escape (a bare
      *  {@code %}) degrades to its literal text instead of failing extraction
      *  — a foreign peer's bad value must not change the failure type the
-     *  caller sees. */
-    private static String decode(String value) {
+     *  caller sees. Package-visible so the other header propagators share
+     *  one codec. */
+    static String decode(String value) {
         if (value.indexOf('%') < 0) {
             return value;
         }

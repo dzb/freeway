@@ -90,6 +90,11 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      *  is shared verbatim — see {@link #newBreaker()}/{@link #newRateLimiter()}. */
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
+    /** Async calls submitted but not yet settled, so close() can fail them
+     *  explicitly when the executor drops them (shutdownNow discards queued
+     *  tasks — their futures would otherwise never complete). */
+    private final java.util.Set<java.util.concurrent.CompletableFuture<CloudResponse>> inFlight =
+        java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile boolean closed;
 
     /** Library fallbacks (no resilience module installed) — the same values
@@ -170,13 +175,26 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         // The work itself runs on a virtual thread, so blocking HttpClient joins
         // do not pin common-pool platform threads.
         InvocationContext ctx = InvocationContext.current().orElse(null);
-        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-            if (ctx == null) {
-                return orchestrate(serviceId, request, true, deadlineNanos);
-            }
-            return InvocationContext.runWith(ctx,
-                () -> orchestrate(serviceId, request, true, deadlineNanos));
-        }, asyncExecutor);
+        java.util.concurrent.CompletableFuture<CloudResponse> future;
+        try {
+            future = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                if (ctx == null) {
+                    return orchestrate(serviceId, request, true, deadlineNanos);
+                }
+                return InvocationContext.runWith(ctx,
+                    () -> orchestrate(serviceId, request, true, deadlineNanos));
+            }, asyncExecutor);
+        } catch (java.util.concurrent.RejectedExecutionException rejected) {
+            // close() won the race — fail with the same type requireUsable
+            // uses instead of leaking a raw RejectedExecutionException.
+            throw new IllegalStateException("CloudHttpClient is closed", rejected);
+        }
+        // A task still queued when close() shuts the executor down is dropped
+        // and would never complete on its own — track it so close() settles
+        // it, mirroring CallBus's "no caller waits forever on shutdown".
+        inFlight.add(future);
+        future.whenComplete((response, error) -> inFlight.remove(future));
+        return future;
     }
 
     private void requireUsable(String serviceId) {
@@ -402,6 +420,13 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         if (!closed) {
             closed = true;
             asyncExecutor.shutdownNow();
+            // Tasks dropped by shutdownNow never complete on their own —
+            // settle them so no caller blocks forever on a dead client.
+            for (java.util.concurrent.CompletableFuture<CloudResponse> future : inFlight) {
+                future.completeExceptionally(
+                    new IllegalStateException("CloudHttpClient is closed"));
+            }
+            inFlight.clear();
             http.close();
         }
     }

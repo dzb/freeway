@@ -78,7 +78,11 @@ final class BindingImpl<T> implements Binding<T> {
 
     T directInstance() {
         if (instance != null) {
-            return instance;
+            // Instance bindings run the same lifecycle as every other
+            // binding: field injection + @PostConstruct at realization, so
+            // "has @PreDestroy on close" does not come without "has
+            // @PostConstruct on start".
+            return materialize(instance);
         }
         if (provider != null) {
             return materialize(provider.apply(container));

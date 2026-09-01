@@ -43,6 +43,19 @@ class RemoteProxyFactoryTest {
     }
 
     @Test
+    void localFirstWithRemoteFallbackRequiresServiceId() {
+        // The remote leg only runs after a local DeadCall — but the missing
+        // serviceId is knowable at build() and must not surface later as an
+        // unrelated "serviceId must not be blank" transport failure.
+        assertThrows(IllegalStateException.class, () ->
+            RemoteProxyFactory.of(new CallBus(new NoopContainer()),
+                    new RemoteCaller(null, null))
+                .mapping("x")
+                .localFirst()
+                .build(EchoApi.class));
+    }
+
+    @Test
     void builderValidation() {
         assertThrows(IllegalArgumentException.class, () ->
             RemoteProxyFactory.of(null, null));                                // nothing given

@@ -124,6 +124,15 @@ public final class RemoteProxyFactory {
             throw new IllegalStateException(
                 "remoteOnly() requires serviceId(...) — the remote target must be named");
         }
+        if (mode == Mode.LOCAL_FIRST && remote != null && serviceId == null) {
+            // The remote leg is only reached after a local DeadCall — but the
+            // misconfiguration is knowable now, and surfacing it at first
+            // fallback would present an unrelated "serviceId must not be
+            // blank" as a runtime transport failure.
+            throw new IllegalStateException(
+                "localFirst() with a RemoteCaller fallback requires serviceId(...) "
+                    + "— the remote target must be named");
+        }
         if (mapping == null) {
             throw new IllegalStateException("mapping(...) is required");
         }

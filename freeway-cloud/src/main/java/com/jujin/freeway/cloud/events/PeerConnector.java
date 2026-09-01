@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,8 +97,11 @@ public final class PeerConnector implements AutoCloseable {
 
     /** Feeds additional peers (e.g. discovered via an external registry).
      *  Safe before or after {@link #start()}: already-dialed endpoints are
-     *  skipped. */
-    public void setPeers(List<String> peers) {
+     *  skipped. Synchronized on the same monitor as {@link #start(List)} so
+     *  the {@code started} check and the {@code start()} snapshot cannot
+     *  interleave — otherwise a peer fed between the two could be dialed by
+     *  neither and silently lost. */
+    public synchronized void setPeers(List<String> peers) {
         for (URI peer : peers.stream().map(this::toUri).toList()) {
             boolean known = staticPeers.stream().anyMatch(p -> sameEndpoint(p, peer))
                 || backoffByPeer.keySet().stream()
@@ -257,6 +261,10 @@ public final class PeerConnector implements AutoCloseable {
         private volatile ScheduledFuture<?> handshakeTimer;
         private volatile PeerConnection connection;
         private volatile boolean suppressReconnect;
+        /** One dial loop per session, no matter how many failure callbacks
+         *  fire for it (JDK WebSocket may deliver both onError and onClose
+         *  for one socket; abort() adds its own schedule on top). */
+        private final AtomicBoolean reconnectScheduled = new AtomicBoolean();
 
         ClientSessionHandler(URI peer) {
             this.peer = peer;
@@ -265,6 +273,14 @@ public final class PeerConnector implements AutoCloseable {
         @Override
         public void onOpen(WebSocket webSocket) {
             ws = webSocket;
+            if (closed) {
+                // close() ran while the dial was in flight: the abort loop in
+                // close() saw ws == null, so this socket would otherwise go
+                // live unowned (and submit watchdog tasks to a shutdown
+                // executor). Abort it here instead.
+                webSocket.abort();
+                return;
+            }
             // The socket being open says nothing about the mesh handshake:
             // a peer that never answers the hello is aborted and retried.
             handshakeTimer = watchdog.schedule(() -> {
@@ -329,9 +345,23 @@ public final class PeerConnector implements AutoCloseable {
             // racy. Queued == accepted: the socket serializes frames in
             // order, and a transport failure surfaces via onError/onClose
             // (handleDisconnect → reconnect). False negatives would drop
-            // events, so never report failure for a queued send.
+            // events, so the return value never reports a queued send as
+            // failed — but the send's completion stage is observed, so a
+            // real flush failure reaches handleDisconnect (unregister +
+            // reconnect) even when the JDK delivers no listener callback.
             connection = new PeerConnection(remoteOrigin, remoteSubs,
-                json -> { ws.sendText(json, true); return true; },
+                json -> {
+                    WebSocket socket = ws;
+                    if (socket == null) {
+                        return false;
+                    }
+                    socket.sendText(json, true).whenComplete((sent, error) -> {
+                        if (error != null) {
+                            handleDisconnect(String.valueOf(error));
+                        }
+                    });
+                    return true;
+                },
                 true,
                 () -> {
                     suppressReconnect = true;
@@ -363,6 +393,7 @@ public final class PeerConnector implements AutoCloseable {
         }
 
         private void handleDisconnect(String cause) {
+            cancelHandshakeTimer();
             sessions.remove(this);
             if (connection != null) {
                 hub.unregister(connection);
@@ -376,6 +407,7 @@ public final class PeerConnector implements AutoCloseable {
         }
 
         private void abort() {
+            cancelHandshakeTimer();
             try {
                 if (ws != null) {
                     ws.abort();
@@ -388,8 +420,18 @@ public final class PeerConnector implements AutoCloseable {
             }
         }
 
+        /** Disarms the handshake watchdog: every terminal path (ack, reject,
+         *  disconnect) must cancel it, or the timer later aborts a healthy
+         *  session and dials an extra connection. */
+        private void cancelHandshakeTimer() {
+            ScheduledFuture<?> timer = handshakeTimer;
+            if (timer != null) {
+                timer.cancel(false);
+            }
+        }
+
         private void scheduleReconnect() {
-            if (!closed) {
+            if (!closed && reconnectScheduled.compareAndSet(false, true)) {
                 spawnDial(peer);
             }
         }

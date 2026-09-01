@@ -43,7 +43,12 @@ public final class AuthPropagator implements Propagator {
         }
         headers.put(HEADER_PRINCIPAL, principal.name());
         if (!principal.roles().isEmpty()) {
-            headers.put(HEADER_ROLES, String.join(",", principal.roles()));
+            // Roles share the baggage wire codec: a role containing "," is
+            // data, not a list separator, so it round-trips instead of
+            // splitting into two (richer) roles on the receiving side.
+            headers.put(HEADER_ROLES, principal.roles().stream()
+                .map(BaggagePropagator::encode)
+                .collect(java.util.stream.Collectors.joining(",")));
         }
     }
 
@@ -62,6 +67,7 @@ public final class AuthPropagator implements Propagator {
             : Arrays.stream(rolesHeader.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
+                .map(BaggagePropagator::decode)
                 .toList();
         return InvocationContext.of(null, PrincipalContext.of(name, roles), null);
     }
