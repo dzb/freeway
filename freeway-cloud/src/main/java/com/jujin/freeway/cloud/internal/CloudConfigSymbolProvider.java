@@ -26,4 +26,10 @@ public final class CloudConfigSymbolProvider implements SymbolProvider {
     public String lookup(String name) {
         return config.get(name).orElse(null);
     }
+
+    /** Consulted after the secret provider — config yields to secrets. */
+    @Override
+    public int order() {
+        return 20;
+    }
 }

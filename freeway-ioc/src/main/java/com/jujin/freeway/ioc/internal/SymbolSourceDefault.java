@@ -11,11 +11,19 @@ import java.util.concurrent.CopyOnWriteArrayList;
 final class SymbolSourceDefault implements SymbolSource {
     private static final int MAX_EXPAND_DEPTH = 40;
 
-    /** Explicitly contributed providers (e.g. the boot config cascade) — checked first. */
+    /** Explicitly contributed providers (e.g. the boot config cascade) —
+     *  consulted by declared {@link SymbolProvider#order()} — see
+     *  {@link #register(SymbolProvider)}. */
     private final CopyOnWriteArrayList<SymbolProvider> contributed = new CopyOnWriteArrayList<>();
 
     /** Built-in fallbacks (system properties, environment variables) — checked last. */
     private final CopyOnWriteArrayList<SymbolProvider> defaults = new CopyOnWriteArrayList<>();
+
+    /** Contributed providers sorted by declared order (stable: ties keep
+     *  contribution order). Built lazily on first resolve — sorting calls
+     *  {@code order()} on every provider, which would force the on-demand
+     *  class-contribution facades to materialize at bind time otherwise. */
+    private volatile List<SymbolProvider> ordered;
 
     SymbolSourceDefault(List<SymbolProvider> providers) {
         this.defaults.addAll(Objects.requireNonNull(providers, "providers"));
@@ -45,7 +53,22 @@ final class SymbolSourceDefault implements SymbolSource {
         // Explicit providers take priority over the implicit system sources so
         // the documented config cascade (CLI > env > files, via AppConfig) is
         // honored by @Value/@Symbol instead of being outranked by JVM -D flags.
+        // Within the contributed tier, the declared order() decides — never
+        // the install order of the contributing module.
         contributed.add(Objects.requireNonNull(provider, "provider"));
+        ordered = null; // invalidate the sorted snapshot
+    }
+
+    /** The contributed providers in declared precedence order (ascending
+     *  {@code order()}); equal orders keep contribution order (stable sort). */
+    private List<SymbolProvider> orderedProviders() {
+        List<SymbolProvider> cached = ordered;
+        if (cached == null) {
+            List<SymbolProvider> sorted = new ArrayList<>(contributed);
+            sorted.sort(java.util.Comparator.comparingInt(SymbolProvider::order));
+            ordered = cached = List.copyOf(sorted);
+        }
+        return cached;
     }
 
     @Override
@@ -62,7 +85,7 @@ final class SymbolSourceDefault implements SymbolSource {
     }
 
     private String raw(String name) {
-        for (SymbolProvider provider : contributed) {
+        for (SymbolProvider provider : orderedProviders()) {
             String value = provider.lookup(name);
             if (value != null) {
                 return value;

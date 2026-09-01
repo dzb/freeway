@@ -34,6 +34,14 @@ final class LazySymbolProvider implements SymbolProvider {
         return delegate.get().lookup(name);
     }
 
+    /** Declared order of the wrapped provider — the facade must not report
+     *  the default (last tier) or precedence would silently depend on
+     *  contribution order again. */
+    @Override
+    public int order() {
+        return delegate.get().order();
+    }
+
     /** Resolves the real provider, creating it on first access. */
     SymbolProvider force() {
         return delegate.get();

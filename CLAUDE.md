@@ -102,6 +102,10 @@ prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
 Dotted keys (`--app.name=foo`) pass through unchanged.
 Activate profiles: `--profile=dev`
 
+SymbolProvider precedence is declared via `order()` (boot cascade 0 >
+cloud secret store 10 > cloud dynamic config 20), never via module install
+order — `@Value`/`@Symbol` resolution is install-order independent.
+
 ## Commit Rules
 
 - Never include `Co-Authored-By`, AI tool names, or any form of AI attribution in commit messages.

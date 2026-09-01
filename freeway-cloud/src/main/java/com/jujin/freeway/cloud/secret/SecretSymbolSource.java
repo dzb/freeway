@@ -12,7 +12,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Dynamic {@link SymbolProvider} backed by {@link SecretStore}: makes secrets
  * resolvable via {@code @Symbol("db.password")} (and any symbol lookup), with
- * secret-source priority over the config provider (registered before it).
+ * secret-source priority over the config provider — declared via
+ * {@link #order()}, independent of module install order.
  *
  * <p><b>Known collision surface.</b> This provider answers for <i>every</i>
  * name, and {@link SecretStore} implementations typically check the process
@@ -59,6 +60,12 @@ public final class SecretSymbolSource implements SymbolProvider {
             return null; // not a declared secret — leave the name to the next provider
         }
         return store.get(name).orElse(null);
+    }
+
+    /** Consulted before the dynamic-config provider — secrets win over config. */
+    @Override
+    public int order() {
+        return 10;
     }
 
     private static List<String> parseAllowedKeys(String raw) {
