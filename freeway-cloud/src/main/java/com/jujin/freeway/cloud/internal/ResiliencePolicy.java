@@ -13,7 +13,7 @@ import java.time.Duration;
 /**
  * The retry/breaker/limiter/deadline state machine behind
  * {@link CloudHttpClientDefault} — extracted from the client so the loop is
- * unit-testable with fakes: the orchestrator only ever talks to the
+ * unit-testable with fakes: the policy only ever talks to the
  * resilience interfaces plus a {@link TransportAttempt} callback, so the
  * semantics below are pinned without a transport, discovery or real HTTP.
  *
@@ -38,7 +38,7 @@ import java.time.Duration;
  * <p>One span per logical call (retries included); metrics count the same
  * unit. Both are wired only when CloudObserveModule is installed.
  */
-final class ResilienceOrchestrator {
+final class ResiliencePolicy {
 
     private final Retryer retryer;
     /** Tracing wiring; null when the observe module is not installed. */
@@ -46,7 +46,7 @@ final class ResilienceOrchestrator {
     /** Metrics registry; null when not wired (span/metrics hooks no-op). */
     private final Metrics metrics;
 
-    ResilienceOrchestrator(Retryer retryer, Tracer tracer, Metrics metrics) {
+    ResiliencePolicy(Retryer retryer, Tracer tracer, Metrics metrics) {
         this.retryer = retryer;
         this.tracer = tracer;
         this.metrics = metrics;

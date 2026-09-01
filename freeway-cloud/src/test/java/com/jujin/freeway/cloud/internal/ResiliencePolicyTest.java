@@ -18,14 +18,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for the resilience state machine in {@link ResilienceOrchestrator}:
+ * Unit tests for the resilience state machine in {@link ResiliencePolicy}:
  * the loop semantics are pinned with fakes for breaker/limiter/retryer and a
  * synthetic transport — no HTTP, no discovery, no real backoff sleeps.
  */
-class ResilienceOrchestratorTest {
+class ResiliencePolicyTest {
 
-    private static ResilienceOrchestrator orchestrator(Retryer retryer) {
-        return new ResilienceOrchestrator(retryer, null, null);
+    private static ResiliencePolicy policy(Retryer retryer) {
+        return new ResiliencePolicy(retryer, null, null);
     }
 
     private static CloudResponse ok() {
@@ -39,10 +39,10 @@ class ResilienceOrchestratorTest {
     @Test
     void successReturnsResponseAndCountsBreakerSuccess() {
         FakeBreaker breaker = FakeBreaker.closed();
-        ResilienceOrchestrator orchestrator = orchestrator(Retryer.NO_RETRY);
+        ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = orchestrator.run("svc", 0, breaker, FakeLimiter.unlimited(),
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
             () -> {
                 attempts.incrementAndGet();
                 return ok();
@@ -57,11 +57,11 @@ class ResilienceOrchestratorTest {
     @Test
     void rateLimitRejectionFailsFastBeforeBreakerOrAttempt() {
         FakeBreaker breaker = FakeBreaker.closed();
-        ResilienceOrchestrator orchestrator = orchestrator(Retryer.NO_RETRY);
+        ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> orchestrator.run("svc", 0, breaker, FakeLimiter.withPermits(0), () -> {
+            () -> policy.run("svc", 0, breaker, FakeLimiter.withPermits(0), () -> {
                 attempts.incrementAndGet();
                 return ok();
             }));
@@ -76,11 +76,11 @@ class ResilienceOrchestratorTest {
     void openCircuitFailsFastAfterRateLimitWithoutAttempt() {
         FakeBreaker breaker = FakeBreaker.open();
         FakeLimiter limiter = FakeLimiter.withPermits(1);
-        ResilienceOrchestrator orchestrator = orchestrator(Retryer.NO_RETRY);
+        ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> orchestrator.run("svc", 0, breaker, limiter, () -> {
+            () -> policy.run("svc", 0, breaker, limiter, () -> {
                 attempts.incrementAndGet();
                 return ok();
             }));
@@ -93,10 +93,10 @@ class ResilienceOrchestratorTest {
     @Test
     void retryableFailuresRetryWithBackoffThenSucceed() {
         FakeBreaker breaker = FakeBreaker.closed();
-        ResilienceOrchestrator orchestrator = orchestrator(new FakeRetryer(5, 0));
+        ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = orchestrator.run("svc", 0, breaker, FakeLimiter.unlimited(),
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
             () -> {
                 if (attempts.incrementAndGet() < 3) {
                     throw connectFailure();
@@ -113,11 +113,11 @@ class ResilienceOrchestratorTest {
     @Test
     void retryBudgetExhaustionPropagatesTheLastFailure() {
         FakeBreaker breaker = FakeBreaker.closed();
-        ResilienceOrchestrator orchestrator = orchestrator(new FakeRetryer(1, 0));
+        ResiliencePolicy policy = policy(new FakeRetryer(1, 0));
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> orchestrator.run("svc", 0, breaker, FakeLimiter.unlimited(), () -> {
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), () -> {
                 attempts.incrementAndGet();
                 throw connectFailure();
             }));
@@ -130,11 +130,11 @@ class ResilienceOrchestratorTest {
     @Test
     void nonRetryableLocalRejectionFailsImmediatelyWithoutBreakerAccounting() {
         FakeBreaker breaker = FakeBreaker.closed();
-        ResilienceOrchestrator orchestrator = orchestrator(new FakeRetryer(5, 0));
+        ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> orchestrator.run("svc", 0, breaker, FakeLimiter.unlimited(), () -> {
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), () -> {
                 attempts.incrementAndGet();
                 throw CloudException.noInstance("svc");
             }));
@@ -150,10 +150,10 @@ class ResilienceOrchestratorTest {
         // While probing, ANY failure is the probe outcome — otherwise a
         // half-open circuit wedges forever on local rejections.
         FakeBreaker breaker = FakeBreaker.halfOpen();
-        ResilienceOrchestrator orchestrator = orchestrator(Retryer.NO_RETRY);
+        ResiliencePolicy policy = policy(Retryer.NO_RETRY);
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> orchestrator.run("svc", 0, breaker, FakeLimiter.unlimited(),
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
                 () -> {
                     throw CloudException.noInstance("svc");
                 }));
@@ -166,9 +166,9 @@ class ResilienceOrchestratorTest {
     @Test
     void halfOpenProbeSuccessClosesTheCircuit() {
         FakeBreaker breaker = FakeBreaker.halfOpen();
-        ResilienceOrchestrator orchestrator = orchestrator(Retryer.NO_RETRY);
+        ResiliencePolicy policy = policy(Retryer.NO_RETRY);
 
-        CloudResponse response = orchestrator.run("svc", 0, breaker, FakeLimiter.unlimited(),
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
             () -> ok());
 
         assertEquals(200, response.status());
@@ -179,11 +179,11 @@ class ResilienceOrchestratorTest {
     @Test
     void deadlineExpiredBeforeFirstAttemptThrowsTimeoutWithoutTouchingAnything() {
         FakeBreaker breaker = FakeBreaker.closed();
-        ResilienceOrchestrator orchestrator = orchestrator(Retryer.NO_RETRY);
+        ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> orchestrator.run("svc", 1, breaker, FakeLimiter.unlimited(), () -> {
+            () -> policy.run("svc", 1, breaker, FakeLimiter.unlimited(), () -> {
                 attempts.incrementAndGet();
                 return ok();
             }));
@@ -198,11 +198,11 @@ class ResilienceOrchestratorTest {
         // The backoff would outrun the budget: the loop must throw timeout
         // without sleeping a minute — deterministic, no real sleeps involved.
         FakeBreaker breaker = FakeBreaker.closed();
-        ResilienceOrchestrator orchestrator = orchestrator(new FakeRetryer(10, 60_000));
+        ResiliencePolicy policy = policy(new FakeRetryer(10, 60_000));
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> orchestrator.run("svc", DurationNanos.ms(5), breaker, FakeLimiter.unlimited(),
+            () -> policy.run("svc", DurationNanos.ms(5), breaker, FakeLimiter.unlimited(),
                 () -> {
                     attempts.incrementAndGet();
                     throw connectFailure();

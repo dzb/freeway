@@ -137,8 +137,9 @@ public final class AppConfigDynamic implements AppConfig, AutoCloseable {
             new BootConfigProvider(this::fileTier, SymbolProvider.TIER_FILES));
     }
 
-    /** Current file tier (baseline + overrides) — read by the symbol provider. */
-    public Map<String, String> fileTier() {
+    /** Current file tier (baseline + overrides) — read by the files source
+     *  on every lookup, which is how hot reload reaches the symbol chain. */
+    private Map<String, String> fileTier() {
         return fileTier;
     }
 
@@ -223,10 +224,5 @@ public final class AppConfigDynamic implements AppConfig, AutoCloseable {
                 LOG.warn("Config watch iteration failed, continuing: {}", e.getMessage());
             }
         }
-    }
-
-    /** @return the list of filesystem override files this config watches */
-    List<Path> overrideFiles() {
-        return overrideFiles;
     }
 }

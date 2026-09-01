@@ -82,7 +82,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     private final Metrics metrics;
     /** The retry/breaker/limiter/deadline loop, shared by both paths — see
      *  {@link #orchestrate(String, CloudRequest, boolean, long)}. */
-    private final ResilienceOrchestrator orchestrator;
+    private final ResiliencePolicy policy;
     private final HttpClient http;
     /** Async calls run on virtual threads so blocking HttpClient joins do not
      *  pin common-pool platform threads. */
@@ -142,7 +142,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         this.transport = transport != null ? transport : TransportSecurity.NONE;
         this.tracer = tracer;
         this.metrics = metrics;
-        this.orchestrator = new ResilienceOrchestrator(retryer, tracer, metrics);
+        this.policy = new ResiliencePolicy(retryer, tracer, metrics);
         this.requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout");
         HttpClient.Builder builder = HttpClient.newBuilder()
             .connectTimeout(Objects.requireNonNull(connectTimeout, "connectTimeout"))
@@ -215,14 +215,14 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      * discovery/choose → send, with retries. Single copy shared by the
      * blocking and async paths so a fix to the retry/breaker accounting
      * cannot land in only one of them. The loop itself lives in
-     * {@link ResilienceOrchestrator}; here we only resolve the per-service
+     * {@link ResiliencePolicy}; here we only resolve the per-service
      * shards and supply the transport attempt.
      */
     private CloudResponse orchestrate(
         String serviceId, CloudRequest request, boolean async, long deadlineNanos) {
         CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
         RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
-        return orchestrator.run(serviceId, deadlineNanos, breaker, rateLimiter,
+        return policy.run(serviceId, deadlineNanos, breaker, rateLimiter,
             () -> attempt(serviceId, request, async));
     }
 
