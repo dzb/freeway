@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.config.ConfigSpec;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /** Application configuration facade: flat key-value lookups, active profiles, and an unmodifiable snapshot. */
 public interface AppConfig {
@@ -50,6 +51,30 @@ public interface AppConfig {
 
     /** Returns the active profiles in priority order, as an unmodifiable list. */
     List<String> profiles();
+
+    /**
+     * One configuration tier: a source name and its unmodifiable values.
+     * Tiers are the symbol-resolution units of the boot cascade — see
+     * {@link #layers()}.
+     */
+    record ConfigLayer(String name, Map<String, String> values) {
+        public ConfigLayer {
+            Objects.requireNonNull(name, "name");
+            values = Map.copyOf(values);
+        }
+    }
+
+    /**
+     * The configuration tiers, highest priority first (e.g. {@code cli} →
+     * {@code env} → {@code files}). The default implementation reports the
+     * merged view as a single {@code merged} layer, so custom
+     * {@link ConfigLoader} implementations keep working unchanged; the
+     * default cascade returns its real tiers, letting the boot module
+     * contribute one {@code SymbolProvider} per tier with a declared order.
+     */
+    default List<ConfigLayer> layers() {
+        return List.of(new ConfigLayer("merged", asMap()));
+    }
 
     /**
      * Returns the full configuration as an unmodifiable map.

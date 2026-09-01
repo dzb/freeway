@@ -65,7 +65,7 @@ public final class SecretSymbolSource implements SymbolProvider {
     /** Consulted before the dynamic-config provider — secrets win over config. */
     @Override
     public int order() {
-        return 10;
+        return SymbolProvider.TIER_SECRET;
     }
 
     private static List<String> parseAllowedKeys(String raw) {

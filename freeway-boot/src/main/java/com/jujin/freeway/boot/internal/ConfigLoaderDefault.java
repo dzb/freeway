@@ -52,7 +52,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     @Override
     public AppConfig load(ClassLoader loader, String... args) {
         BootConfigLayers layers = loadLayers(loader, args);
-        return new AppConfigDefault(layers.merged(), layers.profiles());
+        return new AppConfigDefault(layers.merged(), layers.profiles(), layers.configLayers());
     }
 
     static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
@@ -347,6 +347,12 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         Map<String, String> profileJson,
         Map<String, String> args
     ) {
+        /** Symbol-layer names — {@link #configLayers()} maps them to declared
+         *  {@code SymbolProvider} orders in {@code BootConfigModule}. */
+        static final String NAME_CLI = "cli";
+        static final String NAME_ENV = "env";
+        static final String NAME_FILES = "files";
+
         public BootConfigLayers {
             profiles = List.copyOf(Objects.requireNonNull(profiles, "profiles"));
             environment = Map.copyOf(Objects.requireNonNull(environment, "environment"));
@@ -355,6 +361,24 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             profileProperties = Map.copyOf(Objects.requireNonNull(profileProperties, "profileProperties"));
             profileJson = Map.copyOf(Objects.requireNonNull(profileJson, "profileJson"));
             args = Map.copyOf(Objects.requireNonNull(args, "args"));
+        }
+
+        /**
+         * The tiers as symbol-resolution layers, highest priority first:
+         * {@code cli} → {@code env} → {@code files}. The files tier merges
+         * base and profile files, excluding the profile-activation key from
+         * profile layers only — exactly like {@link #merged()}.
+         */
+        public List<AppConfig.ConfigLayer> configLayers() {
+            Map<String, String> files = new LinkedHashMap<>();
+            files.putAll(properties);
+            files.putAll(json);
+            putAllExceptProfileKey(files, profileProperties);
+            putAllExceptProfileKey(files, profileJson);
+            return List.of(
+                new AppConfig.ConfigLayer(NAME_CLI, args),
+                new AppConfig.ConfigLayer(NAME_ENV, environment),
+                new AppConfig.ConfigLayer(NAME_FILES, files));
         }
 
         /**

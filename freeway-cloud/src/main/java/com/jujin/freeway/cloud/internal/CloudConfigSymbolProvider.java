@@ -30,6 +30,6 @@ public final class CloudConfigSymbolProvider implements SymbolProvider {
     /** Consulted after the secret provider — config yields to secrets. */
     @Override
     public int order() {
-        return 20;
+        return SymbolProvider.TIER_CONFIG;
     }
 }
