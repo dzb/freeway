@@ -1,24 +1,24 @@
 package com.jujin.freeway.boot;
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
 
 import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.List;
 import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,6 +39,13 @@ class AppConfigDefaultTest {
         assertEquals("value", config.get("good"));
         assertNull(config.get("null-value"));
         assertFalse(config.asMap().containsKey("null-value"));
+    }
+
+    @Test
+    void nullValuesAndProfilesAreTolerated() {
+        AppConfig config = new AppConfigDefault(null, null);
+        assertTrue(config.asMap().isEmpty());
+        assertTrue(config.profiles().isEmpty());
     }
 
     @Test

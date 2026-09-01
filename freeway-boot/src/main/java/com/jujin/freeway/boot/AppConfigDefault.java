@@ -75,9 +75,11 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
      *
      * <p>Custom loaders may include null entries to mean "unset" — they are
      * skipped instead of failing with an opaque NPE from {@code Map.copyOf}.
+     * A null {@code profiles} list is treated as empty.
      */
     public AppConfigDefault(Map<String, String> values, List<String> profiles) {
-        this(Map.of(), Map.of(), cleaned(values), List.of(), profiles);
+        this(Map.of(), Map.of(), cleaned(values),
+            List.of(), profiles == null ? List.of() : profiles);
     }
 
     /**
