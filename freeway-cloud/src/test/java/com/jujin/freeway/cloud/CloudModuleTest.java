@@ -2,8 +2,6 @@ package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.annotation.RoundRobin;
-import com.jujin.freeway.cloud.config.CloudConfig;
-import com.jujin.freeway.cloud.config.CloudConfigModule;
 import com.jujin.freeway.cloud.context.CloudContextModule;
 import com.jujin.freeway.cloud.discovery.CloudDiscoveryModule;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
@@ -46,7 +44,6 @@ class CloudModuleTest {
     void eachSubModuleInstallsIndependently() {
         List<ModuleEx> modules = List.of(
             new CloudContextModule(),
-            new CloudConfigModule(),
             new CloudSecretModule(),
             new CloudDiscoveryModule(),
             new CloudRpcModule(),
@@ -67,7 +64,6 @@ class CloudModuleTest {
             assertNotNull(container.get(ServiceRegistry.class));
             assertNotNull(container.get(ServiceDiscovery.class));
             assertNotNull(container.get(CloudHttpClient.class));
-            assertNotNull(container.get(CloudConfig.class));
             assertNotNull(container.get(SecretStore.class));
             assertNotNull(container.get(Tracer.class));
             assertNotNull(container.get(Metrics.class));

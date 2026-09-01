@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud;
 
-import com.jujin.freeway.cloud.config.CloudConfigModule;
 import com.jujin.freeway.cloud.context.CloudContextModule;
 import com.jujin.freeway.cloud.discovery.CloudDiscoveryModule;
 import com.jujin.freeway.cloud.health.CloudHealthModule;
@@ -18,7 +17,9 @@ import com.jujin.freeway.ioc.annotation.Marker;
  * Cloud umbrella module: aggregates the standard {@code freeway-cloud}
  * sub-modules. {@link com.jujin.freeway.cloud.events.CloudEventModule} is an
  * optional add-on and intentionally not installed here; add it explicitly when
- * the WebSocket event mesh is needed.
+ * the WebSocket event mesh is needed. Config files belong to the boot
+ * framework (see {@code AppConfigDynamic}) — the cloud module no longer reads
+ * its own config file.
  *
  * <p>Install either this module <b>or</b> a subset of the sub-modules — never
  * both: {@link Binder#install} deduplicates by module <em>instance identity</em>
@@ -31,8 +32,7 @@ public final class CloudModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.install(new CloudContextModule());
-        b.install(new CloudSecretModule()); // secret provider first: outranks the config provider
-        b.install(new CloudConfigModule());
+        b.install(new CloudSecretModule());
         b.install(new CloudDiscoveryModule());
         b.install(new CloudRpcModule());
         b.install(new CloudObserveModule());

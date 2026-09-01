@@ -4,10 +4,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
- * Secret source. Deliberately separate from {@code CloudConfig}: no
- * {@code asMap()} (secrets must never be bulk-exposed), no fallback to local
- * defaults (secrets must be explicitly configured), TTL-style caching for
- * rotation support.
+ * Secret source. Deliberately separate from the application config
+ * ({@code AppConfig}): no {@code asMap()} (secrets must never be
+ * bulk-exposed), no fallback to local defaults (secrets must be explicitly
+ * configured), TTL-style caching for rotation support.
  */
 public interface SecretStore {
 

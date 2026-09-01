@@ -42,7 +42,7 @@ class SecurityTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE);
-        System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.CONFIG_FILE);
+        System.clearProperty("freeway.config.file");
     }
 
     @Test
@@ -100,12 +100,12 @@ class SecurityTest {
         Path config = dir.resolve("config.properties");
         Files.writeString(config, "db.password=config-value\napp.feature=true\n");
         System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
-        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.CONFIG_FILE, config.toString());
+        System.setProperty("freeway.config.file", config.toString());
         try (AppRuntime app = FreewayApp.run(new CloudModule())) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("secret-value", symbols.resolve("db.password"),
-                "the secret provider is registered before the config provider");
-            assertEquals("true", symbols.resolve("app.feature"), "non-secret keys fall through to config");
+                "the secret tier (15) outranks the framework file tier (20)");
+            assertEquals("true", symbols.resolve("app.feature"), "non-secret keys fall through to files");
         }
     }
 
@@ -119,16 +119,17 @@ class SecurityTest {
         Path config = dir.resolve("config.properties");
         Files.writeString(config, "api.token=config-token\n");
         System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
-        System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.CONFIG_FILE, config.toString());
+        System.setProperty("freeway.config.file", config.toString());
         System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS, "db.password");
         try (AppRuntime app = FreewayApp.run(new CloudModule())) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("secret-value", symbols.resolve("db.password"),
                 "a declared key still resolves from the secret store");
             assertEquals("config-token", symbols.resolve("api.token"),
-                "an undeclared key falls through to config instead of the secret store");
+                "an undeclared key falls through to files instead of the secret store");
         } finally {
             System.clearProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS);
+            System.clearProperty("freeway.config.file");
         }
     }
 

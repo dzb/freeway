@@ -11,9 +11,6 @@ import com.jujin.freeway.http.HttpModule;
 public final class CloudHooks {
     private CloudHooks() {}
 
-    /** Config watcher shutdown; runs before the HTTP server. */
-    public static final String CONFIG = "freeway.cloud.config";
-
     /** Secret-store startup validation (backend type check). */
     public static final String SECRET = "freeway.cloud.secret";
 

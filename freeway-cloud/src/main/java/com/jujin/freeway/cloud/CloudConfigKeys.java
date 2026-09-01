@@ -9,10 +9,6 @@ public final class CloudConfigKeys {
 
     static final String PREFIX = "freeway.cloud";
 
-    // ── Config ─────────────────────────────────────────────
-    public static final String CONFIG_TYPE        = PREFIX + ".config.type";
-    public static final String CONFIG_FILE        = PREFIX + ".config.file";
-
     // ── Secret ─────────────────────────────────────────────
     public static final String SECRET_TYPE        = PREFIX + ".secret.type";
     public static final String SECRET_FILE        = PREFIX + ".secret.file";

@@ -62,10 +62,14 @@ public final class SecretSymbolSource implements SymbolProvider {
         return store.get(name).orElse(null);
     }
 
-    /** Consulted before the dynamic-config provider — secrets win over config. */
+    /**
+     * Consulted between the framework's env tier (10) and file tier (20):
+     * secrets win over every file-based source. Declared here — module
+     * slots are not part of the ioc framework tiers.
+     */
     @Override
     public int order() {
-        return SymbolProvider.TIER_SECRET;
+        return 15;
     }
 
     private static List<String> parseAllowedKeys(String raw) {

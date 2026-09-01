@@ -23,8 +23,9 @@ import java.nio.file.Path;
  * provider so {@code @Symbol("db.password")} resolves secrets.
  *
  * <p>Secret precedence is declared, not positional: {@code SecretSymbolSource}
- * declares {@code order()} 10, above the config provider's 20, so install
- * order between this module and {@code CloudConfigModule} does not matter.
+ * declares {@code order()} 15 — between the framework's env tier (10) and
+ * file tier (20) — so secrets win over every file-based source regardless of
+ * install order.
  */
 @Marker(Builtin.class)
 public final class CloudSecretModule implements ModuleEx {
