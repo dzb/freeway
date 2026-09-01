@@ -9,6 +9,12 @@ package com.jujin.freeway.ioc;
  * Channel, String)} to reuse the id the bus minted for this dispatch. Both
  * default to the narrower form, so existing implementations keep working
  * unchanged.
+ *
+ * <p><b>Error contract:</b> {@code send} must not throw — the bus isolates
+ * a throwing sink (warn-logged, never retried), so dispatch survives, but
+ * the failure itself is the sink's to handle: log it and, for
+ * connection-oriented transports, drop the channel so the transport can
+ * reconnect, instead of surfacing raw exceptions to the publishing thread.
  */
 public interface EventSink {
 
