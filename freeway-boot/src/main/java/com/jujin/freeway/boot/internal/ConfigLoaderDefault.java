@@ -1,7 +1,7 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.AppConfigDynamic;
+import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.ConfigLoader;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  *   <li>CLI arguments ({@code --key=value})</li>
  * </ol>
  *
- * <p>Returns an {@link AppConfigDynamic}: the file tier is watched and
+ * <p>Returns an {@link AppConfigDefault} (tiered form): the file tier is watched and
  * re-read on change, so config edits are visible to later symbol lookups
  * without a restart.
  */
@@ -87,7 +87,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             }
         }
 
-        return new AppConfigDynamic(
+        return new AppConfigDefault(
             layers.args(), layers.environment(), layers.fileBaseline(), overrides, profiles);
     }
 

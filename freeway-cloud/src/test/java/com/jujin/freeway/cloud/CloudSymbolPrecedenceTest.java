@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.AppConfigDynamic;
+import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Symbol precedence is declared, never positional: the cloud secret store
  * (order 15) sits between the framework's env tier (10) and file tier (20),
  * so secrets win over every file-based source regardless of install order.
- * Config files themselves are framework-owned ({@code AppConfigDynamic}) —
+ * Config files themselves are framework-owned ({@code AppConfigDefault}) —
  * the cloud module no longer reads its own config file.
  */
 class CloudSymbolPrecedenceTest {
@@ -71,7 +71,7 @@ class CloudSymbolPrecedenceTest {
         String expected, Map<String, String> cli, Map<String, String> env
     ) throws Exception {
         // A framework-tiered config: cli/env sources plus a files baseline.
-        AppConfig config = new AppConfigDynamic(
+        AppConfig config = new AppConfigDefault(
             cli, env, Map.of(KEY, "from-file"), List.of(), List.of());
         try (AppRuntime app = FreewayApp.of(new CloudModule())
                 .config((loader, args) -> config)

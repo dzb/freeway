@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **配置读取统一归框架（freeway-boot，破坏性）** — `ConfigLoaderDefault` 现在返回
-  `AppConfigDynamic`：文件层 = classpath 基线（打包的 `application*.properties/json`，
-  静态）+ 文件系统覆盖（工作目录同名标准文件 + `freeway.config.file` 指定的文件，
-  逗号分隔，文件系统压过 classpath、后者压过前者），WatchService 热重载，
-  无覆盖文件时行为与静态配置完全一致。热重载是 pull 语义：配置模型直接声明自己的
-  `SymbolProvider`（`AppConfig.symbolProviders()`），文件源每次 lookup 读实时快照，
-  `@Value`/`@Symbol` 重新解析即见新值。桥接层（`ConfigLayer`/`layers()`）删除。
+  `AppConfigDefault`（唯一实现，静态/动态两种构造形态）：文件层 = classpath 基线
+  （打包的 `application*.properties/json`，静态）+ 文件系统覆盖（工作目录同名标准文件
+  + `freeway.config.file` 指定的文件，逗号分隔，文件系统压过 classpath、后者压过
+  前者），WatchService 热重载，无覆盖文件时行为与静态配置完全一致。热重载是 pull
+  语义：配置模型直接声明自己的 `SymbolProvider`（`AppConfig.symbolProviders()`），
+  文件源每次 lookup 读实时快照，`@Value`/`@Symbol` 重新解析即见新值。
+  自定义 loader 的静态配置从"顶层（TIER_CLI）"改为"文件层（TIER_FILES）"——
+  env/CLI 与模块源（如 secret）现在正确地压过它。
 - **配置层级收敛为 3 个框架层（freeway-ioc）** — `SymbolProvider` 常量收拢为
   `TIER_CLI(0)` / `TIER_ENV(10)` / `TIER_FILES(20)`；模块槽位由模块自持
   （cloud secret 声明 order 15，介于 env 与 files 之间）。

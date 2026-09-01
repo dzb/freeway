@@ -16,7 +16,7 @@ import java.util.function.Supplier;
  * (that is how hot reload reaches the symbol chain), static tiers return a
  * constant map.
  *
- * <p>Internal helper of the boot config wiring ({@code AppConfigDynamic},
+ * <p>Internal helper of the boot config wiring ({@code AppConfigDefault},
  * {@code AppConfig#symbolProviders()}) — not part of the public API.
  */
 public final class BootConfigProvider implements SymbolProvider {

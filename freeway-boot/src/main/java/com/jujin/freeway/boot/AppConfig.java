@@ -73,10 +73,11 @@ public interface AppConfig {
     /**
      * The symbol sources this config contributes to the container, with
      * declared {@code SymbolProvider} orders. The default reports the merged
-     * view as a single source at the top of the cascade
-     * ({@code TIER_CLI}) — the behavior custom {@link ConfigLoader}
-     * implementations get for free. The framework's own config
-     * ({@code AppConfigDynamic}) contributes one source per tier
+     * view as a single source on the file tier ({@code TIER_FILES}) — the
+     * behavior third-party {@link ConfigLoader} implementations get for
+     * free: an undifferentiated config behaves like the framework's file
+     * tier and loses to env/CLI and module sources above it. The framework's
+     * own config ({@code AppConfigDefault}) contributes one source per tier
      * (cli → env → files), which is what lets module sources (e.g. the
      * cloud secret store) slot in between tiers by declaring their own order.
      */
@@ -89,7 +90,7 @@ public interface AppConfig {
 
             @Override
             public int order() {
-                return SymbolProvider.TIER_CLI;
+                return SymbolProvider.TIER_FILES;
             }
         };
         return List.of(merged);

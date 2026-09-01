@@ -18,7 +18,7 @@ import com.jujin.freeway.ioc.annotation.Marker;
  * sub-modules. {@link com.jujin.freeway.cloud.events.CloudEventModule} is an
  * optional add-on and intentionally not installed here; add it explicitly when
  * the WebSocket event mesh is needed. Config files belong to the boot
- * framework (see {@code AppConfigDynamic}) — the cloud module no longer reads
+ * framework (see {@code AppConfigDefault}) — the cloud module no longer reads
  * its own config file.
  *
  * <p>Install either this module <b>or</b> a subset of the sub-modules — never

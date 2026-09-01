@@ -103,7 +103,7 @@ Dotted keys (`--app.name=foo`) pass through unchanged.
 Activate profiles: `--profile=dev`
 
 The framework owns config reading: `ConfigLoaderDefault` returns an
-`AppConfigDynamic` whose file tier merges the packaged classpath baseline
+`AppConfigDefault` whose file tier merges the packaged classpath baseline
 with filesystem overrides (the same standard file names in the working
 directory, plus any files listed in the `freeway.config.file` system
 property). Filesystem wins, later files win; the file tier is

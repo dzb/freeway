@@ -23,7 +23,7 @@ class BootConfigTierTest {
     private static final String KEY = "db.password";
 
     private static AppConfig layered(String cliValue, String envValue, String fileValue) {
-        return new AppConfigDynamic(
+        return new AppConfigDefault(
             cliValue == null ? Map.of() : Map.of(KEY, cliValue),
             envValue == null ? Map.of() : Map.of(KEY, envValue),
             fileValue == null ? Map.of() : Map.of(KEY, fileValue), // baseline = the files tier

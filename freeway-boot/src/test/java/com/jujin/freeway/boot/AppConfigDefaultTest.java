@@ -1,12 +1,22 @@
 package com.jujin.freeway.boot;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 
+import com.jujin.freeway.boot.internal.BootConfigModule;
+import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
 import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.Container;
+import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.List;
 import java.util.Map;
 
@@ -134,5 +144,141 @@ class AppConfigDefaultTest {
         AppConfig present = new AppConfigDefault(
             new LinkedHashMap<>(Map.of("db.password", "s3cret")), List.of());
         assertEquals("s3cret", present.get(password));
+    }
+
+    // ==================== symbol sources (tiered declaration) ====================
+
+    @Test
+    void bothFormsContributeThreeTieredSources() {
+        // Static form: the merged map becomes the file tier.
+        assertTieredSources(new AppConfigDefault(Map.of("k", "static"), List.of()));
+        // Tiered form: cli/env sources plus a files baseline.
+        assertTieredSources(new AppConfigDefault(
+            Map.of("k", "cli"), Map.of("k", "env"), Map.of("k", "from-file"), List.of(), List.of()));
+    }
+
+    private static void assertTieredSources(AppConfigDefault config) {
+        try {
+            List<SymbolProvider> providers = config.symbolProviders();
+            assertEquals(
+                List.of(SymbolProvider.TIER_CLI, SymbolProvider.TIER_ENV, SymbolProvider.TIER_FILES),
+                providers.stream().map(SymbolProvider::order).toList(),
+                "cli, env and files tiers in declared order");
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void mergedValuesSitOnTheFileTier() {
+        AppConfigDefault config = new AppConfigDefault(Map.of("k", "from-file"), List.of());
+        try {
+            SymbolProvider files = config.symbolProviders().get(2);
+            assertEquals("from-file", files.lookup("k"),
+                "an undifferentiated config behaves like the file tier — env/CLI "
+                    + "and module sources (e.g. secrets) outrank it");
+        } finally {
+            config.close();
+        }
+    }
+
+    // ==================== hot reload (file tier) ====================
+
+    /** Unique key — must not collide with the boot test classpath resources. */
+    private static final String HOT_KEY = "hot.reload.probe";
+    private static final String FILE_KEY = "freeway.config.file";
+
+    @TempDir
+    Path dir;
+
+    private static AppConfig load(Path configFile) {
+        System.setProperty(FILE_KEY, configFile.toString());
+        try {
+            return new ConfigLoaderDefault().load(AppConfigDefaultTest.class.getClassLoader());
+        } finally {
+            System.clearProperty(FILE_KEY);
+        }
+    }
+
+    @Test
+    void overrideFileValuesAreVisible() throws Exception {
+        Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=from-file\n");
+        AppConfig config = load(file);
+        try {
+            assertEquals("from-file", config.get(HOT_KEY),
+                "a freeway.config.file override must merge into the file tier");
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void fileTierIsReReadOnModification() throws Exception {
+        Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
+        AppConfigDefault config = (AppConfigDefault) load(file);
+        try {
+            assertEquals("v1", config.get(HOT_KEY));
+            Files.writeString(file, HOT_KEY + "=a-longer-v2\n");
+            await(() -> "a-longer-v2".equals(config.get(HOT_KEY)),
+                "a modified override file must be re-read without a restart");
+            // The live source: the file-tier SymbolProvider reads the current
+            // snapshot on every lookup — hot reload with no push API.
+            SymbolProvider files = config.symbolProviders().get(2);
+            assertEquals("a-longer-v2", files.lookup(HOT_KEY),
+                "the files source must expose the current snapshot, not a stale one");
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void deletedOverrideFallsBackToBaseline() throws Exception {
+        Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
+        AppConfigDefault config = (AppConfigDefault) load(file);
+        try {
+            assertEquals("v1", config.get(HOT_KEY));
+            Files.delete(file);
+            await(() -> config.get(HOT_KEY) == null,
+                "a deleted override must drop its values (no baseline for this key)");
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void hotReloadReachesTheSymbolChain() throws Exception {
+        Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
+        System.setProperty(FILE_KEY, file.toString());
+        try {
+            AppConfig config = new ConfigLoaderDefault().load(AppConfigDefaultTest.class.getClassLoader());
+            try (Container container = Freeway.create(new BootConfigModule(config))) {
+                SymbolSource symbols = container.get(SymbolSource.class);
+                assertEquals("v1", symbols.resolve(HOT_KEY));
+                Files.writeString(file, HOT_KEY + "=v2\n");
+                await(() -> "v2".equals(symbols.resolve(HOT_KEY)),
+                    "hot reload must reach the symbol chain: the file-tier provider "
+                        + "reads the live snapshot on every lookup");
+            } finally {
+                config.close();
+            }
+        } finally {
+            System.clearProperty(FILE_KEY);
+        }
+    }
+
+    private static void await(ThrowingBoolean condition, String message) throws Exception {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.get()) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Timed out waiting for: " + message);
+    }
+
+    @FunctionalInterface
+    private interface ThrowingBoolean {
+        boolean get() throws Exception;
     }
 }
