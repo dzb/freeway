@@ -102,10 +102,20 @@ prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
 Dotted keys (`--app.name=foo`) pass through unchanged.
 Activate profiles: `--profile=dev`
 
-SymbolProvider precedence is declared via `order()` (CLI 0 > env 5 >
-cloud secret store 10 > cloud dynamic config 20 > local files 30), never
-via module install order — `@Value`/`@Symbol` resolution is install-order
-independent.
+The framework owns config reading: `ConfigLoaderDefault` returns an
+`AppConfigDynamic` whose file tier merges the packaged classpath baseline
+with filesystem overrides (the same standard file names in the working
+directory, plus any files listed in the `freeway.config.file` system
+property). Filesystem wins, later files win; the file tier is
+WatchService-hot-reloaded and reaches the symbol chain because each
+`SymbolProvider` lookup reads the current snapshot — no restart, no push
+API. Profile activation stays startup-static.
+
+SymbolProvider precedence is declared via `order()` (CLI 0 > env 10 >
+cloud secret store 15 > files 20), never via module install order —
+`@Value`/`@Symbol` resolution is install-order independent. Modules with
+domain-specific sources (secrets, ...) contribute their own
+`SymbolProvider` via `Extension` and slot in by declaring their order.
 
 ## Commit Rules
 

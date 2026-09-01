@@ -5,6 +5,27 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **配置读取统一归框架（freeway-boot，破坏性）** — `ConfigLoaderDefault` 现在返回
+  `AppConfigDynamic`：文件层 = classpath 基线（打包的 `application*.properties/json`，
+  静态）+ 文件系统覆盖（工作目录同名标准文件 + `freeway.config.file` 指定的文件，
+  逗号分隔，文件系统压过 classpath、后者压过前者），WatchService 热重载，
+  无覆盖文件时行为与静态配置完全一致。热重载是 pull 语义：文件层
+  `SymbolProvider` 每次 lookup 读实时快照，`@Value`/`@Symbol` 重新解析即见新值；
+  `AppConfig.layers()` 的 `ConfigLayer` 从静态 map 改为可重读值源（`current()`），
+  活性由配置实现声明，装配保持通用。
+- **配置层级收敛为 3 个框架层（freeway-ioc）** — `SymbolProvider` 常量收拢为
+  `TIER_CLI(0)` / `TIER_ENV(10)` / `TIER_FILES(20)`；模块槽位由模块自持
+  （cloud secret 声明 order 15，介于 env 与 files 之间）。
+- **cloud 配置机制删除（freeway-cloud，破坏性）** — `CloudConfigModule` /
+  `CloudConfigDefault` / `CloudConfigSymbolProvider` / `CloudConfig` / `ConfigRef` /
+  `ConfigSubscription` / `ConfigChangedEvent` 及 `freeway.cloud.config.*` 键全部移除；
+  配置中心文件改用框架键 `freeway.config.file`（旧键 `freeway.cloud.config.file`
+  废弃）；`CloudModule` 不再安装配置模块。
+
 ## [1.3.11] — 2026-08-30
 
 ### Added
