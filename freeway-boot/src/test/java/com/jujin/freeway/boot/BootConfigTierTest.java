@@ -15,29 +15,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * The boot cascade contributes one {@code SymbolProvider} per tier with a
  * declared order: CLI arguments outrank environment variables, which outrank
- * local files — regardless of contribution order (which is fixed here, but
- * the declared orders are what the resolution actually uses).
+ * the file tier — regardless of contribution order (the declared orders are
+ * what the resolution actually uses).
  */
 class BootConfigTierTest {
 
     private static final String KEY = "db.password";
 
     private static AppConfig layered(String cliValue, String envValue, String fileValue) {
-        return new AppConfigDefault(
-            Map.of(), // merged view is irrelevant for tier resolution
-            List.of(),
-            List.of(
-                new AppConfig.ConfigLayer("cli",
-                    cliValue == null ? Map.of() : Map.of(KEY, cliValue)),
-                new AppConfig.ConfigLayer("env",
-                    envValue == null ? Map.of() : Map.of(KEY, envValue)),
-                new AppConfig.ConfigLayer("files",
-                    fileValue == null ? Map.of() : Map.of(KEY, fileValue))));
+        return new AppConfigDynamic(
+            cliValue == null ? Map.of() : Map.of(KEY, cliValue),
+            envValue == null ? Map.of() : Map.of(KEY, envValue),
+            fileValue == null ? Map.of() : Map.of(KEY, fileValue), // baseline = the files tier
+            List.of(), // no filesystem overrides
+            List.of());
     }
 
     private static String resolve(AppConfig config) {
         try (Container container = Freeway.create(new BootConfigModule(config))) {
             return container.get(SymbolSource.class).resolve(KEY);
+        } finally {
+            config.close();
         }
     }
 

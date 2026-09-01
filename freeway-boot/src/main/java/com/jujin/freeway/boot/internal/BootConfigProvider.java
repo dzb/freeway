@@ -15,13 +15,16 @@ import java.util.function.Supplier;
  * on every lookup: the dynamic file tier returns a fresh snapshot per call
  * (that is how hot reload reaches the symbol chain), static tiers return a
  * constant map.
+ *
+ * <p>Internal helper of the boot config wiring ({@code AppConfigDynamic},
+ * {@code AppConfig#symbolProviders()}) — not part of the public API.
  */
-final class BootConfigProvider implements SymbolProvider {
+public final class BootConfigProvider implements SymbolProvider {
 
     private final Supplier<Map<String, String>> values;
     private final int order;
 
-    BootConfigProvider(Supplier<Map<String, String>> values, int order) {
+    public BootConfigProvider(Supplier<Map<String, String>> values, int order) {
         this.values = Objects.requireNonNull(values, "values");
         this.order = order;
     }

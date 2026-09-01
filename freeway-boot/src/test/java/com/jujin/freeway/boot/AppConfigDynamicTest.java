@@ -4,6 +4,7 @@ import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Files;
@@ -15,7 +16,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * The framework file tier: classpath baseline + filesystem overrides, hot
@@ -62,10 +62,11 @@ class AppConfigDynamicTest {
             Files.writeString(file, KEY + "=a-longer-v2\n");
             await(() -> "a-longer-v2".equals(config.get(KEY)),
                 "a modified override file must be re-read without a restart");
-            // The live-layer contract: the files layer re-reads per call.
-            AppConfig.ConfigLayer files = config.layers().get(2);
-            assertEquals("a-longer-v2", files.current().get(KEY),
-                "the files layer must expose the current snapshot, not a stale one");
+            // The live source: the file-tier SymbolProvider reads the current
+            // snapshot on every lookup — hot reload with no push API.
+            SymbolProvider files = config.symbolProviders().get(2);
+            assertEquals("a-longer-v2", files.lookup(KEY),
+                "the files source must expose the current snapshot, not a stale one");
         } finally {
             config.close();
         }
@@ -107,11 +108,30 @@ class AppConfigDynamicTest {
     }
 
     @Test
-    void staticLayersReturnStableValues() {
+    void customLoaderConfigContributesASingleTopTierSource() {
         AppConfig config = new AppConfigDefault(Map.of("k", "static"), List.<String>of());
-        assertEquals("static", config.layers().get(0).current().get("k"),
-            "the single merged layer of a static config is a constant source");
-        assertNull(config.layers().get(0).current().get("missing"));
+        List<SymbolProvider> providers = config.symbolProviders();
+        assertEquals(1, providers.size(),
+            "a custom loader's merged config is one symbol source");
+        assertEquals(SymbolProvider.TIER_CLI, providers.get(0).order(),
+            "custom loader config keeps the legacy top-of-cascade precedence");
+        assertEquals("static", providers.get(0).lookup("k"));
+    }
+
+    @Test
+    void dynamicConfigDeclaresThreeTieredSources() {
+        AppConfigDynamic config = new AppConfigDynamic(
+            Map.of(), Map.of(), Map.of("k", "from-file"), List.of(), List.of());
+        try {
+            List<SymbolProvider> providers = config.symbolProviders();
+            assertEquals(
+                List.of(SymbolProvider.TIER_CLI, SymbolProvider.TIER_ENV, SymbolProvider.TIER_FILES),
+                providers.stream().map(SymbolProvider::order).toList(),
+                "cli, env and files tiers in declared order");
+            assertEquals("from-file", providers.get(2).lookup("k"));
+        } finally {
+            config.close();
+        }
     }
 
     private static void await(ThrowingBoolean condition, String message) throws Exception {

@@ -3,13 +3,22 @@ package com.jujin.freeway.boot;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.Supplier;
 
-/** Application configuration facade: flat key-value lookups, active profiles, and an unmodifiable snapshot. */
+/**
+ * Application configuration facade: flat key-value lookups, active profiles,
+ * and an unmodifiable snapshot.
+ *
+ * <p><b>Resolution semantics.</b> {@code get}/{@code asMap} cover the config
+ * itself (the framework's CLI/env/file tiers). {@code @Value}/{@code @Symbol}
+ * resolution additionally consults module-contributed sources (e.g. the cloud
+ * secret store) through the {@link SymbolProvider} chain — when a key exists
+ * in both, the symbol chain is authoritative. Application code that wants the
+ * full precedence should resolve symbols, not {@code AppConfig.get}.
+ */
 public interface AppConfig {
     /** Returns the configured value for {@code key}, or {@code null} if absent. */
     String get(String key);
@@ -54,52 +63,37 @@ public interface AppConfig {
     List<String> profiles();
 
     /**
-     * One configuration tier: a source name and a re-readable value source.
-     * Tiers are the symbol-resolution units of the boot cascade — see
-     * {@link #layers()}.
-     *
-     * <p>The values are deliberately a supplier, not a fixed map: a dynamic
-     * config returns a <em>fresh snapshot on every {@link #current()}</em>
-     * call, which is exactly how hot reload reaches the symbol chain (each
-     * provider lookup reads the current values). Static configs return the
-     * same immutable map every time — the degenerate case, no special case.
-     */
-    record ConfigLayer(String name, Supplier<Map<String, String>> values) {
-        public ConfigLayer(String name, Map<String, String> values) {
-            this(name, () -> values);
-        }
-
-        public ConfigLayer {
-            Objects.requireNonNull(name, "name");
-            Objects.requireNonNull(values, "values");
-        }
-
-        /** The current values of this tier; dynamic configs return a fresh
-         *  snapshot per call. */
-        public Map<String, String> current() {
-            return values.get();
-        }
-    }
-
-    /**
-     * The configuration tiers, highest priority first (e.g. {@code cli} →
-     * {@code env} → {@code files}). The default implementation reports the
-     * merged view as a single {@code merged} layer, so custom
-     * {@link ConfigLoader} implementations keep working unchanged; the
-     * default cascade returns its real tiers, letting the boot module
-     * contribute one {@code SymbolProvider} per tier with a declared order.
-     */
-    default List<ConfigLayer> layers() {
-        return List.of(new ConfigLayer("merged", asMap()));
-    }
-
-    /**
      * Returns the full configuration as an unmodifiable map.
      * Implementations must return a snapshot — mutations to the returned map
      * are not supported and modifying the source after this call must not
      * affect the returned map.
      */
     Map<String, String> asMap();
+
+    /**
+     * The symbol sources this config contributes to the container, with
+     * declared {@code SymbolProvider} orders. The default reports the merged
+     * view as a single source at the top of the cascade
+     * ({@code TIER_CLI}) — the behavior custom {@link ConfigLoader}
+     * implementations get for free. The framework's own config
+     * ({@code AppConfigDynamic}) contributes one source per tier
+     * (cli → env → files), which is what lets module sources (e.g. the
+     * cloud secret store) slot in between tiers by declaring their own order.
+     */
+    default List<SymbolProvider> symbolProviders() {
+        SymbolProvider merged = new SymbolProvider() {
+            @Override
+            public String lookup(String name) {
+                return asMap().get(name);
+            }
+
+            @Override
+            public int order() {
+                return SymbolProvider.TIER_CLI;
+            }
+        };
+        return List.of(merged);
+    }
 
     /**
      * Releases resources held by this config (e.g. a hot-reload watcher).

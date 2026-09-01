@@ -9,12 +9,12 @@ import java.util.Map;
  * <p>
  * Immutable — values and profiles are defensively copied on construction.
  * Usable standalone for tests and custom {@link ConfigLoader} implementations
- * (the two-argument form reports the merged view as a single layer).
+ * (its symbol source is the single merged view, top of the cascade — see
+ * {@link AppConfig#symbolProviders()}).
  */
 public record AppConfigDefault(
     Map<String, String> values,
-    List<String> profiles,
-    List<AppConfig.ConfigLayer> layers
+    List<String> profiles
 ) implements AppConfig {
     public AppConfigDefault {
         // Custom loaders may include null entries to mean "unset" — skip them
@@ -29,14 +29,6 @@ public record AppConfigDefault(
         }
         values = Map.copyOf(cleaned);
         profiles = profiles == null ? List.of() : List.copyOf(profiles);
-        layers = layers == null || layers.isEmpty()
-            ? List.of(new AppConfig.ConfigLayer("merged", values))
-            : List.copyOf(layers);
-    }
-
-    /** Convenience form for unlayered sources — a single merged layer. */
-    public AppConfigDefault(Map<String, String> values, List<String> profiles) {
-        this(values, profiles, null);
     }
 
     @Override
@@ -47,10 +39,5 @@ public record AppConfigDefault(
     @Override
     public Map<String, String> asMap() {
         return values;
-    }
-
-    @Override
-    public List<AppConfig.ConfigLayer> layers() {
-        return layers;
     }
 }

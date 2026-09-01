@@ -13,10 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AppConfigDynamic`：文件层 = classpath 基线（打包的 `application*.properties/json`，
   静态）+ 文件系统覆盖（工作目录同名标准文件 + `freeway.config.file` 指定的文件，
   逗号分隔，文件系统压过 classpath、后者压过前者），WatchService 热重载，
-  无覆盖文件时行为与静态配置完全一致。热重载是 pull 语义：文件层
-  `SymbolProvider` 每次 lookup 读实时快照，`@Value`/`@Symbol` 重新解析即见新值；
-  `AppConfig.layers()` 的 `ConfigLayer` 从静态 map 改为可重读值源（`current()`），
-  活性由配置实现声明，装配保持通用。
+  无覆盖文件时行为与静态配置完全一致。热重载是 pull 语义：配置模型直接声明自己的
+  `SymbolProvider`（`AppConfig.symbolProviders()`），文件源每次 lookup 读实时快照，
+  `@Value`/`@Symbol` 重新解析即见新值。桥接层（`ConfigLayer`/`layers()`）删除。
 - **配置层级收敛为 3 个框架层（freeway-ioc）** — `SymbolProvider` 常量收拢为
   `TIER_CLI(0)` / `TIER_ENV(10)` / `TIER_FILES(20)`；模块槽位由模块自持
   （cloud secret 声明 order 15，介于 env 与 files 之间）。

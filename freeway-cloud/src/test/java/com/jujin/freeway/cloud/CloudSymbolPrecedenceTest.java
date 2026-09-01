@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.AppConfigDefault;
+import com.jujin.freeway.boot.AppConfigDynamic;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -70,18 +70,17 @@ class CloudSymbolPrecedenceTest {
     private static void assertResolvesInApp(
         String expected, Map<String, String> cli, Map<String, String> env
     ) throws Exception {
-        AppConfig config = new AppConfigDefault(
-            Map.of(), List.of(),
-            List.of(
-                new AppConfig.ConfigLayer("cli", cli),
-                new AppConfig.ConfigLayer("env", env),
-                new AppConfig.ConfigLayer("files", Map.of(KEY, "from-file"))));
+        // A framework-tiered config: cli/env sources plus a files baseline.
+        AppConfig config = new AppConfigDynamic(
+            cli, env, Map.of(KEY, "from-file"), List.of(), List.of());
         try (AppRuntime app = FreewayApp.of(new CloudModule())
                 .config((loader, args) -> config)
                 .shutdownHook(false)
                 .start()) {
             assertEquals(expected, app.get(SymbolSource.class).resolve(KEY),
                 "declared tier order must hold across boot + cloud providers");
+        } finally {
+            config.close();
         }
     }
 }

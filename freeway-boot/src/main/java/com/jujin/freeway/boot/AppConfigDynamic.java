@@ -1,5 +1,8 @@
 package com.jujin.freeway.boot;
 
+import com.jujin.freeway.boot.internal.BootConfigProvider;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
+
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -36,7 +39,7 @@ import org.slf4j.LoggerFactory;
  * override file's directory and swaps the file-tier snapshot on
  * create/modify/delete — a deleted file contributes nothing, so its values
  * fall back to the baseline. Reload is pull-based: the file tier's
- * {@link AppConfig.ConfigLayer} returns a fresh snapshot on every read, so
+ * {@link SymbolProvider} reads the live snapshot on every lookup, so
  * {@code @Value}/{@code @Symbol} re-resolution sees new values through the
  * symbol chain with no push API. The {@code freeway.profile} key and the
  * active profile set stay startup-static.
@@ -47,12 +50,6 @@ import org.slf4j.LoggerFactory;
 public final class AppConfigDynamic implements AppConfig, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(AppConfigDynamic.class);
-
-    /** Symbol-layer names, consumed by {@code BootConfigModule} to map tiers
-     *  to declared {@code SymbolProvider} orders. */
-    public static final String NAME_CLI = "cli";
-    public static final String NAME_ENV = "env";
-    public static final String NAME_FILES = "files";
 
     private final Map<String, String> cli;
     private final Map<String, String> environment;
@@ -130,13 +127,14 @@ public final class AppConfigDynamic implements AppConfig, AutoCloseable {
     }
 
     @Override
-    public List<AppConfig.ConfigLayer> layers() {
+    public List<SymbolProvider> symbolProviders() {
         return List.of(
-            new AppConfig.ConfigLayer(NAME_CLI, cli),
-            new AppConfig.ConfigLayer(NAME_ENV, environment),
-            // The live tier: every read returns the current snapshot, which
-            // is how hot reload reaches the symbol chain.
-            new AppConfig.ConfigLayer(NAME_FILES, this::fileTier));
+            // One source per tier with a declared order; the files source
+            // re-reads the live snapshot on every lookup — that is how hot
+            // reload reaches the symbol chain.
+            new BootConfigProvider(() -> cli, SymbolProvider.TIER_CLI),
+            new BootConfigProvider(() -> environment, SymbolProvider.TIER_ENV),
+            new BootConfigProvider(this::fileTier, SymbolProvider.TIER_FILES));
     }
 
     /** Current file tier (baseline + overrides) — read by the symbol provider. */
