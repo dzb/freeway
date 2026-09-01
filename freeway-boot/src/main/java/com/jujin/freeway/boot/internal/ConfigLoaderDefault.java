@@ -1,7 +1,7 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.AppConfigDefault;
+import com.jujin.freeway.boot.AppConfigDynamic;
 import com.jujin.freeway.boot.ConfigLoader;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
@@ -9,7 +9,10 @@ import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Maps;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,13 +28,20 @@ import org.slf4j.LoggerFactory;
  * Default {@link ConfigLoader} implementation. Loads configuration from
  * the following sources in ascending priority order:
  * <ol>
- *   <li>{@code application.properties}</li>
- *   <li>{@code application.json}</li>
- *   <li>{@code application-{profile}.properties}</li>
- *   <li>{@code application-{profile}.json}</li>
+ *   <li>{@code application.properties} / {@code application.json} (classpath
+ *       baseline, packaged with the app)</li>
+ *   <li>{@code application-{profile}.properties} / {@code application-{profile}.json}
+ *       (classpath)</li>
+ *   <li>filesystem overrides: the same standard names in the working
+ *       directory plus any files listed in {@code freeway.config.file}
+ *       (comma-separated) — externalized config, hot-reloaded</li>
  *   <li>Environment variables (prefix {@code FREEWAY_}, mapped to dots)</li>
  *   <li>CLI arguments ({@code --key=value})</li>
  * </ol>
+ *
+ * <p>Returns an {@link AppConfigDynamic}: the file tier is watched and
+ * re-read on change, so config edits are visible to later symbol lookups
+ * without a restart.
  */
 public final class ConfigLoaderDefault implements ConfigLoader {
     private static final Logger LOG = LoggerFactory.getLogger(
@@ -52,7 +62,83 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     @Override
     public AppConfig load(ClassLoader loader, String... args) {
         BootConfigLayers layers = loadLayers(loader, args);
-        return new AppConfigDefault(layers.merged(), layers.profiles(), layers.configLayers());
+        // Filesystem base files participate in profile selection alongside
+        // the classpath base (filesystem wins, env/CLI win over both).
+        Map<String, String> fsBase = readFilesystemBase();
+        Map<String, String> baseForProfiles = new LinkedHashMap<>();
+        baseForProfiles.putAll(layers.properties());
+        baseForProfiles.putAll(layers.json());
+        baseForProfiles.putAll(fsBase);
+        baseForProfiles.putAll(layers.environment());
+        baseForProfiles.putAll(layers.args());
+        List<String> profiles = parseProfiles(baseForProfiles.get(PROFILE_KEY));
+
+        List<Path> overrides = new ArrayList<>();
+        Path workDir = Path.of("").toAbsolutePath();
+        overrides.add(workDir.resolve("application.properties"));
+        overrides.add(workDir.resolve("application.json"));
+        for (String profile : profiles) {
+            overrides.add(workDir.resolve(resourceName("application", profile, "properties")));
+            overrides.add(workDir.resolve(resourceName("application", profile, "json")));
+        }
+        for (String extra : System.getProperty("freeway.config.file", "").split(",")) {
+            if (!extra.isBlank()) {
+                overrides.add(Path.of(extra.trim()));
+            }
+        }
+
+        return new AppConfigDynamic(
+            layers.args(), layers.environment(), layers.fileBaseline(), overrides, profiles);
+    }
+
+    /**
+     * Base files in the working directory (filesystem overrides of the
+     * packaged {@code application.properties}/{@code application.json}).
+     * They participate in profile selection and hot reload — dropping one
+     * next to the deployed jar is the standard way to externalize config.
+     */
+    private static Map<String, String> readFilesystemBase() {
+        Map<String, String> base = new LinkedHashMap<>();
+        for (String name : List.of("application.properties", "application.json")) {
+            Path file = Path.of(name).toAbsolutePath();
+            if (!Files.isRegularFile(file)) {
+                continue;
+            }
+            if (name.endsWith(".properties")) {
+                base.putAll(readProperties(file));
+            } else {
+                String text = readText(file);
+                if (text == null || text.isBlank()) {
+                    continue;
+                }
+                try {
+                    base.putAll(Maps.flatten(JsonUtils.parseObject(text).toMap(), "."));
+                } catch (RuntimeException e) {
+                    throw new IllegalStateException("Unable to load " + file, e);
+                }
+            }
+        }
+        return Map.copyOf(base);
+    }
+
+    private static Map<String, String> readProperties(Path file) {
+        Properties props = new Properties();
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            props.load(reader);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to load " + file, e);
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        props.forEach((k, v) -> map.put(String.valueOf(k), String.valueOf(v)));
+        return map;
+    }
+
+    private static String readText(Path file) {
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to load " + file, e);
+        }
     }
 
     static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
@@ -347,12 +433,6 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         Map<String, String> profileJson,
         Map<String, String> args
     ) {
-        /** Symbol-layer names — {@link #configLayers()} maps them to declared
-         *  {@code SymbolProvider} orders in {@code BootConfigModule}. */
-        static final String NAME_CLI = "cli";
-        static final String NAME_ENV = "env";
-        static final String NAME_FILES = "files";
-
         public BootConfigLayers {
             profiles = List.copyOf(Objects.requireNonNull(profiles, "profiles"));
             environment = Map.copyOf(Objects.requireNonNull(environment, "environment"));
@@ -364,21 +444,18 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         }
 
         /**
-         * The tiers as symbol-resolution layers, highest priority first:
-         * {@code cli} → {@code env} → {@code files}. The files tier merges
-         * base and profile files, excluding the profile-activation key from
-         * profile layers only — exactly like {@link #merged()}.
+         * The classpath file baseline: base files → profile files (the
+         * profile-activation key excluded from profile layers only, exactly
+         * like {@link #merged()}), no environment/CLI. The dynamic file tier
+         * overlays the filesystem overrides on top of this.
          */
-        public List<AppConfig.ConfigLayer> configLayers() {
+        public Map<String, String> fileBaseline() {
             Map<String, String> files = new LinkedHashMap<>();
             files.putAll(properties);
             files.putAll(json);
             putAllExceptProfileKey(files, profileProperties);
             putAllExceptProfileKey(files, profileJson);
-            return List.of(
-                new AppConfig.ConfigLayer(NAME_CLI, args),
-                new AppConfig.ConfigLayer(NAME_ENV, environment),
-                new AppConfig.ConfigLayer(NAME_FILES, files));
+            return Map.copyOf(files);
         }
 
         /**

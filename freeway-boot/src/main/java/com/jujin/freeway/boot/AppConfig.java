@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.config.ConfigSpec;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /** Application configuration facade: flat key-value lookups, active profiles, and an unmodifiable snapshot. */
 public interface AppConfig {
@@ -53,14 +54,30 @@ public interface AppConfig {
     List<String> profiles();
 
     /**
-     * One configuration tier: a source name and its unmodifiable values.
+     * One configuration tier: a source name and a re-readable value source.
      * Tiers are the symbol-resolution units of the boot cascade — see
      * {@link #layers()}.
+     *
+     * <p>The values are deliberately a supplier, not a fixed map: a dynamic
+     * config returns a <em>fresh snapshot on every {@link #current()}</em>
+     * call, which is exactly how hot reload reaches the symbol chain (each
+     * provider lookup reads the current values). Static configs return the
+     * same immutable map every time — the degenerate case, no special case.
      */
-    record ConfigLayer(String name, Map<String, String> values) {
+    record ConfigLayer(String name, Supplier<Map<String, String>> values) {
+        public ConfigLayer(String name, Map<String, String> values) {
+            this(name, () -> values);
+        }
+
         public ConfigLayer {
             Objects.requireNonNull(name, "name");
-            values = Map.copyOf(values);
+            Objects.requireNonNull(values, "values");
+        }
+
+        /** The current values of this tier; dynamic configs return a fresh
+         *  snapshot per call. */
+        public Map<String, String> current() {
+            return values.get();
         }
     }
 
@@ -83,4 +100,11 @@ public interface AppConfig {
      * affect the returned map.
      */
     Map<String, String> asMap();
+
+    /**
+     * Releases resources held by this config (e.g. a hot-reload watcher).
+     * Static configurations hold nothing and keep the default no-op.
+     */
+    default void close() {
+    }
 }
