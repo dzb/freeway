@@ -80,6 +80,9 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     /** Tracing/metrics wiring; null when the observe module is not installed. */
     private final Tracer tracer;
     private final Metrics metrics;
+    /** The retry/breaker/limiter/deadline loop, shared by both paths — see
+     *  {@link #orchestrate(String, CloudRequest, boolean, long)}. */
+    private final ResilienceOrchestrator orchestrator;
     private final HttpClient http;
     /** Async calls run on virtual threads so blocking HttpClient joins do not
      *  pin common-pool platform threads. */
@@ -139,6 +142,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         this.transport = transport != null ? transport : TransportSecurity.NONE;
         this.tracer = tracer;
         this.metrics = metrics;
+        this.orchestrator = new ResilienceOrchestrator(retryer, tracer, metrics);
         this.requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout");
         HttpClient.Builder builder = HttpClient.newBuilder()
             .connectTimeout(Objects.requireNonNull(connectTimeout, "connectTimeout"))
@@ -207,106 +211,19 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     }
 
     /**
-     * One logical call: rate limit → breaker → discovery/choose → send, with
-     * retries. Single copy shared by the blocking and async paths so a fix to
-     * the retry/breaker accounting cannot land in only one of them.
-     *
-     * @param async         use {@code sendAsync} for the socket wait
-     * @param deadlineNanos end-to-end budget for ALL attempts, {@code 0} = unbounded
+     * One logical call through the resilience loop: rate limit → breaker →
+     * discovery/choose → send, with retries. Single copy shared by the
+     * blocking and async paths so a fix to the retry/breaker accounting
+     * cannot land in only one of them. The loop itself lives in
+     * {@link ResilienceOrchestrator}; here we only resolve the per-service
+     * shards and supply the transport attempt.
      */
     private CloudResponse orchestrate(
         String serviceId, CloudRequest request, boolean async, long deadlineNanos) {
-        // One span per logical call (retries included); metrics count the
-        // same unit. Both are wired only when CloudObserveModule is installed.
-        Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
-        long callStart = System.nanoTime();
-        long startNanos = metrics != null ? callStart : 0;
-        try {
-            CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
-            RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
-            int attempt = 0;
-            while (true) {
-                if (deadlineExceeded(callStart, deadlineNanos, 0)) {
-                    recordFailure(startNanos);
-                    throw CloudException.timeout(serviceId);
-                }
-                // Rate limit first: a local rejection must not consume a half-open
-                // probe — only an actual probe outcome may settle the circuit.
-                if (!rateLimiter.tryAcquire()) {
-                    recordFailure(startNanos);
-                    throw CloudException.rateLimited(serviceId);
-                }
-                if (!breaker.allowRequest()) {
-                    recordFailure(startNanos);
-                    throw CloudException.circuitOpen(serviceId);
-                }
-                boolean probe = breaker.state() == CircuitBreaker.State.HALF_OPEN;
-                try {
-                    // One transport attempt — discovery, choose, send (see attempt()).
-                    CloudResponse response = attempt(serviceId, request, async);
-                    breaker.onSuccess();
-                    if (span != null) {
-                        span.addTag("http.status", String.valueOf(response.status()));
-                    }
-                    recordCall(startNanos);
-                    return response;
-                } catch (CloudException failure) {
-                    if (span != null) {
-                        span.addError(failure);
-                    }
-                    // While probing, every failure is the probe outcome — even
-                    // local rejections — so the circuit settles instead of
-                    // wedging in HALF_OPEN. Otherwise only retryable failures
-                    // count (4xx/local rejections are not service failures).
-                    if (probe || failure.retryable()) {
-                        breaker.onFailure();
-                    }
-                    if (!failure.retryable() || !retryer.shouldRetry(attempt, failure)) {
-                        recordFailure(startNanos);
-                        throw failure;
-                    }
-                    long backoff = retryer.backoffMillis(attempt);
-                    // Stop instead of parking past the caller's deadline: once
-                    // orTimeout has fired the result is discarded anyway, and
-                    // retrying keeps the connection pool and breaker busy.
-                    if (deadlineExceeded(callStart, deadlineNanos, backoff)) {
-                        recordFailure(startNanos);
-                        throw CloudException.timeout(serviceId);
-                    }
-                    sleepBackoff(backoff);
-                    attempt++;
-                }
-            }
-        } finally {
-            if (span != null) {
-                span.close();
-            }
-        }
-    }
-
-    private static boolean deadlineExceeded(long callStart, long deadlineNanos, long pendingMillis) {
-        if (deadlineNanos <= 0) {
-            return false;
-        }
-        return System.nanoTime() - callStart + pendingMillis * 1_000_000L >= deadlineNanos;
-    }
-
-    private void recordCall(long startNanos) {
-        if (metrics == null) {
-            return;
-        }
-        metrics.counter("cloud.rpc.calls").increment();
-        metrics.timer("cloud.rpc.duration")
-            .record(Duration.ofNanos(System.nanoTime() - startNanos));
-    }
-
-    private void recordFailure(long startNanos) {
-        if (metrics == null) {
-            return;
-        }
-        metrics.counter("cloud.rpc.failures").increment();
-        metrics.timer("cloud.rpc.duration")
-            .record(Duration.ofNanos(System.nanoTime() - startNanos));
+        CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
+        RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
+        return orchestrator.run(serviceId, deadlineNanos, breaker, rateLimiter,
+            () -> attempt(serviceId, request, async));
     }
 
     /** Per-service breaker shard. No injection → fresh default; an injected
@@ -400,15 +317,6 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
             // probe it is neither re-attempted nor fed into the failure window.
             Thread.currentThread().interrupt();
             throw CloudException.interrupted(instance.serviceId(), e);
-        }
-    }
-
-    private static void sleepBackoff(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw CloudException.interrupted("backoff", e);
         }
     }
 
