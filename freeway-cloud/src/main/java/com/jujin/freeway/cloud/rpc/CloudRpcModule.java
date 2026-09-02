@@ -12,13 +12,13 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.Retryer;
+import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
-import com.jujin.freeway.ioc.symbol.ConfigValues;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -38,6 +38,13 @@ import java.time.Duration;
  */
 @Marker(Builtin.class)
 public final class CloudRpcModule implements ModuleEx {
+
+    private static final ConfigSpec<Long> REQUEST_TIMEOUT_MS = ConfigSpec.of(
+        CloudConfigKeys.RPC_REQUEST_TIMEOUT, Long.class, 10_000L, Long::parseLong);
+    private static final ConfigSpec<Long> CONNECT_TIMEOUT_MS = ConfigSpec.of(
+        CloudConfigKeys.RPC_CONNECT_TIMEOUT, Long.class, 3_000L, Long::parseLong);
+    private static final ConfigSpec<Boolean> TRACE_ENABLED = ConfigSpec.of(
+        CloudConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true, Boolean::parseBoolean);
 
     @Override
     public void bind(Binder b) {
@@ -60,12 +67,9 @@ public final class CloudRpcModule implements ModuleEx {
         b.bind(CloudHttpClient.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
-                long requestMs = ConfigValues.longValue(symbols,
-                    CloudConfigKeys.RPC_REQUEST_TIMEOUT, "10000");
-                long connectMs = ConfigValues.longValue(symbols,
-                    CloudConfigKeys.RPC_CONNECT_TIMEOUT, "3000");
-                boolean traceEnabled = Boolean.parseBoolean(
-                    symbols.resolve(CloudConfigKeys.RPC_TRACE_ENABLED, "true"));
+                long requestMs = REQUEST_TIMEOUT_MS.parse(symbols.resolve(REQUEST_TIMEOUT_MS.key(), null));
+                long connectMs = CONNECT_TIMEOUT_MS.parse(symbols.resolve(CONNECT_TIMEOUT_MS.key(), null));
+                boolean traceEnabled = TRACE_ENABLED.parse(symbols.resolve(TRACE_ENABLED.key(), null));
                 return new CloudHttpClientDefault(
                     container.get(ServiceDiscovery.class),
                     container.get(LoadBalancer.class),

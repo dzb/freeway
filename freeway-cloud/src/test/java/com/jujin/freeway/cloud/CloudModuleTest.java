@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud;
 
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.cloud.annotation.RoundRobin;
 import com.jujin.freeway.cloud.context.CloudContextModule;
 import com.jujin.freeway.cloud.discovery.CloudDiscoveryModule;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
@@ -68,9 +67,10 @@ class CloudModuleTest {
             assertNotNull(container.get(Tracer.class));
             assertNotNull(container.get(Metrics.class));
 
-            // Marker-based selection (@Local default, @RoundRobin strategy)
+            // Marker-based selection: @Local marks every built-in default —
+            // the single selector extension modules replace with a primary binding.
             assertNotNull(container.get(ServiceDiscovery.class, Local.class));
-            assertNotNull(container.get(LoadBalancer.class, RoundRobin.class));
+            assertNotNull(container.get(LoadBalancer.class, Local.class));
         }
     }
 }

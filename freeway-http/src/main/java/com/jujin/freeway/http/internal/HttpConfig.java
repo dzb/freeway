@@ -1,6 +1,7 @@
 package com.jujin.freeway.http.internal;
 
 import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -10,7 +11,10 @@ import java.time.Duration;
 /**
  * Immutable snapshot of all {@code freeway.http.*} configuration, bound once
  * from the IoC {@link SymbolSource} instead of reading each key at every
- * binding site. Internal assembly model — not part of the application API.
+ * binding site. Keys, types and defaults are declared once as
+ * {@link ConfigSpec}s below; the chain resolves each key to its raw value
+ * and the specs post-process it into the typed form. Internal assembly
+ * model — not part of the application API.
  */
 public record HttpConfig(
     String host, int port, int backlog, Duration shutdownGrace,
@@ -37,55 +41,139 @@ public record HttpConfig(
                       boolean clientAuth, String protocols, String ciphers,
                       String sniDirectory, Duration reloadInterval) {}
 
+    // ── Key declarations: name, type and default stated exactly once ──
+
+    private static final ConfigSpec<String> SERVER_HOST =
+        ConfigSpec.of(HttpConfigKeys.SERVER_HOST, String.class, "127.0.0.1");
+    private static final ConfigSpec<Integer> SERVER_PORT =
+        ConfigSpec.of(HttpConfigKeys.SERVER_PORT, Integer.class, 8080);
+    private static final ConfigSpec<Integer> SERVER_BACKLOG =
+        ConfigSpec.of(HttpConfigKeys.SERVER_BACKLOG, Integer.class, 0);
+    private static final ConfigSpec<Duration> SERVER_SHUTDOWN_GRACE =
+        ConfigSpec.of(HttpConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.class,
+            Duration.ofSeconds(2));
+    private static final ConfigSpec<Duration> SERVER_READ_TIMEOUT =
+        ConfigSpec.of(HttpConfigKeys.SERVER_READ_TIMEOUT, Duration.class,
+            HttpServerConfig.DEFAULT_READ_TIMEOUT);
+    private static final ConfigSpec<Duration> SERVER_WRITE_TIMEOUT =
+        ConfigSpec.of(HttpConfigKeys.SERVER_WRITE_TIMEOUT, Duration.class,
+            HttpServerConfig.DEFAULT_WRITE_TIMEOUT);
+    private static final ConfigSpec<Integer> SERVER_MAX_CONNECTIONS =
+        ConfigSpec.of(HttpConfigKeys.SERVER_MAX_CONNECTIONS, Integer.class,
+            HttpServerConfig.DEFAULT_MAX_CONNECTIONS);
+    private static final ConfigSpec<Boolean> COMPRESSION_ENABLED =
+        ConfigSpec.of(HttpConfigKeys.COMPRESSION_ENABLED, Boolean.class, true);
+    private static final ConfigSpec<Integer> COMPRESSION_MIN_SIZE =
+        ConfigSpec.of(HttpConfigKeys.COMPRESSION_MIN_SIZE, Integer.class, 256);
+    private static final ConfigSpec<Integer> SERVER_RECEIVE_BUFFER =
+        ConfigSpec.of(HttpConfigKeys.SERVER_RECEIVE_BUFFER, Integer.class, 0);
+    private static final ConfigSpec<Integer> SERVER_SEND_BUFFER =
+        ConfigSpec.of(HttpConfigKeys.SERVER_SEND_BUFFER, Integer.class, 0);
+    private static final ConfigSpec<Long> MAX_BODY_SIZE =
+        ConfigSpec.of(HttpConfigKeys.MAX_BODY_SIZE, Long.class,
+            HttpServerConfig.DEFAULT_MAX_BODY_SIZE);
+    private static final ConfigSpec<Boolean> ACCESS_LOG_ENABLED =
+        ConfigSpec.of(HttpConfigKeys.ACCESS_LOG_ENABLED, Boolean.class, false);
+
+    private static final ConfigSpec<Boolean> CORS_ENABLED =
+        ConfigSpec.of(HttpConfigKeys.CORS_ENABLED, Boolean.class, true);
+    private static final ConfigSpec<String> CORS_ALLOWED_ORIGINS =
+        ConfigSpec.of(HttpConfigKeys.CORS_ALLOWED_ORIGINS, String.class, "*");
+    private static final ConfigSpec<String> CORS_ALLOWED_METHODS =
+        ConfigSpec.of(HttpConfigKeys.CORS_ALLOWED_METHODS, String.class,
+            "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+    private static final ConfigSpec<String> CORS_ALLOWED_HEADERS =
+        ConfigSpec.of(HttpConfigKeys.CORS_ALLOWED_HEADERS, String.class,
+            "Content-Type, Authorization");
+    private static final ConfigSpec<String> CORS_EXPOSED_HEADERS =
+        ConfigSpec.of(HttpConfigKeys.CORS_EXPOSED_HEADERS, String.class, "");
+    private static final ConfigSpec<String> CORS_MAX_AGE =
+        ConfigSpec.of(HttpConfigKeys.CORS_MAX_AGE, String.class, "3600");
+    private static final ConfigSpec<Boolean> CORS_ALLOW_CREDENTIALS =
+        ConfigSpec.of(HttpConfigKeys.CORS_ALLOW_CREDENTIALS, Boolean.class, false);
+
+    private static final ConfigSpec<Boolean> HEALTH_ENABLED =
+        ConfigSpec.of(HttpConfigKeys.HEALTH_ENABLED, Boolean.class, true);
+    private static final ConfigSpec<String> HEALTH_PATH =
+        ConfigSpec.of(HttpConfigKeys.HEALTH_PATH, String.class, "/healthz");
+
+    private static final ConfigSpec<Boolean> SSL_ENABLED =
+        ConfigSpec.of(HttpConfigKeys.SSL_ENABLED, Boolean.class, false);
+    private static final ConfigSpec<String> SSL_KEY_STORE =
+        ConfigSpec.of(HttpConfigKeys.SSL_KEY_STORE, String.class, null);
+    private static final ConfigSpec<String> SSL_KEY_STORE_PASSWORD =
+        ConfigSpec.of(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, String.class, null);
+    private static final ConfigSpec<String> SSL_KEY_STORE_TYPE =
+        ConfigSpec.of(HttpConfigKeys.SSL_KEY_STORE_TYPE, String.class, "PKCS12");
+    private static final ConfigSpec<Boolean> SSL_HTTP2 =
+        ConfigSpec.of(HttpConfigKeys.SSL_HTTP2, Boolean.class, true);
+    private static final ConfigSpec<String> SSL_TRUST_STORE =
+        ConfigSpec.of(HttpConfigKeys.SSL_TRUST_STORE, String.class, null);
+    private static final ConfigSpec<String> SSL_TRUST_STORE_PASSWORD =
+        ConfigSpec.of(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, String.class, null);
+    private static final ConfigSpec<String> SSL_TRUST_STORE_TYPE =
+        ConfigSpec.of(HttpConfigKeys.SSL_TRUST_STORE_TYPE, String.class, "PKCS12");
+    private static final ConfigSpec<Boolean> SSL_CLIENT_AUTH =
+        ConfigSpec.of(HttpConfigKeys.SSL_CLIENT_AUTH, Boolean.class, false);
+    private static final ConfigSpec<String> SSL_PROTOCOLS =
+        ConfigSpec.of(HttpConfigKeys.SSL_PROTOCOLS, String.class, null);
+    private static final ConfigSpec<String> SSL_CIPHERS =
+        ConfigSpec.of(HttpConfigKeys.SSL_CIPHERS, String.class, null);
+    private static final ConfigSpec<String> SSL_SNI_DIRECTORY =
+        ConfigSpec.of(HttpConfigKeys.SSL_SNI_DIRECTORY, String.class, null);
+    private static final ConfigSpec<Duration> SSL_RELOAD_INTERVAL =
+        ConfigSpec.of(HttpConfigKeys.SSL_RELOAD_INTERVAL, Duration.class,
+            Duration.ZERO);
+
+    /**
+     * The post-processing step for one resolved value: the symbol chain
+     * answers with a raw string, the spec turns it into the typed form
+     * (default for absent, key-named error for malformed).
+     */
+    private static <T> T config(SymbolSource symbols, Coercer coercer, ConfigSpec<T> spec) {
+        return spec.parse(symbols.resolve(spec.key(), null), coercer);
+    }
+
     public static HttpConfig from(SymbolSource symbols, Coercer coercer) {
         return new HttpConfig(
-            config(symbols, coercer, HttpConfigKeys.SERVER_HOST, "127.0.0.1"),
-            config(symbols, coercer, HttpConfigKeys.SERVER_PORT, 8080),
-            config(symbols, coercer, HttpConfigKeys.SERVER_BACKLOG, 0),
-            config(symbols, coercer, HttpConfigKeys.SERVER_SHUTDOWN_GRACE,
-                Duration.ofSeconds(2)),
-            config(symbols, coercer, HttpConfigKeys.SERVER_READ_TIMEOUT,
-                HttpServerConfig.DEFAULT_READ_TIMEOUT),
-            config(symbols, coercer, HttpConfigKeys.SERVER_WRITE_TIMEOUT,
-                HttpServerConfig.DEFAULT_WRITE_TIMEOUT),
-            config(symbols, coercer, HttpConfigKeys.SERVER_MAX_CONNECTIONS,
-                HttpServerConfig.DEFAULT_MAX_CONNECTIONS),
-            config(symbols, coercer, HttpConfigKeys.COMPRESSION_ENABLED, true),
-            config(symbols, coercer, HttpConfigKeys.COMPRESSION_MIN_SIZE, 256),
-            config(symbols, coercer, HttpConfigKeys.SERVER_RECEIVE_BUFFER, 0),
-            config(symbols, coercer, HttpConfigKeys.SERVER_SEND_BUFFER, 0),
-            config(symbols, coercer, HttpConfigKeys.MAX_BODY_SIZE,
-                HttpServerConfig.DEFAULT_MAX_BODY_SIZE),
-            config(symbols, coercer, HttpConfigKeys.ACCESS_LOG_ENABLED, false),
+            config(symbols, coercer, SERVER_HOST),
+            config(symbols, coercer, SERVER_PORT),
+            config(symbols, coercer, SERVER_BACKLOG),
+            config(symbols, coercer, SERVER_SHUTDOWN_GRACE),
+            config(symbols, coercer, SERVER_READ_TIMEOUT),
+            config(symbols, coercer, SERVER_WRITE_TIMEOUT),
+            config(symbols, coercer, SERVER_MAX_CONNECTIONS),
+            config(symbols, coercer, COMPRESSION_ENABLED),
+            config(symbols, coercer, COMPRESSION_MIN_SIZE),
+            config(symbols, coercer, SERVER_RECEIVE_BUFFER),
+            config(symbols, coercer, SERVER_SEND_BUFFER),
+            config(symbols, coercer, MAX_BODY_SIZE),
+            config(symbols, coercer, ACCESS_LOG_ENABLED),
             new Cors(
-                config(symbols, coercer, HttpConfigKeys.CORS_ENABLED, true),
-                config(symbols, coercer, HttpConfigKeys.CORS_ALLOWED_ORIGINS, "*"),
-                config(symbols, coercer, HttpConfigKeys.CORS_ALLOWED_METHODS,
-                    "GET, POST, PUT, DELETE, PATCH, OPTIONS"),
-                config(symbols, coercer, HttpConfigKeys.CORS_ALLOWED_HEADERS,
-                    "Content-Type, Authorization"),
-                config(symbols, coercer, HttpConfigKeys.CORS_EXPOSED_HEADERS, ""),
-                config(symbols, coercer, HttpConfigKeys.CORS_MAX_AGE, "3600"),
-                config(symbols, coercer, HttpConfigKeys.CORS_ALLOW_CREDENTIALS,
-                    false)),
+                config(symbols, coercer, CORS_ENABLED),
+                config(symbols, coercer, CORS_ALLOWED_ORIGINS),
+                config(symbols, coercer, CORS_ALLOWED_METHODS),
+                config(symbols, coercer, CORS_ALLOWED_HEADERS),
+                config(symbols, coercer, CORS_EXPOSED_HEADERS),
+                config(symbols, coercer, CORS_MAX_AGE),
+                config(symbols, coercer, CORS_ALLOW_CREDENTIALS)),
             new Health(
-                config(symbols, coercer, HttpConfigKeys.HEALTH_ENABLED, true),
-                config(symbols, coercer, HttpConfigKeys.HEALTH_PATH, "/healthz")),
+                config(symbols, coercer, HEALTH_ENABLED),
+                config(symbols, coercer, HEALTH_PATH)),
             new Ssl(
-                config(symbols, coercer, HttpConfigKeys.SSL_ENABLED, false),
-                config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE, null),
-                config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE_PASSWORD, null),
-                config(symbols, coercer, HttpConfigKeys.SSL_KEY_STORE_TYPE, "PKCS12"),
-                config(symbols, coercer, HttpConfigKeys.SSL_HTTP2, true),
-                config(symbols, coercer, HttpConfigKeys.SSL_TRUST_STORE, null),
-                config(symbols, coercer, HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, null),
-                config(symbols, coercer, HttpConfigKeys.SSL_TRUST_STORE_TYPE, "PKCS12"),
-                config(symbols, coercer, HttpConfigKeys.SSL_CLIENT_AUTH, false),
-                config(symbols, coercer, HttpConfigKeys.SSL_PROTOCOLS, null),
-                config(symbols, coercer, HttpConfigKeys.SSL_CIPHERS, null),
-                config(symbols, coercer, HttpConfigKeys.SSL_SNI_DIRECTORY, null),
-                config(symbols, coercer, HttpConfigKeys.SSL_RELOAD_INTERVAL,
-                    Duration.ZERO))
+                config(symbols, coercer, SSL_ENABLED),
+                config(symbols, coercer, SSL_KEY_STORE),
+                config(symbols, coercer, SSL_KEY_STORE_PASSWORD),
+                config(symbols, coercer, SSL_KEY_STORE_TYPE),
+                config(symbols, coercer, SSL_HTTP2),
+                config(symbols, coercer, SSL_TRUST_STORE),
+                config(symbols, coercer, SSL_TRUST_STORE_PASSWORD),
+                config(symbols, coercer, SSL_TRUST_STORE_TYPE),
+                config(symbols, coercer, SSL_CLIENT_AUTH),
+                config(symbols, coercer, SSL_PROTOCOLS),
+                config(symbols, coercer, SSL_CIPHERS),
+                config(symbols, coercer, SSL_SNI_DIRECTORY),
+                config(symbols, coercer, SSL_RELOAD_INTERVAL))
         );
     }
 
@@ -97,25 +185,5 @@ public record HttpConfig(
             new HttpServerConfig.CompressionConfig(
                 compressionEnabled, compressionMinSize),
             receiveBufferSize, sendBufferSize);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T config(SymbolSource symbols, Coercer coercer,
-                                String key, T defaultValue) {
-        String raw = symbols.resolve(key, null);
-        if (raw == null) {
-            return defaultValue;
-        }
-        Class<T> targetType = (Class<T>) (defaultValue != null
-            ? defaultValue.getClass() : String.class);
-        try {
-            return coercer.coerce(raw, targetType);
-        } catch (IllegalArgumentException ex) {
-            // Same error shape as before: the message names the key and value
-            // so a bad http config is fixable without a stack crawl.
-            throw new IllegalArgumentException(
-                "Invalid value for config key '" + key + "': '" + raw + "'",
-                ex);
-        }
     }
 }

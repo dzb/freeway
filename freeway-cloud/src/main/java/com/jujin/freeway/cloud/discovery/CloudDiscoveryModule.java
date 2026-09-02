@@ -2,7 +2,6 @@ package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.cloud.annotation.RoundRobin;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
 import com.jujin.freeway.cloud.internal.DiscoveryConnectionHook;
 import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
@@ -47,7 +46,7 @@ public final class CloudDiscoveryModule implements ModuleEx {
             ;
         b.bind(LoadBalancer.class)
             .to(LoadBalancerDefault.class)
-            .marker(RoundRobin.class)
+            .marker(Local.class)
             ;
 
         b.contribute(ServiceDeclaration.class).add("http", new HttpServiceDeclaration());

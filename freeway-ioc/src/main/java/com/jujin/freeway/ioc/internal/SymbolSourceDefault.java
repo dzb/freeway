@@ -11,60 +11,60 @@ import java.util.concurrent.CopyOnWriteArrayList;
 final class SymbolSourceDefault implements SymbolSource {
     private static final int MAX_EXPAND_DEPTH = 40;
 
-    /** Explicitly contributed providers (e.g. the boot config cascade) —
-     *  consulted by declared {@link SymbolProvider#order()} — see
-     *  {@link #register(SymbolProvider)}. */
-    private final CopyOnWriteArrayList<SymbolProvider> contributed = new CopyOnWriteArrayList<>();
+    /** All providers — the framework's own tiers (CLI, JVM system properties,
+     *  mapped env, config files) plus module contributions — consulted
+     *  by declared {@link SymbolProvider#order()}; equal orders keep
+     *  contribution order (stable sort). */
+    private final CopyOnWriteArrayList<SymbolProvider> providers = new CopyOnWriteArrayList<>();
 
-    /** Built-in fallbacks (system properties, environment variables) — checked last. */
-    private final CopyOnWriteArrayList<SymbolProvider> defaults = new CopyOnWriteArrayList<>();
-
-    /** Contributed providers sorted by declared order (stable: ties keep
-     *  contribution order). Built lazily on first resolve — sorting calls
-     *  {@code order()} on every provider, which would force the on-demand
-     *  class-contribution facades to materialize at bind time otherwise. */
+    /** Providers sorted by declared order (stable: ties keep contribution
+     *  order). Built lazily on first resolve — sorting calls {@code order()}
+     *  on every provider, which would force the on-demand class-contribution
+     *  facades to materialize at bind time otherwise. */
     private volatile List<SymbolProvider> ordered;
 
     SymbolSourceDefault(List<SymbolProvider> providers) {
-        this.defaults.addAll(Objects.requireNonNull(providers, "providers"));
+        this.providers.addAll(Objects.requireNonNull(providers, "providers"));
     }
 
     /**
-     * Creates a standard symbol source that looks up values from System
-     * Properties first, then falls back to Environment Variables.
-     * <p>
-     * Lookup order: {@link System#getProperty(String)} first, then
-     * {@link System#getenv(String)} (property wins).
-     * <p>
-     * Note: {@code System.getenv()} behaviour depends on the OS:
-     * <ul>
-     *   <li><b>Windows</b>: case-insensitive — {@code PATH} equals {@code path}</li>
-     *   <li><b>Linux / macOS</b>: case-sensitive — {@code PATH} and {@code path} are distinct</li>
-     * </ul>
+     * Creates a standard symbol source with the JVM system-properties tier —
+     * the process-level override available to every container, including
+     * bare containers without the boot cascade. The boot cascade (CLI,
+     * mapped env, config files) registers on top through
+     * {@link #register(SymbolProvider)}. There is deliberately no raw-env
+     * fallback: environment variables reach the chain only through the
+     * declared prefix mapping, so an unknown symbol fails instead of
+     * silently matching an unrelated variable.
      */
     static SymbolSourceDefault standard() {
-        List<SymbolProvider> providers = new ArrayList<>();
-        providers.add(System::getProperty);
-        providers.add(System::getenv);
-        return new SymbolSourceDefault(providers);
+        return new SymbolSourceDefault(List.of(
+            new SymbolProvider() {
+                @Override
+                public String lookup(String name) {
+                    return System.getProperty(name);
+                }
+
+                @Override
+                public int order() {
+                    return TIER_SYS_PROPS;
+                }
+            }));
     }
 
     void register(SymbolProvider provider) {
-        // Explicit providers take priority over the implicit system sources so
-        // the documented config cascade (CLI > env > files, via AppConfig) is
-        // honored by @Value/@Symbol instead of being outranked by JVM -D flags.
-        // Within the contributed tier, the declared order() decides — never
-        // the install order of the contributing module.
-        contributed.add(Objects.requireNonNull(provider, "provider"));
+        // Every provider sits in one ordered list — the declared order()
+        // decides, never the install order of the contributing module.
+        providers.add(Objects.requireNonNull(provider, "provider"));
         ordered = null; // invalidate the sorted snapshot
     }
 
-    /** The contributed providers in declared precedence order (ascending
-     *  {@code order()}); equal orders keep contribution order (stable sort). */
+    /** All providers in declared precedence order (ascending {@code order()});
+     *  equal orders keep contribution order (stable sort). */
     private List<SymbolProvider> orderedProviders() {
         List<SymbolProvider> cached = ordered;
         if (cached == null) {
-            List<SymbolProvider> sorted = new ArrayList<>(contributed);
+            List<SymbolProvider> sorted = new ArrayList<>(providers);
             sorted.sort(java.util.Comparator.comparingInt(SymbolProvider::order));
             ordered = cached = List.copyOf(sorted);
         }
@@ -86,12 +86,6 @@ final class SymbolSourceDefault implements SymbolSource {
 
     private String raw(String name) {
         for (SymbolProvider provider : orderedProviders()) {
-            String value = provider.lookup(name);
-            if (value != null) {
-                return value;
-            }
-        }
-        for (SymbolProvider provider : defaults) {
             String value = provider.lookup(name);
             if (value != null) {
                 return value;

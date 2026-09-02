@@ -21,10 +21,10 @@ import com.jujin.freeway.ioc.annotation.Marker;
  * framework (see {@code AppConfigDefault}) — the cloud module no longer reads
  * its own config file.
  *
- * <p>Install either this module <b>or</b> a subset of the sub-modules — never
- * both: {@link Binder#install} deduplicates by module <em>instance identity</em>
- * (not class), so a sub-module instantiated inside this module and one installed
- * separately would bind twice.
+ * <p>Install either this module <b>or</b> a subset of the sub-modules: the
+ * container fails fast when the same module class is installed twice
+ * (explicit install plus this umbrella both counting), so double assembly
+ * is an immediate startup error, never a silent double binding.
  */
 @Marker(Builtin.class)
 public final class CloudModule implements ModuleEx {

@@ -644,14 +644,45 @@ the wrong order.
 
 ### Config Cascade
 
-Lowest to highest priority:
+The symbol chain resolves every config lookup (`@Symbol`/`@Value` and
+`SymbolSource.resolve` — the single read entry; `AppConfig` only carries
+profiles, the snapshot and lifecycle). Lowest to highest priority —
+every tier is a `SymbolProvider` with a declared `order()`, and each
+answers one ownership question:
 
-1. `application.properties`
-2. `application.json`
-3. `application-{profile}.properties`
-4. `application-{profile}.json`
-5. Environment variables — `FREEWAY_DB_URL` → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended)
-6. CLI arguments (`--key=value`, `-Dkey=value`)
+1. Config files (`TIER_FILES` 20): `application.properties` →
+   `application.json` → `application-{profile}.*` (classpath baseline, then
+   filesystem overrides, hot-reloadable)
+2. Module-contributed sources (e.g. the cloud secret store, declared order 15)
+3. **The process-environment band** — the ambient, operator-provided values
+   surrounding the process. Two declared tiers, one band: both are
+   "environment", but they differ in key semantics and owner —
+   - Environment variables (`TIER_ENV` 10) — **mapped keys**: `FREEWAY_DB_URL`
+     → `freeway.db.url` (prefix stripped, `_` → `.`, `freeway.` prepended);
+     the prefix policy is boot's (`freeway.env.prefix`), so this tier exists
+     only with the boot cascade
+   - JVM system properties (`TIER_SYS_PROPS` 5) — **verbatim keys**:
+     `-Dserver.port=9090` sets `server.port` as-is; provided by the container
+     itself, so bare containers (`Freeway.create` without boot) resolve them
+     too — and tests can mutate them per test
+4. CLI arguments (`TIER_CLI` 0, `--key=value`, `-Dkey=value`) — the app
+   launcher's verbatim overrides, parsed by boot
+
+The two band tiers stay separate — merging them would pair a verbatim
+mechanism with a mapped one under one name, force the prefix policy into
+ioc or strip sysprops from bare containers, and reintroduce
+wiring-order-dependent tie-breaks — while dropping the rung that lets a
+module source beat env but lose to JVM flags (order 5–10).
+
+There is deliberately **no raw-env fallback tier**: environment variables
+reach the chain only through the declared prefix mapping, so an unknown
+symbol fails fast instead of silently matching an unrelated variable (on
+Windows, where env names are case-insensitive, `path` would otherwise
+resolve to `PATH`). To read a raw variable, map it via the prefix or call
+`System.getenv` directly.
+
+Modules slot their own sources between the framework tiers by declaring an
+`order()` — precedence is declared, never derived from module install order.
 
 CLI keys without a dot (e.g. `--profile=dev`) auto-receive the `freeway.`
 prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
@@ -688,13 +719,24 @@ With a custom prefix, `FREEWAY_*` variables are no longer read by the config
 cascade (logging's own `FREEWAY_LOG_*` env support is a separate mechanism and
 is unaffected).
 
-**Typed access:** `AppConfig.get(ConfigSpec<T>)` resolves a typed value from
-the raw string with the spec's parser (or the spec's default when
-absent/blank). Specs created without a per-key parser
-(`ConfigSpec.of(key, type, default)`) are resolved with the default
-`Coercer`, so built-in conversions (int, boolean, `Duration`, ...) apply;
-user-registered `CoerceRule`s require the container coercer via
-`parse(raw, Coercer)`.
+**Reading values — one entry point:** the symbol chain is the single way to
+read configuration; `AppConfig` is not a reader (it owns profiles, the
+cascade snapshot and lifecycle only). Direct lookups resolve through the
+chain, and typing is an explicit post-processing step with a declared
+`ConfigSpec` — key, type, default and description stated once, parse errors
+naming the key:
+
+```java
+public static final ConfigSpec<Integer> PORT =
+    ConfigSpec.of("http.server.port", Integer.class, 8080);
+
+int port = PORT.parse(symbols.resolve(PORT.key(), null));               // parser spec
+Duration ttl = LOCK_TTL.parse(symbols.resolve(LOCK_TTL.key(), null),    // coercer spec
+    coercer);   // container Coercer: Duration syntax, user CoerceRules
+```
+
+Absent/blank values fall back to the spec default, required specs fail
+fast, and the same chain backs `@Symbol`/`@Value` injection.
 
 ---
 

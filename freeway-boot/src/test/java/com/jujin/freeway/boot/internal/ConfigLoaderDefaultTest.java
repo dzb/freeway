@@ -38,10 +38,10 @@ class ConfigLoaderDefaultTest {
         assertEquals("dev.localhost", layers.profileJson().get("server.host"));
         assertEquals("Overridden", layers.args().get("app.name"));
         assertEquals("7070", layers.args().get("server.port"));
-        assertEquals("Overridden", layers.merged().get("app.name"));
-        assertEquals("7070", layers.merged().get("server.port"));
-        assertEquals("Profiled IoC container", layers.merged().get("app.description"));
-        assertEquals("dev.localhost", layers.merged().get("server.host"));
+        assertEquals("Overridden", merged(layers).get("app.name"));
+        assertEquals("7070", merged(layers).get("server.port"));
+        assertEquals("Profiled IoC container", merged(layers).get("app.description"));
+        assertEquals("dev.localhost", merged(layers).get("server.host"));
     }
 
     @Test
@@ -198,11 +198,9 @@ class ConfigLoaderDefaultTest {
             ConfigLoaderDefault.loadLayers(new OversizedJsonLoader()));
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"));
-        Throwable parserCause = ex.getCause();
-        assertTrue(parserCause != null
-                && parserCause.getMessage().contains("Unable to read JSON input"));
-        assertTrue(parserCause.getCause() != null
-                && parserCause.getCause().getMessage().contains("exceeds"));
+        // The read cap is the direct cause — no intermediate wrapper.
+        assertTrue(ex.getCause() != null
+                && ex.getCause().getMessage().contains("exceeds"));
     }
 
     @Test
@@ -214,7 +212,7 @@ class ConfigLoaderDefaultTest {
             "an empty application.json must be skipped, not crash the load");
         assertEquals("Freeway Boot", layers.properties().get("app.name"),
             "the properties layer must still load normally");
-        assertEquals("Freeway Boot", layers.merged().get("app.name"));
+        assertEquals("Freeway Boot", merged(layers).get("app.name"));
     }
 
     @Test
@@ -225,7 +223,7 @@ class ConfigLoaderDefaultTest {
 
         assertTrue(layers.json().isEmpty(),
             "a whitespace-only application.json must be skipped, not crash the load");
-        assertEquals("Freeway Boot", layers.merged().get("app.name"));
+        assertEquals("Freeway Boot", merged(layers).get("app.name"));
     }
 
     @Test
@@ -342,7 +340,7 @@ class ConfigLoaderDefaultTest {
         ConfigLoaderDefault.BootConfigLayers layers =
             ConfigLoaderDefault.loadLayers(loader);
 
-        assertEquals("APP_", layers.merged().get("freeway.env.prefix"),
+        assertEquals("APP_", merged(layers).get("freeway.env.prefix"),
             "the file value is a normal config key");
         for (String key : layers.environment().keySet()) {
             assertTrue(key.startsWith("freeway."),
@@ -360,7 +358,7 @@ class ConfigLoaderDefaultTest {
             "comma-separated profiles must be parsed in order");
         // dev profile resources exist in the test classpath; prod does not —
         // the missing profile must be skipped, not fail the load.
-        assertTrue(layers.merged().containsKey("app.name"));
+        assertTrue(merged(layers).containsKey("app.name"));
     }
 
     @Test
@@ -383,9 +381,9 @@ class ConfigLoaderDefaultTest {
         ConfigLoaderDefault.BootConfigLayers layers =
             ConfigLoaderDefault.loadLayers(loader);
         assertEquals(List.of("dev"), layers.profiles());
-        assertEquals("dev", layers.merged().get("freeway.profile"),
+        assertEquals("dev", merged(layers).get("freeway.profile"),
             "merged() must report the base-layer activation value, not the profile layer's");
-        assertEquals("Dev Boot", layers.merged().get("app.name"),
+        assertEquals("Dev Boot", merged(layers).get("app.name"),
             "the profile file's other keys must still apply");
         assertEquals("prod", layers.profileProperties().get("freeway.profile"),
             "the raw profile layer keeps the key; only the merged view strips it");
@@ -394,8 +392,19 @@ class ConfigLoaderDefaultTest {
         // config().get("freeway.profile") must agree.
         AppConfig config = new ConfigLoaderDefault().load(loader, "--profile=dev");
         assertEquals(List.of("dev"), config.profiles());
-        assertEquals("dev", config.get("freeway.profile"),
+        assertEquals("dev", config.asMap().get("freeway.profile"),
             "config().get(\"freeway.profile\") must agree with config().profiles()");
+    }
+
+    /**
+     * The full layered view the tests assert on: file baseline + env + args —
+     * the merge production code performs in {@code AppConfigDefault.reload()}.
+     */
+    private static Map<String, String> merged(ConfigLoaderDefault.BootConfigLayers layers) {
+        Map<String, String> merged = new LinkedHashMap<>(layers.fileBaseline());
+        merged.putAll(layers.environment());
+        merged.putAll(layers.args());
+        return merged;
     }
 
     private static final class OversizedPropertiesLoader extends ClassLoader {

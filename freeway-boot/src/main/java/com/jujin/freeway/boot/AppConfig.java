@@ -1,72 +1,39 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * Application configuration facade: flat key-value lookups, active profiles,
- * and an unmodifiable snapshot.
+ * The loaded configuration cascade: active profiles, an unmodifiable
+ * snapshot, and the lifecycle of its sources.
  *
- * <p><b>Resolution semantics.</b> {@code get}/{@code asMap} cover the config
- * itself (the framework's CLI/env/file tiers). {@code @Value}/{@code @Symbol}
- * resolution additionally consults module-contributed sources (e.g. the cloud
- * secret store) through the {@link SymbolProvider} chain — when a key exists
- * in both, the symbol chain is authoritative. Application code that wants the
- * full precedence should resolve symbols, not {@code AppConfig.get}.
+ * <p><b>This is not a read API.</b> Whatever the source format (properties,
+ * JSON, env mapping, CLI), the cascade normalizes everything to
+ * {@code key=value} and {@code SymbolSource} is the single entry point for
+ * reading values — one precedence chain for {@code @Symbol}/{@code @Value}
+ * injection, module sources (secrets), and direct lookups. Typed reading is
+ * an explicit post-processing step: declare a {@code ConfigSpec} and parse
+ * the resolved value ({@code spec.parse(symbols.resolve(spec.key(), null))}).
+ *
+ * <p>What this interface owns instead: {@link #profiles()} (boot-level
+ * lifecycle metadata the chain cannot know), {@link #asMap()} (the cascade
+ * snapshot — the chain cannot enumerate keys, and secret-backed values must
+ * never leak into a map; treat the map as the file-tier picture),
+ * {@link #symbolProviders()} (how the cascade feeds the chain) and
+ * {@link #close()} (stops the hot-reload watcher).
  */
 public interface AppConfig {
-    /** Returns the configured value for {@code key}, or {@code null} if absent. */
-    String get(String key);
-
-    /**
-     * Returns the typed value for {@code key}: parsed from the raw string
-     * with the key's parser, or the key's default when absent/blank. Errors
-     * (missing required key, malformed value) are reported by the key itself
-     * with the key name in the message.
-     *
-     * <p>Specs created without a per-key parser ({@code ConfigSpec.of(key,
-     * type, default)}) are resolved with the default {@link Coercer} — the
-     * container Coercer's built-in conversions apply; user-registered
-     * {@code CoerceRule}s require the container coercer via
-     * {@code parse(raw, Coercer)}.</p>
-     */
-    default <T> T get(ConfigSpec<T> key) {
-        if (key.parser() != null) {
-            return key.parse(get(key.key()));
-        }
-        return key.parse(get(key.key()), DefaultCoercer.instance());
-    }
-
-    /**
-     * Shared coercer for parser-less specs — {@link CoercerDefault} is
-     * immutable after construction and thread-safe, so one instance serves
-     * every lookup. Held in a nested class because interface fields cannot
-     * be private.
-     */
-    final class DefaultCoercer {
-
-        private static final Coercer INSTANCE = new CoercerDefault();
-
-        private DefaultCoercer() {}
-
-        static Coercer instance() {
-            return INSTANCE;
-        }
-    }
 
     /** Returns the active profiles in priority order, as an unmodifiable list. */
     List<String> profiles();
 
     /**
-     * Returns the full configuration as an unmodifiable map.
-     * Implementations must return a snapshot — mutations to the returned map
-     * are not supported and modifying the source after this call must not
-     * affect the returned map.
+     * Returns the cascade snapshot (CLI, env and file tiers merged) as an
+     * unmodifiable map. Implementations must return a snapshot — mutations to
+     * the returned map are not supported and modifying the source after this
+     * call must not affect the returned map.
      */
     Map<String, String> asMap();
 

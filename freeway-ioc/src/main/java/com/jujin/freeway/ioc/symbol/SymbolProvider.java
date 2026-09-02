@@ -29,17 +29,24 @@ public interface SymbolProvider {
      *
      * <p>Providers without a declared order default to the last tier
      * ({@link Integer#MAX_VALUE}) and keep contribution order among
-     * themselves. The framework declares exactly three tiers:
-     * {@link #TIER_CLI} → {@link #TIER_ENV} → {@link #TIER_FILES}.
-     * Modules slot their own sources in between (e.g. the cloud secret
-     * store declares order 15, between env and files).
+     * themselves. The framework declares four tiers, each answering one
+     * ownership question — app launch args, JVM-level overrides, declared
+     * env mapping, deployable file baseline:
+     * {@link #TIER_CLI} → {@link #TIER_SYS_PROPS} → {@link #TIER_ENV} →
+     * {@link #TIER_FILES}. Modules slot their own sources in between (e.g.
+     * the cloud secret store declares order 15, between env and files).
+     * Environment variables reach the chain only through the declared
+     * prefix mapping — there is no raw-env fallback tier.
      */
     default int order() {
         return Integer.MAX_VALUE;
     }
 
-    /** Framework tier: CLI arguments ({@code --key=value}). */
+    /** Framework tier: application CLI arguments ({@code --key=value}). */
     int TIER_CLI = 0;
+    /** Framework tier: JVM system properties ({@code -Dkey=value}) — the
+     *  process-level ops override, outranking files and environment. */
+    int TIER_SYS_PROPS = 5;
     /** Framework tier: environment variables ({@code FREEWAY_} prefix). */
     int TIER_ENV = 10;
     /** Framework tier: config files (classpath baseline + filesystem

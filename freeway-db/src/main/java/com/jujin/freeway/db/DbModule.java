@@ -156,23 +156,27 @@ public final class DbModule implements ModuleEx {
     private static final ConfigSpec<Duration> QUERY_TIMEOUT =
         ConfigSpec.of(DbConfigKeys.QUERY_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_QUERY_TIMEOUT);
+    private static final ConfigSpec<Boolean> MIGRATION_ENABLED =
+        ConfigSpec.of(DbConfigKeys.MIGRATION_ENABLED, Boolean.class, true);
+    private static final ConfigSpec<Boolean> SCHEMA_AUTO =
+        ConfigSpec.of(DbConfigKeys.SCHEMA_AUTO, Boolean.class, true);
 
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
         Coercer coercer = container.get(Coercer.class);
         return new PoolConfig(
-            URL.parse(s.resolve(DbConfigKeys.URL, null)),
-            USERNAME.parse(s.resolve(DbConfigKeys.USERNAME, null)),
+            URL.parse(s.resolve(URL.key(), null)),
+            USERNAME.parse(s.resolve(USERNAME.key(), null)),
             s.resolve(DbConfigKeys.PASSWORD, ""),
-            POOL_MAX_SIZE.parse(s.resolve(DbConfigKeys.POOL_MAX_SIZE, "")),
-            POOL_MIN_IDLE.parse(s.resolve(DbConfigKeys.POOL_MIN_IDLE, "")),
-            POOL_CONNECTION_TIMEOUT.parse(s.resolve(DbConfigKeys.POOL_CONNECTION_TIMEOUT, ""), coercer),
-            POOL_MAX_LIFETIME.parse(s.resolve(DbConfigKeys.POOL_MAX_LIFETIME, ""), coercer),
-            POOL_MAX_IDLE_TIME.parse(s.resolve(DbConfigKeys.POOL_MAX_IDLE_TIME, ""), coercer),
-            POOL_CLEAN_INTERVAL.parse(s.resolve(DbConfigKeys.POOL_CLEAN_INTERVAL, ""), coercer),
+            POOL_MAX_SIZE.parse(s.resolve(POOL_MAX_SIZE.key(), null)),
+            POOL_MIN_IDLE.parse(s.resolve(POOL_MIN_IDLE.key(), null)),
+            POOL_CONNECTION_TIMEOUT.parse(s.resolve(POOL_CONNECTION_TIMEOUT.key(), null), coercer),
+            POOL_MAX_LIFETIME.parse(s.resolve(POOL_MAX_LIFETIME.key(), null), coercer),
+            POOL_MAX_IDLE_TIME.parse(s.resolve(POOL_MAX_IDLE_TIME.key(), null), coercer),
+            POOL_CLEAN_INTERVAL.parse(s.resolve(POOL_CLEAN_INTERVAL.key(), null), coercer),
             s.resolve(DbConfigKeys.POOL_HEALTH_CHECK_QUERY, null),
-            POOL_HEALTH_CHECK_TIMEOUT.parse(s.resolve(DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, ""), coercer),
-            QUERY_TIMEOUT.parse(s.resolve(DbConfigKeys.QUERY_TIMEOUT, ""), coercer)
+            POOL_HEALTH_CHECK_TIMEOUT.parse(s.resolve(POOL_HEALTH_CHECK_TIMEOUT.key(), null), coercer),
+            QUERY_TIMEOUT.parse(s.resolve(QUERY_TIMEOUT.key(), null), coercer)
         );
     }
 
@@ -190,7 +194,7 @@ public final class DbModule implements ModuleEx {
         String lockTtlRaw = s.resolve(DbConfigKeys.MIGRATION_LOCK_TTL, "");
         return new MigrationRunner(
             container.get(Database.class),
-            coercer.coerce(s.resolve(DbConfigKeys.MIGRATION_ENABLED, "true"), boolean.class),
+            MIGRATION_ENABLED.parse(s.resolve(MIGRATION_ENABLED.key(), null), coercer),
             s.resolve(DbConfigKeys.MIGRATION_PATH, "db/migration/"),
             s.resolve(DbConfigKeys.MIGRATION_TABLE, "_migrations"),
             lockTtlRaw.isBlank()
@@ -202,7 +206,7 @@ public final class DbModule implements ModuleEx {
     private static void runSchema(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
         Coercer coercer = container.get(Coercer.class);
-        if (!coercer.coerce(s.resolve(DbConfigKeys.SCHEMA_AUTO, "true"), boolean.class)) {
+        if (!SCHEMA_AUTO.parse(s.resolve(SCHEMA_AUTO.key(), null), coercer)) {
             return;
         }
         var entities = container.extension(SchemaEntity.class).all();

@@ -3,14 +3,9 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.ConfigLoader;
-import com.jujin.freeway.commons.json.JsonObject;
-import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.commons.util.ByteStreams;
-import com.jujin.freeway.commons.util.Maps;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Properties;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +43,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
     );
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
-    /** The profile-activation key — see {@link BootConfigLayers#merged()}. */
+    /** The profile-activation key — see {@link BootConfigLayers#fileBaseline()}. */
     private static final String PROFILE_KEY = "freeway.profile";
 
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}, {@code -1e5}). */
@@ -104,41 +98,13 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             if (!Files.isRegularFile(file)) {
                 continue;
             }
-            if (name.endsWith(".properties")) {
-                base.putAll(readProperties(file));
-            } else {
-                String text = readText(file);
-                if (text == null || text.isBlank()) {
-                    continue;
-                }
-                try {
-                    base.putAll(Maps.flatten(JsonUtils.parseObject(text).toMap(), "."));
-                } catch (RuntimeException e) {
-                    throw new IllegalStateException("Unable to load " + file, e);
-                }
+            try {
+                base.putAll(ConfigFileReader.read(file));
+            } catch (IOException e) {
+                throw new IllegalStateException("Unable to load " + file, e);
             }
         }
         return Map.copyOf(base);
-    }
-
-    private static Map<String, String> readProperties(Path file) {
-        Properties props = new Properties();
-        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            props.load(reader);
-        } catch (IOException e) {
-            throw new IllegalStateException("Unable to load " + file, e);
-        }
-        Map<String, String> map = new LinkedHashMap<>();
-        props.forEach((k, v) -> map.put(String.valueOf(k), String.valueOf(v)));
-        return map;
-    }
-
-    private static String readText(Path file) {
-        try {
-            return Files.readString(file, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("Unable to load " + file, e);
-        }
     }
 
     static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
@@ -148,7 +114,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         Map<String, String> parsedArgs = parseArgs(args);
 
         Map<String, String> base = new LinkedHashMap<>();
-        // Non-profile layers in merged() priority order (properties → json →
+        // Non-profile layers in ascending priority order (properties → json →
         // environment → args). profile.* layers cannot participate here —
         // their file names ARE the profile selection. Environment must
         // outrank files: FREEWAY_PROFILE driving profile selection would
@@ -235,13 +201,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             if (bounded == null) {
                 return Map.of();
             }
-            Properties properties = new Properties();
-            properties.load(bounded);
-            Map<String, String> values = new LinkedHashMap<>();
-            for (String name : properties.stringPropertyNames()) {
-                values.put(name, properties.getProperty(name));
-            }
-            return values;
+            return ConfigFileReader.properties(bounded);
         } catch (IOException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
         }
@@ -252,27 +212,8 @@ public final class ConfigLoaderDefault implements ConfigLoader {
             if (bounded == null) {
                 return Map.of();
             }
-            byte[] bytes;
-            try {
-                bytes = bounded.readAllBytes();
-            } catch (IOException ex) {
-                throw new IllegalArgumentException("Unable to read JSON input", ex);
-            }
-            // Decode once and parse the decoded text — the BOM strip below
-            // mirrors JsonParser's string path.
-            String text = new String(bytes, StandardCharsets.UTF_8);
-            if (text.startsWith("\uFEFF")) {
-                text = text.substring(1); // strip UTF-8 BOM like JsonParser
-            }
-            // An empty or whitespace-only JSON resource means "no config",
-            // consistent with an empty application.properties — not a parse
-            // error. Malformed non-blank JSON still fails at parseObject.
-            if (text.isBlank()) {
-                return Map.of();
-            }
-            JsonObject root = JsonUtils.parseObject(text);
-            return Maps.flatten(root.toMap(), ".");
-        } catch (IOException | RuntimeException ex) {
+            return ConfigFileReader.json(bounded, resourceName);
+        } catch (IOException ex) {
             throw new IllegalStateException("Unable to load " + resourceName, ex);
         }
     }
@@ -445,9 +386,10 @@ public final class ConfigLoaderDefault implements ConfigLoader {
 
         /**
          * The classpath file baseline: base files → profile files (the
-         * profile-activation key excluded from profile layers only, exactly
-         * like {@link #merged()}), no environment/CLI. The dynamic file tier
-         * overlays the filesystem overrides on top of this.
+         * profile-activation key excluded from profile layers — it is
+         * redundant there, since profiles are selected from the base layers
+         * only), no environment/CLI. The dynamic file tier overlays the
+         * filesystem overrides on top of this.
          */
         public Map<String, String> fileBaseline() {
             Map<String, String> files = new LinkedHashMap<>();
@@ -459,33 +401,8 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         }
 
         /**
-         * Merged view across all layers in ascending priority order:
-         * base properties → base json → profile properties → profile json →
-         * environment → CLI args.
-         *
-         * <p>The profile layers contribute configuration but never the
-         * profile-activation key: {@code freeway.profile} inside a profile
-         * file is redundant — profiles are selected from the base layers
-         * only — and would otherwise fork {@code config().get("freeway.profile")}
-         * from {@code config().profiles()} (a profile layer outranks the base
-         * properties layer). Base-layer {@code freeway.profile}
-         * (application.properties/application.json, env, CLI) is preserved —
-         * that is the activation mechanism.
-         */
-        public Map<String, String> merged() {
-            Map<String, String> merged = new LinkedHashMap<>();
-            merged.putAll(properties);
-            merged.putAll(json);
-            putAllExceptProfileKey(merged, profileProperties);
-            putAllExceptProfileKey(merged, profileJson);
-            merged.putAll(environment);
-            merged.putAll(args);
-            return Map.copyOf(merged);
-        }
-
-        /**
          * Copies entries from {@code source} into {@code target}, skipping
-         * the profile-activation key (see {@link #merged()}).
+         * the profile-activation key (see the class javadoc).
          */
         private static void putAllExceptProfileKey(
             Map<String, String> target,

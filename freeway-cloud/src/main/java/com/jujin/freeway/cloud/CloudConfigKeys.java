@@ -48,14 +48,15 @@ public final class CloudConfigKeys {
     // Canonical resilience defaults — the single source shared by
     // CloudResilienceModule (config fallbacks) and CloudHttpClientDefault
     // (library fallback when the resilience module is not installed), so the
-    // two layers cannot drift apart.
-    public static final String RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = "3";
-    public static final String RPC_RETRY_BACKOFF_BASE_DEFAULT    = "100";
-    public static final String RPC_RETRY_BACKOFF_MAX_DEFAULT     = "5000";
-    public static final String RPC_CB_FAILURE_THRESHOLD_DEFAULT  = "5";
-    public static final String RPC_CB_FAILURE_WINDOW_DEFAULT     = "60";
-    public static final String RPC_CB_OPEN_WINDOW_DEFAULT        = "30";
-    public static final String RPC_RATE_LIMIT_PER_SECOND_DEFAULT = "100";
+    // two layers cannot drift apart. Typed: a String default invited a
+    // parse at every use site.
+    public static final int RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = 3;
+    public static final long RPC_RETRY_BACKOFF_BASE_DEFAULT   = 100;
+    public static final long RPC_RETRY_BACKOFF_MAX_DEFAULT    = 5000;
+    public static final int RPC_CB_FAILURE_THRESHOLD_DEFAULT  = 5;
+    public static final long RPC_CB_FAILURE_WINDOW_DEFAULT    = 60;
+    public static final long RPC_CB_OPEN_WINDOW_DEFAULT       = 30;
+    public static final double RPC_RATE_LIMIT_PER_SECOND_DEFAULT = 100;
 
     // ── CloudEventBus（EventBus 的跨节点事件网格, 见 docs/freeway-cloud-events-design.md）──
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
@@ -75,7 +76,7 @@ public final class CloudConfigKeys {
      *  of an event is still recognized. Too small and a slow second copy
      *  slips through; too large and the window costs memory for nothing. */
     public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".events.dedup.capacity";
-    public static final String EVENTS_DEDUP_CAPACITY_DEFAULT = "4096";
+    public static final int EVENTS_DEDUP_CAPACITY_DEFAULT = 4096;
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
     // ── RPC / TLS ───────────────────────────────────────────
     public static final String RPC_TLS_KEY_STORE          = PREFIX + ".rpc.tls.key-store";

@@ -39,8 +39,8 @@ class PeerHubInboundGateTest {
         bus.subscribe("other.topic", inbound::add);
 
         PeerHub hub = new PeerHub();
-        hub.wire(bus, new JsonCodecDefault(), "svc", "inst-1",
-            List.of("greet."), allowedTypes, allowedTopics, "");
+        hub.wire(new PeerHub.Wiring(bus, new JsonCodecDefault(), "svc", "inst-1",
+            List.of("greet."), allowedTypes, allowedTopics, ""));
         return new Rig(hub, bus, inbound);
     }
 
@@ -92,8 +92,8 @@ class PeerHubInboundGateTest {
     void duplicateSimultaneousDialsKeepSingleConnectionByOriginOrder() {
         Container container = Freeway.create();
         PeerHub smallerHub = new PeerHub();
-        smallerHub.wire(container.get(EventBus.class), new JsonCodecDefault(),
-            "svc", "a-node", List.of(), List.of(), List.of(), "");
+        smallerHub.wire(new PeerHub.Wiring(container.get(EventBus.class), new JsonCodecDefault(),
+            "svc", "a-node", List.of(), List.of(), List.of(), ""));
 
         AtomicBoolean outboundClosed = new AtomicBoolean();
         AtomicBoolean inboundClosed = new AtomicBoolean();
@@ -112,8 +112,8 @@ class PeerHubInboundGateTest {
 
         // Larger origin applies the mirror rule: keep the inbound connection.
         PeerHub largerHub = new PeerHub();
-        largerHub.wire(container.get(EventBus.class), new JsonCodecDefault(),
-            "svc", "z-node", List.of(), List.of(), List.of(), "");
+        largerHub.wire(new PeerHub.Wiring(container.get(EventBus.class), new JsonCodecDefault(),
+            "svc", "z-node", List.of(), List.of(), List.of(), ""));
         AtomicBoolean largerOutboundClosed = new AtomicBoolean();
         AtomicBoolean largerInboundClosed = new AtomicBoolean();
         PeerConnection largerOutbound = new PeerConnection("a-node", List.of(),

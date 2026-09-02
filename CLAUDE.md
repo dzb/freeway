@@ -110,12 +110,19 @@ property). Filesystem wins, later files win; the file tier is
 WatchService-hot-reloaded and reaches the symbol chain because each
 `SymbolProvider` lookup reads the current snapshot — no restart, no push
 API. Profile activation stays startup-static.
-
-SymbolProvider precedence is declared via `order()` (CLI 0 > env 10 >
-cloud secret store 15 > files 20), never via module install order —
-`@Value`/`@Symbol` resolution is install-order independent. Modules with
-domain-specific sources (secrets, ...) contribute their own
-`SymbolProvider` via `Extension` and slot in by declaring their order.
+SymbolProvider precedence is declared via `order()` (CLI 0 > JVM system
+properties 5 > env 10 > cloud secret store 15 > files 20) — four tiers,
+each answering one ownership question (app launch args; the
+process-environment band, JVM-level verbatim overrides above boot's
+declared env mapping; the deployable file baseline); never module
+install order. All providers live in one ordered list. `SymbolSource` is
+the single read entry (raw strings); typed reading is explicit
+post-processing — declare a `ConfigSpec`, parse the resolved value
+(`spec.parse(symbols.resolve(spec.key(), null))`). `AppConfig` is not a
+reader: it owns profiles, the cascade snapshot and the hot-reload
+lifecycle. Modules with domain-specific sources (secrets, ...) contribute
+their own `SymbolProvider` via `Extension` and slot in by declaring their
+order.
 
 ## Commit Rules
 

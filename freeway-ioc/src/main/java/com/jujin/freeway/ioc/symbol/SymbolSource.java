@@ -4,7 +4,12 @@ package com.jujin.freeway.ioc.symbol;
  * Resolves symbolic configuration keys ({@code ${...}}) from config, system
  * properties, environment variables, and other providers.
  *
- * <p>Injected via {@code @Symbol} or {@code @Value}:
+ * <p>This is the framework's single configuration entry point: whatever the
+ * source format (properties, JSON, env mapping, CLI), the cascade normalizes
+ * it to {@code key=value} and this interface answers lookups over the merged
+ * chain. Values are raw strings — typing is a separate, explicit
+ * post-processing step (declare a {@code ConfigSpec}, parse the resolved
+ * value), and DI gets the same chain via {@code @Symbol}/{@code @Value}:
  * <pre>{@code
  * public record ServerConfig(
  *     @Symbol("server.port") int port,
@@ -15,7 +20,7 @@ package com.jujin.freeway.ioc.symbol;
  * <p>Direct usage:
  * <pre>{@code
  * SymbolSource ss = container.get(SymbolSource.class);
- * int port = Integer.parseInt(ss.resolve("server.port"));
+ * String port = ss.resolve("server.port");
  * String host = ss.resolve("server.host", "127.0.0.1");
  * String url = ss.expand("${protocol}://${host}:${port}");
  * }</pre>

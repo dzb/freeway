@@ -162,14 +162,16 @@ class SecurityTest {
         assertEquals(0, exit, "keytool failed: " + new String(process.getInputStream().readAllBytes()));
     }
     /** SymbolSource backed by system properties with ${name:default} expansion
-     *  (mirrors the framework contract AuthPropagator relies on). */
+     *  (mirrors the framework contract AuthPropagator relies on: a miss
+     *  carries {@link com.jujin.freeway.ioc.symbol.UnknownSymbolException},
+     *  which is what makes resolve(name, default) and typed get(spec) work). */
     private static com.jujin.freeway.ioc.symbol.SymbolSource sysProps() {
         return new com.jujin.freeway.ioc.symbol.SymbolSource() {
             @Override
             public String resolve(String name) {
                 String v = System.getProperty(name);
                 if (v == null) {
-                    throw new IllegalArgumentException("Unknown symbol: " + name);
+                    throw new com.jujin.freeway.ioc.symbol.UnknownSymbolException(name);
                 }
                 return v;
             }

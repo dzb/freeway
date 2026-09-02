@@ -4,6 +4,7 @@ import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Files;
@@ -11,6 +12,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,6 +28,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CloudSymbolPrecedenceTest {
 
     private static final String KEY = "db.password";
+
+    @BeforeEach
+    void randomPort() {
+        System.setProperty(HttpConfigKeys.SERVER_PORT, "0"); // random free port per test
+    }
+
+    @AfterEach
+    void clearProperties() {
+        System.clearProperty(HttpConfigKeys.SERVER_PORT);
+    }
 
     @Test
     void secretsOutrankFrameworkFilesThroughTheRealLoader() throws Exception {
@@ -71,8 +84,11 @@ class CloudSymbolPrecedenceTest {
         String expected, Map<String, String> cli, Map<String, String> env
     ) throws Exception {
         // A framework-tiered config: cli/env sources plus a files baseline.
+        // The custom config replaces the default cascade, so the ephemeral
+        // HTTP port has to ride the file tier instead of a system property.
         AppConfig config = new AppConfigDefault(
-            cli, env, Map.of(KEY, "from-file"), List.of(), List.of());
+            cli, env, Map.of(KEY, "from-file", HttpConfigKeys.SERVER_PORT, "0"),
+            List.of(), List.of());
         try (AppRuntime app = FreewayApp.of(new CloudModule())
                 .config((loader, args) -> config)
                 .shutdownHook(false)

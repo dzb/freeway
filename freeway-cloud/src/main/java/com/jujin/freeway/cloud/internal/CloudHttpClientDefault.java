@@ -103,13 +103,13 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     /** Library fallbacks (no resilience module installed) — the same values
      *  the config layer defaults to, from one shared source. */
     private static final int DEFAULT_FAILURE_THRESHOLD =
-        Integer.parseInt(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT);
+        CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT;
     private static final Duration DEFAULT_FAILURE_WINDOW =
-        Duration.ofSeconds(Long.parseLong(CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT));
+        Duration.ofSeconds(CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT);
     private static final Duration DEFAULT_OPEN_WINDOW =
-        Duration.ofSeconds(Long.parseLong(CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT));
-    private static final int DEFAULT_RATE_PER_SECOND =
-        Integer.parseInt(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT);
+        Duration.ofSeconds(CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT);
+    private static final double DEFAULT_RATE_PER_SECOND =
+        CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT;
 
     public CloudHttpClientDefault(ServiceDiscovery discovery, LoadBalancer loadBalancer) {
         this(discovery, loadBalancer, List.of(), null, null, null, null, null, null,

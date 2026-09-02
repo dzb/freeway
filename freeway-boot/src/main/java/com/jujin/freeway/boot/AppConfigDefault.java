@@ -1,11 +1,10 @@
 package com.jujin.freeway.boot;
 
 import com.jujin.freeway.boot.internal.BootConfigProvider;
+import com.jujin.freeway.boot.internal.ConfigFileReader;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
@@ -133,11 +131,6 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
     }
 
     @Override
-    public String get(String key) {
-        return merged.get(key);
-    }
-
-    @Override
     public Map<String, String> asMap() {
         return Map.copyOf(merged);
     }
@@ -178,21 +171,22 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
         merged = Map.copyOf(all);
     }
 
-    /** The file's properties; a missing/unreadable file contributes nothing. */
+    /**
+     * The file's parsed content; a missing/unreadable file contributes
+     * nothing. Parsed by the shared {@link ConfigFileReader} — a
+     * {@code .json} override file is JSON, everything else properties —
+     * so overrides parse identically to the startup cascade.
+     */
     private static Map<String, String> readOverride(Path file) {
         if (!Files.isRegularFile(file)) {
             return Map.of();
         }
-        Properties props = new Properties();
-        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            props.load(reader);
+        try {
+            return ConfigFileReader.read(file);
         } catch (IOException e) {
             LOG.warn("Failed to read config file {}: {}", file, e.getMessage());
             return Map.of();
         }
-        Map<String, String> map = new LinkedHashMap<>();
-        props.forEach((k, v) -> map.put(String.valueOf(k), String.valueOf(v)));
-        return map;
     }
 
     private static Map<String, String> cleaned(Map<String, String> values) {

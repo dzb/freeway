@@ -6,10 +6,12 @@ import java.util.function.Function;
 
 /**
  * A typed configuration key: key name, target type, default value, and a
- * parser from the raw string. Pairs with {@code AppConfig.get(ConfigSpec)}
- * for type-safe config access with centralized parsing and defaults — the
- * alternative to scattered {@code Integer.parseInt(...)} at each use site
- * with inconsistent error messages.
+ * parser from the raw string — the post-processing step over a resolved
+ * value. The symbol chain ({@code SymbolSource}) answers every lookup with
+ * a raw string; a spec turns that raw string into the typed form with
+ * centralized parsing and defaults — the alternative to scattered
+ * {@code Integer.parseInt(...)} at each use site with inconsistent error
+ * messages.
  *
  * <p>Lives in commons so every module (http, db, boot, …) can declare typed
  * config keys without depending on the boot layer. Parse errors and missing
@@ -22,8 +24,9 @@ import java.util.function.Function;
  * public static final ConfigSpec<String> DB_PASSWORD =
  *     ConfigSpec.required("db.password", String.class, Function.identity());
  *
- * int port = config.get(HTTP_PORT);       // typed, defaulted, parsed once
- * String pw = config.get(DB_PASSWORD);    // fails fast when absent
+ * // resolve raw, then post-process — key and default declared once
+ * int port = HTTP_PORT.parse(symbols.resolve(HTTP_PORT.key(), null));
+ * String pw = DB_PASSWORD.parse(symbols.resolve(DB_PASSWORD.key(), null));
  * }</pre>
  *
  * @param <T> the value type

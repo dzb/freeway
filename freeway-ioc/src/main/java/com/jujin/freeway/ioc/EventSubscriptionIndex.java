@@ -81,15 +81,6 @@ final class EventSubscriptionIndex {
         }
     }
 
-    boolean hasClassSubscribers(Class<?> eventType) {
-        return !classHandlers(eventType).isEmpty() || !runtimeClassSubs(eventType).isEmpty();
-    }
-
-    boolean hasTopicSubscribers(String topic) {
-        return !topicHandlers(topic).isEmpty()
-            || !runtimeTopicSubs.getOrDefault(topic, List.of()).isEmpty();
-    }
-
     void clearRuntime() {
         runtimeTopicSubs.clear();
         runtimeSubs.clear();

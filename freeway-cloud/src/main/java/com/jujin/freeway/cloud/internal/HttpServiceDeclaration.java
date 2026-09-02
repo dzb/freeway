@@ -4,10 +4,10 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
-import com.jujin.freeway.ioc.symbol.ConfigValues;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +30,10 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
 
     private static final Logger LOG = LoggerFactory.getLogger(HttpServiceDeclaration.class);
 
+    /** Malformed values fail with the key named; unset falls back to the live server port. */
+    private static final ConfigSpec<Integer> SERVICE_PORT = ConfigSpec.of(
+        CloudConfigKeys.REGISTRY_SERVICE_PORT, Integer.class, null, Integer::parseInt);
+
     /** Bind-all addresses: reachable locally, unreachable from other nodes. */
     private static final Set<String> UNROUTABLE_HOSTS = Set.of("0.0.0.0", "::", "");
 
@@ -45,8 +49,10 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         String serviceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_ID,
             symbols.resolve("freeway.app.name", "freeway-app"));
         String host = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_HOST, server.host());
-        int port = ConfigValues.intValue(symbols,
-            CloudConfigKeys.REGISTRY_SERVICE_PORT, String.valueOf(server.port()));
+        // The default port is the live server's port, not a static value —
+        // resolve raw and fall back manually.
+        Integer configuredPort = SERVICE_PORT.parse(symbols.resolve(SERVICE_PORT.key(), null));
+        int port = configuredPort != null ? configuredPort : server.port();
         String scheme = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_SCHEME, "http");
         String instanceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
             serviceId + "@" + host + ":" + port);

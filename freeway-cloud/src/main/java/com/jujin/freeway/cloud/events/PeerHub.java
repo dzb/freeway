@@ -45,8 +45,20 @@ public final class PeerHub implements WebSocketEndpoint {
     private volatile String token = "";
     private volatile boolean wired;
 
-    /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
-    public void wire(
+    /**
+     * One-shot wiring for the hub — every cross-module input in one place,
+     * so the eight values cannot drift apart at a call site.
+     *
+     * @param bus            the inbound face of the local event bus
+     * @param codec          JSON codec for frames and acks
+     * @param serviceId      logical service id (envelope source)
+     * @param instanceId     this node's mesh identity; blank derives one
+     * @param subscriptions  CE type/topic prefixes pulled from the mesh
+     * @param allowedTypes   CLASS-channel deserialization allowlist (empty = any)
+     * @param allowedTopics  TOPIC-channel allowlist (empty = any)
+     * @param token          mesh handshake token (blank = peer auth off)
+     */
+    public record Wiring(
         EventBusInbound bus,
         JsonCodec codec,
         String serviceId,
@@ -55,17 +67,20 @@ public final class PeerHub implements WebSocketEndpoint {
         List<String> allowedTypes,
         List<String> allowedTopics,
         String token
-    ) {
-        this.bus = Objects.requireNonNull(bus, "bus");
-        this.codec = Objects.requireNonNull(codec, "codec");
-        this.serviceId = serviceId;
-        this.origin = instanceId != null && !instanceId.isBlank()
-            ? instanceId
-            : serviceId + "@" + java.util.UUID.randomUUID();
-        this.subscriptions = List.copyOf(subscriptions);
-        this.allowedTypes = List.copyOf(allowedTypes);
-        this.allowedTopics = List.copyOf(allowedTopics);
-        this.token = token == null ? "" : token;
+    ) {}
+
+    /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
+    public void wire(Wiring w) {
+        this.bus = Objects.requireNonNull(w.bus(), "bus");
+        this.codec = Objects.requireNonNull(w.codec(), "codec");
+        this.serviceId = w.serviceId();
+        this.origin = w.instanceId() != null && !w.instanceId().isBlank()
+            ? w.instanceId()
+            : w.serviceId() + "@" + java.util.UUID.randomUUID();
+        this.subscriptions = List.copyOf(w.subscriptions());
+        this.allowedTypes = List.copyOf(w.allowedTypes());
+        this.allowedTopics = List.copyOf(w.allowedTopics());
+        this.token = w.token() == null ? "" : w.token();
         this.wired = true;
         LOG.info("CloudEventBus wired: origin={} subscriptions={} allowedTypes={} allowedTopics={}",
             origin, subscriptions, allowedTypes.size(), allowedTopics.size());

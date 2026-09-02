@@ -35,9 +35,9 @@ public final class RetryerDefault implements Retryer {
      *  the same source the config layer falls back to. */
     public static RetryerDefault withDefaults() {
         return new RetryerDefault(
-            Integer.parseInt(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT),
-            Long.parseLong(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT),
-            Long.parseLong(CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT));
+            CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT,
+            CloudConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT,
+            CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT);
     }
 
     @Override

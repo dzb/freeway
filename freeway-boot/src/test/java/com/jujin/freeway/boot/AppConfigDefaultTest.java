@@ -36,8 +36,7 @@ class AppConfigDefaultTest {
 
         AppConfig config = new AppConfigDefault(input, List.of());
 
-        assertEquals("value", config.get("good"));
-        assertNull(config.get("null-value"));
+        assertEquals("value", config.asMap().get("good"));
         assertFalse(config.asMap().containsKey("null-value"));
     }
 
@@ -49,41 +48,10 @@ class AppConfigDefaultTest {
     }
 
     @Test
-    void typedGetParsesWithDefaultAndErrors() {
-        ConfigSpec<Integer> port = ConfigSpec.of(
-            "server.port", Integer.class, 8080, Integer::parseInt);
-        AppConfig config = new AppConfigDefault(
-            new LinkedHashMap<>(Map.of("server.port", "9090")), List.of());
-
-        assertEquals(9090, config.get(port), "raw value parsed to the typed form");
-        assertEquals(8080, config.get(
-            ConfigSpec.of("missing.port", Integer.class, 8080, Integer::parseInt)),
-            "absent key falls back to the default");
-
-        AppConfig blank = new AppConfigDefault(
-            new LinkedHashMap<>(Map.of("server.port", "  ")), List.of());
-        assertEquals(8080, blank.get(port),
-            "a blank raw value falls back to the default");
-    }
-
-    @Test
-    void typedGetReportsMalformedValueWithKeyContext() {
-        ConfigSpec<Integer> port = ConfigSpec.of(
-            "server.port", Integer.class, 8080, Integer::parseInt);
-        AppConfig config = new AppConfigDefault(
-            new LinkedHashMap<>(Map.of("server.port", "not-a-number")), List.of());
-
-        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
-            IllegalArgumentException.class, () -> config.get(port));
-        org.junit.jupiter.api.Assertions.assertTrue(
-            ex.getMessage().contains("server.port"),
-            "the error must name the offending key, got: " + ex.getMessage());
-    }
-
-    @Test
     void coercerParsedSpecResolvesContainerTypes() {
         // No per-key parser: the container Coercer resolves the value —
-        // "2s" duration syntax and user-registered rules apply.
+        // "2s" duration syntax and user-registered rules apply. This is the
+        // post-processing step over a resolved raw value.
         ConfigSpec<Duration> timeout = ConfigSpec.of(
             "pool.timeout", Duration.class,
             Duration.ofSeconds(5));
@@ -99,45 +67,14 @@ class AppConfigDefaultTest {
     }
 
     @Test
-    void typedGetResolvesCoercerParsedSpecs() {
-        // Regression: AppConfig.get(spec) threw "has no parser" for specs
-        // created without a per-key parser (ConfigSpec.of(key, type, default)).
-        ConfigSpec<Integer> port = ConfigSpec.of(
-            "server.port", Integer.class, 8080);
-        AppConfig config = new AppConfigDefault(
-            new LinkedHashMap<>(Map.of("server.port", "7070")), List.of());
-
-        assertEquals(7070, config.get(port),
-            "a parser-less spec must resolve via the default Coercer");
-        assertEquals(8080, config.get(
-            ConfigSpec.of("missing.port", Integer.class, 8080)),
-            "absent key falls back to the default");
-
-        ConfigSpec<Duration> timeout = ConfigSpec.of(
-            "pool.timeout", Duration.class, Duration.ofSeconds(5));
-        assertEquals(Duration.ofSeconds(2),
-            new AppConfigDefault(
-                new LinkedHashMap<>(Map.of("pool.timeout", "2s")), List.of())
-                .get(timeout),
-            "the default Coercer resolves duration syntax through AppConfig.get");
-
-        AppConfig absent = new AppConfigDefault(new LinkedHashMap<>(), List.of());
-        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
-            IllegalArgumentException.class,
-            () -> absent.get(ConfigSpec.required("db.password", String.class)));
-        assertTrue(ex.getMessage().contains("Missing required")
-                && ex.getMessage().contains("db.password"),
-            "a missing required coercer-parsed key must still fail fast, got: "
-                + ex.getMessage());
-    }
-
-    @Test
-    void requiredKeyFailsFastWhenAbsentOrBlank() {        ConfigSpec<String> password = ConfigSpec.required(
+    void requiredKeyFailsFastWhenAbsentOrBlank() {
+        ConfigSpec<String> password = ConfigSpec.required(
             "db.password", String.class, String::valueOf);
         AppConfig absent = new AppConfigDefault(
             new LinkedHashMap<>(), List.of());
         IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
-            IllegalArgumentException.class, () -> absent.get(password));
+            IllegalArgumentException.class,
+            () -> password.parse(absent.asMap().get("db.password")));
         org.junit.jupiter.api.Assertions.assertTrue(
             ex.getMessage().contains("Missing required") && ex.getMessage().contains("db.password"),
             "got: " + ex.getMessage());
@@ -145,12 +82,13 @@ class AppConfigDefaultTest {
         AppConfig blank = new AppConfigDefault(
             new LinkedHashMap<>(Map.of("db.password", " ")), List.of());
         org.junit.jupiter.api.Assertions.assertThrows(
-            IllegalArgumentException.class, () -> blank.get(password),
+            IllegalArgumentException.class,
+            () -> password.parse(blank.asMap().get("db.password")),
             "a blank required value is equally missing");
 
         AppConfig present = new AppConfigDefault(
             new LinkedHashMap<>(Map.of("db.password", "s3cret")), List.of());
-        assertEquals("s3cret", present.get(password));
+        assertEquals("s3cret", password.parse(present.asMap().get("db.password")));
     }
 
     // ==================== symbol sources (tiered declaration) ====================
@@ -212,8 +150,41 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=from-file\n");
         AppConfig config = load(file);
         try {
-            assertEquals("from-file", config.get(HOT_KEY),
+            assertEquals("from-file", config.asMap().get(HOT_KEY),
                 "a freeway.config.file override must merge into the file tier");
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void jsonOverrideFileIsParsedAsJson() throws Exception {
+        // Regression: overrides were parsed as properties regardless of
+        // extension — a JSON override file produced mangled keys like
+        // '{"app.name"' and its real keys resolved to null.
+        Path file = Files.writeString(dir.resolve("override.json"),
+            "{\"" + HOT_KEY + "\": \"from-json\", \"nested\": {\"key\": \"flat\"}}");
+        AppConfig config = load(file);
+        try {
+            assertEquals("from-json", config.asMap().get(HOT_KEY),
+                "a .json override must parse as JSON, not properties");
+            assertEquals("flat", config.asMap().get("nested.key"),
+                "nested JSON objects flatten to dotted keys");
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void jsonOverrideFileHotReloadsAsJson() throws Exception {
+        Path file = Files.writeString(dir.resolve("override.json"),
+            "{\"" + HOT_KEY + "\": \"v1\"}");
+        AppConfigDefault config = (AppConfigDefault) load(file);
+        try {
+            assertEquals("v1", config.asMap().get(HOT_KEY));
+            Files.writeString(file, "{\"" + HOT_KEY + "\": \"v2\"}");
+            await(() -> "v2".equals(config.asMap().get(HOT_KEY)),
+                "a modified JSON override must re-read as JSON, not properties");
         } finally {
             config.close();
         }
@@ -224,9 +195,9 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
         AppConfigDefault config = (AppConfigDefault) load(file);
         try {
-            assertEquals("v1", config.get(HOT_KEY));
+            assertEquals("v1", config.asMap().get(HOT_KEY));
             Files.writeString(file, HOT_KEY + "=a-longer-v2\n");
-            await(() -> "a-longer-v2".equals(config.get(HOT_KEY)),
+            await(() -> "a-longer-v2".equals(config.asMap().get(HOT_KEY)),
                 "a modified override file must be re-read without a restart");
             // The live source: the file-tier SymbolProvider reads the current
             // snapshot on every lookup — hot reload with no push API.
@@ -243,9 +214,9 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
         AppConfigDefault config = (AppConfigDefault) load(file);
         try {
-            assertEquals("v1", config.get(HOT_KEY));
+            assertEquals("v1", config.asMap().get(HOT_KEY));
             Files.delete(file);
-            await(() -> config.get(HOT_KEY) == null,
+            await(() -> !config.asMap().containsKey(HOT_KEY),
                 "a deleted override must drop its values (no baseline for this key)");
         } finally {
             config.close();

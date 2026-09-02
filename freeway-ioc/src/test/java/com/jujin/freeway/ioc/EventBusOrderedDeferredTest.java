@@ -33,7 +33,7 @@ class EventBusOrderedDeferredTest {
         bus.subscribe(Integer.class, log::add);
 
         for (int i = 0; i < 50; i++) {
-            bus.publishOrdered("key", i);
+            bus.publishOrdered(i);
         }
         Await.until(5000, () -> log.size() == 50);
         for (int i = 0; i < 50; i++) {
@@ -50,9 +50,9 @@ class EventBusOrderedDeferredTest {
         bus.subscribe(Integer.class, log::add);
 
         Defer.within(() -> {
-            bus.publishOrdered("key", 1);
-            bus.publishOrdered("key", 2);
-            bus.publishOrdered("key", 3);
+            bus.publishOrdered(1);
+            bus.publishOrdered(2);
+            bus.publishOrdered(3);
             assertEquals(0, log.size(),
                 "ordered events inside a Defer scope must wait for the scope end");
         });
@@ -165,7 +165,7 @@ class EventBusOrderedDeferredTest {
         EventBus bus = new EventBus(Freeway.create());
 
         assertDoesNotThrow(() -> Defer.within(() -> {
-            bus.publishOrdered("key", new PostCreatedEvent(new Post("x")));
+            bus.publishOrdered(new PostCreatedEvent(new Post("x")));
             bus.close();
 
         }), "a deferred ordered publish draining after close must not throw");

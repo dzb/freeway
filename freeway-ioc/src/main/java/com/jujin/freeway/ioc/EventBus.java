@@ -361,17 +361,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     }
 
     /**
-     * @deprecated Use {@link #publishOrdered(Object)}. The {@code key}
-     * parameter is reserved for future per-key ordering; the current
-     * implementation is globally serialized and ignores it.
-     */
-    @Deprecated
-    public void publishOrdered(Object key, Object event) {
-        Objects.requireNonNull(key, "key");
-        publishOrdered(event);
-    }
-
-    /**
      * Executes {@code publish} on the executor supplied by {@code exec},
      * buffering it in the active {@code Defer} scope when present.
      *
@@ -517,27 +506,6 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
 
     public void unsubscribe(Subscription<?> sub) {
         subscriptions.unsubscribe(sub);
-    }
-
-    // ==================== subscriber queries ====================
-
-    /**
-     * True when at least one subscriber (module-contributed or runtime) is
-     * registered for the exact topic channel. The query-side counterpart of
-     * {@link CallBus#handles(String)}.
-     */
-    public boolean hasSubscribers(String topic) {
-        requireOpen();
-        return subscriptions.hasTopicSubscribers(topic);
-    }
-
-    /**
-     * True when at least one subscriber matches the event type, including
-     * hierarchy dispatch (subscribers of supertypes count).
-     */
-    public boolean hasSubscribers(Class<?> eventType) {
-        requireOpen();
-        return subscriptions.hasClassSubscribers(eventType);
     }
 
     @Override
