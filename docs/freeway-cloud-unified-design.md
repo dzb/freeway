@@ -414,12 +414,12 @@ public interface SecretStore {
 | 类别 | 注解 |
 |---|---|
 | 后端 | `@Local`（本地默认实现） |
-| 策略 | `@RoundRobin`（负载均衡默认策略） |
 
 core 只保留**实际被装配引用**的标记；其余（`@Nacos` / `@Consul` /
 `@Kubernetes` / `@Grpc` 等）随对应的 freeway-ext 适配器一起交付——遵循
 "Prefer small explicit APIs over future-proof abstractions"，不为尚不存在
-的实现预铺注解面。
+的实现预铺注解面。负载均衡策略无需注解：`LoadBalancer` 是
+`@FunctionalInterface`，自定义策略直接 bind 一个 primary 实现即可。
 
 规则（基于 ioc `MarkerIndex` 的 `containsAll` 语义）：
 

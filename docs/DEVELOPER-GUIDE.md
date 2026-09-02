@@ -520,6 +520,20 @@ binder.contribute(EventSubscriber.class)
         LOG.warn("No subscriber for {}", e.event().getClass())));
 ```
 
+**Ordered channel:** `publishOrdered(event)` dispatches strictly in submission order (single-threaded FIFO) — the channel for transaction-outbox-style sequences: events published inside one `Defer` scope drain in call order after the scope commits.
+
+**Reactive streams:** `stream(Class)` / `stream(String)` expose the same subscriptions as a JDK `Flow.Publisher` — no external dependency. A consumer that cannot keep up overflow-drops (non-blocking) rather than stalling bus dispatch; `close()` completes all live streams. Fan out by calling `stream()` once per consumer, not by sharing one publisher.
+
+```java
+bus.stream(OrderPlaced.class).subscribe(new Flow.Subscriber<>() {
+    public void onSubscribe(Flow.Subscription s) { s.request(Long.MAX_VALUE); }
+    public void onNext(OrderPlaced item) { handle(item); }
+    public void onError(Throwable t) { LOG.error("stream failed", t); }
+    public void onComplete() { }
+});
+// cold-lazy: the bus subscription is created on first downstream subscribe
+```
+
 **Lifecycle events:** Boot publishes `AppStartedEvent` after all hooks start, and `AppStoppingEvent` before shutdown. Subscribe via EventBus instead of implementing `RuntimeHook` for non-critical work:
 
 ```java
