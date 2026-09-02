@@ -5,7 +5,14 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0] — 2026-09-02
+
+### Added
+
+- **统一配置文件解析器（freeway-boot）** — 新增 `ConfigFileReader`（boot internal）：
+  `.json` 解析为 JSON 并展平为点号键，其余按 properties 解析，全部 UTF-8。
+  classpath 级联与热重载文件层共用同一实现——文件无论位于 classpath、工作目录
+  还是 `freeway.config.file`，启动与每次重载的解析结果完全一致。
 
 ### Changed
 
@@ -18,14 +25,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   文件源每次 lookup 读实时快照，`@Value`/`@Symbol` 重新解析即见新值。
   自定义 loader 的静态配置从"顶层（TIER_CLI）"改为"文件层（TIER_FILES）"——
   env/CLI 与模块源（如 secret）现在正确地压过它。
-- **配置层级收敛为 3 个框架层（freeway-ioc）** — `SymbolProvider` 常量收拢为
-  `TIER_CLI(0)` / `TIER_ENV(10)` / `TIER_FILES(20)`；模块槽位由模块自持
-  （cloud secret 声明 order 15，介于 env 与 files 之间）。
 - **cloud 配置机制删除（freeway-cloud，破坏性）** — `CloudConfigModule` /
   `CloudConfigDefault` / `CloudConfigSymbolProvider` / `CloudConfig` / `ConfigRef` /
   `ConfigSubscription` / `ConfigChangedEvent` 及 `freeway.cloud.config.*` 键全部移除；
   配置中心文件改用框架键 `freeway.config.file`（旧键 `freeway.cloud.config.file`
   废弃）；`CloudModule` 不再安装配置模块。
+- **读取入口收敛：SymbolSource（freeway-ioc/boot，破坏性）** — `SymbolSource` 回归
+  纯解析基底（`resolve`/`expand`，String in / String out），不再认识 `ConfigSpec`/
+  `Coercer`；类型化读取改为显式两步——`SPEC.parse(symbols.resolve(SPEC.key(), null)[, coercer])`，
+  键与默认值只在 spec 声明一次。`AppConfig` 不再是读取门面：删除 `get(String)` /
+  `get(ConfigSpec)` / `DefaultCoercer`，仅保留 `profiles()` / `asMap()`（级联快照，
+  永不含 secret）/ `symbolProviders()` / `close()`。`freeway-ioc` 从此零依赖
+  `commons.config`。
+- **类型化解析收敛（freeway-cloud/db/http，破坏性）** — `ConfigValues`（int/long/
+  double 静态工具）删除；`HttpConfig` 的反射式取值 helper、DbModule 的键/默认值
+  双写、cloud 各模块的裸 `Boolean.parseBoolean(symbols.resolve(...))` 全部收敛为
+  声明式 `ConfigSpec`。cloud 的 `*_DEFAULT` 常量升级为类型化值，配置层与库内
+  兜底共享同一来源。
+- **配置层级显式化为 4 个框架层（freeway-ioc，破坏性）** — `SymbolProvider` 常量
+  收拢为 `TIER_CLI(0)` / `TIER_SYS_PROPS(5)` / `TIER_ENV(10)` / `TIER_FILES(20)`；
+  模块槽位由模块自持（cloud secret 声明 order 15，介于 env 与 files 之间）。全部
+  provider 进入单一定序列表：JVM `-D` 升至文件层之上（进程级运维覆盖，对齐
+  Spring Boot 惯例）；raw-env 兜底层删除——环境变量只经声明式前缀映射进入链条，
+  未知符号快速失败而不是静默命中无关变量（Windows 大小写不敏感下的 `path`→`PATH`
+  事故面随之消除）。裸容器（无 boot）的内建来源只剩 system properties。
+
+### Removed
+
+- **`EventBus.hasSubscribers(String/Class)`（freeway-ioc，破坏性）** — 全库零消费
+  的查询 API；DeadEvent 诊断与 `EventDispatcher` 内部判断已覆盖需求。
+- **`EventBus.publishOrdered(Object key, Object event)`（freeway-ioc，破坏性）** —
+  key 参数被实现忽略的占位 API；单参 `publishOrdered(event)` 为唯一形态，
+  per-key 排序在未来按真语义实现。
+- **`@RoundRobin` 注解（freeway-cloud，破坏性）** — 单一实现却有策略标记的伪 SPI
+  概念；负载均衡扩展机制是 `LoadBalancer`（@FunctionalInterface）+ primary 绑定。
+  `LoadBalancerDefault` 改标 `@Local`，与全部内置默认实现的选择子一致。
+
+### Fixed
+
+- **JSON 覆盖文件按 properties 解析（freeway-boot）** — 热重载文件层此前对所有
+  override 无差别 `Properties.load()`，`application.json` 或 `freeway.config.file`
+  中的 `.json` 文件被解析成 `{"app.name"="..."}` 式垃圾键、真实键全部丢失；
+  统一解析器按扩展名（大小写不敏感）分派后，JSON 覆盖文件启动与热重载均正确。
+- **测试桩契约偏差（freeway-cloud）** — `SecurityTest` 的 `SymbolSource` 桩改为
+  抛出 `UnknownSymbolException`（此前抛普通 `IllegalArgumentException`，
+  `resolve(name, default)` 按类型无法识别 miss）。
 
 ## [1.3.11] — 2026-08-30
 
