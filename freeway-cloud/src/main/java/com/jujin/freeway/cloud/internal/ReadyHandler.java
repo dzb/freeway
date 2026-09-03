@@ -6,6 +6,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,13 +34,18 @@ public final class ReadyHandler implements RouteHandler {
      */
     public ReadyHandler(List<CloudHealthContributor> contributors, JsonCodec jsonCodec) {
         Set<String> names = new HashSet<>();
+        List<CloudHealthContributor> active = new ArrayList<>(contributors.size());
         for (CloudHealthContributor contributor : contributors) {
+            if (!contributor.isActive()) {
+                continue; // replaced by an extension binding — no stale local probe
+            }
             if (!names.add(contributor.name())) {
                 throw new IllegalStateException(
                     "Duplicate CloudHealthContributor name '" + contributor.name() + "'");
             }
+            active.add(contributor);
         }
-        this.contributors = List.copyOf(contributors);
+        this.contributors = List.copyOf(active);
         this.jsonCodec = jsonCodec;
     }
 

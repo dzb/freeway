@@ -30,7 +30,7 @@ class InjectionCoercionTest {
     @Test
     void primarySymbolSourceOverrideIsHonoredEverywhere() {
         Container container = Freeway.create(binder ->
-            binder.bind(SymbolSource.class).to(new OverrideSymbolSource()).primary()
+            binder.bind(SymbolSource.class).to(c -> new OverrideSymbolSource()).primary()
         );
 
         ValueConsumer consumer = container.create(ValueConsumer.class);

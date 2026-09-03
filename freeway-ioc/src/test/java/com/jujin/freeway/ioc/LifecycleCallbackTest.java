@@ -122,22 +122,21 @@ class LifecycleCallbackTest {
     }
 
     @Test
-    void instanceBindingsGetFullLifecycle() {
-        // Regression: .to(instance) skipped field injection and @PostConstruct
-        // while the instance still received @PreDestroy on close — a funeral
-        // without a baptism. Instance bindings now run the same lifecycle as
-        // every other binding.
+    void capturedInstanceProviderGetsFullLifecycle() {
+        // A singleton provider returning a pre-built instance must run the
+        // same lifecycle as every other binding: field injection,
+        // @PostConstruct on realization and @PreDestroy on close.
         InstanceLifecycleBean instance = new InstanceLifecycleBean();
         Container container = Freeway.create(binder ->
-            binder.bind(InstanceLifecycleBean.class).to(instance)
+            binder.bind(InstanceLifecycleBean.class).to(c -> instance)
         );
         assertFalse(instance.initialized, "lifecycle starts at realization, not at bind");
         assertTrue(container.get(InstanceLifecycleBean.class) == instance,
-            "an instance binding resolves to the provided instance");
-        assertTrue(instance.initialized, "@PostConstruct must run for instance bindings");
+            "a captured-instance provider resolves to the provided instance");
+        assertTrue(instance.initialized, "@PostConstruct must run for captured instances");
         assertFalse(instance.destroyed);
         container.close();
-        assertTrue(instance.destroyed, "@PreDestroy must still run for instance bindings");
+        assertTrue(instance.destroyed, "@PreDestroy must still run for captured instances");
     }
 
     static class InstanceLifecycleBean {

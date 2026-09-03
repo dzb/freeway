@@ -106,8 +106,8 @@ final class BindingImpl<T> implements Binding<T> {
         return this;
     }
 
-    @Override
-    public Binding<T> to(T instance) {
+    /** Internal pre-built instance binding used by builtin registration. */
+    BindingImpl<T> instance(T instance) {
         requireSingletonScope("instance binding");
         setInstance(instance);
         return this;

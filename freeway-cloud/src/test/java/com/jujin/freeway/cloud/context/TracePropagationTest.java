@@ -1,9 +1,8 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.context;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.context.InvocationContext;
-import com.jujin.freeway.cloud.context.TraceContext;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;

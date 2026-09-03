@@ -67,7 +67,7 @@ class EventBusStatsTest {
             @Override public void gauge(String name, Supplier<Number> v) { }
         };
         Container container = Freeway.create(binder ->
-            binder.bind(Metrics.class).to(metrics).primary());
+            binder.bind(Metrics.class).to(c -> metrics).primary());
         EventBus bus = new EventBus(container);
         bus.subscribe(PostCreatedEvent.class, e -> { });
 

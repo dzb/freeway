@@ -1,9 +1,9 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpConfigKeys;

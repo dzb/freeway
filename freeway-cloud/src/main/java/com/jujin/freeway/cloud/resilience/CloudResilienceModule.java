@@ -86,7 +86,7 @@ public final class CloudResilienceModule implements ModuleEx {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 return RATE_LIMIT_ENABLED.parse(symbols.resolve(RATE_LIMIT_ENABLED.key(), null))
                     ? new RateLimiterDefault(RATE_LIMIT_PER_SECOND.parse(symbols.resolve(RATE_LIMIT_PER_SECOND.key(), null)))
-                    : new RateLimiterDefault(Double.MAX_VALUE);
+                    : RateLimiter.UNLIMITED;
             })
             .marker(Local.class)
             ;

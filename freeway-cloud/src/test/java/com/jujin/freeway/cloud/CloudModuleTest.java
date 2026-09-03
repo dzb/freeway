@@ -11,6 +11,7 @@ import com.jujin.freeway.cloud.observe.CloudObserveModule;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CloudResilienceModule;
+import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.rpc.CloudHttpClient;
 import com.jujin.freeway.cloud.rpc.CloudRpcModule;
 import com.jujin.freeway.cloud.secret.CloudSecretModule;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Phase 0/1 scaffold acceptance: the umbrella module and every sub-module must
@@ -71,6 +73,18 @@ class CloudModuleTest {
             // the single selector extension modules replace with a primary binding.
             assertNotNull(container.get(ServiceDiscovery.class, Local.class));
             assertNotNull(container.get(LoadBalancer.class, Local.class));
+        }
+    }
+
+    @Test
+    void rateLimitingIsUnlimitedByDefault() {
+        // rate-limit.enabled defaults to false; without any config the
+        // resolved limiter must be the no-op singleton, not a 100 req/s
+        // token bucket from the library fallback.
+        try (Container container = Freeway.create(new CloudResilienceModule())) {
+            RateLimiter limiter = container.get(RateLimiter.class);
+            assertTrue(limiter.tryAcquire());
+            assertTrue(limiter.tryAcquire());
         }
     }
 }

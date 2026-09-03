@@ -289,33 +289,13 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
-    void instanceBindingReturnsTheBoundInstance() {
+    void singletonProviderReturnsTheCapturedInstance() {
         GreeterImpl bound = new GreeterImpl();
         Container container = Freeway.create(binder ->
-            binder.bind(GreeterImpl.class).to(bound)
+            binder.bind(GreeterImpl.class).to(c -> bound)
         );
 
         assertSame(bound, container.get(GreeterImpl.class));
-    }
-
-    @Test
-    void instanceBindingRejectsNonSingletonScopeBeforeTo() {
-        GreeterImpl bound = new GreeterImpl();
-        assertThrows(IllegalStateException.class, () ->
-            Freeway.create(binder ->
-                binder.bind(GreeterImpl.class).scope(Scope.PROTOTYPE).to(bound)
-            )
-        );
-    }
-
-    @Test
-    void instanceBindingRejectsNonSingletonScopeAfterTo() {
-        GreeterImpl bound = new GreeterImpl();
-        assertThrows(IllegalStateException.class, () ->
-            Freeway.create(binder ->
-                binder.bind(GreeterImpl.class).to(bound).scope(Scope.PROTOTYPE)
-            )
-        );
     }
 
     @Test

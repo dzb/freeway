@@ -20,7 +20,7 @@ public final class BootConfigModule implements ModuleEx {
 
     @Override
     public void bind(Binder binder) {
-        binder.bind(AppConfig.class).to(config);
+        binder.bind(AppConfig.class).to(container -> config);
         binder.bind(HookLifecycle.class).to(container -> new HookLifecycle(container));
         // The config declares its own symbol sources with their orders —
         // precedence comes from the declaration, never from module install

@@ -1,9 +1,11 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.health;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.health.CloudHealthContributor;
-import com.jujin.freeway.cloud.health.HealthResult;
+import com.jujin.freeway.cloud.CloudModule;
+import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
+import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.Binder;
@@ -16,6 +18,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -62,6 +65,19 @@ class HealthEndpointsTest {
         }
     }
 
+    @Test
+    void localRegistryContributorIsOmittedWhenAnExternalBackendIsPrimary() throws Exception {
+        try (AppRuntime app = FreewayApp.run(
+                new ExternalRegistryModule(), new HttpModule(), new CloudModule())) {
+            HttpResponse<String> ready = get(app, "/health/ready");
+            assertEquals(200, ready.statusCode());
+            assertTrue(ready.body().contains("external-registry"),
+                "the external adapter's own readiness contributor must be present");
+            assertTrue(!ready.body().contains("\"registry\""),
+                "the stale local registry contributor must be omitted when an ext primary is active");
+        }
+    }
+
     private static HttpResponse<String> get(AppRuntime app, String path) throws Exception {
         int port = app.get(com.jujin.freeway.http.WebServer.class).port();
         HttpClient client = HttpClient.newHttpClient();
@@ -85,4 +101,47 @@ class HealthEndpointsTest {
             });
         }
     }
+
+    /** A stand-in for a future freeway-ext cloud adapter: primary bindings
+     *  plus its own readiness contributor. */
+    static class ExternalRegistryModule implements ModuleEx {
+        private final ServiceRegistry registry = new ServiceRegistry() {
+            @Override
+            public void register(ServiceInstance instance) {
+            }
+
+            @Override
+            public void renew(String serviceId, String instanceId) {
+            }
+
+            @Override
+            public void unregister(ServiceInstance instance) {
+            }
+        };
+        private final ServiceDiscovery discovery = new ServiceDiscovery() {
+            @Override
+            public List<ServiceInstance> getInstances(String serviceId) {
+                return List.of();
+            }
+        };
+
+        @Override
+        public void bind(Binder b) {
+            b.bind(ServiceRegistry.class).to(container -> registry).primary();
+            b.bind(ServiceDiscovery.class).to(container -> discovery).primary();
+            b.contribute(CloudHealthContributor.class).add("external-registry",
+                new CloudHealthContributor() {
+                    @Override
+                    public String name() {
+                        return "external-registry";
+                    }
+
+                    @Override
+                    public HealthResult check() {
+                        return HealthResult.ok();
+                    }
+                });
+        }
+    }
+
 }

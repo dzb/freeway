@@ -1,8 +1,16 @@
 # freeway-cloud 完整设计（定稿）
 
-> **状态：定稿（2026-08-19）**。本文档是 freeway-cloud 的唯一设计基线，
+> **状态：设计基线（2026-08-19；2026-09-03 有维护说明）**。本文档是 freeway-cloud 的设计基线，
 > 取代早期并行的 design-A（路径级 RpcClient 线）与 design-B（方法级 RPC
 > 线）两套方案（相关早期文档已移除）。
+>
+> **2026-09-03 维护说明**：1.4.0 起配置级联与热重载统一归
+> `freeway-boot`（`AppConfigDefault` / `freeway.config.file`），cloud 的
+> `config/` 包与 `CloudConfig*` API 已删除，本文 §3.5/§5.3/§7/§8 中相关
+> 描述过期；CloudEventBus 与 CallBus 远程桥分别以
+> `freeway-cloud-events-design.md`、`freeway-remote-callbus-design.md`
+> 为最新边界。云模块当前结构以源码、`docs/freeway-config.md` 与
+> `docs/DEVELOPER-GUIDE.md` 为准。
 >
 > **本定稿的关键决策（相对早期文档的收敛）**：
 >

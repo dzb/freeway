@@ -1,8 +1,11 @@
 package com.jujin.freeway.cloud;
 
 /**
- * Central config keys for {@code freeway-cloud}. Follows the {@code HttpConfigKeys} /
- * {@code DbConfigKeys} convention: one constant class, {@code freeway.cloud} prefix.
+ * Central config keys and canonical defaults for {@code freeway-cloud}.
+ * Keys share the {@code freeway.cloud} prefix; {@code *DEFAULT} constants and
+ * endpoint path literals deliberately live beside them because the config and
+ * library-fallback layers share the same values (unlike the pure key catalogs
+ * in {@code HttpConfigKeys}/{@code DbConfigKeys}).
  */
 public final class CloudConfigKeys {
     private CloudConfigKeys() {}
@@ -45,11 +48,12 @@ public final class CloudConfigKeys {
     public static final String RPC_RATE_LIMIT_PER_SECOND = PREFIX + ".rpc.rate-limit.per-second";
     public static final String RPC_TRACE_ENABLED       = PREFIX + ".rpc.trace.enabled";
 
-    // Canonical resilience defaults — the single source shared by
-    // CloudResilienceModule (config fallbacks) and CloudHttpClientDefault
-    // (library fallback when the resilience module is not installed), so the
-    // two layers cannot drift apart. Typed: a String default invited a
-    // parse at every use site.
+    // Canonical retry/breaker defaults — shared by CloudResilienceModule
+    // (config fallbacks) and CloudHttpClientDefault (library fallback when
+    // the resilience module is not installed), so the two layers cannot
+    // drift apart. Rate limiting itself defaults to disabled and therefore
+    // uses RateLimiter.UNLIMITED on both paths; RPC_RATE_LIMIT_PER_SECOND_DEFAULT
+    // only feeds CloudResilienceModule when rate limiting is enabled.
     public static final int RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = 3;
     public static final long RPC_RETRY_BACKOFF_BASE_DEFAULT   = 100;
     public static final long RPC_RETRY_BACKOFF_MAX_DEFAULT    = 5000;
@@ -57,6 +61,12 @@ public final class CloudConfigKeys {
     public static final long RPC_CB_FAILURE_WINDOW_DEFAULT    = 60;
     public static final long RPC_CB_OPEN_WINDOW_DEFAULT       = 30;
     public static final double RPC_RATE_LIMIT_PER_SECOND_DEFAULT = 100;
+
+    // ── RPC / TLS ───────────────────────────────────────────
+    public static final String RPC_TLS_KEY_STORE          = PREFIX + ".rpc.tls.key-store";
+    public static final String RPC_TLS_KEY_STORE_PASSWORD = PREFIX + ".rpc.tls.key-store-password";
+    public static final String RPC_TLS_TRUST_STORE        = PREFIX + ".rpc.tls.trust-store";
+    public static final String RPC_TLS_TRUST_STORE_PASSWORD = PREFIX + ".rpc.tls.trust-store-password";
 
     // ── CloudEventBus（EventBus 的跨节点事件网格, 见 docs/freeway-cloud-events-design.md）──
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
@@ -78,11 +88,6 @@ public final class CloudConfigKeys {
     public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".events.dedup.capacity";
     public static final int EVENTS_DEDUP_CAPACITY_DEFAULT = 4096;
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
-    // ── RPC / TLS ───────────────────────────────────────────
-    public static final String RPC_TLS_KEY_STORE          = PREFIX + ".rpc.tls.key-store";
-    public static final String RPC_TLS_KEY_STORE_PASSWORD = PREFIX + ".rpc.tls.key-store-password";
-    public static final String RPC_TLS_TRUST_STORE        = PREFIX + ".rpc.tls.trust-store";
-    public static final String RPC_TLS_TRUST_STORE_PASSWORD = PREFIX + ".rpc.tls.trust-store-password";
 
     // ── Auth propagation ────────────────────────────────────
     /** Off by default: inbound {@code x-principal} extraction trusts client

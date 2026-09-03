@@ -3,6 +3,7 @@ package com.jujin.freeway.cloud.discovery;
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.health.CloudHealthContributor;
+import com.jujin.freeway.cloud.internal.ActiveBindingProbe;
 import com.jujin.freeway.cloud.internal.DiscoveryConnectionHook;
 import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
 import com.jujin.freeway.cloud.internal.LoadBalancerDefault;
@@ -48,11 +49,17 @@ public final class CloudDiscoveryModule implements ModuleEx {
             .to(LoadBalancerDefault.class)
             .marker(Local.class)
             ;
+        // Lets container-created health contributions ask whether the @Local
+        // defaults are still selected without injecting Container itself.
+        b.bind(ActiveBindingProbe.class)
+            .to((Container container) -> new ActiveBindingProbe(container))
+            ;
 
         b.contribute(ServiceDeclaration.class).add("http", new HttpServiceDeclaration());
         // Readiness contributor for /health/ready — belongs here, not in the
         // health module: it probes the registry store, so standalone health
-        // installs (without discovery) stay dependency-free.
+        // installs (without discovery) stay dependency-free. It deactivates
+        // when an extension adapter replaces the local bindings.
         b.contribute(CloudHealthContributor.class).add(RegistryHealthContributor.class);
         b.contribute(RuntimeHook.class)
             .add(CloudHooks.DISCOVERY, new DiscoveryConnectionHook())

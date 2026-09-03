@@ -1,9 +1,11 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.secret;
 
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
+import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 

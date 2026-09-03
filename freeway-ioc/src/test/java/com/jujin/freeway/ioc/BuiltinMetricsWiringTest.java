@@ -22,7 +22,7 @@ class BuiltinMetricsWiringTest {
     void eventBusCountersReachThePrimaryMetrics() {
         RecordingMetrics metrics = new RecordingMetrics();
         try (Container container = Freeway.create(
-            binder -> binder.bind(Metrics.class).to(metrics).primary())) {
+            binder -> binder.bind(Metrics.class).to(c -> metrics).primary())) {
             container.get(EventBus.class).publish(new UnsubscribedEvent());
 
             assertEquals(1, metrics.counterValue("eventbus.published"),
@@ -34,7 +34,7 @@ class BuiltinMetricsWiringTest {
     void callBusCountersReachThePrimaryMetrics() {
         RecordingMetrics metrics = new RecordingMetrics();
         try (Container container = Freeway.create(
-            binder -> binder.bind(Metrics.class).to(metrics).primary())) {
+            binder -> binder.bind(Metrics.class).to(c -> metrics).primary())) {
             container.get(CallBus.class).call("nobody");
 
             assertEquals(1, metrics.counterValue("callbus.called"),

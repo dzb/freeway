@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -53,6 +54,27 @@ class MarkerAndConcurrencyTest {
         // .primary() should add @Primary as a marker, so get(type, Primary.class) works
         Cache cache = container.get(Cache.class, Primary.class);
         assertEquals("fast", cache.name());
+    }
+
+    @Test
+    void activeBindingQueryFollowsUniqueAndPrimarySelection() {
+        Container primary = Freeway.create(binder -> {
+            binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
+            binder.bind(Cache.class).to(SlowCache.class).marker(Slow.class).primary();
+        });
+        assertFalse(primary.isActiveBinding(Cache.class, Fast.class),
+            "a non-primary marked binding is not the selected binding");
+        assertTrue(primary.isActiveBinding(Cache.class, Slow.class),
+            "the primary binding is the selected binding");
+
+        Container unique = Freeway.create(binder ->
+            binder.bind(Cache.class).to(FastCache.class).marker(Fast.class));
+        assertTrue(unique.isActiveBinding(Cache.class, Fast.class),
+            "the only binding is the selected binding");
+        assertFalse(unique.isActiveBinding(Cache.class, Slow.class),
+            "an absent marker must not match the selected binding");
+        primary.close();
+        unique.close();
     }
 
     @Test

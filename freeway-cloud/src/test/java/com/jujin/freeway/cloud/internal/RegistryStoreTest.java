@@ -1,8 +1,7 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.internal.RegistryStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

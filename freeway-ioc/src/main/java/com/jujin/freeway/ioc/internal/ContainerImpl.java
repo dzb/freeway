@@ -161,7 +161,8 @@ public final class ContainerImpl implements Container {
 
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
         BindingImpl<T> binding = new BindingImpl<>(this, type);
-        binding.id(id).to(instance);
+        binding.id(id);
+        binding.instance(instance);
         binding.addMarkers(Set.of(Builtin.class));
         register(binding);
     }
@@ -390,6 +391,22 @@ public final class ContainerImpl implements Container {
             );
         }
         return serviceRuntime.get(binding);
+    }
+
+    @Override
+    public <T> boolean isActiveBinding(
+        Class<T> type,
+        Class<? extends Annotation>... markers
+    ) {
+        requireOpen();
+        BindingImpl<T> binding = bindingIndex.findUnique(type);
+        if (binding == null) {
+            return false;
+        }
+        if (markers == null || markers.length == 0) {
+            return true;
+        }
+        return binding.markers().containsAll(Set.of(markers));
     }
 
     <T> void register(BindingImpl<T> binding) {

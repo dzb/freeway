@@ -77,15 +77,15 @@ mvn test -Dtest=CoercerDefaultTest    # single test class
 ```
 freeway-commons          shared utilities: JSON, coercion, scoped primitives, beans, validation, config specs
 freeway-ioc              IoC container: bind, inject, scope, advise, event-bus, extensions, symbol config
-freeway-boot             launcher, config cascade, profiles, runtime lifecycle
+freeway-boot             launcher, config cascade (hot reload), profiles, runtime lifecycle
 freeway-http             HTTP/WebSocket: routing, filters, static, multipart, SSE
   └ built-in              FreewayHttpEngine (HTTP/1.1 + HTTP/2 + WebSocket + HTTPS)
   └ engine adapters       Undertow, Jetty → see freeway-ext
 freeway-db               JDBC: ORM, pooling, transactions, SQL builder, migrations
   └ connection pool       HikariCP adapter → see freeway-ext
 freeway-flow             Graph workflow engine — 7 node types, JSON graphs, tracing
-freeway-cloud            Cloud-native foundation: discovery, remote RPC, dynamic config,
-                         observability, resilience, health, secrets, object storage
+freeway-cloud            Cloud-native foundation: discovery, remote RPC, observability,
+                         resilience, health, secrets, object storage
 freeway-mq-kafka         Kafka adapter for EventBus → see freeway-ext
 ```
 
@@ -176,8 +176,9 @@ Freeway.create(binder -> {
     // primary binding (injected by default when multiple exist)
     binder.bind(PaymentGateway.class).to(StripeGateway.class).id("stripe").primary();
 
-    // instance binding (must be SINGLETON)
-    binder.bind(Config.class).to(new Config(...));
+    // bind a pre-built instance by returning it from a singleton provider
+    Config config = new Config(...);
+    binder.bind(Config.class).to(c -> config);
 
     // provider binding
     binder.bind(Cache.class).to(c -> new Cache(c.get(Config.class)));

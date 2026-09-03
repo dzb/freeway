@@ -1,8 +1,9 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.discovery.Endpoint;
@@ -11,10 +12,6 @@ import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
-import com.jujin.freeway.cloud.rpc.CloudException;
-import com.jujin.freeway.cloud.rpc.CloudHttpClient;
-import com.jujin.freeway.cloud.rpc.CloudRequest;
-import com.jujin.freeway.cloud.rpc.CloudResponse;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.WebServer;

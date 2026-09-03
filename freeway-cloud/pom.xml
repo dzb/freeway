@@ -15,7 +15,7 @@
     <name>Freeway :: Cloud</name>
     <description>
         Cloud-native foundation: service discovery, remote invocation (JDK HttpClient),
-        dynamic config, observability, resilience, health probes, secrets, object storage.
+        observability, resilience, health probes, secrets, object storage.
         Zero external dependencies (SLF4J excepted).
     </description>
 

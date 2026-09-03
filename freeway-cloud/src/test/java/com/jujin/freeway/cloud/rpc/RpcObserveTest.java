@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
@@ -10,8 +10,6 @@ import com.jujin.freeway.cloud.internal.MetricsDefault;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.cloud.internal.ServiceDiscoveryDefault;
 import com.jujin.freeway.cloud.internal.TracerDefault;
-import com.jujin.freeway.cloud.rpc.CloudRequest;
-import com.jujin.freeway.cloud.rpc.CloudResponse;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.WebServer;

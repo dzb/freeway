@@ -12,7 +12,7 @@ class ModuleDedupTest {
     static final class NamedModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
-            binder.bind(Marker.class).to(new Marker("named"));
+            binder.bind(Marker.class).to(c -> new Marker("named"));
         }
     }
 
@@ -42,7 +42,7 @@ class ModuleDedupTest {
     @Test
     void distinctModuleClassesBothInstall() {
         try (Container container = Freeway.create(
-            binder -> binder.bind(String.class).to("a"),
+            binder -> binder.bind(String.class).to(c -> "a"),
             new NamedModule()
         )) {
             assertEquals("a", container.get(String.class));

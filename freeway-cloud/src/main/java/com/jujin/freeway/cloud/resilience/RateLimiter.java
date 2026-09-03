@@ -15,4 +15,18 @@ public interface RateLimiter {
     default RateLimiter newShard() {
         return this;
     }
+
+    /** Never rejects; returned when rate limiting is disabled or the
+     *  resilience module is not installed. */
+    RateLimiter UNLIMITED = new RateLimiter() {
+        @Override
+        public boolean tryAcquire() {
+            return true;
+        }
+
+        @Override
+        public RateLimiter newShard() {
+            return this;
+        }
+    };
 }

@@ -18,46 +18,56 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
     private final Map<String, LongAdder> counters = new ConcurrentHashMap<>();
     private final Map<String, TimerData> timers = new ConcurrentHashMap<>();
     private final Map<String, Supplier<Number>> gauges = new ConcurrentHashMap<>();
-    /** Rendered-series uniqueness per namespace: sanitized name → "kind:rawName".
-     *  Plain meters (counter/gauge) and timers never share a series name
-     *  (timers render suffixed series), so each namespace tracks its own. */
-    private final Map<String, String> plainSeries = new ConcurrentHashMap<>();
-    private final Map<String, String> timerSeries = new ConcurrentHashMap<>();
+    /** Final rendered Prometheus series name → "kind:rawName" owner token.
+     *  Tracked on the rendered name so timer-suffixed series
+     *  ({@code _count}/{@code _seconds_total}) collide with plain meters too. */
+    private final Map<String, String> renderedSeries = new ConcurrentHashMap<>();
 
     @Override
     public Counter counter(String name) {
-        registerSeriesName(plainSeries, name, "counter");
+        registerSeriesName(renderedSeries, name, "counter", prometheusName(name));
         return new CounterImpl(counters.computeIfAbsent(name, k -> new LongAdder()));
     }
 
     @Override
     public Timer timer(String name) {
-        registerSeriesName(timerSeries, name, "timer");
+        String rendered = prometheusName(name);
+        registerSeriesName(renderedSeries, name, "timer",
+            rendered + "_count", rendered + "_seconds_total");
         return new TimerImpl(timers.computeIfAbsent(name, k -> new TimerData()));
     }
 
     @Override
     public void gauge(String name, Supplier<Number> supplier) {
-        registerSeriesName(plainSeries, name, "gauge");
+        registerSeriesName(renderedSeries, name, "gauge", prometheusName(name));
         gauges.put(name, supplier);
     }
 
     /**
      * Fails fast when a registration would emit a Prometheus series another
-     * metric in the same namespace already occupies. {@code prometheusName}
-     * folds {@code a.b} and {@code a-b} onto one series, and duplicate
-     * samples make the scraper reject the whole exposition. Re-registering
-     * the exact same kind+name is fine (a gauge refresh).
+     * metric already occupies. {@code prometheusName} folds {@code a.b} and
+     * {@code a-b} onto one series; timers additionally occupy the suffixed
+     * {@code _count}/{@code _seconds_total} series, so those are registered
+     * here too. Duplicate samples make the scraper reject the whole
+     * exposition. Re-registering the exact same kind+name is fine (a gauge
+     * refresh).
      */
-    private static void registerSeriesName(Map<String, String> series, String rawName, String kind) {
+    private static void registerSeriesName(
+        Map<String, String> series,
+        String rawName,
+        String kind,
+        String... renderedNames
+    ) {
         String token = kind + ":" + rawName;
-        String previous = series.putIfAbsent(prometheusName(rawName), token);
-        if (previous != null && !previous.equals(token)) {
-            throw new IllegalArgumentException(
-                "Metric name '" + rawName + "' (" + kind + ") renders as the same "
-                    + "Prometheus series as the earlier registration '"
-                    + previous.substring(previous.indexOf(':') + 1)
-                    + "' — rename one of them");
+        for (String rendered : renderedNames) {
+            String previous = series.putIfAbsent(rendered, token);
+            if (previous != null && !previous.equals(token)) {
+                throw new IllegalArgumentException(
+                    "Metric name '" + rawName + "' (" + kind + ") renders as the same "
+                        + "Prometheus series '" + rendered + "' as the earlier registration '"
+                        + previous.substring(previous.indexOf(':') + 1)
+                        + "' — rename one of them");
+            }
         }
     }
 

@@ -45,7 +45,8 @@ public final class CloudStorageModule implements ModuleEx {
                 @Override
                 public void start(Container container) {
                     BackendTypeGuard.warnIfExternal(
-                        container.get(SymbolSource.class), CloudConfigKeys.STORAGE_TYPE, "storage");
+                        container, ObjectStorage.class,
+                        CloudConfigKeys.STORAGE_TYPE, "storage");
                 }
             });
     }

@@ -36,28 +36,13 @@ import java.util.concurrent.Executors;
 import javax.net.ssl.SSLContext;
 
 /**
- * JDK {@link HttpClient}-backed {@link CloudHttpClient} with resilience
- * orchestration:
+ * JDK {@link HttpClient}-backed {@link CloudHttpClient}.
  *
- * <pre>
- * rateLimiter.tryAcquire() → breaker.allowRequest()
- *   → discovery.getInstances → loadBalancer.choose (RE-CHOSEN on every retry)
- *   → context propagation → send (virtual-thread friendly)
- *   → onSuccess / onFailure (retryable failures only) → retry with backoff
- * </pre>
- *
- * <p>Rate limiting runs <b>before</b> the circuit breaker so a local
- * rejection never consumes a half-open probe (the probe must reach the
- * transport for its outcome to be meaningful). While the circuit is
- * HALF_OPEN, <b>any</b> failure — including local rejections like "no
- * instance" — reports the probe outcome, so the breaker always settles
- * instead of wedging open.
- *
- * <p>Retryable = connect/timeout/5xx; 4xx, dispatch failures and local
- * rejections (no instance, circuit open, rate limited, thread interrupted)
- * fail immediately. Every failure mode — including unmapped local exceptions
- * from discovery or URL building — surfaces as a {@link CloudException}.
- * Missing resilience bindings degrade to production defaults.
+ * <p>The resilience state machine (rate limit → breaker → discovery/choose →
+ * send, retryable classification and half-open probe accounting) lives in
+ * {@link ResiliencePolicy}; this class only resolves the per-service shards
+ * and supplies one transport attempt. Missing resilience bindings degrade to
+ * the production defaults in {@link #newBreaker()} / {@link #newRateLimiter()}.
  *
  * <p>Breakers and rate limiters are sharded per {@code serviceId}: one
  * failing service must not poison calls to healthy services. An injected
@@ -108,9 +93,6 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         Duration.ofSeconds(CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT);
     private static final Duration DEFAULT_OPEN_WINDOW =
         Duration.ofSeconds(CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT);
-    private static final double DEFAULT_RATE_PER_SECOND =
-        CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT;
-
     public CloudHttpClientDefault(ServiceDiscovery discovery, LoadBalancer loadBalancer) {
         this(discovery, loadBalancer, List.of(), null, null, null, null, null, null,
             Duration.ofSeconds(10), Duration.ofSeconds(3));
@@ -254,7 +236,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     /** Per-service rate limiter shard — same policy as {@link #newBreaker()}. */
     private RateLimiter newRateLimiter() {
         if (injectedRateLimiter == null) {
-            return new RateLimiterDefault(DEFAULT_RATE_PER_SECOND);
+            return RateLimiter.UNLIMITED;
         }
         return injectedRateLimiter.newShard();
     }

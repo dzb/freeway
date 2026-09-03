@@ -1,9 +1,6 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.storage;
 
 import com.jujin.freeway.cloud.internal.ObjectStorageDefault;
-import com.jujin.freeway.cloud.storage.ObjectEntry;
-import com.jujin.freeway.cloud.storage.ObjectMetadata;
-import com.jujin.freeway.cloud.storage.StorageException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

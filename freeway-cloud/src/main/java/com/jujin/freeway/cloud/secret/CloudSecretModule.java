@@ -12,7 +12,6 @@ import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
-import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Path;
 
@@ -47,7 +46,8 @@ public final class CloudSecretModule implements ModuleEx {
                     // the provider would instantiate SecretSymbolSource (which
                     // depends on SecretStore) while SecretStore is mid-construction.
                     BackendTypeGuard.warnIfExternal(
-                        container.get(SymbolSource.class), CloudConfigKeys.SECRET_TYPE, "secret");
+                        container, SecretStore.class,
+                        CloudConfigKeys.SECRET_TYPE, "secret");
                 }
             });
     }

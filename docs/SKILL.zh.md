@@ -118,8 +118,9 @@ Freeway.create(binder -> {
     // —— 基础绑定 ——
     binder.bind(Greeter.class).to(GreeterImpl.class);          // 接口 → 实现
 
-    // —— 实例绑定（必须 SINGLETON，不能有 scope/advise） ——
-    binder.bind(Config.class).to(new Config(...));
+    // —— 绑定已创建实例：由 singleton provider 返回（容器负责生命周期） ——
+    Config config = new Config(...);
+    binder.bind(Config.class).to(c -> config);
 
     // —— Provider 绑定（工厂函数，每次按需调用） ——
     binder.bind(Cache.class).to(c -> new Cache(c.get(Config.class)));
@@ -146,8 +147,7 @@ Freeway.create(binder -> {
 | 方法 | 用途 | 约束 |
 |------|------|------|
 | `.to(Class)` | 接口 → 实现类 | 实现类需有无参或 `@Inject` 构造器 |
-| `.to(instance)` | 预创建实例 | 必须是 `SINGLETON`，不可再设 scope/advise |
-| `.to(c -> ...)` | Provider 工厂 | 每次解析按作用域策略调用 |
+| `.to(c -> ...)` | Provider 工厂；返回已创建实例时即等价于旧的实例绑定 | 按作用域策略调用，SINGLETON 下只调用一次 |
 | `.id("name")` | 命名标识 | 同一类型 + id 唯一 |
 | `.primary()` | 设置为主绑定 | 无 id 注入时默认使用 primary |
 | `.marker(Annotation...)` | 添加标记注解 | `binder.bind(Cache.class).to(FastCache.class).marker(Fast.class)` |

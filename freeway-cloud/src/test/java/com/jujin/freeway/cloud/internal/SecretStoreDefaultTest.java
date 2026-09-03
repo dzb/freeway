@@ -1,6 +1,5 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.internal.SecretStoreDefault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

@@ -403,7 +403,7 @@ class FreewayAppTest {
     public static final class InstancePrimaryModule implements ModuleEx {
         @Override
         public void bind(Binder binder) {
-            binder.bind(PrimaryMarker.class).to(new PrimaryMarker("instance"));
+            binder.bind(PrimaryMarker.class).to(container -> new PrimaryMarker("instance"));
         }
     }
 
@@ -497,7 +497,7 @@ class FreewayAppTest {
 
         @Override
         public void bind(Binder binder) {
-            binder.bind(DupMarker.class).to(new DupMarker(value));
+            binder.bind(DupMarker.class).to(container -> new DupMarker(value));
         }
     }
 
@@ -517,7 +517,7 @@ class FreewayAppTest {
 
         @Override
         public void bind(Binder binder) {
-            binder.bind(SpiDupMarker.class).to(new SpiDupMarker(value));
+            binder.bind(SpiDupMarker.class).to(container -> new SpiDupMarker(value));
         }
     }
 

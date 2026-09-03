@@ -1,9 +1,7 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.cloud.internal.CircuitBreakerDefault;
-import com.jujin.freeway.cloud.internal.RateLimiterDefault;
-import com.jujin.freeway.cloud.internal.RetryerDefault;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
+import com.jujin.freeway.cloud.resilience.RateLimiter;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -98,6 +96,14 @@ class ResilienceTest {
         assertTrue(limiter.tryAcquire());
         assertTrue(limiter.tryAcquire());
         assertFalse(limiter.tryAcquire(), "burst exhausted; no refill yet");
+    }
+
+    @Test
+    void unlimitedRateLimiterNeverRejectsAndSharesItsShard() {
+        assertTrue(RateLimiter.UNLIMITED.tryAcquire());
+        assertTrue(RateLimiter.UNLIMITED.tryAcquire());
+        assertTrue(RateLimiter.UNLIMITED.newShard() == RateLimiter.UNLIMITED,
+            "an unlimited limiter has no per-service state to clone");
     }
 
     @Test

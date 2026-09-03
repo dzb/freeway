@@ -330,6 +330,13 @@ public final class PeerConnector implements AutoCloseable {
                     acceptHandshake(frame);
                 } else if (frame.containsKey("specversion")) {
                     hub.receive(CloudEventEnvelope.parse(text));
+                } else {
+                    // Mirror the server leg: an unrecognized frame means the
+                    // peer is not speaking the mesh protocol. Ignoring it
+                    // would let a malformed session stay alive indefinitely.
+                    LOG.warn("Unrecognized frame from peer {} — aborting", peer);
+                    abort();
+                    return null;
                 }
             } catch (RuntimeException e) {
                 LOG.error("Frame handling failed for peer {}", peer, e);

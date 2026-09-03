@@ -79,6 +79,28 @@ public interface Container extends AutoCloseable {
     <T> T get(Class<T> type, Class<? extends Annotation>... markers);
 
     /**
+     * Returns true when the binding that {@link #get(Class)} would resolve
+     * carries every specified marker. Unlike {@link #get(Class, Class[])},
+     * this asks about the <em>selected</em> binding (unique or primary), not
+     * about whether any marked binding exists — so an extension adapter that
+     * overrides a local default with {@code .primary()} makes the local
+     * marker query return false without realizing either implementation.
+     *
+     * @return false when no binding is registered; throws the same ambiguity
+     *         failure {@code get(Class)} would when several bindings exist
+     *         without a primary
+     */
+    default <T> boolean isActiveBinding(
+        Class<T> type,
+        Class<? extends Annotation>... markers
+    ) {
+        // Kept a default so existing custom Container implementations keep
+        // compiling; only framework containers can answer this accurately.
+        throw new UnsupportedOperationException(
+            "isActiveBinding requires container implementation support");
+    }
+
+    /**
      * Returns the extension point for the given entry type, providing access
      * to all contributed values of that type across all modules.
      *

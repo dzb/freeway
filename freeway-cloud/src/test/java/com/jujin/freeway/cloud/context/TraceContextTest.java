@@ -1,6 +1,5 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.context;
 
-import com.jujin.freeway.cloud.context.TraceContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;

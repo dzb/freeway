@@ -659,7 +659,7 @@ class FlowEngineTest {
     @Test
     void containerInjectWiresFields() {
         var container = Freeway.create(
-                binder -> binder.bind(Greeter.class).to(new Greeter("Hello, Flow!")));
+                binder -> binder.bind(Greeter.class).to(c -> new Greeter("Hello, Flow!")));
 
         var task = container.create(InjectedTask.class);
 
@@ -671,7 +671,7 @@ class FlowEngineTest {
     void contributedTaskIsInjectedAndDiscovered() {
         var container = Freeway.create(
                 binder -> {
-                    binder.bind(Greeter.class).to(new Greeter("Hi!"));
+                    binder.bind(Greeter.class).to(c -> new Greeter("Hi!"));
                     binder.contribute(TaskComponent.class).add(InjectedTask.class);
                 });
 

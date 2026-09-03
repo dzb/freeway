@@ -1,6 +1,5 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.discovery;
 
-import com.jujin.freeway.cloud.discovery.Endpoint;
 import org.junit.jupiter.api.Test;
 
 import java.net.http.HttpRequest;

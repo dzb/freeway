@@ -1,12 +1,9 @@
-package com.jujin.freeway.cloud;
+package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.internal.MetricsDefault;
-import com.jujin.freeway.cloud.internal.TracePropagator;
-import com.jujin.freeway.cloud.internal.TracerDefault;
 import com.jujin.freeway.cloud.observe.Tracer;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
@@ -195,5 +192,18 @@ class ObserveTest {
         MetricsDefault fresh = new MetricsDefault();
         fresh.gauge("depth", () -> 1);
         fresh.gauge("depth", () -> 2); // gauge refresh is not a collision
+
+        // A plain meter whose name collides with a timer's rendered suffix
+        // must also fail fast: timer("lat") emits lat_count and
+        // lat_seconds_total, so a later counter of either name duplicates a
+        // sample and invalidates the scrape.
+        MetricsDefault suffixed = new MetricsDefault();
+        suffixed.timer("lat").record(Duration.ofMillis(1));
+        assertThrows(IllegalArgumentException.class,
+            () -> suffixed.counter("lat_seconds_total"),
+            "timer suffix collisions with a counter must fail fast");
+        assertThrows(IllegalArgumentException.class,
+            () -> suffixed.counter("lat_count"),
+            "timer count-series collisions with a counter must fail fast");
     }
 }

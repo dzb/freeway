@@ -28,14 +28,6 @@ public interface Binding<T> {
     Binding<T> to(Class<? extends T> implementation);
 
     /**
-     * Binds to a pre-built instance. The instance is used as-is: fields are
-     * not injected and {@code @PostConstruct} is not invoked (the instance
-     * already exists; framework internals rely on this for built-in
-     * services). Scope must be {@link Scope#SINGLETON}.
-     */
-    Binding<T> to(T instance);
-
-    /**
      * Binds to a provider function that creates the service on demand.
      * The function receives the {@link Container} for dependency resolution.
      */
