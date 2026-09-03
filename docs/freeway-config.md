@@ -374,8 +374,8 @@
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
 | `freeway.cloud.secret.type` | String | *(空)* | 否 | 密钥存储类型。仅使用密钥服务时设置 |
-| `freeway.cloud.secret.file` | String | *(空)* | 否 | 密钥文件路径（key=value 格式） |
-| `freeway.cloud.secret.keys` | String | *(空)* | 否 | 允许从密钥存储解析的符号名白名单（逗号分隔） |
+| `freeway.cloud.secret.file` | String | *(空)* | 否 | 密钥文件路径（key=value 格式）。**仅 `-D` 系统属性生效**：密钥提供方参与符号解析，其自身配置不能经该链读取，写进配置文件/环境变量无效 |
+| `freeway.cloud.secret.keys` | String | *(空)* | 否 | 允许从密钥存储解析的符号名白名单（逗号分隔）。**仅 `-D` 系统属性生效**（同上）。留空即"对任意符号名查环境变量"的锋利默认，启动时打 WARN |
 
 #### 对象存储
 
@@ -435,9 +435,9 @@
 | `freeway.cloud.events.enabled` | Boolean | `false` | 否 | 启用 CloudEventBus。**默认关闭**，启用前确认网络可达 |
 | `freeway.cloud.events.peers` | String | *(空)* | 否 | 对等节点列表 |
 | `freeway.cloud.events.subscriptions` | String | *(空)* | 否 | 订阅列表 |
-| `freeway.cloud.events.allowed-types` | String | *(空)* | 否 | 允许的事件类型 |
-| `freeway.cloud.events.allowed-topics` | String | *(空)* | 否 | 允许的 Topic |
-| `freeway.cloud.events.token` | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证） |
+| `freeway.cloud.events.allowed-types` | String | *(空)* | 否 | CLASS 通道反序列化白名单，**空 = 拒绝全部**（deny-by-default，不回退到"放行任意类"） |
+| `freeway.cloud.events.allowed-topics` | String | *(空)* | 否 | TOPIC 通道白名单，空 = 放行全部 |
+| `freeway.cloud.events.token` | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENTS_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
 | `freeway.cloud.events.dedup.enabled` | Boolean | `false` | 否 | 启用事件去重（消耗内存，按需开启） |
 | `freeway.cloud.events.dedup.capacity` | Integer | `4096` | 否 | 去重 ID 缓存容量 |
 
@@ -581,5 +581,8 @@ IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成�
 - `freeway.log.level` → `FREEWAY_LOG_LEVEL`
 
 带连字符的键（如 `max-size`）不支持环境变量，需用 `-D` 系统属性。
+
+例外（读自 JVM 系统属性，不参与上述级联）：`freeway.cloud.secret.file`、
+`freeway.cloud.secret.keys` —— 两者只能 `-D` 设置，否则静默无效。
 
 自定义前缀 `freeway.env.prefix=APP_`：`APP_SERVER_PORT` → `server.port`（透传）

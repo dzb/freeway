@@ -27,13 +27,13 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
     @Override
     public Counter counter(String name) {
         registerSeriesName(plainSeries, name, "counter");
-        return new DefaultCounter(counters.computeIfAbsent(name, k -> new LongAdder()));
+        return new CounterImpl(counters.computeIfAbsent(name, k -> new LongAdder()));
     }
 
     @Override
     public Timer timer(String name) {
         registerSeriesName(timerSeries, name, "timer");
-        return new DefaultTimer(timers.computeIfAbsent(name, k -> new TimerData()));
+        return new TimerImpl(timers.computeIfAbsent(name, k -> new TimerData()));
     }
 
     @Override
@@ -119,10 +119,10 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         return name.replaceAll("[^a-zA-Z0-9_:]", "_");
     }
 
-    private static final class DefaultCounter implements Counter {
+    private static final class CounterImpl implements Counter {
         private final LongAdder adder;
 
-        DefaultCounter(LongAdder adder) {
+        CounterImpl(LongAdder adder) {
             this.adder = adder;
         }
 
@@ -142,10 +142,10 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         }
     }
 
-    private static final class DefaultTimer implements Timer {
+    private static final class TimerImpl implements Timer {
         private final TimerData data;
 
-        DefaultTimer(TimerData data) {
+        TimerImpl(TimerData data) {
             this.data = data;
         }
 

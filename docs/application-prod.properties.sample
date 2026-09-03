@@ -151,9 +151,17 @@ freeway.db.migration.enabled=true
 # freeway.cloud.rpc.rate-limit.enabled=false
 
 # CloudEventBus — enable for cross-node event mesh when needed.
+# Scenario: multi-node production MUST set events.token — the shared mesh
+#   handshake secret. Identical value on every node (a mismatch closes the
+#   connection with WS 1008), injected via env var, never committed here.
+#   Blank = no peer auth: trusted-network only, startup WARN is emitted.
+# FREEWAY_CLOUD_EVENTS_TOKEN=***
 # freeway.cloud.events.enabled=false
 # freeway.cloud.events.peers=
 # freeway.cloud.events.token=
+# freeway.cloud.events.subscriptions=
+# freeway.cloud.events.allowed-types=    # CLASS channel: empty = deny all
+# freeway.cloud.events.allowed-topics=   # TOPIC channel: empty = allow all
 
 
 # ================================

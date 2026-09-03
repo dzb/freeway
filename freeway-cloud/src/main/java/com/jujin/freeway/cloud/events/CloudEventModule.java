@@ -37,8 +37,8 @@ import org.slf4j.LoggerFactory;
  * false — inert module), {@code peers} (host:port list; optional when a
  * discovery backend feeds {@code setPeers}), {@code subscriptions} (CE type
  * prefixes this node pulls from the mesh; empty = outbound-only),
- * {@code allowed-types} (CLASS-channel deserialization whitelist; empty =
- * allow all).</p>
+ * {@code allowed-types} (CLASS-channel deserialization allowlist; empty =
+ * deny-by-default — CLASS-channel events are dropped).</p>
  */
 @Marker(Builtin.class)
 public final class CloudEventModule implements ModuleEx {

@@ -77,26 +77,6 @@
             </dependency>
             <dependency>
                 <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-starter</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-starter-boot</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-starter-web</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
-                <artifactId>freeway-starter-db</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jujin8.freeway</groupId>
                 <artifactId>freeway-flow</artifactId>
                 <version>${project.version}</version>
             </dependency>

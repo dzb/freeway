@@ -173,9 +173,10 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
          TOPIC: topic 白名单放行 → publishInboundWithId(topic, payload, id)
 ```
 
-- **allowedEventTypes / allowedTopics 双白名单继续生效**（CLASS 防任意
-  类实例化、TOPIC 防任意 topic 注入，两道门独立——空列表 = 放行全部，
-  wire 时有启动告警）。
+- **allowed-types / allowed-topics 双白名单继续生效**，两道门独立、
+  语义不同（见 §4.3）：`allowed-types` 为 **deny-by-default**（空列表 =
+  CLASS 通道入站全部丢弃，永不回退到"放行任意类"）；`allowed-topics`
+  空列表 = TOPIC 放行全部。wire 时对未收紧的配置打启动告警。
 - **拦截器位**（吸收 solon `CloudEventInterceptor`）：入站管道经
   `contribute(CloudEventInterceptor.class)` 贡献的拦截器链——审计、
   租户检查、自定义过滤的统一挂点，所有通道共用。
@@ -186,6 +187,52 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
   默认 4096），依据是总线铸造的共享事件 id。
 - 回环防护：`fworigin == 本节点 origin` 的入站帧丢弃（自身经 mesh
   环回的事件；配合 publishInbound 的"不回桥"语义双保险）。
+
+### 4.3 入站门禁：token 与双白名单（生产部署必读）
+
+mesh 端点 `/cloud/events` 一开就有**三道独立的入站门**，各守一件事：
+
+| 门 | 配置键 | 守住的东西 | 空值语义 |
+|---|---|---|---|
+| 对等认证 | `events.token` | 谁可以连进来（握手身份） | **空 = 不校验**（文档化默认，仅适用可信内网） |
+| CLASS 反序列化 | `events.allowed-types` | 入站帧可以要求本节点实例化哪些类 | **空 = 全部拒绝**（deny-by-default） |
+| TOPIC 注入 | `events.allowed-topics` | 对端可以往哪些 topic 投递 | 空 = 放行全部 |
+
+**token 是"门锁"，白名单是"门后的第二道防线"**——两者不互相替代：
+token 决定"谁能连上"，白名单决定"连上之后能要求本节点做什么"。
+
+#### 多节点生产环境必须配置 token
+
+`token` 为空时，任何能连到 `/cloud/events` 的对等方都被当作合法节点，
+握手不做身份校验。这在**可信内网**是合理的默认（省去密钥分发成本，也
+是双节点契约测试所覆盖的形态），但**多节点生产部署必须显式配置**。
+
+token 是**全节点共享**的握手密钥，双向生效：本节点出站时在 hello 帧
+携带 token（`PeerConnector`），入站时校验对端 hello 中的 token
+（`PeerHub`，不匹配即以 WS 关闭码 `1008` 断开）。因此：
+
+1. **所有节点必须配同一个值**——任一节点不一致，该连接被 `1008` 拒绝
+   （日志：`Peer xxx failed the mesh token check — closing`）；
+2. **经环境变量注入，不要写进配置文件**（与数据库口令、keystore 口令
+   同一处理方式）：
+   ```bash
+   export FREEWAY_CLOUD_EVENTS_TOKEN='<随机长密钥>'
+   ```
+   properties / JSON 写法见 `docs/application-prod.*.sample`；
+3. **比较是常量时间的**（`MessageDigest.isEqual`），token 无法被计时
+   侧信道逐字节探测；
+4. **轮换需要滚动重启**：token 在 `wire()` 时读入、连接握手时校验，
+   不支持热更新——轮换期间新旧节点互相拒绝，需按批次滚动。
+
+生产建议同时收紧 `allowed-topics`（TOPIC 通道空列表 = 放行任意 topic），
+把入站面收窄到实际使用的前缀。
+
+> **为什么不内置一个默认 token**：硬编码默认值等于公开密码——日志干净、
+> 无告警，部署者以为"已启用认证"，实则钥匙是公开的。这比"空 = 明确地
+> 无认证 + 启动告警"更危险，后者至少是显式、可审计的失败。同理也不做
+> "启动时随机生成默认 token"：token 必须全节点共享，各自随机会让 mesh
+> 直接断连。安全姿态的加强方向是"危险场景下让忘配这件事 fail-fast"，
+> 而不是塞一个假秘密。
 
 ## 5. 与 EventSink SPI 的关系
 
@@ -217,8 +264,9 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 
 配置键（`freeway.cloud.events.*`，全部已在 `CloudConfigKeys` 落地）：
 `enabled`（默认 false）、`peers`、`subscriptions`（本节点出站订阅
-声明）、`allowed-types` / `allowed-topics`（入站双白名单）、`token`
-（mesh 握手共享密钥，常量时间比较）、`dedup.enabled` /
+声明）、`allowed-types` / `allowed-topics`（入站双白名单，语义见 §4.3）、
+`token`（mesh 握手共享密钥，常量时间比较；多节点生产部署必配，
+见 §4.3）、`dedup.enabled` /
 `dedup.capacity`（默认 4096）。无 `keepalive` / `idempotency` 键
 （§2.3、§4.2）。
 

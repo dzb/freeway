@@ -165,7 +165,9 @@ class CloudEventBusTest {
 
     @Test
     void keyedEventsPreserveTheOrderingSubject() throws Exception {
-        nodeB = startB("order.", null);
+        // OrderedEvent is a CLASS-channel event, so node B must allowlist its
+        // type — CLASS delivery is deny-by-default.
+        nodeB = startB("order.", OrderedEvent.class.getName());
         int bPort = nodeB.get(com.jujin.freeway.http.WebServer.class).port();
         nodeA = startA(bPort, "");
         awaitMesh(nodeA, nodeB);

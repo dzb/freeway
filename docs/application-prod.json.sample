@@ -55,6 +55,17 @@
 				"path": "db/migration/",
 				"table": "_migrations"
 			}
+		},
+		"cloud": {
+			"events": {
+				"enabled": false,
+				"peers": "",
+				"subscriptions": "",
+				"allowed-types": "",
+				"allowed-topics": "",
+				"token": "",
+				"dedup": { "enabled": false, "capacity": 4096 }
+			}
 		}
 	}
 }

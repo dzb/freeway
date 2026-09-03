@@ -68,12 +68,22 @@ class PeerHubInboundGateTest {
     }
 
     @Test
-    void emptyAllowlistIsStillAcceptAllOnBothChannels() {
-        // Documented default: an empty list disables the gate. It warns loudly
-        // at wire() time instead of silently tightening under an upgrade.
+    void emptyTypeAllowlistDropsClassChannelByDefault() {
+        // CLASS-channel frames resolve an arbitrary class by name, so an empty
+        // allowlist must be deny-by-default — never "accept any class".
+        Rig rig = rig(List.of(), List.of());
+        rig.hub().receive(frame(EventSink.Channel.CLASS, "com.evil.Gadget"));
+        assertTrue(rig.inbound().isEmpty(),
+            "empty CLASS allowlist must never resolve a class by name");
+    }
+
+    @Test
+    void emptyTopicAllowlistStillAcceptsAnyTopic() {
+        // TOPIC-channel payloads are generic JSON (no class resolution), so an
+        // empty allowlist keeps its documented accept-all semantics.
         Rig rig = rig(List.of(), List.of());
         rig.hub().receive(frame(EventSink.Channel.TOPIC, "other.topic"));
-        assertEquals1(rig.inbound(), "empty allowlist = documented accept-all");
+        assertEquals1(rig.inbound(), "empty topic allowlist = documented accept-all");
     }
 
     @Test

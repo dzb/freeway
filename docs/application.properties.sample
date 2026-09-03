@@ -334,9 +334,13 @@
 # freeway.cloud.events.enabled=false
 # freeway.cloud.events.peers=
 # freeway.cloud.events.subscriptions=
+# CLASS-channel deserialization allowlist (empty = deny all typed events).
 # freeway.cloud.events.allowed-types=
+# TOPIC-channel allowlist (empty = allow any topic).
 # freeway.cloud.events.allowed-topics=
 # Shared secret for mesh handshake (empty = no peer auth).
+# Scenario: multi-node production MUST set it — identical on every node,
+#   injected via FREEWAY_CLOUD_EVENTS_TOKEN; a mismatch closes with WS 1008.
 # freeway.cloud.events.token=
 # Enable event deduplication (opt-in; consumes memory for dedup IDs).
 # freeway.cloud.events.dedup.enabled=false

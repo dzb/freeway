@@ -54,7 +54,7 @@ public final class PeerHub implements WebSocketEndpoint {
      * @param serviceId      logical service id (envelope source)
      * @param instanceId     this node's mesh identity; blank derives one
      * @param subscriptions  CE type/topic prefixes pulled from the mesh
-     * @param allowedTypes   CLASS-channel deserialization allowlist (empty = any)
+     * @param allowedTypes   CLASS-channel deserialization allowlist (empty = deny-by-default)
      * @param allowedTopics  TOPIC-channel allowlist (empty = any)
      * @param token          mesh handshake token (blank = peer auth off)
      */
@@ -98,8 +98,8 @@ public final class PeerHub implements WebSocketEndpoint {
             return; // outbound-only: nothing is accepted from peers
         }
         if (allowedTypes.isEmpty()) {
-            LOG.warn("CloudEventBus accepts CLASS-channel events of ANY type from "
-                + "connected peers — set {} to restrict deserialization",
+            LOG.warn("CloudEventBus has no CLASS-channel type allowlist — CLASS-channel "
+                + "events are dropped (deny-by-default); set {} to accept typed events",
                 com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TYPES);
         }
         if (allowedTopics.isEmpty()) {
@@ -337,8 +337,11 @@ public final class PeerHub implements WebSocketEndpoint {
             }
         }
         if (frame.channel() == com.jujin.freeway.ioc.EventSink.Channel.CLASS) {
-            if (!allowedTypes.isEmpty() && !allowedTypes.contains(frame.type())) {
-                LOG.debug("Type not in allowlist — dropped: {}", frame.type());
+            // CLASS-channel frames deserialize an arbitrary class by name, so
+            // the allowlist is deny-by-default: with no allowlist configured,
+            // no class is ever resolved. Never fall back to accepting any type.
+            if (!allowedTypes.contains(frame.type())) {
+                LOG.debug("Type not allowlisted for CLASS-channel delivery — dropped: {}", frame.type());
                 return;
             }
             try {

@@ -1618,8 +1618,10 @@ public final class UserRpcModule implements ModuleEx {
 ```
 
 Only mappings passed to `RpcEndpoint.of(...)` are reachable over HTTP —
-nothing is auto-exported. Endpoints serve `POST /rpc/{mapping}/{method}`
-with positional arguments as a JSON array.
+nothing is auto-exported. Each call contributes its own route serving
+`POST /rpc/<mapping>/{method}` (the mapping is a path literal, so several
+mappings can be exported side by side), with positional arguments as a JSON
+array. The mapping name is validated when you export it: `[A-Za-z0-9_.]` only.
 
 **Consumer side — three shapes:**
 
@@ -1676,7 +1678,7 @@ freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080
 freeway.cloud.events.subscriptions=order.,user.created
 freeway.cloud.events.allowed-types=com.acme.OrderCreated
 freeway.cloud.events.allowed-topics=order.
-freeway.cloud.events.token=mesh-secret         # blank = no peer auth (warned at startup)
+freeway.cloud.events.token=mesh-secret         # blank = no peer auth (warned); MUST be set in production
 ```
 
 - `peers` — nodes to dial; a registry backend (Nacos) can feed these
@@ -1686,10 +1688,17 @@ freeway.cloud.events.token=mesh-secret         # blank = no peer auth (warned at
   mesh; empty = outbound-only. Prefixes match the event class FQN and the
   `@Topic` value.
 - `allowed-types` / `allowed-topics` — CLASS/TOPIC channel inbound
-  whitelists; empty = allow all (warned at startup).
+  whitelists, with **different empty-list semantics**: `allowed-types` is
+  deny-by-default (empty = every CLASS-channel frame is dropped — there is
+  no fallback to "allow any class"), while an empty `allowed-topics` allows
+  any topic. Both warn at startup when left open.
 - `token` — shared secret every peer must present in the hello frame;
   compared constant-time. Blank (default) disables peer auth — any host
-  that can reach the endpoint may connect.
+  that can reach the endpoint may connect. **Multi-node production
+  deployments must set it**: the value must be identical on every node (a
+  mismatch closes the connection with WS `1008`), injected via
+  `FREEWAY_CLOUD_EVENTS_TOKEN` rather than committed to a config file, and
+  rotated with a rolling restart.
 
 **Publishing is unchanged** — the same `EventBus.publish` fans out locally
 and into the mesh; remote events arrive as `publishInbound` on peers:
