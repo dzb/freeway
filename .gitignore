@@ -42,6 +42,8 @@ _script_*.bat
 .soloncode/
 .agents/
 .claude/
+.reasonix/
+.workbuddy/
 
 # Bench SQLite database
 bench.db
