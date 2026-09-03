@@ -59,9 +59,15 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         String... renderedNames
     ) {
         String token = kind + ":" + rawName;
-        for (String rendered : renderedNames) {
+        for (int i = 0; i < renderedNames.length; i++) {
+            String rendered = renderedNames[i];
             String previous = series.putIfAbsent(rendered, token);
             if (previous != null && !previous.equals(token)) {
+                // A multi-series registration (timer) must not leave its
+                // earlier suffix claims behind when a later one collides.
+                for (int j = 0; j < i; j++) {
+                    series.remove(renderedNames[j], token);
+                }
                 throw new IllegalArgumentException(
                     "Metric name '" + rawName + "' (" + kind + ") renders as the same "
                         + "Prometheus series '" + rendered + "' as the earlier registration '"

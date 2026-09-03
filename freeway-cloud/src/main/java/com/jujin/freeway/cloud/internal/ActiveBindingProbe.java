@@ -4,6 +4,7 @@ import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.ioc.Container;
 
 import java.lang.annotation.Annotation;
+import java.util.Objects;
 
 /**
  * Container-aware probe for the currently selected bindings. Bound by
@@ -16,7 +17,7 @@ public final class ActiveBindingProbe {
     private final Container container;
 
     public ActiveBindingProbe(Container container) {
-        this.container = container;
+        this.container = Objects.requireNonNull(container, "container");
     }
 
     /** True when {@code type}'s selected binding carries {@code marker}. */

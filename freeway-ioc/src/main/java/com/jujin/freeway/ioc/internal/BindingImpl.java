@@ -106,8 +106,8 @@ final class BindingImpl<T> implements Binding<T> {
         return this;
     }
 
-    /** Internal pre-built instance binding used by builtin registration. */
-    BindingImpl<T> instance(T instance) {
+    /** Records a pre-built instance for internal builtin registration. */
+    BindingImpl<T> bindInstance(T instance) {
         requireSingletonScope("instance binding");
         setInstance(instance);
         return this;

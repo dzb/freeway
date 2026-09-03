@@ -162,7 +162,7 @@ public final class ContainerImpl implements Container {
     private <T> void registerBuiltin(Class<T> type, T instance, String id) {
         BindingImpl<T> binding = new BindingImpl<>(this, type);
         binding.id(id);
-        binding.instance(instance);
+        binding.bindInstance(instance);
         binding.addMarkers(Set.of(Builtin.class));
         register(binding);
     }

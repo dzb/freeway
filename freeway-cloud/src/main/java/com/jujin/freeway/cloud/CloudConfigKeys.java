@@ -51,9 +51,9 @@ public final class CloudConfigKeys {
     // Canonical retry/breaker defaults — shared by CloudResilienceModule
     // (config fallbacks) and CloudHttpClientDefault (library fallback when
     // the resilience module is not installed), so the two layers cannot
-    // drift apart. Rate limiting itself defaults to disabled and therefore
-    // uses RateLimiter.UNLIMITED on both paths; RPC_RATE_LIMIT_PER_SECOND_DEFAULT
-    // only feeds CloudResilienceModule when rate limiting is enabled.
+    // drift apart. Rate limiting itself defaults to disabled and uses
+    // RateLimiter.UNLIMITED on both paths; the per-second default below only
+    // feeds CloudResilienceModule when rate limiting is enabled.
     public static final int RPC_RETRY_MAX_ATTEMPTS_DEFAULT    = 3;
     public static final long RPC_RETRY_BACKOFF_BASE_DEFAULT   = 100;
     public static final long RPC_RETRY_BACKOFF_MAX_DEFAULT    = 5000;

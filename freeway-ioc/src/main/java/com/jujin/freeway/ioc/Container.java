@@ -80,11 +80,15 @@ public interface Container extends AutoCloseable {
 
     /**
      * Returns true when the binding that {@link #get(Class)} would resolve
-     * carries every specified marker. Unlike {@link #get(Class, Class[])},
+     * carries every specified marker. Unlike {@code get(type, markers)},
      * this asks about the <em>selected</em> binding (unique or primary), not
      * about whether any marked binding exists — so an extension adapter that
      * overrides a local default with {@code .primary()} makes the local
      * marker query return false without realizing either implementation.
+     *
+     * <p>Custom Container implementations that do not override this method
+     * fail with {@link UnsupportedOperationException} when it is called —
+     * only framework containers can answer accurately.</p>
      *
      * @return false when no binding is registered; throws the same ambiguity
      *         failure {@code get(Class)} would when several bindings exist

@@ -205,5 +205,13 @@ class ObserveTest {
         assertThrows(IllegalArgumentException.class,
             () -> suffixed.counter("lat_count"),
             "timer count-series collisions with a counter must fail fast");
+
+        // A timer registers two suffix series; when the second collides, the
+        // first must not be left behind as a stale ownership claim.
+        MetricsDefault rollback = new MetricsDefault();
+        rollback.counter("foo_seconds_total").increment();
+        assertThrows(IllegalArgumentException.class, () -> rollback.timer("foo"),
+            "timer suffix collision must fail fast");
+        rollback.counter("foo_count").increment(); // must not be blocked by the failed timer
     }
 }
