@@ -4,6 +4,13 @@ package com.jujin.freeway.cloud.resilience;
  * Circuit breaker: sliding failure window + half-open probe. Callers gate on
  * {@link #allowRequest()} before each attempt and report the outcome via
  * {@link #onSuccess()}/{@link #onFailure()}.
+ *
+ * <p><b>Report the outcome from the admitting thread.</b> A half-open probe is
+ * handed to whoever {@link #allowRequest()} let through, so
+ * {@code onSuccess}/{@code onFailure} must run on that same thread — the
+ * framework implementation tracks the admitted probe per thread. Settling it
+ * elsewhere leaves the probe unaccounted and the circuit in HALF_OPEN until the
+ * open window re-arms it.</p>
  */
 public interface CircuitBreaker {
 

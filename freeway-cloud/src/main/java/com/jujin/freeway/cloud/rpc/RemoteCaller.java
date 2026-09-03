@@ -81,8 +81,8 @@ public final class RemoteCaller {
         Class<T> returnType,
         java.time.Duration timeout
     ) throws CloudException {
-        validateSegment(mapping, "mapping");
-        validateSegment(method, "method");
+        RpcPaths.validateSegment(mapping, "mapping");
+        RpcPaths.validateSegment(method, "method");
         List<?> positional = args == null ? List.of() : args;
 
         // Element-wise encoding keeps the wire independent of any envelope:
@@ -192,21 +192,5 @@ public final class RemoteCaller {
             }
         }
         return null;
-    }
-
-    private static void validateSegment(String value, String what) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(what + " must not be blank");
-        }
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            boolean ok = c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
-                || c >= '0' && c <= '9' || c == '_' || c == '.';
-            if (!ok) {
-                throw new IllegalArgumentException(
-                    what + " contains invalid character '" + c
-                        + "' — allowed: [A-Za-z0-9_.]");
-            }
-        }
     }
 }

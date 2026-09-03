@@ -167,9 +167,11 @@ binder.contribute(Route.class)
 ```
 
 - `RpcEndpoint.of(mapping, callBus, codec[, propagateMessage])` 返回
-  `Route.post("/rpc/{mapping}/{method}", ...)`：反查 CallBus
-  （`handles(topic)` 门禁 + 声明前缀匹配）→ `call` → JSON 回写 /
-  2.3 错误映射。
+  `Route.post("/rpc/<mapping>/{method}", ...)`——mapping 以**路径字面量**
+  参与路由，每次导出各占一个节点，因此同进程可并存多个 mapping（早先共用
+  `{mapping}` 模式变量时，第二个导出会在启动期撞 `Duplicate route`）。
+  导出即校验 mapping 名（`[A-Za-z0-9_.]`）；请求侧反查 CallBus
+  （`handles(topic)` 门禁）→ `call` → JSON 回写 / 2.3 错误映射。
 - 只发布**显式列出**的 mapping：不提供"导出全部槽位"的开关（防误暴露，
   呼应 §10 "无 CloudExporter" 的保守立场）。
 - 安全归属传输层已有的 mTLS 配置（`freeway.cloud.rpc.tls.*`）；本文档

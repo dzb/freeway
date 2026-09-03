@@ -65,9 +65,17 @@ class RemoteCallerTest {
             // the same instance RpcEndpoint serves. No lazy-service trap: a
             // fresh bus per module instance is created before bind() runs.
             binderBindTimeBus.register("user", new Handlers());
+            binderBindTimeBus.register("order", new OrderHandlers());
+            // Two exports in one process: each mapping owns its route, so the
+            // second must not collide with the first.
             binder.contribute(com.jujin.freeway.http.route.Route.class)
-                .add("rpc-export", RpcEndpoint.of(
+                .add("rpc-user", RpcEndpoint.of(
                     "user",
+                    binderBindTimeBus,
+                    new JsonCodecDefault()));
+            binder.contribute(com.jujin.freeway.http.route.Route.class)
+                .add("rpc-order", RpcEndpoint.of(
+                    "order",
                     binderBindTimeBus,
                     new JsonCodecDefault()));
         }
@@ -81,6 +89,11 @@ class RemoteCallerTest {
         public int add(int a, int b) { return a + b; }
         public void fire(String label) { }
         public String boom() { throw new BusinessFailure("overdrawn"); }
+    }
+
+    /** Second exported mapping — same bus, different prefix. */
+    public static class OrderHandlers {
+        public String charge(String id) { return "charged:" + id; }
     }
 
     private AppRuntime server;
@@ -173,5 +186,64 @@ class RemoteCallerTest {
             caller.invoke("target", "us er", "greet", List.of(), String.class));
         assertThrows(IllegalArgumentException.class, () ->
             caller.invoke("target", "user", "gree t", List.of(), String.class));
+    }
+
+    @Test
+    void secondExportedMappingIsReachable() {
+        String reply = caller.invoke("target", "order", "charge", List.of("9"), String.class);
+        assertEquals("charged:9", reply);
+    }
+
+    @Test
+    void exportGateStaysPerMappingPrefix() {
+        // order.charge exists, user.charge does not: a sibling's topic must not
+        // become reachable just because it lives on the same bus.
+        CloudException ex = assertThrows(CloudException.class, () ->
+            caller.invoke("target", "user", "charge", List.of("9"), String.class));
+        assertEquals(404, ex.status());
+    }
+
+    @Test
+    void illegalMappingNameFailsAtExportTime() {
+        CallBus bus = new CallBus(new RpcExportModule.CallBusContainerShim());
+        assertThrows(IllegalArgumentException.class,
+            () -> RpcEndpoint.of("us er", bus, new JsonCodecDefault()));
+    }
+
+    @Test
+    void encodedControlCharactersInPathStillYieldNotFound() throws Exception {
+        // Path segments are URL-decoded before dispatch, so the reject reason
+        // arrives here containing CR/LF. Form-encoding the header is what keeps
+        // this a 404 instead of the HTTP layer refusing the value as a 500.
+        String raw = postRaw("/rpc/user/greet%0d%0aX-Injected%3a%20pwned", "[]");
+        assertTrue(raw.startsWith("HTTP/1.1 404"), "status must survive: " + firstLine(raw));
+        assertFalse(raw.contains("\r\nX-Injected: pwned\r\n"), "no response header injection");
+        assertTrue(raw.contains("X-RPC-Reject-Reason: no+handler+for+topic"),
+            "reason must still reach the caller: " + firstLine(raw));
+        assertTrue(raw.contains("\"error\""), "body stays JSON: " + firstLine(raw));
+    }
+
+    /** Drives the endpoint directly — the consumer validates segments and
+     *  cannot express a malformed path. */
+    private String postRaw(String path, String body) throws Exception {
+        int port = server.get(com.jujin.freeway.http.WebServer.class).port();
+        String request = "POST " + path + " HTTP/1.1\r\n"
+            + "Host: t\r\n"
+            + "X-RPC-Version: 1\r\n"
+            + "Content-Type: application/json\r\n"
+            + "Content-Length: " + body.length() + "\r\n"
+            + "Connection: close\r\n\r\n" + body;
+        try (var socket = new java.net.Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(5000);
+            socket.getOutputStream().write(
+                request.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+            socket.shutdownOutput();
+            return new String(socket.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.ISO_8859_1);
+        }
+    }
+
+    private static String firstLine(String response) {
+        return response.substring(0, Math.min(response.indexOf('\r'), response.length()));
     }
 }

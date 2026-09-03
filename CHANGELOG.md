@@ -5,6 +5,93 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **CLASS 通道入站默认拒绝（freeway-cloud，安全，破坏性）** — `PeerHub.receive()`
+  的 CLASS 通道 deserialization 改为 deny-by-default：`allowed-types` 未配置时
+  一律丢弃 CLASS 事件，不再回退到"接受任意类"。此前空 allowlist 语义为"放行任意
+  类"，配合未认证端点构成任意类加载 + 反射反序列化面；TOPIC 通道（通用 JSON、
+  无类解析）保留"空 = 全放行"的既有文档语义不变。`allowed-types` 为空的启动告警
+  文案同步更新为"CLASS 事件将被丢弃"。E2E 测试 `keyedEventsPreserveTheOrderingSubject`
+  相应改为显式白名单其类型。
+- **私有内部类更名（freeway-cloud，无 API 影响）** — `MetricsDefault` 的两个
+  私有内部类 `DefaultCounter` / `DefaultTimer` 更名 `CounterImpl` / `TimerImpl`。
+  二者是全仓仅有的 `DefaultX` 前缀命名，与 CLAUDE.md「`DefaultX` is avoided —
+  `XDefault` keeps the interface name dominant」约定相悖；新名字符合
+  「`Impl` 用于无趣的具体实现」且与其实现性质（对 `LongAdder`/`TimerData`
+  的薄委托）一致。类为 `private`，外部不可见，无兼容性影响。
+
+### Removed
+
+- **清理死依赖声明（根 `pom.xml`）** — 移除 `<dependencyManagement>` 中
+  `freeway-starter` / `freeway-starter-boot` / `freeway-starter-web` /
+  `freeway-starter-db` 四个条目。这些 artifact 在 `<modules>` 中无对应模块、
+  目录不存在、全仓无任何代码或模块引用（仅有 pom 自身声明），属早期规划的
+  残留。移除后 `dependencyManagement` 中的 7 个内部模块与 `<modules>` 完全
+  一一对应。对已发布 artifact 的坐标解析无影响（从未发布过这些 artifact）。
+
+### Fixed
+
+- **一个进程可导出多个 RPC mapping（freeway-cloud）** — `RpcEndpoint.of()` 此前恒
+  返回同一路由模式 `Route.post("/rpc/{mapping}/{method}")`，第二次导出与第一次争夺
+  同一 trie 节点，启动即 `IllegalStateException: Duplicate route detected: POST
+  /rpc/{mapping}/{method}`，与类 javadoc「each mapping you hand to `of()` becomes
+  reachable」相悖，而报错信息完全不指向真因。现把 mapping 编入路径字面量
+  （`/rpc/<mapping>/{method}`），并在导出时校验 mapping 名（复用
+  `RpcPaths.validateSegment`，非法名当场失败而非请求期静默遮蔽兄弟 mapping）。
+  对外 URL 形状与调用侧代码均不变。新增回归：两 mapping 并存可达、跨前缀仍 404、
+  非法名导出即抛。
+- **RPC 拒绝详情不再把 4xx 放大成 500** — `X-RPC-Reject-Reason` 此前直写原文，而
+  `method` 段经路径 URL 解码可以携带 CR/LF；freeway-http 拒绝头值中的控制字符，于是
+  `POST /rpc/user/greet%0d%0aX-Injected%3a...` 得到 500 加一行 SEVERE 日志，精心
+  区分的 400/404 契约被替换成服务端故障。现按 wire 文档既有约定对该头 form-encode
+  （与 `X-RPC-Exception` / `X-RPC-Message` 一致，消费侧本就解码），错误体改由
+  `JsonCodec` 序列化并删除手写 `escape()`（只处理 `\\` 与 `"`，控制字符会产出非法
+  JSON）。CRLF 响应头注入经实证本就被 HTTP 层拦下，修的是被它顺带毁掉的状态码。
+- **网格入站分片文本帧不再丢事件** — client 侧 `PeerConnector` 用的是 JDK
+  `WebSocket.Listener`，按**帧**回调；此前非末帧直接忽略，后续 CONTINUATION 帧单独
+  解析失败还会 `abort()` 连接。对端服务端在 4MiB 以上即分片发送（入站上限 16MB），
+  因此 4–16MiB 的事件必然丢帧并反复断链，而服务端入站经引擎已合并、两侧语义不对称。
+  新增 `TextMessageAssembler` 负责重组，并按与服务端同源的上限（16MiB）拒绝超长
+  消息——"对端永不置 FIN"不能换成无界内存。
+- **`callAsync` 与 `close()` 的登记竞态** — future 此前在任务提交**之后**才加入
+  `inFlight`；若 `close()` 恰在两步之间完成遍历，被 `shutdownNow` 丢弃的任务就没人
+  结算。现改为在 `close()` 的同一监视器下"先登记再提交"，关闭窗口内的调用同步抛
+  `IllegalStateException`（与 `requireUsable` 同型）。
+- **注册钩子停止期不再掩盖真因** — `RegistryLifecycleHook.stop()` 在 try 之外执行
+  `container.get(ServiceRegistry.class)`，容器半拆时该查找抛出的异常会顶替正在发生
+  的失败。现按 best-effort 处理：注册表不可得即一条 WARN 加清理跟踪实例，租约自然
+  过期。
+
+### Documentation
+
+- **事件网格入站安全与生产 token 配置** — `docs/freeway-cloud-events-design.md`
+  新增 §4.3「入站门禁：token 与双白名单（生产部署必读）」：厘清三道入站门
+  （`token` 对等认证 / `allowed-types` CLASS 反序列化 / `allowed-topics`
+  TOPIC 注入）各自不同的空值语义，并给出多节点生产部署配置 token 的四条
+  约束（全节点取值一致、经 `FREEWAY_CLOUD_EVENTS_TOKEN` 注入而非写进配置
+  文件、常量时间比较防探测、轮换需滚动重启）；同时记录"不内置默认 token"
+  的决策理由——硬编码默认值等于公开密码、制造安全错觉；随机默认值会让
+  mesh 因 token 不一致而直接断连。
+- **修正过期文档描述** — `DEVELOPER-GUIDE.md` 与 `freeway-config.md` 中
+  "空 allowlist = 放行全部"的表述已随上述行为变更同步：CLASS 通道为
+  deny-by-default，仅 TOPIC 通道保留"空 = 放行全部"。生产样例配置
+  `application-prod.properties.sample` / `.json.sample` 补上 events 段与
+  token 注入提示。
+- **`secret.file` / `secret.keys` 的真实生效方式** — 这两个键直读 JVM 系统属性
+  （密钥提供方参与符号解析，不能经该链读取自身配置），因此写进 `application.*`
+  或 `FREEWAY_*` 环境变量**静默无效**，而白名单失效正好意味着"任意符号名先查环境
+  变量"的锋利默认继续生效。`docs/freeway-config.md` 的密钥表与环境变量映射小节
+  补上"仅 `-D`"标注与例外说明。
+- **熔断结果上报的线程亲和契约** — `CircuitBreaker` javadoc 写明：半开探针由
+  `allowRequest()` 的调用线程持有，`onSuccess` / `onFailure` 必须同线程结算，
+  否则探针不计账、电路停在 HALF_OPEN 直到 open window 重新 arm。
+- **RPC 导出面文档同步** — `DEVELOPER-GUIDE.md` 与
+  `docs/freeway-remote-callbus-design.md` §3.2 改为描述每次导出各自的
+  `/rpc/<mapping>/{method}` 路由（多 mapping 并存）与导出期 mapping 名校验。
+
 ## [1.4.0] — 2026-09-02
 
 ### Added

@@ -179,25 +179,38 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         // The work itself runs on a virtual thread, so blocking HttpClient joins
         // do not pin common-pool platform threads.
         InvocationContext ctx = InvocationContext.current().orElse(null);
-        java.util.concurrent.CompletableFuture<CloudResponse> future;
+        // A task still queued when close() shuts the executor down is dropped
+        // and would never complete on its own — so the future is registered
+        // under close()'s monitor BEFORE the work is submitted, mirroring
+        // CallBus's "no caller waits forever on shutdown".
+        java.util.concurrent.CompletableFuture<CloudResponse> future =
+            new java.util.concurrent.CompletableFuture<>();
+        synchronized (this) {
+            if (closed) {
+                throw new IllegalStateException("CloudHttpClient is closed");
+            }
+            inFlight.add(future);
+        }
+        future.whenComplete((response, error) -> inFlight.remove(future));
+        Runnable work = () -> {
+            try {
+                future.complete(ctx == null
+                    ? orchestrate(serviceId, request, true, deadlineNanos)
+                    : InvocationContext.runWith(ctx,
+                        () -> orchestrate(serviceId, request, true, deadlineNanos)));
+            } catch (Throwable failure) {
+                future.completeExceptionally(failure);
+            }
+        };
         try {
-            future = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                if (ctx == null) {
-                    return orchestrate(serviceId, request, true, deadlineNanos);
-                }
-                return InvocationContext.runWith(ctx,
-                    () -> orchestrate(serviceId, request, true, deadlineNanos));
-            }, asyncExecutor);
+            asyncExecutor.execute(work);
         } catch (java.util.concurrent.RejectedExecutionException rejected) {
-            // close() won the race — fail with the same type requireUsable
-            // uses instead of leaking a raw RejectedExecutionException.
+            // close() won the race after registration — it settles what it
+            // already saw; fail here with the type requireUsable uses instead
+            // of leaking a raw RejectedExecutionException.
+            inFlight.remove(future);
             throw new IllegalStateException("CloudHttpClient is closed", rejected);
         }
-        // A task still queued when close() shuts the executor down is dropped
-        // and would never complete on its own — track it so close() settles
-        // it, mirroring CallBus's "no caller waits forever on shutdown".
-        inFlight.add(future);
-        future.whenComplete((response, error) -> inFlight.remove(future));
         return future;
     }
 

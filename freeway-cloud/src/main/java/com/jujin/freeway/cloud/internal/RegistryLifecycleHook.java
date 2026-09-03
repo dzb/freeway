@@ -69,7 +69,17 @@ public final class RegistryLifecycleHook implements RuntimeHook {
             s.shutdownNow();
             scheduler = null;
         }
-        ServiceRegistry registry = container.get(ServiceRegistry.class);
+        ServiceRegistry registry;
+        try {
+            registry = container.get(ServiceRegistry.class);
+        } catch (Exception ex) {
+            // The container is already dismantling around us: a missing
+            // registry is not worth failing the shutdown over — the lease
+            // expires on its own.
+            LOG.warn("Deregistration skipped: {}", ex.toString());
+            registered.clear();
+            return;
+        }
         for (ServiceInstance instance : registered) {
             try {
                 registry.unregister(instance);

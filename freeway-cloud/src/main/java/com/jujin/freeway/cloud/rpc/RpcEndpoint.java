@@ -10,17 +10,18 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.net.URLDecoder;
+import java.util.Map;
 
 /**
  * Server side of the remote-CallBus bridge: exposes the container's
- * registered CallBus mappings as {@code POST /rpc/{mapping}/{method}}
- * endpoints. Reuses the local bus for dispatch — inside the serving JVM a
- * remote call behaves exactly like a local one, including in-transaction
- * semantics.
+ * registered CallBus mappings over {@code POST /rpc/<mapping>/{method}}.
+ * Reuses the local bus for dispatch — inside the serving JVM a remote call
+ * behaves exactly like a local one, including in-transaction semantics.
  *
- * <p>Export is <b>explicit</b>: each mapping you hand to {@link #of} becomes
- * reachable; nothing is auto-discovered (design doc §3.2 — no CloudExporter).</p>
+ * <p>Export is <b>explicit</b>: each mapping you hand to {@link #of} contributes
+ * its own route and becomes reachable; nothing is auto-discovered (design doc
+ * §3.2 — no CloudExporter). The mapping is baked into the route as a path
+ * literal, so one process can export as many mappings as it has handlers for.</p>
  */
 public final class RpcEndpoint {
 
@@ -60,11 +61,15 @@ public final class RpcEndpoint {
      * unless you opt in on a mesh you control end to end.
      *
      * @param propagateMessage send the handler's message to the caller
+     * @throws IllegalArgumentException mapping is blank or holds a character
+     *         outside {@code [A-Za-z0-9_.]} — it names a path segment, so a
+     *         bad value fails the wiring instead of silently shadowing a
+     *         sibling mapping at request time
      */
     public static Route of(String mapping, CallBus callBus, JsonCodec codec,
                            boolean propagateMessage) {
         RpcEndpoint endpoint = new RpcEndpoint(mapping, callBus, codec, propagateMessage);
-        return Route.post("/rpc/{mapping}/{method}", endpoint::serve);
+        return Route.post(RpcPaths.routePattern(mapping), endpoint::serve);
     }
 
     private void serve(HttpContext ctx) throws IOException {
@@ -73,12 +78,11 @@ public final class RpcEndpoint {
             reject(ctx, 400, "unsupported rpc version: " + rpcVersion);
             return;
         }
-        String mappingPath = ctx.pathVar("mapping").orElse("");
         String method = ctx.pathVar("method").orElse("");
         String topic = mapping + "." + method;
-        // The declared prefix gates exposure; a request for a sibling mapping
-        // through our path must not be served even if that topic exists locally.
-        if (!mapping.equals(mappingPath) || !callBus.handles(topic)) {
+        // The mapping is a route literal, so only topics under our own prefix
+        // can reach this handler; the bus decides what is actually exported.
+        if (!callBus.handles(topic)) {
             reject(ctx, 404, "no handler for topic " + topic);
             return;
         }
@@ -135,21 +139,31 @@ public final class RpcEndpoint {
             : "remote handler failed";
         ctx.setStatus(400);
         ctx.setHeader("Content-Type", "application/json");
-        ctx.setHeader(RemoteCaller.EXCEPTION_CLASS_HEADER,
-            java.net.URLEncoder.encode(className, StandardCharsets.UTF_8));
-        ctx.setHeader(RemoteCaller.EXCEPTION_MESSAGE_HEADER,
-            java.net.URLEncoder.encode(message, StandardCharsets.UTF_8));
-        ctx.send(400, "{\"error\":\"" + escape(className) + "\"}");
+        ctx.setHeader(RemoteCaller.EXCEPTION_CLASS_HEADER, headerText(className));
+        ctx.setHeader(RemoteCaller.EXCEPTION_MESSAGE_HEADER, headerText(message));
+        ctx.send(400, errorBody(className));
     }
 
     private void reject(HttpContext ctx, int status, String message) throws IOException {
         ctx.setStatus(status);
         ctx.setHeader("Content-Type", "application/json");
-        ctx.setHeader("X-RPC-Reject-Reason", message);
-        ctx.send(status, "{\"error\":\"" + escape(message) + "\"}");
+        ctx.setHeader("X-RPC-Reject-Reason", headerText(message));
+        ctx.send(status, errorBody(message));
     }
 
-    private static String escape(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    /**
+     * Detail text is form-encoded on the wire. It routinely carries control
+     * characters — a decoded path segment, a handler message with a stack
+     * trace — and the HTTP layer refuses CTLs in a header value, which would
+     * replace this careful 4xx with an unhandled 500.
+     */
+    private static String headerText(String value) {
+        return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    /** Bodies go through the codec: an invalid JSON error document is a worse
+     *  failure than the one it reports. */
+    private String errorBody(String message) {
+        return codec.toJson(Map.of("error", message));
     }
 }

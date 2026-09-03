@@ -37,6 +37,10 @@ public final class PeerConnector implements AutoCloseable {
      *  pin a half-open connection forever — abort and let the dial loop
      *  retry with backoff. */
     private static final Duration HANDSHAKE_TIMEOUT = Duration.ofSeconds(10);
+    /** Mirrors the server side's inbound message limit
+     *  ({@code WebSocket.MAX_MESSAGE_SIZE}): fragment reassembly must not turn
+     *  a peer that never sets FIN into unbounded memory. */
+    private static final int MAX_INBOUND_MESSAGE = 16 * 1024 * 1024;
 
     private final HttpClient http;
     private final PeerHub hub;
@@ -301,13 +305,24 @@ public final class PeerConnector implements AutoCloseable {
             webSocket.request(1);
         }
 
+        /** Reassembles peer messages that arrive fragmented (see the type). */
+        private final TextMessageAssembler inbound = new TextMessageAssembler(MAX_INBOUND_MESSAGE);
+
         @Override
         public java.util.concurrent.CompletionStage<?> onText(
             WebSocket webSocket, CharSequence data, boolean last) {
-            String text = data.toString();
-            if (!last) {
-                webSocket.request(1);
-                return null; // v1 frames are single-frame; partial frames ignored
+            String text;
+            try {
+                text = inbound.accept(data, last);
+            } catch (RuntimeException tooBig) {
+                LOG.warn("Inbound message from peer {} rejected — aborting: {}",
+                    peer, tooBig.getMessage());
+                abort();
+                return null;
+            }
+            if (text == null) {
+                webSocket.request(1); // more fragments due
+                return null;
             }
             try {
                 var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(text);
