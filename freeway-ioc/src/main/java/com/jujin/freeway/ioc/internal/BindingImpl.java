@@ -106,11 +106,11 @@ final class BindingImpl<T> implements Binding<T> {
         return this;
     }
 
-    /** Records a pre-built instance for internal builtin registration. */
-    BindingImpl<T> bindInstance(T instance) {
+    /** Assigns the pre-built instance target. Registration happens later,
+     *  when the container registers this binding. */
+    void prebuiltInstance(T instance) {
         requireSingletonScope("instance binding");
         setInstance(instance);
-        return this;
     }
 
     @Override
