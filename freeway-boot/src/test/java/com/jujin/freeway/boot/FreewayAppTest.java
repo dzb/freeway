@@ -69,9 +69,9 @@ class FreewayAppTest {
             assertEquals("1.0.0", symbolSource.resolve(APP_VERSION_KEY));
             assertEquals("dev.localhost", symbolSource.resolve(SERVER_HOST_KEY));
             assertEquals(List.of("dev"), app.config().profiles());
-            assertEquals("dev", app.config().asMap().get("freeway.profile"));
-            assertEquals("Overridden", app.config().asMap().get(APP_NAME_KEY));
-            assertEquals("9191", app.config().asMap().get(SERVER_PORT_KEY));
+            assertEquals("dev", app.config().snapshot().get("freeway.profile"));
+            assertEquals("Overridden", app.config().snapshot().get(APP_NAME_KEY));
+            assertEquals("9191", app.config().snapshot().get(SERVER_PORT_KEY));
 
             Greeter greeter = app.get(Greeter.class);
             assertEquals("Hello, World!", greeter.greet("World"));
@@ -229,7 +229,7 @@ class FreewayAppTest {
                 ValueHolder holder = app.get(ValueHolder.class);
                 assertEquals("7070", holder.port,
                     "@Value must honor the CLI argument over the JVM system property");
-                assertEquals("7070", app.config().asMap().get(SERVER_PORT_KEY));
+                assertEquals("7070", app.config().snapshot().get(SERVER_PORT_KEY));
             } finally {
                 app.close();
             }
@@ -343,7 +343,7 @@ class FreewayAppTest {
                 Map.of("custom.key", "custom-value"), List.of()))
             .start();
         try {
-            assertEquals("custom-value", app.config().asMap().get("custom.key"));
+            assertEquals("custom-value", app.config().snapshot().get("custom.key"));
         } finally {
             app.close();
         }

@@ -392,7 +392,7 @@ class ConfigLoaderDefaultTest {
         // config().get("freeway.profile") must agree.
         AppConfig config = new ConfigLoaderDefault().load(loader, "--profile=dev");
         assertEquals(List.of("dev"), config.profiles());
-        assertEquals("dev", config.asMap().get("freeway.profile"),
+        assertEquals("dev", config.snapshot().get("freeway.profile"),
             "config().get(\"freeway.profile\") must agree with config().profiles()");
     }
 

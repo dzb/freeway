@@ -18,10 +18,10 @@ import java.util.Map;
  * the resolved value ({@code spec.parse(symbols.resolve(spec.key(), null))}).
  *
  * <p>What this interface owns instead: {@link #profiles()} (boot-level
- * lifecycle metadata the chain cannot know), {@link #asMap()} (the cascade
+ * lifecycle metadata the chain cannot know), {@link #snapshot()} (the cascade
  * snapshot — the chain cannot enumerate keys, and secret-backed values must
  * never leak into a map; treat the map as the file-tier picture),
- * {@link #symbolProviders()} (how the cascade feeds the chain) and
+ * {@link #providers()} (how the cascade feeds the chain) and
  * {@link #close()} (stops the hot-reload watcher).
  */
 public interface AppConfig {
@@ -35,7 +35,7 @@ public interface AppConfig {
      * the returned map are not supported and modifying the source after this
      * call must not affect the returned map.
      */
-    Map<String, String> asMap();
+    Map<String, String> snapshot();
 
     /**
      * The symbol sources this config contributes to the container, with
@@ -48,11 +48,11 @@ public interface AppConfig {
      * (cli → env → files), which is what lets module sources (e.g. the
      * cloud secret store) slot in between tiers by declaring their own order.
      */
-    default List<SymbolProvider> symbolProviders() {
+    default List<SymbolProvider> providers() {
         SymbolProvider merged = new SymbolProvider() {
             @Override
             public String lookup(String name) {
-                return asMap().get(name);
+                return snapshot().get(name);
             }
 
             @Override

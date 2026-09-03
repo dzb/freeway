@@ -25,7 +25,7 @@ public final class BootConfigModule implements ModuleEx {
         // The config declares its own symbol sources with their orders —
         // precedence comes from the declaration, never from module install
         // order, and a hot-reloading config's sources read live snapshots.
-        for (SymbolProvider provider : config.symbolProviders()) {
+        for (SymbolProvider provider : config.providers()) {
             binder.contribute(SymbolProvider.class).add(provider);
         }
         binder.contribute(RuntimeHook.class)

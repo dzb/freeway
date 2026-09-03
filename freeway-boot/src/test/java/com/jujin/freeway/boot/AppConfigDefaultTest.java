@@ -36,14 +36,14 @@ class AppConfigDefaultTest {
 
         AppConfig config = new AppConfigDefault(input, List.of());
 
-        assertEquals("value", config.asMap().get("good"));
-        assertFalse(config.asMap().containsKey("null-value"));
+        assertEquals("value", config.snapshot().get("good"));
+        assertFalse(config.snapshot().containsKey("null-value"));
     }
 
     @Test
     void nullValuesAndProfilesAreTolerated() {
         AppConfig config = new AppConfigDefault(null, null);
-        assertTrue(config.asMap().isEmpty());
+        assertTrue(config.snapshot().isEmpty());
         assertTrue(config.profiles().isEmpty());
     }
 
@@ -74,7 +74,7 @@ class AppConfigDefaultTest {
             new LinkedHashMap<>(), List.of());
         IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
             IllegalArgumentException.class,
-            () -> password.parse(absent.asMap().get("db.password")));
+            () -> password.parse(absent.snapshot().get("db.password")));
         org.junit.jupiter.api.Assertions.assertTrue(
             ex.getMessage().contains("Missing required") && ex.getMessage().contains("db.password"),
             "got: " + ex.getMessage());
@@ -83,12 +83,12 @@ class AppConfigDefaultTest {
             new LinkedHashMap<>(Map.of("db.password", " ")), List.of());
         org.junit.jupiter.api.Assertions.assertThrows(
             IllegalArgumentException.class,
-            () -> password.parse(blank.asMap().get("db.password")),
+            () -> password.parse(blank.snapshot().get("db.password")),
             "a blank required value is equally missing");
 
         AppConfig present = new AppConfigDefault(
             new LinkedHashMap<>(Map.of("db.password", "s3cret")), List.of());
-        assertEquals("s3cret", password.parse(present.asMap().get("db.password")));
+        assertEquals("s3cret", password.parse(present.snapshot().get("db.password")));
     }
 
     // ==================== symbol sources (tiered declaration) ====================
@@ -104,7 +104,7 @@ class AppConfigDefaultTest {
 
     private static void assertTieredSources(AppConfigDefault config) {
         try {
-            List<SymbolProvider> providers = config.symbolProviders();
+            List<SymbolProvider> providers = config.providers();
             assertEquals(
                 List.of(SymbolProvider.TIER_CLI, SymbolProvider.TIER_ENV, SymbolProvider.TIER_FILES),
                 providers.stream().map(SymbolProvider::order).toList(),
@@ -118,7 +118,7 @@ class AppConfigDefaultTest {
     void mergedValuesSitOnTheFileTier() {
         AppConfigDefault config = new AppConfigDefault(Map.of("k", "from-file"), List.of());
         try {
-            SymbolProvider files = config.symbolProviders().get(2);
+            SymbolProvider files = config.providers().get(2);
             assertEquals("from-file", files.lookup("k"),
                 "an undifferentiated config behaves like the file tier — env/CLI "
                     + "and module sources (e.g. secrets) outrank it");
@@ -150,7 +150,7 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=from-file\n");
         AppConfig config = load(file);
         try {
-            assertEquals("from-file", config.asMap().get(HOT_KEY),
+            assertEquals("from-file", config.snapshot().get(HOT_KEY),
                 "a freeway.config.file override must merge into the file tier");
         } finally {
             config.close();
@@ -166,9 +166,9 @@ class AppConfigDefaultTest {
             "{\"" + HOT_KEY + "\": \"from-json\", \"nested\": {\"key\": \"flat\"}}");
         AppConfig config = load(file);
         try {
-            assertEquals("from-json", config.asMap().get(HOT_KEY),
+            assertEquals("from-json", config.snapshot().get(HOT_KEY),
                 "a .json override must parse as JSON, not properties");
-            assertEquals("flat", config.asMap().get("nested.key"),
+            assertEquals("flat", config.snapshot().get("nested.key"),
                 "nested JSON objects flatten to dotted keys");
         } finally {
             config.close();
@@ -181,9 +181,9 @@ class AppConfigDefaultTest {
             "{\"" + HOT_KEY + "\": \"v1\"}");
         AppConfigDefault config = (AppConfigDefault) load(file);
         try {
-            assertEquals("v1", config.asMap().get(HOT_KEY));
+            assertEquals("v1", config.snapshot().get(HOT_KEY));
             Files.writeString(file, "{\"" + HOT_KEY + "\": \"v2\"}");
-            await(() -> "v2".equals(config.asMap().get(HOT_KEY)),
+            await(() -> "v2".equals(config.snapshot().get(HOT_KEY)),
                 "a modified JSON override must re-read as JSON, not properties");
         } finally {
             config.close();
@@ -195,13 +195,13 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
         AppConfigDefault config = (AppConfigDefault) load(file);
         try {
-            assertEquals("v1", config.asMap().get(HOT_KEY));
+            assertEquals("v1", config.snapshot().get(HOT_KEY));
             Files.writeString(file, HOT_KEY + "=a-longer-v2\n");
-            await(() -> "a-longer-v2".equals(config.asMap().get(HOT_KEY)),
+            await(() -> "a-longer-v2".equals(config.snapshot().get(HOT_KEY)),
                 "a modified override file must be re-read without a restart");
             // The live source: the file-tier SymbolProvider reads the current
             // snapshot on every lookup — hot reload with no push API.
-            SymbolProvider files = config.symbolProviders().get(2);
+            SymbolProvider files = config.providers().get(2);
             assertEquals("a-longer-v2", files.lookup(HOT_KEY),
                 "the files source must expose the current snapshot, not a stale one");
         } finally {
@@ -214,9 +214,9 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
         AppConfigDefault config = (AppConfigDefault) load(file);
         try {
-            assertEquals("v1", config.asMap().get(HOT_KEY));
+            assertEquals("v1", config.snapshot().get(HOT_KEY));
             Files.delete(file);
-            await(() -> !config.asMap().containsKey(HOT_KEY),
+            await(() -> !config.snapshot().containsKey(HOT_KEY),
                 "a deleted override must drop its values (no baseline for this key)");
         } finally {
             config.close();

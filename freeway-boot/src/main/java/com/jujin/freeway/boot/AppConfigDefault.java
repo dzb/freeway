@@ -131,7 +131,7 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
     }
 
     @Override
-    public Map<String, String> asMap() {
+    public Map<String, String> snapshot() {
         return Map.copyOf(merged);
     }
 
@@ -141,7 +141,7 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
     }
 
     @Override
-    public List<SymbolProvider> symbolProviders() {
+    public List<SymbolProvider> providers() {
         return List.of(
             // One source per tier with a declared order; the files source
             // re-reads the live snapshot on every lookup — that is how hot
