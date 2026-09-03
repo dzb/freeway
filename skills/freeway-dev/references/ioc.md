@@ -6,7 +6,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 - `Container` - `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`
 - `Binder` - `bind(Class)`, `contribute(Class)`, `install(ModuleEx)`; `ModuleEx` is the module entry-point type
-- `Binding<T>` - `to(Class)`, `to(instance)`, `to(provider)`, `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`
+- `Binding<T>` - `to(Class)`, `to(c -> ...)` (provider), `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`; there is no `to(instance)`
 - `ModuleEx` - module entry-point type: `bind(Binder)`
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`
 - `Scoping` - `within(...)`
@@ -28,6 +28,38 @@ Freeway.create(binder -> {
     binder.bind(PaymentGateway.class).to(PayPalGateway.class).id("paypal");
 });
 ```
+
+## Binding Modes
+
+The DSL has exactly two binding modes:
+
+```java
+// 1. Class: the container selects an @Inject constructor and builds the service.
+binder.bind(Greeter.class).to(GreeterImpl.class);
+
+// 2. Provider: explicit construction with Container access.
+binder.bind(Cache.class).to(c -> new Cache(c.get(Config.class), ttl));
+```
+
+There is deliberately no `to(instance)`. Bind a pre-created or external object by returning it
+from a singleton provider:
+
+```java
+Config config = new Config(...);
+binder.bind(Config.class).to(c -> config); // singleton provider returns the same instance
+```
+
+Prefer `.to(Class)` whenever constructor injection is sufficient. Use the provider form when:
+
+- construction mixes services with plain values or runtime config (`PoolConfig`, `HttpConfig`, `KafkaConfig`);
+- construction must branch on configuration or select between constructors (e.g. SSL enabled/disabled);
+- the object graph aggregates `List`/`Map` contributions or extension data (`RouteIndex`, `WebServer`);
+- the instance already exists and must not be rebuilt (`AppConfig`, a shared `PeerHub`);
+- realization must be deferred until after all modules are composed (lazy builtins).
+
+The provider owns only *how the object is built*. Scope and lifecycle still apply: a singleton
+provider runs once per container, and the produced object still receives field injection,
+`@PostConstruct`, and `@PreDestroy`.
 
 ```java
 binder.contribute(Route.class)
