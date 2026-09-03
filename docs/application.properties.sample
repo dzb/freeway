@@ -1,9 +1,9 @@
 ##################################################################
-#  Freeway Configuration Reference
+#  Freeway 配置参考
 #  Copy to src/main/resources/application.properties
 #  or application-{profile}.properties for profile-specific values.
 #
-#  Resolution order (lowest → highest priority):
+#  Resolution order (lowest -> highest priority):
 #    1. application.properties
 #    2. application.json
 #    3. application-{profile}.properties
@@ -13,6 +13,16 @@
 #
 #  Activate profile: --freeway.profile=dev
 #  or env: FREEWAY_PROFILE=dev
+#
+#  Custom env prefix: -Dfreeway.env.prefix=APP_
+#    then APP_SERVER_PORT -> server.port (passthrough)
+#
+#  ========================================
+#  必填配置（启动时必须设置，否则报错）:
+#    - freeway.db.url          (JDBC 连接 URL)
+#    - freeway.db.username     (数据库用户名)
+#    - freeway.http.ssl.enabled + 证书  (生产环境 HTTPS)
+#  ========================================
 ##################################################################
 
 
@@ -20,7 +30,16 @@
 #  Framework / Boot
 # ================================
 
-# Env var prefix override — JVM system property only
+# Activate profile (comma-separated).
+# Scenario: dev for local, prod for production, test for CI.
+# freeway.profile=
+
+# Additional config files (JVM system property only, comma-separated).
+# -Dfreeway.config.file=/path/to/extra.properties
+
+# Environment variable prefix (JVM system property only).
+# Default FREEWAY_ maps FREEWAY_HTTP_PORT -> freeway.http.port.
+# Set to APP_ for passthrough: APP_SERVER_PORT -> server.port.
 # freeway.env.prefix=FREEWAY_
 
 
@@ -30,7 +49,15 @@
 # Logging config lives in freeway-log.properties (classpath root).
 # System properties (-D) and FREEWAY_ env vars override file values.
 # See docs/freeway-log.properties.reference for all supported keys.
+# See docs/freeway-config.md for JSON-style configuration.
 # com.myapp.audit.level=FINE
+
+# MDC (Mapped Diagnostic Context) — 每线程级上下文键值对，用于分布式链路追踪和请求关联。
+# 日志输出中 MDC 键值以 [key=value] 形式显示在 logger 名之后。
+# 默认显示 code, market, diagId 三个键（优先级最高），其余 MDC 键按字母序排列。
+# 典型场景：在请求入口将 traceId/requestId 放入 MDC，后续所有日志自动携带该上下文。
+# freeway.log.mdc=true
+# freeway.log.mdc.priority=code,market,diagId
 
 
 # ================================
@@ -41,37 +68,50 @@
 # Default: FreewayHttpEngine (built-in, high-performance HTTP/2 + WebSocket).
 # For Undertow: add UndertowModule to launcher — container auto-selects it.
 
-# Server bind
+# Server bind address.
+# Scenario: 127.0.0.1 for local dev, 0.0.0.0 for production behind LB.
 # freeway.http.server.host=127.0.0.1
+
+# Listen port. 0 = system-assigned ephemeral port.
 # freeway.http.server.port=8080
+
+# Accept backlog (0 = OS default).
 # freeway.http.server.backlog=0
 
-# Shutdown grace period for in-flight requests (human-friendly duration).
+# Grace period for in-flight requests on shutdown.
+# Scenario: 2s for fast local restart, 30s for production rolling deploys.
 # freeway.http.server.shutdown-grace=2s
 
 # Socket read idle timeout (0 disables); covers request reads, TLS
 # handshakes, HTTP/2 frames, and keep-alive waits.
+# Scenario: 30s for most APIs; increase for file uploads / SSE.
 # freeway.http.server.read-timeout=30s
 
 # Per-socket-write timeout (0 disables): a write blocked longer than this
 # (peer stopped reading / TCP window full) closes the connection.
+# Scenario: 30s default; increase for large response bodies.
 # freeway.http.server.write-timeout=30s
 
 # Maximum concurrent connections (0 = unlimited); excess connections are
 # rejected at accept time.
+# Scenario: 0 for unlimited; set to cap connections under attack.
 # freeway.http.server.max-connections=0
 
 # Desired socket receive/send buffer sizes in bytes (0 = OS default).
+# Scenario: increase for large file uploads/downloads.
 # freeway.http.server.receive-buffer-size=0
 # freeway.http.server.send-buffer-size=0
 
 # gzip response compression (client opt-in via Accept-Encoding; only
 # compressible content types and bodies >= min-size are compressed).
+# Scenario: always enable in production to reduce bandwidth.
 # freeway.http.compression.enabled=true
 # freeway.http.compression.min-size=256
 
 # Text access log (method path status elapsed-ms) written to stdout.
+# Scenario: enable in production for access auditing; disable in dev to reduce noise.
 # freeway.http.access-log.enabled=false
+
 
 # ================================
 #  HTTP / Health
@@ -80,10 +120,13 @@
 # freeway.http.health.enabled=true
 # freeway.http.health.path=/healthz
 
+
 # ================================
 #  HTTP / CORS
 # ================================
 
+# CORS filter for browser cross-origin requests.
+# Scenario: dev can use * for convenience; production MUST specify exact origins.
 # freeway.http.cors.enabled=true
 # freeway.http.cors.allowed-origins=*
 # freeway.http.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
@@ -99,35 +142,60 @@
 
 # Enable HTTPS — requires key-store and password. When enabled the
 # existing HTTP port (default 8080) upgrades to TLS.
+# Scenario: enable in production with proper certificates from a CA or Vault.
+# [生产必填] 开发环境保持 false，生产必须设为 true 并配置证书.
 # freeway.http.ssl.enabled=false
+
+# Keystore path and password.
 # freeway.http.ssl.key-store=
 # freeway.http.ssl.key-store-password=
 # freeway.http.ssl.key-store-type=PKCS12
-# freeway.http.ssl.http2=true    # HTTP/2 over TLS via ALPN
-# freeway.http.ssl.trust-store=  # optional truststore for validating client certs
+
+# HTTP/2 over TLS via ALPN negotiation.
+# freeway.http.ssl.http2=true
+
+# Optional truststore for validating client certs (mTLS).
+# freeway.http.ssl.trust-store=
 # freeway.http.ssl.trust-store-password=
 # freeway.http.ssl.trust-store-type=PKCS12
-# freeway.http.ssl.client-auth=false   # require client certificates (mTLS)
-# freeway.http.ssl.protocols=TLSv1.3,TLSv1.2   # restrict TLS versions
-# freeway.http.ssl.ciphers=        # comma-separated cipher suite names
-# freeway.http.ssl.sni-directory=  # per-hostname keystores (<host>.p12/.jks,
-#                                  # default.p12 overrides the key-store)
-# freeway.http.ssl.reload-interval=0s  # poll keystore mtime/size and reload
-#                                      # certificates on change (0 disables)
+
+# Require client certificates (mTLS). Only enable for internal services.
+# freeway.http.ssl.client-auth=false
+
+# Restrict TLS versions and cipher suites.
+# freeway.http.ssl.protocols=TLSv1.3,TLSv1.2
+# freeway.http.ssl.ciphers=
+
+# SNI directory for per-hostname keystores (<host>.p12, default.p12 fallback).
+# freeway.http.ssl.sni-directory=
+
+# Certificate hot reload polling interval (0 disables).
+# Set to e.g. 30s when using Vault or dynamic cert rotation.
+# freeway.http.ssl.reload-interval=0s
 
 
 # ================================
 #  Database / Connection (required)
 # ================================
 
-# JDBC URL (required — no default)
+# JDBC URL (required — no default) [必填].
+# Scenario: postgresql for production, h2:mem for local dev, mysql for legacy.
 # freeway.db.url=jdbc:postgresql://localhost:5432/mydb
 
-# Username (required — no default)
+# Username (required — no default) [必填].
 # freeway.db.username=postgres
 
-# Password (default: empty)
+# Password (default: empty). Set via env var FREEWAY_DB_PASSWORD in production.
 # freeway.db.password=
+
+# Dialect id: postgresql | mysql | sqlite | h2.
+# Leave empty to auto-detect from JDBC URL.
+# Scenario: leave empty unless using multiple DB types in one app.
+# freeway.db.dialect=
+
+# Statement query timeout.
+# Scenario: 15s for transactional APIs; 60s+ for reports / batch jobs.
+# freeway.db.query-timeout=15s
 
 
 # ================================
@@ -136,6 +204,12 @@
 
 # Pool engine selected via module inclusion (.primary() mechanism).
 # Default: built-in pool (PoolDefault). For HikariCP: add HikariPoolModule to launcher.
+#
+# Pool sizing scenarios:
+#   Local dev:       max-size=4,  min-idle=1  (fast startup, low memory)
+#   Small production: max-size=10, min-idle=2  (moderate traffic)
+#   High-traffic:    max-size=20-50, min-idle=5-10
+#
 # freeway.db.pool.max-size=10
 # freeway.db.pool.min-idle=2
 # freeway.db.pool.connection-timeout=10s
@@ -145,29 +219,13 @@
 # freeway.db.pool.health-check-query=
 # freeway.db.pool.health-check-timeout=5s
 
-# Statement query timeout
-# freeway.db.query-timeout=15s
-
-
-# ================================
-#  Database / Dialect
-# ================================
-
-# Dialect id: postgresql (default) | mysql | sqlite
-# Leave empty to auto-detect from JDBC URL.
-# Detection: jdbc:postgresql:... → postgresql
-#            jdbc:mysql:...      → mysql
-#            jdbc:mariadb:...    → mysql
-#            jdbc:h2:...         → postgresql (mysql if MODE=MySQL/MariaDB)
-#            jdbc:sqlite:...     → sqlite
-# freeway.db.dialect=
-
 
 # ================================
 #  Database / Schema (auto-DDL from @Table entities)
 # ================================
 
-# Enable auto-DDL at startup (dev: true, prod: false)
+# Enable auto-DDL at startup.
+# Scenario: true for local dev (zero-friction iteration); NEVER true in production.
 # freeway.db.schema.auto=true
 
 # Comma-separated group filter — only run named SchemaEntity groups.
@@ -179,14 +237,120 @@
 #  Database / Migration (versioned SQL files)
 # ================================
 
-# Enable SQL migration runner
+# Enable SQL migration runner.
+# Scenario: ALWAYS true in production; auto-DDL replaces migration in dev only.
 # freeway.db.migration.enabled=true
 
-# Classpath directory for migration files (Flyway-compatible naming)
+# Classpath directory for migration files (Flyway-compatible naming).
 # freeway.db.migration.path=db/migration/
 
-# Tracking table name
+# Tracking table name.
 # freeway.db.migration.table=_migrations
+
+# Lock TTL for migration runner (ISO-8601, e.g. PT1H).
+# Empty = runner default (1 hour). Zero or negative disables stale-lock takeover.
+# Scenario: multi-instance deployment, set to 5m-30m to prevent duplicate migrations.
+# freeway.db.migration.lock-ttl=
+
+
+# ================================
+#  Cloud / Secret Store (freeway-cloud)
+# ================================
+
+# Secret store type and file path.
+# Scenario: production uses a secrets file or external vault.
+# freeway.cloud.secret.type=
+# freeway.cloud.secret.file=
+# Allowlist of symbol names resolvable from the secret store (comma-separated).
+# freeway.cloud.secret.keys=
+
+
+# ================================
+#  Cloud / Object Storage (freeway-cloud)
+# ================================
+
+# Storage adapter type and base path.
+# freeway.cloud.storage.type=
+# freeway.cloud.storage.base-path=
+
+
+# ================================
+#  Cloud / Discovery & Registry (freeway-cloud)
+# ================================
+
+# Discovery and registry adapter types.
+# freeway.cloud.discovery.type=
+# freeway.cloud.registry.type=
+# freeway.cloud.registry.service-id=
+# freeway.cloud.registry.service-host=
+# freeway.cloud.registry.service-scheme=http
+# freeway.cloud.registry.service-port=
+# freeway.cloud.registry.service-instance-id=
+
+
+# ================================
+#  Cloud / RPC / Remote Invocation (freeway-cloud)
+# ================================
+
+# Connect and request timeouts in milliseconds.
+# Scenario: match downstream service SLA. Typical: connect 3s, request 10s.
+# freeway.cloud.rpc.connect-timeout=3000
+# freeway.cloud.rpc.request-timeout=10000
+
+# Enable RPC call tracing for debugging cross-service calls.
+# freeway.cloud.rpc.trace-enabled=true
+
+# Retry configuration for transient failures.
+# Scenario: network glitches, brief downstream unavailability.
+# freeway.cloud.rpc.retry.max-attempts=3
+# freeway.cloud.rpc.retry.backoff-base=100
+# freeway.cloud.rpc.retry.backoff-max=5000
+
+# Circuit breaker to prevent cascading failures.
+# Scenario: always enable in production; failure-threshold depends on SLA tolerance.
+# freeway.cloud.rpc.circuit-breaker.enabled=true
+# freeway.cloud.rpc.circuit-breaker.failure-threshold=5
+# freeway.cloud.rpc.circuit-breaker.failure-window=60
+# freeway.cloud.rpc.circuit-breaker.open-window=30
+
+# Rate limiter to protect downstream services.
+# Scenario: enable when calling rate-limited third-party APIs.
+# freeway.cloud.rpc.rate-limit.enabled=false
+# freeway.cloud.rpc.rate-limit.per-second=100
+
+# RPC TLS for mTLS between services.
+# freeway.cloud.rpc.tls.key-store=
+# freeway.cloud.rpc.tls.key-store-password=
+# freeway.cloud.rpc.tls.trust-store=
+# freeway.cloud.rpc.tls.trust-store-password=
+
+
+# ================================
+#  Cloud / CloudEventBus (freeway-cloud)
+# ================================
+
+# Enable cross-node event mesh for distributed event publishing.
+# Scenario: multi-instance deployments needing event broadcast.
+# freeway.cloud.events.enabled=false
+# freeway.cloud.events.peers=
+# freeway.cloud.events.subscriptions=
+# freeway.cloud.events.allowed-types=
+# freeway.cloud.events.allowed-topics=
+# Shared secret for mesh handshake (empty = no peer auth).
+# freeway.cloud.events.token=
+# Enable event deduplication (opt-in; consumes memory for dedup IDs).
+# freeway.cloud.events.dedup.enabled=false
+# Dedup ID cache capacity (default 4096).
+# freeway.cloud.events.dedup.capacity=4096
+
+
+# ================================
+#  Cloud / Auth Propagation (freeway-cloud)
+# ================================
+
+# Enable inbound x-principal header extraction.
+# Scenario: trusted service mesh only — enables identity propagation.
+# freeway.cloud.auth.extract.enabled=false
 
 
 # ================================
@@ -195,7 +359,7 @@
 
 # freeway.kafka.bootstrap-servers=localhost:9092
 # freeway.kafka.group-id=freeway
-# Comma-separated topic names for EventBus ↔ Kafka bridging.
+# Comma-separated topic names for EventBus <-> Kafka bridging.
 # KafkaEventSink sends matching events to these topics;
 # KafkaSubscriber polls these topics and publishes to local EventBus.
 # freeway.kafka.topics=

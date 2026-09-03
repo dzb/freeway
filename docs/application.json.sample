@@ -1,31 +1,62 @@
 {
 	"freeway": {
+		"profile": "",
+		"config": { "file": "" },
+		"env": { "prefix": "FREEWAY_" },
+		"log": {
+			"level": "INFO",
+			"format": "auto",
+			"color": "auto",
+			"caller-info": true,
+			"mdc": true,
+			"mdc.priority": "code,market,diagId",
+			"console": { "enabled": true, "level": "" },
+			"file": "auto",
+			"max-size": 104857600,
+			"max-history": 30,
+			"compress": true,
+			"flush-interval": 250,
+			"files": ""
+		},
 		"http": {
 			"server": {
 				"host": "127.0.0.1",
-				"port": "8080",
-				"backlog": "0",
-				"shutdown-grace": "2s"
+				"port": 8080,
+				"backlog": 0,
+				"shutdown-grace": "2s",
+				"read-timeout": "30s",
+				"write-timeout": "30s",
+				"max-connections": 0,
+				"receive-buffer-size": 0,
+				"send-buffer-size": 0
 			},
-			"health": {
-				"enabled": "true",
-				"path": "/healthz"
-			},
+			"compression": { "enabled": true, "min-size": 256 },
+			"access-log": { "enabled": false },
+			"health": { "enabled": true, "path": "/healthz" },
 			"cors": {
-				"enabled": "true",
+				"enabled": true,
 				"allowed-origins": "*",
 				"allowed-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
 				"allowed-headers": "Content-Type, Authorization",
 				"exposed-headers": "",
 				"max-age": "3600",
-				"allow-credentials": "false"
+				"allow-credentials": false
 			},
+			"max-body-size": 10485760,
 			"ssl": {
-				"enabled": "false",
+				"enabled": false,
 				"key-store": "",
 				"key-store-password": "",
 				"key-store-type": "PKCS12",
-				"http2": "true"
+				"http2": true,
+				"trust-store": "",
+				"trust-store-password": "",
+				"trust-store-type": "PKCS12",
+				"client-auth": false,
+				"protocols": "",
+				"ciphers": "",
+				"sni-directory": "",
+				"reload-interval": "0"
 			}
 		},
 		"db": {
@@ -34,19 +65,60 @@
 			"password": "",
 			"dialect": "",
 			"query-timeout": "15s",
-			"pool.max-size": "10",
-			"pool.min-idle": "2",
-			"pool.connection-timeout": "10s",
-			"pool.max-lifetime": "30m",
-			"pool.max-idle-time": "10m",
-			"pool.clean-interval": "2m",
-			"pool.health-check-query": "",
-			"pool.health-check-timeout": "5s",
-			"schema.auto": "true",
-			"schema.groups": "",
-			"migration.enabled": "true",
-			"migration.path": "db/migration/",
-			"migration.table": "_migrations"
+			"pool": {
+				"max-size": 10,
+				"min-idle": 2,
+				"connection-timeout": "10s",
+				"max-lifetime": "30m",
+				"max-idle-time": "10m",
+				"clean-interval": "2m",
+				"health-check-query": "",
+				"health-check-timeout": "5s"
+			},
+			"schema": { "auto": true, "groups": "" },
+			"migration": {
+				"enabled": true,
+				"path": "db/migration/",
+				"table": "_migrations",
+				"lock-ttl": ""
+			}
+		},
+		"cloud": {
+			"secret": { "type": "", "file": "", "keys": "" },
+			"storage": { "type": "", "base-path": "" },
+			"discovery": { "type": "" },
+			"registry": {
+				"type": "",
+				"service-id": "",
+				"service-host": "",
+				"service-scheme": "http",
+				"service-port": 0,
+				"service-instance-id": ""
+			},
+			"rpc": {
+				"connect-timeout": 3000,
+				"request-timeout": 10000,
+				"trace-enabled": true,
+				"retry": { "max-attempts": 3, "backoff-base": 100, "backoff-max": 5000 },
+				"circuit-breaker": {
+					"enabled": true,
+					"failure-threshold": 5,
+					"failure-window": 60,
+					"open-window": 30
+				},
+				"rate-limit": { "enabled": false, "per-second": 100 },
+				"tls": { "key-store": "", "key-store-password": "", "trust-store": "", "trust-store-password": "" }
+			},
+			"events": {
+				"enabled": false,
+				"peers": "",
+				"subscriptions": "",
+				"allowed-types": "",
+				"allowed-topics": "",
+				"token": "",
+				"dedup": { "enabled": false, "capacity": 4096 }
+			},
+			"auth": { "extract": { "enabled": false } }
 		}
 	}
 }

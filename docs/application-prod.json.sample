@@ -1,25 +1,38 @@
 {
 	"freeway": {
+		"profile": "prod",
+		"log": {
+			"level": "INFO",
+			"format": "auto",
+			"file": "auto",
+			"max-size": 104857600,
+			"max-history": 30,
+			"compress": true,
+			"flush-interval": 250
+		},
 		"http": {
 			"server": {
 				"host": "0.0.0.0",
-				"shutdown-grace": "30s"
+				"shutdown-grace": "30s",
+				"read-timeout": "30s",
+				"write-timeout": "30s",
+				"max-connections": 0
 			},
-			"health": {
-				"enabled": "true",
-				"path": "/healthz"
-			},
+			"compression": { "enabled": true, "min-size": 256 },
+			"access-log": { "enabled": true },
+			"health": { "enabled": true, "path": "/healthz" },
 			"cors": {
-				"enabled": "true",
+				"enabled": true,
 				"allowed-origins": "",
-				"allow-credentials": "false"
+				"allow-credentials": false
 			},
 			"ssl": {
-				"enabled": "true",
+				"enabled": true,
 				"key-store": "",
 				"key-store-password": "",
 				"key-store-type": "PKCS12",
-				"http2": "true"
+				"http2": true,
+				"client-auth": false
 			}
 		},
 		"db": {
@@ -27,15 +40,21 @@
 			"username": "",
 			"password": "",
 			"query-timeout": "15s",
-			"pool.max-size": "20",
-			"pool.min-idle": "4",
-			"pool.connection-timeout": "30s",
-			"pool.max-lifetime": "30m",
-			"pool.max-idle-time": "10m",
-			"pool.health-check-query": "SELECT 1",
-			"pool.health-check-timeout": "5s",
-			"schema.auto": "false",
-			"migration.enabled": "true"
+			"pool": {
+				"max-size": 20,
+				"min-idle": 4,
+				"connection-timeout": "30s",
+				"max-lifetime": "30m",
+				"max-idle-time": "10m",
+				"health-check-query": "SELECT 1",
+				"health-check-timeout": "5s"
+			},
+			"schema": { "auto": false },
+			"migration": {
+				"enabled": true,
+				"path": "db/migration/",
+				"table": "_migrations"
+			}
 		}
 	}
 }

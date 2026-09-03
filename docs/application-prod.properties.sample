@@ -3,8 +3,13 @@
 #  Copy to src/main/resources/application-prod.properties
 #  Activate: --freeway.profile=prod
 #
-#  Sensitive values (password, API keys) MUST be set via
-#  environment variables, NOT in this file.
+#  Scenario guide:
+#    This profile optimizes for stability, security, and performance.
+#    Features: HTTPS, auto-DDL off, connection pool sized for traffic,
+#    circuit breaker enabled, access logging on.
+#
+#  IMPORTANT: Sensitive values (passwords, keystore paths, API keys)
+#  MUST be set via environment variables, NOT in this file.
 ##################################################################
 
 # ================================
@@ -12,22 +17,40 @@
 # ================================
 # See freeway-log.properties (classpath root) for all supported keys.
 # -D flags and FREEWAY_ env vars override file values.
+# Scenario: INFO level in production; DEBUG only for temporary troubleshooting.
 
 
 # ================================
 #  HTTP / Web Server
 # ================================
 # Engine selected via module inclusion (.primary() mechanism):
-#   default → FreewayHttpEngine; add UndertowModule for Undertow
+#   default -> FreewayHttpEngine; add UndertowModule for Undertow
 
-# Bind to all interfaces — fronted by reverse proxy / load balancer
+# Bind to all interfaces — fronted by reverse proxy / load balancer.
+# Scenario: 0.0.0.0 to accept all interfaces; LB handles external traffic.
 freeway.http.server.host=0.0.0.0
 
 # Port set via env: FREEWAY_HTTP_SERVER_PORT=8080
 # freeway.http.server.port=8080
 
-# Longer grace for in-flight requests during rolling deploys
+# Longer grace for in-flight requests during rolling deploys.
 freeway.http.server.shutdown-grace=30s
+
+# Socket timeouts — protect against slow clients.
+# freeway.http.server.read-timeout=30s
+# freeway.http.server.write-timeout=30s
+
+
+# ================================
+#  HTTP / Compression & Access Log
+# ================================
+# Compression: always enable in production to reduce bandwidth.
+freeway.http.compression.enabled=true
+# freeway.http.compression.min-size=256
+
+# Access log for production monitoring and security auditing.
+freeway.http.access-log.enabled=true
+
 
 # ================================
 #  HTTP / Health
@@ -39,19 +62,18 @@ freeway.http.health.path=/healthz
 # ================================
 #  HTTP / CORS
 # ================================
-
+# Explicit origin list — no wildcards in production.
+# Set FREEWAY_HTTP_CORS_ALLOWED_ORIGINS via env var.
 freeway.http.cors.enabled=true
-
-# Explicit origin list — no wildcards in production
 freeway.http.cors.allowed-origins=
-
 freeway.http.cors.allow-credentials=false
+
 
 # ================================
 #  HTTP / HTTPS (TLS)
 # ================================
-
 # Enable HTTPS in production — set key-store and password via env vars.
+# Scenario: certificates from a CA (Let's Encrypt) or internal PKI.
 # FREEWAY_HTTP_SSL_KEY_STORE=/etc/ssl/keystore.p12
 # FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD=***
 freeway.http.ssl.enabled=true
@@ -59,17 +81,21 @@ freeway.http.ssl.enabled=true
 # freeway.http.ssl.key-store-password=
 # freeway.http.ssl.key-store-type=PKCS12
 # freeway.http.ssl.http2=true
+# freeway.http.ssl.client-auth=false
+
 
 # ================================
 #  Database — PostgreSQL
 # ================================
-
-# Override via env: FREEWAY_DB_URL, FREEWAY_DB_USERNAME, FREEWAY_DB_PASSWORD
+# Scenario: PostgreSQL for production relational database.
+# Credentials set via env vars: FREEWAY_DB_URL, FREEWAY_DB_USERNAME, FREEWAY_DB_PASSWORD
 freeway.db.url=jdbc:postgresql://localhost:5432/mydb
 freeway.db.username=
 freeway.db.password=
 
-# Production pool sizing
+# Production pool sizing.
+# Scenario: max-size = (core_count * 2) + effective_spindle_count for DB;
+#   tune based on connection pool metrics under load.
 # Pool engine: HikariCP (add HikariPoolModule to launcher), selected via module inclusion
 freeway.db.pool.max-size=20
 freeway.db.pool.min-idle=4
@@ -77,7 +103,7 @@ freeway.db.pool.connection-timeout=30s
 freeway.db.pool.max-lifetime=30m
 freeway.db.pool.max-idle-time=10m
 
-# Validate connections before use
+# Validate connections before use to avoid writing to stale connections.
 freeway.db.pool.health-check-query=SELECT 1
 freeway.db.pool.health-check-timeout=5s
 
@@ -87,18 +113,53 @@ freeway.db.query-timeout=15s
 # ================================
 #  Database / Schema & Migration
 # ================================
-
-# Auto-DDL OFF — all schema changes via reviewed migration files
+# Auto-DDL OFF — all schema changes via reviewed migration files.
+# Scenario: production schema changes go through code review and migration files.
 freeway.db.schema.auto=false
 
-# Migration runner ON — applies versioned SQL from db/migration/
+# Migration runner ON — applies versioned SQL from db/migration/.
 freeway.db.migration.enabled=true
+
+# Migration lock TTL (ISO-8601) for multi-instance deployments.
+# freeway.db.migration.lock-ttl=PT1H
+
+
+# ================================
+#  Cloud — production services
+# ================================
+# Scenario: discovery/registry for service mesh; RPC resilience for reliability.
+
+# Secret store for production credentials.
+# FREEWAY_CLOUD_SECRET_FILE=/etc/freeway/secrets.properties
+# freeway.cloud.secret.file=
+
+# Service discovery and registry.
+# FREEWAY_CLOUD_DISCOVERY_TYPE=consul  (or etcd, zookeeper)
+# FREEWAY_CLOUD_REGISTRY_TYPE=consul
+# FREEWAY_CLOUD_REGISTRY_SERVICE_ID=my-service
+# freeway.cloud.discovery.type=
+# freeway.cloud.registry.type=
+# freeway.cloud.registry.service-id=
+# freeway.cloud.registry.service-host=
+# freeway.cloud.registry.service-port=
+
+# RPC resilience — circuit breaker prevents cascade failures.
+# freeway.cloud.rpc.connect-timeout=3000
+# freeway.cloud.rpc.request-timeout=10000
+# freeway.cloud.rpc.retry.max-attempts=3
+# freeway.cloud.rpc.circuit-breaker.enabled=true
+# freeway.cloud.rpc.rate-limit.enabled=false
+
+# CloudEventBus — enable for cross-node event mesh when needed.
+# freeway.cloud.events.enabled=false
+# freeway.cloud.events.peers=
+# freeway.cloud.events.token=
 
 
 # ================================
 #  Kafka — production messaging
 # ================================
-
+# Scenario: persistent message queue for event-driven architecture.
 # Override via env: FREEWAY_KAFKA_BOOTSTRAP_SERVERS, FREEWAY_KAFKA_TOPICS
 # freeway.kafka.bootstrap-servers=
 # freeway.kafka.group-id=my-app

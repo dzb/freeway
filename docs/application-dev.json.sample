@@ -1,28 +1,35 @@
 {
 	"freeway": {
+		"profile": "dev",
+		"log": {
+			"level": "DEBUG",
+			"format": "auto",
+			"file": "auto"
+		},
 		"http": {
 			"server": {
 				"host": "127.0.0.1",
-				"port": "8080",
-				"shutdown-grace": "2s"
+				"port": 8080,
+				"shutdown-grace": "2s",
+				"read-timeout": "30s",
+				"write-timeout": "30s"
 			},
-			"health": {
-				"enabled": "true",
-				"path": "/healthz"
-			},
+			"compression": { "enabled": true, "min-size": 256 },
+			"access-log": { "enabled": false },
+			"health": { "enabled": true, "path": "/healthz" },
 			"cors": {
-				"enabled": "true",
+				"enabled": true,
 				"allowed-origins": "*",
 				"allowed-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
 				"allowed-headers": "Content-Type, Authorization",
-				"allow-credentials": "true"
+				"allow-credentials": true
 			},
 			"ssl": {
-				"enabled": "false",
+				"enabled": false,
 				"key-store": "dev-keystore.p12",
 				"key-store-password": "changeit",
 				"key-store-type": "PKCS12",
-				"http2": "true"
+				"http2": true
 			}
 		},
 		"db": {
@@ -30,10 +37,12 @@
 			"username": "sa",
 			"password": "",
 			"query-timeout": "30s",
-			"pool.max-size": "4",
-			"pool.min-idle": "1",
-			"schema.auto": "true",
-			"migration.enabled": "true"
+			"pool": {
+				"max-size": 4,
+				"min-idle": 1
+			},
+			"schema": { "auto": true },
+			"migration": { "enabled": true }
 		}
 	}
 }

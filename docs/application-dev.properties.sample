@@ -2,6 +2,10 @@
 #  Freeway — Development Profile
 #  Copy to src/main/resources/application-dev.properties
 #  Activate: --freeway.profile=dev
+#
+#  Scenario guide:
+#    This profile optimizes for fast iteration and developer productivity.
+#    Features: auto-DDL, in-memory DB, DEBUG logging, permissive CORS.
 ##################################################################
 
 # ================================
@@ -9,19 +13,35 @@
 # ================================
 # See freeway-log.properties (classpath root) for all supported keys.
 # -D flags and FREEWAY_ env vars override file values.
+# Scenario: DEBUG level for local development to trace issues.
 
 
 # ================================
 #  HTTP / Web Server
 # ================================
 # Engine selected via module inclusion (.primary() mechanism):
-#   default → FreewayHttpEngine; add UndertowModule for Undertow
+#   default -> FreewayHttpEngine; add UndertowModule for Undertow
 
+# Bind to localhost only — not exposed externally.
 freeway.http.server.host=127.0.0.1
 freeway.http.server.port=8080
 
-# Quick shutdown for fast restart cycles
+# Quick shutdown for fast restart cycles during development.
 freeway.http.server.shutdown-grace=2s
+
+# Socket timeouts — generous for local debugging.
+# freeway.http.server.read-timeout=30s
+# freeway.http.server.write-timeout=30s
+
+
+# ================================
+#  HTTP / Compression & Access Log
+# ================================
+# Compression saves bandwidth even in dev; access log creates noise.
+freeway.http.compression.enabled=true
+# freeway.http.compression.min-size=256
+# freeway.http.access-log.enabled=false
+
 
 # ================================
 #  HTTP / Health
@@ -33,7 +53,7 @@ freeway.http.health.path=/healthz
 # ================================
 #  HTTP / CORS
 # ================================
-
+# Permissive CORS for local frontend development.
 freeway.http.cors.enabled=true
 freeway.http.cors.allowed-origins=*
 freeway.http.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
@@ -43,21 +63,24 @@ freeway.http.cors.allow-credentials=true
 # ================================
 #  HTTP / HTTPS (TLS) — optional for local dev
 # ================================
+# Use a self-signed or dev certificate for local HTTPS testing.
 # freeway.http.ssl.enabled=false
 # freeway.http.ssl.key-store=dev-keystore.p12
 # freeway.http.ssl.key-store-password=changeit
 # freeway.http.ssl.key-store-type=PKCS12
 # freeway.http.ssl.http2=true
 
+
 # ================================
 #  Database — H2 in-memory
 # ================================
-
+# Scenario: H2 in-memory for zero-setup local development.
+# Schema auto-creates tables on startup — no migration files needed.
 freeway.db.url=jdbc:h2:mem:devdb;DB_CLOSE_DELAY=-1
 freeway.db.username=sa
 freeway.db.password=
 
-# Light pool — single developer
+# Light pool — single developer connection.
 # Pool engine: default built-in (PoolDefault), selected via module inclusion
 freeway.db.pool.max-size=4
 freeway.db.pool.min-idle=1
@@ -67,17 +90,26 @@ freeway.db.query-timeout=30s
 # ================================
 #  Database / Schema & Migration
 # ================================
-
-# Auto-DDL from @Table entities — zero-friction iteration
+# Auto-DDL from @Table entities — zero-friction iteration.
+# No migration files needed for local dev; schema evolves with code.
 freeway.db.schema.auto=true
 freeway.db.migration.enabled=true
 
 
 # ================================
+#  Cloud — disabled in local dev
+# ================================
+# Cloud features (discovery, RPC, events) are not needed locally.
+# Uncomment and set if integrating with cloud services locally.
+# freeway.cloud.discovery.type=
+# freeway.cloud.registry.type=
+# freeway.cloud.rpc.trace-enabled=true
+
+
+# ================================
 #  Kafka — local development
 # ================================
-
-# Uncomment if you need Kafka locally
+# Uncomment if you need Kafka locally for event testing.
 # freeway.kafka.bootstrap-servers=localhost:9092
 # freeway.kafka.group-id=freeway-dev
 # freeway.kafka.topics=

@@ -47,6 +47,18 @@ freeway.log.console.enabled=true
 #
 # freeway.log.color=auto
 
+# MDC 上下文：Mapped Diagnostic Context，每线程级的键值对上下文。
+# 日志输出中 MDC 键值以 [key=value] 形式显示在 logger 名之后。
+# 典型用途：分布式链路追踪、请求关联 —— 在请求入口将 traceId/requestId
+# 放入 MDC，后续所有日志自动携带该上下文，无需每条日志手动传入。
+# 默认 key 顺序: code(业务码) market(市场) diagId(诊断ID)，其余按字母序。
+#
+# freeway.log.mdc=true
+
+# MDC 键显示优先级（逗号分隔），优先显示的键按此顺序排列，
+# 其余键按字母序排列。默认值: code,market,diagId
+# freeway.log.mdc.priority=code,market,diagId
+
 # 调用者信息：每条日志解析 source class/method（供 formatter 使用）。
 # 默认 true。日志量极大且自定义 formatter 不展示调用者时，设 false
 # 可跳过每次日志的栈遍历，显著提升吞吐。
