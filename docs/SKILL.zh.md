@@ -154,6 +154,11 @@ Freeway.create(binder -> {
 | `.scope(Scope)` | 作用域 | `SINGLETON`(默认) / `THREAD` / `PROTOTYPE` |
 | `.advise(Consumer<Advisor>)` | AOP 织入 | 仅接口→类绑定 |
 
+> **何时用 Provider**：`.to(Class)` 只覆盖“容器能通过构造器注入自行构造”的实现。
+> 当构造需要混入配置/普通值、需要按配置分支、需要聚合 contribution、或要绑定已创建对象时，
+> 必须用 `.to(c -> ...)` 显式给出构造逻辑。Provider 只接管“如何构造”；
+> singleton 仍只实现一次，生命周期（字段注入 / `@PostConstruct` / `@PreDestroy`）仍由容器管理。
+
 ### 服务获取
 
 ```java

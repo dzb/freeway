@@ -195,6 +195,35 @@ Freeway.create(binder -> {
 
 Advisors require interface-to-class bindings because the container uses JDK proxies.
 
+#### When to use a provider binding
+
+`.to(Class)` is the smallest form: the container constructs the implementation and injects
+every constructor dependency itself. Use it whenever an `@Inject`-friendly constructor is
+enough. The provider form `.to(c -> ...)` is the explicit construction space for everything
+ordinary constructor injection cannot express:
+
+| Need | Why class binding is not enough | Provider example |
+|---|---|---|
+| Constructor mixes plain/runtime values with services | Config values and durations are not container bindings; they must be read and passed explicitly | `PoolConfig`, `HttpConfig`, `KafkaConfig` |
+| Construction must branch on configuration | `.to(Class)` always uses the same constructor path | HTTP engine chooses plaintext or TLS constructor from `ssl.enabled` |
+| Object graph aggregates contributions | Constructor injection sees bound services, not collected extension points | `RouteIndex` collects `Route`/`RouteGroup`; `WebServer` assembles filters, mounts and error handlers |
+| A pre-created or externally owned object must be bound | The container must not re-construct it, but should still own its lifecycle | boot's `AppConfig`; a `PeerHub` shared with a sink and WS route |
+| Construction must wait until all modules are composed | Realization happens on first resolution, after contributions are final | lazy builtins such as `EventBus`/`CallBus` resolving a user-supplied primary `Metrics` |
+
+```java
+// Class binding: the container injects GreeterImpl's constructor.
+binder.bind(Greeter.class).to(GreeterImpl.class);
+
+// Provider: explicit construction that needs container services plus a
+// runtime value, or returns an existing object instead of rebuilding it.
+binder.bind(Cache.class).to(c -> new Cache(c.get(Config.class), ttl));
+```
+
+The provider is not an escape hatch from IoC: it only owns **how the object is built**.
+The object still follows the binding's scope — a singleton provider runs once per container —
+and still receives field injection, `@PostConstruct` and `@PreDestroy` through the normal
+lifecycle.
+
 ### Binding Registration & Conflict Resolution
 
 Bindings are registered after each module's `bind()` method completes — not during the fluent chain. This means `.id()`, `.scope()`, `.primary()` etc. are all resolved before the binding enters the index. Combined with unique default ids (internal, not user-facing), the container avoids false collisions during module loading.
