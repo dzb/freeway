@@ -30,17 +30,17 @@ final class Http1xResponseWriter implements HttpResponseWriter {
     private Http1xResponseWriter() {}
 
     @Override
-    public void writeHead(HttpContextDefault ctx) throws IOException {
+    public void writeHead(HttpContextImpl ctx) throws IOException {
         writeStatusLineAndHeaders(ctx);
     }
 
     @Override
-    public void writeBody(HttpContextDefault ctx, byte[] data) throws IOException {
+    public void writeBody(HttpContextImpl ctx, byte[] data) throws IOException {
         writeBody(ctx, data, 0, data.length);
     }
 
     @Override
-    public void writeBody(HttpContextDefault ctx, byte[] data, int offset, int length)
+    public void writeBody(HttpContextImpl ctx, byte[] data, int offset, int length)
             throws IOException {
         OutputStream rawOut = ctx.rawOut;
         boolean bodyAllowed = ctx.allowsResponseBody();
@@ -88,7 +88,7 @@ final class Http1xResponseWriter implements HttpResponseWriter {
     }
 
     @Override
-    public void end(HttpContextDefault ctx) throws IOException {
+    public void end(HttpContextImpl ctx) throws IOException {
         if (ctx.chunkedResponse && !ResponseFraming.suppressBodyBytes(
                 ctx.allowsResponseBody(), ctx.method())) {
             // An empty chunked body never calls writeBody — emit the head
@@ -103,7 +103,7 @@ final class Http1xResponseWriter implements HttpResponseWriter {
     }
 
     @Override
-    public SseEmitter openSse(HttpContextDefault ctx) throws IOException {
+    public SseEmitter openSse(HttpContextImpl ctx) throws IOException {
         // SSE terminates the HTTP/1.1 exchange: SseEmitter.complete() closes the
         // shared buffered output stream, so this connection must not be reused.
         // responded is still unset here (sse() marks it after openSse), so the
@@ -123,7 +123,7 @@ final class Http1xResponseWriter implements HttpResponseWriter {
     /** Status line plus response headers, without the framing headers
      *  (Content-Length/Transfer-Encoding/Connection) that writeHead adds
      *  during the body write. */
-    private static void writeStatusLineAndHeaders(HttpContextDefault ctx)
+    private static void writeStatusLineAndHeaders(HttpContextImpl ctx)
             throws IOException {
         OutputStream rawOut = ctx.rawOut;
         rawOut.write(HTTP11);

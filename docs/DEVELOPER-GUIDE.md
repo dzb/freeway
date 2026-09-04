@@ -67,7 +67,7 @@ mvn test                          # all modules
 mvn -pl freeway-ioc -am test      # single module + deps
 mvn -pl freeway-http -am test
 mvn -pl freeway-db -am test
-mvn test -Dtest=CoercerDefaultTest    # single test class
+mvn test -Dtest=CoercerImplTest    # single test class
 ```
 
 ---
@@ -607,7 +607,7 @@ binder.contribute(EventSubscriber.class)
 
 ### Type Coercion
 
-Commons owns the reusable scalar coercion mechanics (`Coercer` interface, `CoerceRule<S,T>`, `CoercerDefault`). IoC owns container-aware coercion rules and `@Symbol`/`@Value` integration. The two layers are separate: commons does not import ioc types.
+Commons owns the reusable scalar coercion mechanics (`Coercer` interface, `CoerceRule<S,T>`, `CoercerImpl`). IoC owns container-aware coercion rules and `@Symbol`/`@Value` integration. The two layers are separate: commons does not import ioc types.
 
 ```java
 // Built-in: String → primitives, enums, UUID, dates, collections, maps
@@ -820,7 +820,7 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 | Category | Main Types |
 |----------|------------|
 | Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `WebServer`, `JsonCodec` |
-| Engine (shared) | `FreewayHttpEngine`, `HttpContextDefault`, `HttpSession`, `HttpServerHandleDefault`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
+| Engine (shared) | `FreewayHttpEngine`, `HttpContextImpl`, `HttpSession`, `HttpServerHandleDefault`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
 | Engine (HTTP/1.x) | `HttpConnection`, `Http1xSession`, `Http1xParser` in `engine/` |
 | Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http2/` |
 | Engine (WebSocket) | `WebSocketFrame`, `WebSocketSessionImpl`, `WebSocketUtil` etc in `engine/ws/` |
@@ -2027,7 +2027,7 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 ### Naming Rules
 
 - **Public interfaces** use the bare domain name: `Container`, `JsonCodec`, `RequestContext`.
-- **Framework-provided default implementations** use `XDefault` suffix: `AppRuntimeDefault`, `JsonCodecDefault`, `CoercerDefault`. This keeps interface names dominant.
+- **Framework-provided default implementations** use `XDefault` suffix: `AppRuntimeDefault`, `JsonCodecDefault`, `CoercerImpl`. This keeps interface names dominant.
 - **`DefaultX`** form is avoided — it hides the concept at the end of the name.
 - **`Impl` suffix** is reserved for uninteresting concrete implementations where no default strategy is being expressed.
 - **Internal helpers** stay package-private where possible, e.g., `ServiceIds`.

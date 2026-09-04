@@ -32,8 +32,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
-class CoercerDefaultTest {
-    private final CoercerDefault coercer = new CoercerDefault();
+class CoercerImplTest {
+    private final CoercerImpl coercer = new CoercerImpl();
 
     private enum Color {
         RED
@@ -177,7 +177,7 @@ class CoercerDefaultTest {
 
     @Test
     void supportsWithCustomRule() {
-        CoercerDefault c = new CoercerDefault()
+        CoercerImpl c = new CoercerImpl()
             .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
 
         assertTrue(c.supports(String.class, Duration.class));
@@ -188,7 +188,7 @@ class CoercerDefaultTest {
     @Test
     void supportsWithCompatibleSourceType() {
         // CharSequence -> Duration 规则，String（子类）也应通过
-        CoercerDefault c = new CoercerDefault()
+        CoercerImpl c = new CoercerImpl()
             .register(new CoerceRule<>(CharSequence.class, Duration.class,
                 s -> Duration.parse(s.toString())));
 
@@ -207,7 +207,7 @@ class CoercerDefaultTest {
 
     @Test
     void supportedIncludesCustomRules() {
-        CoercerDefault c = new CoercerDefault()
+        CoercerImpl c = new CoercerImpl()
             .register(new CoerceRule<>(String.class, Duration.class, Duration::parse));
 
         Map<Class<?>, Set<Class<?>>> result = c.conversions();
@@ -444,7 +444,7 @@ class CoercerDefaultTest {
 
     @Test
     void concurrentRegisterAndCoerce() throws Exception {
-        CoercerDefault c = new CoercerDefault();
+        CoercerImpl c = new CoercerImpl();
         int threads = 8;
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         CountDownLatch start = new CountDownLatch(1);

@@ -35,7 +35,7 @@ final class Http1xSession {
             var in = connection.inputStream();
             var out = connection.outputStream();
             var parser = new Http1xParser(in);
-            var context = new HttpContextDefault(ctx.jsonCodec(), ctx.coercer());
+            var context = new HttpContextImpl(ctx.jsonCodec(), ctx.coercer());
             context.setMaxBodySize(ctx.config().maxBodySize());
             context.setCompression(ctx.config().compression());
             if (ctx.engine().sslContext() == null

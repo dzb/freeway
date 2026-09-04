@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import com.jujin.freeway.http.ExchangeMetaDefault;
+import com.jujin.freeway.http.ExchangeMetaImpl;
 import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.websocket.WebSocketSession;
 
@@ -31,7 +31,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     private final OutputStream out;
     private final Map<String, String> pathVariables;
 
-    private final ExchangeMetaDefault exchangeMeta;
+    private final ExchangeMetaImpl exchangeMeta;
     private volatile boolean open = true;
     private volatile int closeCode = 1006;
     private volatile String closeReason = "";
@@ -52,7 +52,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         this.in = in;
         this.out = out;
         this.pathVariables = pathVariables != null ? Map.copyOf(pathVariables) : Map.of();
-        this.exchangeMeta = new ExchangeMetaDefault(correlationId);
+        this.exchangeMeta = new ExchangeMetaImpl(correlationId);
     }
 
     @Override public String correlationId() { return exchangeMeta.correlationId(); }

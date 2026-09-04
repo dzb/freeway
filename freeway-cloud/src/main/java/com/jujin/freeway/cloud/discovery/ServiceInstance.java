@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoercerImpl;
 
 import java.util.Map;
 import java.util.Objects;
@@ -28,7 +28,7 @@ public record ServiceInstance(
     Map<String, String> metadata
 ) {
 
-    private static final Coercer COERCER = new CoercerDefault();
+    private static final Coercer COERCER = new CoercerImpl();
 
     public ServiceInstance {
         if (serviceId == null || serviceId.isBlank()) {

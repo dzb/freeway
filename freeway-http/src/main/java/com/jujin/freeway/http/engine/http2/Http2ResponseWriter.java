@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-import com.jujin.freeway.http.engine.HttpContextDefault;
+import com.jujin.freeway.http.engine.HttpContextImpl;
 import com.jujin.freeway.http.engine.HttpResponseWriter;
 import com.jujin.freeway.http.engine.ResponseFraming;
 import com.jujin.freeway.http.sse.SseEmitter;
@@ -31,7 +31,7 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
     }
 
     @Override
-    public void writeHead(HttpContextDefault ctx) {
+    public void writeHead(HttpContextImpl ctx) {
         stream.responseHeaders.clear();
         stream.responseHeaders.put(":status", List.of(String.valueOf(ctx.status())));
         Set<String> connectionTokens = connectionHeaderTokens(ctx.responseHeaderEntries());
@@ -48,7 +48,7 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
     }
 
     @Override
-    public void writeBody(HttpContextDefault ctx, byte[] data) throws IOException {
+    public void writeBody(HttpContextImpl ctx, byte[] data) throws IOException {
         boolean suppressBody = ResponseFraming.suppressBodyBytes(
             ctx.allowsResponseBody(), ctx.method());
         if (!suppressBody && data.length > 0) {
@@ -57,7 +57,7 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
     }
 
     @Override
-    public void writeBody(HttpContextDefault ctx, byte[] data, int offset, int length)
+    public void writeBody(HttpContextImpl ctx, byte[] data, int offset, int length)
             throws IOException {
         boolean suppressBody = ResponseFraming.suppressBodyBytes(
             ctx.allowsResponseBody(), ctx.method());
@@ -67,19 +67,19 @@ public final class Http2ResponseWriter implements HttpResponseWriter {
     }
 
     @Override
-    public void end(HttpContextDefault ctx) throws IOException {
+    public void end(HttpContextImpl ctx) throws IOException {
         stream.outputStream.close();
     }
 
     @Override
-    public SseEmitter openSse(HttpContextDefault ctx) throws IOException {
+    public SseEmitter openSse(HttpContextImpl ctx) throws IOException {
         writeHead(ctx);
         stream.writeResponseHeaders(false);
         return new SseEmitter(stream.outputStream);
     }
 
     @Override
-    public void onLengthMismatch(HttpContextDefault ctx) throws IOException {
+    public void onLengthMismatch(HttpContextImpl ctx) throws IOException {
         stream.abortResponse();
     }
 

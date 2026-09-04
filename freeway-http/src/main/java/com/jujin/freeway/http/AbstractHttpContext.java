@@ -35,7 +35,7 @@ public abstract class AbstractHttpContext implements HttpContext {
     protected final Coercer coercer;
     protected volatile long maxBodySize = HttpServerConfig.DEFAULT_MAX_BODY_SIZE;
     protected final Map<String, String> pathVariables = new LinkedHashMap<>(4);
-    private final ExchangeMetaDefault exchangeMeta;
+    private final ExchangeMetaImpl exchangeMeta;
 
     protected AbstractHttpContext(JsonCodec jsonCodec, Coercer coercer) {
         this(jsonCodec, coercer, null);
@@ -45,7 +45,7 @@ public abstract class AbstractHttpContext implements HttpContext {
                                   String correlationId) {
         this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
         this.coercer = Objects.requireNonNull(coercer, "coercer");
-        this.exchangeMeta = new ExchangeMetaDefault(correlationId);
+        this.exchangeMeta = new ExchangeMetaImpl(correlationId);
     }
 
     /** Returns the current response header value for the given name, or null. */

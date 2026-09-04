@@ -39,7 +39,8 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<String> SERVICE_INSTANCE_ID = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID, String.class, "", Function.identity());
     private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
-        CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class, "http", Function.identity());
+        CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
+        CloudConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
         CloudConfigKeys.EVENTS_TOKEN, String.class, "", Function.identity());
     private static final SymbolSpec<List<String>> SUBSCRIPTIONS =

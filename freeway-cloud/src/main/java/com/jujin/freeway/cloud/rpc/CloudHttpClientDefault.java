@@ -108,7 +108,9 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      * production-safe default, so tests and bare setups omit what they do not
      * use. Bundled into one value (mirroring {@code PeerHub.Wiring}) so the
      * nine optional inputs cannot drift apart at a call site and the client
-     * needs no telescoping constructor overloads.
+     * needs no telescoping constructor overloads. Each field also has a
+     * wither ({@code withX}) for stepwise customization from
+     * {@link #defaults()}.
      */
     public record Wiring(
         List<Propagator> propagators,
@@ -121,9 +123,13 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         Duration requestTimeout,
         Duration connectTimeout
     ) {
-        /** Defaults mirror the config layer (10s request / 3s connect). */
-        public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(10);
-        public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(3);
+        /** Library-fallback timeouts — one value per timeout with the config
+         *  layer (CloudRpcModule), sourced from {@link CloudConfigKeys} and
+         *  converted ms→{@link Duration} at this boundary. */
+        public static final Duration DEFAULT_REQUEST_TIMEOUT =
+            Duration.ofMillis(CloudConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT);
+        public static final Duration DEFAULT_CONNECT_TIMEOUT =
+            Duration.ofMillis(CloudConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT);
 
         public Wiring {
             propagators = propagators == null ? List.of() : List.copyOf(propagators);
@@ -144,6 +150,41 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         public Wiring withMetrics(Metrics value) {
             return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
                 tracer, value, requestTimeout, connectTimeout);
+        }
+
+        public Wiring withPropagators(List<Propagator> value) {
+            return new Wiring(value, retryer, breaker, rateLimiter, transport,
+                tracer, metrics, requestTimeout, connectTimeout);
+        }
+
+        public Wiring withRetryer(Retryer value) {
+            return new Wiring(propagators, value, breaker, rateLimiter, transport,
+                tracer, metrics, requestTimeout, connectTimeout);
+        }
+
+        public Wiring withBreaker(CircuitBreaker value) {
+            return new Wiring(propagators, retryer, value, rateLimiter, transport,
+                tracer, metrics, requestTimeout, connectTimeout);
+        }
+
+        public Wiring withRateLimiter(RateLimiter value) {
+            return new Wiring(propagators, retryer, breaker, value, transport,
+                tracer, metrics, requestTimeout, connectTimeout);
+        }
+
+        public Wiring withTransport(TransportSecurity value) {
+            return new Wiring(propagators, retryer, breaker, rateLimiter, value,
+                tracer, metrics, requestTimeout, connectTimeout);
+        }
+
+        public Wiring withRequestTimeout(Duration value) {
+            return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
+                tracer, metrics, value, connectTimeout);
+        }
+
+        public Wiring withConnectTimeout(Duration value) {
+            return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
+                tracer, metrics, requestTimeout, value);
         }
     }
 

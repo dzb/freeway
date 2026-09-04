@@ -39,7 +39,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoercerImpl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonUtilsTest {
-    private static final CoercerDefault FALLBACK_COERCER = new CoercerDefault();
+    private static final CoercerImpl FALLBACK_COERCER = new CoercerImpl();
     private static final Coercer COERCER = new Coercer() {
         @Override
         public <T> T coerce(Object input, Class<T> targetType) {
@@ -683,7 +683,7 @@ class JsonUtilsTest {
 
     @Test
     void booleanCoercionRejectsNonBooleanInput() {
-        // CoercerDefault accepts "yes"/"on"/"1" by design (config coercion).
+        // CoercerImpl accepts "yes"/"on"/"1" by design (config coercion).
         // JSON booleans only accept "true"/"false". Test through JSON path:
         JsonObject obj = JsonUtils.parseObject("{\"flag\": true}");
         assertEquals(Boolean.TRUE, obj.getBoolean("flag"));

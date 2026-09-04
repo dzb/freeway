@@ -34,8 +34,8 @@ public final class PoolDefault implements Pool {
 
     private final PoolConfig config;
     private final Semaphore semaphore;
-    private final ConcurrentLinkedDeque<PooledConnectionDefault> idle;
-    private final ConcurrentLinkedDeque<PooledConnectionDefault> active;
+    private final ConcurrentLinkedDeque<PooledConnectionImpl> idle;
+    private final ConcurrentLinkedDeque<PooledConnectionImpl> active;
     private final AtomicInteger total;
     private final AtomicLong borrowCount;
     private final AtomicLong borrowWaitNanos;
@@ -75,7 +75,7 @@ public final class PoolDefault implements Pool {
      * no queueing or degradation — matching Freeway's explicit-failure style.
      */
     @Override
-    public PooledConnectionDefault borrow() {
+    public PooledConnectionImpl borrow() {
         ensureOpen();
         long waitStart = System.nanoTime();
         try {
@@ -105,7 +105,7 @@ public final class PoolDefault implements Pool {
             if (closed) {
                 throw new SqlException("Database is closed");
             }
-            PooledConnectionDefault conn = idle.pollFirst();
+            PooledConnectionImpl conn = idle.pollFirst();
             if (conn != null) {
                 // A freshly returned connection skips the full health check,
                 // but must still not be closed at the JDBC level.
@@ -121,7 +121,7 @@ public final class PoolDefault implements Pool {
                 // pool never transiently drops to zero connections. Databases
                 // that drop state when their last connection closes (e.g. H2
                 // in-memory without DB_CLOSE_DELAY=-1) would lose the database.
-                PooledConnectionDefault stale = conn;
+                PooledConnectionImpl stale = conn;
                 try {
                     conn = createConnection();
                 } catch (RuntimeException e) {
@@ -172,7 +172,7 @@ public final class PoolDefault implements Pool {
      *         prepared — the connection is destroyed and the caller must not
      *         use it.
      */
-    private void handOut(PooledConnectionDefault conn, long waitStart) {
+    private void handOut(PooledConnectionImpl conn, long waitStart) {
         conn.markBorrowed();
         Runnable hook = beforeActivateHook;
         if (hook != null) {
@@ -190,7 +190,7 @@ public final class PoolDefault implements Pool {
 
     @Override
     public void release(PooledConnection conn) {
-        PooledConnectionDefault pc = (PooledConnectionDefault) Objects.requireNonNull(conn, "conn");
+        PooledConnectionImpl pc = (PooledConnectionImpl) Objects.requireNonNull(conn, "conn");
         if (!active.remove(pc)) {
             // Already removed (e.g. force-closed during shutdown)
             return;
@@ -214,7 +214,7 @@ public final class PoolDefault implements Pool {
     @Override
     public DatabaseStats stats() {
         int longLeased = 0;
-        for (PooledConnectionDefault conn : active) {
+        for (PooledConnectionImpl conn : active) {
             if (conn.isLeaked(LEAK_THRESHOLD)) {
                 longLeased++;
             }
@@ -245,7 +245,7 @@ public final class PoolDefault implements Pool {
      */
     @Override
     public void close() {
-        PooledConnectionDefault conn;
+        PooledConnectionImpl conn;
         synchronized (lifecycleLock) {
             closed = true;
 
@@ -324,7 +324,7 @@ public final class PoolDefault implements Pool {
                     );
                 }
                 try {
-                    PooledConnectionDefault conn = createConnection();
+                    PooledConnectionImpl conn = createConnection();
                     total.incrementAndGet();
                     idle.offerFirst(conn);
                     warmed++;
@@ -340,7 +340,7 @@ public final class PoolDefault implements Pool {
 
     private void closeWarmUpConnections(int warmed) {
         for (int i = 0; i < warmed; i++) {
-            PooledConnectionDefault conn = idle.pollFirst();
+            PooledConnectionImpl conn = idle.pollFirst();
             if (conn == null) {
                 break;
             }
@@ -370,8 +370,8 @@ public final class PoolDefault implements Pool {
 
     private void clean() {
         Instant now = Instant.now();
-        List<PooledConnectionDefault> expired = new ArrayList<>();
-        for (PooledConnectionDefault conn : idle) {
+        List<PooledConnectionImpl> expired = new ArrayList<>();
+        for (PooledConnectionImpl conn : idle) {
             if (conn.isExpired(now, config.maxLifetime(), config.maxIdleTime())) {
                 expired.add(conn);
             }
@@ -397,7 +397,7 @@ public final class PoolDefault implements Pool {
                 }
             }
 
-            for (PooledConnectionDefault conn : expired) {
+            for (PooledConnectionImpl conn : expired) {
                 // Only destroy when the connection is still in the idle deque:
                 // a concurrent borrow() may have polled it and be replacing or
                 // reusing it right now. Destroying it anyway would close the
@@ -424,7 +424,7 @@ public final class PoolDefault implements Pool {
             return false;
         }
         try {
-            PooledConnectionDefault conn = createConnection();
+            PooledConnectionImpl conn = createConnection();
             if (closed) {
                 // Pool shut down while we were dialing (e.g. the cleaner was
                 // mid-create during close()) — do not strand the new
@@ -447,7 +447,7 @@ public final class PoolDefault implements Pool {
         return (int) Math.max(1, (config.healthCheckTimeout().toMillis() + 999) / 1000);
     }
 
-    private PooledConnectionDefault createConnection() {
+    private PooledConnectionImpl createConnection() {
         Connection conn = null;
         try {
             // Bound the connect+login phase instead of letting it hang on the
@@ -472,7 +472,7 @@ public final class PoolDefault implements Pool {
                         config.url()
                 );
             }
-            return new PooledConnectionDefault(conn, Instant.now());
+            return new PooledConnectionImpl(conn, Instant.now());
         } catch (SQLException e) {
             // setAutoCommit/isValid throwing after a successful getConnection
             // must not leak the physical connection.
@@ -488,11 +488,11 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private boolean isValid(PooledConnectionDefault conn) {
+    private boolean isValid(PooledConnectionImpl conn) {
         return isAlive(conn) && healthCheck(conn);
     }
 
-    private boolean isAlive(PooledConnectionDefault conn) {
+    private boolean isAlive(PooledConnectionImpl conn) {
         // maxIdleTime deliberately does NOT apply here: lastReturned is only
         // refreshed on release, so a connection legitimately borrowed longer
         // than maxIdleTime (long transaction, long stream) would be destroyed
@@ -513,7 +513,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private boolean isClosed(PooledConnectionDefault pooled) {
+    private boolean isClosed(PooledConnectionImpl pooled) {
         try {
             return pooled.connection().isClosed();
         } catch (SQLException e) {
@@ -521,7 +521,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private boolean healthCheck(PooledConnectionDefault pooled) {
+    private boolean healthCheck(PooledConnectionImpl pooled) {
         try {
             Connection conn = pooled.connection();
             int timeoutSec = healthCheckTimeoutSeconds();
@@ -541,7 +541,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private void closePhysical(PooledConnectionDefault conn) {
+    private void closePhysical(PooledConnectionImpl conn) {
         try {
             conn.connection().close();
         } catch (SQLException e) {
@@ -549,7 +549,7 @@ public final class PoolDefault implements Pool {
         }
     }
 
-    private void destroy(PooledConnectionDefault conn) {
+    private void destroy(PooledConnectionImpl conn) {
         closePhysical(conn);
         total.decrementAndGet();
     }

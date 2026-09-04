@@ -18,11 +18,11 @@ import javax.net.ssl.TrustManagerFactory;
  * PKCS12/JKS keystore (client identity) and optional truststore (peer
  * verification) — both loaded via the JDK only, no third-party crypto.
  */
-public final class TransportSecurityDefault implements TransportSecurity {
+public final class TransportSecurityImpl implements TransportSecurity {
 
     private final SSLContext sslContext;
 
-    private TransportSecurityDefault(SSLContext sslContext) {
+    private TransportSecurityImpl(SSLContext sslContext) {
         this.sslContext = sslContext;
     }
 
@@ -33,7 +33,7 @@ public final class TransportSecurityDefault implements TransportSecurity {
      *                             to trust the JDK default trust anchors
      * @param trustStorePassword   truststore password (ignored when trustStorePath is null)
      */
-    public static TransportSecurityDefault fromKeyStore(
+    public static TransportSecurityImpl fromKeyStore(
         Path keyStorePath, String keyStorePassword,
         Path trustStorePath, String trustStorePassword
     ) {
@@ -51,7 +51,7 @@ public final class TransportSecurityDefault implements TransportSecurity {
 
             SSLContext context = SSLContext.getInstance("TLS");
             context.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-            return new TransportSecurityDefault(context);
+            return new TransportSecurityImpl(context);
         } catch (GeneralSecurityException | IOException e) {
             throw new IllegalArgumentException("Failed to build TLS context from " + keyStorePath, e);
         }

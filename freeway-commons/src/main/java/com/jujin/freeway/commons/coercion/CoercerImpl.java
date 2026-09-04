@@ -33,7 +33,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static java.util.Map.entry;
 
-public final class CoercerDefault implements Coercer {
+public final class CoercerImpl implements Coercer {
 
     private final ConcurrentHashMap<CoercionKey, CoerceRule<?, ?>> rules =
         new ConcurrentHashMap<>();
@@ -53,7 +53,7 @@ public final class CoercerDefault implements Coercer {
         double.class,   0d
     );
 
-    public CoercerDefault register(CoerceRule<?, ?> rule) {
+    public CoercerImpl register(CoerceRule<?, ?> rule) {
         if (rule == null) {
             throw new IllegalArgumentException("CoerceRule must not be null");
         }
@@ -78,7 +78,7 @@ public final class CoercerDefault implements Coercer {
      * Registers the rule only when no exact rule exists for the same
      * (source, target) pair — caller-registered rules keep priority.
      */
-    public CoercerDefault registerIfAbsent(CoerceRule<?, ?> rule) {
+    public CoercerImpl registerIfAbsent(CoerceRule<?, ?> rule) {
         if (rule == null) {
             throw new IllegalArgumentException("CoerceRule must not be null");
         }
@@ -183,12 +183,12 @@ public final class CoercerDefault implements Coercer {
             entry(String.class, v -> String.valueOf(v)),
 
             // -- boolean --
-            entry(Boolean.class, CoercerDefault::coerceToBoolean),
-            entry(boolean.class, CoercerDefault::coerceToBoolean),
+            entry(Boolean.class, CoercerImpl::coerceToBoolean),
+            entry(boolean.class, CoercerImpl::coerceToBoolean),
 
             // -- character --
-            entry(Character.class, CoercerDefault::coerceToCharacter),
-            entry(char.class, CoercerDefault::coerceToCharacter),
+            entry(Character.class, CoercerImpl::coerceToCharacter),
+            entry(char.class, CoercerImpl::coerceToCharacter),
 
             // -- integral numbers --
             entry(Integer.class, v -> coerceNumber(v, Integer.class)),
@@ -207,8 +207,8 @@ public final class CoercerDefault implements Coercer {
             entry(float.class, v -> coerceNumber(v, Float.class)),
 
             // -- decimal --
-            entry(BigDecimal.class, CoercerDefault::coerceToBigDecimal),
-            entry(BigInteger.class, CoercerDefault::coerceToBigInteger),
+            entry(BigDecimal.class, CoercerImpl::coerceToBigDecimal),
+            entry(BigInteger.class, CoercerImpl::coerceToBigInteger),
 
             // -- temporal --
             entry(LocalDate.class, v -> LocalDate.parse(String.valueOf(v))),
@@ -230,7 +230,7 @@ public final class CoercerDefault implements Coercer {
 
             // -- uri / url / path / locale --
             entry(URI.class, v -> URI.create(String.valueOf(v))),
-            entry(URL.class, CoercerDefault::coerceToURL),
+            entry(URL.class, CoercerImpl::coerceToURL),
             entry(Path.class, v -> Paths.get(String.valueOf(v))),
             entry(Locale.class, v -> Locale.forLanguageTag(String.valueOf(v))),
 
@@ -247,7 +247,7 @@ public final class CoercerDefault implements Coercer {
             entry(Optional.class, v -> Optional.of(v)),
 
             // -- duration --
-            entry(Duration.class, CoercerDefault::coerceToDuration)
+            entry(Duration.class, CoercerImpl::coerceToDuration)
         );
 
     private static URL coerceToURL(Object value) {

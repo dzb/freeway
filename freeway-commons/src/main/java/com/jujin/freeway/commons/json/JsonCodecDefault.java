@@ -1,7 +1,7 @@
 package com.jujin.freeway.commons.json;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoercerImpl;
 import java.lang.reflect.Type;
 import java.util.Objects;
 
@@ -11,7 +11,7 @@ public final class JsonCodecDefault implements JsonCodec {
     private final Coercer coercer;
 
     public JsonCodecDefault() {
-        this(new CoercerDefault());
+        this(new CoercerImpl());
     }
 
     public JsonCodecDefault(Coercer coercer) {

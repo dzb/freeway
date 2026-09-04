@@ -12,9 +12,11 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.nio.file.Path;
+import java.util.function.Function;
 
 /**
  * IoC wiring for the optional object storage subsystem: {@link ObjectStorage}
@@ -27,14 +29,19 @@ import java.nio.file.Path;
 @Marker(Builtin.class)
 public final class CloudStorageModule implements ModuleEx {
 
+    // Default comes from the shared CloudConfigKeys source so the documented
+    // value cannot drift from the code that applies it.
+    private static final SymbolSpec<String> STORAGE_BASE_PATH = SymbolSpec.of(
+        CloudConfigKeys.STORAGE_BASE_PATH, String.class,
+        CloudConfigKeys.STORAGE_BASE_PATH_DEFAULT, Function.identity());
+
     @Override
     public void bind(Binder b) {
         b.bind(ObjectStorage.class)
             .to((Container container) -> {
-                String basePath = container.get(SymbolSource.class)
-                    .resolve(CloudConfigKeys.STORAGE_BASE_PATH, "cloud-storage");
+                SymbolSource symbols = container.get(SymbolSource.class);
                 return new ObjectStorageDefault(
-                    Path.of(basePath),
+                    Path.of(symbols.resolve(STORAGE_BASE_PATH)),
                     event -> container.get(EventBus.class).publish(event));
             })
             .marker(Local.class)

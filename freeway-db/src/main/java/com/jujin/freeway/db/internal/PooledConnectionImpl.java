@@ -5,14 +5,14 @@ import java.sql.Connection;
 import java.time.Duration;
 import java.time.Instant;
 
-final class PooledConnectionDefault implements PooledConnection {
+final class PooledConnectionImpl implements PooledConnection {
 
     private final Connection conn;
     private final Instant createdAt;
     private volatile Instant lastReturned;
     private volatile Instant borrowedAt; // null when idle, non-null when borrowed
 
-    public PooledConnectionDefault(Connection conn, Instant createdAt) {
+    public PooledConnectionImpl(Connection conn, Instant createdAt) {
         this.conn = conn;
         this.createdAt = createdAt;
         this.lastReturned = createdAt;

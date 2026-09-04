@@ -13,7 +13,7 @@ mvn -pl freeway-http -am test
 mvn -pl freeway-db -am test
 mvn -pl freeway-flow -am test
 mvn -pl freeway-cloud -am test
-mvn test -Dtest=CoercerDefaultTest  # single test class
+mvn test -Dtest=CoercerImplTest  # single test class
 ```
 
 Extension modules are in [freeway-ext](https://github.com/dzb/freeway-ext).
@@ -55,7 +55,7 @@ Robaho adapter has been removed.
   - **Integration layer** (`HttpModule`): bridges `Consumer<Object>` → EventBus, registers `FreewayHttpEngine` as default.
   - `JdkHttpEngine` / `JdkHttpContext` have been removed — the built-in engine is now the only default.
   - Route path variables use `:name` or `{name}` syntax; `{name:regex}` for regex constraints.
-  - `Http1xParser` uses a reusable 4KB bulk-read buffer per connection; `HttpContextDefault` writes responses into a reusable byte buffer for a single socket write.
+  - `Http1xParser` uses a reusable 4KB bulk-read buffer per connection; `HttpContextImpl` writes responses into a reusable byte buffer for a single socket write.
 - **DB** — `Database` is the entry point. Named params (`:name`/`$name`), programmatic transactions, built-in pooling, dialect auto-detection from JDBC URL, `DatabaseHub` for multi-datasource. Schema (annotation-driven DDL) and Migration (versioned SQL) provide complementary DB evolution.
 - **Flow** — Lightweight graph orchestration engine ported from solon-flow. 7 node types (START/END/ACTIVITY/EXCLUSIVE/INCLUSIVE/PARALLEL/LOOP). JSON-based graph definitions via `Graph.fromText(json)`. Self-written expression evaluator (`ExprEvaluator`, ~280-line recursive descent parser) and event bus (`FlowEventBus`). Supports PlantUML export, execution tracing with pause/resume, subgraph calls (`#graphId`), and interceptor chains. Task resolution: `@bean` / `#graph` / `$meta`. Zero extra dependencies beyond commons + ioc.
 
@@ -63,8 +63,9 @@ Robaho adapter has been removed.
 
 - Public interfaces use the domain name directly: `Container`, `JsonCodec`, `RequestContext`.
 - `ModuleEx` is the module entry-point interface — spelled `ModuleEx` (not `Module`) to avoid colliding with `java.lang.Module`.
-- `XDefault` is the framework's default choice — replaceable; extension modules bind an alternative via `.primary()` (e.g. `PoolDefault` vs a Hikari-backed pool): `AppRuntimeDefault`, `JsonCodecDefault`, `RequestContextDefault`, `CoercerDefault`.
+- `XDefault` is the framework's default choice — replaceable; extension modules bind an alternative via `.primary()` (e.g. `PoolDefault` vs a Hikari-backed pool): `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`, `FlowDriverDefault`.
 - `XImpl` is the definitive implementation — the single intended implementation, not meant to be replaced (e.g. `DatabaseImpl`, `QueryImpl`).
+- **Choosing Default vs Impl**: a class is `XDefault` only when its interface is a self-contained extension point the framework consumes through the interface and a replacement can be bound via `.primary()` without touching framework internals — exactly one instance is in effect. When the framework itself depends on the concrete class's interface-external members, when the interface has no real replacement path, or when several implementations legitimately coexist per use-site (e.g. each connection pool ships its own connection type), the suffix is `XImpl` instead (e.g. `HttpContextImpl`, `CoercerImpl`, `PooledConnectionImpl`, `TransportSecurityImpl`, `ExchangeMetaImpl`).
 - `DefaultX` is avoided — `XDefault` keeps the interface name dominant.
 - `internal` packages hold **non-public, unstable implementation details** (e.g. `ServiceIds` normalization) — the name marks "no stability promise", not "physically hidden": classes there may stay `public` (the container assembles them from sibling packages), but callers must not depend on their shape across releases.
 - `XDefault` is **not** internal: it is the replaceable default — a public extension point (an extension module substitutes via `.primary()`), so default implementations live in the feature package, not `internal`.

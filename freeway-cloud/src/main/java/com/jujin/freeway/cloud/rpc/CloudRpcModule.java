@@ -6,7 +6,7 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
-import com.jujin.freeway.cloud.rpc.TransportSecurityDefault;
+import com.jujin.freeway.cloud.rpc.TransportSecurityImpl;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
@@ -22,6 +22,7 @@ import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.function.Function;
 
 /**
  * IoC wiring for remote invocation: {@link CloudHttpClient} →
@@ -39,26 +40,47 @@ import java.time.Duration;
 @Marker(Builtin.class)
 public final class CloudRpcModule implements ModuleEx {
 
+    // Key, type and default declared once per key; the symbol chain resolves
+    // the raw value and the spec post-processes it. Defaults come from the
+    // shared CloudConfigKeys sources so the config layer and the library
+    // fallback (CloudHttpClientDefault.Wiring) cannot drift apart.
     private static final SymbolSpec<Long> REQUEST_TIMEOUT_MS = SymbolSpec.of(
-        CloudConfigKeys.RPC_REQUEST_TIMEOUT, Long.class, 10_000L, Long::parseLong);
+        CloudConfigKeys.RPC_REQUEST_TIMEOUT, Long.class,
+        CloudConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS = SymbolSpec.of(
-        CloudConfigKeys.RPC_CONNECT_TIMEOUT, Long.class, 3_000L, Long::parseLong);
+        CloudConfigKeys.RPC_CONNECT_TIMEOUT, Long.class,
+        CloudConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> TRACE_ENABLED = SymbolSpec.of(
         CloudConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true, Boolean::parseBoolean);
+
+    // TLS stores: unset (blank) keys mean plaintext development — the module
+    // resolves TransportSecurity.NONE when the key store is blank.
+    private static final SymbolSpec<String> TLS_KEY_STORE = SymbolSpec.of(
+        CloudConfigKeys.RPC_TLS_KEY_STORE, String.class,
+        CloudConfigKeys.RPC_TLS_KEY_STORE_DEFAULT, Function.identity());
+    private static final SymbolSpec<String> TLS_KEY_STORE_PASSWORD = SymbolSpec.of(
+        CloudConfigKeys.RPC_TLS_KEY_STORE_PASSWORD, String.class,
+        CloudConfigKeys.RPC_TLS_KEY_STORE_PASSWORD_DEFAULT, Function.identity());
+    private static final SymbolSpec<String> TLS_TRUST_STORE = SymbolSpec.of(
+        CloudConfigKeys.RPC_TLS_TRUST_STORE, String.class,
+        CloudConfigKeys.RPC_TLS_TRUST_STORE_DEFAULT, Function.identity());
+    private static final SymbolSpec<String> TLS_TRUST_STORE_PASSWORD = SymbolSpec.of(
+        CloudConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD, String.class,
+        CloudConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT, Function.identity());
 
     @Override
     public void bind(Binder b) {
         b.bind(TransportSecurity.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
-                String keyStore = symbols.resolve(CloudConfigKeys.RPC_TLS_KEY_STORE, "");
+                String keyStore = symbols.resolve(TLS_KEY_STORE);
                 if (keyStore.isBlank()) {
                     return TransportSecurity.NONE; // plaintext development default
                 }
-                String keyPassword = symbols.resolve(CloudConfigKeys.RPC_TLS_KEY_STORE_PASSWORD, "");
-                String trustStore = symbols.resolve(CloudConfigKeys.RPC_TLS_TRUST_STORE, "");
-                String trustPassword = symbols.resolve(CloudConfigKeys.RPC_TLS_TRUST_STORE_PASSWORD, "");
-                return TransportSecurityDefault.fromKeyStore(
+                String keyPassword = symbols.resolve(TLS_KEY_STORE_PASSWORD);
+                String trustStore = symbols.resolve(TLS_TRUST_STORE);
+                String trustPassword = symbols.resolve(TLS_TRUST_STORE_PASSWORD);
+                return TransportSecurityImpl.fromKeyStore(
                     Path.of(keyStore), keyPassword,
                     trustStore.isBlank() ? null : Path.of(trustStore), trustPassword);
             })

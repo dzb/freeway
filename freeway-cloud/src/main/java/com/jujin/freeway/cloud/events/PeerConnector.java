@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.events;
 
+import com.jujin.freeway.cloud.CloudConfigKeys;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
@@ -27,13 +28,22 @@ import org.slf4j.LoggerFactory;
 public final class PeerConnector implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnector.class);
-    /** Default reconnect backoff floor / ceiling (exponential, capped). */
-    private static final long BACKOFF_BASE_MS = 1_000;
-    private static final long BACKOFF_MAX_MS = 30_000;
+    /** Default reconnect backoff floor / ceiling (exponential, capped) — one
+     *  source with the config layer
+     *  ({@link CloudConfigKeys#EVENTS_BACKOFF_BASE_MS_DEFAULT} /
+     *  {@link CloudConfigKeys#EVENTS_BACKOFF_MAX_MS_DEFAULT}), so this library
+     *  fallback cannot drift from the lifecycle hook's specs. */
+    private static final long BACKOFF_BASE_MS =
+        CloudConfigKeys.EVENTS_BACKOFF_BASE_MS_DEFAULT;
+    private static final long BACKOFF_MAX_MS =
+        CloudConfigKeys.EVENTS_BACKOFF_MAX_MS_DEFAULT;
     /** A peer that accepts the socket but never answers the hello must not
      *  pin a half-open connection forever — abort and let the dial loop
-     *  retry with backoff. */
-    private static final Duration HANDSHAKE_TIMEOUT = Duration.ofSeconds(10);
+     *  retry with backoff. One source with the config layer
+     *  ({@link CloudConfigKeys#EVENTS_HANDSHAKE_TIMEOUT_MS_DEFAULT}); the
+     *  ms→Duration conversion happens at this boundary. */
+    private static final Duration HANDSHAKE_TIMEOUT =
+        Duration.ofMillis(CloudConfigKeys.EVENTS_HANDSHAKE_TIMEOUT_MS_DEFAULT);
     /** Mirrors the server side's inbound message limit
      *  ({@code WebSocket.MAX_MESSAGE_SIZE}): fragment reassembly must not turn
      *  a peer that never sets FIN into unbounded memory. */

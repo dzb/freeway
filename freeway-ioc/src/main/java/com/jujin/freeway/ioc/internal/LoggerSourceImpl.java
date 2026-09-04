@@ -10,11 +10,11 @@ import org.slf4j.LoggerFactory;
  * {@code XDefault} convention as {@link SymbolSourceDefault} and can be
  * overridden via a primary binding.
  */
-final class LoggerSourceDefault implements LoggerSource {
+final class LoggerSourceImpl implements LoggerSource {
 
-    static final LoggerSourceDefault INSTANCE = new LoggerSourceDefault();
+    static final LoggerSourceImpl INSTANCE = new LoggerSourceImpl();
 
-    private LoggerSourceDefault() {
+    private LoggerSourceImpl() {
     }
 
     @Override

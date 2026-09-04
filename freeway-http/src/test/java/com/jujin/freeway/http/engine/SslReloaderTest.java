@@ -13,7 +13,7 @@ import javax.net.ssl.SSLContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoercerImpl;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.internal.SslReloader;
 
@@ -120,12 +120,12 @@ class SslReloaderTest {
 
     private static FreewayHttpEngine engine() {
         return new FreewayHttpEngine(
-            new JsonCodecDefault(), new CoercerDefault());
+            new JsonCodecDefault(), new CoercerImpl());
     }
 
     private static FreewayHttpEngine engine(SSLContext initial) {
         return new FreewayHttpEngine(
-            new JsonCodecDefault(), new CoercerDefault(), initial, false, null);
+            new JsonCodecDefault(), new CoercerImpl(), initial, false, null);
     }
 
     private static SslReloader reloader(

@@ -12,14 +12,14 @@ import java.util.concurrent.ThreadLocalRandom;
  * ({@link AbstractHttpContext}) and WebSocket sessions. Internal — not part
  * of the application API.
  */
-public final class ExchangeMetaDefault implements ExchangeMeta {
+public final class ExchangeMetaImpl implements ExchangeMeta {
 
     private volatile String correlationId;
     private volatile Instant startTime;
     private volatile Object principal;
     private volatile ConcurrentHashMap<String, Object> attributes;
 
-    public ExchangeMetaDefault(String correlationId) {
+    public ExchangeMetaImpl(String correlationId) {
         this.correlationId = correlationId != null && !correlationId.isBlank()
             ? correlationId : fastCorrelationId();
         this.startTime = Instant.now();

@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `discovery`（`ServiceDiscoveryDefault`/`LoadBalancerDefault`/`ServiceRegistryDefault`）、
   `resilience`（`CircuitBreakerDefault`/`RateLimiterDefault`/`RetryerDefault`）、
   `observe`（`MetricsDefault`/`TracerDefault`）、`storage`（`ObjectStorageDefault`）、
-  `secret`（`SecretStoreDefault`）、`rpc`（`CloudHttpClientDefault`/`TransportSecurityDefault`）。
+  `secret`（`SecretStoreDefault`）、`rpc`（`CloudHttpClientDefault`/`TransportSecurityImpl`）。
   `internal` 现仅容纳真正的实现细节（`RegistryStore`/`ConfigLists`/`ResiliencePolicy`
   等）。`CloudHttpClientDefault` 的 resilience 装配助手 `ResiliencePolicy` 一并迁入 `rpc`
   （保持包私有，随其 owner 归位，不污染 public 面）；其包私有构造器/嵌套类无需对外暴露。

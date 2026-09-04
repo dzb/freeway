@@ -23,6 +23,8 @@ public final class CloudConfigKeys {
     // ── Object Storage ─────────────────────────────────────
     public static final String STORAGE_TYPE       = PREFIX + ".storage.type";
     public static final String STORAGE_BASE_PATH  = PREFIX + ".storage.base-path";
+    /** Local backend root under the working directory. */
+    public static final String STORAGE_BASE_PATH_DEFAULT = "cloud-storage";
 
     // ── Discovery / Registry ───────────────────────────────
     public static final String DISCOVERY_TYPE        = PREFIX + ".discovery.type";
@@ -33,6 +35,8 @@ public final class CloudConfigKeys {
     public static final String REGISTRY_SERVICE_SCHEME = PREFIX + ".registry.service-scheme";
     public static final String REGISTRY_SERVICE_PORT = PREFIX + ".registry.service-port";
     public static final String REGISTRY_SERVICE_INSTANCE_ID = PREFIX + ".registry.service-instance-id";
+    /** Scheme used when {@link #REGISTRY_SERVICE_SCHEME} is unset. */
+    public static final String REGISTRY_SERVICE_SCHEME_DEFAULT = "http";
 
     // ── RPC（远程调用）──────────────────────────────────────
     public static final String RPC_CONNECT_TIMEOUT     = PREFIX + ".rpc.connect-timeout";
@@ -48,6 +52,12 @@ public final class CloudConfigKeys {
     public static final String RPC_RATE_LIMIT_ENABLED  = PREFIX + ".rpc.rate-limit.enabled";
     public static final String RPC_RATE_LIMIT_PER_SECOND = PREFIX + ".rpc.rate-limit.per-second";
     public static final String RPC_TRACE_ENABLED       = PREFIX + ".rpc.trace.enabled";
+
+    // Canonical RPC timeout defaults (ms) — shared by CloudRpcModule (config
+    // fallbacks) and CloudHttpClientDefault.Wiring (library fallback when the
+    // module is not installed), so the two layers cannot drift apart.
+    public static final long RPC_REQUEST_TIMEOUT_DEFAULT = 10_000;
+    public static final long RPC_CONNECT_TIMEOUT_DEFAULT = 3_000;
 
     // Canonical retry/breaker defaults — shared by CloudResilienceModule
     // (config fallbacks) and CloudHttpClientDefault (library fallback when
@@ -68,6 +78,12 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_KEY_STORE_PASSWORD = PREFIX + ".rpc.tls.key-store-password";
     public static final String RPC_TLS_TRUST_STORE        = PREFIX + ".rpc.tls.trust-store";
     public static final String RPC_TLS_TRUST_STORE_PASSWORD = PREFIX + ".rpc.tls.trust-store-password";
+    // Blank-string defaults: unset TLS keys mean plaintext development
+    // (CloudRpcModule resolves TransportSecurity.NONE when the key store is blank).
+    public static final String RPC_TLS_KEY_STORE_DEFAULT = "";
+    public static final String RPC_TLS_KEY_STORE_PASSWORD_DEFAULT = "";
+    public static final String RPC_TLS_TRUST_STORE_DEFAULT = "";
+    public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
 
     // ── CloudEventBus（EventBus 的跨节点事件网格, 见 docs/freeway-cloud-events-design.md）──
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
@@ -90,7 +106,8 @@ public final class CloudConfigKeys {
     public static final int EVENTS_DEDUP_CAPACITY_DEFAULT = 4096;
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
 
-    // ── CloudEventBus networking timeouts (defaults mirror the prior hard-coded values) ──
+    // ── CloudEventBus networking timeouts (shared by the CloudEventLifecycleHook
+    // specs and PeerConnector's library fallback — one value per timeout) ──
     /** Socket connect timeout for outbound mesh peer dials. */
     public static final String EVENTS_CONNECT_TIMEOUT_MS   = PREFIX + ".events.connect-timeout-ms";
     public static final long EVENTS_CONNECT_TIMEOUT_MS_DEFAULT   = 3000;

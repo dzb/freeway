@@ -34,7 +34,7 @@ import com.jujin.freeway.http.sse.SseEmitter;
  * (HTTP/1.1 wire format or HTTP/2 stream frames); this class owns the shared
  * request/response state, gzip compression, and streaming helpers.
  */
-public class HttpContextDefault extends AbstractHttpContext {
+public class HttpContextImpl extends AbstractHttpContext {
 
     private String method, path;
     private String remoteAddress = "";
@@ -69,13 +69,13 @@ public class HttpContextDefault extends AbstractHttpContext {
         void transfer(FileChannel channel, long offset, long length)
             throws IOException;
     }
-    public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer) {
+    public HttpContextImpl(JsonCodec jsonCodec, Coercer coercer) {
         super(jsonCodec, coercer);
     }
 
     /** Creates a context seeded with the given correlation id (auto-generated
      *  when blank); keep-alive reuse updates it per request via reset(). */
-    public HttpContextDefault(JsonCodec jsonCodec, Coercer coercer,
+    public HttpContextImpl(JsonCodec jsonCodec, Coercer coercer,
                               String correlationId) {
         super(jsonCodec, coercer, correlationId);
     }
@@ -306,7 +306,7 @@ public class HttpContextDefault extends AbstractHttpContext {
                 @Override
                 public void write(byte[] b, int off, int len) throws IOException {
                     if (len > 0) {
-                        writer.writeBody(HttpContextDefault.this, b, off, len);
+                        writer.writeBody(HttpContextImpl.this, b, off, len);
                     }
                 }
             }, 8192);

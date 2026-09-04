@@ -10,9 +10,9 @@ import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.commons.coercion.CoercerImpl;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
-import com.jujin.freeway.http.engine.HttpContextDefault;
+import com.jujin.freeway.http.engine.HttpContextImpl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,8 +31,8 @@ class Http2ResponseWriterTest {
             // (END_STREAM on the request HEADERS); closing the output stream
             // then drains an empty request body instead of blocking forever.
             stream.markHalfClosed();
-            HttpContextDefault ctx = new HttpContextDefault(
-                new JsonCodecDefault(), new CoercerDefault());
+            HttpContextImpl ctx = new HttpContextImpl(
+                new JsonCodecDefault(), new CoercerImpl());
             ctx.setHeader("Content-Type", "text/plain");
             ctx.setHeader("Connection", "close");
             ctx.setHeader("Keep-Alive", "timeout=5");
@@ -57,8 +57,8 @@ class Http2ResponseWriterTest {
             Http2Stream stream = new Http2Stream(1, connection, Map.of(),
                 (s, in, out, h) -> {});
             stream.markHalfClosed();
-            HttpContextDefault ctx = new HttpContextDefault(
-                new JsonCodecDefault(), new CoercerDefault());
+            HttpContextImpl ctx = new HttpContextImpl(
+                new JsonCodecDefault(), new CoercerImpl());
             ctx.setHeader("Content-Type", "text/event-stream; charset=utf-8");
             ctx.setHeader("Cache-Control", "no-cache");
             ctx.setHeader("Connection", "keep-alive");
@@ -80,8 +80,8 @@ class Http2ResponseWriterTest {
             Http2Stream stream = new Http2Stream(1, connection, Map.of(),
                 (s, in, out, h) -> {});
             stream.markHalfClosed();
-            HttpContextDefault ctx = new HttpContextDefault(
-                new JsonCodecDefault(), new CoercerDefault());
+            HttpContextImpl ctx = new HttpContextImpl(
+                new JsonCodecDefault(), new CoercerImpl());
             ctx.addHeader("Set-Cookie", "a=1");
             ctx.addHeader("Set-Cookie", "b=2");
 

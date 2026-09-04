@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Built-in {@link ServiceDeclaration} for the HTTP endpoint: registers the
@@ -34,6 +35,11 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
     private static final SymbolSpec<Integer> SERVICE_PORT = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_PORT, Integer.class, null, Integer::parseInt);
 
+    /** Static default only — host/port/instance-id fallbacks are dynamic and stay raw. */
+    private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
+        CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
+        CloudConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
+
     /** Bind-all addresses: reachable locally, unreachable from other nodes. */
     private static final Set<String> UNROUTABLE_HOSTS = Set.of("0.0.0.0", "::", "");
 
@@ -53,7 +59,7 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         // resolve raw and fall back manually.
         Integer configuredPort = symbols.resolve(SERVICE_PORT);
         int port = configuredPort != null ? configuredPort : server.port();
-        String scheme = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_SCHEME, "http");
+        String scheme = symbols.resolve(SERVICE_SCHEME);
         String instanceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
             serviceId + "@" + host + ":" + port);
         if (UNROUTABLE_HOSTS.contains(host)) {

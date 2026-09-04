@@ -181,7 +181,7 @@ final class Http2Session {
             if (authority != null) headers.put("Host", List.of(authority));
 
             String correlationId = HttpSession.headerValue(reqHeaders, "x-request-id");
-            var context = new HttpContextDefault(ctx.jsonCodec(), ctx.coercer(), correlationId);
+            var context = new HttpContextImpl(ctx.jsonCodec(), ctx.coercer(), correlationId);
             context.setMaxBodySize(ctx.config().maxBodySize());
             context.setCompression(ctx.config().compression());
             context.setSecure(sslSession != null);

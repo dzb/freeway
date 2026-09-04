@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * PooledConnection 单元测试 — 使用真实 H2 连接。
  */
-class PooledConnectionDefaultTest {
+class PooledConnectionImplTest {
 
     private static Connection jdbcConn;
 
@@ -35,13 +35,13 @@ class PooledConnectionDefaultTest {
 
     @Test
     void jdbcConnectionReturnsOriginal() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         assertSame(jdbcConn, pooled.connection());
     }
 
     @Test
     void isFreshReturnsTrueForNewConnection() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         assertTrue(pooled.isFresh(Duration.ofSeconds(5)));
     }
 
@@ -50,14 +50,14 @@ class PooledConnectionDefaultTest {
     @Test
     void isFreshReturnsFalseForOldConnection() throws Exception {
         // 创建一个"过去"的连接
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now().minus(Duration.ofSeconds(10)));
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now().minus(Duration.ofSeconds(10)));
         // 阈值 5 秒，但连接最后一次使用是 10 秒前
         assertFalse(pooled.isFresh(Duration.ofSeconds(5)));
     }
 
     @Test
     void markReturnedResetsFreshness() throws Exception {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now().minus(Duration.ofSeconds(10)));
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now().minus(Duration.ofSeconds(10)));
         pooled.markReturned();
         // markReturned 后 lastReturned 被重置为 now，应该 fresh
         assertTrue(pooled.isFresh(Duration.ofSeconds(5)));
@@ -65,7 +65,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isFreshPreciseThreshold() throws Exception {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now().minus(Duration.ofMillis(300)));
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now().minus(Duration.ofMillis(300)));
         // 300ms 前的连接，阈值 500ms → fresh
         assertTrue(pooled.isFresh(Duration.ofMillis(500)));
         // 300ms 前的连接，阈值 100ms → 不 fresh
@@ -74,7 +74,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isExpiredExceedsMaxLifetime() {
-        var pooled = new PooledConnectionDefault(
+        var pooled = new PooledConnectionImpl(
             jdbcConn,
             Instant.now().minus(Duration.ofHours(2))  // 2 小时前创建
         );
@@ -84,7 +84,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isExpiredDoesNotExceedMaxLifetime() {
-        var pooled = new PooledConnectionDefault(
+        var pooled = new PooledConnectionImpl(
             jdbcConn,
             Instant.now().minus(Duration.ofMinutes(10))  // 10 分钟前创建
         );
@@ -94,11 +94,11 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isExpiredExceedsMaxIdleTime() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         pooled.markReturned();  // 设置 lastReturned ≈ now
         // 模拟已经空闲了 30 分钟... 但我们不能改变 lastReturned
         // 用过去的 Instant 创建来模拟
-        var oldPooled = new PooledConnectionDefault(
+        var oldPooled = new PooledConnectionImpl(
             jdbcConn,
             Instant.now().minus(Duration.ofHours(2))
         );
@@ -109,7 +109,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isExpiredNotExceeded() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         var now = Instant.now();
         assertFalse(pooled.isExpired(now, Duration.ofHours(1), Duration.ofMinutes(30)));
     }
@@ -117,7 +117,7 @@ class PooledConnectionDefaultTest {
     @Test
     void isExpiredWithinLifetimeBoundary() throws Exception {
         // 创建时间比 maxLifetime 少 2 秒，保证时钟漂移不导致误判
-        var pooled = new PooledConnectionDefault(
+        var pooled = new PooledConnectionImpl(
             jdbcConn,
             Instant.now().minus(Duration.ofSeconds(58))
         );
@@ -130,7 +130,7 @@ class PooledConnectionDefaultTest {
     @Test
     void isExpiredExceedsLifetimeBoundary() {
         // 创建时间远超 maxLifetime
-        var pooled = new PooledConnectionDefault(
+        var pooled = new PooledConnectionImpl(
             jdbcConn,
             Instant.now().minus(Duration.ofSeconds(120))
         );
@@ -142,7 +142,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void markReturnedCalledMultipleTimes() throws Exception {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now().minus(Duration.ofSeconds(30)));
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now().minus(Duration.ofSeconds(30)));
 
         // 最初不 fresh
         assertFalse(pooled.isFresh(Duration.ofSeconds(5)));
@@ -158,7 +158,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void markBorrowedSetsBorrowedAt() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         assertNull(pooled.borrowedAt());
         pooled.markBorrowed();
         assertNotNull(pooled.borrowedAt());
@@ -166,7 +166,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void markReturnedClearsBorrowedAt() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         pooled.markBorrowed();
         assertNotNull(pooled.borrowedAt());
         pooled.markReturned();
@@ -175,7 +175,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isLeakedReturnsTrueWhenExceedsThreshold() throws Exception {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         pooled.markBorrowed();
         // 等 10ms 确保超过 5ms 阈值（Windows 时钟颗粒度通常 ~15ms，10ms 足够）
         Thread.sleep(10);
@@ -184,7 +184,7 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isLeakedReturnsFalseWithinThreshold() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         pooled.markBorrowed();
         // 阈值 1 小时 → 肯定未超过
         assertFalse(pooled.isLeaked(Duration.ofHours(1)));
@@ -192,13 +192,13 @@ class PooledConnectionDefaultTest {
 
     @Test
     void isLeakedReturnsFalseWhenNotBorrowed() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         assertFalse(pooled.isLeaked(Duration.ofMillis(5)));
     }
 
     @Test
     void isLeakedReturnsFalseAfterReturned() {
-        var pooled = new PooledConnectionDefault(jdbcConn, Instant.now());
+        var pooled = new PooledConnectionImpl(jdbcConn, Instant.now());
         pooled.markBorrowed();
         pooled.markReturned();
         assertFalse(pooled.isLeaked(Duration.ofMillis(5)));

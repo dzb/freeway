@@ -6,7 +6,7 @@ import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.internal.AuthPropagator;
-import com.jujin.freeway.cloud.rpc.TransportSecurityDefault;
+import com.jujin.freeway.cloud.rpc.TransportSecurityImpl;
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
@@ -147,8 +147,8 @@ class SecurityTest {
         keytool("-genkeypair", "-alias", "client", "-keyalg", "RSA", "-storetype", "PKCS12",
             "-keystore", keyStore.toString(), "-storepass", "changeit", "-dname", "CN=client", "-validity", "30");
 
-        TransportSecurityDefault security =
-            TransportSecurityDefault.fromKeyStore(keyStore, "changeit", keyStore, "changeit");
+        TransportSecurityImpl security =
+            TransportSecurityImpl.fromKeyStore(keyStore, "changeit", keyStore, "changeit");
         assertNotNull(security.sslContext(), "self-signed keystore builds a working TLS context");
     }
 
