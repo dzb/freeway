@@ -1,5 +1,5 @@
 package com.jujin.freeway.db;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 
 import com.jujin.freeway.db.schema.Column;
 import com.jujin.freeway.db.dialect.Dialect;
@@ -167,7 +167,7 @@ class OrmTest {
         Database db = builder("orm_coercer").build();
         try (db) {
             Schema.ensure(db, Post.class);
-            Orm orm = Orm.of(db, new CoercerImpl());
+            Orm orm = Orm.of(db, new CoercerDefault());
             orm.insert(new Post("title", "body"));
             assertTrue(orm.findById(Post.class, 1L).isPresent(),
                 "Orm.of(db, coercer) should derive the dialect from the database");

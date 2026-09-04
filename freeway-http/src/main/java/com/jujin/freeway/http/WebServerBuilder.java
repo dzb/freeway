@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 import javax.net.ssl.SSLContext;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
@@ -61,7 +61,7 @@ public final class WebServerBuilder {
     private HealthFilter healthFilter = HealthFilter.DEFAULT;
     private Consumer<Object> eventSink = WebServer.NOOP_SINK;
     private JsonCodec jsonCodec = new JsonCodecDefault();
-    private Coercer coercer = new CoercerImpl();
+    private Coercer coercer = new CoercerDefault();
     private Metrics metrics = NoopMetrics.INSTANCE;
 
     WebServerBuilder() {}

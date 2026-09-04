@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
-final class ProxyFactoryImpl implements ProxyFactory {
+final class ProxyFactoryDefault implements ProxyFactory {
     @Override
     public <T> T create(Class<T> interfaceType, Supplier<T> provider, String description) {
         return createAdvised(interfaceType, provider, description, List.of(), false);

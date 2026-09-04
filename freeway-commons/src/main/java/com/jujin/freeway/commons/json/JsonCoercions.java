@@ -4,7 +4,7 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanPlan;
 import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.util.Types;
 import java.lang.ClassValue;
 import java.lang.invoke.MethodHandle;
@@ -50,7 +50,7 @@ import java.util.concurrent.TransferQueue;
 
 final class JsonCoercions {
 
-    private static final CoercerImpl DEFAULT_COERCER = new CoercerImpl();
+    private static final CoercerDefault DEFAULT_COERCER = new CoercerDefault();
     private static final MethodHandles.Lookup PUBLIC =
         MethodHandles.publicLookup();
 
@@ -164,7 +164,7 @@ final class JsonCoercions {
     ) {
         Object plain = normalize(value);
         if (plain == null) {
-            return CoercerImpl.defaultValue(rawType);
+            return CoercerDefault.defaultValue(rawType);
         }
         if (rawType.isInstance(plain)) {
             return rawType.cast(plain);

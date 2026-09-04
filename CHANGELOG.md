@@ -67,6 +67,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ExchangeMetaDefault`（HTTP 上下文与 WebSocket 会话的默认交换元数据，ext 引擎直接
   构造为默认）、`FlowEngineImpl`→`FlowEngineDefault`（默认流程引擎，`FlowModule` 以
   单例绑定）。CLAUDE.md 同步定稿判据文字；freeway-ext 的 `ExchangeMeta` 引用同步收回。
+- **复核收回（续）：`CoercerImpl`→`CoercerDefault`、`ProxyFactoryImpl`→`ProxyFactoryDefault`
+  （freeway-commons/ioc，破坏性更名）** — 按定稿判据（外部的可代换性 —— `.primary()`
+  绑定 / 构造选择 / 配置激活；与功能包归属和框架内装配方式无关）复核收回
+  「非可替换定名 `*Impl`」轮中的最后两例：`Coercer` 规则经公开 `Coercer` 接口消费
+  （`JsonCodecDefault(Coercer)` 构造选择、`JsonCoercions` 逐参数传入），外部可注入
+  自有实现，框架的默认实现定名 `CoercerDefault`；`ProxyFactory` 是容器惰性/增强绑定
+  代理创建的角色默认实现，其唯一在效实现定名 `ProxyFactoryDefault`。`XImpl` 命名现
+  只覆盖容器内部装配件、引擎内建契约件与逐属主工件类型（`HttpContextImpl` /
+  `LoggerSourceImpl` / `PooledConnectionImpl` / `TransportSecurityImpl` 等）。
+  CLAUDE.md / DEVELOPER-GUIDE / SKILL.zh 的 `XImpl` 示例相应移除该两例（改引
+  `LoggerSourceImpl`）；freeway-ext 的 `Coercer` 引用同锁步更名。
 - **`TransportSecurityImpl` 归位 `internal`（freeway-cloud，无 API 影响）** — 复核后其
   全部引用仅来自所属模块的绑定（经 `fromKeyStore` 配置激活）与测试，属模块内部实现件，
   自 `cloud.rpc` 移入 `cloud.internal`。

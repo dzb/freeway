@@ -2,7 +2,7 @@ package com.jujin.freeway.db;
 import java.time.Duration;
 
 import com.jujin.freeway.db.PooledConnection;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.dialect.H2Dialect;
 import com.jujin.freeway.db.dialect.MySqlDialect;
 import java.time.LocalDateTime;
@@ -97,7 +97,7 @@ class DatabaseBuilderTest {
         Database db = new DatabaseBuilder()
             .config(PoolConfig.defaults(
                 "jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""))
-            .coercer(new CoercerImpl())
+            .coercer(new CoercerDefault())
             .build();
 
         try (db) {
@@ -107,7 +107,7 @@ class DatabaseBuilderTest {
             LocalDateTime value = db.query("select ts from t")
                 .one(LocalDateTime.class).orElseThrow();
             assertEquals(LocalDateTime.of(2024, 6, 15, 14, 30, 0), value,
-                "a custom CoercerImpl must still get the JDBC Timestamp rule");
+                "a custom CoercerDefault must still get the JDBC Timestamp rule");
         }
     }
 

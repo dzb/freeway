@@ -5,7 +5,7 @@ import com.jujin.freeway.commons.bean.BeanIntrospector;
 import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
@@ -89,7 +89,7 @@ public final class ContainerImpl implements Container {
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
     private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
     private final SymbolSourceDefault symbolSource;
-    private final CoercerImpl coercer;
+    private final CoercerDefault coercer;
     private final LoggerSource loggerSource;
     private final Scoping scoping;
     private final ProxyFactory proxyFactory;
@@ -114,9 +114,9 @@ public final class ContainerImpl implements Container {
 
     public ContainerImpl(Collection<? extends ModuleEx> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
-        this.coercer = new CoercerImpl();
+        this.coercer = new CoercerDefault();
         this.loggerSource = LoggerSourceImpl.INSTANCE;
-        this.proxyFactory = new ProxyFactoryImpl();
+        this.proxyFactory = new ProxyFactoryDefault();
         this.injectResolver = new InjectionResolver(this);
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(targetCache);

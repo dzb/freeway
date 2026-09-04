@@ -2,7 +2,7 @@ package com.jujin.freeway.db.internal;
 
 import com.jujin.freeway.db.PooledConnection;
 
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.IsolationLevel;
 import java.sql.Connection;
@@ -72,7 +72,7 @@ class DatabaseImplResourceTest {
                 Duration.ofSeconds(5),
                 queryTimeout
             ),
-            new RowMapperResolver(new CoercerImpl(), Map.of(), Map.of())
+            new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of())
         );
     }
 
@@ -80,7 +80,7 @@ class DatabaseImplResourceTest {
         String dbName = "freeway_isolation_" + UUID.randomUUID().toString().replace('-', '_');
         return new DatabaseImpl(
             PoolConfig.defaults("jdbc:h2:mem:" + dbName + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""),
-            new RowMapperResolver(new CoercerImpl(), Map.of(), Map.of())
+            new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of())
         );
     }
 }

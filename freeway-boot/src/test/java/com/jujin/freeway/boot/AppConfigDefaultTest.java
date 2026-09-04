@@ -3,7 +3,7 @@ package com.jujin.freeway.boot;
 import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
@@ -56,7 +56,7 @@ class AppConfigDefaultTest {
             "pool.timeout", Duration.class,
             Duration.ofSeconds(5));
         Coercer coercer =
-            new CoercerImpl();
+            new CoercerDefault();
 
         assertEquals(Duration.ofSeconds(2),
             timeout.parse("2s", coercer),

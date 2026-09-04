@@ -43,7 +43,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.http.HttpConfigKeys;
@@ -1072,7 +1072,7 @@ class FreewayHttpEngineTest {
         // as started — a dead acceptor would strand new connections in the OS
         // backlog.
         FreewayHttpEngine engine = new FreewayHttpEngine(
-            new JsonCodecDefault(), new CoercerImpl());
+            new JsonCodecDefault(), new CoercerDefault());
         try (ServerSocketChannel listener = ServerSocketChannel.open()) {
             listener.bind(new InetSocketAddress("127.0.0.1", 0));
             int port = ((InetSocketAddress) listener.getLocalAddress()).getPort();
@@ -1162,7 +1162,7 @@ class FreewayHttpEngineTest {
 
         FreewayHttpEngine engine = new FreewayHttpEngine(
             new JsonCodecDefault(),
-            new CoercerImpl(),
+            new CoercerDefault(),
             serverSsl,
             false
         );

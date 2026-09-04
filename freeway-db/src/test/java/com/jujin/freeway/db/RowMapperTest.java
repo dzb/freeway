@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.db.internal.RowMapperResolver;
 import com.jujin.freeway.db.schema.Column;
 
@@ -323,7 +323,7 @@ class RowMapperTest {
             new ExactRecord(rs.getLong("id") * 10, "manual");
 
         RowMapperResolver resolver = new RowMapperResolver(
-            new CoercerImpl(),
+            new CoercerDefault(),
             Map.of(
                 TransformResult.class, manualTransform,
                 ExactRecord.class, manualExact
@@ -339,7 +339,7 @@ class RowMapperTest {
 
     @Test
     void resolverCachesWrappedPojoMappers() {
-        RowMapperResolver resolver = new RowMapperResolver(new CoercerImpl(), Map.of(), Map.of());
+        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
 
         RowMapper<ExactRecord> first = resolver.resolve(ExactRecord.class);
         RowMapper<ExactRecord> second = resolver.resolve(ExactRecord.class);
@@ -349,7 +349,7 @@ class RowMapperTest {
 
     @Test
     void resolverRejectsInterfaceTypesWithClearMessage() {
-        RowMapperResolver resolver = new RowMapperResolver(new CoercerImpl(), Map.of(), Map.of());
+        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
 
         SqlException ex = assertThrows(SqlException.class, () -> resolver.resolve(Marker.class));
 
@@ -359,7 +359,7 @@ class RowMapperTest {
 
     @Test
     void resolverRejectsAbstractTypesWithClearMessage() {
-        RowMapperResolver resolver = new RowMapperResolver(new CoercerImpl(), Map.of(), Map.of());
+        RowMapperResolver resolver = new RowMapperResolver(new CoercerDefault(), Map.of(), Map.of());
 
         SqlException ex = assertThrows(SqlException.class, () -> resolver.resolve(AbstractTarget.class));
 

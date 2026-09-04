@@ -206,7 +206,7 @@ RouteHandler resolve(Container container) {
 
 ## Utility Naming Convention
 
-**Decision:** Framework-provided implementations use the naming convention `XDefault` (e.g. `AppRuntimeDefault`, `JsonCodecDefault`, `RequestContextDefault`, `CoercerImpl`).
+**Decision:** Framework-provided implementations use the naming convention `XDefault` (e.g. `AppRuntimeDefault`, `JsonCodecDefault`, `RequestContextDefault`, `CoercerDefault`).
 
 **Why:** `XDefault` keeps the interface name dominant in alphabetized lists and imports. The name reads as "the default X" rather than "a default of X." The alternative `DefaultX` was rejected because it submerges the interface name.
 

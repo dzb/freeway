@@ -1157,7 +1157,7 @@ Schema.ensure(db, TestEntity.class);
 ## 设计约定
 
 - **Public interfaces** 使用裸领域名：`Container`, `JsonCodec`, `RequestContext`
-- **默认实现** 使用 `XDefault` 后缀：`AppRuntimeDefault`, `JsonCodecDefault`, `CoercerImpl`
+- **默认实现** 使用 `XDefault` 后缀：`AppRuntimeDefault`, `JsonCodecDefault`, `CoercerDefault`
 - **`Impl` 后缀** 保留给非策略性具体实现
 - **库类型不应导入 IoC 类型** —— Library → DbModule 模式：库本身零 IoC 依赖
 - **不要在 `bind()` 中启动工作**

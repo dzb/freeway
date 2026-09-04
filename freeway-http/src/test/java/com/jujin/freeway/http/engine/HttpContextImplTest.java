@@ -20,7 +20,7 @@ import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.sse.SseEmitter;
@@ -38,7 +38,7 @@ class HttpContextImplTest {
     private static final JsonCodec CODEC =
             new JsonCodecDefault();
     private static final Coercer COERCER =
-            new CoercerImpl();
+            new CoercerDefault();
 
     /** Records writer calls without needing a real transport. */
     private static final class RecordingWriter implements HttpResponseWriter {

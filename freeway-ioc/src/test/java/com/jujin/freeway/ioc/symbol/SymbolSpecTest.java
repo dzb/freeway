@@ -1,7 +1,7 @@
 package com.jujin.freeway.ioc.symbol;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SymbolSpecTest {
 
-    private final Coercer coercer = new CoercerImpl();
+    private final Coercer coercer = new CoercerDefault();
 
     @Test
     void coercerParsedOptionalKeyReturnsDefaultWhenAbsent() {

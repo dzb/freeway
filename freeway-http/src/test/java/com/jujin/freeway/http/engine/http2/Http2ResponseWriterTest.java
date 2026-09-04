@@ -10,7 +10,7 @@ import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.Test;
 
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.engine.HttpContextImpl;
 
@@ -32,7 +32,7 @@ class Http2ResponseWriterTest {
             // then drains an empty request body instead of blocking forever.
             stream.markHalfClosed();
             HttpContextImpl ctx = new HttpContextImpl(
-                new JsonCodecDefault(), new CoercerImpl());
+                new JsonCodecDefault(), new CoercerDefault());
             ctx.setHeader("Content-Type", "text/plain");
             ctx.setHeader("Connection", "close");
             ctx.setHeader("Keep-Alive", "timeout=5");
@@ -58,7 +58,7 @@ class Http2ResponseWriterTest {
                 (s, in, out, h) -> {});
             stream.markHalfClosed();
             HttpContextImpl ctx = new HttpContextImpl(
-                new JsonCodecDefault(), new CoercerImpl());
+                new JsonCodecDefault(), new CoercerDefault());
             ctx.setHeader("Content-Type", "text/event-stream; charset=utf-8");
             ctx.setHeader("Cache-Control", "no-cache");
             ctx.setHeader("Connection", "keep-alive");
@@ -81,7 +81,7 @@ class Http2ResponseWriterTest {
                 (s, in, out, h) -> {});
             stream.markHalfClosed();
             HttpContextImpl ctx = new HttpContextImpl(
-                new JsonCodecDefault(), new CoercerImpl());
+                new JsonCodecDefault(), new CoercerDefault());
             ctx.addHeader("Set-Cookie", "a=1");
             ctx.addHeader("Set-Cookie", "b=2");
 

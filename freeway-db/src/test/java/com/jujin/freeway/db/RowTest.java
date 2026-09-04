@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import com.jujin.freeway.commons.coercion.CoercerImpl;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -70,7 +70,7 @@ class RowTest {
     void columnAccessIsCaseInsensitive() {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("name", "alice");
-        Row row = new Row(values, new CoercerImpl());
+        Row row = new Row(values, new CoercerDefault());
 
         assertEquals("alice", row.string("name"));
         assertEquals("alice", row.string("NAME"));
