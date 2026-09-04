@@ -20,7 +20,6 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.RuntimeHook;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

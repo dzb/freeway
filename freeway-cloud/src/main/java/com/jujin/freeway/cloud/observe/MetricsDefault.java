@@ -1,6 +1,5 @@
 package com.jujin.freeway.cloud.observe;
 
-import com.jujin.freeway.cloud.observe.MetricsSnapshot;
 import com.jujin.freeway.commons.metrics.Metrics;
 
 import java.util.Map;

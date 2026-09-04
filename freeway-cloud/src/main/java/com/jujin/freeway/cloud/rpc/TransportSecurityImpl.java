@@ -1,7 +1,5 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.cloud.rpc.TransportSecurity;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;

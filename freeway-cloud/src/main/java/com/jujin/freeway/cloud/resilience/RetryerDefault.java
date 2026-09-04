@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud.resilience;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.resilience.Retryer;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**

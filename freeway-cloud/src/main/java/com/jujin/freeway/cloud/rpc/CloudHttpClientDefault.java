@@ -6,16 +6,14 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
+import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
+import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
 import com.jujin.freeway.cloud.resilience.Retryer;
-import com.jujin.freeway.cloud.rpc.CloudException;
-import com.jujin.freeway.cloud.rpc.CloudHttpClient;
-import com.jujin.freeway.cloud.rpc.CloudRequest;
-import com.jujin.freeway.cloud.rpc.CloudResponse;
-import com.jujin.freeway.cloud.rpc.TransportSecurity;
+import com.jujin.freeway.cloud.resilience.RetryerDefault;
+import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 
 import java.io.IOException;
@@ -34,9 +32,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLContext;
-import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
-import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
-import com.jujin.freeway.cloud.resilience.RetryerDefault;
 
 /**
  * JDK {@link HttpClient}-backed {@link CloudHttpClient}.

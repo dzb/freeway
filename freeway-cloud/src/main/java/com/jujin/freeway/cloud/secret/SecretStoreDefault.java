@@ -1,7 +1,5 @@
 package com.jujin.freeway.cloud.secret;
 
-import com.jujin.freeway.cloud.secret.SecretStore;
-
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;

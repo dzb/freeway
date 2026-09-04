@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.Container;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** Builder validation and dispatch-mode semantics for {@link RemoteProxyFactory}. */

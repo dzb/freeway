@@ -1,13 +1,6 @@
 package com.jujin.freeway.cloud.storage;
 
-import com.jujin.freeway.cloud.storage.ObjectEntry;
-import com.jujin.freeway.cloud.storage.ObjectMetadata;
-import com.jujin.freeway.cloud.storage.ObjectStorage;
-import com.jujin.freeway.cloud.storage.PutResult;
-import com.jujin.freeway.cloud.storage.StorageException;
-
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;

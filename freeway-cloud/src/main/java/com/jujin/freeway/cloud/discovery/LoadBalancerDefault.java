@@ -1,8 +1,5 @@
 package com.jujin.freeway.cloud.discovery;
 
-import com.jujin.freeway.cloud.discovery.LoadBalancer;
-import com.jujin.freeway.cloud.discovery.ServiceInstance;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;

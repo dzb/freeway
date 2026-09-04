@@ -2,7 +2,6 @@ package com.jujin.freeway.cloud.rpc;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Outbound HTTP request: verb + path (relative to the instance endpoint) +

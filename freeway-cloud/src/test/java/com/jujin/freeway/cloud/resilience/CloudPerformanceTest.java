@@ -1,8 +1,9 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.resilience;
 
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.internal.RegistryStore;
 
 import org.junit.jupiter.api.Test;
 
@@ -14,8 +15,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
-import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
 
 /**
  * Lightweight throughput smoke benchmarks for freeway-cloud hot paths.

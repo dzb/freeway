@@ -1,10 +1,10 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.observe;
 
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.observe.Tracer;
+import com.jujin.freeway.cloud.internal.TracePropagator;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
@@ -17,8 +17,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.jujin.freeway.cloud.observe.MetricsDefault;
-import com.jujin.freeway.cloud.observe.TracerDefault;
 
 /**
  * Observability defaults: in-memory metrics recording and MDC mirroring of

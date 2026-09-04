@@ -1,5 +1,4 @@
 package com.jujin.freeway.cloud;
-import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
 
 /**
  * Central config keys and canonical defaults for {@code freeway-cloud}.
@@ -38,7 +37,7 @@ public final class CloudConfigKeys {
     /** Scheme used when {@link #REGISTRY_SERVICE_SCHEME} is unset. */
     public static final String REGISTRY_SERVICE_SCHEME_DEFAULT = "http";
 
-    // ── RPC（远程调用）──────────────────────────────────────
+    // ── RPC (remote invocation) ─────────────────────────────
     public static final String RPC_CONNECT_TIMEOUT     = PREFIX + ".rpc.connect-timeout";
     public static final String RPC_REQUEST_TIMEOUT     = PREFIX + ".rpc.request-timeout";
     public static final String RPC_RETRY_MAX_ATTEMPTS  = PREFIX + ".rpc.retry.max-attempts";
@@ -85,7 +84,7 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_TRUST_STORE_DEFAULT = "";
     public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
 
-    // ── CloudEventBus（EventBus 的跨节点事件网格, 见 docs/freeway-cloud-events-design.md）──
+    // ── CloudEventBus (cross-node EventBus mesh, see docs/freeway-cloud-events-design.md)
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
     public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
     public static final String EVENTS_SUBSCRIPTIONS  = PREFIX + ".events.subscriptions";

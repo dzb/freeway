@@ -1,7 +1,5 @@
 package com.jujin.freeway.cloud.resilience;
 
-import com.jujin.freeway.cloud.resilience.CircuitBreaker;
-
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.concurrent.atomic.AtomicBoolean;

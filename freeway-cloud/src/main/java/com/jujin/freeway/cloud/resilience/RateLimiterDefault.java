@@ -1,7 +1,5 @@
 package com.jujin.freeway.cloud.resilience;
 
-import com.jujin.freeway.cloud.resilience.RateLimiter;
-
 /**
  * Token-bucket {@link RateLimiter}: refills at {@code permitsPerSecond}, burst
  * capped at {@code maxBurst} (default 1 — strict rate, no bursts).

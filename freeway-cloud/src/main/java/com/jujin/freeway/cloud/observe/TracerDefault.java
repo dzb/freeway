@@ -3,13 +3,11 @@ package com.jujin.freeway.cloud.observe;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
-import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.commons.metrics.Metrics;
 import org.slf4j.MDC;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
-import com.jujin.freeway.cloud.internal.PropagationFilter;
 
 /**
  * Default {@link Tracer}: creates child spans under the current

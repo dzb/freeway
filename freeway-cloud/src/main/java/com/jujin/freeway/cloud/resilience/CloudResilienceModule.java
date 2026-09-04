@@ -2,18 +2,15 @@ package com.jujin.freeway.cloud.resilience;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
-import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
-import com.jujin.freeway.cloud.resilience.RetryerDefault;
-import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
+
 import java.time.Duration;
-import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
 
 /**
  * IoC wiring for resilience: {@link Retryer} / {@link CircuitBreaker} /

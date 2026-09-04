@@ -3,8 +3,6 @@ package com.jujin.freeway.cloud.rpc;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.Retryer;
-import com.jujin.freeway.cloud.rpc.CloudException;
-import com.jujin.freeway.cloud.rpc.CloudResponse;
 
 import java.io.IOException;
 import java.util.Map;

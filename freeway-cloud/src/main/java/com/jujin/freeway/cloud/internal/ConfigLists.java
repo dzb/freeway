@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * Parsing for the comma-separated list values this module puts on the wire and
  * in config: {@code freeway.cloud.events.peers}, {@code .allowed-types},
- * {@code secret.keys}, and the {@code x-baggage} / {@code x-principal-roles}
+ * {@code secret.keys}, and the {@code baggage} / {@code x-principal-roles}
  * headers.
  *
  * <p>The four call sites used to spell this out inline, and the copies drifted:
