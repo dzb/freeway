@@ -3,6 +3,7 @@ package com.jujin.freeway.cloud.rpc;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.cloud.internal.TransportSecurityImpl;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.observe.Tracer;

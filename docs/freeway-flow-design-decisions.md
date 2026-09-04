@@ -230,9 +230,9 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Decision:** `FlowDriver` is a contributed extension point (`binder.contribute(FlowDriver.class)`). `FlowModule` binds `FlowContainer` and creates `FlowDriverDefault` internally; custom drivers are contributed by id. Graphs select their driver via the `"driver"` field (null/"" → `"default"`). The engine receives a plain `Map<String, FlowDriver>`, assembled by `FlowModule` via `Extension.asMap()`.
 
-**Why:** This keeps `FlowEngineImpl` IoC-free while giving users the standard Freeway extension mechanism. The `Extension.asMap()` bridge converts named contributions into a plain map at the module boundary. Custom drivers can be registered via `add("custom", driver)` or `add(MyDriver.class)` (auto-instantiated via `container.create()`).
+**Why:** This keeps `FlowEngineDefault` IoC-free while giving users the standard Freeway extension mechanism. The `Extension.asMap()` bridge converts named contributions into a plain map at the module boundary. Custom drivers can be registered via `add("custom", driver)` or `add(MyDriver.class)` (auto-instantiated via `container.create()`).
 
-**See also:** `FlowModule.java`, `FlowEngineImpl.java`, `Extension.asMap()` (`freeway-flow`, `freeway-ioc`)
+**See also:** `FlowModule.java`, `FlowEngineDefault.java`, `Extension.asMap()` (`freeway-flow`, `freeway-ioc`)
 
 ---
 
@@ -278,21 +278,21 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## Exception Wrapping Strategy
 
-**Decision:** `FlowEngineImpl.task_exec()` and `condition_test()` propagate `IllegalStateException` and `IllegalArgumentException` unwrapped. All other non-`FlowException` throwables are wrapped in `FlowException`.
+**Decision:** `FlowEngineDefault.task_exec()` and `condition_test()` propagate `IllegalStateException` and `IllegalArgumentException` unwrapped. All other non-`FlowException` throwables are wrapped in `FlowException`.
 
 **Why:** Configuration errors (missing FlowContainer, unknown driver id) carry clear diagnostic messages. Wrapping them in a generic `FlowException("The task handle failed: g / a")` buried the root cause. The stratification preserves diagnostic clarity for setup errors while still wrapping unexpected runtime failures with graph context.
 
-**See also:** `FlowEngineImpl.java:task_exec()`, `FlowDriverDefault.java:getContainer()` (`freeway-flow`)
+**See also:** `FlowEngineDefault.java:task_exec()`, `FlowDriverDefault.java:getContainer()` (`freeway-flow`)
 
 ---
 
 ## FlowOptions Defensive Copy
 
-**Decision:** `FlowEngineImpl.eval()` always creates a new `FlowOptions` instance. If a non-null `options` is passed, its interceptor list is copied to the new instance before adding engine-level interceptors.
+**Decision:** `FlowEngineDefault.eval()` always creates a new `FlowOptions` instance. If a non-null `options` is passed, its interceptor list is copied to the new instance before adding engine-level interceptors.
 
 **Why:** `FlowOptions.DEFAULT` is a public static singleton. The previous code mutating it via `options.interceptorAdd(interceptorList)` caused interceptor accumulation across multiple `eval()` calls sharing the same `DEFAULT` instance.
 
-**See also:** `FlowEngineImpl.java:eval()` (`freeway-flow`)
+**See also:** `FlowEngineDefault.java:eval()` (`freeway-flow`)
 
 ---
 
@@ -306,7 +306,7 @@ JSON → GraphSpec.normalize() → new Graph
 - The completion check in `eval()` throws `FlowException("Graph '...' did not complete: dead end at node '...'")`, naming the stuck node and graph. **Exemptions:** runs ended via `stop()` / `interrupt()` — including interceptor-blocked runs — are not dead ends (stopping is intentional); resume replay walks never mark, because `markDeadEnd` skips `isReverting()` and the replay is only a walk to the resume point.
 - Sub-graph evals share the parent's `ExecState` (passed through `FlowExchanger.runGraph()`), so a dead end recorded inside a sub-graph propagates to the caller's completion check. No reset is needed at eval start — a fresh `ExecState` is created per top-level evaluation.
 
-**See also:** `ExecState.java:DeadEnd`, `FlowEngineImpl.java:eval()` / `exclusive_run_out()` / `inclusive_run_in()` / `parallel_run_in()` (`freeway-flow`)
+**See also:** `ExecState.java:DeadEnd`, `FlowEngineDefault.java:eval()` / `exclusive_run_out()` / `inclusive_run_in()` / `parallel_run_in()` (`freeway-flow`)
 
 ---
 
@@ -346,7 +346,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Why:** Previously, concurrent arrivals could each observe an empty/not-yet-pushed stack and both run the body — a $for loop re-entered from parallel branches double-executed its iteration side effects. Sequential re-entry is handled too: an exhausted iterator left by a completed run is popped first, so a later re-entry (e.g. the node inside another loop's body) re-arms the loop with a fresh iterator — "exhaust → pop → re-arm".
 
-**See also:** `FlowEngineImpl.java:loop_run_claim()` / `loop_run_out()` (`freeway-flow`)
+**See also:** `FlowEngineDefault.java:loop_run_claim()` / `loop_run_out()` (`freeway-flow`)
 
 ---
 
@@ -356,7 +356,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Why:** Join counters are keyed per (graph, node) and only activation resets them. A fork-join inside a loop body that received fewer arrivals than expected in one iteration would carry that residue into the next — the next iteration could falsely activate early, or twice. Resetting per iteration makes each iteration start from a clean count and re-record a dead end only if the join is still short.
 
-**See also:** `FlowEngineImpl.java:resetLoopBodyJoins()` / `loopBodyJoins()` (`freeway-flow`)
+**See also:** `FlowEngineDefault.java:resetLoopBodyJoins()` / `loopBodyJoins()` (`freeway-flow`)
 
 ---
 
@@ -366,7 +366,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Why:** Previously a sub-graph call lost the caller's per-eval interceptors — nodes inside the sub-graph ran with only engine-level interceptors. Only the *raw* options are propagated: each eval merges the engine-level interceptor list itself, so nested evals never run engine-level interceptors twice.
 
-**See also:** `FlowExchanger.java:runGraph()` / `evalOptions()`, `FlowEngineImpl.java:eval()` (`freeway-flow`)
+**See also:** `FlowExchanger.java:runGraph()` / `evalOptions()`, `FlowEngineDefault.java:eval()` (`freeway-flow`)
 
 ---
 

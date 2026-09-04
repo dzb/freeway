@@ -26,7 +26,7 @@
 - 通过 `IocContainerAdapter` 把 Freeway 容器映射到 flow 侧的组件解析接口。
 - 保留 `TaskComponent` 的类型化注册，方便迁移后的任务处理器继续直接接入。
 
-### 2.2 `FlowEngineImpl`
+### 2.2 `FlowEngineDefault`
 
 - 保留节点遍历、条件分支、子图调用和拦截器链。
 - 驱动器解析改为按 graph 的 `driver` 名称显式查找。
@@ -71,7 +71,7 @@
 
 1. 在 `FlowContextImpl` 的类注释里补充了运行态边界、序列化兼容和自引用排除的说明。
 2. 在 `FlowEventBus` 的类注释里补充了从全局总线迁移到上下文内本地事件总线的原因。
-3. 在 `FlowEngineImpl` 的类注释里补充了执行态收敛、驱动器显式查找和控制位归属说明。
+3. 在 `FlowEngineDefault` 的类注释里补充了执行态收敛、驱动器显式查找和控制位归属说明。
 4. 在 `FlowModule` 的类注释里补充了 Freeway IoC 显式绑定和容器适配的原因。
 5. 在 `GraphSpec` 的类注释里补充了 legacy 字段兼容和输出结构统一的原因。
 6. 在 `FlowExchanger` 的类注释里补充了执行态集中管理和 `copy()` 语义。

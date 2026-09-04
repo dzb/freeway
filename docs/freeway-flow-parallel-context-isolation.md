@@ -14,7 +14,7 @@
 
 上述现状在最近的 flow 语义修复(网关死路检测、表达式语义、$for 原子抢占等)
 之后**保持不变**:分支依然共享同一个 `FlowContext` 实例,引擎的
-`FlowEngineImpl.parallel_run_out()` 注释明确将"分支共享同一 FlowContext、
+`FlowEngineDefault.parallel_run_out()` 注释明确将"分支共享同一 FlowContext、
 并发写同一 data key 是已知限制"列为既定行为并引用本文档;数据隔离
 (per-branch overlay / join 合并)仍未实现。
 

@@ -58,7 +58,7 @@ public class ExecState {
     /**
      * Records that execution could not continue past the given node (see
      * {@link DeadEnd}). Set at the three gateway dead-end points in
-     * {@code FlowEngineImpl}; the engine throws a {@code FlowException} at
+     * {@code FlowEngineDefault}; the engine throws a {@code FlowException} at
      * eval completion if any dead-end remains while the run finished without
      * stop/interrupt.
      */

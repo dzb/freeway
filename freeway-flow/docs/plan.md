@@ -42,7 +42,7 @@ freeway-flow/
     │   │
     │   ├── [引擎层]
     │   │   ├── FlowEngine.java          引擎接口 + eval 重载
-    │   │   └── FlowEngineImpl.java      核心执行引擎（7种节点类型遍历）
+    │   │   └── FlowEngineDefault.java      核心执行引擎（7种节点类型遍历）
     │   │
     │   ├── [运行时层]
     │   │   ├── FlowExchanger.java       执行交换器（内部状态）
@@ -166,7 +166,7 @@ freeway-flow/
 
 **FlowEngine.java** — 接口迁移，去 `ResourceUtil`（通配符加载），去 `@Preview`。
 
-**FlowEngineImpl.java**（原 FlowEngineDefault）— 核心迁移：
+**FlowEngineDefault.java**（原 FlowEngineDefault）— 核心迁移：
 - 所有内部方法从 `(exchanger, node, startNode)` 签名为 `(exchanger, options, node, startNode)` 以传递 options（包含拦截器列表）
 - `eval()` 中用 `FlowInvocation` 包装
 - `onNodeStart`/`onNodeEnd` 中通知所有拦截器

@@ -676,7 +676,7 @@ class FlowEngineTest {
                 });
 
         var driver = new FlowDriverDefault(null, null);
-        var engine = new FlowEngineImpl(Map.of("default", driver));
+        var engine = new FlowEngineDefault(Map.of("default", driver));
         for (var handler : container.extension(TaskComponent.class).all()) {
             engine.register(handler);
         }
@@ -818,7 +818,7 @@ class FlowEngineTest {
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
             .container(name -> (TaskComponent) (ctx, node) -> {})
             .build());
-        int nodes = FlowEngineImpl.MAX_EXECUTION_DEPTH + 200;
+        int nodes = FlowEngineDefault.MAX_EXECUTION_DEPTH + 200;
         FlowException ex = assertThrows(
             FlowException.class,
             () -> engine.eval(chain(nodes), FlowContext.of())
@@ -1081,8 +1081,8 @@ class FlowEngineTest {
     void loopIterationLimitFailsFast() {
         // A misconfigured/oversized $in must not spin forever — the engine
         // enforces a hard iteration cap and fails with a clear error.
-        List<Integer> huge = new ArrayList<>(FlowEngineImpl.MAX_LOOP_ITERATIONS + 1);
-        for (int i = 0; i < FlowEngineImpl.MAX_LOOP_ITERATIONS + 1; i++) {
+        List<Integer> huge = new ArrayList<>(FlowEngineDefault.MAX_LOOP_ITERATIONS + 1);
+        for (int i = 0; i < FlowEngineDefault.MAX_LOOP_ITERATIONS + 1; i++) {
             huge.add(i);
         }
         FlowEngine engine = newEngine(FlowDriverDefault.builder()

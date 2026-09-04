@@ -1,4 +1,6 @@
-package com.jujin.freeway.cloud.rpc;
+package com.jujin.freeway.cloud.internal;
+
+import com.jujin.freeway.cloud.rpc.TransportSecurity;
 
 import java.io.IOException;
 import java.io.InputStream;

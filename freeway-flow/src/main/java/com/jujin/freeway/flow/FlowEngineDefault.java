@@ -34,9 +34,9 @@ import org.slf4j.LoggerFactory;
  * @author noear
  * @since 3.0
  */
-public class FlowEngineImpl implements FlowEngine {
+public class FlowEngineDefault implements FlowEngine {
 
-    private static final Logger LOG = LoggerFactory.getLogger(FlowEngineImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(FlowEngineDefault.class);
 
     /**
      * Maximum node recursion depth during evaluation. The executor walks the
@@ -59,7 +59,7 @@ public class FlowEngineImpl implements FlowEngine {
     protected final FlowMarkerIndex markerIndex = new FlowMarkerIndex();
     protected final List<FlowOptions.RankedInterceptor> interceptorList;
 
-    public FlowEngineImpl(Map<String, FlowDriver> drivers) {
+    public FlowEngineDefault(Map<String, FlowDriver> drivers) {
         this.drivers = new HashMap<>(Objects.requireNonNull(drivers, "drivers"));
         // Concurrent: load()/unload() may run while other threads evaluate.
         this.graphMap = new ConcurrentHashMap<>();

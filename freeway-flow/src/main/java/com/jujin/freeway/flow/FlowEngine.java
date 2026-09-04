@@ -27,7 +27,7 @@ public interface FlowEngine {
      * container and contributed drivers.
      */
     static FlowEngine newInstance() {
-        return new FlowEngineImpl(Map.of("default", FlowDriverDefault.getInstance()));
+        return new FlowEngineDefault(Map.of("default", FlowDriverDefault.getInstance()));
     }
 
     /**
@@ -37,7 +37,7 @@ public interface FlowEngine {
      * point after assembling drivers from contributions.
      */
     static FlowEngine newInstance(Map<String, FlowDriver> drivers) {
-        return new FlowEngineImpl(drivers);
+        return new FlowEngineDefault(drivers);
     }
 
     // --- driver ---

@@ -159,7 +159,7 @@ class HttpContextTest {
 
     @Test
     void exchangeMetaResetClearsPerRequestState() {
-        ExchangeMetaImpl meta = new ExchangeMetaImpl("client-id");
+        ExchangeMetaDefault meta = new ExchangeMetaDefault("client-id");
         meta.setPrincipal("user");
         meta.setAttribute("k", "v");
 

@@ -28,7 +28,7 @@ public class FlowExchanger {
     private final AtomicInteger stepCount;
 
     private final ExecState execState;
-    /** Shared recursion depth guard — see {@link FlowEngineImpl#MAX_EXECUTION_DEPTH}. */
+    /** Shared recursion depth guard — see {@link FlowEngineDefault#MAX_EXECUTION_DEPTH}. */
     private final AtomicInteger depth;
     /** Graphs whose END node was reached in this evaluation. */
     private final Set<String> graphEnded = ConcurrentHashMap.newKeySet();
@@ -38,7 +38,7 @@ public class FlowExchanger {
 
     /**
      * The raw per-eval {@link FlowOptions} of the current evaluation, set by
-     * {@link FlowEngineImpl#eval}. {@link #runGraph} re-passes it to the
+     * {@link FlowEngineDefault#eval}. {@link #runGraph} re-passes it to the
      * sub-graph eval so per-eval interceptors cover sub-graph nodes too; only
      * the raw options are stored so the engine-level interceptor list is not
      * merged twice on nested evals.
@@ -95,10 +95,10 @@ public class FlowExchanger {
     public FlowContext context() { return context; }
     public ExecState execState() { return execState; }
 
-    /** The raw per-eval options of the current evaluation (see {@link FlowEngineImpl#eval}). */
+    /** The raw per-eval options of the current evaluation (see {@link FlowEngineDefault#eval}). */
     public FlowOptions evalOptions() { return evalOptions; }
 
-    /** Sets the raw per-eval options; called by {@link FlowEngineImpl#eval}. */
+    /** Sets the raw per-eval options; called by {@link FlowEngineDefault#eval}. */
     void evalOptions(FlowOptions options) { this.evalOptions = options; }
 
     /** True when this exchanger runs a sub-graph (created by {@link #runGraph}). */
@@ -141,7 +141,7 @@ public class FlowExchanger {
         subEx.markSubgraphEval();
         // Propagate the parent eval's per-eval options (interceptors) so
         // sub-graph nodes are covered too; the sub-eval re-merges the
-        // engine-level list exactly once (see FlowEngineImpl.eval).
+        // engine-level list exactly once (see FlowEngineDefault.eval).
         engine.eval(graph, subEx, evalOptions);
 
         if (!isStopped()) {
@@ -153,7 +153,7 @@ public class FlowExchanger {
         }
     }
 
-    /** Marks a graph as having reached its END node (see {@link FlowEngineImpl#end_run}). */
+    /** Marks a graph as having reached its END node (see {@link FlowEngineDefault#end_run}). */
     void markEnded(Graph graph) {
         graphEnded.add(graph.getId());
     }
