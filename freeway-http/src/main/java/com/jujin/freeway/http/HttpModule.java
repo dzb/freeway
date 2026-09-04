@@ -103,9 +103,14 @@ public final class HttpModule implements ModuleEx {
                 json, coercer, sslContext, ssl.http2(), sslParameters, metrics);
         });
 
-        // HttpEngine — bind to FreewayHttpEngine
+        // HttpEngine — bind to FreewayHttpEngine. Extension modules bind their
+        // engine (e.g. Undertow/Jetty adapters) with a distinct id + primary();
+        // the Builtin marker is what the server hook probes to decide whether
+        // the built-in engine — the only one with reload(SSLContext) — is the
+        // engine actually serving.
         binder.bind(HttpEngine.class).to(container ->
-            container.get(FreewayHttpEngine.class)).id("builtin");
+            container.get(FreewayHttpEngine.class)).id("builtin")
+            .marker(Builtin.class);
 
         // WebServer — bridge IoC capabilities to plain constructor
         binder.bind(WebServer.class).to(container -> {
@@ -146,22 +151,31 @@ public final class HttpModule implements ModuleEx {
                 container.get(WebServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
-                    sslReloader = new SslReloader(
-                        container.get(FreewayHttpEngine.class),
-                        Path.of(ssl.keyStorePath()),
-                        ssl.trustStorePath() != null
-                            ? Path.of(ssl.trustStorePath()) : null,
-                        ssl.sniDirectory() != null
-                            ? Path.of(ssl.sniDirectory()) : null,
-                        ssl.reloadInterval(),
-                        () -> SslContextFactory.buildContext(ssl));
-                    try {
-                        sslReloader.start();
-                    } catch (RuntimeException ex) {
-                        sslReloader.close();
-                        sslReloader = null;
-                        container.get(WebServer.class).stop();
-                        throw ex;
+                    if (isBuiltinEngineActive(container)) {
+                        // The built-in engine is the one WebServer started, so
+                        // reloading its SSLContext actually rotates the live
+                        // server's certificate material.
+                        sslReloader = new SslReloader(
+                            container.get(FreewayHttpEngine.class),
+                            Path.of(ssl.keyStorePath()),
+                            ssl.trustStorePath() != null
+                                ? Path.of(ssl.trustStorePath()) : null,
+                            ssl.sniDirectory() != null
+                                ? Path.of(ssl.sniDirectory()) : null,
+                            ssl.reloadInterval(),
+                            () -> SslContextFactory.buildContext(ssl));
+                        try {
+                            sslReloader.start();
+                        } catch (RuntimeException ex) {
+                            sslReloader.close();
+                            sslReloader = null;
+                            container.get(WebServer.class).stop();
+                            throw ex;
+                        }
+                    } else {
+                        LOG.info("TLS hot reload skipped: the active HttpEngine is not "
+                            + "the built-in FreewayHttpEngine — rotating certificate "
+                            + "material is the active engine module's responsibility");
                     }
                 }
             }
@@ -192,6 +206,19 @@ public final class HttpModule implements ModuleEx {
      *  injection. */
     private static void resolveLazy(Route r, Container c) {
         if (r.handler() instanceof LazyHandler lh) lh.resolve(c);
+    }
+
+    /**
+     * True when the HttpEngine the container resolves ({@code primary()}
+     * wins over the built-in binding) is this module's built-in binding —
+     * i.e. the engine WebServer started is the {@code FreewayHttpEngine}
+     * whose {@code reload(SSLContext)} the {@link SslReloader} drives.
+     * Probed through the binding's marker (no instance realization), so an
+     * ext engine module selected via {@code .primary()} answers false
+     * without ever constructing the built-in engine.
+     */
+    static boolean isBuiltinEngineActive(Container container) {
+        return container.isActiveBinding(HttpEngine.class, Builtin.class);
     }
 
 }

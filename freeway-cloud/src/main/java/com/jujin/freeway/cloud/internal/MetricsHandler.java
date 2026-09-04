@@ -5,11 +5,13 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.RouteHandler;
 
 /**
- * Serves the {@code /metrics} route from the primary {@code Metrics}
- * registry's {@link MetricsSnapshot} view. Injects the capability interface
- * — the module binding derives it from the primary registry, so a swapped-in
- * backend that can render itself is exported without touching this handler;
- * one that cannot fails the startup route resolution.
+ * Serves the {@code /metrics} route from the active {@link MetricsSnapshot}
+ * binding. {@code CloudObserveModule} contributes this route and binds its
+ * own {@code MetricsDefault} registry under both {@code Metrics} and
+ * {@code MetricsSnapshot}, so the endpoint always renders the same registry
+ * the framework counters record into. A replacement metrics backend installs
+ * its own registry bindings and route — this handler does not follow a
+ * swapped-in {@code Metrics} automatically.
  */
 public final class MetricsHandler implements RouteHandler {
 
