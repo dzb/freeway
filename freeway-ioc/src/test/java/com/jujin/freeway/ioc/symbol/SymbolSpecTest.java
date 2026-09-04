@@ -1,4 +1,4 @@
-package com.jujin.freeway.commons.config;
+package com.jujin.freeway.ioc.symbol;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
@@ -13,17 +13,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link ConfigSpec} contracts: coercer-parsed and parser-parsed forms,
+ * {@link SymbolSpec} contracts: coercer-parsed and parser-parsed forms,
  * required-key fail-fast, error messages that name the key, and the
  * no-parser/no-coercer guard.
  */
-class ConfigSpecTest {
+class SymbolSpecTest {
 
     private final Coercer coercer = new CoercerDefault();
 
     @Test
     void coercerParsedOptionalKeyReturnsDefaultWhenAbsent() {
-        ConfigSpec<Integer> port = ConfigSpec.of("server.port", Integer.class, 8080);
+        SymbolSpec<Integer> port = SymbolSpec.of("server.port", Integer.class, 8080);
         assertEquals(8080, port.parse(null, coercer));
         assertEquals(8080, port.parse("   ", coercer));
         assertTrue(port.description().isEmpty());
@@ -32,14 +32,14 @@ class ConfigSpecTest {
 
     @Test
     void coercerParsesNonScalarTargets() {
-        ConfigSpec<Duration> ttl = ConfigSpec.of(
+        SymbolSpec<Duration> ttl = SymbolSpec.of(
             "freeway.db.lock-ttl", Duration.class, Duration.ofHours(1));
         assertEquals(Duration.ofSeconds(30), ttl.parse("PT30S", coercer));
     }
 
     @Test
     void explicitParserFormParsesStrippedRawValue() {
-        ConfigSpec<Integer> port = ConfigSpec.of(
+        SymbolSpec<Integer> port = SymbolSpec.of(
             "server.port", Integer.class, 8080, Integer::parseInt);
         assertEquals(9090, port.parse(" 9090 ", coercer));
     }
@@ -52,14 +52,14 @@ class ConfigSpecTest {
                 throw new AssertionError("coercer must not be consulted");
             }
         };
-        ConfigSpec<Integer> port = ConfigSpec.of(
+        SymbolSpec<Integer> port = SymbolSpec.of(
             "server.port", Integer.class, 8080, Integer::parseInt);
         assertEquals(1, port.parse("1", hostile));
     }
 
     @Test
     void invalidValueReportsKeyAndRawInput() {
-        ConfigSpec<Integer> port = ConfigSpec.of(
+        SymbolSpec<Integer> port = SymbolSpec.of(
             "server.port", Integer.class, 8080);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
             () -> port.parse("not-a-number", coercer));
@@ -71,7 +71,7 @@ class ConfigSpecTest {
 
     @Test
     void requiredKeyFailsFastWhenAbsentOrBlank() {
-        ConfigSpec<String> url = ConfigSpec.required(
+        SymbolSpec<String> url = SymbolSpec.required(
             "freeway.db.url", String.class, s -> s);
         IllegalArgumentException absent = assertThrows(
             IllegalArgumentException.class, () -> url.parse(null, coercer));
@@ -83,7 +83,7 @@ class ConfigSpecTest {
 
     @Test
     void requiredCoercerParsedKeyResolvesWhenPresent() {
-        ConfigSpec<Duration> ttl = ConfigSpec.required(
+        SymbolSpec<Duration> ttl = SymbolSpec.required(
             "freeway.db.migration.lock-ttl", Duration.class);
         assertTrue(ttl.required());
         assertEquals(Duration.ofMinutes(5), ttl.parse("PT5M", coercer));
@@ -91,7 +91,7 @@ class ConfigSpecTest {
 
     @Test
     void noParserSpecRejectsParserlessParseForm() {
-        ConfigSpec<Integer> port = ConfigSpec.of("server.port", Integer.class, 8080);
+        SymbolSpec<Integer> port = SymbolSpec.of("server.port", Integer.class, 8080);
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> port.parse("8080"));
         assertTrue(ex.getMessage().contains("parse(raw, Coercer)"));
@@ -99,7 +99,7 @@ class ConfigSpecTest {
 
     @Test
     void noParserAndNoCoercerFailsWithKeyNameInsteadOfNpe() {
-        ConfigSpec<Duration> ttl = ConfigSpec.of(
+        SymbolSpec<Duration> ttl = SymbolSpec.of(
             "freeway.db.lock-ttl", Duration.class, Duration.ofHours(1));
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> ttl.parse("PT1H", null));
@@ -112,15 +112,15 @@ class ConfigSpecTest {
     @Test
     void blankKeyIsRejectedAtConstruction() {
         assertThrows(IllegalArgumentException.class,
-            () -> ConfigSpec.of(" ", Integer.class, 0));
+            () -> SymbolSpec.of(" ", Integer.class, 0));
         assertThrows(IllegalArgumentException.class,
-            () -> ConfigSpec.required("", String.class, s -> s));
+            () -> SymbolSpec.required("", String.class, s -> s));
     }
 
     @Test
     void parserIsInvokedAtMostOncePerParseCall() {
         AtomicInteger invocations = new AtomicInteger();
-        ConfigSpec<Integer> spec = ConfigSpec.of(
+        SymbolSpec<Integer> spec = SymbolSpec.of(
             "counter.key", Integer.class, 0,
             raw -> {
                 invocations.incrementAndGet();

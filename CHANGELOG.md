@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HelloAdmission` 结果类型，与已独立的 `receive` 入站门对称；`CloudHttpClientDefault`
   的 3 个 telescoping 构造器收敛为 `Wiring` record + 单一构造器；逗号切分列表解析抽为
   `internal/ConfigLists`（`splitAndTrim` + 列表 `spec`）；`CloudEventLifecycleHook`
-  剩余裸 `resolve` 改走 `ConfigSpec`；`freeway-boot` 依赖声明降为 test 作用域（main
+  剩余裸 `resolve` 改走 `SymbolSpec`；`freeway-boot` 依赖声明降为 test 作用域（main
   零引用）。
 - **`*Default` 移出 `internal` 包（freeway-cloud，仅 cloud 范围，无 API 符号变更）** —
   按 `CLAUDE.md` 既定口径（`XDefault` 是可替换默认实现、属公开扩展点，不应放在
@@ -43,10 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   等）。`CloudHttpClientDefault` 的 resilience 装配助手 `ResiliencePolicy` 一并迁入 `rpc`
   （保持包私有，随其 owner 归位，不污染 public 面）；其包私有构造器/嵌套类无需对外暴露。
   ioc/db 的同类放置仍待项目级统一口径，本次未动。`CloudConfigKeys` 注释同步。
-- **`SymbolSource` 新增 `resolve(ConfigSpec<T>)` 默认方法（ioc 公共接口，向后兼容）** —
+- **`SymbolSource` 新增 `resolve(SymbolSpec<T>)` 默认方法（ioc 公共接口，向后兼容）** —
   取代全项目 32 处 `spec.parse(symbols.resolve(spec.key(), null))` 二段式样板，改为
   一步 `symbols.resolve(spec)`。默认方法向后兼容（现有 `SymbolSource` 实现类无需改动），
-  键名、默认值、解析器仍由 `ConfigSpec` 单点声明。`freeway-db` / `freeway-cloud` /
+  键名、默认值、解析器仍由 `SymbolSpec` 单点声明。`freeway-db` / `freeway-cloud` /
   `freeway-boot` / `freeway-commons` 的全部调用点与 javadoc 示例已同步。纯机械收口，
   零行为变更。
 
@@ -122,7 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     span 栈——修复跨线程 `close` 后所属线程的 span 栈残留 stale 项、后续 MDC/`diagId` 错乱（P3-11）。
   - `CloudHttpClientDefault`：breakers/rateLimiters 按 `serviceId` 分片，加 1024 容量上限兜底
     （超限驱逐一个），防 churning 注册表来源下无界增长（P3-1）。
-  - `PeerConnector`：握手超时(10s)/重连退避(1s/30s)由硬编码私有常量改为经 `ConfigSpec` 可配
+  - `PeerConnector`：握手超时(10s)/重连退避(1s/30s)由硬编码私有常量改为经 `SymbolSpec` 可配
     （`freeway.cloud.events.handshake-timeout-ms` / `backoff-base-ms` / `backoff-max-ms` /
     `connect-timeout-ms`，默认值与原有硬编码一致，行为不变）；`CloudEventLifecycleHook` 透传（P3-5）。
   - 注：`Baggage` 上限（P3-10）经核对已在 `BaggagePropagator` 传播层落地（inject/extract 截断
@@ -185,16 +185,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   配置中心文件改用框架键 `freeway.config.file`（旧键 `freeway.cloud.config.file`
   废弃）；`CloudModule` 不再安装配置模块。
 - **读取入口收敛：SymbolSource（freeway-ioc/boot，破坏性）** — `SymbolSource` 回归
-  纯解析基底（`resolve`/`expand`，String in / String out），不再认识 `ConfigSpec`/
+  纯解析基底（`resolve`/`expand`，String in / String out），不再认识 `SymbolSpec`/
   `Coercer`；类型化读取改为显式两步——`SPEC.parse(symbols.resolve(SPEC.key(), null)[, coercer])`，
   键与默认值只在 spec 声明一次。`AppConfig` 不再是读取门面：删除 `get(String)` /
-  `get(ConfigSpec)` / `DefaultCoercer`，仅保留 `profiles()` / `asMap()`（级联快照，
+  `get(SymbolSpec)` / `DefaultCoercer`，仅保留 `profiles()` / `asMap()`（级联快照，
   永不含 secret）/ `symbolProviders()` / `close()`。`freeway-ioc` 从此零依赖
   `commons.config`。
 - **类型化解析收敛（freeway-cloud/db/http，破坏性）** — `ConfigValues`（int/long/
   double 静态工具）删除；`HttpConfig` 的反射式取值 helper、DbModule 的键/默认值
   双写、cloud 各模块的裸 `Boolean.parseBoolean(symbols.resolve(...))` 全部收敛为
-  声明式 `ConfigSpec`。cloud 的 `*_DEFAULT` 常量升级为类型化值，配置层与库内
+  声明式 `SymbolSpec`。cloud 的 `*_DEFAULT` 常量升级为类型化值，配置层与库内
   兜底共享同一来源。
 - **配置层级显式化为 4 个框架层（freeway-ioc，破坏性）** — `SymbolProvider` 常量
   收拢为 `TIER_CLI(0)` / `TIER_SYS_PROPS(5)` / `TIER_ENV(10)` / `TIER_FILES(20)`；
@@ -365,16 +365,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   报错提取为 `requireOpen()`/`missingOrClosed()`（命中路径保持零分配）；
   `BindingIndex.duplicateMessage` 更名 `duplicateBinding`（返回的是异常
   不是消息）。
-- **freeway-boot** — `AppConfig.get(ConfigSpec)` 不再每次调用分配新
+- **freeway-boot** — `AppConfig.get(SymbolSpec)` 不再每次调用分配新
   `CoercerDefault`（嵌套 holder 共享单例）；`loadJson` 复用已解码文本直接
   解析，去掉二次字节流包装；负数 CLI 值识别扩展到指数形式
   （`--port -1e5`）；`openBoundedStream` 更名 `findBoundedStream`（可空
   语义）、`putAllIgnoringProfileActivationKey` 缩名并提取
   `PROFILE_KEY` 常量；FreewayApp 头部格式对齐。新增
   `HookLifecycleTest` 覆盖启动失败回滚、Error 透传与抑制链。
-- **freeway-commons** — `ConfigSpec.parse(raw, coercer)` 在无 parser 且
+- **freeway-commons** — `SymbolSpec.parse(raw, coercer)` 在无 parser 且
   coercer 为 null 时不再裸 NPE，改为带键名的 `IllegalStateException`
-  （附首个 config 包专属测试类 ConfigSpecTest）；`Defer` 延迟供给的
+  （附首个 config 包专属测试类 SymbolSpecTest）；`Defer` 延迟供给的
   compute/get 双份执行逻辑合并（失败缓存与恰好一次语义不变）；
   `ScopedCache.onClose` 清理叠置的残留 javadoc。
 - **freeway-commons（logging）** — `LogBootstrap.ensureProvider()` 在 SLF4J 已被
@@ -636,7 +636,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `shutdownAttempted`，不再覆盖 RUNNING 或补发 `AppStartedEvent`）；`AppBuilder.start()` 单次
   使用 AtomicBoolean 守卫（并发 start 不再建两个容器两个 shutdown hook）；hook 排序引用未知
   id → 启动失败（`Extension.validateOrdering()` opt-in，落实 AGENTS.md 回归要求）；
-  `AppConfig.get(ConfigSpec)` 默认以 CoercerDefault 解析（此前无 parser 形式的 spec 抛
+  `AppConfig.get(SymbolSpec)` 默认以 CoercerDefault 解析（此前无 parser 形式的 spec 抛
   IllegalStateException）；profile 层剥离 `freeway.profile`（config 读取与 `profiles()` 不再
   分叉）。
 - **JSON/反射/Defer（freeway-commons）** — 自引用泛型界（`Node<T extends Comparable<T>>`）
@@ -718,13 +718,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   双检）；`Metrics` 观测 SPI（counter/gauge，零依赖，
   容器 builtin 默认 NoopMetrics、可 primary 覆盖）——EventBus 接入
   （published/delivered/subscriber_failures/dead_events 镜像计数）；
-  `ConfigSpec<T>` 类型化配置（解析 + 默认 + 含 key 上下文的错误消息，
-  `AppConfig.get(ConfigSpec)` 统一入口——替代分散 parseInt；**无 parser
+  `SymbolSpec<T>` 类型化配置（解析 + 默认 + 含 key 上下文的错误消息，
+  `AppConfig.get(SymbolSpec)` 统一入口——替代分散 parseInt；**无 parser
   形式（Coercer 默认解析）**：`of(key, type, default)` + `parse(raw, Coercer)`
   支持 Duration/"2s"/用户 CoerceRule——DbModule 池配置全量适配（URL/USERNAME
   required、池大小 parseInt、6 个 Duration 键走 Coercer，手写 helper 删除）。
   **移至 commons.config**（http/db 等模块不依赖 boot 也可声明类型化键）；
-  新增 `required()` 工厂（命名经评估：ConfigKey → ConfigSpec，区分裸 key 常量族）（缺失/空白 fail-fast，不再静默回默认）。+10 测试。
+  新增 `required()` 工厂（命名经评估：ConfigKey → SymbolSpec，区分裸 key 常量族）（缺失/空白 fail-fast，不再静默回默认）。+10 测试。
 
 - **WebSocket 空闲保活（freeway-http，修复）** — 升级成功的 WebSocket 在 101 响应后
   清除 socket 读超时：空闲连接不再被默认 30s readTimeout 以 1006 异常关闭（此前

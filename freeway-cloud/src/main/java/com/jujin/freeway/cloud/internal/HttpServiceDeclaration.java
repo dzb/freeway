@@ -4,7 +4,7 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
@@ -31,7 +31,7 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
     private static final Logger LOG = LoggerFactory.getLogger(HttpServiceDeclaration.class);
 
     /** Malformed values fail with the key named; unset falls back to the live server port. */
-    private static final ConfigSpec<Integer> SERVICE_PORT = ConfigSpec.of(
+    private static final SymbolSpec<Integer> SERVICE_PORT = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_PORT, Integer.class, null, Integer::parseInt);
 
     /** Bind-all addresses: reachable locally, unreachable from other nodes. */

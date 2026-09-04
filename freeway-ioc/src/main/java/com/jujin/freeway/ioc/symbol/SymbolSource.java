@@ -1,7 +1,5 @@
 package com.jujin.freeway.ioc.symbol;
 
-import com.jujin.freeway.commons.config.ConfigSpec;
-
 /**
  * Resolves symbolic configuration keys ({@code ${...}}) from config, system
  * properties, environment variables, and other providers.
@@ -10,7 +8,7 @@ import com.jujin.freeway.commons.config.ConfigSpec;
  * source format (properties, JSON, env mapping, CLI), the cascade normalizes
  * it to {@code key=value} and this interface answers lookups over the merged
  * chain. Values are raw strings — typing is a separate, explicit
- * post-processing step (declare a {@code ConfigSpec}, parse the resolved
+ * post-processing step (declare a {@link SymbolSpec}, parse the resolved
  * value), and DI gets the same chain via {@code @Symbol}/{@code @Value}:
  * <pre>{@code
  * public record ServerConfig(
@@ -76,10 +74,10 @@ public interface SymbolSource {
      * String pw = symbols.resolve(DB_PASSWORD);
      * }</pre>
      *
-     * @param spec the typed key (key name, type, default, parser)
+     * @param spec the typed key ({@link SymbolSpec} — key name, type, default, parser)
      * @return the parsed value (the spec's default when the symbol is absent)
      */
-    default <T> T resolve(ConfigSpec<T> spec) {
+    default <T> T resolve(SymbolSpec<T> spec) {
         return spec.parse(resolve(spec.key(), null));
     }
 

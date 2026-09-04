@@ -40,7 +40,7 @@ The built-in engine is no longer just HTTP/1.1 connection handling — it is now
 - **freeway-boot** — stricter CLI parsing (bare `--`/`-D` rejected), empty `application.json`
   treated as no config, duplicate modules fail fast.
 - **freeway-commons** — deterministic SLF4J provider selection (logback > log4j > simple),
-  bounded JSON parsing, `Defer.propagating` context-propagating executor, typed `ConfigSpec`
+  bounded JSON parsing, `Defer.propagating` context-propagating executor, typed `SymbolSpec`
   configuration, `@Marker` concurrency-contract annotations, and a metrics SPI.
 
 ## Compatibility Notes

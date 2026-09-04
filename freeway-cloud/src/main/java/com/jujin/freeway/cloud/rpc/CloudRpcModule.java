@@ -12,7 +12,7 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.Retryer;
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
@@ -39,11 +39,11 @@ import java.time.Duration;
 @Marker(Builtin.class)
 public final class CloudRpcModule implements ModuleEx {
 
-    private static final ConfigSpec<Long> REQUEST_TIMEOUT_MS = ConfigSpec.of(
+    private static final SymbolSpec<Long> REQUEST_TIMEOUT_MS = SymbolSpec.of(
         CloudConfigKeys.RPC_REQUEST_TIMEOUT, Long.class, 10_000L, Long::parseLong);
-    private static final ConfigSpec<Long> CONNECT_TIMEOUT_MS = ConfigSpec.of(
+    private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS = SymbolSpec.of(
         CloudConfigKeys.RPC_CONNECT_TIMEOUT, Long.class, 3_000L, Long::parseLong);
-    private static final ConfigSpec<Boolean> TRACE_ENABLED = ConfigSpec.of(
+    private static final SymbolSpec<Boolean> TRACE_ENABLED = SymbolSpec.of(
         CloudConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true, Boolean::parseBoolean);
 
     @Override

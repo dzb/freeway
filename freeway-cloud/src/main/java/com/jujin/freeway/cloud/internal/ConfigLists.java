@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.util.Arrays;
 import java.util.List;
@@ -25,7 +25,7 @@ public final class ConfigLists {
     private ConfigLists() {}
 
     /**
-     * A {@link ConfigSpec} for a comma-separated key, parsed by
+     * A {@link SymbolSpec} for a comma-separated key, parsed by
      * {@link #splitAndTrim(String)}.
      *
      * <p>The unchecked cast lives here rather than at every declaration:
@@ -33,8 +33,8 @@ public final class ConfigLists {
      * be declared without one.
      */
     @SuppressWarnings("unchecked")
-    public static ConfigSpec<List<String>> spec(String key, List<String> defaultValue) {
-        return ConfigSpec.of(
+    public static SymbolSpec<List<String>> spec(String key, List<String> defaultValue) {
+        return SymbolSpec.of(
             key,
             (Class<List<String>>) (Class<?>) List.class,
             defaultValue,

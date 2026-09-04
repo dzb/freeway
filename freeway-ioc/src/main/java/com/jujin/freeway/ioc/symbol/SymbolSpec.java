@@ -1,4 +1,5 @@
-package com.jujin.freeway.commons.config;
+package com.jujin.freeway.ioc.symbol;
+
 import com.jujin.freeway.commons.coercion.Coercer;
 
 import java.util.Objects;
@@ -13,16 +14,17 @@ import java.util.function.Function;
  * {@code Integer.parseInt(...)} at each use site with inconsistent error
  * messages.
  *
- * <p>Lives in commons so every module (http, db, boot, …) can declare typed
- * config keys without depending on the boot layer. Parse errors and missing
- * required keys are reported with the key name in the message.
+ * <p>Lives in the {@code ioc.symbol} package alongside {@link SymbolSource}
+ * so every module (http, db, boot, …) can declare typed config keys without
+ * depending on the boot layer. Parse errors and missing required keys are
+ * reported with the key name in the message.
  *
  * <p>Example:
  * <pre>{@code
- * public static final ConfigSpec<Integer> HTTP_PORT =
- *     ConfigSpec.of("server.port", Integer.class, 8080, Integer::parseInt);
- * public static final ConfigSpec<String> DB_PASSWORD =
- *     ConfigSpec.required("db.password", String.class, Function.identity());
+ * public static final SymbolSpec<Integer> HTTP_PORT =
+ *     SymbolSpec.of("server.port", Integer.class, 8080, Integer::parseInt);
+ * public static final SymbolSpec<String> DB_PASSWORD =
+ *     SymbolSpec.required("db.password", String.class, Function.identity());
  *
  * // resolve raw, then post-process — key and default declared once
  * int port = symbols.resolve(HTTP_PORT);
@@ -31,7 +33,7 @@ import java.util.function.Function;
  *
  * @param <T> the value type
  */
-public record ConfigSpec<T>(
+public record SymbolSpec<T>(
     String key,
     Class<T> type,
     T defaultValue,
@@ -46,7 +48,7 @@ public record ConfigSpec<T>(
      * user-registered {@code CoerceRule} targets all work). Consume via
      * {@link #parse(String, Coercer)}.
      */
-    public static <T> ConfigSpec<T> of(
+    public static <T> SymbolSpec<T> of(
         String key,
         Class<T> type,
         T defaultValue
@@ -55,7 +57,7 @@ public record ConfigSpec<T>(
     }
 
     /** Coercer-parsed optional key with a human-readable description. */
-    public static <T> ConfigSpec<T> of(
+    public static <T> SymbolSpec<T> of(
         String key,
         Class<T> type,
         T defaultValue,
@@ -65,7 +67,7 @@ public record ConfigSpec<T>(
     }
 
     /** Creates an optional key with a default; absent/blank falls back. */
-    public static <T> ConfigSpec<T> of(
+    public static <T> SymbolSpec<T> of(
         String key,
         Class<T> type,
         T defaultValue,
@@ -75,14 +77,14 @@ public record ConfigSpec<T>(
     }
 
     /** Optional key with a human-readable description (docs/registry use). */
-    public static <T> ConfigSpec<T> of(
+    public static <T> SymbolSpec<T> of(
         String key,
         Class<T> type,
         T defaultValue,
         Function<String, T> parser,
         String description
     ) {
-        return new ConfigSpec<>(
+        return new SymbolSpec<>(
             normalizedKey(key, type, parser),
             type,
             defaultValue,
@@ -93,7 +95,7 @@ public record ConfigSpec<T>(
     }
 
     /** Creates a required key: absent/blank input fails fast on parse. */
-    public static <T> ConfigSpec<T> required(
+    public static <T> SymbolSpec<T> required(
         String key,
         Class<T> type,
         Function<String, T> parser
@@ -102,7 +104,7 @@ public record ConfigSpec<T>(
     }
 
     /** Coercer-parsed required key: absent/blank input fails fast. */
-    public static <T> ConfigSpec<T> required(
+    public static <T> SymbolSpec<T> required(
         String key,
         Class<T> type
     ) {
@@ -110,13 +112,13 @@ public record ConfigSpec<T>(
     }
 
     /** Required key with a human-readable description. */
-    public static <T> ConfigSpec<T> required(
+    public static <T> SymbolSpec<T> required(
         String key,
         Class<T> type,
         Function<String, T> parser,
         String description
     ) {
-        return new ConfigSpec<>(
+        return new SymbolSpec<>(
             normalizedKey(key, type, parser),
             type,
             null,
@@ -149,7 +151,7 @@ public record ConfigSpec<T>(
     public T parse(String raw) {
         if (parser == null) {
             throw new IllegalStateException(
-                "ConfigSpec '" + key + "' has no parser — resolve it via "
+                "SymbolSpec '" + key + "' has no parser — resolve it via "
                     + "parse(raw, Coercer) with a container Coercer");
         }
         return parse(raw, null);
@@ -173,7 +175,7 @@ public record ConfigSpec<T>(
         }
         if (parser == null && coercer == null) {
             throw new IllegalStateException(
-                "ConfigSpec '" + key + "' has no parser and no Coercer was"
+                "SymbolSpec '" + key + "' has no parser and no Coercer was"
                     + " supplied — resolve it via parse(raw, Coercer)");
         }
         String stripped = raw.strip();

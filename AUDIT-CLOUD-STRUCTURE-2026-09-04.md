@@ -16,7 +16,7 @@
 
 整体判断：这是一个**已经重构过一轮**的模块（10 个功能子包 + 根包，装配分散到 10 个
 `CloudXxxModule`），方向正确。剩余问题集中在**一处命名与可见性的自相矛盾**（`internal`）
-和**一处抽象未被贯彻到底**（`ConfigSpec`）。两者都是机械性收口，不涉及行为变更。
+和**一处抽象未被贯彻到底**（`SymbolSpec`）。两者都是机械性收口，不涉及行为变更。
 
 ---
 
@@ -108,10 +108,10 @@ breaker、rateLimiter、retryer…）。同时该类既做真实 HTTP 调用（`
 
 ### C1 🔴 配置读取两套写法并存，且**同一方法内混用**
 
-`ConfigSpec<T>`（位于 `commons.config`，被 `boot`/`db`/`http`/`ioc` 采用）把「键名 + 类型 +
+`SymbolSpec<T>`（位于 `commons.config`，被 `boot`/`db`/`http`/`ioc` 采用）把「键名 + 类型 +
 默认值 + 解析器」声明在一起，是项目里更现代的做法。但 cloud 只贯彻了一半：
 
-| 文件 | `resolve` 次数 | 用 `ConfigSpec` | 状态 |
+| 文件 | `resolve` 次数 | 用 `SymbolSpec` | 状态 |
 |---|---|---|---|
 | `resilience/CloudResilienceModule.java` | 9 | 10 | ✅ 全量采用 |
 | `events/CloudEventLifecycleHook.java` | 11 | 4 | ❌ **混用** |
@@ -124,7 +124,7 @@ breaker、rateLimiter、retryer…）。同时该类既做真实 HTTP 调用（`
 最典型的是 `CloudEventLifecycleHook.start()`——同一个方法里两种风格并存：
 
 ```java
-// 52/54/57 行：ConfigSpec 风格
+// 52/54/57 行：SymbolSpec 风格
 if (DEDUP_ENABLED.parse(symbols.resolve(DEDUP_ENABLED.key(), null))) { ... }
 
 // 66-71 行：裸常量风格（同一方法，相隔不到 15 行）
@@ -134,10 +134,10 @@ symbols.resolve(CloudConfigKeys.EVENTS_TOKEN, "")
 
 **影响**：新代码抄哪一段取决于作者先看到哪一行；键的默认值散落在 `CloudConfigKeys` 的
 `*DEFAULT` 常量与调用点字面量两处（`CloudResilienceModule` 的注释明确写了"防止两层漂移"，
-但这个防漂移只对用了 `ConfigSpec` 的 9 个键生效）。
+但这个防漂移只对用了 `SymbolSpec` 的 9 个键生效）。
 
-**收口方式**：为剩余 8 个键声明 `ConfigSpec`，`CloudConfigKeys` 里已有的 `*DEFAULT` 常量
-直接喂给 `ConfigSpec.of(...)`。纯机械替换，零行为变更。
+**收口方式**：为剩余 8 个键声明 `SymbolSpec`，`CloudConfigKeys` 里已有的 `*DEFAULT` 常量
+直接喂给 `SymbolSpec.of(...)`。纯机械替换，零行为变更。
 
 ### C2 🟠 逗号切分逻辑重复 4 次，且各有细微差异
 
@@ -162,14 +162,14 @@ events/CloudEventLifecycleHook.java:107  split(",")              — 有 null/bl
 cloud 主代码用的是 `ioc` 的 `RuntimeHook`，并不需要 boot。按 Maven 语义这里应为
 `<scope>test</scope>`；现状会让所有依赖 cloud 的应用**无条件传递引入 boot**。
 
-### C4 🟡 `ConfigSpec` 的调用样板重复 11 次
+### C4 🟡 `SymbolSpec` 的调用样板重复 11 次
 
 `X.parse(symbols.resolve(X.key(), null))` 这个二段式在 `CloudResilienceModule` 里出现 11 次。
 它是 commons javadoc 里记载的标准用法，所以**不算错误**；但 `SymbolSource`（`ioc`，同时可见
-`ConfigSpec` 与自身）完全可以提供一个默认方法一步到位：
+`SymbolSpec` 与自身）完全可以提供一个默认方法一步到位：
 
 ```java
-default <T> T resolve(ConfigSpec<T> spec) { return spec.parse(resolve(spec.key(), null)); }
+default <T> T resolve(SymbolSpec<T> spec) { return spec.parse(resolve(spec.key(), null)); }
 ```
 
 代价是给 ioc 的公共接口加一个方法；收益是消除全项目范围内该样板的重复。
@@ -189,13 +189,13 @@ default <T> T resolve(ConfigSpec<T> spec) { return spec.parse(resolve(spec.key()
 | 序 | 项 | 收益 | 成本 | 风险 |
 |---|---|---|---|---|
 | 1 | **C3** `boot` 依赖改 `test` 作用域 | 消除对下游应用的无用传递依赖 | 1 行 | 极低（需确认 cloud 运行时确无 boot 需求） |
-| 2 | **C1** 剩余 8 个配置键改用 `ConfigSpec` | 消除同方法内双风格；默认值单点声明 | 机械替换 | 低（零行为变更） |
+| 2 | **C1** 剩余 8 个配置键改用 `SymbolSpec` | 消除同方法内双风格；默认值单点声明 | 机械替换 | 低（零行为变更） |
 | 3 | **C2** 抽取 `splitAndTrim` 共享工具 | 消除 4 处不一致实现 | 小 | 低 |
 | 4 | **S4** 抽 `PeerAddress` record | `PeerConnector` 收敛为单一职责；地址解析可单测 | 中 | 低（纯提取） |
 | 5 | **S1/S2** 定 `*Default` 放置口径 | 消除包名与可见性矛盾 | **项目级决策** | 中（涉及 `ioc`/`db` 一并调整，属 API 面变动） |
 | 6 | **S6** resilience 策略收为注入对象 | 消掉 3 个 telescoping 构造器 | 中 | 中（改动公共构造签名） |
 | 7 | **S5** 拆分 `PeerHub` 的握手校验与入站门禁 | 两类门各自可测 | 中 | 中（`ServerSessionHandler` 重构） |
-| 8 | **C4** `SymbolSource.resolve(ConfigSpec)` | 消除全项目样板 | 小 | 中（动 ioc 公共接口） |
+| 8 | **C4** `SymbolSource.resolve(SymbolSpec)` | 消除全项目样板 | 小 | 中（动 ioc 公共接口） |
 
 建议的推进顺序：1–4 是低风险机械收口，可一次性做完；5 需要先在项目层面定口径；6–8 涉及
 API 形状，独立排期。

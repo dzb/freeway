@@ -4,7 +4,7 @@ import com.jujin.freeway.boot.internal.BootConfigModule;
 import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
@@ -52,7 +52,7 @@ class AppConfigDefaultTest {
         // No per-key parser: the container Coercer resolves the value —
         // "2s" duration syntax and user-registered rules apply. This is the
         // post-processing step over a resolved raw value.
-        ConfigSpec<Duration> timeout = ConfigSpec.of(
+        SymbolSpec<Duration> timeout = SymbolSpec.of(
             "pool.timeout", Duration.class,
             Duration.ofSeconds(5));
         Coercer coercer =
@@ -68,7 +68,7 @@ class AppConfigDefaultTest {
 
     @Test
     void requiredKeyFailsFastWhenAbsentOrBlank() {
-        ConfigSpec<String> password = ConfigSpec.required(
+        SymbolSpec<String> password = SymbolSpec.required(
             "db.password", String.class, String::valueOf);
         AppConfig absent = new AppConfigDefault(
             new LinkedHashMap<>(), List.of());

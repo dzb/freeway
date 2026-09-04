@@ -5,7 +5,7 @@ import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
 import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
 import com.jujin.freeway.cloud.resilience.RetryerDefault;
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -29,29 +29,29 @@ public final class CloudResilienceModule implements ModuleEx {
     // the raw value and the spec post-processes it. Defaults come from the
     // shared CloudConfigKeys sources so the config layer and the library
     // fallback (CloudHttpClientDefault) cannot drift apart.
-    private static final ConfigSpec<Integer> RETRY_MAX_ATTEMPTS = ConfigSpec.of(
+    private static final SymbolSpec<Integer> RETRY_MAX_ATTEMPTS = SymbolSpec.of(
         CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, Integer.class,
         CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT, Integer::parseInt);
-    private static final ConfigSpec<Long> RETRY_BACKOFF_BASE = ConfigSpec.of(
+    private static final SymbolSpec<Long> RETRY_BACKOFF_BASE = SymbolSpec.of(
         CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, Long.class,
         CloudConfigKeys.RPC_RETRY_BACKOFF_BASE_DEFAULT, Long::parseLong);
-    private static final ConfigSpec<Long> RETRY_BACKOFF_MAX = ConfigSpec.of(
+    private static final SymbolSpec<Long> RETRY_BACKOFF_MAX = SymbolSpec.of(
         CloudConfigKeys.RPC_RETRY_BACKOFF_MAX, Long.class,
         CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT, Long::parseLong);
-    private static final ConfigSpec<Boolean> CB_ENABLED = ConfigSpec.of(
+    private static final SymbolSpec<Boolean> CB_ENABLED = SymbolSpec.of(
         CloudConfigKeys.RPC_CB_ENABLED, Boolean.class, true, Boolean::parseBoolean);
-    private static final ConfigSpec<Integer> CB_FAILURE_THRESHOLD = ConfigSpec.of(
+    private static final SymbolSpec<Integer> CB_FAILURE_THRESHOLD = SymbolSpec.of(
         CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, Integer.class,
         CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT, Integer::parseInt);
-    private static final ConfigSpec<Long> CB_FAILURE_WINDOW = ConfigSpec.of(
+    private static final SymbolSpec<Long> CB_FAILURE_WINDOW = SymbolSpec.of(
         CloudConfigKeys.RPC_CB_FAILURE_WINDOW, Long.class,
         CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT, Long::parseLong);
-    private static final ConfigSpec<Long> CB_OPEN_WINDOW = ConfigSpec.of(
+    private static final SymbolSpec<Long> CB_OPEN_WINDOW = SymbolSpec.of(
         CloudConfigKeys.RPC_CB_OPEN_WINDOW, Long.class,
         CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT, Long::parseLong);
-    private static final ConfigSpec<Boolean> RATE_LIMIT_ENABLED = ConfigSpec.of(
+    private static final SymbolSpec<Boolean> RATE_LIMIT_ENABLED = SymbolSpec.of(
         CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, Boolean.class, false, Boolean::parseBoolean);
-    private static final ConfigSpec<Double> RATE_LIMIT_PER_SECOND = ConfigSpec.of(
+    private static final SymbolSpec<Double> RATE_LIMIT_PER_SECOND = SymbolSpec.of(
         CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, Double.class,
         CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT, Double::parseDouble);
 

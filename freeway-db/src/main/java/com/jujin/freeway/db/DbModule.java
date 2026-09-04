@@ -2,7 +2,7 @@ package com.jujin.freeway.db;
 
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import com.jujin.freeway.db.internal.DatabaseImpl;
 import com.jujin.freeway.db.internal.PoolDefault;
@@ -126,40 +126,40 @@ public final class DbModule implements ModuleEx {
             .before("freeway.http.server");
     }
 
-    private static final ConfigSpec<String> URL =
-        ConfigSpec.required(DbConfigKeys.URL, String.class, Function.identity());
-    private static final ConfigSpec<String> USERNAME =
-        ConfigSpec.required(DbConfigKeys.USERNAME, String.class, Function.identity());
-    private static final ConfigSpec<Integer> POOL_MAX_SIZE =
-        ConfigSpec.of(DbConfigKeys.POOL_MAX_SIZE, Integer.class,
+    private static final SymbolSpec<String> URL =
+        SymbolSpec.required(DbConfigKeys.URL, String.class, Function.identity());
+    private static final SymbolSpec<String> USERNAME =
+        SymbolSpec.required(DbConfigKeys.USERNAME, String.class, Function.identity());
+    private static final SymbolSpec<Integer> POOL_MAX_SIZE =
+        SymbolSpec.of(DbConfigKeys.POOL_MAX_SIZE, Integer.class,
             PoolConfig.DEFAULT_MAX_SIZE, Integer::parseInt);
-    private static final ConfigSpec<Integer> POOL_MIN_IDLE =
-        ConfigSpec.of(DbConfigKeys.POOL_MIN_IDLE, Integer.class,
+    private static final SymbolSpec<Integer> POOL_MIN_IDLE =
+        SymbolSpec.of(DbConfigKeys.POOL_MIN_IDLE, Integer.class,
             PoolConfig.DEFAULT_MIN_IDLE, Integer::parseInt);
     // Duration keys: no per-key parser — resolved by the container Coercer
     // ("2s" syntax, user-registered rules) via parse(raw, coercer).
-    private static final ConfigSpec<Duration> POOL_CONNECTION_TIMEOUT =
-        ConfigSpec.of(DbConfigKeys.POOL_CONNECTION_TIMEOUT, Duration.class,
+    private static final SymbolSpec<Duration> POOL_CONNECTION_TIMEOUT =
+        SymbolSpec.of(DbConfigKeys.POOL_CONNECTION_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_CONNECTION_TIMEOUT);
-    private static final ConfigSpec<Duration> POOL_MAX_LIFETIME =
-        ConfigSpec.of(DbConfigKeys.POOL_MAX_LIFETIME, Duration.class,
+    private static final SymbolSpec<Duration> POOL_MAX_LIFETIME =
+        SymbolSpec.of(DbConfigKeys.POOL_MAX_LIFETIME, Duration.class,
             PoolConfig.DEFAULT_MAX_LIFETIME);
-    private static final ConfigSpec<Duration> POOL_MAX_IDLE_TIME =
-        ConfigSpec.of(DbConfigKeys.POOL_MAX_IDLE_TIME, Duration.class,
+    private static final SymbolSpec<Duration> POOL_MAX_IDLE_TIME =
+        SymbolSpec.of(DbConfigKeys.POOL_MAX_IDLE_TIME, Duration.class,
             PoolConfig.DEFAULT_MAX_IDLE_TIME);
-    private static final ConfigSpec<Duration> POOL_CLEAN_INTERVAL =
-        ConfigSpec.of(DbConfigKeys.POOL_CLEAN_INTERVAL, Duration.class,
+    private static final SymbolSpec<Duration> POOL_CLEAN_INTERVAL =
+        SymbolSpec.of(DbConfigKeys.POOL_CLEAN_INTERVAL, Duration.class,
             PoolConfig.DEFAULT_CLEAN_INTERVAL);
-    private static final ConfigSpec<Duration> POOL_HEALTH_CHECK_TIMEOUT =
-        ConfigSpec.of(DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, Duration.class,
+    private static final SymbolSpec<Duration> POOL_HEALTH_CHECK_TIMEOUT =
+        SymbolSpec.of(DbConfigKeys.POOL_HEALTH_CHECK_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_HEALTH_CHECK_TIMEOUT);
-    private static final ConfigSpec<Duration> QUERY_TIMEOUT =
-        ConfigSpec.of(DbConfigKeys.QUERY_TIMEOUT, Duration.class,
+    private static final SymbolSpec<Duration> QUERY_TIMEOUT =
+        SymbolSpec.of(DbConfigKeys.QUERY_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_QUERY_TIMEOUT);
-    private static final ConfigSpec<Boolean> MIGRATION_ENABLED =
-        ConfigSpec.of(DbConfigKeys.MIGRATION_ENABLED, Boolean.class, true);
-    private static final ConfigSpec<Boolean> SCHEMA_AUTO =
-        ConfigSpec.of(DbConfigKeys.SCHEMA_AUTO, Boolean.class, true);
+    private static final SymbolSpec<Boolean> MIGRATION_ENABLED =
+        SymbolSpec.of(DbConfigKeys.MIGRATION_ENABLED, Boolean.class, true);
+    private static final SymbolSpec<Boolean> SCHEMA_AUTO =
+        SymbolSpec.of(DbConfigKeys.SCHEMA_AUTO, Boolean.class, true);
 
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);

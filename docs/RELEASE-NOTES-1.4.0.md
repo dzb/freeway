@@ -14,16 +14,16 @@ typing is an explicit post-processing step over the resolved raw value.
 ## Breaking
 
 - **`AppConfig` is no longer a reader** (`freeway-boot`) — `get(String)`,
-  `get(ConfigSpec)` and the `DefaultCoercer` nested class are removed.
+  `get(SymbolSpec)` and the `DefaultCoercer` nested class are removed.
   `AppConfig` owns profiles, the cascade snapshot (`asMap()`, never
   secrets) and the hot-reload lifecycle. Application reads go through
   `SymbolSource`; migration: `config.get(key)` →
   `symbols.resolve(key, null)`.
 - **`SymbolSource` is a raw-string resolver again** (`freeway-ioc`) — the
-  spec-aware `get(ConfigSpec)` / `get(ConfigSpec, Coercer)` accessors and
+  spec-aware `get(SymbolSpec)` / `get(SymbolSpec, Coercer)` accessors and
   `ConfigValues` are removed. Typed reading is two explicit steps:
   `SPEC.parse(symbols.resolve(SPEC.key(), null)[, coercer])`. The key and
-  default live in the `ConfigSpec` once; ioc no longer depends on
+  default live in the `SymbolSpec` once; ioc no longer depends on
   `commons.config`.
 - **Four declared framework tiers** (`freeway-ioc`) — `TIER_CLI(0)` /
   `TIER_SYS_PROPS(5)` / `TIER_ENV(10)` / `TIER_FILES(20)` in one ordered
@@ -56,7 +56,7 @@ typing is an explicit post-processing step over the resolved raw value.
 - **Typed declarations in freeway-cloud/db/http** — `HttpConfig`'s
   reflective value helper, `DbModule`'s key/default double declarations,
   and the ad-hoc `Boolean.parseBoolean(symbols.resolve(...))` calls in
-  cloud modules all converged to declarative `ConfigSpec`s. Cloud's
+  cloud modules all converged to declarative `SymbolSpec`s. Cloud's
   `*_DEFAULT` constants are now typed values shared by the config layer
   and the in-library fallbacks.
 - **`PeerHub.Wiring`** (`freeway-cloud`) — the eight positional arguments

@@ -2,7 +2,7 @@ package com.jujin.freeway.cloud.events;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.internal.ConfigLists;
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
@@ -28,41 +28,41 @@ final class CloudEventLifecycleHook implements RuntimeHook {
 
     private static final Logger LOG = LoggerFactory.getLogger(CloudEventLifecycleHook.class);
 
-    private static final ConfigSpec<Integer> DEDUP_CAPACITY = ConfigSpec.of(
+    private static final SymbolSpec<Integer> DEDUP_CAPACITY = SymbolSpec.of(
         CloudConfigKeys.EVENTS_DEDUP_CAPACITY, Integer.class,
         CloudConfigKeys.EVENTS_DEDUP_CAPACITY_DEFAULT, Integer::parseInt);
-    private static final ConfigSpec<Boolean> EVENTS_ENABLED = ConfigSpec.of(
+    private static final SymbolSpec<Boolean> EVENTS_ENABLED = SymbolSpec.of(
         CloudConfigKeys.EVENTS_ENABLED, Boolean.class, false, Boolean::parseBoolean);
-    private static final ConfigSpec<Boolean> DEDUP_ENABLED = ConfigSpec.of(
+    private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
         CloudConfigKeys.EVENTS_DEDUP_ENABLED, Boolean.class, false, Boolean::parseBoolean);
 
-    private static final ConfigSpec<String> SERVICE_ID = ConfigSpec.of(
+    private static final SymbolSpec<String> SERVICE_ID = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_ID, String.class, "freeway-app", Function.identity());
-    private static final ConfigSpec<String> SERVICE_INSTANCE_ID = ConfigSpec.of(
+    private static final SymbolSpec<String> SERVICE_INSTANCE_ID = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID, String.class, "", Function.identity());
-    private static final ConfigSpec<String> SERVICE_SCHEME = ConfigSpec.of(
+    private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class, "http", Function.identity());
-    private static final ConfigSpec<String> TOKEN = ConfigSpec.of(
+    private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
         CloudConfigKeys.EVENTS_TOKEN, String.class, "", Function.identity());
-    private static final ConfigSpec<List<String>> SUBSCRIPTIONS =
+    private static final SymbolSpec<List<String>> SUBSCRIPTIONS =
         ConfigLists.spec(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, List.of());
-    private static final ConfigSpec<List<String>> ALLOWED_TYPES =
+    private static final SymbolSpec<List<String>> ALLOWED_TYPES =
         ConfigLists.spec(CloudConfigKeys.EVENTS_ALLOWED_TYPES, List.of());
-    private static final ConfigSpec<List<String>> ALLOWED_TOPICS =
+    private static final SymbolSpec<List<String>> ALLOWED_TOPICS =
         ConfigLists.spec(CloudConfigKeys.EVENTS_ALLOWED_TOPICS, List.of());
-    private static final ConfigSpec<List<String>> PEERS =
+    private static final SymbolSpec<List<String>> PEERS =
         ConfigLists.spec(CloudConfigKeys.EVENTS_PEERS, List.of());
-    private static final ConfigSpec<Long> CONNECT_TIMEOUT_MS =
-        ConfigSpec.of(CloudConfigKeys.EVENTS_CONNECT_TIMEOUT_MS, Long.class,
+    private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS =
+        SymbolSpec.of(CloudConfigKeys.EVENTS_CONNECT_TIMEOUT_MS, Long.class,
             CloudConfigKeys.EVENTS_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
-    private static final ConfigSpec<Long> HANDSHAKE_TIMEOUT_MS =
-        ConfigSpec.of(CloudConfigKeys.EVENTS_HANDSHAKE_TIMEOUT_MS, Long.class,
+    private static final SymbolSpec<Long> HANDSHAKE_TIMEOUT_MS =
+        SymbolSpec.of(CloudConfigKeys.EVENTS_HANDSHAKE_TIMEOUT_MS, Long.class,
             CloudConfigKeys.EVENTS_HANDSHAKE_TIMEOUT_MS_DEFAULT, Long::parseLong);
-    private static final ConfigSpec<Long> BACKOFF_BASE_MS =
-        ConfigSpec.of(CloudConfigKeys.EVENTS_BACKOFF_BASE_MS, Long.class,
+    private static final SymbolSpec<Long> BACKOFF_BASE_MS =
+        SymbolSpec.of(CloudConfigKeys.EVENTS_BACKOFF_BASE_MS, Long.class,
             CloudConfigKeys.EVENTS_BACKOFF_BASE_MS_DEFAULT, Long::parseLong);
-    private static final ConfigSpec<Long> BACKOFF_MAX_MS =
-        ConfigSpec.of(CloudConfigKeys.EVENTS_BACKOFF_MAX_MS, Long.class,
+    private static final SymbolSpec<Long> BACKOFF_MAX_MS =
+        SymbolSpec.of(CloudConfigKeys.EVENTS_BACKOFF_MAX_MS, Long.class,
             CloudConfigKeys.EVENTS_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
 
     private final PeerHub hub;

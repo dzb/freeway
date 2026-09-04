@@ -65,7 +65,7 @@ A whole-repo naming audit walked ioc/http/db/commons; renames are mechanical but
 | `ExecuteResult.key` / `hasKey()` (db) | `generatedKey()` / `hasGeneratedKey()` | "key" collided with config-key vocabulary; **`longKey()` kept** |
 | `Row.bool(col)` (db) | `booleanValue(col)` | accessor family spells out types |
 | `BeanValidator.compareToMinMax` | `toBigDecimal` | it converts; comparison lives at call sites |
-| `ConfigSpec.validate(...)` (commons) | `normalizedKey` | returned value was invisible |
+| `SymbolSpec.validate(...)` (commons) | `normalizedKey` | returned value was invisible |
 
 Also: window fields on the http2 engine are package-private now (engine internals off the API
 surface), and `HttpContext.headerSet()` was already renamed `setHeader()` in 1.3.9's cycle —
@@ -74,7 +74,7 @@ double-check call sites when upgrading across both versions.
 ## Fixed
 
 - **commons** — SLF4J provider probe now warns honestly when an external provider binds first
-  (`freeway-log.properties` ownership contract clarified and documented); `ConfigSpec.parse`
+  (`freeway-log.properties` ownership contract clarified and documented); `SymbolSpec.parse`
   no longer NPEs on missing parser+coercer combos; coercer re-registration no longer leaves
   stale index entries; JSON BOM handling uses an escaped literal.
 - **ioc** — EventBus stream bridge survives the close-vs-subscribe race without hanging or

@@ -796,12 +796,12 @@ is unaffected).
 read configuration; `AppConfig` is not a reader (it owns profiles, the
 cascade snapshot and lifecycle only). Direct lookups resolve through the
 chain, and typing is an explicit post-processing step with a declared
-`ConfigSpec` — key, type, default and description stated once, parse errors
+`SymbolSpec` — key, type, default and description stated once, parse errors
 naming the key:
 
 ```java
-public static final ConfigSpec<Integer> PORT =
-    ConfigSpec.of("http.server.port", Integer.class, 8080);
+public static final SymbolSpec<Integer> PORT =
+    SymbolSpec.of("http.server.port", Integer.class, 8080);
 
 int port = PORT.parse(symbols.resolve(PORT.key(), null));               // parser spec
 Duration ttl = LOCK_TTL.parse(symbols.resolve(LOCK_TTL.key(), null),    // coercer spec

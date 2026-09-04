@@ -4,7 +4,7 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.context.Propagator;
-import com.jujin.freeway.commons.config.ConfigSpec;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.util.List;
@@ -29,7 +29,7 @@ public final class AuthPropagator implements Propagator {
     public static final String HEADER_ROLES = "x-principal-roles";
 
     /** Off by default: see the trust boundary above. */
-    private static final ConfigSpec<Boolean> EXTRACT_ENABLED = ConfigSpec.of(
+    private static final SymbolSpec<Boolean> EXTRACT_ENABLED = SymbolSpec.of(
         CloudConfigKeys.AUTH_EXTRACT_ENABLED, Boolean.class, false, Boolean::parseBoolean);
 
     private final boolean extractEnabled;

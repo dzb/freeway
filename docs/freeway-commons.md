@@ -9,7 +9,7 @@ Commons provides the small, shared runtime utilities used across Freeway.
 - `BeanValidator`
 - `Coercer` / `CoerceRule`
 - `MethodHandleUtils` — cached `MethodHandle`/`VarHandle`/constructor handles for reflective invocation hot paths (`methodHandle`, `defaultMethodHandle`, `invokeOn`)
-- `ConfigSpec` — typed, defaulted `AppConfig` keys with per-key parsers
+- `SymbolSpec` — typed, defaulted `AppConfig` keys with per-key parsers
 - `ContextExecutor` — explicit cross-thread propagation of `ScopedValue`-based context
 - `JULFileHandler`
 - `LogBootstrap`

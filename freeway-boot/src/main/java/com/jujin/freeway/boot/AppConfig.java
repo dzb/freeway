@@ -14,7 +14,7 @@ import java.util.Map;
  * {@code key=value} and {@code SymbolSource} is the single entry point for
  * reading values — one precedence chain for {@code @Symbol}/{@code @Value}
  * injection, module sources (secrets), and direct lookups. Typed reading is
- * an explicit post-processing step: declare a {@code ConfigSpec} and parse
+ * an explicit post-processing step: declare a {@code SymbolSpec} and parse
  * the resolved value ({@code symbols.resolve(spec)}).
  *
  * <p>What this interface owns instead: {@link #profiles()} (boot-level

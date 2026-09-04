@@ -118,7 +118,7 @@ process-environment band, JVM-level verbatim overrides above boot's
 declared env mapping; the deployable file baseline); never module
 install order. All providers live in one ordered list. `SymbolSource` is
 the single read entry (raw strings); typed reading is explicit
-post-processing — declare a `ConfigSpec`, parse the resolved value
+post-processing — declare a `SymbolSpec`, parse the resolved value
 (`spec.parse(symbols.resolve(spec.key(), null))`). `AppConfig` is not a
 reader: it owns profiles, the cascade snapshot and the hot-reload
 lifecycle. Modules with domain-specific sources (secrets, ...) contribute
