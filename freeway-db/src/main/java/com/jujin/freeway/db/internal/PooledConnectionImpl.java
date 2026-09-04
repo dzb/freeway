@@ -5,6 +5,12 @@ import java.sql.Connection;
 import java.time.Duration;
 import java.time.Instant;
 
+/**
+ * The built-in pool's {@link PooledConnection}: wraps one physical JDBC
+ * {@link Connection} with the borrow/return bookkeeping {@link PoolDefault}
+ * tracks. Each pool owns its pooled-connection type — a pool adapter brings
+ * its own wrapper.
+ */
 final class PooledConnectionImpl implements PooledConnection {
 
     private final Connection conn;

@@ -21,7 +21,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Flow engine implementation.
+ * The default {@link FlowEngine} implementation — the engine returned by
+ * {@link FlowEngine#newInstance()} and bound as a singleton by
+ * {@link FlowModule}.
  *
  * <p>Migration notes:
  * <ul>

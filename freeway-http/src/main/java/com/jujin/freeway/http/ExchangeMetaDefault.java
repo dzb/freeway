@@ -8,9 +8,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Default {@link ExchangeMeta} implementation shared by HTTP exchanges
- * ({@link AbstractHttpContext}) and WebSocket sessions. Internal — not part
- * of the application API.
+ * The default {@link ExchangeMeta} implementation: the per-exchange state
+ * (correlation id, start time, principal, attributes) that
+ * {@link AbstractHttpContext} embeds and WebSocket sessions own for their
+ * whole connection lifetime. Extension HTTP engines construct it directly
+ * for their own contexts. The exposed state methods are specified by
+ * {@link ExchangeMeta}.
  */
 public final class ExchangeMetaDefault implements ExchangeMeta {
 

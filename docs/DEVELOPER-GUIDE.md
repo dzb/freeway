@@ -2029,9 +2029,10 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 ### Naming Rules
 
 - **Public interfaces** use the bare domain name: `Container`, `JsonCodec`, `RequestContext`.
-- **Framework-provided default implementations** use `XDefault` suffix: `AppRuntimeDefault`, `JsonCodecDefault`, `CoercerImpl`. This keeps interface names dominant.
-- **`DefaultX`** form is avoided — it hides the concept at the end of the name.
-- **`Impl` suffix** is reserved for uninteresting concrete implementations where no default strategy is being expressed.
+- **`XDefault`** is the framework's default choice for its role — replaceable; extension modules bind an alternative via `.primary()`: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`, `ExchangeMetaDefault`, `FlowEngineDefault`.
+- **`XImpl`** is a definitive implementation that is *not* "the" default of a shared role: a container-internal piece the framework assembles (`ContainerImpl`, `HttpContextImpl`, `CoercerImpl`), or one of several implementations that genuinely coexist per use-site and are each actually used (`PooledConnectionImpl` vs a pool adapter's own connection type).
+- **`DefaultX`** form is avoided — `XDefault` keeps the interface name dominant.
+- **`XDefault` is not internal** — it is a public extension point; a `*Impl` that only the owning module references may live in `internal`.
 - **Internal helpers** stay package-private where possible, e.g., `ServiceIds`.
 
 ### Code Style

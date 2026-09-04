@@ -20,9 +20,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * ({@code /cloud/events}) + the inbound dispatch pipeline.
  *
  * <p>Lifecycle: constructed by {@link CloudEventModule} at bind time,
- * {@link #wire(EventBusInbound, JsonCodec, String, String, List, List, List, String)}
- * runs from a RuntimeHook ordered before {@code freeway.http.server}, so
- * the hub is fully wired before the server can accept a single connection.</p>
+ * {@link #wire(Wiring)} runs from a RuntimeHook ordered before
+ * {@code freeway.http.server}, so the hub is fully wired before the server
+ * can accept a single connection.</p>
  *
  * <p>Connection state is the fact; the registry view (peers map) is its
  * projection — this class only tracks connections and never dials.</p>
@@ -89,13 +89,20 @@ public final class PeerHub implements WebSocketEndpoint {
 
     /**
      * A node that accepts inbound (it declared subscriptions) is reachable by
-     * every peer that can open a socket to it. An empty allowlist or an absent
-     * token means "accept anything", which must be visible at startup rather
-     * than discovered after an incident.
+     * every peer that can open a socket to it. Loose or surprising defaults
+     * must be visible at startup rather than discovered after an incident: an
+     * empty TOPIC allowlist accepts any topic, an empty CLASS allowlist
+     * silently drops every typed event, and an absent token lets any peer
+     * connect.
      */
     private void warnWhenInboundIsUngated() {
         if (subscriptions.isEmpty()) {
-            return; // outbound-only: nothing is accepted from peers
+            // Outbound-only role: the node declared no inbound interest, so
+            // protocol-correct peers fan nothing out to it and the loose
+            // allowlist/token posture below is moot. The endpoint still
+            // accepts sockets, though — events.allowed-topics / events.token
+            // gate what a direct push can do, with or without subscriptions.
+            return;
         }
         if (allowedTypes.isEmpty()) {
             LOG.warn("CloudEventBus has no CLASS-channel type allowlist — CLASS-channel "

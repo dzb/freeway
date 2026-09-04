@@ -9,11 +9,13 @@ import com.jujin.freeway.cloud.discovery.ServiceRegistry;
  * Built-in readiness contributor for the registry, contributed by
  * {@code CloudDiscoveryModule}. The local in-process store has no external
  * connectivity to probe, so the check is always healthy and reports the
- * registered instance count as detail. External-backend connectivity is
- * contributed by a custom registry adapter bound primary (freeway-ext
- * ships no cloud adapters yet). When an external adapter is bound primary, the local
- * discovery/registry implementations are no longer selected, so this
- * contributor deactivates itself and leaves readiness to the adapter's own
+ * registered instance count as detail.
+ *
+ * <p>External-backend connectivity is contributed by a custom registry
+ * adapter bound primary instead (freeway-ext ships no cloud adapters yet).
+ * Once either discovery or registry runs on an external adapter, that role's
+ * local implementation is no longer selected, so this contributor deactivates
+ * itself and leaves readiness to the adapter's own
  * {@link CloudHealthContributor}.
  */
 public final class RegistryHealthContributor implements CloudHealthContributor {

@@ -29,10 +29,11 @@ import com.jujin.freeway.http.MediaTypes;
 import com.jujin.freeway.http.sse.SseEmitter;
 
 /**
- * {@link HttpContext} implementation backed by a raw socket connection.
- * Response framing is delegated to a transport {@link HttpResponseWriter}
- * (HTTP/1.1 wire format or HTTP/2 stream frames); this class owns the shared
- * request/response state, gzip compression, and streaming helpers.
+ * {@link com.jujin.freeway.http.HttpContext} implementation backed by a raw
+ * socket connection. Response framing is delegated to a transport
+ * {@link HttpResponseWriter} (HTTP/1.1 wire format or HTTP/2 stream frames);
+ * this class owns the shared request/response state, gzip compression, and
+ * streaming helpers.
  */
 public class HttpContextImpl extends AbstractHttpContext {
 

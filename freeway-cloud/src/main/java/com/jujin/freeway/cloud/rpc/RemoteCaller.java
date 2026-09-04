@@ -141,12 +141,14 @@ public final class RemoteCaller {
     private CloudException businessException(String serviceId, CloudResponse response) {
         String exClass = header(response, EXCEPTION_CLASS_HEADER);
         if (exClass != null) {
-            // Sanitize once, right after decode: the same cleaned values feed
-            // the outer message AND the RemoteInvocationException cause, so no
-            // level of the printed chain can carry a peer-crafted control
-            // character (log-line forgery) or unbounded text. decode() degrades
-            // undecodable values to their raw text — sanitizing afterwards
-            // covers that path too.
+            // Layer 1 — decode and sanitize at this single call site: the same
+            // cleaned values feed the outer message AND the
+            // RemoteInvocationException cause, so no level of the printed
+            // chain can carry a peer-crafted control character (log-line
+            // forgery) or unbounded text. Layer 2 — the exception constructor
+            // re-sanitizes (idempotent), so a site that builds it from raw
+            // wire values is clean too. decode() degrades undecodable values
+            // to their raw text, which is why sanitizing runs afterwards.
             exClass = sanitizePeerText(decode(exClass));
             String message = sanitizePeerText(decode(java.util.Objects.requireNonNullElse(
                 header(response, EXCEPTION_MESSAGE_HEADER), "")));

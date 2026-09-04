@@ -84,11 +84,21 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_TRUST_STORE_DEFAULT = "";
     public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
 
-    // ── CloudEventBus (cross-node EventBus mesh, see docs/freeway-cloud-events-design.md)
+    // ── CloudEventBus (cross-node EventBus mesh, see docs/freeway-cloud-events-design.md) ──
+    /** Master switch for the WS event mesh: when false the hub stays unwired
+     *  and the connector never starts (bus-level inbound dedup still arms if
+     *  configured — dedup is not a mesh property). */
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
+    /** Static mesh endpoints to dial (host:port, see {@code PeerAddress}).
+     *  Discovery-fed peers are additive via {@code PeerConnector.setPeers}. */
     public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
+    /** CE type/topic prefixes this node declares in its hello — peers fan out
+     *  only what matches, so empty = outbound-only (nothing to receive). */
     public static final String EVENTS_SUBSCRIPTIONS  = PREFIX + ".events.subscriptions";
+    /** CLASS-channel deserialization allowlist; empty = deny-by-default
+     *  (CLASS-channel events are dropped). */
     public static final String EVENTS_ALLOWED_TYPES  = PREFIX + ".events.allowed-types";
+    /** TOPIC-channel allowlist; empty = accept any topic from an admitted peer. */
     public static final String EVENTS_ALLOWED_TOPICS = PREFIX + ".events.allowed-topics";
     /** Shared secret the mesh handshake must present; blank = no peer auth. */
     public static final String EVENTS_TOKEN      = PREFIX + ".events.token";
@@ -105,8 +115,9 @@ public final class CloudConfigKeys {
     public static final int EVENTS_DEDUP_CAPACITY_DEFAULT = 4096;
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
 
-    // ── CloudEventBus networking timeouts (shared by the CloudEventLifecycleHook
-    // specs and PeerConnector's library fallback — one value per timeout) ──
+    // ── CloudEventBus networking timeouts ──────────────────
+    // Shared by the CloudEventLifecycleHook specs and PeerConnector's
+    // library fallback — one value per timeout.
     /** Socket connect timeout for outbound mesh peer dials. */
     public static final String EVENTS_CONNECT_TIMEOUT_MS   = PREFIX + ".events.connect-timeout-ms";
     public static final long EVENTS_CONNECT_TIMEOUT_MS_DEFAULT   = 3000;

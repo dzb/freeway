@@ -49,6 +49,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   键名、默认值、解析器仍由 `SymbolSpec` 单点声明。`freeway-db` / `freeway-cloud` /
   `freeway-boot` / `freeway-commons` 的全部调用点与 javadoc 示例已同步。纯机械收口，
   零行为变更。
+- **非可替换 `*Default` 定名 `*Impl`（freeway-commons/ioc/db/http/cloud，破坏性更名）** —
+  按 Default-vs-Impl 审计的判据（接口是否为自足扩展点、框架是否经接口消费、是否存在
+  不触碰框架内部的 `.primary()` 替换路径）逐类核定：16 个真·可替换默认保留 `XDefault`
+  （`PoolDefault` / `JsonCodecDefault` / `AppConfigDefault` / `FlowDriverDefault` 与 11 个
+  cloud 默认）；框架自身依赖接口外成员、无可用替换路径的 7 个默认实现更名 `XImpl`：
+  `HttpContextDefault`→`HttpContextImpl`（引擎内部契约，ext 引擎自带各自的上下文）、
+  `CoercerDefault`→`CoercerImpl`、`LoggerSourceDefault`→`LoggerSourceImpl`（注入路径
+  硬连线单例、从不查询绑定）、`ProxyFactoryDefault`→`ProxyFactoryImpl`（包私有接口，
+  无绑定无选择点）、`PooledConnectionDefault`→`PooledConnectionImpl`（逐池工件类型，
+  Hikari 适配器自带 HkConn）、`TransportSecurityDefault`→`TransportSecurityImpl`、
+  `ExchangeMetaDefault`→`ExchangeMetaImpl`。freeway-ext 引用同锁步更名（16 文件）；
+  CLAUDE.md 增补「Default vs Impl」判定规则。
+- **复核收回：one-in-effect 实现恢复 `XDefault`（freeway-flow/http，破坏性更名）** —
+  按定稿判据（角色在效实现**唯一** → `XDefault`，与框架如何引用无关；多处实现并存或属
+  容器内部装配件 → `XImpl`）复核上轮更名后收回两例：`ExchangeMetaImpl`→
+  `ExchangeMetaDefault`（HTTP 上下文与 WebSocket 会话的默认交换元数据，ext 引擎直接
+  构造为默认）、`FlowEngineImpl`→`FlowEngineDefault`（默认流程引擎，`FlowModule` 以
+  单例绑定）。CLAUDE.md 同步定稿判据文字；freeway-ext 的 `ExchangeMeta` 引用同步收回。
+- **`TransportSecurityImpl` 归位 `internal`（freeway-cloud，无 API 影响）** — 复核后其
+  全部引用仅来自所属模块的绑定（经 `fromKeyStore` 配置激活）与测试，属模块内部实现件，
+  自 `cloud.rpc` 移入 `cloud.internal`。
+- **cloud 配置键单源化与 `Wiring` withers（freeway-cloud，无行为变更）** — 七个配置键
+  的默认值在 `CloudConfigKeys` 以 `*_DEFAULT` 常量单点声明（RPC TLS keystore/truststore
+  四键空串默认、storage base-path、registry service-scheme），配置层与库内兜底不再双写；
+  RPC 请求/连接超时与 peer 网络超时常量在 config spec 与 `CloudHttpClientDefault.Wiring`
+  的库兜底间共享同一来源（未装模块时直接复用常量，两层不可能漂移）。`Wiring` 增 7 个
+  wither（`withPropagators` / `withRetryer` / `withBreaker` / `withRateLimiter` /
+  `withTransport` / `withRequestTimeout` / `withConnectTimeout`）供逐步定制。
 
 ### Removed
 
@@ -127,6 +155,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `connect-timeout-ms`，默认值与原有硬编码一致，行为不变）；`CloudEventLifecycleHook` 透传（P3-5）。
   - 注：`Baggage` 上限（P3-10）经核对已在 `BaggagePropagator` 传播层落地（inject/extract 截断
     到 `MAX_ENTRIES` / `MAX_ENCODED_LENGTH`），故不在构造器加帽，以免破坏 oversized 传播回归测试。
+- **网格会话强制 hello-first 握手（freeway-cloud，安全）** — `PeerHub` / `PeerConnector`
+  两端各持逐会话握手状态机：hello/ack 之前到达的 CE 帧一律按协议错误处理（服务端关
+  1002、client 侧 abort），不再可能落入 `hub.receive()`——此前任何能建立 WebSocket 的
+  客户端都可跳过 token 门禁的 hello 准入直接注入 TOPIC 事件（`allowed-topics` 默认放行
+  任意主题）。hello 每次会话仅一次，重复 hello 按协议错误处理。新增
+  `PeerHubHandshakeStateTest` 等回归（先于修复验证为红）。
+- **网格重连语义修正（freeway-cloud）** — 是否重连不再由"谁调用 close()"决定：出站侧
+  `close()` 只负责拆除传输，`handleDisconnect` 一律重拨，除非 hub 注册表仍服务该
+  origin（重复解析残留 twin 的抑制场景保留）；sink 发送失败导致的摘除
+  （unregister + close）现在会重拨，不再静默丢失对端直到重启。新增
+  `PeerConnectorReconnectTest` 回归。
+- **出站调用异常头净化与事件源身份回退链（freeway-cloud）** — `RemoteCaller` 对 peer
+  异常头只解码净化一次，同一份干净值同时供外层消息与 `RemoteInvocationException`
+  （其构造器仍自净化）使用，CRLF 伪造与超长值无法经 cause 链进入日志；
+  `CloudEventLifecycleHook` 解析网格自身份改走与 `HttpServiceDeclaration` 相同的
+  registry service-id → `freeway.app.name` → freeway-app 回退链，注册身份与事件源
+  身份保持一致。
+- **TLS 热重载跟随生效引擎（freeway-http）** — `SslReloader` 此前无条件装配到内建
+  `FreewayHttpEngine`：ext 引擎（Undertow/Jetty）成为 primary `HttpEngine` 后，
+  reloader 监视并重载的是一个从未启动的引擎，TLS 热重载静默失效。`HttpModule` 现在
+  先探测当前生效的 HttpEngine 绑定是否仍是本模块的内建绑定
+  （`container.isActiveBinding(HttpEngine.class, Builtin.class)`，只查绑定元数据、
+  不实例化引擎），是才装配 reloader；否则记日志说明证书轮换属生效引擎模块的职责。
+  内建引擎路径行为不变。新增 fake primary 引擎 + 不存在 keystore 的启动回归。
+- **`/metrics` 三角色同实例绑定（freeway-cloud）** — observe 模块把同一个
+  `MetricsDefault` 实例以三个角色注册（具体类、`Metrics` primary、`MetricsSnapshot`），
+  `/metrics` 导出视图不再对解析出的 JDK 代理做 instanceof 判定（代理只实现被请求的
+  接口，首请求即抛）；替换 metrics 后端 = 不装 `CloudObserveModule` 自行装配。
+  `CloudObserveModule` / `MetricsSnapshot` / `MetricsHandler` 上"自动跟随"的 javadoc
+  声明随之下修。新增标准装配 200 导出、ext 式 primary 替换无歧义、双 primary 响亮
+  失败（`AmbiguousBindingException`）回归。
 
 ### Documentation
 
@@ -158,6 +217,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   标记的是「不承诺稳定的实现细节」，不是「物理不可见」——其中类可保持 `public`
   （容器需从兄弟包装配），但调用方不得跨版本依赖其形状；并明确 `XDefault`（可替换
   默认实现）是公开扩展点，**不属于** `internal`，应放功能包。
+- **文档随 Default/Impl 命名定稿同步** — `CLAUDE.md` / `AGENTS.md` 命名规则增补
+  「Default vs Impl」判定与 `internal` 归位口径；`docs/freeway-cloud-unified-design.md`、
+  `docs/freeway-flow-design-decisions.md`、`freeway-flow/docs/migration-notes.md` /
+  `plan.md`、`docs/DEVELOPER-GUIDE.md` 中改名类（`CoercerImpl`、`HttpContextImpl`、
+  `LoggerSourceImpl`、`FlowEngineDefault`、`ExchangeMetaDefault`、`TransportSecurityImpl`
+  等）的引用统一为现行类名（纯历史叙述保留旧名）。
 
 ## [1.4.0] — 2026-09-02
 

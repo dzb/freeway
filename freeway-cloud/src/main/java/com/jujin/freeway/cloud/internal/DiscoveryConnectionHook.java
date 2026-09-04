@@ -9,10 +9,12 @@ import com.jujin.freeway.ioc.RuntimeHook;
 /**
  * Registry-client connection hook: runs BEFORE {@code freeway.http.server}.
  * The local in-process registry keeps no persistent connection, so this is a
- * no-op here. Also validates the backend {@code type} keys — in the hook,
- * not in a provider, because resolving the symbol chain mid-construction
- * would cycle through the symbol provider chain. External-backend lifecycle
- * is owned by the custom adapter's own hooks (bound primary).
+ * no-op here. Also runs the backend-type guard (warns when an external
+ * backend {@code type} is configured but no adapter is bound primary) — in
+ * the hook, not in a provider, because resolving the symbol chain
+ * mid-construction would cycle through the symbol provider chain.
+ * External-backend lifecycle is owned by the custom adapter's own hooks
+ * (bound primary).
  */
 public final class DiscoveryConnectionHook implements RuntimeHook {
 

@@ -18,8 +18,9 @@ import java.util.function.Function;
 
 /**
  * Built-in {@link ServiceDeclaration} for the HTTP endpoint: registers the
- * {@link WebServer}'s address under the configured service id (defaults:
- * {@code freeway.cloud.registry.service-id} → {@code freeway.app.name}).
+ * {@link WebServer}'s address under the configured service id (fallback
+ * chain: {@code freeway.cloud.registry.service-id} →
+ * {@code freeway.app.name} → {@code freeway-app}).
  *
  * <p>Returns {@code null} when no {@link WebServer} is bound (HTTP module not
  * installed) — the registry hook skips it. Host override via

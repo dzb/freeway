@@ -76,7 +76,11 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         }
     }
 
-    // ── Snapshot accessors (for /metrics export) ─────────────
+    // ── Single-value accessors (test/verification surface, not SPI) ──────
+    // The /metrics route renders whole registries through prometheusText();
+    // these read one meter by name for assertions, so they stay on the
+    // concrete class — neither the Metrics SPI nor the MetricsSnapshot view
+    // exposes them.
 
     public long counterValue(String name) {
         LongAdder adder = counters.get(name);
