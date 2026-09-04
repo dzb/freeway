@@ -141,12 +141,18 @@ public final class RemoteCaller {
     private CloudException businessException(String serviceId, CloudResponse response) {
         String exClass = header(response, EXCEPTION_CLASS_HEADER);
         if (exClass != null) {
-            exClass = decode(exClass);
-            String message = decode(java.util.Objects.requireNonNullElse(
-                header(response, EXCEPTION_MESSAGE_HEADER), ""));
+            // Sanitize once, right after decode: the same cleaned values feed
+            // the outer message AND the RemoteInvocationException cause, so no
+            // level of the printed chain can carry a peer-crafted control
+            // character (log-line forgery) or unbounded text. decode() degrades
+            // undecodable values to their raw text — sanitizing afterwards
+            // covers that path too.
+            exClass = sanitizePeerText(decode(exClass));
+            String message = sanitizePeerText(decode(java.util.Objects.requireNonNullElse(
+                header(response, EXCEPTION_MESSAGE_HEADER), "")));
             return CloudException.of(
                 "Remote handler '" + exClass + "' on '" + serviceId + "' failed"
-                    + (message.isEmpty() ? "" : ": " + sanitizePeerText(message)),
+                    + (message.isEmpty() ? "" : ": " + message),
                 false, response.status(),
                 new RemoteInvocationException(exClass, message));
         }
@@ -163,8 +169,10 @@ public final class RemoteCaller {
      * Peer-authored text bound for exception messages (and therefore logs):
      * stripped of control characters — decoded escapes could otherwise forge
      * log lines — and length-capped so a hostile peer cannot bloat the log.
+     * Also applied inside {@link RemoteInvocationException}, so wire-derived
+     * values are clean by construction no matter which call site builds one.
      */
-    private static String sanitizePeerText(String value) {
+    static String sanitizePeerText(String value) {
         String cleaned = value.replaceAll("\\p{Cntrl}", "");
         return cleaned.length() > 200 ? cleaned.substring(0, 200) + "..." : cleaned;
     }

@@ -36,8 +36,6 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
         CloudConfigKeys.EVENTS_DEDUP_ENABLED, Boolean.class, false, Boolean::parseBoolean);
 
-    private static final SymbolSpec<String> SERVICE_ID = SymbolSpec.of(
-        CloudConfigKeys.REGISTRY_SERVICE_ID, String.class, "freeway-app", Function.identity());
     private static final SymbolSpec<String> SERVICE_INSTANCE_ID = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID, String.class, "", Function.identity());
     private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
@@ -93,7 +91,13 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         hub.wire(new PeerHub.Wiring(
             bus,
             container.get(JsonCodec.class),
-            symbols.resolve(SERVICE_ID),
+            // Same fallback chain as HttpServiceDeclaration (registry
+            // service-id → freeway.app.name → "freeway-app"): the mesh origin
+            // identity must equal the identity registered in discovery, or a
+            // node configured only with freeway.app.name would present two
+            // names to the rest of the system.
+            symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_ID,
+                symbols.resolve("freeway.app.name", "freeway-app")),
             symbols.resolve(SERVICE_INSTANCE_ID),
             symbols.resolve(SUBSCRIPTIONS),
             symbols.resolve(ALLOWED_TYPES),

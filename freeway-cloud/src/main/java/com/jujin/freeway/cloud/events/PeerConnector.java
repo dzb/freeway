@@ -216,14 +216,18 @@ public final class PeerConnector implements AutoCloseable {
      * Client leg of the mesh: mirrors the server handler — sends hello on
      * open, consumes the ack (registers the connection with the peer's own
      * subscriptions), then feeds CE frames into the hub's inbound pipeline.
-     * Any failure schedules a reconnect through the dial loop.
+     * A lost session is re-dialed unless the hub still serves that origin
+     * (duplicate resolution); the sink's failed-send drop re-dials too.
      */
     private final class ClientSessionHandler implements WebSocket.Listener {
         private final PeerAddress peer;
         private volatile WebSocket ws;
         private volatile ScheduledFuture<?> handshakeTimer;
         private volatile PeerConnection connection;
-        private volatile boolean suppressReconnect;
+        /** Set once the peer's ack passed — gates CE frames (client-leg
+         *  mirror of the server's hello-first state machine): hub.receive is
+         *  only for admitted peers, and hello is one-shot per session. */
+        private volatile boolean handshaken;
         /** One dial loop per session, no matter how many failure callbacks
          *  fire for it (JDK WebSocket may deliver both onError and onClose
          *  for one socket; abort() adds its own schedule on top). */
@@ -286,8 +290,25 @@ public final class PeerConnector implements AutoCloseable {
             try {
                 var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(text);
                 if (frame.containsKey("proto")) {
+                    if (handshaken) {
+                        // Mirror the server leg: hello is one-shot per
+                        // session — a second one re-negotiates nothing.
+                        LOG.warn("Peer {} sent a second hello — aborting", peer);
+                        abort();
+                        return null;
+                    }
                     acceptHandshake(frame);
                 } else if (frame.containsKey("specversion")) {
+                    if (!handshaken) {
+                        // Server-leg mirror: the CE pipeline (hub.receive) is
+                        // only for admitted peers. Before the ack the peer
+                        // never ran our admission — treat the frame as a
+                        // protocol violation, not as an event.
+                        LOG.warn("CE frame from peer {} before the handshake "
+                            + "completed — aborting", peer);
+                        abort();
+                        return null;
+                    }
                     hub.receive(CloudEventEnvelope.parse(text));
                 } else {
                     // Mirror the server leg: an unrecognized frame means the
@@ -344,16 +365,16 @@ public final class PeerConnector implements AutoCloseable {
                     return true;
                 },
                 true,
-                () -> {
-                    suppressReconnect = true;
-                    try {
-                        if (ws != null) {
-                            ws.abort();
-                        }
-                    } catch (Exception ignored) {
-                        // already dead
-                    }
-                });
+                // Close the transport only. Whether this close must be
+                // followed by a re-dial is decided by handleDisconnect from
+                // the hub registry (the origin may still be served by the
+                // duplicate-resolution twin) — not by who invoked close():
+                // the sink's send-failure drop unregisters first and expects
+                // the connector to dial again.
+                this::abort);
+            // Ack accepted — from here on frames are CE, and a second hello
+            // is rejected by the state machine in onText.
+            handshaken = true;
             hub.register(connection);
             if (connection.isClosed()) {
                 return; // duplicate resolution closed this outbound connection
@@ -382,23 +403,34 @@ public final class PeerConnector implements AutoCloseable {
             } else {
                 LOG.debug("Peer {} not established: {}", peer, cause);
             }
-            if (!suppressReconnect) {
-                scheduleReconnect();
+            if (closed) {
+                return; // connector shutdown — no re-dial may outlive it
             }
+            if (connection != null && hub.hasRegistered(connection.remoteOrigin())) {
+                // The origin is still served by another registered connection
+                // (duplicate resolution kept the twin): nothing to dial.
+                LOG.debug("Peer {} still served by another connection — no reconnect", peer);
+                return;
+            }
+            scheduleReconnect();
         }
 
         private void abort() {
             cancelHandshakeTimer();
             try {
-                if (ws != null) {
-                    ws.abort();
+                WebSocket socket = ws;
+                if (socket != null) {
+                    socket.abort();
                 }
             } catch (Exception ignored) {
                 // already dead
             }
-            if (!suppressReconnect) {
-                scheduleReconnect();
-            }
+            // Teardown is complete here (not deferred to whatever close
+            // callback the JDK delivers): clean up and decide on the re-dial
+            // synchronously, so a failed session can never be left neither
+            // registered nor scheduled. Later onClose/onError callbacks for
+            // the same socket hit the same idempotent path.
+            handleDisconnect("aborted");
         }
 
         /** Disarms the handshake watchdog: every terminal path (ack, reject,

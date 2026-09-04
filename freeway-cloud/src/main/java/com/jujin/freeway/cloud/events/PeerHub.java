@@ -189,6 +189,17 @@ public final class PeerHub implements WebSocketEndpoint {
         return List.copyOf(peers.values());
     }
 
+    /**
+     * True when a connection to {@code remoteOrigin} is still registered.
+     * The mesh keeps exactly one connection per origin, so an outbound
+     * session that died while a surviving twin is registered (duplicate
+     * resolution) must not be re-dialed — the connector consults this
+     * instead of remembering which side closed it.
+     */
+    boolean hasRegistered(String remoteOrigin) {
+        return peers.containsKey(remoteOrigin);
+    }
+
     public String origin() {
         return origin;
     }
@@ -232,12 +243,19 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     /**
-     * Server session: first text = hello (origin + subscriptions) → ack with
-     * own hello; subsequent text = CE frames → inbound pipeline.
+     * Server session: per-session handshake state machine. The first text
+     * must be hello (origin + subscriptions) → ack with own hello; the token
+     * check runs only on that path, so CE frames before hello are closed
+     * (1002) rather than dispatched — otherwise any client that can open a
+     * socket could skip admission and inject events (allowed-topics is
+     * accept-any by default). Hello is one-shot per session: a second hello
+     * is a protocol error too.
      */
     private final class ServerSessionHandler implements WebSocketListener {
         private final WebSocketSession session;
         private volatile PeerConnection connection;
+        /** Set once the hello passed admission; gates every later frame. */
+        private volatile boolean handshaken;
 
         ServerSessionHandler(WebSocketSession session) {
             this.session = session;
@@ -248,9 +266,24 @@ public final class PeerHub implements WebSocketEndpoint {
             try {
                 var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(text);
                 if (frame.containsKey("proto")) {
-                    handshake(frame);
+                    if (handshaken) {
+                        // The session already passed admission once; a second
+                        // hello would re-negotiate under a new origin.
+                        LOG.warn("Duplicate hello from peer — closing");
+                        session.close(1002, "duplicate hello");
+                    } else {
+                        handshake(frame);
+                    }
                 } else if (frame.containsKey("specversion")) {
-                    receive(CloudEventEnvelope.parse(text));
+                    if (!handshaken) {
+                        // Admission gate: receive() dispatches to the local
+                        // bus, but the token check lives in the hello path —
+                        // a CE frame before hello must never reach it.
+                        LOG.warn("CE frame from peer before hello — closing");
+                        session.close(1002, "hello expected");
+                    } else {
+                        receive(CloudEventEnvelope.parse(text));
+                    }
                 } else {
                     LOG.warn("Unrecognized frame from peer — closing");
                     session.close(1002, "protocol error");
@@ -293,6 +326,9 @@ public final class PeerHub implements WebSocketEndpoint {
                         // already closed
                     }
                 });
+            // Admission passed — from here on frames are CE, and a second
+            // hello is rejected by the state machine in onText.
+            handshaken = true;
             register(connection);
             if (connection.isClosed()) {
                 return; // duplicate resolution closed this inbound connection
