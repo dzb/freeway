@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;

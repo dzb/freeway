@@ -2,9 +2,9 @@ package com.jujin.freeway.cloud.resilience;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
-import com.jujin.freeway.cloud.internal.CircuitBreakerDefault;
-import com.jujin.freeway.cloud.internal.RateLimiterDefault;
-import com.jujin.freeway.cloud.internal.RetryerDefault;
+import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
+import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
+import com.jujin.freeway.cloud.resilience.RetryerDefault;
 import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -13,6 +13,7 @@ import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import java.time.Duration;
+import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
 
 /**
  * IoC wiring for resilience: {@link Retryer} / {@link CircuitBreaker} /
@@ -60,9 +61,9 @@ public final class CloudResilienceModule implements ModuleEx {
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 return new RetryerDefault(
-                    RETRY_MAX_ATTEMPTS.parse(symbols.resolve(RETRY_MAX_ATTEMPTS.key(), null)),
-                    RETRY_BACKOFF_BASE.parse(symbols.resolve(RETRY_BACKOFF_BASE.key(), null)),
-                    RETRY_BACKOFF_MAX.parse(symbols.resolve(RETRY_BACKOFF_MAX.key(), null)));
+                    symbols.resolve(RETRY_MAX_ATTEMPTS),
+                    symbols.resolve(RETRY_BACKOFF_BASE),
+                    symbols.resolve(RETRY_BACKOFF_MAX));
             })
             .marker(Local.class)
             ;
@@ -70,13 +71,13 @@ public final class CloudResilienceModule implements ModuleEx {
         b.bind(CircuitBreaker.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
-                if (!CB_ENABLED.parse(symbols.resolve(CB_ENABLED.key(), null))) {
+                if (!symbols.resolve(CB_ENABLED)) {
                     return CircuitBreaker.NOOP;
                 }
                 return new CircuitBreakerDefault(
-                    CB_FAILURE_THRESHOLD.parse(symbols.resolve(CB_FAILURE_THRESHOLD.key(), null)),
-                    Duration.ofSeconds(CB_FAILURE_WINDOW.parse(symbols.resolve(CB_FAILURE_WINDOW.key(), null))),
-                    Duration.ofSeconds(CB_OPEN_WINDOW.parse(symbols.resolve(CB_OPEN_WINDOW.key(), null))));
+                    symbols.resolve(CB_FAILURE_THRESHOLD),
+                    Duration.ofSeconds(symbols.resolve(CB_FAILURE_WINDOW)),
+                    Duration.ofSeconds(symbols.resolve(CB_OPEN_WINDOW)));
             })
             .marker(Local.class)
             ;
@@ -84,8 +85,8 @@ public final class CloudResilienceModule implements ModuleEx {
         b.bind(RateLimiter.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
-                return RATE_LIMIT_ENABLED.parse(symbols.resolve(RATE_LIMIT_ENABLED.key(), null))
-                    ? new RateLimiterDefault(RATE_LIMIT_PER_SECOND.parse(symbols.resolve(RATE_LIMIT_PER_SECOND.key(), null)))
+                return symbols.resolve(RATE_LIMIT_ENABLED)
+                    ? new RateLimiterDefault(symbols.resolve(RATE_LIMIT_PER_SECOND))
                     : RateLimiter.UNLIMITED;
             })
             .marker(Local.class)

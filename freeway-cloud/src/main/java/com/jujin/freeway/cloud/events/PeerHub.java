@@ -266,18 +266,16 @@ public final class PeerHub implements WebSocketEndpoint {
         }
 
         private void handshake(com.jujin.freeway.commons.json.JsonObject frame) throws java.io.IOException {
-            String remoteOrigin = java.util.Objects.requireNonNullElse(
-                frame.getString("origin"), "");
-            if (remoteOrigin.isBlank()) {
-                session.close(1002, "hello missing origin");
+            HelloAdmission admission = validateHello(frame, token);
+            if (!admission.accepted()) {
+                if (admission.closeCode() == 1008) {
+                    LOG.warn("Peer {} failed the mesh token check — closing", admission.origin());
+                }
+                session.close(admission.closeCode(), admission.reason());
                 return;
             }
-            if (!acceptsToken(frame.getString("token"), token)) {
-                LOG.warn("Peer {} failed the mesh token check — closing", remoteOrigin);
-                session.close(1008, "unauthorized");
-                return;
-            }
-            List<String> remoteSubs = prefixes(frame.get("subscribe"));
+            String remoteOrigin = admission.origin();
+            List<String> remoteSubs = admission.subscriptions();
             connection = new PeerConnection(remoteOrigin, remoteSubs,
                 json -> {
                     try {
@@ -417,6 +415,39 @@ public final class PeerHub implements WebSocketEndpoint {
             return true;
         }
         return constantTimeEquals(presented == null ? "" : presented, expected);
+    }
+
+    /**
+     * Outcome of the mesh hello admission check. Accepted carries the parsed
+     * remote origin + subscriptions; rejected carries a WS close code + reason
+     * (and the origin when it was known, for the log).
+     */
+    record HelloAdmission(boolean accepted, String origin, List<String> subscriptions,
+                          int closeCode, String reason) {
+        static HelloAdmission accept(String origin, List<String> subscriptions) {
+            return new HelloAdmission(true, origin, subscriptions, 0, null);
+        }
+
+        static HelloAdmission reject(String origin, int closeCode, String reason) {
+            return new HelloAdmission(false, origin, null, closeCode, reason);
+        }
+    }
+
+    /**
+     * Mesh hello admission: the origin must be present, and the token must
+     * match (constant-time) when one is configured. Pure — no session, so the
+     * handshake gate is testable in isolation from the running inbound gate
+     * ({@link #receive}).
+     */
+    static HelloAdmission validateHello(com.jujin.freeway.commons.json.JsonObject frame, String expectedToken) {
+        String remoteOrigin = Objects.requireNonNullElse(frame.getString("origin"), "");
+        if (remoteOrigin.isBlank()) {
+            return HelloAdmission.reject(null, 1002, "hello missing origin");
+        }
+        if (!acceptsToken(frame.getString("token"), expectedToken)) {
+            return HelloAdmission.reject(remoteOrigin, 1008, "unauthorized");
+        }
+        return HelloAdmission.accept(remoteOrigin, prefixes(frame.get("subscribe")));
     }
 
     /** Codec accessor for the connector (client leg parses acks too). */

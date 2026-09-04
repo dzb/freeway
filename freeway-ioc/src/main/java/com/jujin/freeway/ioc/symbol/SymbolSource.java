@@ -1,5 +1,7 @@
 package com.jujin.freeway.ioc.symbol;
 
+import com.jujin.freeway.commons.config.ConfigSpec;
+
 /**
  * Resolves symbolic configuration keys ({@code ${...}}) from config, system
  * properties, environment variables, and other providers.
@@ -60,6 +62,25 @@ public interface SymbolSource {
             }
         }
         return expand("${" + name + ":" + defaultValue + "}");
+    }
+
+    /**
+     * Resolves and parses a typed configuration key in one step, replacing the
+     * two-step {@code spec.parse(resolve(spec.key(), null))} boilerplate. The
+     * symbol is resolved as a raw string (null when absent) and handed to the
+     * spec's parser, which owns typing and the default value.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * int port = symbols.resolve(HTTP_PORT);
+     * String pw = symbols.resolve(DB_PASSWORD);
+     * }</pre>
+     *
+     * @param spec the typed key (key name, type, default, parser)
+     * @return the parsed value (the spec's default when the symbol is absent)
+     */
+    default <T> T resolve(ConfigSpec<T> spec) {
+        return spec.parse(resolve(spec.key(), null));
     }
 
     /**

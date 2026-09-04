@@ -12,6 +12,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +29,15 @@ public final class ReadyHandler implements RouteHandler {
 
 
     private static final Logger LOG = LoggerFactory.getLogger(ReadyHandler.class);
+    /**
+     * Runs each contributor's {@code check()} off the probe thread with a timeout
+     * budget. A contributor that blocks (e.g. a stalled registry lookup) must not
+     * hang {@code /health/ready} — and pile up probe threads behind it — it must
+     * simply mark the probe unhealthy.
+     */
+    private static final ExecutorService PROBE_EXECUTOR =
+        Executors.newVirtualThreadPerTaskExecutor();
+    private static final long READINESS_CHECK_TIMEOUT_MS = 2_000;
     private final List<CloudHealthContributor> contributors;
     private final JsonCodec jsonCodec;
 
@@ -56,14 +70,16 @@ public final class ReadyHandler implements RouteHandler {
         for (CloudHealthContributor contributor : contributors) {
             HealthResult result;
             try {
-                result = contributor.check();
+                result = withTimeout(contributor);
             } catch (Exception ex) {
-                // A failing dependency must mark the probe unhealthy, not take
-                // down the whole endpoint (or the k8s readiness probe with it).
-                // The reason is logged here, not returned: readiness endpoints
-                // are unauthenticated by convention, and an exception message
-                // from a dependency check is internal detail.
-                LOG.warn("Health contributor '{}' failed", contributor.name(), ex);
+                // A failing (or over-budget) dependency must mark the probe
+                // unhealthy, not take down the whole endpoint (or the k8s
+                // readiness probe with it). The reason is logged here, not
+                // returned: readiness endpoints are unauthenticated by
+                // convention, and an exception message from a dependency check
+                // is internal detail.
+                LOG.warn("Health contributor '{}' failed or exceeded readiness budget",
+                    contributor.name(), ex);
                 healthy = false;
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("healthy", false);
@@ -83,5 +99,17 @@ public final class ReadyHandler implements RouteHandler {
         body.put("cloud", cloud);
         ctx.setHeader("Content-Type", "application/json");
         ctx.send(healthy ? 200 : 503, jsonCodec.toJson(body));
+    }
+
+    private HealthResult withTimeout(CloudHealthContributor contributor) throws Exception {
+        Future<HealthResult> future = PROBE_EXECUTOR.submit(contributor::check);
+        try {
+            return future.get(READINESS_CHECK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw new IllegalStateException(
+                "health contributor '" + contributor.name()
+                    + "' exceeded readiness budget (" + READINESS_CHECK_TIMEOUT_MS + "ms)");
+        }
     }
 }

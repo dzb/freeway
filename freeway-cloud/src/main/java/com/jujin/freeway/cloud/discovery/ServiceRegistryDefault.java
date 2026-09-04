@@ -1,9 +1,10 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.discovery;
 
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 
 import java.util.Objects;
+import com.jujin.freeway.cloud.internal.RegistryStore;
 
 /**
  * In-process {@link ServiceRegistry} backed by {@link RegistryStore}.

@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.observe;
 
 import com.jujin.freeway.cloud.observe.MetricsSnapshot;
 import com.jujin.freeway.commons.metrics.Metrics;

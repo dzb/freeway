@@ -22,6 +22,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `XDefault` keeps the interface name dominant」约定相悖；新名字符合
   「`Impl` 用于无趣的具体实现」且与其实现性质（对 `LongAdder`/`TimerData`
   的薄委托）一致。类为 `private`，外部不可见，无兼容性影响。
+- **freeway-cloud 内部结构收敛（无行为变更）** — 按结构审计报告
+  `AUDIT-CLOUD-STRUCTURE-2026-09-04.md` 落地一组机械重构：`PeerConnector` 的地址
+  解析（`toUri`/`parsePort`/`sameEndpoint`）抽为 `PeerAddress` record（解析 + 渲染 +
+  端点相等，顺带消除 `URI.getHost()` 的 IPv6 括号歧义）；`PeerHub.ServerSessionHandler`
+  的握手准入（origin + token + subscribe 解析）抽为纯方法 `validateHello` +
+  `HelloAdmission` 结果类型，与已独立的 `receive` 入站门对称；`CloudHttpClientDefault`
+  的 3 个 telescoping 构造器收敛为 `Wiring` record + 单一构造器；逗号切分列表解析抽为
+  `internal/ConfigLists`（`splitAndTrim` + 列表 `spec`）；`CloudEventLifecycleHook`
+  剩余裸 `resolve` 改走 `ConfigSpec`；`freeway-boot` 依赖声明降为 test 作用域（main
+  零引用）。
+- **`*Default` 移出 `internal` 包（freeway-cloud，仅 cloud 范围，无 API 符号变更）** —
+  按 `CLAUDE.md` 既定口径（`XDefault` 是可替换默认实现、属公开扩展点，不应放在
+  `internal`），把 cloud 的 12 个 `*Default` 从 `internal` 迁到各自功能包：
+  `discovery`（`ServiceDiscoveryDefault`/`LoadBalancerDefault`/`ServiceRegistryDefault`）、
+  `resilience`（`CircuitBreakerDefault`/`RateLimiterDefault`/`RetryerDefault`）、
+  `observe`（`MetricsDefault`/`TracerDefault`）、`storage`（`ObjectStorageDefault`）、
+  `secret`（`SecretStoreDefault`）、`rpc`（`CloudHttpClientDefault`/`TransportSecurityDefault`）。
+  `internal` 现仅容纳真正的实现细节（`RegistryStore`/`ConfigLists`/`ResiliencePolicy`
+  等）。`CloudHttpClientDefault` 的 resilience 装配助手 `ResiliencePolicy` 一并迁入 `rpc`
+  （保持包私有，随其 owner 归位，不污染 public 面）；其包私有构造器/嵌套类无需对外暴露。
+  ioc/db 的同类放置仍待项目级统一口径，本次未动。`CloudConfigKeys` 注释同步。
+- **`SymbolSource` 新增 `resolve(ConfigSpec<T>)` 默认方法（ioc 公共接口，向后兼容）** —
+  取代全项目 32 处 `spec.parse(symbols.resolve(spec.key(), null))` 二段式样板，改为
+  一步 `symbols.resolve(spec)`。默认方法向后兼容（现有 `SymbolSource` 实现类无需改动），
+  键名、默认值、解析器仍由 `ConfigSpec` 单点声明。`freeway-db` / `freeway-cloud` /
+  `freeway-boot` / `freeway-commons` 的全部调用点与 javadoc 示例已同步。纯机械收口，
+  零行为变更。
 
 ### Removed
 
@@ -64,6 +91,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `container.get(ServiceRegistry.class)`，容器半拆时该查找抛出的异常会顶替正在发生
   的失败。现按 best-effort 处理：注册表不可得即一条 WARN 加清理跟踪实例，租约自然
   过期。
+- **RPC 未装 resilience 模块时重试策略不再被静默置空（freeway-cloud）** —
+  `CloudHttpClientDefault` 此前把解析后的默认 retryer 存入 `this.retryer` 字段（死字段，
+  只写不读），却把可能为 null 的原始参数直接传给 `ResiliencePolicy`——未装 resilience
+  模块（retryer 为 null）时，一旦遇到可重试失败，`retryer.shouldRetry` 即 NPE。现删除
+  死字段，改用解析后的非 null retryer 构造策略，缺省时回退
+  `RetryerDefault.withDefaults()`。
+- **HTTP/2 流被 RST 后不再向该流写响应帧（freeway-http，含偶发 flaky 修复）** —
+  此前 `Http2Stream.close()` 在流因 RST 结束时仍执行 `outputStream.close()`，向一个已结束
+  的流发送 `DATA END_STREAM`；被唤醒的 handler 还会继续执行 `ctx.send(200,...)` 写 stray 帧，
+  与同一连接上的后续请求响应交错。该竞态违反 RFC 7540 §8.1（流被 RST 后不得再发送该流帧），
+  真实客户端会据此发 GOAWAY 关闭连接，导致 `Http2ProtocolTest.h2cResetStreamWithNoErrorReleasesHandler`
+  偶发失败。现统一收敛：为流加 `peerReset`（对端 RST）与 `responseAborted`（服务端主动 RST）
+  两标记，`close()` 在任一标记下不写任何响应帧；handler 后续的 `ctx.send`/`write` 在
+  `peerReset` 下直接干净抛 `IOException` 收尾而非边写边错。覆盖全部发 RST 的路径——
+  对端 `RST_STREAM`、`abortResponse()`（PROTOCOL_ERROR）、`sendReset()`（异常路径）、
+  `dispatchToStream` 捕获的流错误、`WINDOW_UPDATE` 发送窗溢出（FLOW_CONTROL_ERROR）——以上
+  路径发完 RST 后均不再补 END_STREAM。`sendReset()` 改为基于 `responseAborted` 的幂等
+  （重复调用只发一次 RST）。正常完成路径（handler 主动 `close`）因 `outputStream.closed`
+  守卫不重复写帧，行为不变。
+- **`SslContextFactory` 空 keystore 密码不再 NPE（freeway-http，P3 卫生）** —
+  `keyStorePassword` 为 `null` 时 `password.toCharArray()` 直接抛 NPE（混淆的栈而非配置错误）。
+  无密码 keystore（如空密码 PKCS#12）本就合法，`KeyStore.load` 期望 `null` 字符数组而非空数组。
+  新增 `keyStorePasswordChars` 把 `null` 原样透传，消除 NPE 且不破坏无密码 keystore 场景
+  （`loadKeyStore` / `defaultKeyManagers` / SNI `SniKeyManager` 三处调用点统一走该 helper）。
+- **批量收口 cloud 模块 P3 卫生项（freeway-cloud / freeway-http，无行为变更）** —
+  - `ReadyHandler`：`/health/ready` 的每个 contributor 检查加 2s 超时预算（虚拟线程
+    + `Future.get(timeout)`），某 contributor 阻塞即判不健康，而非拖挂探针端点并堆积探针线程（P3-8）。
+  - `TracerDefault`：span 构造期捕获**所属线程**的 `Frame`，`restoreThreadState` 用其操作
+    span 栈——修复跨线程 `close` 后所属线程的 span 栈残留 stale 项、后续 MDC/`diagId` 错乱（P3-11）。
+  - `CloudHttpClientDefault`：breakers/rateLimiters 按 `serviceId` 分片，加 1024 容量上限兜底
+    （超限驱逐一个），防 churning 注册表来源下无界增长（P3-1）。
+  - `PeerConnector`：握手超时(10s)/重连退避(1s/30s)由硬编码私有常量改为经 `ConfigSpec` 可配
+    （`freeway.cloud.events.handshake-timeout-ms` / `backoff-base-ms` / `backoff-max-ms` /
+    `connect-timeout-ms`，默认值与原有硬编码一致，行为不变）；`CloudEventLifecycleHook` 透传（P3-5）。
+  - 注：`Baggage` 上限（P3-10）经核对已在 `BaggagePropagator` 传播层落地（inject/extract 截断
+    到 `MAX_ENTRIES` / `MAX_ENCODED_LENGTH`），故不在构造器加帽，以免破坏 oversized 传播回归测试。
 
 ### Documentation
 
@@ -91,6 +154,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **RPC 导出面文档同步** — `DEVELOPER-GUIDE.md` 与
   `docs/freeway-remote-callbus-design.md` §3.2 改为描述每次导出各自的
   `/rpc/<mapping>/{method}` 路由（多 mapping 并存）与导出期 mapping 名校验。
+- **`internal` 包语义澄清** — `CLAUDE.md` / `AGENTS.md` 的命名规则写明：`internal`
+  标记的是「不承诺稳定的实现细节」，不是「物理不可见」——其中类可保持 `public`
+  （容器需从兄弟包装配），但调用方不得跨版本依赖其形状；并明确 `XDefault`（可替换
+  默认实现）是公开扩展点，**不属于** `internal`，应放功能包。
 
 ## [1.4.0] — 2026-09-02
 

@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.secret;
 
 import com.jujin.freeway.cloud.secret.SecretStore;
 

@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.storage;
 
 import com.jujin.freeway.cloud.storage.ObjectEntry;
 import com.jujin.freeway.cloud.storage.ObjectMetadata;

@@ -1,14 +1,10 @@
 package com.jujin.freeway.cloud.events;
 
-import com.jujin.freeway.cloud.CloudConfigKeys;
-
-import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -31,6 +27,7 @@ import org.slf4j.LoggerFactory;
 public final class PeerConnector implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnector.class);
+    /** Default reconnect backoff floor / ceiling (exponential, capped). */
     private static final long BACKOFF_BASE_MS = 1_000;
     private static final long BACKOFF_MAX_MS = 30_000;
     /** A peer that accepts the socket but never answers the hello must not
@@ -44,8 +41,8 @@ public final class PeerConnector implements AutoCloseable {
 
     private final HttpClient http;
     private final PeerHub hub;
-    private final Map<String, AtomicInteger> backoffByPeer = new ConcurrentHashMap<>();
-    private final List<URI> staticPeers;
+    private final Map<PeerAddress, AtomicInteger> backoffByPeer = new ConcurrentHashMap<>();
+    private final List<PeerAddress> staticPeers;
     /** Open client sessions, so {@link #close()} can abort their sockets. */
     private final java.util.Set<ClientSessionHandler> sessions =
         ConcurrentHashMap.newKeySet();
@@ -56,6 +53,12 @@ public final class PeerConnector implements AutoCloseable {
         Thread.ofVirtual().name("cloud-events-handshake-", 0).factory());
     private final Duration connectTimeout;
     private final String scheme;
+    /** Handshake watchdog budget; a peer that accepts but never answers the
+     *  hello is aborted so the dial loop can retry with backoff. Overridable
+     *  via {@code freeway.cloud.events.handshake-timeout-ms}. */
+    private final Duration handshakeTimeout;
+    private final long backoffBaseMs;
+    private final long backoffMaxMs;
     private volatile boolean started;
     private volatile boolean closed;
 
@@ -66,12 +69,27 @@ public final class PeerConnector implements AutoCloseable {
 
     /** Creates a connector with an explicit outbound WS scheme ({@code ws} or {@code wss}). */
     public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout, String scheme) {
+        this(hub, staticPeers, connectTimeout, scheme,
+            HANDSHAKE_TIMEOUT, BACKOFF_BASE_MS, BACKOFF_MAX_MS);
+    }
+
+    /**
+     * Full constructor with explicit networking timeouts. The other constructors
+     * delegate here with the framework defaults so existing callers (and tests)
+     * are unaffected; production wiring passes the {@code freeway.cloud.events.*}
+     * config values through {@link com.jujin.freeway.cloud.CloudConfigKeys}.
+     */
+    public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout,
+            String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs) {
         this.hub = hub;
         this.staticPeers = staticPeers.stream()
-            .map(this::toUri)
+            .map(PeerAddress::parse)
             .toList();
         this.connectTimeout = connectTimeout;
         this.scheme = scheme == null || scheme.isBlank() ? "ws" : scheme;
+        this.handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
+        this.backoffBaseMs = backoffBaseMs <= 0 ? BACKOFF_BASE_MS : backoffBaseMs;
+        this.backoffMaxMs = backoffMaxMs <= 0 ? BACKOFF_MAX_MS : backoffMaxMs;
         this.http = HttpClient.newBuilder()
             .connectTimeout(connectTimeout)
             .build();
@@ -90,11 +108,11 @@ public final class PeerConnector implements AutoCloseable {
             return;
         }
         started = true;
-        var all = new java.util.LinkedHashMap<URI, Boolean>();
-        for (URI peer : staticPeers) all.put(peer, true);
-        for (String p : dynamicPeers) all.put(toUri(p), true);
-        for (String k : backoffByPeer.keySet()) all.put(URI.create(k), true);
-        for (URI peer : all.keySet()) {
+        var all = new java.util.LinkedHashMap<PeerAddress, Boolean>();
+        for (PeerAddress peer : staticPeers) all.put(peer, true);
+        for (String p : dynamicPeers) all.put(PeerAddress.parse(p), true);
+        for (PeerAddress k : backoffByPeer.keySet()) all.put(k, true);
+        for (PeerAddress peer : all.keySet()) {
             spawnDial(peer);
         }
     }
@@ -106,79 +124,20 @@ public final class PeerConnector implements AutoCloseable {
      *  interleave — otherwise a peer fed between the two could be dialed by
      *  neither and silently lost. */
     public synchronized void setPeers(List<String> peers) {
-        for (URI peer : peers.stream().map(this::toUri).toList()) {
-            boolean known = staticPeers.stream().anyMatch(p -> sameEndpoint(p, peer))
-                || backoffByPeer.keySet().stream()
-                    .anyMatch(k -> sameEndpoint(URI.create(k), peer));
+        for (PeerAddress peer : peers.stream().map(PeerAddress::parse).toList()) {
+            boolean known = staticPeers.contains(peer) || backoffByPeer.containsKey(peer);
             if (!known && started) {
                 spawnDial(peer);
             } else if (!known) {
                 // not started yet — start() will pick it up from the map
-                backoffByPeer.put(peer.toString(), new AtomicInteger(0));
+                backoffByPeer.put(peer, new AtomicInteger(0));
             }
         }
-    }
-
-    private static boolean sameEndpoint(URI a, URI b) {
-        return Objects.equals(a.getHost(), b.getHost()) && a.getPort() == b.getPort();
-    }
-
-    /**
-     * {@code host:port} → {@code scheme://host:port/cloud/events}. IPv6
-     * literals are accepted in brackets ({@code [::1]:7001}) or bare
-     * ({@code fe80::1} — multiple colons imply no port component); the host
-     * is bracketed in the rendered URI per RFC 3986.
-     */
-    URI toUri(String peer) {
-        if (peer == null || peer.isBlank()) {
-            throw new IllegalArgumentException("peer must not be blank");
-        }
-        String host;
-        int port = 80;
-        if (peer.startsWith("[")) {
-            int close = peer.indexOf(']');
-            if (close < 0) {
-                throw new IllegalArgumentException("unclosed IPv6 literal: " + peer);
-            }
-            host = peer.substring(1, close);
-            if (close + 1 < peer.length()) {
-                if (peer.charAt(close + 1) != ':') {
-                    throw new IllegalArgumentException("expected :port after ']': " + peer);
-                }
-                port = parsePort(peer.substring(close + 2));
-            }
-        } else {
-            int colon = peer.indexOf(':');
-            if (colon >= 0 && colon == peer.lastIndexOf(':')) {
-                host = peer.substring(0, colon);
-                port = parsePort(peer.substring(colon + 1));
-            } else {
-                host = peer; // plain hostname or bare IPv6 literal
-            }
-        }
-        if (host.isBlank()) {
-            throw new IllegalArgumentException("peer host must not be blank: " + peer);
-        }
-        String hostPart = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
-        return URI.create(scheme + "://" + hostPart + ":" + port + CloudConfigKeys.EVENTS_PATH_DEFAULT);
-    }
-
-    private static int parsePort(String raw) {
-        int port;
-        try {
-            port = Integer.parseInt(raw);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("peer port is not a number: '" + raw + "'");
-        }
-        if (port < 1 || port > 65535) {
-            throw new IllegalArgumentException("peer port out of range: " + port);
-        }
-        return port;
     }
 
     /** Connect-retry loop: dials, then parks for backoff on every failure. */
-    private void dialLoop(URI peer) {
-        AtomicInteger backoff = backoffByPeer.computeIfAbsent(peer.toString(),
+    private void dialLoop(PeerAddress peer) {
+        AtomicInteger backoff = backoffByPeer.computeIfAbsent(peer,
             k -> new AtomicInteger(0));
         while (!closed) {
             try {
@@ -190,8 +149,8 @@ public final class PeerConnector implements AutoCloseable {
                     return;
                 }
                 long sleep = Math.min(
-                    BACKOFF_BASE_MS * (1L << Math.min(backoff.get(), 5)),
-                    BACKOFF_MAX_MS);
+                    backoffBaseMs * (1L << Math.min(backoff.get(), 5)),
+                    backoffMaxMs);
                 backoff.incrementAndGet();
                 LOG.debug("Peer {} connect failed ({}ms backoff): {}",
                     peer, sleep, String.valueOf(e.getCause() == null ? e : e.getCause()));
@@ -206,7 +165,7 @@ public final class PeerConnector implements AutoCloseable {
     }
 
     /** Starts a dial/retry thread and tracks it for interruptible shutdown. */
-    private void spawnDial(URI peer) {
+    private void spawnDial(PeerAddress peer) {
         Thread dialer = Thread.ofVirtual().unstarted(() -> {
             try {
                 dialLoop(peer);
@@ -219,13 +178,13 @@ public final class PeerConnector implements AutoCloseable {
     }
 
     /** One dial: build the WebSocket; the listener takes over after onOpen. */
-    private java.util.concurrent.CompletableFuture<WebSocket> connect(URI peer) {
+    private java.util.concurrent.CompletableFuture<WebSocket> connect(PeerAddress peer) {
         var handler = new ClientSessionHandler(peer);
         sessions.add(handler);
         return http.newWebSocketBuilder()
             .subprotocols("freeway.events.v1")
             .connectTimeout(connectTimeout)
-            .buildAsync(peer, handler)
+            .buildAsync(peer.toUri(scheme), handler)
             .whenComplete((ws, err) -> {
                 if (err != null) {
                     sessions.remove(handler); // never opened — nothing to abort
@@ -260,7 +219,7 @@ public final class PeerConnector implements AutoCloseable {
      * Any failure schedules a reconnect through the dial loop.
      */
     private final class ClientSessionHandler implements WebSocket.Listener {
-        private final URI peer;
+        private final PeerAddress peer;
         private volatile WebSocket ws;
         private volatile ScheduledFuture<?> handshakeTimer;
         private volatile PeerConnection connection;
@@ -270,7 +229,7 @@ public final class PeerConnector implements AutoCloseable {
          *  for one socket; abort() adds its own schedule on top). */
         private final AtomicBoolean reconnectScheduled = new AtomicBoolean();
 
-        ClientSessionHandler(URI peer) {
+        ClientSessionHandler(PeerAddress peer) {
             this.peer = peer;
         }
 
@@ -292,7 +251,7 @@ public final class PeerConnector implements AutoCloseable {
                     LOG.warn("Peer {} never completed the mesh handshake — aborting", peer);
                     abort();
                 }
-            }, HANDSHAKE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            }, handshakeTimeout.toMillis(), TimeUnit.MILLISECONDS);
             var hello = new java.util.LinkedHashMap<String, Object>();
             hello.put("proto", 1);
             hello.put("origin", hub.origin());

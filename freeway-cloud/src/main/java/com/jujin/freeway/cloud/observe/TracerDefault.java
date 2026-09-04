@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.observe;
 
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
@@ -9,6 +9,7 @@ import org.slf4j.MDC;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
+import com.jujin.freeway.cloud.internal.PropagationFilter;
 
 /**
  * Default {@link Tracer}: creates child spans under the current
@@ -95,6 +96,12 @@ public final class TracerDefault implements Tracer {
 
         private final ActiveSpan active;
         private final Metrics metrics;
+        /** The frame of the thread that opened this span. A span may be closed
+         *  on a different thread (e.g. an async continuation); restoring must
+         *  target the owning thread's stack, not the closing thread's, or the
+         *  owner's span stack is left with a stale entry and its MDC/diagId
+         *  drift afterwards. */
+        private final Frame frame;
         private final long startNanos = System.nanoTime();
         // Frozen by close(); elapsedNanos() reads live before that.
         private volatile long durationNanos = -1;
@@ -107,6 +114,7 @@ public final class TracerDefault implements Tracer {
                 name == null ? "" : name);
             this.metrics = metrics;
             Frame frame = FRAME.get();
+            this.frame = frame;
             if (!frame.captured) {
                 // First span on this thread — snapshot the ambient tier and
                 // MDC so a full unwind can restore exactly what was there.
@@ -160,7 +168,7 @@ public final class TracerDefault implements Tracer {
          * context, and the last close restores the pre-span snapshots.
          */
         private void restoreThreadState() {
-            Frame frame = FRAME.get();
+            Frame frame = this.frame;
             if (!frame.stack.remove(active)) {
                 return; // already closed — never restore twice
             }

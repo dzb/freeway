@@ -4,12 +4,12 @@ import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
-import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
-import com.jujin.freeway.cloud.internal.LoadBalancerDefault;
-import com.jujin.freeway.cloud.internal.MetricsDefault;
+import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
+import com.jujin.freeway.cloud.discovery.LoadBalancerDefault;
+import com.jujin.freeway.cloud.observe.MetricsDefault;
 import com.jujin.freeway.cloud.internal.RegistryStore;
-import com.jujin.freeway.cloud.internal.ServiceDiscoveryDefault;
-import com.jujin.freeway.cloud.internal.TracerDefault;
+import com.jujin.freeway.cloud.discovery.ServiceDiscoveryDefault;
+import com.jujin.freeway.cloud.observe.TracerDefault;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.WebServer;
@@ -17,8 +17,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,15 +49,9 @@ class RpcObserveTest {
         return new CloudHttpClientDefault(
             new ServiceDiscoveryDefault(store),
             new LoadBalancerDefault(),
-            List.of(),
-            null,
-            null,
-            null,
-            null,
-            tracer,
-            metrics,
-            Duration.ofSeconds(10),
-            Duration.ofSeconds(3));
+            CloudHttpClientDefault.Wiring.defaults()
+                .withTracer(tracer)
+                .withMetrics(metrics));
     }
 
     @Test

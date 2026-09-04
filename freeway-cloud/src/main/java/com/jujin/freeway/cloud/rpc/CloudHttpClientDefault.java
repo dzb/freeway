@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.context.InvocationContext;
@@ -34,6 +34,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLContext;
+import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
+import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
+import com.jujin.freeway.cloud.resilience.RetryerDefault;
 
 /**
  * JDK {@link HttpClient}-backed {@link CloudHttpClient}.
@@ -58,7 +61,6 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
     private final LoadBalancer loadBalancer;
     private final Duration requestTimeout;
     private final List<Propagator> propagators;
-    private final Retryer retryer;
     private final CircuitBreaker injectedBreaker;
     private final RateLimiter injectedRateLimiter;
     private final TransportSecurity transport;
@@ -78,6 +80,14 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      *  is shared verbatim — see {@link #newBreaker()}/{@link #newRateLimiter()}. */
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
+    /**
+     * Backstop against unbounded growth: breakers/rate limiters are sharded per
+     * {@code serviceId}, and that id space comes from the discovery source — its
+     * cardinality is not controlled by this node. Under a churning registry the
+     * maps would otherwise grow without bound, so once the cap is reached an
+     * arbitrary stale shard is evicted before a new one is created.
+     */
+    private static final int MAX_SHARDED_RESILIENCE = 1 << 10;
     /** Async calls submitted but not yet settled, so close() can fail them
      *  explicitly when the executor drops them (shutdownNow discards queued
      *  tasks — their futures would otherwise never complete). */
@@ -93,41 +103,78 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         Duration.ofSeconds(CloudConfigKeys.RPC_CB_FAILURE_WINDOW_DEFAULT);
     private static final Duration DEFAULT_OPEN_WINDOW =
         Duration.ofSeconds(CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT);
+    /**
+     * Optional wiring for {@link CloudHttpClientDefault}. Every field has a
+     * production-safe default, so tests and bare setups omit what they do not
+     * use. Bundled into one value (mirroring {@code PeerHub.Wiring}) so the
+     * nine optional inputs cannot drift apart at a call site and the client
+     * needs no telescoping constructor overloads.
+     */
+    public record Wiring(
+        List<Propagator> propagators,
+        Retryer retryer,
+        CircuitBreaker breaker,
+        RateLimiter rateLimiter,
+        TransportSecurity transport,
+        Tracer tracer,
+        Metrics metrics,
+        Duration requestTimeout,
+        Duration connectTimeout
+    ) {
+        /** Defaults mirror the config layer (10s request / 3s connect). */
+        public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(10);
+        public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(3);
+
+        public Wiring {
+            propagators = propagators == null ? List.of() : List.copyOf(propagators);
+            requestTimeout = requestTimeout == null ? DEFAULT_REQUEST_TIMEOUT : requestTimeout;
+            connectTimeout = connectTimeout == null ? DEFAULT_CONNECT_TIMEOUT : connectTimeout;
+        }
+
+        /** All-default wiring: no propagators, built-in resilience, plaintext. */
+        public static Wiring defaults() {
+            return new Wiring(null, null, null, null, null, null, null, null, null);
+        }
+
+        public Wiring withTracer(Tracer value) {
+            return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
+                value, metrics, requestTimeout, connectTimeout);
+        }
+
+        public Wiring withMetrics(Metrics value) {
+            return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
+                tracer, value, requestTimeout, connectTimeout);
+        }
+    }
+
     public CloudHttpClientDefault(ServiceDiscovery discovery, LoadBalancer loadBalancer) {
-        this(discovery, loadBalancer, List.of(), null, null, null, null, null, null,
-            Duration.ofSeconds(10), Duration.ofSeconds(3));
+        this(discovery, loadBalancer, Wiring.defaults());
     }
 
-    public CloudHttpClientDefault(ServiceDiscovery discovery, LoadBalancer loadBalancer,
-                                  Duration requestTimeout, Duration connectTimeout) {
-        this(discovery, loadBalancer, List.of(), null, null, null, null, null, null,
-            requestTimeout, connectTimeout);
-    }
-
-    public CloudHttpClientDefault(ServiceDiscovery discovery, LoadBalancer loadBalancer,
-                                  List<Propagator> propagators,
-                                  Retryer retryer, CircuitBreaker breaker, RateLimiter rateLimiter,
-                                  TransportSecurity transport,
-                                  Tracer tracer, Metrics metrics,
-                                  Duration requestTimeout, Duration connectTimeout) {
+    public CloudHttpClientDefault(
+        ServiceDiscovery discovery, LoadBalancer loadBalancer, Wiring wiring) {
+        Objects.requireNonNull(wiring, "wiring");
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.loadBalancer = Objects.requireNonNull(loadBalancer, "loadBalancer");
-        this.propagators = List.copyOf(propagators);
-        this.retryer = retryer != null ? retryer : RetryerDefault.withDefaults();
-        // Injected breakers/limiters are NOT shared between services: a
-        // default-implementation instance is used as the configuration
-        // template and every service gets its own shard (see the
-        // computeIfAbsent factories in call()). Only non-default custom
-        // implementations fall back to sharing — the caller owns their state.
-        this.injectedBreaker = breaker;
-        this.injectedRateLimiter = rateLimiter;
-        this.transport = transport != null ? transport : TransportSecurity.NONE;
-        this.tracer = tracer;
-        this.metrics = metrics;
-        this.policy = new ResiliencePolicy(retryer, tracer, metrics);
-        this.requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout");
+        this.propagators = wiring.propagators();
+        // A default-implementation breaker/limiter is used as the per-service
+        // shard configuration template; any other implementation (or NOOP) is
+        // shared verbatim — see the computeIfAbsent factories in call().
+        this.injectedBreaker = wiring.breaker();
+        this.injectedRateLimiter = wiring.rateLimiter();
+        this.transport = wiring.transport() != null ? wiring.transport() : TransportSecurity.NONE;
+        this.tracer = wiring.tracer();
+        this.metrics = wiring.metrics();
+        // The resolved retryer is never null: an absent one falls back to the
+        // built-in default before the policy is built, so a missing resilience
+        // module cannot NPE on the first retryable failure.
+        Retryer resolvedRetryer = wiring.retryer() != null
+            ? wiring.retryer()
+            : RetryerDefault.withDefaults();
+        this.policy = new ResiliencePolicy(resolvedRetryer, this.tracer, this.metrics);
+        this.requestTimeout = wiring.requestTimeout();
         HttpClient.Builder builder = HttpClient.newBuilder()
-            .connectTimeout(Objects.requireNonNull(connectTimeout, "connectTimeout"))
+            .connectTimeout(wiring.connectTimeout())
             .version(HttpClient.Version.HTTP_1_1);
         SSLContext sslContext = this.transport.sslContext();
         if (sslContext != null) {
@@ -215,8 +262,8 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      */
     private CloudResponse orchestrate(
         String serviceId, CloudRequest request, boolean async, long deadlineNanos) {
-        CircuitBreaker breaker = breakers.computeIfAbsent(serviceId, k -> newBreaker());
-        RateLimiter rateLimiter = rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
+        CircuitBreaker breaker = breakerFor(serviceId);
+        RateLimiter rateLimiter = rateLimiterFor(serviceId);
         return policy.run(serviceId, deadlineNanos, breaker, rateLimiter,
             () -> attempt(serviceId, request, async));
     }
@@ -239,6 +286,25 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
             return RateLimiter.UNLIMITED;
         }
         return injectedRateLimiter.newShard();
+    }
+
+    private CircuitBreaker breakerFor(String serviceId) {
+        CircuitBreaker b = breakers.get(serviceId);
+        if (b != null) return b;
+        if (breakers.size() >= MAX_SHARDED_RESILIENCE) evictOne(breakers);
+        return breakers.computeIfAbsent(serviceId, k -> newBreaker());
+    }
+
+    private RateLimiter rateLimiterFor(String serviceId) {
+        RateLimiter r = rateLimiters.get(serviceId);
+        if (r != null) return r;
+        if (rateLimiters.size() >= MAX_SHARDED_RESILIENCE) evictOne(rateLimiters);
+        return rateLimiters.computeIfAbsent(serviceId, k -> newRateLimiter());
+    }
+
+    private static <V> void evictOne(ConcurrentHashMap<String, V> map) {
+        var it = map.keySet().iterator();
+        if (it.hasNext()) map.remove(it.next());
     }
 
     /**

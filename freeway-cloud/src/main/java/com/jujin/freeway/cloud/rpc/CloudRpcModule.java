@@ -5,8 +5,8 @@ import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
-import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
-import com.jujin.freeway.cloud.internal.TransportSecurityDefault;
+import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
+import com.jujin.freeway.cloud.rpc.TransportSecurityDefault;
 import com.jujin.freeway.cloud.observe.Tracer;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
@@ -67,23 +67,24 @@ public final class CloudRpcModule implements ModuleEx {
         b.bind(CloudHttpClient.class)
             .to((Container container) -> {
                 SymbolSource symbols = container.get(SymbolSource.class);
-                long requestMs = REQUEST_TIMEOUT_MS.parse(symbols.resolve(REQUEST_TIMEOUT_MS.key(), null));
-                long connectMs = CONNECT_TIMEOUT_MS.parse(symbols.resolve(CONNECT_TIMEOUT_MS.key(), null));
-                boolean traceEnabled = TRACE_ENABLED.parse(symbols.resolve(TRACE_ENABLED.key(), null));
+                long requestMs = symbols.resolve(REQUEST_TIMEOUT_MS);
+                long connectMs = symbols.resolve(CONNECT_TIMEOUT_MS);
+                boolean traceEnabled = symbols.resolve(TRACE_ENABLED);
                 return new CloudHttpClientDefault(
                     container.get(ServiceDiscovery.class),
                     container.get(LoadBalancer.class),
-                    container.extension(Propagator.class).all(),
-                    optional(container, Retryer.class),
-                    optional(container, CircuitBreaker.class),
-                    optional(container, RateLimiter.class),
-                    container.get(TransportSecurity.class),
-                    traceEnabled ? optional(container, Tracer.class) : null,
-                    // Metrics has a NoopMetrics builtin — always resolvable;
-                    // without CloudObserveModule calls record into the noop.
-                    container.get(Metrics.class),
-                    Duration.ofMillis(requestMs),
-                    Duration.ofMillis(connectMs));
+                    new CloudHttpClientDefault.Wiring(
+                        container.extension(Propagator.class).all(),
+                        optional(container, Retryer.class),
+                        optional(container, CircuitBreaker.class),
+                        optional(container, RateLimiter.class),
+                        container.get(TransportSecurity.class),
+                        traceEnabled ? optional(container, Tracer.class) : null,
+                        // Metrics has a NoopMetrics builtin — always resolvable;
+                        // without CloudObserveModule calls record into the noop.
+                        container.get(Metrics.class),
+                        Duration.ofMillis(requestMs),
+                        Duration.ofMillis(connectMs)));
             })
             .marker(Local.class)
             ;

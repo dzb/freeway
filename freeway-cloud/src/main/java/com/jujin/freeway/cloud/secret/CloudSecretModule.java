@@ -4,7 +4,7 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.BackendTypeGuard;
-import com.jujin.freeway.cloud.internal.SecretStoreDefault;
+import com.jujin.freeway.cloud.secret.SecretStoreDefault;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;

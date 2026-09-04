@@ -15,7 +15,7 @@ import java.util.Map;
  * reading values — one precedence chain for {@code @Symbol}/{@code @Value}
  * injection, module sources (secrets), and direct lookups. Typed reading is
  * an explicit post-processing step: declare a {@code ConfigSpec} and parse
- * the resolved value ({@code spec.parse(symbols.resolve(spec.key(), null))}).
+ * the resolved value ({@code symbols.resolve(spec)}).
  *
  * <p>What this interface owns instead: {@link #profiles()} (boot-level
  * lifecycle metadata the chain cannot know), {@link #snapshot()} (the cascade

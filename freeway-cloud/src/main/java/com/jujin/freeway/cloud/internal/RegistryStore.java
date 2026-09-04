@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.jujin.freeway.cloud.discovery.ServiceDiscoveryDefault;
+import com.jujin.freeway.cloud.discovery.ServiceRegistryDefault;
 
 /**
  * In-process registry store shared by {@link ServiceRegistryDefault} and

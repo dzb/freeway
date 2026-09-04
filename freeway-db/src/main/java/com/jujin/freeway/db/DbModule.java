@@ -165,11 +165,11 @@ public final class DbModule implements ModuleEx {
         SymbolSource s = container.get(SymbolSource.class);
         Coercer coercer = container.get(Coercer.class);
         return new PoolConfig(
-            URL.parse(s.resolve(URL.key(), null)),
-            USERNAME.parse(s.resolve(USERNAME.key(), null)),
+            s.resolve(URL),
+            s.resolve(USERNAME),
             s.resolve(DbConfigKeys.PASSWORD, ""),
-            POOL_MAX_SIZE.parse(s.resolve(POOL_MAX_SIZE.key(), null)),
-            POOL_MIN_IDLE.parse(s.resolve(POOL_MIN_IDLE.key(), null)),
+            s.resolve(POOL_MAX_SIZE),
+            s.resolve(POOL_MIN_IDLE),
             POOL_CONNECTION_TIMEOUT.parse(s.resolve(POOL_CONNECTION_TIMEOUT.key(), null), coercer),
             POOL_MAX_LIFETIME.parse(s.resolve(POOL_MAX_LIFETIME.key(), null), coercer),
             POOL_MAX_IDLE_TIME.parse(s.resolve(POOL_MAX_IDLE_TIME.key(), null), coercer),

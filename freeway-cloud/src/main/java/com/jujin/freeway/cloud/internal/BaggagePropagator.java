@@ -76,7 +76,7 @@ public final class BaggagePropagator implements Propagator {
         }
         Map<String, String> values = new HashMap<>();
         int entries = 0;
-        for (String pair : raw.split(",")) {
+        for (String pair : ConfigLists.splitAndTrim(raw)) {
             if (entries >= MAX_ENTRIES) {
                 LOG.debug("Baggage truncated at propagation limit ({} entries)", MAX_ENTRIES);
                 break;

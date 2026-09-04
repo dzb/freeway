@@ -72,7 +72,7 @@ public final class SslContextFactory {
             throws Exception {
         KeyStore ks = KeyStore.getInstance(type);
         try (InputStream in = Files.newInputStream(path)) {
-            ks.load(in, password.toCharArray());
+            ks.load(in, keyStorePasswordChars(password));
         }
         return ks;
     }
@@ -81,8 +81,19 @@ public final class SslContextFactory {
             throws Exception {
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(
             KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(store, password.toCharArray());
+        kmf.init(store, keyStorePasswordChars(password));
         return kmf.getKeyManagers();
+    }
+
+    /**
+     * A keystore may legitimately have no password (e.g. a PKCS#12 store created
+     * with an empty password), in which case {@code KeyStore.load} expects a
+     * {@code null} char array — not an empty one. Passing {@code null} straight
+     * through avoids the NPE that {@code password.toCharArray()} would throw when
+     * the configured password is absent.
+     */
+    private static char[] keyStorePasswordChars(String password) {
+        return password == null ? null : password.toCharArray();
     }
 
     private static KeyManager[] buildSniKeyManagers(HttpConfig.Ssl s,
@@ -115,7 +126,7 @@ public final class SslContextFactory {
             }
         }
         return new KeyManager[]{new SniKeyManager(
-            byHost, effectiveDefault, s.keyStorePassword().toCharArray())};
+            byHost, effectiveDefault, keyStorePasswordChars(s.keyStorePassword()))};
     }
 
     private static TrustManager[] buildTrustManagers(HttpConfig.Ssl s)

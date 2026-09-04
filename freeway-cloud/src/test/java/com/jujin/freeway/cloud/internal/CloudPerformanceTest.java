@@ -14,6 +14,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
+import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
 
 /**
  * Lightweight throughput smoke benchmarks for freeway-cloud hot paths.

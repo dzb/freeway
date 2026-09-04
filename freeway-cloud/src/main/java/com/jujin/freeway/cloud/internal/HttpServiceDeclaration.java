@@ -51,7 +51,7 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         String host = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_HOST, server.host());
         // The default port is the live server's port, not a static value —
         // resolve raw and fall back manually.
-        Integer configuredPort = SERVICE_PORT.parse(symbols.resolve(SERVICE_PORT.key(), null));
+        Integer configuredPort = symbols.resolve(SERVICE_PORT);
         int port = configuredPort != null ? configuredPort : server.port();
         String scheme = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_SCHEME, "http");
         String instanceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,

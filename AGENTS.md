@@ -33,7 +33,10 @@ external dependencies.
 - Public interfaces use the domain name: `Container`, `JsonCodec`, `Route`.
 - Framework defaults use `XDefault`: `AppRuntimeDefault`, `JsonCodecDefault`.
 - `Impl` is reserved for uninteresting concrete implementations.
-- Internal normalization helpers stay internal (`ServiceIds`).
+- Internal normalization helpers stay internal (`ServiceIds`): `internal` marks
+  unstable implementation details (no stability promise), not a visibility gate —
+  `XDefault` (the replaceable default) is a public extension point and does NOT
+  belong there.
 
 ## Design Rules
 

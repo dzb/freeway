@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.context;
 
 import java.util.List;
+import com.jujin.freeway.cloud.internal.AuthPropagator;
 
 /**
  * Verified caller identity carried across service boundaries. Holds the

@@ -66,7 +66,8 @@ Robaho adapter has been removed.
 - `XDefault` is the framework's default choice — replaceable; extension modules bind an alternative via `.primary()` (e.g. `PoolDefault` vs a Hikari-backed pool): `AppRuntimeDefault`, `JsonCodecDefault`, `RequestContextDefault`, `CoercerDefault`.
 - `XImpl` is the definitive implementation — the single intended implementation, not meant to be replaced (e.g. `DatabaseImpl`, `QueryImpl`).
 - `DefaultX` is avoided — `XDefault` keeps the interface name dominant.
-- Internal normalization helpers stay internal (e.g., `ServiceIds`).
+- `internal` packages hold **non-public, unstable implementation details** (e.g. `ServiceIds` normalization) — the name marks "no stability promise", not "physically hidden": classes there may stay `public` (the container assembles them from sibling packages), but callers must not depend on their shape across releases.
+- `XDefault` is **not** internal: it is the replaceable default — a public extension point (an extension module substitutes via `.primary()`), so default implementations live in the feature package, not `internal`.
 
 ## Injection Annotations
 

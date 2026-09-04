@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 

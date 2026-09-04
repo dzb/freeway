@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.jujin.freeway.cloud.observe.MetricsDefault;
+import com.jujin.freeway.cloud.observe.TracerDefault;
 
 /**
  * Observability defaults: in-memory metrics recording and MDC mirroring of

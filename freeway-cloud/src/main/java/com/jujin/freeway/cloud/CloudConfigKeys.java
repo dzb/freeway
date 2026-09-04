@@ -1,4 +1,5 @@
 package com.jujin.freeway.cloud;
+import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
 
 /**
  * Central config keys and canonical defaults for {@code freeway-cloud}.
@@ -88,6 +89,20 @@ public final class CloudConfigKeys {
     public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".events.dedup.capacity";
     public static final int EVENTS_DEDUP_CAPACITY_DEFAULT = 4096;
     public static final String EVENTS_PATH_DEFAULT   = "/cloud/events";
+
+    // ── CloudEventBus networking timeouts (defaults mirror the prior hard-coded values) ──
+    /** Socket connect timeout for outbound mesh peer dials. */
+    public static final String EVENTS_CONNECT_TIMEOUT_MS   = PREFIX + ".events.connect-timeout-ms";
+    public static final long EVENTS_CONNECT_TIMEOUT_MS_DEFAULT   = 3000;
+    /** A peer that accepts the socket but never answers the hello must not pin
+     *  a half-open connection forever. */
+    public static final String EVENTS_HANDSHAKE_TIMEOUT_MS = PREFIX + ".events.handshake-timeout-ms";
+    public static final long EVENTS_HANDSHAKE_TIMEOUT_MS_DEFAULT = 10000;
+    /** Reconnect backoff floor / ceiling (exponential, capped). */
+    public static final String EVENTS_BACKOFF_BASE_MS = PREFIX + ".events.backoff-base-ms";
+    public static final long EVENTS_BACKOFF_BASE_MS_DEFAULT = 1000;
+    public static final String EVENTS_BACKOFF_MAX_MS  = PREFIX + ".events.backoff-max-ms";
+    public static final long EVENTS_BACKOFF_MAX_MS_DEFAULT  = 30000;
 
     // ── Auth propagation ────────────────────────────────────
     /** Off by default: inbound {@code x-principal} extraction trusts client

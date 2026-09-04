@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.internal;
+package com.jujin.freeway.cloud.resilience;
 
 import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 

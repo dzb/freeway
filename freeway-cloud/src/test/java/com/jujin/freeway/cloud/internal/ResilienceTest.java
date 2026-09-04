@@ -14,6 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.jujin.freeway.cloud.resilience.CircuitBreakerDefault;
+import com.jujin.freeway.cloud.resilience.RateLimiterDefault;
+import com.jujin.freeway.cloud.resilience.RetryerDefault;
 
 /**
  * Resilience primitives: exponential backoff, sliding-window circuit breaker

@@ -6,7 +6,7 @@ import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.PrincipalContext;
 import com.jujin.freeway.cloud.internal.AuthPropagator;
-import com.jujin.freeway.cloud.internal.TransportSecurityDefault;
+import com.jujin.freeway.cloud.rpc.TransportSecurityDefault;
 import com.jujin.freeway.cloud.rpc.TransportSecurity;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;

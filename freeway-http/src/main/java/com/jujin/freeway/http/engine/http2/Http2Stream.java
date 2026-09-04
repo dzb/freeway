@@ -44,6 +44,10 @@ public final class Http2Stream {
     private volatile boolean streamOpen = true;
     private volatile boolean halfClosed;
     private volatile boolean streamOutputClosed; // starts false
+    /** Set when the peer cancelled the stream with RST_STREAM. Once true the
+     *  stream is dead on both sides, so no response frames may be emitted and
+     *  the handler's writes must fail cleanly instead of racing on the wire. */
+    private volatile boolean peerReset;
 
     Http2Stream(int streamId, Http2Connection connection, Map<String, List<String>> requestHeaders,
                 Http2Connection.StreamHandler handler) {
@@ -69,10 +73,19 @@ public final class Http2Stream {
     public boolean isHalfClosed() { return halfClosed; }
 
     public void sendReset() throws IOException {
-        if (!responseAborted.get()) {
+        if (responseAborted.compareAndSet(false, true)) {
             connection.sendResetStream(Http2ErrorCode.INTERNAL_ERROR, streamId);
         }
     }
+
+    /**
+     * Marks the stream as reset by the server so {@link #close()} emits no
+     * response frames. Once a RST_STREAM has been sent for a stream, no further
+     * frames may be written for it (RFC 7540 §8.1) — writing a trailing
+     * END_STREAM after a reset is a protocol violation and races with the
+     * handler's own writes on the shared connection.
+     */
+    void markAborted() { responseAborted.set(true); }
 
     /**
      * Aborts the response after a framing violation (e.g. body length does
@@ -101,7 +114,14 @@ public final class Http2Stream {
         streamOpen = false;
         connection.streams.remove(streamId);
         try { dataIn.close(); } catch (IOException ignored) {}
-        try { outputStream.close(); } catch (IOException ignored) {}
+        // A RST received from the peer (or a server-initiated abort that already
+        // sent RST) means the stream is dead on both sides — emit no response
+        // frames; just release the handler and I/O. Writing a response here
+        // would violate RFC 7540 §8.1 (no frames after RST) and race with the
+        // handler's own writes on the shared connection.
+        if (!peerReset && !responseAborted.get()) {
+            try { outputStream.close(); } catch (IOException ignored) {}
+        }
         var t = thread;
         if (t != null) t.interrupt();
     }
@@ -141,12 +161,13 @@ public final class Http2Stream {
                     dataIn.wakeupReader();
                 }
             }
-            case RST_STREAM -> { halfClosed = true; close(); }
+            case RST_STREAM -> { halfClosed = true; peerReset = true; close(); }
             case WINDOW_UPDATE -> {
                 int increment = ((WindowUpdateFrame) frame).increment();
                 Http2FrameValidator.requirePositiveWindowIncrement(increment);
                 if (Http2FrameValidator.sendWindowOverflow(
                         sendWindow.addAndGet(increment))) {
+                    responseAborted.set(true);
                     connection.sendResetStream(Http2ErrorCode.FLOW_CONTROL_ERROR, streamId);
                     close();
                 }
@@ -202,6 +223,7 @@ public final class Http2Stream {
 
         @Override
         public void write(byte[] data, int offset, int length) throws IOException {
+            if (peerReset) throw new IOException("stream reset by peer");
             waitForSendWindow();
             if (connection.isClosed()) throw new IOException("connection closed");
             writeResponseHeaders(false);

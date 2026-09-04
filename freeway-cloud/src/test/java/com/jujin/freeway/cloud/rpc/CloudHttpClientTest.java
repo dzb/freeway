@@ -11,7 +11,7 @@ import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.cloud.internal.CloudHttpClientDefault;
+import com.jujin.freeway.cloud.rpc.CloudHttpClientDefault;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.WebServer;

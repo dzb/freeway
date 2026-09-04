@@ -2,6 +2,7 @@ package com.jujin.freeway.cloud.context;
 
 import java.lang.ScopedValue;
 import java.util.Optional;
+import com.jujin.freeway.cloud.observe.TracerDefault;
 
 /**
  * Cross-boundary propagation carrier: the single {@link ScopedValue} slot that

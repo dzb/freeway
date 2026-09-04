@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.storage;
 
-import com.jujin.freeway.cloud.internal.ObjectStorageDefault;
+import com.jujin.freeway.cloud.storage.ObjectStorageDefault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

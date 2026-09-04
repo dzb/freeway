@@ -431,6 +431,7 @@ public final class Http2Connection {
             target.dispatch(frame, executor);
         } catch (Http2Exception e) {
             // A stream error must not tear down the multiplexed connection.
+            target.markAborted();
             sendResetStream(e.errorCode(), streamId);
             target.close();
         }

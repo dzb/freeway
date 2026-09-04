@@ -7,7 +7,6 @@ import com.jujin.freeway.cloud.context.Propagator;
 import com.jujin.freeway.commons.config.ConfigSpec;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -36,7 +35,7 @@ public final class AuthPropagator implements Propagator {
     private final boolean extractEnabled;
 
     public AuthPropagator(SymbolSource symbols) {
-        this.extractEnabled = EXTRACT_ENABLED.parse(symbols.resolve(EXTRACT_ENABLED.key(), null));
+        this.extractEnabled = symbols.resolve(EXTRACT_ENABLED);
     }
 
     @Override
@@ -66,13 +65,9 @@ public final class AuthPropagator implements Propagator {
         if (name == null || name.isBlank()) {
             return InvocationContext.of(null, null, null);
         }
-        String rolesHeader = headers.get(HEADER_ROLES);
-        List<String> roles = rolesHeader == null ? List.of()
-            : Arrays.stream(rolesHeader.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(BaggagePropagator::decode)
-                .toList();
+        List<String> roles = ConfigLists.splitAndTrim(headers.get(HEADER_ROLES)).stream()
+            .map(BaggagePropagator::decode)
+            .toList();
         return InvocationContext.of(null, PrincipalContext.of(name, roles), null);
     }
 }

@@ -25,8 +25,8 @@ import java.util.function.Function;
  *     ConfigSpec.required("db.password", String.class, Function.identity());
  *
  * // resolve raw, then post-process — key and default declared once
- * int port = HTTP_PORT.parse(symbols.resolve(HTTP_PORT.key(), null));
- * String pw = DB_PASSWORD.parse(symbols.resolve(DB_PASSWORD.key(), null));
+ * int port = symbols.resolve(HTTP_PORT);
+ * String pw = symbols.resolve(DB_PASSWORD);
  * }</pre>
  *
  * @param <T> the value type
