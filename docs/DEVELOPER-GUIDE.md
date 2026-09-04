@@ -269,6 +269,35 @@ binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
 public class AppModule implements ModuleEx { ... }
 ```
 
+### Choosing Between id, primary, marker, and Contributions
+
+These mechanisms answer different questions. The decision table:
+
+| What you are modelling | Use | Consumer side |
+|---|---|---|
+| One implementation per type | `.to(Class)` or `.to(c -> ...)` | Plain `get(type)` |
+| Several alternatives, one default chosen by assembly | Several bindings + `.primary()` on the default | Plain `get(type)` — consumers do not choose |
+| Several alternatives, consumer picks by name at runtime | `.id("stripe")` | `get(type, "stripe")` or `@Inject("stripe")` |
+| Several alternatives, consumer commits at compile time | `.marker(Fast.class)` | `get(type, Fast.class)` or `@Inject @Fast` |
+| An open set of pluggable items | `contribute(Foo.class)` | `List<Foo>` / `Map<String, Foo>` |
+
+Rules of thumb:
+
+- `primary()` is a **supply-side default**: it picks the implementation when the consumer does not
+  specify one. Extension modules (Jetty, Undertow, Hikari, cloud backends) replace built-ins by
+  binding `.primary()`; application injection points do not need to mention the extension.
+- `id` and `marker` are **demand-side qualifiers**: they exist when consumers need to pick a
+  specific binding. Prefer `marker` for compile-time safety; use `id` when the selection is
+  dynamic or no annotation is appropriate.
+- `contribute` is not service selection at all. Use it for collections of open-ended extensions;
+  do not bind N services just to hand consumers a list, and do not expect a contributed item to
+  be resolvable as a single service.
+- `scope` is orthogonal to all of the above: it answers "how long does an instance live", never
+  "which implementation should I get".
+
+When an unqualified `get(type)` has multiple bindings, the wiring is ambiguous — fix the
+assembly by adding `.primary()` or a qualifier, rather than making consumers depend on order.
+
 
 ### Scopes
 

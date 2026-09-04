@@ -86,23 +86,14 @@ public interface Container extends AutoCloseable {
      * overrides a local default with {@code .primary()} makes the local
      * marker query return false without realizing either implementation.
      *
-     * <p>Custom Container implementations that do not override this method
-     * fail with {@link UnsupportedOperationException} when it is called —
-     * only framework containers can answer accurately.</p>
-     *
      * @return false when no binding is registered; throws the same ambiguity
      *         failure {@code get(Class)} would when several bindings exist
      *         without a primary
      */
-    default <T> boolean isActiveBinding(
+    <T> boolean isActiveBinding(
         Class<T> type,
         Class<? extends Annotation>... markers
-    ) {
-        // Kept a default so existing custom Container implementations keep
-        // compiling; only framework containers can answer this accurately.
-        throw new UnsupportedOperationException(
-            "isActiveBinding requires container implementation support");
-    }
+    );
 
     /**
      * Returns the extension point for the given entry type, providing access

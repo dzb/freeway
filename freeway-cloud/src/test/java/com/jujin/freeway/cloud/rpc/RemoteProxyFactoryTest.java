@@ -83,6 +83,11 @@ class RemoteProxyFactoryTest {
         }
         public <T> T get(Class<T> type, String id) { return get(type); }
         @SafeVarargs public final <T> T get(Class<T> type, Class<? extends java.lang.annotation.Annotation>... markers) { return get(type); }
+        @Override public <T> boolean isActiveBinding(
+            Class<T> type,
+            Class<? extends java.lang.annotation.Annotation>... markers) {
+            throw new UnsupportedOperationException();
+        }
         public <T> com.jujin.freeway.ioc.extension.Extension<T> extension(Class<T> entryType) {
             throw new UnsupportedOperationException();
         }

@@ -4,7 +4,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 ## Stable API
 
-- `Container` - `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`
+- `Container` - `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `isActiveBinding(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`
 - `Binder` - `bind(Class)`, `contribute(Class)`, `install(ModuleEx)`; `ModuleEx` is the module entry-point type
 - `Binding<T>` - `to(Class)`, `to(c -> ...)` (provider), `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`; there is no `to(instance)`
 - `ModuleEx` - module entry-point type: `bind(Binder)`
@@ -60,6 +60,21 @@ Prefer `.to(Class)` whenever constructor injection is sufficient. Use the provid
 The provider owns only *how the object is built*. Scope and lifecycle still apply: a singleton
 provider runs once per container, and the produced object still receives field injection,
 `@PostConstruct`, and `@PreDestroy`.
+
+## Choosing id, primary, marker, and Contributions
+
+| Need | Use | Consumer |
+|---|---|---|
+| Single implementation | `.to(Class)` / `.to(c -> ...)` | `get(type)` |
+| Alternatives with one assembly default | several bindings + `.primary()` | plain `get(type)` |
+| Runtime selection by name | `.id("name")` | `get(type, "name")` / `@Inject("name")` |
+| Compile-time qualifier | `.marker(Anno.class)` | `get(type, Anno.class)` / `@Inject @Anno` |
+| Open-ended pluggable set | `contribute(...)` | `List<T>` / `Map<String,T>` |
+
+- `primary()` is a supply-side default for extension override; consumers do not name it.
+- `id` and `marker` are demand-side qualifiers; prefer marker unless selection is dynamic.
+- Contributions are not single-service selection; do not model a list of extensions with bindings.
+- `scope` is orthogonal: it controls lifetime, not which implementation is selected.
 
 ```java
 binder.contribute(Route.class)

@@ -185,6 +185,23 @@ public class AppModule implements ModuleEx { ... }
 binder.bind(Cache.class).to(FastCache.class).marker(Fast.class);
 ```
 
+### 多实现与扩展点如何选
+
+| 要表达什么 | 使用方式 | 消费端 |
+|---|---|---|
+| 每种类型只有一个实现 | `.to(Class)` / `.to(c -> ...)` | `get(type)` |
+| 多个实现，装配期选一个默认值 | 多个 binding + `.primary()` | `get(type)`，消费端不指定 |
+| 多个实现，运行时按名字选 | `.id("name")` | `get(type, "name")` / `@Inject("name")` |
+| 多个实现，编译期明确选哪个 | `.marker(Anno.class)` | `get(type, Anno.class)` / `@Inject @Anno` |
+| 开放的可插拔集合 | `contribute(...)` | `List<T>` / `Map<String,T>` |
+
+要点：
+
+- `.primary()` 是“供应侧默认值”，适合扩展模块覆盖 builtin；注入点不需要感知扩展。
+- `id` / `marker` 是“需求侧限定符”，消费端需要主动选择时使用；能用 marker 尽量不用 id。
+- `contribute` 不解决“选哪个服务”，而是表达“一批扩展项”；不要用多个 binding 模拟列表。
+- `scope` 只回答生命周期，和上面四个维度正交。
+
 ### 注入注解
 
 `com.jujin.freeway.ioc.annotation` 包下：
