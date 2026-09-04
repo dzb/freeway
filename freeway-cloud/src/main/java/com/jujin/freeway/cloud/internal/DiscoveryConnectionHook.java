@@ -12,7 +12,7 @@ import com.jujin.freeway.ioc.RuntimeHook;
  * no-op here. Also validates the backend {@code type} keys — in the hook,
  * not in a provider, because resolving the symbol chain mid-construction
  * would cycle through the symbol provider chain. External-backend lifecycle
- * is owned by the matching freeway-ext adapter's own hooks.
+ * is owned by the custom adapter's own hooks (bound primary).
  */
 public final class DiscoveryConnectionHook implements RuntimeHook {
 

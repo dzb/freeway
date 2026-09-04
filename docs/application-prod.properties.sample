@@ -130,13 +130,15 @@ freeway.db.migration.enabled=true
 # Scenario: discovery/registry for service mesh; RPC resilience for reliability.
 
 # Secret store for production credentials.
-# FREEWAY_CLOUD_SECRET_FILE=/etc/freeway/secrets.properties
+# secret.file/secret.keys are -D only (never via env/config files):
+#   -Dfreeway.cloud.secret.file=/etc/freeway/secrets.properties
+# Default file when unset: application-secrets.properties (working directory).
 # freeway.cloud.secret.file=
 
 # Service discovery and registry.
-# FREEWAY_CLOUD_DISCOVERY_TYPE=consul  (or etcd, zookeeper)
-# FREEWAY_CLOUD_REGISTRY_TYPE=consul
-# FREEWAY_CLOUD_REGISTRY_SERVICE_ID=my-service
+# External backends (Nacos/Consul/K8s/...) need a freeway-ext adapter — none is
+# shipped, so a configured type today logs a startup warning and keeps the
+# built-in local (in-process) registry.
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
 # freeway.cloud.registry.service-id=

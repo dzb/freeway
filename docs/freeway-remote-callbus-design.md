@@ -151,7 +151,13 @@ public final class RemoteCaller {
 }
 ```
 
-- 内部构造 `CloudRequest.post("/rpc/" + mapping + "/" + method, json)`。
+- 内部构造请求：**元素级编码**——每个参数经 `JsonCodec` 序列化成恰好
+  一个 JSON 值后以逗号拼接进 `[...]`（`null` 参数编码为 `null`），
+  body 恒为 JSON 数组；再手工 `new CloudRequest("POST",
+  RpcPaths.endpoint(mapping, method), Map.of("Content-Type",
+  "application/json", RemoteCaller.VERSION_HEADER, RemoteCaller.VERSION),
+  bytes)`——版本头经显式 header 携带（`CloudRequest.post` 便捷工厂
+  不带版本头，无法用于本协议）。
 - 传入的每调用超时经 `callAsync` + `orTimeout` 收敛为端到端预算
   （重试含内），到期映射为 retryable `CloudException.timeout`（§3.3）。
 - 服务发现的 serviceId 来自消费方的绑定 id 约定（见 §4）。

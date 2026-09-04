@@ -6,7 +6,7 @@
 > A 节点 publish 的事件，以 CloudEvents 1.0 格式实时推送到所有订阅的
 > 对端节点并触发本地订阅者。
 > 前置阅读：`EventBus` javadoc（消息域三通道）、
-> `freeway-cloud-unified-design.md`（§5.3 discovery/registry）。
+> `freeway-cloud-unified-design.md`（§5.1 discovery/registry）。
 > 关联：`freeway-remote-callbus-design.md`（question 通道的跨进程形态，
 > 本文是 fact 通道的对应物）。
 
@@ -29,8 +29,10 @@
    `time`/`data` + 扩展属性。非 Freeway 的消费者（Knative、EventGrid、
    任何 CE 客户端）可以直接解读消息。
 5. **与节点注册能力结合**（connection-as-fact, registry-as-projection，
-   见 §3）：`@Local` 内置 RegistryStore 支撑零外部依赖起步；Nacos 等
-   ext 后端提供规模化发现。两种后端 CloudEventBus 都吃。
+   见 §3）：`@Local` 内置 RegistryStore 支撑零外部依赖起步；外部注册
+   后端（经 `.primary()` 替换 discovery 接口的适配器，freeway-ext
+   目前未交付，见 unified-design §8）同样可经 `setPeers` 喂入 peers。
+   两种后端形态 CloudEventBus 都吃。
 
 ## 1. 消息域全景（本设计后）
 
@@ -65,18 +67,18 @@ stream:
     缺省生成规则）。mesh 全互联去重（双方同时发起时，`origin` 字典序
     大的一方主动关闭自己发起的那条——**保留对端发起的连接**，其
     hello 已携带对端订阅）。
-  - `subscribe`：订阅声明数组，元素为
-    `{ "prefix": "order.", "group": "order-workers" }`（点分段前缀，
-    如 `order.` 匹配 `order.created` / `order.paid`）。空数组 =
-    不收事件（单向发布者）。
-    **`group` 声明投递拓扑**（吸收 solon EventLevel+group 的语义）：
+  - `subscribe`：订阅声明数组。**v1 线上元素就是前缀字符串**
+    （与配置 `events.subscriptions` 同形）；解析器向后兼容
+    `{ "prefix": ..., "group": ... }` 对象形态（只取 `prefix`）。
+    空数组 = 不收事件（单向发布者）。
+    **`group` 竞争投递语义**（吸收 solon EventLevel+group 的语义）：
     - 无 `group` = **广播**：每个收到消息的节点都触发本地订阅者
       （刷缓存、配置刷新类场景）；
     - 有 `group` = **竞争**：相同 group 的节点间每条消息只由一个处理
       （订单处理、发邮件类场景）。v1 中竞争语义由 Kafka 桥兑现
       （group 直映射 consumerGroup）；WS mesh 通道上竞争消费需要
-      协调机制，记为待定协议扩展——WS 订阅声明现在就携带 group，
-      协议设计期留下最便宜的落位。
+      协调机制，记为待定协议扩展——`{prefix, group}` 对象形态现在
+      仅被解析器容忍（group 暂不生效），协议设计期留下最便宜的落位。
   - 对端 ack（服务方回）：
     `{ "proto": 1, "origin": "...", "accept": true, "subscribe": [...] }`
     （ack 携带服务方自己的 hello）。拒绝不发 accept:false 帧——直接以
@@ -111,9 +113,11 @@ stream:
 
 v1 未实现应用层心跳（`freeway.cloud.events.keepalive` 键未实现）：
 连接活性依赖 TCP/WS 层行为、发送失败检测（出站 send 失败即摘除连接）
-与对端 close 即时感知。客户端侧有**握手看门狗**：socket 打开后 10s 内
-未完成 hello/ack 即中止并走退避重连，半开连接不会悬挂。应用层心跳
-列为待定扩展。
+与对端 close 即时感知。客户端侧有**握手看门狗**：socket 打开后
+`events.handshake-timeout-ms`（默认 10s）内未完成 hello/ack 即中止并走
+退避重连，半开连接不会悬挂；出站拨号超时与退避参数为
+`events.connect-timeout-ms`（默认 3s）、`events.backoff-base-ms` /
+`events.backoff-max-ms`（默认 1s/30s）。应用层心跳列为待定扩展。
 
 ## 3. 节点发现与连接生命周期（connection-as-fact）
 
@@ -132,11 +136,13 @@ v1 未实现应用层心跳（`freeway.cloud.events.keepalive` 键未实现）�
 peers 解析（双源）:
   a. freeway.cloud.events.peers=host:port,…（静态配置，@Local 后端的引导输入；
      IPv6 字面量支持方括号与裸写两种形态）
-  b. 有外部 registry 后端（Nacos…）时: 经 setPeers 动态喂入
+  b. 有外部 registry 后端（替换 discovery 接口的适配器，freeway-ext
+     未交付，见 unified-design §8）时: 经 setPeers 动态喂入
      （外部后端自带的 push 能力由适配器接，core 不做 watch）
 ```
 
-- 断线重连：指数退避（1s 起、30s 封顶），重连成功重走握手
+- 断线重连：指数退避（默认 `events.backoff-base-ms` 1s 起、
+  `events.backoff-max-ms` 30s 封顶），重连成功重走握手
   （订阅状态在连接里，天然重置）。
 - 节点关闭：deregister（既有 hook）+ 主动 close 所有 WS（对端立即
   感知，不等心跳超时）。
@@ -267,8 +273,10 @@ token 是**全节点共享**的握手密钥，双向生效：本节点出站时�
 声明）、`allowed-types` / `allowed-topics`（入站双白名单，语义见 §4.3）、
 `token`（mesh 握手共享密钥，常量时间比较；多节点生产部署必配，
 见 §4.3）、`dedup.enabled` /
-`dedup.capacity`（默认 4096）。无 `keepalive` / `idempotency` 键
-（§2.3、§4.2）。
+`dedup.capacity`（默认 4096）、`connect-timeout-ms`（默认 3000）、
+`handshake-timeout-ms`（默认 10000）、`backoff-base-ms` /
+`backoff-max-ms`（默认 1000/30000，§2.3）。无 `keepalive` /
+`idempotency` 键（§2.3、§4.2）。
 
 ## 7. 明确不做（v1）
 
@@ -298,7 +306,7 @@ token 是**全节点共享**的握手密钥，双向生效：本节点出站时�
 | A（本文档） | 协议与组件契约定稿 | 无 |
 | E1 | `CloudEventEnvelope` 翻译器 + 属性映射单测 | cloud 1.3.10 |
 | E2 | Endpoint + PeerConnector + Bridge + 双节点契约测试（真实 WS 往返、订阅过滤、断线重连、loop 防护） | E1 |
-| E3 | 文档进 DEVELOPER-GUIDE + ext 验证（Nacos 后端场景可选） | E2 |
+| E3 | 文档进 DEVELOPER-GUIDE + ext 后端验证（可选；freeway-ext 暂无 registry 适配器，验证环节跳过） | E2 |
 
 > **状态（2026-08-28）**：E1–E3 已实施——`CloudEventEnvelope` 翻译器、
 > `PeerHub`（WS 端点 + 入站管道 + 拦截器位）、

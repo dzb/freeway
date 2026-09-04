@@ -199,6 +199,12 @@
 | `freeway.http.health.enabled` | Boolean | `true` | 否 | 启用健康端点 |
 | `freeway.http.health.path` | String | `/healthz` | 否 | 健康检查路径 |
 
+> cloud 探针不在上表：安装 `CloudHealthModule` 时以固定路径贡献
+> `GET /health/live`（进程存活）与 `GET /health/ready`（依赖就绪聚合，
+> 全健康 200、否则 503），路径**不可配**；与 `/healthz`
+> （`freeway.http.health.path`）是两套端点，勿配成同一路径。详见
+> `docs/freeway-cloud-unified-design.md` §5.7。
+
 #### 请求体
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
@@ -373,28 +379,28 @@
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.secret.type` | String | *(空)* | 否 | 密钥存储类型。仅使用密钥服务时设置 |
-| `freeway.cloud.secret.file` | String | *(空)* | 否 | 密钥文件路径（key=value 格式）。**仅 `-D` 系统属性生效**：密钥提供方参与符号解析，其自身配置不能经该链读取，写进配置文件/环境变量无效 |
+| `freeway.cloud.secret.type` | String | *(空)* | 否 | 密钥后端类型。空（或 `local`）= 内置 env/文件实现；外部后端（Vault 等）由适配器 `.primary()` 接入（freeway-ext 未交付）——配了外部值而本地实现仍生效时启动告警一次 |
+| `freeway.cloud.secret.file` | String | `application-secrets.properties` | 否 | 密钥文件路径（key=value 格式）。**仅 `-D` 系统属性生效**：密钥提供方参与符号解析，其自身配置不能经该链读取，写进配置文件/环境变量无效 |
 | `freeway.cloud.secret.keys` | String | *(空)* | 否 | 允许从密钥存储解析的符号名白名单（逗号分隔）。**仅 `-D` 系统属性生效**（同上）。留空即"对任意符号名查环境变量"的锋利默认，启动时打 WARN |
 
 #### 对象存储
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.storage.type` | String | *(空)* | 否 | 存储类型（需 `freeway-ext` 适配器）。仅使用对象存储时设置 |
-| `freeway.cloud.storage.base-path` | String | *(空)* | 否 | 存储基础路径 |
+| `freeway.cloud.storage.type` | String | *(空)* | 否 | 存储后端类型。空（或 `local`）= 内置本地文件系统实现；外部后端（S3 等）由适配器 `.primary()` 接入（freeway-ext 未交付）——配了外部值而本地实现仍生效时启动告警一次 |
+| `freeway.cloud.storage.base-path` | String | `cloud-storage` | 否 | 本地后端根路径（相对工作目录，如 `cloud-storage`；绝对路径亦可） |
 
 #### 服务发现 / 注册
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.discovery.type` | String | *(空)* | 否 | 发现类型（需 `freeway-ext` 适配器）。仅使用服务发现时设置 |
-| `freeway.cloud.registry.type` | String | *(空)* | 否 | 注册类型（需 `freeway-ext` 适配器）。仅使用服务注册时设置 |
-| `freeway.cloud.registry.service-id` | String | *(空)* | 否 | 服务实例 ID |
-| `freeway.cloud.registry.service-host` | String | *(空)* | 否 | 服务主机地址 |
+| `freeway.cloud.discovery.type` | String | *(空)* | 否 | 发现后端类型。空（或 `local`）= 内置进程内注册表；外部后端（Nacos 等）由适配器 `.primary()` 接入（freeway-ext 未交付）——配了外部值而本地实现仍生效时启动告警一次 |
+| `freeway.cloud.registry.type` | String | *(空)* | 否 | 注册后端类型。同上（空/`local` = 进程内注册表） |
+| `freeway.cloud.registry.service-id` | String | *(空)* | 否 | 注册的逻辑服务名。空 = 回退 `freeway.app.name`（再回退 `freeway-app`） |
+| `freeway.cloud.registry.service-host` | String | *(空)* | 否 | 注册地址主机名。空 = HTTP server 绑定地址（0.0.0.0 等不可路由地址会启动告警，应配置 Pod IP 等外部可达地址） |
 | `freeway.cloud.registry.service-scheme` | String | `http` | 否 | 服务注册协议（`http` 或 `https`） |
-| `freeway.cloud.registry.service-port` | Integer | *(空)* | 否 | 服务端口 |
-| `freeway.cloud.registry.service-instance-id` | String | *(空)* | 否 | 服务实例标识 |
+| `freeway.cloud.registry.service-port` | Integer | *(空)* | 否 | 注册端口。空 = HTTP server 实际监听端口 |
+| `freeway.cloud.registry.service-instance-id` | String | *(空)* | 否 | 实例级稳定标识。空 = 派生键 `service-id@host:port` |
 
 #### RPC / 远程调用
 
@@ -440,6 +446,10 @@
 | `freeway.cloud.events.token` | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENTS_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
 | `freeway.cloud.events.dedup.enabled` | Boolean | `false` | 否 | 启用事件去重（消耗内存，按需开启） |
 | `freeway.cloud.events.dedup.capacity` | Integer | `4096` | 否 | 去重 ID 缓存容量 |
+| `freeway.cloud.events.connect-timeout-ms` | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |
+| `freeway.cloud.events.handshake-timeout-ms` | Long | `10000` | 否 | 握手看门狗：连接建立后等待 hello/ack 的超时（毫秒） |
+| `freeway.cloud.events.backoff-base-ms` | Long | `1000` | 否 | 断线重连退避基数（毫秒，指数退避） |
+| `freeway.cloud.events.backoff-max-ms` | Long | `30000` | 否 | 断线重连退避上限（毫秒） |
 
 #### RPC / TLS
 
@@ -463,13 +473,11 @@
   "freeway": {
     "cloud": {
       "secret": {
-        "type": "",
-        "file": "",
-        "keys": ""
+        "type": ""
       },
       "storage": {
         "type": "",
-        "base-path": ""
+        "base-path": "cloud-storage"
       },
       "discovery": {
         "type": ""
@@ -485,7 +493,9 @@
       "rpc": {
         "connect-timeout": 3000,
         "request-timeout": 10000,
-        "trace-enabled": true,
+        "trace": {
+          "enabled": true
+        },
         "retry": {
           "max-attempts": 3,
           "backoff-base": 100,
@@ -518,7 +528,11 @@
         "dedup": {
           "enabled": false,
           "capacity": 4096
-        }
+        },
+        "connect-timeout-ms": 3000,
+        "handshake-timeout-ms": 10000,
+        "backoff-base-ms": 1000,
+        "backoff-max-ms": 30000
       },
       "auth": {
         "extract": {
@@ -529,6 +543,9 @@
   }
 }
 ```
+
+> 注：`secret.file` / `secret.keys` 仅 `-D` 系统属性生效，不参与文件
+> 级联，故未列入上述 JSON 示例（见密钥表）。
 
 ---
 

@@ -257,8 +257,8 @@
 #  Cloud / Secret Store (freeway-cloud)
 # ================================
 
-# Secret store type and file path.
-# Scenario: production uses a secrets file or external vault.
+# Secret backend type (empty/local = env/file store) and secrets file path.
+# secret.file is read via -D only (default application-secrets.properties).
 # freeway.cloud.secret.type=
 # freeway.cloud.secret.file=
 # Allowlist of symbol names resolvable from the secret store (comma-separated).
@@ -269,16 +269,18 @@
 #  Cloud / Object Storage (freeway-cloud)
 # ================================
 
-# Storage adapter type and base path.
+# Storage backend type (empty/local = built-in file backend) and base path.
+# Scenario: external backends (S3 etc.) need a freeway-ext adapter (not shipped).
 # freeway.cloud.storage.type=
-# freeway.cloud.storage.base-path=
+# freeway.cloud.storage.base-path=cloud-storage
 
 
 # ================================
 #  Cloud / Discovery & Registry (freeway-cloud)
 # ================================
 
-# Discovery and registry adapter types.
+# Discovery and registry backend types (empty/local = built-in in-process registry;
+# external backends need a freeway-ext adapter — none shipped yet).
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
 # freeway.cloud.registry.service-id=
@@ -298,7 +300,7 @@
 # freeway.cloud.rpc.request-timeout=10000
 
 # Enable RPC call tracing for debugging cross-service calls.
-# freeway.cloud.rpc.trace-enabled=true
+# freeway.cloud.rpc.trace.enabled=true
 
 # Retry configuration for transient failures.
 # Scenario: network glitches, brief downstream unavailability.
@@ -346,6 +348,11 @@
 # freeway.cloud.events.dedup.enabled=false
 # Dedup ID cache capacity (default 4096).
 # freeway.cloud.events.dedup.capacity=4096
+# Mesh network timeouts (ms): outbound connect, hello/ack watchdog, backoff.
+# freeway.cloud.events.connect-timeout-ms=3000
+# freeway.cloud.events.handshake-timeout-ms=10000
+# freeway.cloud.events.backoff-base-ms=1000
+# freeway.cloud.events.backoff-max-ms=30000
 
 
 # ================================

@@ -1740,8 +1740,10 @@ freeway.cloud.events.allowed-topics=order.
 freeway.cloud.events.token=mesh-secret         # blank = no peer auth (warned); MUST be set in production
 ```
 
-- `peers` — nodes to dial; a registry backend (Nacos) can feed these
-  dynamically instead. The endpoint rides the existing HTTP server at
+- `peers` — nodes to dial; an external registry backend could feed these
+  dynamically instead (via `PeerConnector.setPeers`; that needs a discovery
+  adapter — an ext concern, none is shipped today). The endpoint rides the
+  existing HTTP server at
   `/cloud/events`. IPv6 literals work bracketed (`[::1]:8080`) or bare.
 - `subscriptions` — CloudEvents `type` prefixes this node pulls from the
   mesh; empty = outbound-only. Prefixes match the event class FQN and the

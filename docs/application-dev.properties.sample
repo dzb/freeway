@@ -103,7 +103,7 @@ freeway.db.migration.enabled=true
 # Uncomment and set if integrating with cloud services locally.
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
-# freeway.cloud.rpc.trace-enabled=true
+# freeway.cloud.rpc.trace.enabled=true
 
 
 # ================================

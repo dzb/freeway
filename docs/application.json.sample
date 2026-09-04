@@ -84,8 +84,8 @@
 			}
 		},
 		"cloud": {
-			"secret": { "type": "", "file": "", "keys": "" },
-			"storage": { "type": "", "base-path": "" },
+			"secret": { "type": "" },
+			"storage": { "type": "", "base-path": "cloud-storage" },
 			"discovery": { "type": "" },
 			"registry": {
 				"type": "",
@@ -98,7 +98,7 @@
 			"rpc": {
 				"connect-timeout": 3000,
 				"request-timeout": 10000,
-				"trace-enabled": true,
+				"trace": { "enabled": true },
 				"retry": { "max-attempts": 3, "backoff-base": 100, "backoff-max": 5000 },
 				"circuit-breaker": {
 					"enabled": true,
@@ -116,7 +116,11 @@
 				"allowed-types": "",
 				"allowed-topics": "",
 				"token": "",
-				"dedup": { "enabled": false, "capacity": 4096 }
+				"dedup": { "enabled": false, "capacity": 4096 },
+				"connect-timeout-ms": 3000,
+				"handshake-timeout-ms": 10000,
+				"backoff-base-ms": 1000,
+				"backoff-max-ms": 30000
 			},
 			"auth": { "extract": { "enabled": false } }
 		}

@@ -15,8 +15,9 @@ import com.jujin.freeway.ioc.annotation.Marker;
  *       {@link CloudHealthContributor} contributions. The registry
  *       contributor ships with {@code CloudDiscoveryModule} (in-process
  *       store: always healthy, reports the instance count); external-backend
- *       connectivity (Nacos/Consul/K8s) arrives with the matching
- *       freeway-ext adapter. Installing this module standalone yields an
+ *       connectivity is contributed by custom registry adapters bound primary
+ *       (freeway-ext ships no cloud adapters yet). Installing this module
+ *       standalone yields an
  *       empty (always-ok) aggregation.</li>
  * </ul>
  */
