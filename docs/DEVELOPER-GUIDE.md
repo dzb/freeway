@@ -2029,10 +2029,10 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 ### Naming Rules
 
 - **Public interfaces** use the bare domain name: `Container`, `JsonCodec`, `RequestContext`.
-- **`XDefault`** is the framework's default choice for its role — replaceable; extension modules bind an alternative via `.primary()`: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`, `ExchangeMetaDefault`, `FlowEngineDefault`.
-- **`XImpl`** is a definitive implementation that is *not* "the" default of a shared role: a container-internal piece the framework assembles (`ContainerImpl`, `HttpContextImpl`, `CoercerImpl`), or one of several implementations that genuinely coexist per use-site and are each actually used (`PooledConnectionImpl` vs a pool adapter's own connection type).
+- **`XDefault`** is the framework's default implementation of a role the **outside can substitute** — an extension module or adapter binds its own implementation via `.primary()`, or an adapter picks the default as its baseline: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`, `ExchangeMetaDefault`, `FlowEngineDefault` (and the eleven cloud defaults).
+- **`XImpl`** marks the **absence of outside substitutability**: a container-internal assembly piece (`ContainerImpl`, `HttpContextImpl`, `CoercerImpl`), or one of several implementations that genuinely coexist per use-site (`PooledConnectionImpl` vs a pool adapter's own connection type).
 - **`DefaultX`** form is avoided — `XDefault` keeps the interface name dominant.
-- **`XDefault` is not internal** — it is a public extension point; a `*Impl` that only the owning module references may live in `internal`.
+- **Package location is orthogonal to the suffix** — `internal` is part of Freeway: a `XDefault` may live there (`PoolDefault` in `db/internal` is substituted from outside via `.primary()`, which never references the default class), and an `XImpl` that other modules or adapters construct stays in the feature package. What `internal` means is "no stability promise" for callers that reference its classes across releases.
 - **Internal helpers** stay package-private where possible, e.g., `ServiceIds`.
 
 ### Code Style
