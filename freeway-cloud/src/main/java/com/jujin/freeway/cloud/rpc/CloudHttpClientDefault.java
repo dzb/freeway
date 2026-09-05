@@ -49,6 +49,10 @@ import javax.net.ssl.SSLContext;
  * the same settings; any other implementation is shared verbatim (caller's
  * choice). The underlying JDK {@link HttpClient} owns a persistent connection
  * pool and selector thread; {@link #close()} releases it exactly once.
+ *
+ * <p>The framework default for this role: {@link CloudRpcModule} binds it
+ * when the module is installed. An extension module replaces it by binding
+ * its own {@link CloudHttpClient} implementation with {@code .primary()}.</p>
  */
 public final class CloudHttpClientDefault implements CloudHttpClient, AutoCloseable {
 

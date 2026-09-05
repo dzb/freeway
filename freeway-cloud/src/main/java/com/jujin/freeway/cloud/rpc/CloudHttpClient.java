@@ -9,6 +9,10 @@ package com.jujin.freeway.cloud.rpc;
  * <p>Call flow: discovery → load-balancer choose → endpoint + path →
  * context header injection → resilience orchestration → JDK
  * {@code HttpClient.send} → {@link CloudResponse}.</p>
+ *
+ * <p>{@link CloudHttpClientDefault} is the framework default; extension
+ * modules replace it by binding their own implementation with
+ * {@code .primary()}.</p>
  */
 public interface CloudHttpClient {
 
