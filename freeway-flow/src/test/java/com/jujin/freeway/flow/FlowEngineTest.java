@@ -3,6 +3,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.jujin.freeway.flow.internal.FlowContextImpl;
+import com.jujin.freeway.flow.internal.Stepper;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.Scope;
@@ -29,8 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.jujin.freeway.flow.internal.FlowContextImpl;
-import com.jujin.freeway.flow.internal.Stepper;
 
 /**
  * 流引擎核心测试

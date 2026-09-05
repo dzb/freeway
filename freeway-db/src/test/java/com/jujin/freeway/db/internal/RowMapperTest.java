@@ -12,7 +12,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.commons.coercion.CoercerDefault;
+import com.jujin.freeway.db.Database;
+import com.jujin.freeway.db.DatabaseBuilder;
+import com.jujin.freeway.db.PoolConfig;
 import com.jujin.freeway.db.RowMapper;
+import com.jujin.freeway.db.SqlException;
 import com.jujin.freeway.db.schema.Column;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,10 +24,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.jujin.freeway.db.Database;
-import com.jujin.freeway.db.DatabaseBuilder;
-import com.jujin.freeway.db.PoolConfig;
-import com.jujin.freeway.db.SqlException;
 
 class RowMapperTest {
 
