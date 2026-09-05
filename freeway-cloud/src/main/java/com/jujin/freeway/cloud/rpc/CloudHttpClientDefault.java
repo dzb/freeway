@@ -34,7 +34,8 @@ import java.util.concurrent.Executors;
 import javax.net.ssl.SSLContext;
 
 /**
- * JDK {@link HttpClient}-backed {@link CloudHttpClient}.
+ * Default {@link CloudHttpClient} — a JDK {@link HttpClient}-backed
+ * implementation.
  *
  * <p>The resilience state machine (rate limit → breaker → discovery/choose →
  * send, retryable classification and half-open probe accounting) lives in
