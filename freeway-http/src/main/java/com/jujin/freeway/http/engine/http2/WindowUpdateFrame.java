@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-public final class WindowUpdateFrame extends BaseFrame {
+final class WindowUpdateFrame extends BaseFrame {
     private int windowSizeIncrement;
 
     public WindowUpdateFrame(FrameHeader header) {

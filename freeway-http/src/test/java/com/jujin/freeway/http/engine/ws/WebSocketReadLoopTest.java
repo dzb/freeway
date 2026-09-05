@@ -153,7 +153,7 @@ class WebSocketReadLoopTest {
         var session = new WebSocketSessionImpl(
             "GET", "/", null, Map.of(), in, out, Map.of(), null);
         var texts = new ArrayList<String>();
-        WebSocket.readLoop(in, out, session, new WebSocketListener() {
+        WebSocketReadLoop.readLoop(in, out, session, new WebSocketListener() {
             @Override
             public void onText(String text) {
                 texts.add(text);
@@ -174,7 +174,7 @@ class WebSocketReadLoopTest {
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(
             "GET", "/", null, Map.of(), in, out, Map.of(), null);
-        WebSocket.readLoop(in, out, session, WebSocketListener.NOOP);
+        WebSocketReadLoop.readLoop(in, out, session, WebSocketListener.NOOP);
 
         assertFalse(session.isOpen(),
             "Invalid reassembled UTF-8 must close the session");
@@ -189,7 +189,7 @@ class WebSocketReadLoopTest {
         var session = new WebSocketSessionImpl(
             "GET", "/", null, Map.of(), in, out, Map.of(), null);
 
-        WebSocket.readLoop(in, out, session, WebSocketListener.NOOP);
+        WebSocketReadLoop.readLoop(in, out, session, WebSocketListener.NOOP);
 
         var response = WebSocketFrame.read(new ByteArrayInputStream(out.toByteArray()));
         assertEquals(OpCode.Close, response.opCode());
@@ -228,7 +228,7 @@ class WebSocketReadLoopTest {
 
         var loopDone = new AtomicBoolean();
         Thread loop = Thread.startVirtualThread(() -> {
-            WebSocket.readLoop(blockingIn, out, session, WebSocketListener.NOOP);
+            WebSocketReadLoop.readLoop(blockingIn, out, session, WebSocketListener.NOOP);
             loopDone.set(true);
         });
 
@@ -254,7 +254,7 @@ class WebSocketReadLoopTest {
         var session = new WebSocketSessionImpl("GET", "/", null, Map.of(),
             blockingIn, out, Map.of(), null);
         var closeCode = new AtomicInteger();
-        Thread loop = Thread.startVirtualThread(() -> WebSocket.readLoop(
+        Thread loop = Thread.startVirtualThread(() -> WebSocketReadLoop.readLoop(
             blockingIn, out, session, new WebSocketListener() {
                 @Override public void onClose(int code, String reason, boolean remote) {
                     closeCode.set(code);

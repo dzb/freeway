@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-public final class PingFrame extends BaseFrame {
+final class PingFrame extends BaseFrame {
     public final byte[] body;
 
     public PingFrame(FrameHeader header, byte[] body) { super(header); this.body = body; }

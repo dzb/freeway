@@ -2,7 +2,7 @@ package com.jujin.freeway.http.engine.http2;
 
 import java.util.function.Consumer;
 
-public final class Settings {
+final class Settings {
     private final SettingParameter[] s = new SettingParameter[7];
 
     public SettingParameter get(SettingIdentifier id) {

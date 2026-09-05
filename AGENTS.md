@@ -19,10 +19,10 @@ mvn -pl freeway-cloud -am test     # module + upstream deps
 | `freeway-commons` | JSON, coercion, defer, scoped cache, validation, logging | zero |
 | `freeway-ioc` | Container, binding DSL, scopes, injection, extensions, symbol config | commons |
 | `freeway-boot` | Launcher, runtime lifecycle, profiles, config cascade (hot reload) | ioc |
-| `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc |
-| `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons |
+| `freeway-http` | Routing, built-in HTTP engine, WebSocket, SSE | ioc + commons |
+| `freeway-db` | JDBC, ORM, pooling, transactions, migrations | commons (+ ioc, DbModule only) |
 | `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution | ioc + commons |
-| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), observability, resilience, health, secrets, storage | ioc + commons + boot + http |
+| `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
 
 Extension adapters (Undertow, Jetty, HikariCP, Kafka) live in
 [freeway-ext](https://github.com/dzb/freeway-ext). Core modules have zero

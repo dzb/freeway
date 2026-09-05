@@ -1,6 +1,6 @@
 # freeway-flow
 
-轻量级图编排引擎。**v1** 定义格式（`GraphSpec`）移植自 [solon-flow](https://github.com/opensolon/solon-flow)；**v2** 格式（`GraphSpec2`）为 Freeway 原生设计——显式 entry、节点/边分离、编译时校验。
+轻量级图编排引擎。**v1** 定义格式移植自 [solon-flow](https://github.com/opensolon/solon-flow)；**v2** 格式为 Freeway 原生设计（显式 entry、节点/边分离、编译时校验）——两代格式同由 `GraphSpec` 承载，以 `version=2` 标记区分。
 
 ## 源项目信息
 
@@ -12,7 +12,7 @@
 | **源项目许可** | Apache License 2.0 |
 | **源项目活跃期** | 2025-03 ~ 至今 |
 
-> **注意**：以下移植变更是针对 v1 (`GraphSpec`) 而言的。v2 (`GraphSpec2`) 与此无关——它是 Freeway 原生设计。
+> **注意**：以下移植变更是针对 v1 定义格式而言的。v2 格式与此无关——它是 Freeway 原生设计（`GraphSpec` 内 `version=2`）。
 
 ## 移植变更
 
@@ -24,7 +24,7 @@ solon-flow 核心引擎对外部库有较多依赖，移植过程对每一处做
 | `snack4` (ONode) | JSON 序列化 | `freeway-commons` JsonObject / JsonArray / JsonUtils |
 | `dami2` (DamiBus) | 执行级事件总线 | **自写** `FlowEventBus`（~90行，ConcurrentHashMap + CopyOnWriteArrayList） |
 | `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅支持 @bean / #graph / $meta 三种引用 |
-| `solon-expression` (SnelParser) | 条件表达式解析 | **自写** `ExprEvaluator`（~280行递归下降解析器） |
+| `solon-expression` (SnelParser) | 条件表达式解析 | **自写** `ExprEvaluator`（~600行递归下降解析器） |
 | `solon.Utils` / `solon.core.util.Assert` | 工具/断言 | JDK: `Objects.requireNonNull` / `str == null \|\| str.isEmpty()` |
 | `solon.lang.*` | 注解标记 (@Preview 等) | **移除** |
 | `solon.core.util.RankEntity` | 拦截器排序 | `FlowOptions.RankedInterceptor` record |

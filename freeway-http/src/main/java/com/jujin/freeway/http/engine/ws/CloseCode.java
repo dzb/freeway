@@ -1,6 +1,6 @@
 package com.jujin.freeway.http.engine.ws;
 
-public enum CloseCode {
+enum CloseCode {
     NormalClosure(1000),
     GoingAway(1001),
     ProtocolError(1002),

@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-public final class PriorityFrame extends BaseFrame {
+final class PriorityFrame extends BaseFrame {
     public int streamDependency;
     public int weight;
     public boolean exclusive;

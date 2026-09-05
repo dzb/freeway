@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 
-public final class FrameSerializer {
+final class FrameSerializer {
     /** HTTP/2 max frame size (16KB default, RFC 7540 Section 4.2). */
     private static final int DEFAULT_MAX_FRAME_SIZE = 16384;
 

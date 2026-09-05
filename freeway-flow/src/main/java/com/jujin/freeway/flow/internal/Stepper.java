@@ -1,4 +1,4 @@
-package com.jujin.freeway.flow;
+package com.jujin.freeway.flow.internal;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;

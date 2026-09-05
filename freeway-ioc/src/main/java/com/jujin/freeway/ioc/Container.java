@@ -1,5 +1,8 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.ioc.extension.Extension;
+import java.lang.annotation.Annotation;
+
 /**
  * Service lookup container. Created by {@link Freeway#create(ModuleEx...)}.
  *
@@ -23,9 +26,6 @@ package com.jujin.freeway.ioc;
  * c.close();
  * }</pre>
  */
-import com.jujin.freeway.ioc.extension.Extension;
-import java.lang.annotation.Annotation;
-
 public interface Container extends AutoCloseable {
 
     /**

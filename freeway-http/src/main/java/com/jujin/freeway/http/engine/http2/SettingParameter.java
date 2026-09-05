@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-public final class SettingParameter {
+final class SettingParameter {
     public static final int PARAMETER_SIZE = 6;
     public static final SettingParameter DEFAULT_INITIAL_WINDOW_SIZE = new SettingParameter(SettingIdentifier.SETTINGS_INITIAL_WINDOW_SIZE, 65535);
     public SettingIdentifier identifier;

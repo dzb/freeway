@@ -8,7 +8,7 @@ import java.util.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.engine.ws.WebSocket;
+import com.jujin.freeway.http.engine.ws.WebSocketReadLoop;
 import com.jujin.freeway.http.engine.ws.WebSocketSessionImpl;
 import com.jujin.freeway.http.engine.ws.WebSocketUtil;
 import com.jujin.freeway.http.websocket.WebSocketMatch;
@@ -106,7 +106,7 @@ final class WebSocketUpgrade {
                 HttpSession.headerValue(req.headers(), "x-request-id"));
             var listener = match.endpoint().open(wsSession);
             listener.onOpen(wsSession);
-            WebSocket.readLoop(websocketInput, connection.outputStream(),
+            WebSocketReadLoop.readLoop(websocketInput, connection.outputStream(),
                 wsSession, listener);
         } catch (Exception e) {
             LOG.trace("WebSocket upgrade error: {}", e.getMessage());

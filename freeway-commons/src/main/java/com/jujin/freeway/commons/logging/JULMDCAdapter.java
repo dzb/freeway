@@ -18,7 +18,7 @@ import org.slf4j.spi.MDCAdapter;
  * termination; platform-thread pools must clear MDC between tasks to avoid
  * leaking context across requests.
  */
-public final class JULMDCAdapter implements MDCAdapter {
+final class JULMDCAdapter implements MDCAdapter {
 
     private final ThreadLocal<Map<String, String>> context =
         ThreadLocal.withInitial(HashMap::new);

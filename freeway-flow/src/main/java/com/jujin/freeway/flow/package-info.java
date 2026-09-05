@@ -38,6 +38,14 @@
  *   <li>{@link com.jujin.freeway.flow.PlantumlOptions} / {@link com.jujin.freeway.flow.PlantumlDisplayContext} / {@link com.jujin.freeway.flow.PlantumlDisplayResult}</li>
  * </ul>
  *
+ * <h3>Stability</h3>
+ * <p>The types listed above (plus the model/spec types and
+ * {@code FlowModule}) form the module's stable surface. Everything else in
+ * this package is engine machinery that rides on those signatures — no
+ * stability promise. The same applies to the classes in
+ * {@code com.jujin.freeway.flow.internal} ({@code Stepper},
+ * {@code FlowContextImpl}), which exist for root-package assembly only.</p>
+ *
  * @see <a href="https://github.com/opensolon/solon-flow">solon-flow</a>
  * @since 1.2.2
  */

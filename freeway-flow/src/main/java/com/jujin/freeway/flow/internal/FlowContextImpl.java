@@ -1,5 +1,10 @@
-package com.jujin.freeway.flow;
+package com.jujin.freeway.flow.internal;
 
+import com.jujin.freeway.flow.FlowContext;
+import com.jujin.freeway.flow.FlowEventBus;
+import com.jujin.freeway.flow.FlowExchanger;
+import com.jujin.freeway.flow.FlowTrace;
+import com.jujin.freeway.flow.NodeRecord;
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;
 

@@ -5,7 +5,7 @@ import java.io.OutputStream;
 import java.util.Arrays;
 
 
-public final class DataFrame extends BaseFrame {
+final class DataFrame extends BaseFrame {
     public final byte[] body;
     private final int padLength;
 

@@ -5,7 +5,7 @@ import java.io.OutputStream;
 import java.util.Arrays;
 
 
-public final class HeadersFrame extends BaseFrame {
+final class HeadersFrame extends BaseFrame {
     private int padLength;
     private long dependentStreamId;
     private byte[] headerBlock;

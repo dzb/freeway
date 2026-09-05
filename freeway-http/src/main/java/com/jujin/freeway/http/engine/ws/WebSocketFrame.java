@@ -14,7 +14,7 @@ import java.nio.charset.StandardCharsets;
  * RFC 6455 WebSocket frame with binary serialization/deserialization.
  * Supports text, binary, control (close/ping/pong), and fragmented frames.
  */
-public final class WebSocketFrame {
+final class WebSocketFrame {
 
     static final Charset TEXT_CHARSET = StandardCharsets.UTF_8;
     static final int MAX_FRAME_SIZE = 16 * 1024 * 1024;

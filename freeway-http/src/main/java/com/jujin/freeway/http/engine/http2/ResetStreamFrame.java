@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-public final class ResetStreamFrame extends BaseFrame {
+final class ResetStreamFrame extends BaseFrame {
     public final Http2ErrorCode errorCode;
 
     public ResetStreamFrame(Http2ErrorCode errorCode, int streamId) {

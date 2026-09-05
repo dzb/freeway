@@ -7,7 +7,7 @@ import java.io.OutputStream;
  * Non-synchronized buffered output stream designed for virtual threads
  * where each connection has exclusive access to its streams.
  */
-public final class SessionBufferedOutputStream extends OutputStream {
+final class SessionBufferedOutputStream extends OutputStream {
 
     private final OutputStream out;
     private byte[] buf = new byte[1024];

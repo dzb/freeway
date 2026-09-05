@@ -162,7 +162,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
                 if (end < data.length) {
                     end = codePointBoundary(data, end);
                 }
-                WebSocket.writeFrame(out, new WebSocketFrame(
+                WebSocketReadLoop.writeFrame(out, new WebSocketFrame(
                     first ? opCode : OpCode.Continuation, end == data.length,
                     Arrays.copyOfRange(data, offset, end)));
                 first = false;
@@ -197,7 +197,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
         synchronized (writeLock) {
             checkOpen();
             for (String text : texts) {
-                WebSocket.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
+                WebSocketReadLoop.writeFrameNoFlush(out, new WebSocketFrame(OpCode.Text, true, text));
             }
             out.flush();
         }
@@ -211,7 +211,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
             closeCode = code;
             closeReason = reason == null ? "" : reason;
             open = false;
-            WebSocket.writeFrame(out,
+            WebSocketReadLoop.writeFrame(out,
                 new WebSocketFrame(OpCode.Close, true, closePayload));
         }
         // Wake the blocking read loop so a server-initiated close does not
@@ -227,7 +227,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     void writeFrame(WebSocketFrame frame) throws IOException {
         synchronized (writeLock) {
             checkOpen();
-            WebSocket.writeFrame(out, frame);
+            WebSocketReadLoop.writeFrame(out, frame);
         }
     }
 
@@ -235,7 +235,7 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     void writeFrameNoFlush(WebSocketFrame frame) throws IOException {
         synchronized (writeLock) {
             checkOpen();
-            WebSocket.writeFrameNoFlush(out, frame);
+            WebSocketReadLoop.writeFrameNoFlush(out, frame);
         }
     }
 

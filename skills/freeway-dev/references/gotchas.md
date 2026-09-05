@@ -7,7 +7,7 @@
 - If a snippet uses CLI args, define them in the snippet or use `new String[0]`.
 - `FreewayApp.run(...)` already starts the runtime; `HttpModule` already contributes the server hook.
 - A `THREAD` scoped concrete class should not be injected directly into a singleton.
-- `Binding.primary()` is the API for primary resolution, not an annotation.
+- `Binding.primary()` and the `@Primary` marker are equivalent — the DSL call maps to the marker internally, so both forms resolve through the same marker index.
 - `Schema.ensure(db, ...)` / `Schema.drop(db, ...)` use the database's dialect automatically — no `Dialect` argument.
 - `HttpContext.pathVar()` returns `Optional<String>`, not a bare `String`.
 - Tests that start a `WebServer` should use `port=0` to avoid conflicts with running services.

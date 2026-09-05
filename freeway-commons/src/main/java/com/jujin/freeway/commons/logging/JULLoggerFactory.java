@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
 
-public final class JULLoggerFactory implements ILoggerFactory {
+final class JULLoggerFactory implements ILoggerFactory {
     private final ConcurrentMap<String, JULLoggerAdapter> loggerMap = new ConcurrentHashMap<>();
 
     @Override

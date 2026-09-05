@@ -320,3 +320,22 @@ CLAUDE.md internal 语义完全一致);boot/internal 5 类同理。ioc 根包 23
 3. AGENTS.md 命名段对齐 CLAUDE.md「归置与后缀正交」口径(删除"XDefault 不属于
    internal"的过期表述)。
 4. CHANGELOG [Unreleased] 定稿条目改写为裁决后的净更名(相对 1.4.0)。
+
+## 12. B/C 清单执行记录(2026-09-05,已落地)
+
+- B 类 6 处文档口径全部修正(CLAUDE.md 五处 + AGENTS.md 模块表三行 + flow README
+  三处 + skills gotchas 一处;plan.md/assessment.md 等历史快照保留)。
+- C1 commons logging 三包内类收 package-private(SPI 与按名加载类保持 public)。
+- C2 http 引擎 21 个包外零引用 public 类型降 package-private(engine 根 2、
+  engine/ws 4、engine/http2 15);`WebSocket`→`WebSocketReadLoop`(构造器与
+  3 处静态调用点同步);engine/ 余下 public 在 CLAUDE.md 标注为子包间契约。
+- C3 commons.util 补 package-info;ContextExecutor 定案保留(公开 API)。
+- C4 db:RowMapperTest 迁 internal 测试包;新增 DialectSyntaxTest(6 用例,
+  含保留字引号、DML/DDL 片段、四方言差异);DatabaseHub.of(Map) 根工厂。
+- C5 flow:Stepper/FlowContextImpl 移入新 flow.internal(各 1 引用点 + 测试
+  加 import);根 package-info 增 Stability 段。
+- C6 五个 internal 包 + commons.util 补 package-info;ioc Container 类 javadoc
+  归位到 import 之后(此前为孤儿文档)。
+- C7 cloud hook 三风格维持(机制各有依据:容器按类实例化 → internal+public;
+  同包可构造 → 包私有;bind() 匿名),约定写入 cloud/internal package-info。
+- C8 全仓 clean 重建验证:1864 + 6 新测试 = 1870 全绿,陈旧 apidocs/类产物清除。

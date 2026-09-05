@@ -4,7 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
-public abstract class BaseFrame {
+abstract class BaseFrame {
     private FrameHeader header;
 
     public BaseFrame(FrameHeader header) { this.header = header; }

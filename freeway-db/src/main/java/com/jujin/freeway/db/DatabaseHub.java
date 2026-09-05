@@ -1,12 +1,13 @@
 package com.jujin.freeway.db;
 
+import com.jujin.freeway.db.internal.DatabaseHubImpl;
 import java.util.Map;
 
 /**
  * Registry for multiple named {@link Database} instances.
  *
  * <p>Contributions are made via {@code binder.contribute(NamedDatabase.class)} in IoC mode,
- * or via {@link DatabaseHubImpl} directly in standalone mode.
+ * or via {@link #of(Map)} in standalone mode.
  *
  * <p>Multi-database work is <b>not</b> XA / two-phase committed: each
  * {@link Database} manages its own connections and transactions
@@ -15,6 +16,13 @@ import java.util.Map;
  * own and is not rolled back with the transaction.
  */
 public interface DatabaseHub {
+
+    /**
+     * Creates a hub over the given named databases (standalone mode).
+     */
+    static DatabaseHub of(Map<String, Database> databases) {
+        return new DatabaseHubImpl(databases);
+    }
 
     /**
      * Returns the database registered under the given name.

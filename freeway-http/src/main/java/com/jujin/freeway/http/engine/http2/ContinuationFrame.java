@@ -3,7 +3,7 @@ package com.jujin.freeway.http.engine.http2;
 import java.io.IOException;
 import java.io.OutputStream;
 
-public final class ContinuationFrame extends BaseFrame {
+final class ContinuationFrame extends BaseFrame {
     private final byte[] headerBlock;
 
     public ContinuationFrame(FrameHeader header, byte[] headerBlock) {

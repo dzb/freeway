@@ -27,10 +27,10 @@ JUnit 6.1.3, SLF4J 2.0.18.
 freeway-commons         zero deps
  ├─ freeway-ioc         depends on commons
  │   ├─ freeway-boot    depends on ioc
- │   ├─ freeway-http    depends on ioc (+ commons transitive)
+ │   ├─ freeway-http    depends on ioc + commons
  │   ├─ freeway-flow    depends on ioc + commons (no extra deps)
- │   └─ freeway-cloud   depends on ioc + commons + boot + http (no extra deps)
- └─ freeway-db          depends on commons (ioc optional)
+ │   └─ freeway-cloud   depends on ioc + commons + http (boot is test-scope only)
+ └─ freeway-db          depends on commons (+ ioc, DbModule only)
 ```
 
 Core modules have no external dependencies beyond SLF4J.
@@ -48,16 +48,16 @@ Robaho adapter has been removed.
 - **Scopes** declared only via `bind().scope(...)`: `SINGLETON`, `PROTOTYPE`, `THREAD`. Thread scope is entered through `Scoping.within()`.
 - **`RuntimeHook`** — module-level start/stop extension. Contributed through `Contribution<RuntimeHook>`, ordered with `before/after`. `HttpModule` contributes the server hook with stable id `"freeway.http.server"`.
 - **`LoggerSource`** — built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly). The JUL provider reads `freeway-log.properties` from the classpath root (user-provided, not bundled) for logging configuration (console, file logging, multi-file, per-logger levels) — system properties (`-D`) override file values. All defaults are built into code. Framework code uses standard `LoggerFactory.getLogger()` everywhere.
-- **`.primary()` pattern** — used for engine, pool, and dialect selection. Default implementation bound without `.primary()`; extension modules bind their alternative with `.primary()`. Container resolves the primary binding automatically — no config keys needed. Same pattern across HTTP engine (`FreewayHttpEngine` vs `UndertowEngine`), connection pool (`PoolDefault` vs `HikariPool`), and DB dialect (`PostgresDialect` vs custom).
+- **`.primary()` pattern** — used for engine, pool, and dialect selection. Default implementation bound without `.primary()`; extension modules bind their alternative with `.primary()`. Container resolves the primary binding automatically — no config keys needed. Same pattern across HTTP engine (`FreewayHttpEngine` vs `UndertowEngine`) and connection pool (`PoolDefault` vs `HikariPool`). DB dialects differ: the built-in dialects are bound by id (`dialectId()`), `PostgresDialect` is the `.primary()`-bound default, and a custom dialect binds under its own id and is selected via the `freeway.db.dialect` config key — a second `.primary()` `Dialect` would be ambiguous.
 - **HTTP** — Built-in engine architecture:
-  - **Engine layer** (`engine/`): `FreewayHttpEngine` — virtual threads, synchronous socket I/O, HTTP/1.x + HTTP/2 h2c/h2 + WebSocket + HTTPS. HTTP/1.x session/parsing (`Http1xSession`, `Http1xParser`) and the connection wrapper (`HttpConnection`) live directly in `engine/`; sub-packages are `engine/http2/` (Http2Connection, frame serialization, HPACK) and `engine/ws/` (WebSocket frame protocol). All engine classes are implementation details — only `FreewayHttpEngine` is public.
+  - **Engine layer** (`engine/`): `FreewayHttpEngine` — virtual threads, synchronous socket I/O, HTTP/1.x + HTTP/2 h2c/h2 + WebSocket + HTTPS. HTTP/1.x session/parsing (`Http1xSession`, `Http1xParser`) and the connection wrapper (`HttpConnection`) live directly in `engine/`; sub-packages are `engine/http2/` (Http2Connection, frame serialization, HPACK) and `engine/ws/` (WebSocket frame protocol). All engine classes are implementation details. `FreewayHttpEngine` is the only one that forms public API; the other `public` types in `engine/` and its sub-packages exist only because Java has no sub-package visibility — they are intra-engine cross-subpackage contracts, not API (no stability promise).
   - **Orchestration layer** (`WebServer`): filter chain (CorsFilter → HealthFilter → custom filters → route dispatch), event publishing via `Consumer<Object>`, server lifecycle. `RequestComponents` record bundles filter config for cleaner constructors.
   - **Integration layer** (`HttpModule`): bridges `Consumer<Object>` → EventBus, registers `FreewayHttpEngine` as default.
   - `JdkHttpEngine` / `JdkHttpContext` have been removed — the built-in engine is now the only default.
   - Route path variables use `:name` or `{name}` syntax; `{name:regex}` for regex constraints.
   - `Http1xParser` uses a reusable 4KB bulk-read buffer per connection; `HttpContextImpl` writes responses into a reusable byte buffer for a single socket write.
 - **DB** — `Database` is the entry point. Named params (`:name`/`$name`), programmatic transactions, built-in pooling, dialect auto-detection from JDBC URL, `DatabaseHub` for multi-datasource. Schema (annotation-driven DDL) and Migration (versioned SQL) provide complementary DB evolution.
-- **Flow** — Lightweight graph orchestration engine ported from solon-flow. 7 node types (START/END/ACTIVITY/EXCLUSIVE/INCLUSIVE/PARALLEL/LOOP). JSON-based graph definitions via `Graph.fromText(json)`. Self-written expression evaluator (`ExprEvaluator`, ~280-line recursive descent parser) and event bus (`FlowEventBus`). Supports PlantUML export, execution tracing with pause/resume, subgraph calls (`#graphId`), and interceptor chains. Task resolution: `@bean` / `#graph` / `$meta`. Zero extra dependencies beyond commons + ioc.
+- **Flow** — Lightweight graph orchestration engine ported from solon-flow. 7 node types (START/END/ACTIVITY/EXCLUSIVE/INCLUSIVE/PARALLEL/LOOP). JSON-based graph definitions via `Graph.fromText(json)`. Self-written expression evaluator (`ExprEvaluator`, a ~600-line recursive-descent parser) and event bus (`FlowEventBus`). Supports PlantUML export, execution tracing with pause/resume, subgraph calls (`#graphId`), and interceptor chains. Task resolution: `@bean` / `#graph` / `$meta`. Zero extra dependencies beyond commons + ioc.
 
 ## Naming Rules
 
@@ -80,7 +80,7 @@ All in `com.jujin.freeway.ioc.annotation`: `@Inject`, `@Symbol`, `@Value`, `@Pos
 - `@PostConstruct` — lifecycle callback after injection is complete.
 - `@PreDestroy` — lifecycle callback before the instance is destroyed.
 
-Primary resolution uses `binding.primary()` on the binding DSL, not an annotation.
+Primary resolution uses `binding.primary()` on the binding DSL — it maps to the `@Primary` marker internally, so both forms resolve through the same marker index.
 
 ## Design Rules
 

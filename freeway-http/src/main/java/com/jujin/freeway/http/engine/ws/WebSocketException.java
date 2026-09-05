@@ -2,7 +2,7 @@ package com.jujin.freeway.http.engine.ws;
 
 import java.io.IOException;
 
-public final class WebSocketException extends IOException {
+final class WebSocketException extends IOException {
 
     private final CloseCode code;
     private final String reason;

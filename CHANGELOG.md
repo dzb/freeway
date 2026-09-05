@@ -61,6 +61,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wither（`withPropagators` / `withRetryer` / `withBreaker` / `withRateLimiter` /
   `withTransport` / `withRequestTimeout` / `withConnectTimeout`）供逐步定制。
 
+- **包结构收紧与文档口径同步（freeway-commons/ioc/boot/http/db/flow/cloud，无行为变更）** —
+  按 2026-09-05 包体结构审计的 B/C 清单落地：
+  - http 引擎体系可见性收紧：21 个包外零引用的 public 类型降 package-private
+    （engine 根 `SessionBufferedInput/OutputStream`；engine/ws `WebSocketFrame` /
+    `OpCode` / `CloseCode` / `WebSocketException`；engine/http2 `BaseFrame` 帧族 /
+    `FrameSerializer` / `Settings` 族），engine/ 剩余 public 只是引擎子包间契约
+    （Java 无子包可见性），已在 CLAUDE.md 写明；engine/ws 的静态读循环工具
+    `WebSocket` 更名 `WebSocketReadLoop`（消除"以协议命名工具"）。
+  - commons logging：`JULLoggerFactory` / `JULLoggerAdapter` / `JULMDCAdapter`
+    收 package-private（SPI 与 LogManager 按名加载的类型保持 public）。
+  - flow：引擎件 `Stepper` / `FlowContextImpl` 移入新建 `flow.internal`
+    （仅装配可见，无稳定性承诺）；根 package-info 增补 Stability 段。
+  - db：`RowMapperTest` 归位 internal 镜像测试包；新增 `DialectSyntaxTest`
+    直接单测四方言语法面（引号/保留字/DDL 片段/DML 子句）；`DatabaseHub.of(Map)`
+    根工厂取代 javadoc 引导构造 internal 类。
+  - `internal` 包（ioc/boot/http/db/cloud/flow）与 commons.util 补 package-info
+    （"no stability promise" / 包边界）；ioc `Container` 类 javadoc 从 import
+    之前归位（此前从不附着到接口）。
+  - `ContextExecutor` 定案：保留为公开 API（显式 `ScopedValue` 传播执行器），
+    util 包边界随之写入 package-info。
+  - 文档口径同步：CLAUDE.md 的 dialect 替换路径（内建默认 `PostgresDialect`
+    本身 `.primary()`；自定义方言 = id 绑定 + `freeway.db.dialect` 键）、
+    engine 公开面表述、`@Primary` 与 binding DSL 等价、`ExprEvaluator` ~600 行、
+    模块依赖图（db 的 ioc 实为 compile 且仅 DbModule 引用、cloud→boot 为
+    test scope、http 显式依赖 commons）；AGENTS.md 模块表同步；flow README
+    的 "GraphSpec2" 措辞修正（v2 由 `GraphSpec` 承载，`version=2` 标记）。
+
 ### Removed
 
 - **清理死依赖声明（根 `pom.xml`）** — 移除 `<dependencyManagement>` 中

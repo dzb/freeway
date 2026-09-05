@@ -15,12 +15,12 @@ import com.jujin.freeway.http.websocket.WebSocketListener;
  * WebSocket frame read loop. Reads frames from the input stream and
  * dispatches them to a {@link WebSocketListener}. Adapted from nanohttpd.
  */
-public final class WebSocket {
+public final class WebSocketReadLoop {
 
-    private static final Logger LOG = LoggerFactory.getLogger(WebSocket.class);
+    private static final Logger LOG = LoggerFactory.getLogger(WebSocketReadLoop.class);
     private static final long MAX_MESSAGE_SIZE = 16L * 1024 * 1024;
 
-    private WebSocket() {}
+    private WebSocketReadLoop() {}
 
     /**
      * Blocking frame read loop. Drives the listener callbacks until the

@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-public final class GoawayFrame extends BaseFrame {
+final class GoawayFrame extends BaseFrame {
     public final Http2ErrorCode errorCode;
     public final int lastSeenStream;
 

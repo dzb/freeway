@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  * entirely with {@code -Dfreeway.log.caller-info=false} (or
  * {@code FREEWAY_LOG_CALLER_INFO=0}).
  */
-public final class JULLoggerAdapter extends LegacyAbstractLogger {
+final class JULLoggerAdapter extends LegacyAbstractLogger {
 
     /**
      * Shared {@link StackWalker} for caller inference. Walks only until the
