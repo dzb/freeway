@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   无类解析）保留"空 = 全放行"的既有文档语义不变。`allowed-types` 为空的启动告警
   文案同步更新为"CLASS 事件将被丢弃"。E2E 测试 `keyedEventsPreserveTheOrderingSubject`
   相应改为显式白名单其类型。
-- **freeway-cloud 内部结构收敛（无行为变更）** — 按结构审计报告
-  `AUDIT-CLOUD-STRUCTURE-2026-09-04.md` 落地一组机械重构：`PeerConnector` 的地址
+- **freeway-cloud 内部结构收敛（无行为变更）** — 按结构审计收口
+  落地一组机械重构：`PeerConnector` 的地址
   解析（`toUri`/`parsePort`/`sameEndpoint`）抽为 `PeerAddress` record（解析 + 渲染 +
   端点相等，顺带消除 `URI.getHost()` 的 IPv6 括号歧义）；`PeerHub.ServerSessionHandler`
   的握手准入（origin + token + subscribe 解析）抽为纯方法 `validateHello` +

@@ -54,10 +54,8 @@ profile needed:
 
 The naming criterion, the `internal` semantics, the engine "public =
 cross-subpackage contract" convention and the dialect/config/dependency
-facts are now written in `CLAUDE.md` / `AGENTS.md` / the developer guide —
-and the dated audit reports (`AUDIT-PACKAGE-STRUCTURE-2026-09-05.md`,
-`AUDIT-CLOUD-STRUCTURE-2026-09-04.md`) carry decision and execution logs for
-every call.
+facts are now written in `CLAUDE.md` / `AGENTS.md` / the developer guide,
+with the changelog recording the decisions.
 
 ## Modules
 
