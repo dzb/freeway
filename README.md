@@ -19,6 +19,8 @@ every API deliberate, every concept pulling its weight. In an ecosystem where
 ceremony is often mistaken for rigor, Freeway bets that **clarity, simplicity, and
 good taste** still have a place.
 
+**Latest release: 1.5.0** — [Release notes](docs/RELEASE-NOTES-1.5.0.md) · [Changelog](CHANGELOG.md)
+
 | Module | Description                                               |
 |--------|-----------------------------------------------------------|
 | `freeway-commons` | Shared utilities: JSON, coercion, scoped primitives, logging |
@@ -70,7 +72,7 @@ Freeway 2 keeps its core concepts intentionally small:
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
 - `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and configurable file logging (single or multi-file) with time+size rotation and GZIP compression. Configured via `freeway-log.properties` or `-D` flags. External SLF4J providers (Logback, Log4j, slf4j-simple) are auto-detected at startup and win over the JUL fallback; drop in Logback for advanced needs.
-- Framework-provided implementation names use the **`XDefault` suffix** form, such as `AppRuntimeDefault`, `JsonCodecDefault`, and `RequestContextDefault`.
+- Implementation naming is settled on one question — **can the outside replace the role?** The framework's default of a replaceable role is `XDefault` (`AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`); assembly pieces and engine-internal components are `XImpl` (`HttpContextImpl`). Package location is orthogonal: `internal` marks "no stability promise". See the Naming Rules in [CLAUDE.md](CLAUDE.md) and the developer guide.
 
 See [freeway-module.md](docs/freeway-module.md) and [freeway-commons.md](docs/freeway-commons.md) for deeper module notes.
 
@@ -215,7 +217,7 @@ The IoC module provides the framework core:
 - Extension points - `binder.contribute(Route.class).add(...)` and ordered `add(id, value).before/after(...)`. Inject as `List<V>` (all contributions, ordered) or `Map<String, V>` (named contributions, keyed by id) — constructor parameters consume contributions implicitly, fields require `@Inject`. An explicit `@Inject("id")` prefers a bound service of that type/id over contributions (bind your own `List<Foo>`/`Map<String, Foo>` service and inject it by id). `Extension<V>` is a framework-internal handle and is rejected at injection time.
 - Runtime hooks - `RuntimeHook` lets modules attach start/stop behavior to `AppRuntime`.
 - Advisors - method interception for interface services.
-- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, `publishAsync`, a globally ordered `publishOrdered(key, …)` channel, and cumulative `stats()`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
+- EventBus - process-local pub/sub: class-based or string-topic, module-contributed (ordered) or runtime-subscribed, with `Stoppable` short-circuit, `DeadEvent` logging, `publishAsync`, a globally ordered `publishOrdered(event)` channel, and cumulative `stats()`. **Transaction-aware**: events published inside a DB transaction automatically defer until commit. Lifecycle events (`AppStartedEvent`, `AppStoppingEvent`) published automatically by boot.
 
 ### Boot (`freeway-boot`)
 
@@ -288,7 +290,7 @@ A compact JDBC data access layer with ORM:
 - **Migrations** — versioned SQL files (`V001__name.sql`) with SHA-256 checksum validation (raw bytes, plus a CRLF→LF normalized twin for line-ending tolerance), format enforcement, and database-level concurrency lock. On databases without transactional DDL (MySQL/MariaDB), a migration containing DDL is rejected up front with guidance — split it and make statements idempotent. `MigrationRunner` runs after Schema at startup via `RuntimeHook` (`"freeway.db.migration"`).
 - `DatabaseHub` - multi-datasource routing.
 
-Freeway-db is **independently usable** outside of the IoC container — only `freeway-commons` is required at runtime. `freeway-ioc` is optional and only needed when loading via `DbModule`.
+freeway-db's library classes are **ioc-free** and independently usable outside the container; IoC enters only through `DbModule`, the module's single integration point (the module declares `freeway-ioc` as a regular compile dependency).
 
 ### Flow (`freeway-flow`)
 
@@ -300,7 +302,7 @@ A lightweight graph workflow engine for orchestrating multi-step processes:
 - **Tracing** — pause/resume execution with step-by-step trace records.
 - **PlantUML export** — visualize any graph definition as a PlantUML diagram.
 - **Interceptor chain** — wrap task execution with custom logic.
-- **Expression evaluator** — self-written recursive-descent parser (~280 lines) for condition evaluation on decision nodes.
+- **Expression evaluator** — self-written recursive-descent parser (~600 lines) for condition evaluation on decision nodes.
 - **Zero extra dependencies** — built on commons + ioc only.
 
 Graphs load from JSON:
@@ -335,13 +337,13 @@ Third-party integrations are available in the **[freeway-ext](https://github.com
 | `freeway-db-hikari` | HikariCP connection pool adapter |
 | `freeway-mq-kafka` | Kafka EventBus bridge for distributed pub/sub |
 
-Add the snapshot repository and the extensions you need:
+Extensions are released to Maven Central alongside the core at the same version. Add the ones you need, pinned to your core version:
 
 ```xml
 <dependency>
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-mq-kafka</artifactId>
-    <version>${freeway.version}</version>
+    <version>1.5.0</version>
 </dependency>
 ```
 
