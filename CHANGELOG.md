@@ -16,12 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   无类解析）保留"空 = 全放行"的既有文档语义不变。`allowed-types` 为空的启动告警
   文案同步更新为"CLASS 事件将被丢弃"。E2E 测试 `keyedEventsPreserveTheOrderingSubject`
   相应改为显式白名单其类型。
-- **私有内部类更名（freeway-cloud，无 API 影响）** — `MetricsDefault` 的两个
-  私有内部类 `DefaultCounter` / `DefaultTimer` 更名 `CounterImpl` / `TimerImpl`。
-  二者是全仓仅有的 `DefaultX` 前缀命名，与 CLAUDE.md「`DefaultX` is avoided —
-  `XDefault` keeps the interface name dominant」约定相悖；新名字符合
-  「`Impl` 用于无趣的具体实现」且与其实现性质（对 `LongAdder`/`TimerData`
-  的薄委托）一致。类为 `private`，外部不可见，无兼容性影响。
 - **freeway-cloud 内部结构收敛（无行为变更）** — 按结构审计报告
   `AUDIT-CLOUD-STRUCTURE-2026-09-04.md` 落地一组机械重构：`PeerConnector` 的地址
   解析（`toUri`/`parsePort`/`sameEndpoint`）抽为 `PeerAddress` record（解析 + 渲染 +
@@ -32,55 +26,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `internal/ConfigLists`（`splitAndTrim` + 列表 `spec`）；`CloudEventLifecycleHook`
   剩余裸 `resolve` 改走 `SymbolSpec`；`freeway-boot` 依赖声明降为 test 作用域（main
   零引用）。
-- **`*Default` 移出 `internal` 包（freeway-cloud，仅 cloud 范围，无 API 符号变更）** —
-  按 `CLAUDE.md` 既定口径（`XDefault` 是可替换默认实现、属公开扩展点，不应放在
-  `internal`），把 cloud 的 12 个 `*Default` 从 `internal` 迁到各自功能包：
-  `discovery`（`ServiceDiscoveryDefault`/`LoadBalancerDefault`/`ServiceRegistryDefault`）、
-  `resilience`（`CircuitBreakerDefault`/`RateLimiterDefault`/`RetryerDefault`）、
-  `observe`（`MetricsDefault`/`TracerDefault`）、`storage`（`ObjectStorageDefault`）、
-  `secret`（`SecretStoreDefault`）、`rpc`（`CloudHttpClientDefault`/`TransportSecurityImpl`）。
-  `internal` 现仅容纳真正的实现细节（`RegistryStore`/`ConfigLists`/`ResiliencePolicy`
-  等）。`CloudHttpClientDefault` 的 resilience 装配助手 `ResiliencePolicy` 一并迁入 `rpc`
-  （保持包私有，随其 owner 归位，不污染 public 面）；其包私有构造器/嵌套类无需对外暴露。
-  ioc/db 的同类放置仍待项目级统一口径，本次未动。`CloudConfigKeys` 注释同步。
 - **`SymbolSource` 新增 `resolve(SymbolSpec<T>)` 默认方法（ioc 公共接口，向后兼容）** —
   取代全项目 32 处 `spec.parse(symbols.resolve(spec.key(), null))` 二段式样板，改为
   一步 `symbols.resolve(spec)`。默认方法向后兼容（现有 `SymbolSource` 实现类无需改动），
   键名、默认值、解析器仍由 `SymbolSpec` 单点声明。`freeway-db` / `freeway-cloud` /
   `freeway-boot` / `freeway-commons` 的全部调用点与 javadoc 示例已同步。纯机械收口，
   零行为变更。
-- **非可替换 `*Default` 定名 `*Impl`（freeway-commons/ioc/db/http/cloud，破坏性更名）** —
-  按 Default-vs-Impl 审计的判据（接口是否为自足扩展点、框架是否经接口消费、是否存在
-  不触碰框架内部的 `.primary()` 替换路径）逐类核定：16 个真·可替换默认保留 `XDefault`
-  （`PoolDefault` / `JsonCodecDefault` / `AppConfigDefault` / `FlowDriverDefault` 与 11 个
-  cloud 默认）；框架自身依赖接口外成员、无可用替换路径的 7 个默认实现更名 `XImpl`：
-  `HttpContextDefault`→`HttpContextImpl`（引擎内部契约，ext 引擎自带各自的上下文）、
-  `CoercerDefault`→`CoercerImpl`、`LoggerSourceDefault`→`LoggerSourceImpl`（注入路径
-  硬连线单例、从不查询绑定）、`ProxyFactoryDefault`→`ProxyFactoryImpl`（包私有接口，
-  无绑定无选择点）、`PooledConnectionDefault`→`PooledConnectionImpl`（逐池工件类型，
-  Hikari 适配器自带 HkConn）、`TransportSecurityDefault`→`TransportSecurityImpl`、
-  `ExchangeMetaDefault`→`ExchangeMetaImpl`。freeway-ext 引用同锁步更名（16 文件）；
-  CLAUDE.md 增补「Default vs Impl」判定规则。
-- **复核收回：one-in-effect 实现恢复 `XDefault`（freeway-flow/http，破坏性更名）** —
-  按定稿判据（角色在效实现**唯一** → `XDefault`，与框架如何引用无关；多处实现并存或属
-  容器内部装配件 → `XImpl`）复核上轮更名后收回两例：`ExchangeMetaImpl`→
-  `ExchangeMetaDefault`（HTTP 上下文与 WebSocket 会话的默认交换元数据，ext 引擎直接
-  构造为默认）、`FlowEngineImpl`→`FlowEngineDefault`（默认流程引擎，`FlowModule` 以
-  单例绑定）。CLAUDE.md 同步定稿判据文字；freeway-ext 的 `ExchangeMeta` 引用同步收回。
-- **复核收回（续）：`CoercerImpl`→`CoercerDefault`、`ProxyFactoryImpl`→`ProxyFactoryDefault`
-  （freeway-commons/ioc，破坏性更名）** — 按定稿判据（外部的可代换性 —— `.primary()`
-  绑定 / 构造选择 / 配置激活；与功能包归属和框架内装配方式无关）复核收回
-  「非可替换定名 `*Impl`」轮中的最后两例：`Coercer` 规则经公开 `Coercer` 接口消费
-  （`JsonCodecDefault(Coercer)` 构造选择、`JsonCoercions` 逐参数传入），外部可注入
-  自有实现，框架的默认实现定名 `CoercerDefault`；`ProxyFactory` 是容器惰性/增强绑定
-  代理创建的角色默认实现，其唯一在效实现定名 `ProxyFactoryDefault`。`XImpl` 命名现
-  只覆盖容器内部装配件、引擎内建契约件与逐属主工件类型（`HttpContextImpl` /
-  `LoggerSourceImpl` / `PooledConnectionImpl` / `TransportSecurityImpl` 等）。
-  CLAUDE.md / DEVELOPER-GUIDE / SKILL.zh 的 `XImpl` 示例相应移除该两例（改引
-  `LoggerSourceImpl`）；freeway-ext 的 `Coercer` 引用同锁步更名。
-- **`TransportSecurityImpl` 归位 `internal`（freeway-cloud，无 API 影响）** — 复核后其
-  全部引用仅来自所属模块的绑定（经 `fromKeyStore` 配置激活）与测试，属模块内部实现件，
-  自 `cloud.rpc` 移入 `cloud.internal`。
+- **`XDefault`/`XImpl` 命名定稿（freeway-commons/ioc/db/http/flow/cloud，破坏性更名）** —
+  命名判据定为「外部的可代换性」：角色实现可被外部替换（`.primary()` 绑定 / 构造选择 /
+  配置激活）时，框架的默认实现定名 `XDefault`，与功能包归属无关——可替换默认作为公开
+  扩展点安置在各自功能包（cloud 的 11 个可替换默认自 `internal` 迁入 discovery /
+  resilience / observe / storage / secret / rpc），即便留在 `internal` 也不改变定名
+  （如 `db/internal` 的 `PoolDefault` 仍可被外部 `.primary()` 替换）；不可代换的实现件
+  定名 `XImpl`。
+  定稿的净更名（相对 1.4.0）：
+  - `HttpContextDefault`→`HttpContextImpl`（内建引擎的上下文契约，ext 引擎自带各自实现）、
+    `LoggerSourceDefault`→`LoggerSourceImpl`（注入路径硬连线单例，从不查询绑定）、
+    `PooledConnectionDefault`→`PooledConnectionImpl`（逐池工件类型，Hikari 适配器自带
+    自有连接类型）、`TransportSecurityDefault`→`TransportSecurityImpl`（模块内部实现件，
+    经 `fromKeyStore` 配置激活）——这四类角色不再承诺外部可代换；
+  - `FlowEngineImpl`→`FlowEngineDefault`（默认流程引擎）；`ExchangeMetaDefault` /
+    `CoercerDefault` / `ProxyFactoryDefault` 维持可代换默认定名不变（`ExchangeMeta` 是
+    ext 引擎构造的默认交换元数据；`Coercer` 规则经公开接口消费、可构造选择替换；
+    `ProxyFactory` 是容器惰性/增强绑定代理的默认实现）；
+  - `MetricsDefault` 的私有内部类 `DefaultCounter` / `DefaultTimer` → `CounterImpl` /
+    `TimerImpl`（清除 `DefaultX` 前缀残留，无 API 影响）。
+  判据与 `internal` 语义（不承诺稳定的实现细节，如 `RegistryStore` / `ConfigLists` /
+  `TransportSecurityImpl`）写入 `CLAUDE.md` / `AGENTS.md` / `DEVELOPER-GUIDE.md`，各文档
+  中的改名类引用统一为现行类名；freeway-ext 引用同锁步更名。
 - **cloud 配置键单源化与 `Wiring` withers（freeway-cloud，无行为变更）** — 七个配置键
   的默认值在 `CloudConfigKeys` 以 `*_DEFAULT` 常量单点声明（RPC TLS keystore/truststore
   四键空串默认、storage base-path、registry service-scheme），配置层与库内兜底不再双写；
@@ -224,16 +197,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **RPC 导出面文档同步** — `DEVELOPER-GUIDE.md` 与
   `docs/freeway-remote-callbus-design.md` §3.2 改为描述每次导出各自的
   `/rpc/<mapping>/{method}` 路由（多 mapping 并存）与导出期 mapping 名校验。
-- **`internal` 包语义澄清** — `CLAUDE.md` / `AGENTS.md` 的命名规则写明：`internal`
-  标记的是「不承诺稳定的实现细节」，不是「物理不可见」——其中类可保持 `public`
-  （容器需从兄弟包装配），但调用方不得跨版本依赖其形状；并明确 `XDefault`（可替换
-  默认实现）是公开扩展点，**不属于** `internal`，应放功能包。
-- **文档随 Default/Impl 命名定稿同步** — `CLAUDE.md` / `AGENTS.md` 命名规则增补
-  「Default vs Impl」判定与 `internal` 归位口径；`docs/freeway-cloud-unified-design.md`、
-  `docs/freeway-flow-design-decisions.md`、`freeway-flow/docs/migration-notes.md` /
-  `plan.md`、`docs/DEVELOPER-GUIDE.md` 中改名类（`CoercerImpl`、`HttpContextImpl`、
-  `LoggerSourceImpl`、`FlowEngineDefault`、`ExchangeMetaDefault`、`TransportSecurityImpl`
-  等）的引用统一为现行类名（纯历史叙述保留旧名）。
 
 ## [1.4.0] — 2026-09-02
 
