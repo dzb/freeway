@@ -3,7 +3,6 @@ package com.jujin.freeway.cloud.rpc;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.context.Propagator;
-import com.jujin.freeway.cloud.internal.TransportSecurityImpl;
 import com.jujin.freeway.cloud.discovery.LoadBalancer;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.observe.Tracer;
@@ -80,7 +79,7 @@ public final class CloudRpcModule implements ModuleEx {
                 String keyPassword = symbols.resolve(TLS_KEY_STORE_PASSWORD);
                 String trustStore = symbols.resolve(TLS_TRUST_STORE);
                 String trustPassword = symbols.resolve(TLS_TRUST_STORE_PASSWORD);
-                return TransportSecurityImpl.fromKeyStore(
+                return TransportSecurityDefault.fromKeyStore(
                     Path.of(keyStore), keyPassword,
                     trustStore.isBlank() ? null : Path.of(trustStore), trustPassword);
             })

@@ -1,6 +1,4 @@
-package com.jujin.freeway.cloud.internal;
-
-import com.jujin.freeway.cloud.rpc.TransportSecurity;
+package com.jujin.freeway.cloud.rpc;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,15 +12,20 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
 /**
- * File-backed {@link TransportSecurity}: builds an {@link SSLContext} from a
+ * Default {@link TransportSecurity}: builds an {@link SSLContext} from a
  * PKCS12/JKS keystore (client identity) and optional truststore (peer
  * verification) — both loaded via the JDK only, no third-party crypto.
+ *
+ * <p>Substitutable from outside: {@link CloudRpcModule} activates it from the
+ * {@code freeway.cloud.rpc.tls.*} keys, and an extension module may bind its
+ * own {@link TransportSecurity} implementation (e.g. Vault-backed) with
+ * {@code .primary()} instead.
  */
-public final class TransportSecurityImpl implements TransportSecurity {
+public final class TransportSecurityDefault implements TransportSecurity {
 
     private final SSLContext sslContext;
 
-    private TransportSecurityImpl(SSLContext sslContext) {
+    private TransportSecurityDefault(SSLContext sslContext) {
         this.sslContext = sslContext;
     }
 
@@ -33,7 +36,7 @@ public final class TransportSecurityImpl implements TransportSecurity {
      *                             to trust the JDK default trust anchors
      * @param trustStorePassword   truststore password (ignored when trustStorePath is null)
      */
-    public static TransportSecurityImpl fromKeyStore(
+    public static TransportSecurityDefault fromKeyStore(
         Path keyStorePath, String keyStorePassword,
         Path trustStorePath, String trustStorePassword
     ) {
@@ -51,7 +54,7 @@ public final class TransportSecurityImpl implements TransportSecurity {
 
             SSLContext context = SSLContext.getInstance("TLS");
             context.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-            return new TransportSecurityImpl(context);
+            return new TransportSecurityDefault(context);
         } catch (GeneralSecurityException | IOException e) {
             throw new IllegalArgumentException("Failed to build TLS context from " + keyStorePath, e);
         }

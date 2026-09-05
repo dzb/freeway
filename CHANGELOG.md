@@ -34,26 +34,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   零行为变更。
 - **`XDefault`/`XImpl` 命名定稿（freeway-commons/ioc/db/http/flow/cloud，破坏性更名）** —
   命名判据定为「外部的可代换性」：角色实现可被外部替换（`.primary()` 绑定 / 构造选择 /
-  配置激活）时，框架的默认实现定名 `XDefault`，与功能包归属无关——可替换默认作为公开
-  扩展点安置在各自功能包（cloud 的 11 个可替换默认自 `internal` 迁入 discovery /
-  resilience / observe / storage / secret / rpc），即便留在 `internal` 也不改变定名
-  （如 `db/internal` 的 `PoolDefault` 仍可被外部 `.primary()` 替换）；不可代换的实现件
-  定名 `XImpl`。
+  配置激活）时，框架的默认实现定名 `XDefault`，与功能包归属无关——cloud 的可替换默认
+  全部安置于各自功能包（discovery / resilience / observe / storage / secret / rpc，
+  `internal` 不再容纳可替换默认），即便留在 `internal` 也不改变定名（如 `db/internal`
+  的 `PoolDefault` 仍可被外部 `.primary()` 替换）；无外部可代换性的实现件定名 `XImpl`。
   定稿的净更名（相对 1.4.0）：
-  - `HttpContextDefault`→`HttpContextImpl`（内建引擎的上下文契约，ext 引擎自带各自实现）、
-    `LoggerSourceDefault`→`LoggerSourceImpl`（注入路径硬连线单例，从不查询绑定）、
-    `PooledConnectionDefault`→`PooledConnectionImpl`（逐池工件类型，Hikari 适配器自带
-    自有连接类型）、`TransportSecurityDefault`→`TransportSecurityImpl`（模块内部实现件，
-    经 `fromKeyStore` 配置激活）——这四类角色不再承诺外部可代换；
-  - `FlowEngineImpl`→`FlowEngineDefault`（默认流程引擎）；`ExchangeMetaDefault` /
-    `CoercerDefault` / `ProxyFactoryDefault` 维持可代换默认定名不变（`ExchangeMeta` 是
-    ext 引擎构造的默认交换元数据；`Coercer` 规则经公开接口消费、可构造选择替换；
-    `ProxyFactory` 是容器惰性/增强绑定代理的默认实现）；
+  - 定名 `XImpl`：`HttpContextDefault`→`HttpContextImpl`（内建引擎的上下文契约，ext
+    引擎自带各自实现）、`LoggerSourceDefault`→`LoggerSourceImpl`（注入路径硬连线单例，
+    从不查询绑定）、`PooledConnectionDefault`→`PooledConnectionImpl`（逐池工件类型，
+    Hikari 适配器自带自有连接类型）、`ProxyFactoryDefault`→`ProxyFactoryImpl`（包私有
+    接口 + 唯一实现，无外部可代换点）；
+  - 定名 `XDefault`：`FlowEngineImpl`→`FlowEngineDefault`（默认流程引擎）；
+    `TransportSecurityDefault` 维持可代换默认定名、自 `cloud.internal` 归入 `cloud.rpc`
+    （按 `freeway.cloud.rpc.tls.*` 键经 `fromKeyStore` 装配，ext 可绑替代实现）；
+    `CoercerDefault` / `ExchangeMetaDefault` 维持定名不变；
   - `MetricsDefault` 的私有内部类 `DefaultCounter` / `DefaultTimer` → `CounterImpl` /
     `TimerImpl`（清除 `DefaultX` 前缀残留，无 API 影响）。
-  判据与 `internal` 语义（不承诺稳定的实现细节，如 `RegistryStore` / `ConfigLists` /
-  `TransportSecurityImpl`）写入 `CLAUDE.md` / `AGENTS.md` / `DEVELOPER-GUIDE.md`，各文档
-  中的改名类引用统一为现行类名；freeway-ext 引用同锁步更名。
+  判据与 `internal` 语义（不承诺稳定的实现细节，如 `RegistryStore` / `ConfigLists`）
+  写入 `CLAUDE.md` / `AGENTS.md` / `DEVELOPER-GUIDE.md`（AGENTS.md 同步「归置与后缀
+  正交」口径），各文档中的改名类引用统一为现行类名；freeway-ext 引用同锁步更名。
 - **cloud 配置键单源化与 `Wiring` withers（freeway-cloud，无行为变更）** — 七个配置键
   的默认值在 `CloudConfigKeys` 以 `*_DEFAULT` 常量单点声明（RPC TLS keystore/truststore
   四键空串默认、storage base-path、registry service-scheme），配置层与库内兜底不再双写；

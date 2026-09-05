@@ -2029,7 +2029,7 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 ### Naming Rules
 
 - **Public interfaces** use the bare domain name: `Container`, `JsonCodec`, `RequestContext`.
-- **`XDefault`** is the framework's default implementation of a role the **outside can substitute** — an extension module or adapter binds its own implementation via `.primary()`, or an adapter picks the default as its baseline: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`, `ExchangeMetaDefault`, `FlowEngineDefault` (and the eleven cloud defaults).
+- **`XDefault`** is the framework's default implementation of a role the **outside can substitute** — an extension module or adapter binds its own implementation via `.primary()`, or an adapter picks the default as its baseline: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`, `ExchangeMetaDefault`, `FlowEngineDefault` (and the twelve cloud defaults).
 - **`XImpl`** marks the **absence of outside substitutability**: a container-internal assembly piece (`ContainerImpl`, `HttpContextImpl`, `LoggerSourceImpl`), or one of several implementations that genuinely coexist per use-site (`PooledConnectionImpl` vs a pool adapter's own connection type).
 - **`DefaultX`** form is avoided — `XDefault` keeps the interface name dominant.
 - **Package location is orthogonal to the suffix** — `internal` is part of Freeway: a `XDefault` may live there (`PoolDefault` in `db/internal` is substituted from outside via `.primary()`, which never references the default class), and an `XImpl` that other modules or adapters construct stays in the feature package. What `internal` means is "no stability promise" for callers that reference its classes across releases.

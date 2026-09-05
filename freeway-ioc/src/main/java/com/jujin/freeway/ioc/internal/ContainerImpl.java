@@ -116,7 +116,7 @@ public final class ContainerImpl implements Container {
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
         this.loggerSource = LoggerSourceImpl.INSTANCE;
-        this.proxyFactory = new ProxyFactoryDefault();
+        this.proxyFactory = new ProxyFactoryImpl();
         this.injectResolver = new InjectionResolver(this);
         this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(targetCache);

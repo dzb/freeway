@@ -13,7 +13,7 @@
 > `docs/DEVELOPER-GUIDE.md` 为准。
 >
 > **2026-09-04 维护说明**：文档收口——「默认实现在 `internal/`」、
-> 默认类名（`TransportSecurity.NONE` 常量 / `TransportSecurityImpl`）、
+> 默认类名（`TransportSecurity.NONE` 常量 / `TransportSecurityDefault`）、
 > `choose(instances)` 单参签名、health 端点固定路径（不可配）、§7 配置键
 > 清单与 §8/§12.1 的 core/ext 边界均已与源码对齐；freeway-ext 目前不含
 > 任何 cloud 适配器，本文不再以「ext 提供 X」声称未交付能力。
@@ -175,7 +175,7 @@ com.jujin.freeway.cloud
 │                              LoadBalancer(+Default)（§5.1）
 ├── rpc/                       CloudRpcModule; CloudHttpClient(+Default),
 │                              CloudRequest, CloudResponse, CloudException,
-│                              TransportSecurity(+Impl); CallBus 远端桥接
+│                              TransportSecurity(+Default); CallBus 远端桥接
 │                              RemoteCaller / RemoteProxyFactory /
 │                              RpcEndpoint（见 freeway-remote-callbus-design.md）
 ├── observe/                   CloudObserveModule; Tracer(+Default),
@@ -456,7 +456,7 @@ public interface SecretStore {
   JDK `SSLContext` + 文件型证书加载（`freeway.cloud.rpc.tls.*` 键，
   PKCS12/JKS keystore/truststore）：`CloudRpcModule` 按键解析——keystore
   为空 → 接口常量 `TransportSecurity.NONE`（开发态明文），否则构建
-  `TransportSecurityImpl`（internal/，`fromKeyStore`）。能力由运行时配置
+  `TransportSecurityDefault`（rpc/，`fromKeyStore`）。能力由运行时配置
   决定，静态 marker 表达不了条件能力，故 core 不预铺 `@None`/`@Mtls`
   注解；自定义传输安全实现（Vault 动态证书等）直接 bind
   `TransportSecurity` 即可。出站 `CloudHttpClient` 应用它。
@@ -649,7 +649,7 @@ public final class CloudConfigKeys {
   `CircuitBreakerDefault` / `RateLimiterDefault` / `RetryerDefault`
   （`resilience/`）、`SecretStoreDefault`（`secret/`）、
   `ObjectStorageDefault`（`storage/`，本地文件系统）、
-  `TransportSecurity.NONE` 常量与 `TransportSecurityImpl`（`internal/`，
+  `TransportSecurity.NONE` 常量与 `TransportSecurityDefault`（`rpc/`，
   按 `freeway.cloud.rpc.tls.*` 键择一，无独立标记）。
 - **接入协议**（自定义后端与未来 ext 适配器一致）：绑定对应接口的
   替代实现并 `.primary()`；如自带后端注解则随适配器定义并注册为

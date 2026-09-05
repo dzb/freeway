@@ -31,12 +31,19 @@ external dependencies.
 ## Naming
 
 - Public interfaces use the domain name: `Container`, `JsonCodec`, `Route`.
-- Framework defaults use `XDefault`: `AppRuntimeDefault`, `JsonCodecDefault`.
-- `Impl` is reserved for uninteresting concrete implementations.
-- Internal normalization helpers stay internal (`ServiceIds`): `internal` marks
-  unstable implementation details (no stability promise), not a visibility gate —
-  `XDefault` (the replaceable default) is a public extension point and does NOT
-  belong there.
+- `XDefault` is the framework's default implementation of a role the **outside
+  can substitute** — via `.primary()` binding, constructor selection, or config
+  activation. `XImpl` marks the **absence of outside substitutability**:
+  container-internal assembly pieces (`ContainerImpl`, `DatabaseImpl`),
+  engine-internal components (`HttpContextImpl`), or per-owner artifact types
+  that coexist with other implementations (`PooledConnectionImpl`).
+- Package location is orthogonal to the suffix: `internal` is part of Freeway
+  and marks "no stability promise" for callers, not a visibility gate — classes
+  there may stay `public` when sibling packages assemble them. A `XDefault`
+  may live in `internal` when the module so organizes it (`PoolDefault` in
+  `db/internal` is still substituted from outside via `.primary()`, which never
+  references the class itself).
+- `DefaultX` is avoided — `XDefault` keeps the interface name dominant.
 
 ## Design Rules
 
