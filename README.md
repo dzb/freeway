@@ -23,14 +23,14 @@ good taste** still have a place.
 
 | Module | Description                                               |
 |-------------------------|------------------------------------------------------|
-| <span style="white-space:nowrap">`freeway-commons`</span> | Shared utilities: JSON, coercion, scoped primitives, logging |
-| <span style="white-space:nowrap">`freeway-ioc`</span> | IoC container: bind, inject, coerce, advise, event-bus    |
-| <span style="white-space:nowrap">`freeway-boot`</span> | Application launcher, unified config cascade (hot reload), profiles, runtime lifecycle |
-| <span style="white-space:nowrap">`freeway-http`</span> | HTTP layer: routing, filters, static, multipart, WebSocket |
-| <span style="white-space:nowrap">`freeway-db`</span> | JDBC data access: ORM, pooling, transactions, migrations |
-| <span style="white-space:nowrap">`freeway-flow`</span> | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
-| <span style="white-space:nowrap">`freeway-cloud`</span> | Cloud-native foundation: service discovery, RPC (JDK HttpClient), observability, resilience, health, secrets, object storage |
-| <span style="white-space:nowrap">`freeway-mq-kafka`</span> | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
+| **`freeway-commons`** | Shared utilities: JSON, coercion, scoped primitives, logging |
+| **`freeway-ioc`** | IoC container: bind, inject, coerce, advise, event-bus    |
+| **`freeway-boot`** | Application launcher, unified config cascade (hot reload), profiles, runtime lifecycle |
+| **`freeway-http`** | HTTP layer: routing, filters, static, multipart, WebSocket |
+| **`freeway-db`** | JDBC data access: ORM, pooling, transactions, migrations |
+| **`freeway-flow`** | Graph workflow engine — 7 node types, v2 DAG format, `!marker` task resolution |
+| **`freeway-cloud`** | Cloud-native foundation: service discovery, RPC (JDK HttpClient), observability, resilience, health, secrets, object storage |
+| **`freeway-mq-kafka`** | Kafka EventBus bridge — available in [freeway-ext](https://github.com/dzb/freeway-ext) |
 
 Core modules have **zero external dependencies.** Third-party adapters live in
 **[freeway-ext](https://github.com/dzb/freeway-ext)**. Pick only what you need.
@@ -332,10 +332,10 @@ Third-party integrations are available in the **[freeway-ext](https://github.com
 
 | Module | Description |
 |-------------------------|-------------------|
-| <span style="white-space:nowrap">`freeway-http-undertow`</span> | Undertow web server adapter (HTTP + WebSocket) |
-| <span style="white-space:nowrap">`freeway-http-jetty`</span> | Jetty 12 web server adapter (HTTP/1.1, HTTP/2, WebSocket, TLS) |
-| <span style="white-space:nowrap">`freeway-db-hikari`</span> | HikariCP connection pool adapter |
-| <span style="white-space:nowrap">`freeway-mq-kafka`</span> | Kafka EventBus bridge for distributed pub/sub |
+| **`freeway-http-undertow`** | Undertow web server adapter (HTTP + WebSocket) |
+| **`freeway-http-jetty`** | Jetty 12 web server adapter (HTTP/1.1, HTTP/2, WebSocket, TLS) |
+| **`freeway-db-hikari`** | HikariCP connection pool adapter |
+| **`freeway-mq-kafka`** | Kafka EventBus bridge for distributed pub/sub |
 
 Extensions are released to Maven Central alongside the core at the same version. Add the ones you need, pinned to your core version:
 
