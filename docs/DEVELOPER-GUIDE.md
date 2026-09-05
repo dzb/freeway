@@ -1926,7 +1926,7 @@ truthy and `"false"`/`"0"` falsy in boolean contexts.
 | `@FlowMarker` | String-based marker annotation for `TaskComponent` resolution |
 | `FlowMarkerIndex` | Reverse index from marker names to handlers with `containsAll` matching |
 | `FlowEventBus` | Node lifecycle events (enter, exit, error) |
-| `ExprEvaluator` | Self-written recursive descent expression evaluator (~280 lines) |
+| `ExprEvaluator` | Self-written recursive descent expression evaluator (~600 lines) |
 
 **Driver:** Graphs select their driver via the `"driver"` field (null/"" → `"default"`). `FlowModule` binds `FlowContainer` (for `@beanName` resolution), creates `FlowDriverDefault` with id `"default"`, and merges contributed drivers from `Extension<FlowDriver>.asMap()`. Register a custom driver by contributing to the same extension point:
 

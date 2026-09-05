@@ -64,6 +64,8 @@
 
 ### 3.2 跨模块 internal 引用:0(见 2.1)—— 边界强项,保持。
 
+> §4–§9 为审计时点快照(裁决/执行前);与最终代码的偏差以 §11/§12 执行记录为准。
+
 ## 4. freeway-commons(8 包 / 54 文件 / 无 P0 P1)
 
 依赖图谱实测:**无环**。json 与 validation 消费叶子包(bean/coercion/util),
@@ -110,7 +112,7 @@ Defer/ScopedCache 互嵌套契约双向注明并 warn-once;SLF4J provider 单点
 Node/Graph/FlowContext 的稠密团(簇),分层拆分是虚构;(ii) 多数"看似 internal"
 的类型已被公开签名钉在根包(FlowContext.trace()/eventBus()、FlowEngine.markerIndex()、
 eval(FlowOptions)、FlowDriver 回调面含 ExecState 等),真正自由移动的只有
-`Stepper` 与 `FlowContextImpl` 两个;(iii) 搬走只减 312 行/1 类。再评估触发条件:
+`Stepper` 与 `FlowContextImpl` 两个;(iii) 搬走只减约 300 行/2 类。再评估触发条件:
 根包超 ~50 类型/8k 行、出现第二引擎/驱动族、上 JPMS 或停售 solon 兼容面。
 flow 无 internal 包是既定设计(plan.md §模块结构设计 明示单包 + 角色分组),
 与兄弟模块惯例的偏差集中在 FlowContextImpl(他模块的 XImpl 在 internal)。
@@ -127,7 +129,8 @@ flow 无 internal 包是既定设计(plan.md §模块结构设计 明示单包 +
   (FlowEngineTest 子类化、package-info 列为核心入口、CLAUDE.md 列为 XDefault 范例)。
 - [P3] PlantUML 簇(3 类 + Graph 内 4 个 toPlantuml)保持:自成一体,搬包会制造
   包环(DisplayContext→Node/Link 反向依赖);要精简时是 4 成员一刀切,无文档要求删除。
-- [P3] 文档残留:README 提的 "GraphSpec2" 从未存在(v2 在 GraphSpec 内,VERSION=2)。
+- [P3] 文档残留:README 提的 "GraphSpec2" 属 1.3.x 历史类名(GraphBlueprint→
+  GraphSpec2),1.3.6 起并入 GraphSpec 以 version=2 标记承载——README 现行措辞已修正。
 
 真正短板是测试集中(112 方法/4 文件)+ 文档陈旧,不是包结构。
 
@@ -284,7 +287,7 @@ CLAUDE.md internal 语义完全一致);boot/internal 5 类同理。ioc 根包 23
 | CLAUDE.md | "Primary resolution … not an annotation" | annotation/Primary 存在且等价生效,句子改为两者等价 |
 | CLAUDE.md/README/AUDIT-2026-09-03 | ExprEvaluator "~280 行" | 实际 591 行 |
 | CLAUDE.md 模块图/AGENTS.md 模块表 | db "ioc optional"/"commons only"、cloud→boot 依赖 | 全仓无 Maven optional;cloud→boot 是 test scope |
-| freeway-flow README | "GraphSpec2" | 该名从未存在(v2 在 GraphSpec,VERSION=2) |
+| freeway-flow README | "GraphSpec2" | 1.3.x 历史类名,1.3.6 起并入 GraphSpec(version=2 标记);现行措辞已修正 |
 
 ### C. 低成本收紧(内部改动为主,按性价比排序)
 1. [零 API 破坏] commons `logging`:JULLoggerFactory/JULLoggerAdapter/JULMDCAdapter

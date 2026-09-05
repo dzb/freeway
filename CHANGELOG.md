@@ -72,7 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - commons logging：`JULLoggerFactory` / `JULLoggerAdapter` / `JULMDCAdapter`
     收 package-private（SPI 与 LogManager 按名加载的类型保持 public）。
   - flow：引擎件 `Stepper` / `FlowContextImpl` 移入新建 `flow.internal`
-    （仅装配可见，无稳定性承诺）；根 package-info 增补 Stability 段。
+    （类仍为 public，仅供根包装配引用，无稳定性承诺）；根 package-info
+    增补 Stability 段。
   - db：`RowMapperTest` 归位 internal 镜像测试包；新增 `DialectSyntaxTest`
     直接单测四方言语法面（引号/保留字/DDL 片段/DML 子句）；`DatabaseHub.of(Map)`
     根工厂取代 javadoc 引导构造 internal 类。

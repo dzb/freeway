@@ -4,7 +4,8 @@
 >
 > 背景：该模块的 **v1 定义格式 (`GraphSpec`)** 由 `solon-flow` 移植到 Freeway 架构下。本文记录移植后的实际改动和兼容策略。
 >
-> **v2 格式 (`GraphSpec2`)** 为 Freeway 原生设计，不来自 solon-flow——见 [graph-v2.md](graph-v2.md)。
+> **v2 格式** 为 Freeway 原生设计，不来自 solon-flow——由 `GraphSpec` 以
+> `version=2` 标记承载（早期类名 `GraphSpec2` 自 1.3.6 起并入 `GraphSpec`）——见 [graph-v2.md](graph-v2.md)。
 
 ## 1. 迁移目标
 
