@@ -2,73 +2,51 @@
 
 > Version: 1.4.0 ｜ Highlight: **one config read path — the symbol chain is the single entry point, and every seam is declared**
 
-1.4.0 is a convergence release for the configuration architecture. The
-config system previously exposed parallel read paths with subtly different
-precedence (`AppConfig.get` vs `SymbolSource.resolve`), five type-parsing
-idioms, and a hidden provider tier that let JVM flags lose to config files.
-This release collapses all of it into one explicit pipeline: formats are
-normalized by a single parser, the symbol chain is the only read entry, and
-typing is an explicit post-processing step over the resolved raw value.
-~1,825 tests green across all core modules.
+## Headline: the config system converges
 
-## Breaking
+Freeway's configuration previously exposed parallel read paths with subtly
+different precedence (`AppConfig.get` vs `SymbolSource.resolve`), five
+type-parsing idioms, and a hidden provider tier that let JVM flags lose to
+config files. 1.4.0 collapses all of it into one explicit pipeline:
 
-- **`AppConfig` is no longer a reader** (`freeway-boot`) — `get(String)`,
-  `get(SymbolSpec)` and the `DefaultCoercer` nested class are removed.
-  `AppConfig` owns profiles, the cascade snapshot (`asMap()`, never
-  secrets) and the hot-reload lifecycle. Application reads go through
-  `SymbolSource`; migration: `config.get(key)` →
-  `symbols.resolve(key, null)`.
-- **`SymbolSource` is a raw-string resolver again** (`freeway-ioc`) — the
-  spec-aware `get(SymbolSpec)` / `get(SymbolSpec, Coercer)` accessors and
-  `ConfigValues` are removed. Typed reading is two explicit steps:
-  `SPEC.parse(symbols.resolve(SPEC.key(), null)[, coercer])`. The key and
-  default live in the `SymbolSpec` once; ioc no longer depends on
-  `commons.config`.
-- **Four declared framework tiers** (`freeway-ioc`) — `TIER_CLI(0)` /
-  `TIER_SYS_PROPS(5)` / `TIER_ENV(10)` / `TIER_FILES(20)` in one ordered
-  list; module sources slot between by declared order (cloud secrets at
-  15). JVM `-D` flags now rank above config files (the process-level ops
-  override, matching Spring Boot convention). The raw-env fallback tier is
-  gone — env vars enter only through the declared prefix mapping, so an
-  unknown symbol fails fast instead of silently matching an unrelated
-  variable. Bare containers (no boot) resolve from system properties only.
-- **`EventBus.hasSubscribers(String/Class)` removed** (`freeway-ioc`) —
-  zero-consumer query API; `DeadEvent` diagnostics and
-  `CallBus.handles(topic)` cover the real needs.
-- **`EventBus.publishOrdered(Object key, Object event)` removed**
-  (`freeway-ioc`) — the `key` was ignored by the implementation
-  (placeholder API). Use `publishOrdered(event)`; per-key ordering will
-  return with real semantics when implemented.
-- **`@RoundRobin` removed** (`freeway-cloud`) — a strategy marker with a
-  single implementation and no logic consumers. Load-balancer extension is
-  `LoadBalancer` (@FunctionalInterface) + a primary binding;
-  `LoadBalancerDefault` is now marked `@Local` like every other built-in
-  default.
+- **One parser for every format** — `ConfigFileReader` normalizes `.json`
+  (dotted-key flattening) and `.properties` identically, so a file parses
+  the same at startup and on every hot reload.
+- **One read entry** — `SymbolSource` is the only resolver and it returns
+  raw strings. Typing is an explicit second step: declare a `SymbolSpec`
+  once (key + default + parser), then `SPEC.parse(symbols.resolve(...))`.
+  `AppConfig` is no longer a reader: it owns profiles, the cascade snapshot
+  (never secrets) and the hot-reload lifecycle.
+- **Four declared tiers, deterministic** — CLI (0) / JVM system properties
+  (5) / declared env mapping (10) / config files (20), in one ordered list;
+  cloud secrets slot in at 15 by declaring their order. JVM `-D` now
+  overrides files (the process-level override, matching Spring Boot
+  convention). The raw-env fallback tier is gone: unknown symbols fail fast
+  instead of silently matching an unrelated environment variable.
 
-## Changed
+## What it means
 
-- **`ConfigFileReader`** (`freeway-boot`) — one parser for config files:
-  `.json` (case-insensitive) parses as JSON with dotted-key flattening,
-  everything else as properties, all UTF-8 with BOM tolerance. Shared by
-  the classpath cascade and the hot-reload file tier, so a file parses
-  identically at startup and on every reload.
-- **Typed declarations in freeway-cloud/db/http** — `HttpConfig`'s
-  reflective value helper, `DbModule`'s key/default double declarations,
-  and the ad-hoc `Boolean.parseBoolean(symbols.resolve(...))` calls in
-  cloud modules all converged to declarative `SymbolSpec`s. Cloud's
-  `*_DEFAULT` constants are now typed values shared by the config layer
-  and the in-library fallbacks.
-- **`PeerHub.Wiring`** (`freeway-cloud`) — the eight positional arguments
-  of `PeerHub.wire` became one named record; the mesh's cross-module
-  inputs can no longer drift apart at a call site.
+The precedence story is now readable from one rule instead of emergent
+behavior: each tier answers one ownership question, module order never
+sneaks in, and nothing is parsed twice by two different code paths. Config
+declarations across cloud/db/http moved onto the same `SymbolSpec` shape,
+with the library fallback values sharing the config layer's single source
+(`*_DEFAULT` constants).
 
-## Fixed
+## Cleanup in the same spirit
 
-- **JSON override files parsed as properties** (`freeway-boot`) — the
-  hot-reload file tier previously `Properties.load()`-ed every override
-  regardless of extension, so `application.json` in the working directory
-  or listed in `freeway.config.file` produced mangled keys
-  (`{"app.name"="..."}`) and its real keys resolved to null. The shared
-  reader dispatches by extension and JSON overrides now work at startup
-  and across hot reloads.
+Dead or placeholder surface was removed rather than documented:
+`EventBus.hasSubscribers(...)`, the no-op `publishOrdered(key, event)`, the
+`@RoundRobin` strategy marker (single implementation, no consumers), and the
+spec-aware `SymbolSource.get(SymbolSpec)` accessors. `PeerHub.wire`'s eight
+positional arguments became one named `Wiring` record so the mesh's
+cross-module inputs cannot drift at a call site.
+
+## Modules
+
+- **freeway-ioc** — `SymbolSource` raw-string resolver + declared tiers;
+  `commons.config` decoupled.
+- **freeway-boot** — `AppConfig` owns profiles/snapshot/hot reload; shared
+  `ConfigFileReader`.
+- **freeway-cloud / freeway-db / freeway-http** — typed `SymbolSpec`
+  declarations and single-source defaults; `PeerHub.Wiring`.
