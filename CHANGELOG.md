@@ -5,7 +5,7 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] — 2026-09-05
 
 ### Changed
 
@@ -1146,6 +1146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
 - Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
+[1.5.0]: https://github.com/dzb/freeway/compare/v1.4.0...v1.5.0
 [1.3.1]: https://github.com/dzb/freeway/compare/v1.2.2...v1.3.1
 [1.1.1]: https://github.com/dzb/freeway/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/dzb/freeway/compare/v1.0.0...v1.1.0
