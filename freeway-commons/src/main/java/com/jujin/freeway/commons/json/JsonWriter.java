@@ -96,7 +96,7 @@ final class JsonWriter {
         if (value instanceof Optional<?> opt) {
             writeOptional(
                 out,
-                () -> opt.isPresent() ? opt.get() : null,
+                () -> opt.orElse(null),
                 pretty,
                 indent,
                 context

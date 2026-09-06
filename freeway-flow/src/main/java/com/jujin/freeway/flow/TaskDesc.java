@@ -1,6 +1,5 @@
 package com.jujin.freeway.flow;
 
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -64,7 +63,7 @@ public class TaskDesc {
      */
     public Set<String> getMarkerNames() {
         if (!isMarkerRef()) {
-            return Collections.emptySet();
+            return Set.of();
         }
         Set<String> names = new HashSet<>();
         for (String part : description.split("\\s+")) {
@@ -72,7 +71,7 @@ public class TaskDesc {
                 names.add(part.substring(1));
             }
         }
-        return Collections.unmodifiableSet(names);
+        return Set.copyOf(names);
     }
 
     private void validateMarkerSyntax() {

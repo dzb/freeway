@@ -76,8 +76,7 @@ public final class JsonArray {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        JsonArray that = (JsonArray) o;
+        if (!(o instanceof JsonArray that)) return false;
         return values.equals(that.values);
     }
 

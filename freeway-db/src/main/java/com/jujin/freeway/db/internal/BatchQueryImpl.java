@@ -11,7 +11,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -50,7 +49,7 @@ final class BatchQueryImpl implements BatchQuery {
     public BatchQuery rows(Object[]... rows) {
         this.positionalRows = rows == null
             ? List.of()
-            : List.copyOf(Arrays.asList(rows));
+            : List.of(rows);
         this.namedRows = List.of();
         return this;
     }

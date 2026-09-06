@@ -183,7 +183,6 @@ public class FlowDriverDefault implements FlowDriver {
         }
     }
 
-    @SuppressWarnings("unchecked")
     protected Object getDepthMeta(Map<String, Object> metas, String key) {
         String[] fragments = key.split("\\.");
         Object rst = null;
@@ -192,8 +191,8 @@ public class FlowDriverDefault implements FlowDriver {
             String key1 = fragments[i];
             if (i == 0) {
                 rst = metas.get(key1);
-            } else if (rst instanceof Map) {
-                rst = ((Map<String, Object>) rst).get(key1);
+            } else if (rst instanceof Map<?, ?> nested) {
+                rst = nested.get(key1);
             } else {
                 break;
             }

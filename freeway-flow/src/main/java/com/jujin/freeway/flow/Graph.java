@@ -53,9 +53,9 @@ public class Graph {
         }
 
         this.nodes = Collections.unmodifiableMap(nodeMap);
-        this.links = Collections.unmodifiableList(linkAry);
+        this.links = List.copyOf(linkAry);
         this.metas = blueprint.getMeta().isEmpty()
-                ? Collections.emptyMap()
+                ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.getMeta()));
 
         if (start == null) {

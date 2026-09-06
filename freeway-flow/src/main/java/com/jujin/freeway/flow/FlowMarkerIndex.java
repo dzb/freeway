@@ -1,7 +1,6 @@
 package com.jujin.freeway.flow;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -132,7 +131,7 @@ public class FlowMarkerIndex {
     public static Set<String> extractFlowMarkers(Class<?> clazz) {
         FlowMarker[] annotations = clazz.getAnnotationsByType(FlowMarker.class);
         if (annotations.length == 0) {
-            return Collections.emptySet();
+            return Set.of();
         }
         Set<String> markers = new HashSet<>();
         for (FlowMarker m : annotations) {
@@ -141,7 +140,7 @@ public class FlowMarkerIndex {
                 markers.add(value);
             }
         }
-        return Collections.unmodifiableSet(markers);
+        return Set.copyOf(markers);
     }
 
     private record Entry(TaskComponent component, Set<String> markers) {}

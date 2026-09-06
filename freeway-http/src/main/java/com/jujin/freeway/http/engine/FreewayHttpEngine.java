@@ -140,7 +140,7 @@ public final class FreewayHttpEngine implements HttpEngine {
         // parks when idle (blocking I/O). The acceptor itself stays on a platform
         // thread to avoid virtual-thread pinning during accept().
         AcceptSource source = acceptSource != null ? acceptSource : ss::accept;
-        var acceptor = new Thread(() -> {
+        var acceptor = Thread.ofPlatform().name("freeway-http-acceptor").start(() -> {
             // Transient accept failures (EMFILE/ENOBUFS/EINTR) must not kill
             // the listener: retry with a bounded backoff so a temporary
             // condition cannot silently strand the OS backlog. Only shutdown
@@ -185,8 +185,7 @@ public final class FreewayHttpEngine implements HttpEngine {
                     LockSupport.parkNanos(ACCEPT_RETRY_BACKOFF_NANOS);
                 }
             }
-        }, "freeway-http-acceptor");
-        acceptor.start();
+        });
 
         String scheme = sslContext != null ? "https" : "http";
         LOG.info("Freeway HTTP engine ({}) started on {}:{}", scheme, config.host(), port);

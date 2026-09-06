@@ -105,13 +105,14 @@ final class Shutdown {
                 try {
                     if (preDestroy) {
                         Lifecycle.invokePreDestroy(value);
-                    } else if (value instanceof EventBus || value instanceof CallBus) {
-                        // Deferred until every lifecycle callback has run —
-                        // @PreDestroy code may still publish/call during the
-                        // drain.
-                        deferredMessageServices.add((AutoCloseable) value);
-                    } else if (value instanceof AutoCloseable closeable) {
-                        closeable.close();
+                    } else switch (value) {
+                        // Bus services outlive the drain (a @PreDestroy may
+                        // still publish); arm order is load-bearing and
+                        // compiler-checked — AutoCloseable last.
+                        case EventBus bus -> deferredMessageServices.add(bus);
+                        case CallBus bus -> deferredMessageServices.add(bus);
+                        case AutoCloseable closeable -> closeable.close();
+                        default -> {}
                     }
                 } catch (Throwable ex) {
                     // Errors included (AssertionError, OOM, ...): one failing

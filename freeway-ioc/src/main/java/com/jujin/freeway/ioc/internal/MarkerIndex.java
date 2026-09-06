@@ -9,7 +9,6 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -155,14 +154,14 @@ final class MarkerIndex {
     static Set<Class<?>> extractModuleMarkers(Class<?> moduleClass) {
         Marker marker = moduleClass.getAnnotation(Marker.class);
         if (marker == null || marker.value().length == 0) {
-            return Collections.emptySet();
+            return Set.of();
         }
         Set<Class<?>> result = new HashSet<>();
         for (Class<?> c : marker.value()) {
             validateMarkerAnnotation(c);
             result.add(c);
         }
-        return Collections.unmodifiableSet(result);
+        return Set.copyOf(result);
     }
 
     /**
@@ -197,7 +196,7 @@ final class MarkerIndex {
         if (notThreadSafe) {
             result.add(NotThreadSafe.class);
         }
-        return Collections.unmodifiableSet(result);
+        return Set.copyOf(result);
     }
 
     static void validateMarkerAnnotation(Class<?> markerClass) {

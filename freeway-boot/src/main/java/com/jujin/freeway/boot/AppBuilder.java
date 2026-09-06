@@ -133,13 +133,15 @@ public final class AppBuilder {
         Thread shutdownThread = null;
 
         if (shutdownHook) {
-            shutdownThread = new Thread(() -> {
-                try {
-                    app.close();
-                } catch (Exception ex) {
-                    LOG.warn("Error during shutdown", ex);
-                }
-            }, "freeway-shutdown-hook");
+            shutdownThread = Thread.ofPlatform()
+                .name("freeway-shutdown-hook")
+                .unstarted(() -> {
+                    try {
+                        app.close();
+                    } catch (Exception ex) {
+                        LOG.warn("Error during shutdown", ex);
+                    }
+                });
             try {
                 Runtime.getRuntime().addShutdownHook(shutdownThread);
             } catch (RuntimeException ex) {

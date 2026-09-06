@@ -102,7 +102,7 @@ final class Headers {
                 list.add(new SimpleImmutableEntry<>(entry.getKey().name, value));
             }
         }
-        return Collections.unmodifiableList(list);
+        return List.copyOf(list);
     }
 
     /** Unmodifiable, insertion-ordered view of all headers as a map. */

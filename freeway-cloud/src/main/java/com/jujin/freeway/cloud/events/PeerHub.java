@@ -1,5 +1,6 @@
 package com.jujin.freeway.cloud.events;
 
+import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.EventBusInbound;
 import com.jujin.freeway.http.websocket.WebSocketEndpoint;
@@ -13,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -411,14 +413,11 @@ public final class PeerHub implements WebSocketEndpoint {
     /** hello `subscribe` elements → prefix list (accepts strings or {prefix,group}). */
     static List<String> prefixes(Object raw) {
         List<String> prefixes = new ArrayList<>();
-        List<?> items;
-        if (raw instanceof List<?> list) {
-            items = list;
-        } else if (raw instanceof com.jujin.freeway.commons.json.JsonArray arr) {
-            items = arr.toList();
-        } else {
-            items = List.of();
-        }
+        List<?> items = switch (raw) {
+            case List<?> list -> list;
+            case JsonArray arr -> arr.toList();
+            case null, default -> List.of();
+        };
         for (Object item : items) {
             if (item instanceof String s) {
                 prefixes.add(s);
@@ -444,7 +443,7 @@ public final class PeerHub implements WebSocketEndpoint {
 
     /** Length-independent comparison so the token cannot be probed by timing. */
     private static boolean constantTimeEquals(String a, String b) {
-        return java.security.MessageDigest.isEqual(
+        return MessageDigest.isEqual(
             a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
 

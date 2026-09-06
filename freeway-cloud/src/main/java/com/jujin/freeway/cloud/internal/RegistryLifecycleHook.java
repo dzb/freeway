@@ -44,11 +44,8 @@ public final class RegistryLifecycleHook implements RuntimeHook {
                 instance.instanceId(), instance.endpoint());
         }
         if (!registered.isEmpty()) {
-            scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "cloud-registry-heartbeat");
-                t.setDaemon(true);
-                return t;
-            });
+            scheduler = Executors.newSingleThreadScheduledExecutor(
+                Thread.ofPlatform().daemon().name("cloud-registry-heartbeat").factory());
             scheduler.scheduleWithFixedDelay(() -> {
                 for (ServiceInstance instance : registered) {
                     try {

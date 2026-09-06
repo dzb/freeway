@@ -108,8 +108,7 @@ public final class JsonObject {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        JsonObject that = (JsonObject) o;
+        if (!(o instanceof JsonObject that)) return false;
         return values.equals(that.values);
     }
 

@@ -15,7 +15,6 @@ import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -154,7 +153,7 @@ public final class CoercerDefault implements Coercer {
             );
         }
 
-        return Collections.unmodifiableMap(map);
+        return Map.copyOf(map);
     }
 
     private static boolean supportsBuiltin(

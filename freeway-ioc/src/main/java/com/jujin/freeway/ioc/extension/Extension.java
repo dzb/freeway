@@ -42,6 +42,12 @@ public final class Extension<V> {
     private volatile List<V> sorted;
     private volatile Map<String, V> mapCache;
     private final AtomicLong version = new AtomicLong();
+    /**
+     * Guards entries/ids/caches. A dedicated object — this Extension is
+     * handed out publicly ({@code container.extension(...)}), so its
+     * intrinsic monitor must stay out of the locking protocol.
+     */
+    private final Object lock = new Object();
 
     public Extension(Class<V> entryType) {
         this.entryType = Objects.requireNonNull(entryType, "entryType");
@@ -55,23 +61,25 @@ public final class Extension<V> {
      * @return a {@link Contribution} handle for declaring ordering constraints
      * @throws IllegalStateException if the id is a duplicate
      */
-    public synchronized Contribution add(String id, V value) {
+    public Contribution add(String id, V value) {
         Objects.requireNonNull(value, "value");
-        String normalizedId = normalizeOptionalId(id);
-        if (normalizedId != null && !ids.add(normalizedId)) {
-            throw new IllegalStateException(
-                "Duplicate contribution id " +
-                    normalizedId +
-                    " for extension " +
-                    entryType.getSimpleName()
-            );
+        synchronized (lock) {
+            String normalizedId = normalizeOptionalId(id);
+            if (normalizedId != null && !ids.add(normalizedId)) {
+                throw new IllegalStateException(
+                    "Duplicate contribution id " +
+                        normalizedId +
+                        " for extension " +
+                        entryType.getSimpleName()
+                );
+            }
+            Entry entry = new Entry(normalizedId, value);
+            entries.add(entry);
+            sorted = null;
+            mapCache = null;
+            version.incrementAndGet();
+            return entry;
         }
-        Entry entry = new Entry(normalizedId, value);
-        entries.add(entry);
-        sorted = null;
-        mapCache = null;
-        version.incrementAndGet();
-        return entry;
     }
 
     /**
@@ -98,6 +106,9 @@ public final class Extension<V> {
      * Returns contributions as an id→value map. Unnamed entries
      * (id=null) are excluded. Maintains insertion order.
      *
+     * <p>The returned map is an immutable point-in-time snapshot: later
+     * contributions are visible only through a fresh call.
+     *
      * @return an ordered map of named contributions
      */
     public Map<String, V> asMap() {
@@ -105,14 +116,17 @@ public final class Extension<V> {
         if (cached != null) {
             return cached;
         }
-        synchronized (this) {
+        synchronized (lock) {
             cached = mapCache;
             if (cached == null) {
                 Map<String, V> result = new LinkedHashMap<>();
                 for (Entry e : entries) {
                     if (e.id != null) result.put(e.id, e.value);
                 }
-                mapCache = cached = Collections.unmodifiableMap(result);
+                // Unmodifiable *view* (not Map.copyOf): asMap() promises
+                // insertion order, which copyOf does not guarantee.
+                cached = Collections.unmodifiableMap(result);
+                mapCache = cached;
             }
             return cached;
         }
@@ -130,7 +144,7 @@ public final class Extension<V> {
         if (s != null) {
             return s;
         }
-        synchronized (this) {
+        synchronized (lock) {
             s = sorted;
             if (s == null) {
                 sorted = s = order();
@@ -156,22 +170,24 @@ public final class Extension<V> {
      * @throws IllegalStateException naming the missing id, the ordering
      *         method, and the contribution that declared the reference
      */
-    public synchronized void validateOrdering() {
-        Map<String, Entry> byId = new LinkedHashMap<>();
-        for (Entry entry : entries) {
-            if (entry.id != null) {
-                byId.put(entry.id, entry);
-            }
-        }
-        for (Entry entry : entries) {
-            for (String id : entry.afterIds) {
-                if (!byId.containsKey(id)) {
-                    throw missingReference(id, "after()", entry);
+    public void validateOrdering() {
+        synchronized (lock) {
+            Map<String, Entry> byId = new LinkedHashMap<>();
+            for (Entry entry : entries) {
+                if (entry.id != null) {
+                    byId.put(entry.id, entry);
                 }
             }
-            for (String id : entry.beforeIds) {
-                if (!byId.containsKey(id)) {
-                    throw missingReference(id, "before()", entry);
+            for (Entry entry : entries) {
+                for (String id : entry.afterIds) {
+                    if (!byId.containsKey(id)) {
+                        throw missingReference(id, "after()", entry);
+                    }
+                }
+                for (String id : entry.beforeIds) {
+                    if (!byId.containsKey(id)) {
+                        throw missingReference(id, "before()", entry);
+                    }
                 }
             }
         }
@@ -317,7 +333,7 @@ public final class Extension<V> {
 
         @Override
         public Contribution before(String... ids) {
-            synchronized (Extension.this) {
+            synchronized (lock) {
                 for (String s : ids) {
                     beforeIds.add(Objects.requireNonNull(s, "id").trim());
                 }
@@ -328,7 +344,7 @@ public final class Extension<V> {
 
         @Override
         public Contribution after(String... ids) {
-            synchronized (Extension.this) {
+            synchronized (lock) {
                 for (String s : ids) {
                     afterIds.add(Objects.requireNonNull(s, "id").trim());
                 }

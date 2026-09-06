@@ -30,24 +30,26 @@ final class JsonLeaves {
     private JsonLeaves() {}
 
     static Object stringForm(Object value) {
-        if (value instanceof CharSequence cs) return cs.toString();
-        if (value instanceof Character c) return String.valueOf(c);
-        if (value instanceof Enum<?> e) return e.name();
-        if (value instanceof LocalDate d) return d.toString();
-        if (value instanceof LocalTime t) return t.toString();
-        if (value instanceof LocalDateTime dt) return dt.toString();
-        if (value instanceof OffsetTime ot) return ot.toString();
-        if (value instanceof OffsetDateTime odt) return odt.toString();
-        if (value instanceof ZonedDateTime zdt) return zdt.toString();
-        if (value instanceof Instant i) return i.toString();
-        if (value instanceof UUID u) return u.toString();
-        if (value instanceof Path p) return p.toString();
-        if (value instanceof URI u) return u.toString();
-        if (value instanceof URL u) return u.toString();
-        if (value instanceof Locale l) return l.toLanguageTag();
-        if (value instanceof Duration d) return d.toString();
-        if (value instanceof Date d) return d.toInstant().toString();
-        if (value instanceof File f) return f.getPath();
-        return UNHANDLED;
+        return switch (value) {
+            case CharSequence cs -> cs.toString();
+            case Character c -> String.valueOf(c);
+            case Enum<?> e -> e.name();
+            case LocalDate d -> d.toString();
+            case LocalTime t -> t.toString();
+            case LocalDateTime dt -> dt.toString();
+            case OffsetTime ot -> ot.toString();
+            case OffsetDateTime odt -> odt.toString();
+            case ZonedDateTime zdt -> zdt.toString();
+            case Instant i -> i.toString();
+            case UUID u -> u.toString();
+            case Path p -> p.toString();
+            case URI u -> u.toString();
+            case URL u -> u.toString();
+            case Locale l -> l.toLanguageTag();
+            case Duration d -> d.toString();
+            case Date d -> d.toInstant().toString();
+            case File f -> f.getPath();
+            case null, default -> UNHANDLED;
+        };
     }
 }
