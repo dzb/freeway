@@ -5,6 +5,57 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] — 2026-09-06
+
+### Added
+
+- **HTTP/2 入站 RST 突发熔断（freeway-http）** — 滑动窗口内"未响应即取消"超过阈值即
+  `GOAWAY(ENHANCE_YOUR_CALM)` 并拆除连接（CVE-2023-44487 家族）。仅存活且未提交响应
+  的流参与计数：响应后取消（正常客户端行为）与已回收死流的 RST 永不触发熔断。
+  经 `freeway.http.h2.reset-burst-limit`（默认 200，`0` 禁用）/
+  `freeway.http.h2.reset-window`（默认 10s）可配，全链路 `HttpConfigKeys` →
+  `HttpServerConfig`（校验 + Builder）→ `Http2Session` 落到新建的重载构造器。
+- **TLS 证书重载事件驱动（freeway-http）** — `WatchService` 即时触发 + 防抖重调度：
+  watcher 线程只做信号（零 I/O、零睡眠），快照/digest/重载全部收敛到单 scheduler
+  线程，`check()` 的公开 monitor 换成私有锁；轮询保留为 NFS 等不可靠文件系统的
+  兜底，任一层单独即可驱动同一快照比较。
+- **回归覆盖** — RST 熔断与自定义限额、取消提交语义、GOAWAY last-id、watcher
+  60s 轮询下数秒重载、迁移 owner-token 接管、池外来连接拒绝、`Defer` Error 保形、
+  `CallBus` null 实参透传。1879 用例全绿。
+
+### Changed
+
+- **GOAWAY last-stream-id 改报 `lastHandledStreamId`（freeway-http）** — 被拒流只推进
+  `lastSeenStreamId`（重放校验不变），不再谎称"可能已处理"而误导对端放弃重试
+  （RFC 7540 §6.8）。
+- **公开 monitor 收敛为私有锁** — `Extension`（含内部类 `Entry.before/after` 同锁）、
+  `LazyValue`、`ScopedCache.Session`、`Defer.DeferredSupplier`、`SslReloader`。
+  全仓确认无 `wait/notify` 配对后落地，行为不变。
+- **现代惯用法收敛（全模块，无行为变更）** — pattern switch（`JsonLeaves` 18 分支、
+  shutdown 三路分发、`PeerHub` 前缀；编译器强制 arm 序）、`equals` 模式匹配、
+  immutable 工厂（`copyOf`/`of`——保序 Map 与 live-view 按三条保留规则排除）、
+  `Thread.ofPlatform` 线程构建器、字符集显式化、raw-type 清理、FQ/import 整洁。
+- **`Extension.asMap` 文档写明快照语义** — 返回不可变 point-in-time 快照，后续贡献
+  仅新调用可见；不改名（`asMap` 描述形态，时间性归文档层，见评估）。
+
+### Fixed
+
+- **迁移锁双竞态（freeway-db）** — stale 接管由"先查后无条件删"改为
+  `executed_at` 条件删除（0 行即退让）；`release` 按写入 `description` 列的 owner
+  token 条件删除，迁移超时被接管后慢 owner 的晚释放不再误删新锁。
+- **连接池释放外来连接（freeway-db）** — 硬转 `PooledConnectionImpl` 的
+  `ClassCastException` 改为指引型 `SqlException`（释连接到错池）。
+- **`Defer.supply` 的 Error 包装（freeway-commons）** — `Error` 原类型透传并缓存，
+  checked/exception 仍保持既有包装形状（首版改动曾打破既有测试，已收窄回兼容）。
+- **`CallBus` 代理 null 实参（freeway-ioc）** — `List.of(args)` 改与
+  `RemoteProxyFactory` 一致的 null 容忍视图，接口方法 null 实参正常分发。
+- **`Node` 构造不再原地排序调用方列表（freeway-flow）** — 改为拷贝后排序。
+- **`WebSocket` accept-key 编码（freeway-http）** — 固定 UTF-8：原平台编码 +
+  `length()` 当字节数，非 ASCII 下 digest 截断。
+- **配置热重载 WatchKey 重挂（freeway-boot）** — `reset()` 进 finally，失败迭代
+  不再静默退订目录。
+- **H2 preface 解码（freeway-http）** — 按 US-ASCII，消除平台默认编码依赖。
+
 ## [1.5.0] — 2026-09-05
 
 ### Changed
@@ -1146,6 +1197,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
 - Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
+[1.5.1]: https://github.com/dzb/freeway/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/dzb/freeway/compare/v1.4.0...v1.5.0
 [1.3.1]: https://github.com/dzb/freeway/compare/v1.2.2...v1.3.1
 [1.1.1]: https://github.com/dzb/freeway/compare/v1.1.0...v1.1.1
