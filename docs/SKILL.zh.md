@@ -387,7 +387,8 @@ Map<String, Route> named = c.extension(Route.class).asMap();
 `List<V>` = 所有贡献，保持排序。`Map<String, V>` = 仅命名贡献，按 id 查找。
 
 `Extension<V>` 不注入给应用代码，因为它是一个可变的聚合器。应用代码注入
-`List<V>` 或 `Map<String, V>` 即可 — 这些都是不可变视图。
+`List<V>` 或 `Map<String, V>` 即可 — 这些都是不可变视图。`asMap()` 返回的是不可变
+point-in-time 快照，后续贡献只对新调用可见。
 
 ### 内置扩展点
 
@@ -816,6 +817,7 @@ PoolConfig config = PoolConfig.defaults(url, user, pass);
 ```
 
 IoC 下通过 `.primary()` 模式选择：`PoolDefault`（默认）或引入 `HikariPoolModule` 切换。
+借出的连接只还给出借的池 —— 跨池释放直接抛 `SqlException`，不会静默关掉别家的物理连接。
 
 ### 数据库方言
 
@@ -902,13 +904,14 @@ db/migration/
 └── V20240615__add_index.sql  ← 时间戳版本也支持
 ```
 
-每个迁移在独立事务中执行。已应用的迁移不可再修改 — SHA-256 校验和不匹配会阻止启动。多实例并发有数据库级锁保护。
+每个迁移在独立事务中执行。已应用的迁移不可再修改 — SHA-256 校验和不匹配会阻止启动。多实例并发有数据库级锁保护：超 `lock-ttl` 的 stale 锁被条件抢占，且每个持有者的释放只删自己的锁行。
 
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
 | `freeway.db.migration.enabled` | `true` | 关闭后跳过 SQL 迁移 |
 | `freeway.db.migration.path` | `db/migration/` | 类路径上的 SQL 文件目录 |
 | `freeway.db.migration.table` | `_migrations` | 跟踪表名 |
+| `freeway.db.migration.lock-ttl` | 运行器默认 1h | stale 锁抢占预算，`0`/负值禁用 |
 
 **IoC 集成** — DbModule 绑定了 MigrationRunner，无需额外配置。
 
@@ -1024,6 +1027,7 @@ Defer.within(() -> {
 ```
 
 框架已内置场景：DB 事务内 EventBus 自动延迟、HTTP 请求边界、Kafka 记录处理。
+延迟供给（`supply`）中 `Error` 原类型透传且只执行一次，其余失败按既有包装。
 
 ### ScopedCache —— 作用域缓存
 

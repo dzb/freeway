@@ -13,4 +13,5 @@
 - Tests that start a `WebServer` should use `port=0` to avoid conflicts with running services.
 - `Container` and `Extension<V>` are not injectable. Use `@Inject List<V>` or `@Inject Map<String, V>` to consume contributions. Access `Container` only via `RuntimeHook`, `Freeway.create()`, or provider lambdas.
 - Prefer handler classes over lambdas when a route handler needs injected services. If you find yourself calling a static `Xxx.get()` inside a lambda, switch to `Route.get("/path", Handler.class)` with constructor injection.
+- Return a borrowed `PooledConnection` to its own pool — cross-pool release throws `SqlException` by design.
 

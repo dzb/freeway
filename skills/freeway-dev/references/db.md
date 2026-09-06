@@ -42,10 +42,13 @@ FreewayApp.run(new String[0], new AppModule(), new DbModule());
 - `freeway.db.migration.enabled`
 - `freeway.db.migration.path`
 - `freeway.db.migration.table`
+- `freeway.db.migration.lock-ttl` (stale-lock takeover budget, `0`/negative disables)
 
 ## Important Behavior
 
 - `DbModule` binds `PoolDefault` as the built-in pool.
+- Release a pooled connection only to the pool that borrowed it — a foreign release fails fast with `SqlException` instead of corrupting the other pool.
+- Multi-instance migrations are lock-guarded: a stale lock past `lock-ttl` is taken over conditionally, and each holder's release only removes its own lock row.
 - `DbModule` contributes a runtime hook with id `freeway.db.migration`.
 - The DB migration hook runs before the HTTP server hook when both are present.
 - `SchemaEntity` is the contribution type for schema groups.

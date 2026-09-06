@@ -1141,6 +1141,17 @@ when present, must satisfy the same character rules as an HTTP/1.1 `Host`
 header (no `@`, whitespace, `/`, `\`, or control characters) and is required
 for CONNECT.
 
+**HTTP/2 rapid-reset guard:** cancels arriving before the server committed a
+response, past `freeway.http.h2.reset-burst-limit` (default 200, `0` disables)
+inside `freeway.http.h2.reset-window` (default 10s), trip the connection with
+`GOAWAY(ENHANCE_YOUR_CALM)` — the peer retries on a fresh connection.
+Post-response cancels never count. `GOAWAY` reports the last *handled* stream,
+so refused streams keep their explicit retry signal.
+
+**TLS hot reload:** file watching triggers reloads promptly (debounced), with
+the poll at `freeway.http.ssl.reload-interval` as fallback; either layer alone
+drives the same snapshot comparison (`0` disables hot reload entirely).
+
 ### Testing with HTTP
 
 When using `Container` directly (not `FreewayApp`), start the server explicitly:
@@ -1370,6 +1381,10 @@ FreewayApp.run(new String[0], new AppModule(), new DbModule(), new HikariPoolMod
 
 No config keys needed — just add or remove the extension module.
 
+A borrowed connection must be released to the pool that borrowed it: a foreign
+release fails fast with `SqlException` instead of closing another pool's
+physical connection out from under it.
+
 ### HikariCP (`freeway-db-hikari`)
 
 Third-party connection pool adapter for [HikariCP](https://github.com/brettwooldridge/HikariCP). Add the `freeway-db-hikari` dependency to your classpath.
@@ -1569,9 +1584,12 @@ implicitly commit there), a migration that **contains DDL is rejected** with a
 would be lost, and the next startup would re-run the DDL and fail. Split such
 DDL into separate migrations and make statements idempotent (`IF NOT EXISTS`),
 or use a transactional-DDL database. Migrations are also locked against
-concurrent runners (a `__LOCK__` row in the tracking table), and
-already-applied migration files that disappear from the classpath fail fast as
-a packaging error.
+concurrent runners (a `__LOCK__` row in the tracking table): a lock held past
+`freeway.db.migration.lock-ttl` is taken over by conditional delete (zero rows
+affected backs off instead of deleting a fresh lock), and every holder's
+release removes only its own owner-token row — a slow owner can never delete
+its successor's fresh lock. Already-applied migration files that disappear
+from the classpath fail fast as a packaging error.
 
 Config:
 
@@ -1580,6 +1598,7 @@ Config:
 | `freeway.db.migration.enabled` | `true` | Set to `false` to skip SQL migrations |
 | `freeway.db.migration.path` | `db/migration/` | Classpath resource directory for `.sql` files |
 | `freeway.db.migration.table` | `_migrations` | Tracking table name |
+| `freeway.db.migration.lock-ttl` | runner default (1h) | Stale-lock takeover budget; `0`/negative disables |
 
 #### Dev vs Production Workflow
 

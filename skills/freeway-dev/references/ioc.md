@@ -107,6 +107,7 @@ Freeway uses two annotations with distinct semantics:
 
 - `@Inject`, `@Symbol`, `@Value` are the main injection annotations.
 - `List<Foo>` and `Map<String, Foo>` are injectable for contribution consumption. `Extension<Foo>` is not injectable — use `List` or `Map` instead.
+- `Extension.asMap()` returns an immutable point-in-time snapshot; later contributions are visible only through a fresh call.
 - `Container` is not injectable — access it via `RuntimeHook.start(Container)` or `Freeway.create()`.
 - Singleton services should not directly inject thread-scoped concrete classes.
 - AOP only applies to interface-to-class bindings.

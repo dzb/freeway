@@ -23,6 +23,9 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `freeway.http.cors.*`
 - `freeway.http.health.enabled`
 - `freeway.http.health.path`
+- `freeway.http.h2.reset-burst-limit` (default 200, `0` disables)
+- `freeway.http.h2.reset-window` (default 10s)
+- `freeway.http.ssl.reload-interval` (`0` disables hot reload)
 
 ## Path Variables
 
@@ -63,3 +66,5 @@ binder.contribute(StaticResourceMount.class)
 - `HealthCheck` is in `com.jujin.freeway.http.filter`.
 - Standalone HTTP uses `WebServerBuilder.builder()`.
 - Engine selection: `HttpModule` binds `FreewayHttpEngine` (default); add an extension module (Undertow/Jetty) to override via `.primary()`.
+- TLS hot reload is event-driven (WatchService, debounced) with the poll at `ssl.reload-interval` as fallback; either layer alone drives the same snapshot comparison.
+- HTTP/2 rapid-reset guard: cancels arriving before the server responded, past `h2.reset-burst-limit` inside `h2.reset-window`, trip the connection with `GOAWAY(ENHANCE_YOUR_CALM)`. Post-response cancels never count.

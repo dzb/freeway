@@ -14,7 +14,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `Coercer`
 - `CoerceRule`
 
-`Defer` buffers side effects until the enclosing scope commits. `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit.
+`Defer` buffers side effects until the enclosing scope commits. `ScopedCache` memoizes values for the lifetime of a scope and runs cleanup on exit. Deferred suppliers preserve `Error` identity (rethrown as-is, exactly once); other failures arrive wrapped.
 
 ## When To Use
 
