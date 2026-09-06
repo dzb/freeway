@@ -5,6 +5,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,6 +22,7 @@ import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.jujin.freeway.http.HttpServerConfig;
 import com.jujin.freeway.http.engine.http2.hpack.HPackContext;
 import com.jujin.freeway.http.engine.http2.hpack.HeaderFields;
 
@@ -55,7 +58,19 @@ public final class Http2Connection {
      * the decode-time cap so a peer cannot inflate the decoded field list
      * beyond what we advertise. */
     private static final int MAX_HEADER_LIST_SIZE = 64 * 1024;
-
+    /**
+     * Inbound RST_STREAM burst guard (CVE-2023-44487 rapid-reset family).
+     * {@link #MAX_CONCURRENT_STREAMS} alone does not stop a peer that opens,
+     * resets, and re-opens streams in a tight loop: each cycle allocates a
+     * stream plus a handler task and then tears it down. Past the configured
+     * burst limit within the window the connection is GOAWAYed with
+     * ENHANCE_YOUR_CALM and torn down; the peer may retry on a fresh
+     * connection per RFC 7540 §6.8. Tuned via
+     * {@code freeway.http.h2.reset-burst-limit} /
+     * {@code freeway.http.h2.reset-window} (0 burst disables the guard).
+     */
+    private final int resetBurstLimit;
+    private final long resetWindowNanos;
     final AtomicLong sendWindow = new AtomicLong(DEFAULT_WINDOW_SIZE);
     final AtomicInteger receiveWindow = new AtomicInteger(DEFAULT_WINDOW_SIZE);
 
@@ -91,16 +106,53 @@ public final class Http2Connection {
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private int lastSeenStreamId;
+    /**
+     * Highest stream id handed to the handler. Unlike {@link #lastSeenStreamId}
+     * — which also advances past refused streams so lower-id replays stay
+     * connection errors — this one feeds GOAWAY's last-stream-id
+     * (RFC 7540 §6.8): a refused stream was never handled and carries an
+     * explicit retry signal, so claiming it as "might have been handled"
+     * would wrongly tell the peer not to retry it.
+     */
+    private int lastHandledStreamId;
+
+    /** Sliding-window state for the reset burst guard. Reader-thread only. */
+    private long resetWindowStartNanos = System.nanoTime();
+    private int resetCountInWindow;
 
     public Http2Connection(Socket socket, InputStream inputStream, OutputStream outputStream,
                            ExecutorService executor, StreamHandler handler,
                            int readTimeoutMillis) {
+        this(socket, inputStream, outputStream, executor, handler, readTimeoutMillis,
+            HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT,
+            HttpServerConfig.DEFAULT_H2_RESET_WINDOW);
+    }
+
+    /**
+     * Full constructor with a tuned reset burst guard: more than
+     * {@code resetBurstLimit} not-yet-responded inbound resets within
+     * {@code resetWindow} trips the connection (0 disables the guard).
+     */
+    public Http2Connection(Socket socket, InputStream inputStream, OutputStream outputStream,
+                           ExecutorService executor, StreamHandler handler,
+                           int readTimeoutMillis, int resetBurstLimit,
+                           Duration resetWindow) {
+        if (resetBurstLimit < 0) {
+            throw new IllegalArgumentException(
+                "resetBurstLimit must be >= 0: " + resetBurstLimit);
+        }
+        if (resetWindow == null || resetWindow.isNegative()) {
+            throw new IllegalArgumentException(
+                "resetWindow must be non-negative: " + resetWindow);
+        }
         this.socket = socket;
         this.inputStream = inputStream;
         this.writer = new Http2FrameWriter(outputStream);
         this.executor = executor;
         this.handler = handler;
         this.readTimeoutMillis = readTimeoutMillis;
+        this.resetBurstLimit = resetBurstLimit;
+        this.resetWindowNanos = resetWindow.toNanos();
         localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_MAX_FRAME_SIZE, DEFAULT_MAX_FRAME_SIZE));
         localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_INITIAL_WINDOW_SIZE, DEFAULT_WINDOW_SIZE));
         localSettings.set(new SettingParameter(
@@ -149,7 +201,7 @@ public final class Http2Connection {
         String expected = ssl ? PREFACE : PARTIAL_PREFACE;
         byte[] buffer = new byte[expected.length()];
         FrameSerializer.readFully(inputStream, buffer);
-        return expected.equals(new String(buffer));
+        return expected.equals(new String(buffer, StandardCharsets.US_ASCII));
     }
 
     void writeFrame(byte[]... frames) throws IOException {
@@ -317,6 +369,7 @@ public final class Http2Connection {
                     }
                     var resetTarget = streams.get(streamId);
                     if (resetTarget != null) {
+                        notePeerReset(resetTarget);
                         resetTarget.close();
                     } else if (streamId > lastSeenStreamId) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
@@ -355,6 +408,7 @@ public final class Http2Connection {
                 target = new Http2Stream(streamId, this, requestHeaders, handler);
                 streams.put(streamId, target);
                 lastSeenStreamId = streamId;
+                lastHandledStreamId = streamId;
                 if (requestEndStream) {
                     target.markHalfClosed();
                 }
@@ -416,11 +470,51 @@ public final class Http2Connection {
     /** Rejects a new-stream header block with the given error and clears the
      *  in-progress block state. */
     private void rejectNewStream(Http2ErrorCode code, int streamId,
-                                 HeaderBlockState headerBlock)
-            throws IOException {
+                                 HeaderBlockState headerBlock) throws IOException {
         lastSeenStreamId = streamId;
+        // Deliberately not lastHandledStreamId: nothing was dispatched, so
+        // a later GOAWAY must not claim this stream as possibly handled.
         headerBlock.reset();
         sendResetStream(code, streamId);
+    }
+
+    /**
+     * Accounts one inbound RST_STREAM against the burst guard, but only for
+     * the asymmetric shape: the target stream is still alive and the server
+     * has not committed a response yet. Resets for already-reaped streams
+     * cost nothing (the lookup above missed), and post-response cancels are
+     * ordinary client behavior — neither may trip the breaker.
+     */
+    void notePeerReset(Http2Stream target) throws IOException {
+        if (!target.isResponseCommitted()) {
+            noteInboundReset();
+        }
+    }
+
+    /**
+     * Sliding-window inbound-RST accounting. Called once per qualifying
+     * RST_STREAM (see {@link #notePeerReset}) on the single reader thread,
+     * so no synchronization is needed. Past the burst limit it throws a
+     * connection error with ENHANCE_YOUR_CALM; {@link #handle()} turns that
+     * into the GOAWAY write plus connection teardown.
+     */
+    private void noteInboundReset() throws IOException {
+        if (resetBurstLimit <= 0) {
+            return;
+        }
+        long now = System.nanoTime();
+        if (now - resetWindowStartNanos >= resetWindowNanos) {
+            resetWindowStartNanos = now;
+            resetCountInWindow = 0;
+        }
+        if (++resetCountInWindow > resetBurstLimit) {
+            LOG.warn(
+                "H2 rapid-reset suspected ({} resets in window) — closing connection with GOAWAY(ENHANCE_YOUR_CALM)",
+                resetCountInWindow
+            );
+            throw new Http2Exception(
+                Http2ErrorCode.ENHANCE_YOUR_CALM, "rapid reset burst");
+        }
     }
 
     /** Dispatches a frame to a stream, converting stream errors into a reset
@@ -546,6 +640,7 @@ public final class Http2Connection {
         var target = new Http2Stream(1, this, requestHeaders, handler);
         streams.put(1, target);
         lastSeenStreamId = 1;
+        lastHandledStreamId = 1;
         target.markHalfClosed();
         target.startRequest(executor);
     }
@@ -572,7 +667,7 @@ public final class Http2Connection {
         // Sending GOAWAY has the same effect as receiving one (RFC 7540
         // §6.8): no new streams may be created afterwards.
         goawaySentOrReceived = true;
-        writeFrame(new GoawayFrame(errorCode, lastSeenStreamId).encode());
+        writeFrame(new GoawayFrame(errorCode, lastHandledStreamId).encode());
     }
 
     public void sendResetStream(Http2ErrorCode errorCode, int streamId) throws IOException {

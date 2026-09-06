@@ -72,6 +72,16 @@ public final class Http2Stream {
     public boolean isOpen() { return streamOpen; }
     public boolean isHalfClosed() { return halfClosed; }
 
+    /**
+     * True once the server committed response bytes for this stream (response
+     * HEADERS dispatched — every response path funnels through
+     * {@link #writeResponseHeaders}, including the first DATA write). A peer
+     * cancel arriving after this point is ordinary client behavior (got what
+     * it needed, navigated away); a cancel before it is the asymmetric
+     * rapid-reset shape, where the server paid handler work for no response.
+     */
+    boolean isResponseCommitted() { return headersSent.get(); }
+
     public void sendReset() throws IOException {
         if (responseAborted.compareAndSet(false, true)) {
             connection.sendResetStream(Http2ErrorCode.INTERNAL_ERROR, streamId);

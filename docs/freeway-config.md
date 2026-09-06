@@ -227,7 +227,14 @@
 | `freeway.http.ssl.protocols` | String | *(空)* | 否 | 逗号分隔的 TLS 协议版本 |
 | `freeway.http.ssl.ciphers` | String | *(空)* | 否 | 逗号分隔的 TLS 密码套件 |
 | `freeway.http.ssl.sni-directory` | String | *(空)* | 否 | SNI 每主机名密钥库目录 |
-| `freeway.http.ssl.reload-interval` | Duration | `0` | 否 | 证书自动重载轮询间隔（`0` = 禁用） |
+| `freeway.http.ssl.reload-interval` | Duration | `0` | 否 | 证书热重载间隔（文件监听即时触发、轮询兜底；`0` = 禁用热重载） |
+
+#### HTTP/2
+
+| 键 | 类型 | 默认值 | 必填 | 说明 |
+|----|------|--------|------|------|
+| `freeway.http.h2.reset-burst-limit` | Integer | `200` | 否 | 入站 RST 突发熔断：窗口内未响应即取消超过此数即 GOAWAY(ENHANCE_YOUR_CALM) 并拆连接（`0` = 禁用） |
+| `freeway.http.h2.reset-window` | Duration | `10s` | 否 | RST 突发计数的滑动窗口 |
 
 ### 示例
 

@@ -24,7 +24,9 @@ class HttpServerConfigTest {
             "127.0.0.1", 0, 0, Duration.ZERO, HttpServerConfig.DEFAULT_MAX_BODY_SIZE,
             HttpServerConfig.DEFAULT_READ_TIMEOUT, HttpServerConfig.DEFAULT_MAX_CONNECTIONS,
             HttpServerConfig.DEFAULT_WRITE_TIMEOUT,
-            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0);
+            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0,
+            HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT,
+            HttpServerConfig.DEFAULT_H2_RESET_WINDOW);
 
         assertEquals(canonical, fromBuilder,
             "a builder with no explicit values must equal the canonical defaults");
@@ -43,6 +45,8 @@ class HttpServerConfigTest {
             .compression(new HttpServerConfig.CompressionConfig(false, 0))
             .receiveBufferSize(4096)
             .sendBufferSize(8192)
+            .h2ResetBurstLimit(50)
+            .h2ResetWindow(Duration.ofSeconds(5))
             .build();
 
         assertEquals("0.0.0.0", cfg.host());
@@ -55,6 +59,8 @@ class HttpServerConfigTest {
         assertEquals(new HttpServerConfig.CompressionConfig(false, 0), cfg.compression());
         assertEquals(4096, cfg.receiveBufferSize());
         assertEquals(8192, cfg.sendBufferSize());
+        assertEquals(50, cfg.h2ResetBurstLimit());
+        assertEquals(Duration.ofSeconds(5), cfg.h2ResetWindow());
     }
 
     @Test
@@ -67,11 +73,17 @@ class HttpServerConfigTest {
             () -> HttpServerConfig.builder().port(70_000).build());
         assertThrows(IllegalArgumentException.class,
             () -> HttpServerConfig.builder().backlog(-1).build());
+        assertThrows(IllegalArgumentException.class,
+            () -> HttpServerConfig.builder().h2ResetBurstLimit(-1).build());
+        assertThrows(IllegalArgumentException.class,
+            () -> HttpServerConfig.builder().h2ResetWindow(Duration.ofSeconds(-1)).build());
     }
 
     private static HttpServerConfig config(Duration read, Duration write) {
         return new HttpServerConfig("127.0.0.1", 0, 0,
             Duration.ofSeconds(1), 1024, read, 0, write,
-            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0);
+            HttpServerConfig.CompressionConfig.DEFAULT, 0, 0,
+            HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT,
+            HttpServerConfig.DEFAULT_H2_RESET_WINDOW);
     }
 }

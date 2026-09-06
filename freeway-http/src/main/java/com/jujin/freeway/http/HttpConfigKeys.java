@@ -55,6 +55,15 @@ public final class HttpConfigKeys {
     /** Max request body size in bytes (default 10MB). */
     public static final String MAX_BODY_SIZE = PREFIX + ".max-body-size";
 
+    // ── HTTP/2 ──────────────────────────────────────────────────
+
+    /** Inbound RST_STREAM burst guard: cancels arriving before the server
+     *  responded, beyond this count within the reset window, trip the
+     *  connection with GOAWAY(ENHANCE_YOUR_CALM) (0 disables the guard). */
+    public static final String H2_RESET_BURST_LIMIT = PREFIX + ".h2.reset-burst-limit";
+    /** Sliding window for the reset burst guard (e.g. 10s). */
+    public static final String H2_RESET_WINDOW      = PREFIX + ".h2.reset-window";
+
     // ── SSL / HTTPS ─────────────────────────────────────────────
 
     /** Set to true to enable HTTPS. Requires key-store and key-store-password. */

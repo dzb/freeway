@@ -1,7 +1,9 @@
 package com.jujin.freeway.http.engine;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
@@ -116,6 +118,40 @@ class SslReloaderTest {
         assertSame(initial, engine.sslContext(),
             "a failed snapshot must keep the previous context");
         reloader.close();
+    }
+
+    @Test
+    void fileWatcherTriggersReloadWithoutWaitingForPoll(
+            @TempDir Path tempDir) throws Exception {
+        // The poll interval (60s) is far beyond the test budget: a reload
+        // within seconds must come from the WatchService, not the poll.
+        // The replacement carries fresh key material, so the digest changes
+        // even if the mtime granularity collides.
+        var keystore = generateKeyStore(tempDir);
+        var initial = SSLContext.getInstance("TLS");
+        var engine = engine(initial);
+        var scheduler = new ScheduledThreadPoolExecutor(1);
+        var reloader = new SslReloader(engine, keystore, null, null,
+            Duration.ofSeconds(60), SslReloaderTest::freshContext,
+            scheduler,
+            path -> Files.readAttributes(path, BasicFileAttributes.class));
+        reloader.start();
+        try {
+            Files.createDirectories(tempDir.resolve("replacement"));
+            Path fresh = generateKeyStore(tempDir.resolve("replacement"));
+            Files.copy(fresh, keystore, StandardCopyOption.REPLACE_EXISTING);
+
+            long deadline = System.currentTimeMillis() + 8000;
+            while (engine.sslContext() == initial
+                    && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50);
+            }
+            assertNotSame(initial, engine.sslContext(),
+                "watcher must reload promptly without waiting for the 60s poll");
+        } finally {
+            reloader.close();
+        }
+        assertTrue(scheduler.isShutdown());
     }
 
     private static FreewayHttpEngine engine() {

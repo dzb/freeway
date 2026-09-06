@@ -22,6 +22,11 @@ import java.time.Duration;
  *                          (0 = OS default)
  * @param sendBufferSize    desired SO_SNDBUF for accepted sockets
  *                          (0 = OS default)
+ * @param h2ResetBurstLimit HTTP/2 inbound-RST burst guard: cancels arriving
+ *                          before the server responded, beyond this count
+ *                          within {@code h2ResetWindow}, trip the connection
+ *                          with GOAWAY(ENHANCE_YOUR_CALM) (0 disables)
+ * @param h2ResetWindow     sliding window for the reset burst guard
  */
 public record HttpServerConfig(
     String host,
@@ -34,12 +39,16 @@ public record HttpServerConfig(
     Duration writeTimeout,
     CompressionConfig compression,
     int receiveBufferSize,
-    int sendBufferSize
+    int sendBufferSize,
+    int h2ResetBurstLimit,
+    Duration h2ResetWindow
 ) {
     public static final long DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024L; // 10MB
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(30);
     public static final Duration DEFAULT_WRITE_TIMEOUT = Duration.ofSeconds(30);
     public static final int DEFAULT_MAX_CONNECTIONS = 0;
+    public static final int DEFAULT_H2_RESET_BURST_LIMIT = 200;
+    public static final Duration DEFAULT_H2_RESET_WINDOW = Duration.ofSeconds(10);
 
     public HttpServerConfig {
         host = host == null || host.isBlank() ? "127.0.0.1" : host;
@@ -74,6 +83,14 @@ public record HttpServerConfig(
             throw new IllegalArgumentException(
                 "socket buffer sizes must be >= 0");
         }
+        if (h2ResetBurstLimit < 0) {
+            throw new IllegalArgumentException(
+                "h2ResetBurstLimit must be >= 0: " + h2ResetBurstLimit);
+        }
+        if (h2ResetWindow == null || h2ResetWindow.isNegative()) {
+            throw new IllegalArgumentException(
+                "h2ResetWindow must be non-negative: " + h2ResetWindow);
+        }
     }
 
     /** gzip response-compression policy. */
@@ -90,7 +107,8 @@ public record HttpServerConfig(
                             Duration shutdownGrace, long maxBodySize,
                             Duration readTimeout, int maxConnections) {
         this(host, port, backlog, shutdownGrace, maxBodySize, readTimeout,
-            maxConnections, DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0);
+            maxConnections, DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0,
+            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
     }
 
     public HttpServerConfig(String host, int port, int backlog,
@@ -98,20 +116,23 @@ public record HttpServerConfig(
                             Duration readTimeout, int maxConnections,
                             Duration writeTimeout) {
         this(host, port, backlog, shutdownGrace, maxBodySize, readTimeout,
-            maxConnections, writeTimeout, CompressionConfig.DEFAULT, 0, 0);
+            maxConnections, writeTimeout, CompressionConfig.DEFAULT, 0, 0,
+            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
     }
 
     public HttpServerConfig(String host, int port, int backlog,
                             Duration shutdownGrace, long maxBodySize) {
         this(host, port, backlog, shutdownGrace, maxBodySize,
             DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS, DEFAULT_WRITE_TIMEOUT,
-            CompressionConfig.DEFAULT, 0, 0);
+            CompressionConfig.DEFAULT, 0, 0,
+            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
     }
 
     public HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {
         this(host, port, backlog, shutdownGrace, DEFAULT_MAX_BODY_SIZE,
             DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS, DEFAULT_WRITE_TIMEOUT,
-            CompressionConfig.DEFAULT, 0, 0);
+            CompressionConfig.DEFAULT, 0, 0,
+            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
     }
 
     /**
@@ -137,6 +158,8 @@ public record HttpServerConfig(
         private CompressionConfig compression = CompressionConfig.DEFAULT;
         private int receiveBufferSize;
         private int sendBufferSize;
+        private int h2ResetBurstLimit = DEFAULT_H2_RESET_BURST_LIMIT;
+        private Duration h2ResetWindow = DEFAULT_H2_RESET_WINDOW;
 
         public Builder host(String host) {
             this.host = host;
@@ -196,10 +219,23 @@ public record HttpServerConfig(
             return this;
         }
 
+        /** RST burst guard trip count (0 disables the guard). */
+        public Builder h2ResetBurstLimit(int h2ResetBurstLimit) {
+            this.h2ResetBurstLimit = h2ResetBurstLimit;
+            return this;
+        }
+
+        /** Sliding window for the RST burst guard. */
+        public Builder h2ResetWindow(Duration h2ResetWindow) {
+            this.h2ResetWindow = h2ResetWindow;
+            return this;
+        }
+
         public HttpServerConfig build() {
             return new HttpServerConfig(host, port, backlog, shutdownGrace,
                 maxBodySize, readTimeout, maxConnections, writeTimeout,
-                compression, receiveBufferSize, sendBufferSize);
+                compression, receiveBufferSize, sendBufferSize,
+                h2ResetBurstLimit, h2ResetWindow);
         }
     }
 }

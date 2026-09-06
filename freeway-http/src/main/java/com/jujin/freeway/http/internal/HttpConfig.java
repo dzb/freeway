@@ -24,7 +24,8 @@ public record HttpConfig(
     boolean accessLogEnabled,
     Cors cors,
     Health health,
-    Ssl ssl
+    Ssl ssl,
+    int h2ResetBurstLimit, Duration h2ResetWindow
 ) {
 
     public record Cors(boolean enabled, String allowedOrigins,
@@ -124,6 +125,12 @@ public record HttpConfig(
     private static final SymbolSpec<Duration> SSL_RELOAD_INTERVAL =
         SymbolSpec.of(HttpConfigKeys.SSL_RELOAD_INTERVAL, Duration.class,
             Duration.ZERO);
+    private static final SymbolSpec<Integer> H2_RESET_BURST_LIMIT =
+        SymbolSpec.of(HttpConfigKeys.H2_RESET_BURST_LIMIT, Integer.class,
+            HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT);
+    private static final SymbolSpec<Duration> H2_RESET_WINDOW =
+        SymbolSpec.of(HttpConfigKeys.H2_RESET_WINDOW, Duration.class,
+            HttpServerConfig.DEFAULT_H2_RESET_WINDOW);
 
     /**
      * The post-processing step for one resolved value: the symbol chain
@@ -173,7 +180,9 @@ public record HttpConfig(
                 config(symbols, coercer, SSL_PROTOCOLS),
                 config(symbols, coercer, SSL_CIPHERS),
                 config(symbols, coercer, SSL_SNI_DIRECTORY),
-                config(symbols, coercer, SSL_RELOAD_INTERVAL))
+                config(symbols, coercer, SSL_RELOAD_INTERVAL)),
+            config(symbols, coercer, H2_RESET_BURST_LIMIT),
+            config(symbols, coercer, H2_RESET_WINDOW)
         );
     }
 
@@ -184,6 +193,7 @@ public record HttpConfig(
             shutdownGrace, maxBodySize, readTimeout, maxConnections, writeTimeout,
             new HttpServerConfig.CompressionConfig(
                 compressionEnabled, compressionMinSize),
-            receiveBufferSize, sendBufferSize);
+            receiveBufferSize, sendBufferSize,
+            h2ResetBurstLimit, h2ResetWindow);
     }
 }

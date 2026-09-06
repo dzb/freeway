@@ -2,11 +2,15 @@ package com.jujin.freeway.http.engine.http2;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.net.Socket;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +19,7 @@ import com.jujin.freeway.http.engine.http2.hpack.HPackContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Byte-level verification of HTTP/2 frame encoding against RFC 7540 §4-§6
@@ -140,5 +145,164 @@ class H2WireFormatTest {
         assertEquals("x-custom", decoded.get(2).name);
         assertEquals("value-1", decoded.get(2).value);
         assertEquals("value-2", decoded.get(3).value);
+    }
+
+    @Test
+    void inboundResetBurstFailsWithEnhanceYourCalm() throws Exception {
+        // CVE-2023-44487 family: MAX_CONCURRENT_STREAMS alone does not stop
+        // open-reset-reopen cycling. Past the burst window the reader must
+        // surface ENHANCE_YOUR_CALM so handle() GOAWAYs the connection.
+        var executor = Executors.newSingleThreadExecutor();
+        try (var socket = new Socket()) {
+            var conn = new Http2Connection(
+                socket,
+                new ByteArrayInputStream(new byte[0]),
+                new ByteArrayOutputStream(),
+                executor,
+                (stream, in, o, headers) -> {},
+                0
+            );
+            var m = Http2Connection.class.getDeclaredMethod("noteInboundReset");
+            m.setAccessible(true);
+            for (int i = 0; i < 200; i++) {
+                m.invoke(conn);
+            }
+            try {
+                m.invoke(conn);
+                fail("expected rapid-reset burst to fail");
+            } catch (InvocationTargetException e) {
+                assertTrue(e.getCause() instanceof Http2Exception,
+                    "burst must fail as Http2Exception, got: " + e.getCause());
+                assertEquals(Http2ErrorCode.ENHANCE_YOUR_CALM,
+                    ((Http2Exception) e.getCause()).errorCode(),
+                    "burst must ask the peer to calm down, not PROTOCOL_ERROR");
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void customBurstLimitAppliesFromConstructor() throws Exception {
+        // The guard is tuned per connection (config keys
+        // freeway.http.h2.reset-burst-limit/window); the overload must be
+        // honored exactly, and 0 must disable the guard entirely.
+        var executor = Executors.newSingleThreadExecutor();
+        try (var socket = new Socket()) {
+            var strict = new Http2Connection(
+                socket,
+                new ByteArrayInputStream(new byte[0]),
+                new ByteArrayOutputStream(),
+                executor,
+                (stream, in, o, headers) -> {},
+                0, 3, Duration.ofSeconds(10)
+            );
+            var m = Http2Connection.class.getDeclaredMethod("noteInboundReset");
+            m.setAccessible(true);
+            for (int i = 0; i < 3; i++) {
+                m.invoke(strict);
+            }
+            try {
+                m.invoke(strict);
+                fail("expected the 4th reset to trip a limit of 3");
+            } catch (InvocationTargetException e) {
+                assertEquals(Http2ErrorCode.ENHANCE_YOUR_CALM,
+                    ((Http2Exception) e.getCause()).errorCode());
+            }
+
+            var disabled = new Http2Connection(
+                socket,
+                new ByteArrayInputStream(new byte[0]),
+                new ByteArrayOutputStream(),
+                executor,
+                (stream, in, o, headers) -> {},
+                0, 0, Duration.ofSeconds(10)
+            );
+            for (int i = 0; i < 10; i++) {
+                m.invoke(disabled);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void peerResetCountsOnlyBeforeResponseCommit() throws Exception {
+        // Only the asymmetric shape trips the breaker: a cancel arriving
+        // before the server committed a response. Post-response cancels are
+        // ordinary client behavior and must never count.
+        var executor = Executors.newSingleThreadExecutor();
+        try (var socket = new Socket()) {
+            var conn = new Http2Connection(
+                socket,
+                new ByteArrayInputStream(new byte[0]),
+                new ByteArrayOutputStream(),
+                executor,
+                (stream, in, o, headers) -> {},
+                0
+            );
+            var pending = new Http2Stream(1, conn,
+                Map.<String, List<String>>of(), (s, in, o, h) -> {});
+            conn.streams.put(1, pending);
+            for (int i = 0; i < 200; i++) {
+                conn.notePeerReset(pending);
+            }
+            try {
+                conn.notePeerReset(pending);
+                fail("expected 201 pre-response cancels to trip the breaker");
+            } catch (Http2Exception e) {
+                assertEquals(Http2ErrorCode.ENHANCE_YOUR_CALM, e.errorCode());
+            }
+
+            var served = new Http2Stream(3, conn,
+                Map.<String, List<String>>of(), (s, in, o, h) -> {});
+            served.writeResponseHeaders(true);
+            for (int i = 0; i < 250; i++) {
+                conn.notePeerReset(served);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void goAwayCarriesLastHandledStreamId() throws Exception {
+        // A refused stream advances validation (lastSeen) but must not leak
+        // into GOAWAY's last-stream-id: it was never processed and carries
+        // an explicit retry signal.
+        var executor = Executors.newSingleThreadExecutor();
+        try (var socket = new Socket()) {
+            var out = new ByteArrayOutputStream();
+            var conn = new Http2Connection(
+                socket,
+                new ByteArrayInputStream(new byte[0]),
+                out,
+                executor,
+                (stream, in, o, headers) -> {},
+                0
+            );
+            setStreamCursor(conn, "lastSeenStreamId", 5);
+            setStreamCursor(conn, "lastHandledStreamId", 3);
+            conn.sendGoAway(Http2ErrorCode.NO_ERROR);
+
+            byte[] bytes = out.toByteArray();
+            assertEquals(17, bytes.length, "GOAWAY = 9-byte header + 8-byte body");
+            int lastId = ((bytes[9] & 0xff) << 24) | ((bytes[10] & 0xff) << 16)
+                | ((bytes[11] & 0xff) << 8) | (bytes[12] & 0xff);
+            int code = ((bytes[13] & 0xff) << 24) | ((bytes[14] & 0xff) << 16)
+                | ((bytes[15] & 0xff) << 8) | (bytes[16] & 0xff);
+            assertEquals(3, lastId,
+                "GOAWAY must report the last handled stream, not a refused one");
+            assertEquals(0, code, "GOAWAY must carry NO_ERROR");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static void setStreamCursor(
+            Http2Connection conn, String field, int value) throws Exception {
+        var f = Http2Connection.class.getDeclaredField(field);
+        f.setAccessible(true);
+        f.setInt(conn, value);
     }
 }
