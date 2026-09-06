@@ -18,6 +18,11 @@ import java.util.function.Supplier;
  *   <li>{@link #get()} computes exactly once (concurrent callers share the
  *       first result); a throwing supplier propagates and retries on the
  *       next call (failures are not cached).</li>
+ *   <li>{@code null} is not a legal lazy value: a supplier returning
+ *       {@code null} fails fast with {@link NullPointerException}. Use
+ *       {@code LazyValue<Optional<T>>} when absence is a legitimate result —
+ *       this keeps {@link #peek()} ({@code null} = not yet computed) and
+ *       {@link #isComputed()} unambiguous.</li>
  *   <li>{@link #peek()} returns the computed value or {@code null} without
  *       computing — the cheap "already built?" probe.</li>
  *   <li>There is intentionally no {@code close()/invalidate()} here:
@@ -32,6 +37,11 @@ public final class LazyValue<T> {
 
     private final Supplier<T> supplier;
     private volatile T value;
+    /**
+     * Double-check monitor. A dedicated object — LazyValue instances are
+     * handed out publicly, so the intrinsic monitor stays out of it.
+     */
+    private final Object lock = new Object();
 
     private LazyValue(Supplier<T> supplier) {
         this.supplier = Objects.requireNonNull(supplier, "supplier");
@@ -53,7 +63,7 @@ public final class LazyValue<T> {
         if (v != null) {
             return v;
         }
-        synchronized (this) {
+        synchronized (lock) {
             v = value;
             if (v == null) {
                 v = supplier.get();

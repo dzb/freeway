@@ -116,8 +116,10 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
                 }
             }
             if (watching) {
-                thread = new Thread(this::watchLoop, "freeway-config-watch");
-                thread.setDaemon(true);
+                thread = Thread.ofPlatform()
+                    .daemon()
+                    .name("freeway-config-watch")
+                    .unstarted(this::watchLoop);
             }
         } catch (IOException e) {
             LOG.warn("Config watch disabled: {}", e.getMessage());
@@ -245,10 +247,13 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
                 if (reloaded) {
                     reload();
                 }
-                key.reset();
             } catch (RuntimeException e) {
                 // One failed iteration must not silently end hot reload.
                 LOG.warn("Config watch iteration failed, continuing: {}", e.getMessage());
+            } finally {
+                // Always re-arm: skipping reset on a failed iteration would
+                // silently retire this directory from watching.
+                key.reset();
             }
         }
     }

@@ -772,4 +772,36 @@ class PoolDefaultTest {
             pool.close();
         }
     }
+
+    @Test
+    void releaseForeignConnectionFailsWithSqlException() {
+        // A PooledConnection from another pool (or a hand-rolled impl) must
+        // not slip into this pool's active set via a raw cast: the old
+        // (PooledConnectionImpl) cast surfaced as ClassCastException, which
+        // misdirects callers away from the real bug (releasing to the wrong
+        // pool). It must fail with an actionable SqlException instead.
+        var config = new PoolConfig(
+            "jdbc:h2:mem:pool_foreign_"
+                + UUID.randomUUID().toString().replace('-', '_')
+                + ";DB_CLOSE_DELAY=-1",
+            "sa", "",
+            2, 0,
+            Duration.ofSeconds(5),
+            Duration.ofMinutes(30),
+            Duration.ofMinutes(10),
+            Duration.ofMinutes(2),
+            null, Duration.ofSeconds(5), Duration.ofSeconds(15)
+        );
+        PoolDefault pool = new PoolDefault(config);
+        try {
+            PooledConnection foreign = () -> null;
+            SqlException e = assertThrows(
+                SqlException.class, () -> pool.release(foreign));
+            assertTrue(e.getMessage().contains("Foreign PooledConnection"),
+                "message must name the contract violation, got: " + e.getMessage());
+            assertThrows(NullPointerException.class, () -> pool.release(null));
+        } finally {
+            pool.close();
+        }
+    }
 }

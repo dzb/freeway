@@ -82,11 +82,25 @@ public final class JULFileHandler extends StreamHandler {
 
     /** Daemon thread for async GZIP compression so rotation never blocks logging. */
     private static final ExecutorService COMPRESSOR =
-        Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "freeway-log-compressor");
-            t.setDaemon(true);
-            return t;
-        });
+        Executors.newSingleThreadExecutor(
+            Thread.ofPlatform().daemon().name("freeway-log-compressor").factory());
+
+    static {
+        // Daemon threads do not block JVM exit, but an explicit shutdown
+        // keeps test JVMs and container redeploys from accumulating an idle
+        // compressor thread per classloader lifetime.
+        try {
+            Runtime.getRuntime().addShutdownHook(
+                Thread.ofPlatform()
+                    .daemon()
+                    .name("freeway-log-compressor-shutdown")
+                    .unstarted(COMPRESSOR::shutdown)
+            );
+        } catch (SecurityException | IllegalStateException ignored) {
+            // Restricted environment or late class init during shutdown —
+            // the daemon flag alone still guarantees no JVM hang.
+        }
+    }
 
     /**
      * Archive files currently being GZIP-compressed. {@link #purgeOldFiles()}
@@ -327,7 +341,10 @@ public final class JULFileHandler extends StreamHandler {
         if (flushIntervalMs <= 0) {
             return null;
         }
-        Thread t = new Thread(() -> {
+        Thread t = Thread.ofPlatform()
+            .daemon()
+            .name("freeway-log-flusher-" + basePath.getFileName())
+            .unstarted(() -> {
             while (!closed) {
                 try {
                     Thread.sleep(flushIntervalMs);
@@ -340,8 +357,7 @@ public final class JULFileHandler extends StreamHandler {
                     // best-effort periodic flush; errors surface on next publish
                 }
             }
-        }, "freeway-log-flusher-" + basePath.getFileName());
-        t.setDaemon(true);
+        });
         t.start();
         return t;
     }

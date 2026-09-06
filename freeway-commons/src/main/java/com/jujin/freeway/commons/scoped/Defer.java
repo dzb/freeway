@@ -217,7 +217,9 @@ public final class Defer {
         private final Callable<T> callable;
         private T value;
         private boolean computed;
-        private RuntimeException failure;
+        private Throwable failure;
+        /** Guards the exactly-once protocol below. */
+        private final Object lock = new Object();
 
         private static final String FAILURE_MESSAGE = "Defer supply computation failed";
 
@@ -225,18 +227,22 @@ public final class Defer {
             this.callable = callable;
         }
 
-        synchronized void compute() {
-            if (!computed) {
-                runOnce();
+        void compute() {
+            synchronized (lock) {
+                if (!computed) {
+                    runOnce();
+                }
             }
         }
 
         @Override
-        public synchronized T get() {
-            if (!computed) {
-                runOnce();
+        public T get() {
+            synchronized (lock) {
+                if (!computed) {
+                    runOnce();
+                }
+                return value;
             }
-            return value;
         }
 
         /**
@@ -245,18 +251,40 @@ public final class Defer {
          * callable throws an Error must not re-execute the side-effecting
          * callable on the next access, and a failed supply must not silently
          * degrade to null.
+         *
+         * <p>Errors keep their type: an {@link Error} propagates as-is (and
+         * is cached as-is) so callers catching AssertionError and friends
+         * see the original. All other throwables — checked exceptions and
+         * RuntimeExceptions alike — are wrapped once in a
+         * {@code RuntimeException} carrying {@link #FAILURE_MESSAGE}, keeping
+         * the long-standing supply-failure shape callers match on.
          */
         private void runOnce() {
             if (failure != null) {
-                throw failure;
+                rethrowCached();
             }
             try {
                 value = callable.call();
                 computed = true; // drain must not re-execute after get() succeeded
+            } catch (Error err) {
+                failure = err;
+                throw err;
             } catch (Throwable t) {
-                failure = new RuntimeException(FAILURE_MESSAGE, t);
-                throw failure;
+                RuntimeException wrapped = new RuntimeException(FAILURE_MESSAGE, t);
+                failure = wrapped;
+                throw wrapped;
             }
+        }
+
+        private void rethrowCached() {
+            if (failure instanceof Error err) {
+                throw err;
+            }
+            if (failure instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new AssertionError(
+                "unreachable: supply failures are Errors or wrapped", failure);
         }
     }
 }

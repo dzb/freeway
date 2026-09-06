@@ -35,6 +35,12 @@ public final class ScopedCache {
 
     private static final ScopedValue<Session> CURRENT = ScopedValue.newInstance();
     private static final List<Consumer<Object>> ON_CLOSE = new CopyOnWriteArrayList<>();
+    /**
+     * Warn threshold for accumulated {@link #ON_CLOSE} handlers. Registration
+     * is meant to be startup-time and one-off — steady growth past this
+     * means a per-request registration leaking.
+     */
+    private static final int ON_CLOSE_WARN_THRESHOLD = 16;
 
     private ScopedCache() {}
 
@@ -159,6 +165,14 @@ public final class ScopedCache {
     public static void onClose(Consumer<Object> handler) {
         Objects.requireNonNull(handler, "handler");
         ON_CLOSE.add(handler);
+        int count = ON_CLOSE.size();
+        if (count > ON_CLOSE_WARN_THRESHOLD) {
+            LOG.warn(
+                "ScopedCache.onClose handler count is {} — handlers accumulate process-wide; "
+                    + "register once at startup or pair with removeOnClose to avoid a leak",
+                count
+            );
+        }
     }
 
     /** Unregisters a previously registered close handler. */
@@ -181,46 +195,56 @@ public final class ScopedCache {
     public static final class Session {
         private final Map<Object, Object> cache = new LinkedHashMap<>();
         private volatile boolean closed;
+        /**
+         * Guards cache/closed. A dedicated object — Session handles escape
+         * to user code ({@link #within}), so the intrinsic monitor stays
+         * out of the close-vs-create protocol.
+         */
+        private final Object lock = new Object();
 
         Session() {}
 
-        synchronized Object getOrCreate(Object key, Supplier<Object> factory) {
-            if (closed) {
-                throw new IllegalStateException("Session is closed");
+        Object getOrCreate(Object key, Supplier<Object> factory) {
+            synchronized (lock) {
+                if (closed) {
+                    throw new IllegalStateException("Session is closed");
+                }
+                if (cache.containsKey(key)) {
+                    return cache.get(key);
+                }
+                Object created = factory.get();
+                cache.put(key, created);
+                return created;
             }
-            if (cache.containsKey(key)) {
-                return cache.get(key);
-            }
-            Object created = factory.get();
-            cache.put(key, created);
-            return created;
         }
 
-        public synchronized void close() {
-            if (closed) {
-                return;
-            }
-            closed = true;
-            if (ON_CLOSE.isEmpty()) {
-                cache.clear();
-                return;
-            }
-            List<Object> values = cache.values().stream()
-                    .filter(v -> v != null).toList();
-            cache.clear();
-            Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-            for (Object value : values) {
-                if (!seen.add(value)) {
-                    continue;
+        public void close() {
+            synchronized (lock) {
+                if (closed) {
+                    return;
                 }
-                for (Consumer<Object> handler : ON_CLOSE) {
-                    try {
-                        handler.accept(value);
-                    } catch (Throwable ex) {
-                        // Errors included: cleanup must always run to
-                        // completion — one failing handler must not skip
-                        // the rest (matches DeferScope.drain).
-                        LOG.warn("ScopedCache cleanup handler failed", ex);
+                closed = true;
+                if (ON_CLOSE.isEmpty()) {
+                    cache.clear();
+                    return;
+                }
+                List<Object> values = cache.values().stream()
+                        .filter(v -> v != null).toList();
+                cache.clear();
+                Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+                for (Object value : values) {
+                    if (!seen.add(value)) {
+                        continue;
+                    }
+                    for (Consumer<Object> handler : ON_CLOSE) {
+                        try {
+                            handler.accept(value);
+                        } catch (Throwable ex) {
+                            // Errors included: cleanup must always run to
+                            // completion — one failing handler must not skip
+                            // the rest (matches DeferScope.drain).
+                            LOG.warn("ScopedCache cleanup handler failed", ex);
+                        }
                     }
                 }
             }

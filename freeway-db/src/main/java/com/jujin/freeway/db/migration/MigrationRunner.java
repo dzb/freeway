@@ -1,5 +1,6 @@
 package com.jujin.freeway.db.migration;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 
 import com.jujin.freeway.commons.util.Digests;
 import com.jujin.freeway.commons.util.ByteStreams;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.time.Duration;
@@ -52,6 +54,15 @@ public final class MigrationRunner {
     private final String path;
     private final String table;
     private final Duration lockTtl;
+    /**
+     * Owner token written into the lock row's {@code description} column by
+     * the successful {@link #acquireLock()} and cleared by
+     * {@link #releaseLock()}. Lets a slow owner (migration outliving
+     * {@link #lockTtl}, meanwhile taken over by a sibling) release without
+     * deleting the sibling's fresh lock row. Only touched on the
+     * {@link #run()} thread, which holds the monitor.
+     */
+    private String lockOwner;
 
     public MigrationRunner(
         Database database,
@@ -313,13 +324,16 @@ public final class MigrationRunner {
     }
 
     private void acquireLock() {
-        if (insertLockRow()) {
+        String owner = UUID.randomUUID().toString();
+        if (insertLockRow(owner)) {
+            lockOwner = owner;
             return;
         }
         // The lock slot is taken. Take over only when the holding row is
         // provably stale — a live migration must never be preempted.
         if (!lockTtl.isZero() && !lockTtl.isNegative() && takeStaleLock()) {
-            if (insertLockRow()) {
+            if (insertLockRow(owner)) {
+                lockOwner = owner;
                 LOG.warn(
                     "Took over stale migration lock (held longer than {})",
                     lockTtl
@@ -340,14 +354,15 @@ public final class MigrationRunner {
         );
     }
 
-    private boolean insertLockRow() {
+    private boolean insertLockRow(String owner) {
         try {
             database.execute(
                 "insert into " +
                     table +
                     " (version, description, checksum, installed_rank) values ('" +
                     LOCK_VERSION +
-                    "', '', '', -1)"
+                    "', ?, '', -1)",
+                owner
             );
             return true;
         } catch (SqlException e) {
@@ -371,6 +386,12 @@ public final class MigrationRunner {
      * schema without the column, driver type surprises) keeps the lock —
      * conservative by construction, because wrongly stealing an active lock
      * would let two instances migrate concurrently.
+     *
+     * <p>The steal itself is conditional: the row is deleted only when its
+     * {@code executed_at} still equals the value observed above. A sibling
+     * instance that took over (or the owner re-acquiring) between our SELECT
+     * and DELETE changes the row, so our DELETE affects 0 rows and we back
+     * off instead of deleting a fresh lock and migrating concurrently.
      */
     private boolean takeStaleLock() {
         try {
@@ -392,19 +413,55 @@ public final class MigrationRunner {
             ) {
                 return false;
             }
-            releaseLock();
-            return true;
+            return deleteStaleLock(acquiredAt);
         } catch (RuntimeException e) {
             LOG.debug("Could not evaluate migration-lock staleness", e);
             return false;
         }
     }
 
-    private void releaseLock() {
+    /**
+     * Deletes the lock row only if it still carries the observed
+     * {@code executed_at}. Returns true exactly when this instance removed
+     * the stale row (1 row affected) and may proceed to re-insert.
+     */
+    private boolean deleteStaleLock(Instant observed) {
         try {
-            database.execute(
-                "delete from " + table + " where version = '" + LOCK_VERSION + "'"
+            var result = database.execute(
+                "delete from " + table + " where version = '" + LOCK_VERSION
+                    + "' and executed_at = ?",
+                Timestamp.from(observed)
             );
+            return result.rows() == 1;
+        } catch (RuntimeException e) {
+            LOG.debug("Could not steal stale migration lock", e);
+            return false;
+        }
+    }
+
+    /**
+     * Releases the lock row acquired by this instance. The delete is scoped
+     * to our owner token: a sibling that took over our stale row (migration
+     * outliving {@link #lockTtl}) owns a different token, so our late
+     * release removes 0 rows instead of deleting its fresh lock. Rows
+     * predating owner tokens (empty description, e.g. inserted by an older
+     * release or by hand) fall back to the unconditional delete.
+     */
+    private void releaseLock() {
+        String owner = lockOwner;
+        lockOwner = null;
+        try {
+            if (owner != null) {
+                database.execute(
+                    "delete from " + table + " where version = '" + LOCK_VERSION
+                        + "' and description = ?",
+                    owner
+                );
+            } else {
+                database.execute(
+                    "delete from " + table + " where version = '" + LOCK_VERSION + "'"
+                );
+            }
         } catch (RuntimeException e) {
             LOG.warn("Failed to release migration lock", e);
         }

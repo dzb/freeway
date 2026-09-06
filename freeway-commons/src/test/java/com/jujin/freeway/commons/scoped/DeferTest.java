@@ -564,6 +564,27 @@ class DeferTest {
             "the cached failure must be rethrown, never a silent null");
     }
 
+    @Test
+    void supplyErrorPreservesTypeAndComputesOnce() {
+        // Errors must not be wrapped in RuntimeException: callers catching
+        // AssertionError (or LinkageError/OOM handling) must see the
+        // original type, while the exactly-once guarantee still holds.
+        AtomicInteger runs = new AtomicInteger();
+        AtomicReference<Supplier<String>> holder = new AtomicReference<>();
+        Defer.within(() -> holder.set(
+            Defer.supply(() -> {
+                runs.incrementAndGet();
+                throw new AssertionError("boom");
+            })
+        ));
+        Supplier<String> supplier = holder.get();
+        AssertionError first = assertThrows(AssertionError.class, supplier::get);
+        assertEquals("boom", first.getMessage());
+        AssertionError second = assertThrows(AssertionError.class, supplier::get);
+        assertSame(first, second, "cached Error must be rethrown as-is");
+        assertEquals(1, runs.get(), "side-effecting callable must run exactly once");
+    }
+
     // ==================== result-yielding scope ====================
 
     @Test

@@ -50,16 +50,19 @@ public class Node {
         this.task = new TaskDesc(this, spec.getTask(), spec.getTaskComponent());
 
         if (spec.getMeta() == null || spec.getMeta().isEmpty()) {
-            this.metas = Collections.emptyMap();
+            this.metas = Map.of();
         } else {
             this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.getMeta()));
         }
 
         if (links == null || links.isEmpty()) {
-            this.nextLinks = Collections.emptyList();
+            this.nextLinks = List.of();
         } else {
-            Collections.sort(links);
-            this.nextLinks = Collections.unmodifiableList(new ArrayList<>(links));
+            // Sort a copy: the caller's list must not be reordered as a side
+            // effect of building this node.
+            List<Link> ordered = new ArrayList<>(links);
+            Collections.sort(ordered);
+            this.nextLinks = List.copyOf(ordered);
         }
     }
 
@@ -124,7 +127,7 @@ public class Node {
                 }
                 Collections.reverse(tmp);
             }
-            prevLinks = Collections.unmodifiableList(tmp);
+            prevLinks = List.copyOf(tmp);
         }
         return prevLinks;
     }
@@ -139,7 +142,7 @@ public class Node {
                     tmp.add(graph.getNode(l.getNextId()));
                 }
             }
-            nextNodes = Collections.unmodifiableList(tmp);
+            nextNodes = List.copyOf(tmp);
         }
         return nextNodes;
     }
@@ -161,7 +164,7 @@ public class Node {
                     }
                 }
             }
-            prevNodes = Collections.unmodifiableList(tmp);
+            prevNodes = List.copyOf(tmp);
         }
         return prevNodes;
     }

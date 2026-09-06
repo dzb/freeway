@@ -190,7 +190,14 @@ public final class PoolDefault implements Pool {
 
     @Override
     public void release(PooledConnection conn) {
-        PooledConnectionImpl pc = (PooledConnectionImpl) Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(conn, "conn");
+        if (!(conn instanceof PooledConnectionImpl pc)) {
+            throw new SqlException(
+                "Foreign PooledConnection rejected: " +
+                    conn.getClass().getName() +
+                    " does not belong to this PoolDefault — release connections only to the pool that borrowed them"
+            );
+        }
         if (!active.remove(pc)) {
             // Already removed (e.g. force-closed during shutdown)
             return;

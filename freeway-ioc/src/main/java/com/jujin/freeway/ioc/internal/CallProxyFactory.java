@@ -5,6 +5,7 @@ import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.DeadCallException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletionException;
@@ -46,8 +47,12 @@ public final class CallProxyFactory {
             return handleObjectMethod(proxy, method, args, topicMapping, api);
         }
         try {
+            // Null-tolerant view (not List.of): interface methods legitimately
+            // take null arguments, and the JDK hands them over as null array
+            // elements — List.of would fail the call at the proxy instead of
+            // dispatching it. Mirrors RemoteProxyFactory.asList.
             return bus.call(methodTopic(topicMapping, method.getName()),
-                    args == null ? List.of() : List.of(args))
+                    args == null ? List.of() : Arrays.asList(args))
                 .toCompletableFuture()
                 .join();
         } catch (CompletionException e) {

@@ -88,6 +88,25 @@ class CallBusTest {
     }
 
     @Test
+    void nullProxyArgumentDispatchesInsteadOfNpe() {
+        // The JDK passes a null argument through as a null array element;
+        // the proxy must forward it, not fail building the payload list.
+        interface Nullable {
+            String greet(String name);
+        }
+        Container container = Freeway.create();
+        CallBus bus = new CallBus(container);
+        bus.register("maybe", new Nullable() {
+            @Override public String greet(String name) {
+                return name == null ? "null-name" : name;
+            }
+        });
+        Nullable api = bus.consumer("maybe", Nullable.class);
+        assertEquals("null-name", api.greet(null));
+        bus.close();
+    }
+
+    @Test
     void primitiveArgumentAndReturn() {
         CallBus bus = busWithProvider();
         Greeting greeting = bus.consumer("greeting", Greeting.class);

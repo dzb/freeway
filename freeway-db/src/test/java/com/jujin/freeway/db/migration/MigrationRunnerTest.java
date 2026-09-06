@@ -763,6 +763,54 @@ class MigrationRunnerTest {
         }
     }
 
+    @Test
+    void slowOwnerReleaseDoesNotDeleteTakeoverLock() throws Exception {
+        // A migrates slowly past the TTL; B takes over the stale row and is
+        // itself migrating when A finally releases. A's late release carries
+        // A's owner token and must remove 0 rows — B's fresh lock survives.
+        try (Database db = tempDb("freeway_owner_token")) {
+            createMigrationTable(db);
+            MigrationRunner runnerA =
+                new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runnerB = new MigrationRunner(
+                db, true, "db/migration", "_migrations", Duration.ofSeconds(30));
+
+            invokeLockMethod(runnerA, "acquireLock");
+            db.execute(
+                "update _migrations set executed_at = ? where version = '__LOCK__'",
+                java.sql.Timestamp.from(
+                    java.time.Instant.now().minus(java.time.Duration.ofHours(2)))
+            );
+            invokeLockMethod(runnerB, "acquireLock");
+
+            assertEquals(1L, lockRowCount(db));
+            invokeLockMethod(runnerA, "releaseLock");
+            assertEquals(1L, lockRowCount(db),
+                "a stale owner's late release must not delete the takeover lock");
+            invokeLockMethod(runnerB, "releaseLock");
+            assertEquals(0L, lockRowCount(db),
+                "the takeover owner's release removes its own row");
+        }
+    }
+
+    private static void invokeLockMethod(MigrationRunner runner, String name) throws Exception {
+        var m = MigrationRunner.class.getDeclaredMethod(name);
+        m.setAccessible(true);
+        try {
+            m.invoke(runner);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) throw re;
+            if (cause instanceof Error err) throw err;
+            throw new RuntimeException(cause);
+        }
+    }
+
+    private static long lockRowCount(Database db) {
+        return db.query("select count(*) from _migrations where version = '__LOCK__'")
+            .one(Long.class).orElse(-1L);
+    }
+
     private static Database tempDb(String name) {
         String dbName = name + "_" + UUID.randomUUID().toString().replace('-', '_');
         return new DatabaseBuilder()
