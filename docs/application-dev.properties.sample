@@ -64,7 +64,7 @@ freeway.http.cors.allow-credentials=true
 #  HTTP / HTTPS (TLS) — optional for local dev
 # ================================
 # Use a self-signed or dev certificate for local HTTPS testing.
-# freeway.http.ssl.enabled=false
+# Presence-driven: the keystore path alone activates TLS.
 # freeway.http.ssl.key-store=dev-keystore.p12
 # freeway.http.ssl.key-store-password=changeit
 # freeway.http.ssl.key-store-type=PKCS12

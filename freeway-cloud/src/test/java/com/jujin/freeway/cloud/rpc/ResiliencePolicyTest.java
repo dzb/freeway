@@ -40,7 +40,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> {
                 attempts.incrementAndGet();
                 return ok();
@@ -59,7 +59,7 @@ class ResiliencePolicyTest {
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> policy.run("svc", 0, breaker, FakeLimiter.withPermits(0), () -> {
+            () -> policy.run("svc", 0, breaker, FakeLimiter.withPermits(0), true, () -> {
                 attempts.incrementAndGet();
                 return ok();
             }));
@@ -78,7 +78,7 @@ class ResiliencePolicyTest {
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> policy.run("svc", 0, breaker, limiter, () -> {
+            () -> policy.run("svc", 0, breaker, limiter, true, () -> {
                 attempts.incrementAndGet();
                 return ok();
             }));
@@ -94,7 +94,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
         AtomicInteger attempts = new AtomicInteger();
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> {
                 if (attempts.incrementAndGet() < 3) {
                     throw connectFailure();
@@ -115,7 +115,7 @@ class ResiliencePolicyTest {
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), () -> {
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, () -> {
                 attempts.incrementAndGet();
                 throw connectFailure();
             }));
@@ -125,6 +125,114 @@ class ResiliencePolicyTest {
         assertEquals(2, breaker.failures);
     }
 
+    // ==================== idempotency gate ====================
+
+    @Test
+    void ambiguousOutcomeRetriesForIdempotentOperations() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
+        AtomicInteger attempts = new AtomicInteger();
+
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
+            () -> {
+                attempts.incrementAndGet();
+                if (attempts.get() < 3) {
+                    throw CloudException.timeout("svc");
+                }
+                return ok();
+            });
+
+        assertEquals(200, response.status());
+        assertEquals(3, attempts.get(), "a timeout may be replayed for an idempotent operation");
+        assertEquals(2, breaker.failures);
+    }
+
+    @Test
+    void ambiguousOutcomeFailsFastForNonIdempotentOperations() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
+        AtomicInteger attempts = new AtomicInteger();
+
+        CloudException ex = assertThrows(CloudException.class,
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false, () -> {
+                attempts.incrementAndGet();
+                throw CloudException.timeout("svc");
+            }));
+
+        assertTrue(ex.retryable(), "timeout is still a retryable class of failure");
+        assertTrue(ex.outcomeUnknown(), "a timeout leaves the peer's outcome unknown");
+        assertEquals(1, attempts.get(),
+            "an ambiguous outcome must NOT be replayed for a non-idempotent operation");
+        assertEquals(1, breaker.failures,
+            "the failure still counts against the circuit — it is a real service failure");
+    }
+
+    @Test
+    void serverErrorIsAnAmbiguousOutcome() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
+        AtomicInteger attempts = new AtomicInteger();
+
+        CloudException ex = assertThrows(CloudException.class,
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false, () -> {
+                attempts.incrementAndGet();
+                throw CloudException.http("svc", 503);
+            }));
+
+        assertTrue(ex.retryable());
+        assertTrue(ex.outcomeUnknown(), "the peer may have applied the request before answering 5xx");
+        assertEquals(1, attempts.get(), "5xx must not be replayed for a non-idempotent operation");
+
+        // The same failure retries once the operation is marked idempotent.
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
+            () -> {
+                if (attempts.incrementAndGet() < 3) {
+                    throw CloudException.http("svc", 503);
+                }
+                return ok();
+            });
+        assertEquals(200, response.status());
+        assertEquals(3, attempts.get());
+    }
+
+    @Test
+    void midFlightTransportFailureIsAnAmbiguousOutcome() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
+        AtomicInteger attempts = new AtomicInteger();
+
+        CloudException ex = assertThrows(CloudException.class,
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false, () -> {
+                attempts.incrementAndGet();
+                throw CloudException.transport("svc", new IOException("connection reset"));
+            }));
+
+        assertTrue(ex.retryable());
+        assertTrue(ex.outcomeUnknown(), "a reset after send may have delivered the request");
+        assertEquals(1, attempts.get(),
+            "mid-flight I/O failures must not be replayed for a non-idempotent operation");
+    }
+
+    @Test
+    void connectFailureRetriesEvenForNonIdempotentOperations() {
+        FakeBreaker breaker = FakeBreaker.closed();
+        ResiliencePolicy policy = policy(new FakeRetryer(5, 0));
+        AtomicInteger attempts = new AtomicInteger();
+
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), false,
+            () -> {
+                attempts.incrementAndGet();
+                if (attempts.get() < 2) {
+                    throw connectFailure();
+                }
+                return ok();
+            });
+
+        assertEquals(200, response.status());
+        assertEquals(2, attempts.get(),
+            "a connect failure never reached the peer — safe to replay any operation");
+    }
+
     @Test
     void nonRetryableLocalRejectionFailsImmediatelyWithoutBreakerAccounting() {
         FakeBreaker breaker = FakeBreaker.closed();
@@ -132,7 +240,7 @@ class ResiliencePolicyTest {
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), () -> {
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true, () -> {
                 attempts.incrementAndGet();
                 throw CloudException.noInstance("svc");
             }));
@@ -151,7 +259,7 @@ class ResiliencePolicyTest {
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
+            () -> policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
                 () -> {
                     throw CloudException.noInstance("svc");
                 }));
@@ -166,7 +274,7 @@ class ResiliencePolicyTest {
         FakeBreaker breaker = FakeBreaker.halfOpen();
         ResiliencePolicy policy = policy(Retryer.NO_RETRY);
 
-        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(),
+        CloudResponse response = policy.run("svc", 0, breaker, FakeLimiter.unlimited(), true,
             () -> ok());
 
         assertEquals(200, response.status());
@@ -181,7 +289,7 @@ class ResiliencePolicyTest {
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> policy.run("svc", 1, breaker, FakeLimiter.unlimited(), () -> {
+            () -> policy.run("svc", 1, breaker, FakeLimiter.unlimited(), true, () -> {
                 attempts.incrementAndGet();
                 return ok();
             }));
@@ -200,7 +308,7 @@ class ResiliencePolicyTest {
         AtomicInteger attempts = new AtomicInteger();
 
         CloudException ex = assertThrows(CloudException.class,
-            () -> policy.run("svc", DurationNanos.ms(5), breaker, FakeLimiter.unlimited(),
+            () -> policy.run("svc", DurationNanos.ms(5), breaker, FakeLimiter.unlimited(), true,
                 () -> {
                     attempts.incrementAndGet();
                     throw connectFailure();

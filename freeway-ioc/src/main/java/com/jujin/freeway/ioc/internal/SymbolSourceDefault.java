@@ -1,7 +1,9 @@
 package com.jujin.freeway.ioc.internal;
 
+import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.symbol.UnknownSymbolException;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,13 @@ final class SymbolSourceDefault implements SymbolSource {
      *  on every provider, which would force the on-demand class-contribution
      *  facades to materialize at bind time otherwise. */
     private volatile List<SymbolProvider> ordered;
+
+    /** The container's {@link Coercer} — lets the one-step
+     *  {@code resolve(spec)} parse coercer-backed types (Duration, Boolean,
+     *  user {@code CoerceRule}s) without the two-step
+     *  {@code spec.parse(resolve(key), coercer)} idiom. Null until the
+     *  container wires it. */
+    private volatile Coercer coercer;
 
     SymbolSourceDefault(List<SymbolProvider> providers) {
         this.providers.addAll(Objects.requireNonNull(providers, "providers"));
@@ -57,6 +66,19 @@ final class SymbolSourceDefault implements SymbolSource {
         // decides, never the install order of the contributing module.
         providers.add(Objects.requireNonNull(provider, "provider"));
         ordered = null; // invalidate the sorted snapshot
+    }
+
+    /** Wires the container's {@link Coercer} so the one-step
+     *  {@code resolve(SymbolSpec)} parses coercer-backed specs. */
+    void coercer(Coercer coercer) {
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
+    }
+
+    @Override
+    public <T> T resolve(SymbolSpec<T> spec) {
+        // The chain's coercer (when wired) also covers specs that declare a
+        // per-key parser — SymbolSpec.parse prefers the explicit parser.
+        return spec.parse(resolve(spec.key(), null), coercer);
     }
 
     /** All providers in declared precedence order (ascending {@code order()});

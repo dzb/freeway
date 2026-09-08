@@ -18,18 +18,17 @@ import java.util.Properties;
 /**
  * The one config-file parser: {@code .json} files are read as JSON and
  * flattened to dotted keys, everything else as {@code java.util.Properties}.
- * Shared by the classpath cascade ({@code ConfigLoaderDefault}) and the
- * hot-reload file tier ({@code AppConfigDefault}) so a file parses
- * identically at startup and on every reload — regardless of where it
- * lives (classpath, working directory, {@code freeway.config.file}).
+ * Shared by the boot config wiring — the classpath cascade, the hot-reload
+ * file tier, and the bootstrap log cascade (through the boot-supplied
+ * {@code LogConfigHomes}) — so a file parses identically no matter where it
+ * lives (classpath, working directory, {@code freeway.config.file}) or which
+ * cascade reads it.
  *
  * <p>Both formats are read as UTF-8. Properties text keeps the
  * {@code java.util.Properties} key/value syntax; JSON objects are nested
  * freely and flattened ({@code {"db": {"host": "x"}}} → {@code db.host=x}).
  * A blank JSON document means "no config", mirroring an empty
  * {@code application.properties}.
- *
- * <p>Internal helper of the boot config wiring — not part of the public API.
  */
 public final class ConfigFileReader {
 

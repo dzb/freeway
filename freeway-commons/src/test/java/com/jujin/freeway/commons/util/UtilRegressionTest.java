@@ -75,11 +75,49 @@ class UtilRegressionTest {
 
         Map<String, String> result = Maps.flatten(root);
 
-        assertEquals("1", result.get("a.0.x"));
+            assertEquals("1", result.get("a.0.x"));
         assertEquals("1", result.get("a.1.x"));
         assertEquals("1", result.get("b.0.x"));
         assertEquals("1", result.get("b.1.x"));
         assertEquals(4, result.size());
+    }
+
+    @Test
+    void mapsFlattenJoinsScalarArraysIntoOneKey() {
+        // The list encoding of the config system: a scalar array joins into
+        // a single comma-separated key (SymbolSpec.list), the same convention
+        // HTTP headers use. Indexed names (a.0) would match no declared key.
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("a", List.of("x", "y", " z "));
+
+        Map<String, String> result = Maps.flatten(root);
+
+        assertEquals("x,y, z ", result.get("a"),
+            "elements join comma-separated without re-trimming (the list spec trims)");
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void mapsFlattenJoinsEmptyScalarArrayToAnEmptyValue() {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("a", List.of());
+
+        assertEquals("", Maps.flatten(root).get("a"),
+            "an empty array is one empty value — the list spec reads it as unset");
+    }
+
+    @Test
+    void mapsFlattenKeepsIndexingForNonScalarArrays() {
+        Map<String, Object> shared = new LinkedHashMap<>();
+        shared.put("host", "a");
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("a", List.of(shared, shared));
+
+        Map<String, String> result = Maps.flatten(root);
+
+        assertEquals("a", result.get("a.0.host"));
+        assertEquals("a", result.get("a.1.host"),
+            "arrays containing structures keep indexed flattening");
     }
 
     @Test

@@ -74,9 +74,10 @@ freeway.http.cors.allow-credentials=false
 # ================================
 # Enable HTTPS in production — set key-store and password via env vars.
 # Scenario: certificates from a CA (Let's Encrypt) or internal PKI.
+# Presence-driven: the key-store path alone activates TLS.
 # FREEWAY_HTTP_SSL_KEY_STORE=/etc/ssl/keystore.p12
 # FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD=***
-freeway.http.ssl.enabled=true
+# freeway.http.ssl.enabled=true
 # freeway.http.ssl.key-store=
 # freeway.http.ssl.key-store-password=
 # freeway.http.ssl.key-store-type=PKCS12

@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -19,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jujin.freeway.http.HttpConfigKeys;
+import com.jujin.freeway.http.internal.HttpModuleConfig;
 
 /**
  * Builds the TLS material for the built-in HTTPS engine: keystore/truststore
@@ -30,7 +32,13 @@ public final class SslContextFactory {
 
     private SslContextFactory() {}
 
-    public static SSLContext buildContext(HttpConfig.Ssl s) {
+    public static SSLContext buildContext(HttpModuleConfig.Ssl s) {
+        if (s.keyStorePath() == null || s.keyStorePath().isBlank()) {
+            throw new IllegalStateException(HttpConfigKeys.SSL_KEY_STORE
+                + " is required when the HTTPS engine is enabled"
+                + " (set the keystore path, or " + HttpConfigKeys.SSL_ENABLED
+                + "=false to serve plain HTTP)");
+        }
         try {
             KeyStore defaultStore = loadKeyStore(
                 Path.of(s.keyStorePath()), s.keyStoreType(), s.keyStorePassword());
@@ -50,20 +58,21 @@ public final class SslContextFactory {
         }
     }
 
-    public static SSLParameters buildParameters(boolean clientAuth, String protocols,
-                                         String ciphers) {
-        if (!clientAuth && isBlank(protocols) && isBlank(ciphers)) {
+    public static SSLParameters buildParameters(boolean clientAuth, List<String> protocols,
+                                                List<String> ciphers) {
+        if (!clientAuth && (protocols == null || protocols.isEmpty())
+                && (ciphers == null || ciphers.isEmpty())) {
             return null;
         }
         SSLParameters params = new SSLParameters();
         if (clientAuth) {
             params.setNeedClientAuth(true);
         }
-        if (!isBlank(protocols)) {
-            params.setProtocols(splitTokens(protocols));
+        if (protocols != null && !protocols.isEmpty()) {
+            params.setProtocols(protocols.toArray(String[]::new));
         }
-        if (!isBlank(ciphers)) {
-            params.setCipherSuites(splitTokens(ciphers));
+        if (ciphers != null && !ciphers.isEmpty()) {
+            params.setCipherSuites(ciphers.toArray(String[]::new));
         }
         return params;
     }
@@ -96,7 +105,7 @@ public final class SslContextFactory {
         return password == null ? null : password.toCharArray();
     }
 
-    private static KeyManager[] buildSniKeyManagers(HttpConfig.Ssl s,
+    private static KeyManager[] buildSniKeyManagers(HttpModuleConfig.Ssl s,
                                                     KeyStore defaultStore)
             throws Exception {
         Path dir = Path.of(s.sniDirectory());
@@ -129,7 +138,7 @@ public final class SslContextFactory {
             byHost, effectiveDefault, keyStorePasswordChars(s.keyStorePassword()))};
     }
 
-    private static TrustManager[] buildTrustManagers(HttpConfig.Ssl s)
+    private static TrustManager[] buildTrustManagers(HttpModuleConfig.Ssl s)
             throws Exception {
         if (s.trustStorePath() == null) {
             return null;
@@ -163,17 +172,5 @@ public final class SslContextFactory {
         if (lower.endsWith(".jks")) return "JKS";
         if (lower.endsWith(".p12") || lower.endsWith(".pfx")) return "PKCS12";
         return fallback;
-    }
-
-    private static String[] splitTokens(String value) {
-        String[] parts = value.split(",");
-        for (int i = 0; i < parts.length; i++) {
-            parts[i] = parts[i].trim();
-        }
-        return parts;
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 }

@@ -36,6 +36,12 @@ import java.util.concurrent.CompletionException;
  * when the remote handler threw — callers keep one honest catch shape per
  * failure class. {@link #timeout(Duration)} bounds the whole call, retries
  * included; without it only the configured request-timeout applies.</p>
+ *
+ * <p>Ambiguous transport outcomes (timeout, mid-flight I/O, 5xx) are
+ * replayed only for operations the interface marks {@link Idempotent} —
+ * on the method or the whole interface. Unmarked operations fail after the
+ * first ambiguous outcome, because the remote handler may already have
+ * applied it.</p>
  */
 public final class RemoteProxyFactory {
 
@@ -167,8 +173,14 @@ public final class RemoteProxyFactory {
 
     private Object remoteDispatch(Method method, Object[] args) throws Throwable {
         try {
+            // The consumer interface owns the replay-safety verdict: an
+            // @Idempotent method (or interface) tells the resilience loop
+            // that ambiguous outcomes may be replayed. Read reflectively
+            // per call — no scanning, no wire change.
+            boolean idempotent = method.isAnnotationPresent(Idempotent.class)
+                || method.getDeclaringClass().isAnnotationPresent(Idempotent.class);
             return remote.invoke(serviceId, mapping, method.getName(), asList(args),
-                method.getReturnType(), timeout);
+                method.getReturnType(), timeout, idempotent);
         } catch (CloudException e) {
             // Transport failures keep their type; business failures are wrapped
             // (RemoteInvocationException) — both land here as CloudException.

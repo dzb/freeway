@@ -6,7 +6,7 @@
  * restricted to non-replaceable implementation pieces: container-instantiated
  * handlers and filters (kept {@code public} because feature-package modules
  * reference them by class), module-constructed lifecycle hooks, and shared
- * helpers/state ({@code RegistryStore}, {@code ConfigLists}). Replaceable
+ * helpers/state ({@code RegistryStore}). Replaceable
  * defaults never live here — they sit in their feature packages. Code outside
  * this module must not reference these classes.
  */

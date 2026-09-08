@@ -16,7 +16,7 @@ import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
-import com.jujin.freeway.http.internal.HttpConfig;
+import com.jujin.freeway.http.internal.HttpModuleConfig;
 import com.jujin.freeway.http.internal.SslContextFactory;
 import com.jujin.freeway.http.internal.SslReloader;
 import com.jujin.freeway.http.filter.AccessLogFilter;
@@ -68,17 +68,15 @@ public final class HttpModule implements ModuleEx {
         binder.bind(WebSocketIndex.class).to(WebSocketIndex.class);
         binder.bind(JsonCodec.class).to(JsonCodecDefault.class);
         // Config — one immutable snapshot, bound once for the whole module.
-        binder.bind(HttpConfig.class).to(container -> HttpConfig.from(
-            container.get(SymbolSource.class),
-            container.get(Coercer.class)));
+        binder.bind(HttpModuleConfig.class).to(container -> HttpModuleConfig.from(
+            container.get(SymbolSource.class)));
 
-        // CorsFilter — bridge ioC config to plain constructor
+        // CorsFilter — bridge IoC config to plain constructor (list-typed)
         binder.bind(CorsFilter.class).to(container -> {
-            HttpConfig.Cors cors = container.get(HttpConfig.class).cors();
+            HttpModuleConfig.Cors cors = container.get(HttpModuleConfig.class).cors();
             return new CorsFilter(cors.enabled(), cors.allowedOrigins(),
                 cors.allowedMethods(), cors.allowedHeaders(),
-                cors.exposedHeaders().isBlank() ? null : cors.exposedHeaders(),
-                cors.maxAge(), cors.allowCredentials());
+                cors.exposedHeaders(), cors.maxAge(), cors.allowCredentials());
         });
 
         // Engines — concrete bindings, HTTPS when SSL is enabled
@@ -87,7 +85,7 @@ public final class HttpModule implements ModuleEx {
             var coercer = container.get(Coercer.class);
             var metrics = container.get(Metrics.class);
 
-            HttpConfig.Ssl ssl = container.get(HttpConfig.class).ssl();
+            HttpModuleConfig.Ssl ssl = container.get(HttpModuleConfig.class).ssl();
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(json, coercer, metrics);
@@ -115,7 +113,7 @@ public final class HttpModule implements ModuleEx {
         // WebServer — bridge IoC capabilities to plain constructor
         binder.bind(WebServer.class).to(container -> {
             HttpEngine engine = container.get(HttpEngine.class);
-            HttpConfig cfg = container.get(HttpConfig.class);
+            HttpModuleConfig cfg = container.get(HttpModuleConfig.class);
 
             Consumer<Object> eventSink = event ->
                 container.get(EventBus.class).publish(event);
@@ -138,7 +136,7 @@ public final class HttpModule implements ModuleEx {
 
             return new WebServer(
                 engine,
-                cfg.toServerConfig(),
+                cfg.server(),
                 eventSink,
                 pipeline
             );
@@ -147,7 +145,7 @@ public final class HttpModule implements ModuleEx {
         binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
-                HttpConfig.Ssl ssl = container.get(HttpConfig.class).ssl();
+                HttpModuleConfig.Ssl ssl = container.get(HttpModuleConfig.class).ssl();
                 container.get(WebServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
@@ -192,7 +190,7 @@ public final class HttpModule implements ModuleEx {
 
         binder.bind(HealthCheck.class).to(HealthCheck.Default.class);
         binder.bind(HealthFilter.class).to(container -> {
-            HttpConfig.Health health = container.get(HttpConfig.class).health();
+            HttpModuleConfig.Health health = container.get(HttpModuleConfig.class).health();
             HealthCheck check = container.get(HealthCheck.class);
             return new HealthFilter(health.enabled(), health.path(), check);
         });

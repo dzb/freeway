@@ -643,7 +643,7 @@ Logger log = container.get(LoggerSource.class).get(UserService.class);
 
 `freeway-commons` registers a JUL-backed SLF4J 2 provider **unconditionally** via `META-INF/services` — zero-dependency. Because SLF4J 2.x does not prefer any provider on its own, `LogBootstrap.ensureProvider()` runs at startup (`FreewayApp`/`Freeway` static initialization, before any `LoggerFactory.getLogger()` call) and probes the classpath for external SLF4J 2.x providers (Logback, Log4j 2, slf4j-simple, in that priority). When one is present it pins the `slf4j.provider` system property to it, so the external provider deterministically wins over the JUL fallback; the JUL provider takes effect only when no external provider exists. A user-supplied `-Dslf4j.provider` is always respected and never overridden. Adding Logback switches seamlessly without code changes.
 
-Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Configuration is through `freeway-log.properties` on the classpath root (not bundled in the JAR). System properties (`-D`) and env vars override file values — the env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix.
+Logging works **out of the box** with sensible defaults: ANSI-colored console output, rotating file logging at `logs/{app.name}.log`. Log keys have two file homes: the dedicated `freeway-log.properties` on the classpath root (not bundled in the JAR), or the app's main config files — `application.properties` / `application.json` plus their active profile variants (the main cascade's classpath file baseline) contribute their `freeway.log.*` keys; the dedicated file outranks them. System properties (`-D`) and env vars override both file homes — the env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix. Per-logger levels (`<logger>.level`) stay in `freeway-log.properties` — inside the app config they are indistinguishable from ordinary dotted keys.
 
 ```properties
 freeway.log.level=INFO
@@ -1725,10 +1725,25 @@ UserApi api2 = RemoteProxyFactory.of(callBus, caller)
 
 **Error model — two classes, two instincts:**
 
-| Failure | Thrown as | Retry? |
-|---------|-----------|--------|
-| Transport (connect/timeout/5xx) | `CloudException`, `retryable()==true` | yes — Retryer/breaker apply |
+| Failure | Thrown as | Replay? |
+|---------|-----------|---------|
+| Connect refused / connect timeout | `CloudException`, `retryable()==true`, `outcomeUnknown()==false` | yes — the request never left this process |
+| Timeout, mid-flight I/O, 5xx | `CloudException`, `retryable()==true`, `outcomeUnknown()==true` | **only for idempotent operations** — the peer may have applied the request |
 | Remote handler threw | `CloudException` (4xx) with `RemoteInvocationException` as cause | **no** — deterministic |
+
+A retryable failure passes two gates before the Retryer is consulted: the
+failure category and idempotency. Plain `CloudHttpClient` requests derive
+idempotency from the verb (GET/PUT/DELETE/OPTIONS/HEAD/TRACE replay; POST/PATCH
+do not) and can override it with `CloudRequest.idempotentWith(true)`. Remote
+CallBus calls travel as POST, so mark consumer interface methods — or the whole
+interface — with `@Idempotent` when their remote handlers replay safely:
+
+```java
+public interface UserApi {
+    @Idempotent Greeting greet(String name);   // pure query — safe to replay
+    Account open(String name);                 // must not replay: ambiguous
+}                                              // outcomes fail fast instead
+```
 
 Remote exceptions are rebuilt by class name and message only; the original
 type is not reconstructed (it may not exist on the caller's classpath).
@@ -1748,18 +1763,23 @@ FreewayApp.run(new String[0],
     new AppModule(), new HttpModule(), new CloudEventModule());
 ```
 
-Config (`freeway.cloud.events.*`):
+Config (`freeway.cloud.events.*`) — presence-driven activation:
 
 ```properties
-freeway.cloud.events.enabled=true              # module is inert without this
+# Static peers: presence alone activates the mesh — no enabled needed.
 freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080
+# Discovery-fed mesh without static peers needs the explicit switch:
+# freeway.cloud.events.enabled=true
+# freeway.cloud.events.enabled=false            # kill switch — suppresses even configured peers
 freeway.cloud.events.subscriptions=order.,user.created
 freeway.cloud.events.allowed-types=com.acme.OrderCreated
 freeway.cloud.events.allowed-topics=order.
 freeway.cloud.events.token=mesh-secret         # blank = no peer auth (warned); MUST be set in production
 ```
 
-- `peers` — nodes to dial; an external registry backend could feed these
+- `peers` — nodes to dial; a non-empty list **is the activation** (the
+  dialing side never needs `events.enabled`). An external registry backend
+  could feed these
   dynamically instead (via `PeerConnector.setPeers`; that needs a discovery
   adapter — an ext concern, none is shipped today). The endpoint rides the
   existing HTTP server at

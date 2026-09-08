@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.events;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.internal.ConfigLists;
+
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.Container;
@@ -31,8 +31,11 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<Integer> DEDUP_CAPACITY = SymbolSpec.of(
         CloudConfigKeys.EVENTS_DEDUP_CAPACITY, Integer.class,
         CloudConfigKeys.EVENTS_DEDUP_CAPACITY_DEFAULT, Integer::parseInt);
-    private static final SymbolSpec<Boolean> EVENTS_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.EVENTS_ENABLED, Boolean.class, false, Boolean::parseBoolean);
+    /** The explicit form of the master switch, kept raw so "unset" (blank)
+     *  is distinguishable from an explicit {@code false} — the presence rule
+     *  applies only to the unset case. */
+    private static final SymbolSpec<String> EVENTS_ENABLED_EXPLICIT = SymbolSpec.of(
+        CloudConfigKeys.EVENTS_ENABLED, String.class, "", Function.identity());
     private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
         CloudConfigKeys.EVENTS_DEDUP_ENABLED, Boolean.class, false, Boolean::parseBoolean);
 
@@ -44,13 +47,13 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
         CloudConfigKeys.EVENTS_TOKEN, String.class, "", Function.identity());
     private static final SymbolSpec<List<String>> SUBSCRIPTIONS =
-        ConfigLists.spec(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, List.of());
     private static final SymbolSpec<List<String>> ALLOWED_TYPES =
-        ConfigLists.spec(CloudConfigKeys.EVENTS_ALLOWED_TYPES, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENTS_ALLOWED_TYPES, List.of());
     private static final SymbolSpec<List<String>> ALLOWED_TOPICS =
-        ConfigLists.spec(CloudConfigKeys.EVENTS_ALLOWED_TOPICS, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENTS_ALLOWED_TOPICS, List.of());
     private static final SymbolSpec<List<String>> PEERS =
-        ConfigLists.spec(CloudConfigKeys.EVENTS_PEERS, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENTS_PEERS, List.of());
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS =
         SymbolSpec.of(CloudConfigKeys.EVENTS_CONNECT_TIMEOUT_MS, Long.class,
             CloudConfigKeys.EVENTS_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
@@ -83,9 +86,11 @@ final class CloudEventLifecycleHook implements RuntimeHook {
                 symbols.resolve(DEDUP_CAPACITY));
         }
 
-        if (!symbols.resolve(EVENTS_ENABLED)) {
-            LOG.info("CloudEventBus disabled ({}=false) — mesh not wired",
-                CloudConfigKeys.EVENTS_ENABLED);
+        List<String> peers = symbols.resolve(PEERS);
+        if (!meshOn(symbols.resolve(EVENTS_ENABLED_EXPLICIT), peers)) {
+            LOG.info("CloudEventBus not wired — dial peers with {}=<host:port,...> "
+                    + "or set {}=true (discovery-fed mesh)",
+                CloudConfigKeys.EVENTS_PEERS, CloudConfigKeys.EVENTS_ENABLED);
             return;
         }
 
@@ -121,7 +126,19 @@ final class CloudEventLifecycleHook implements RuntimeHook {
             symbols.resolve(BACKOFF_BASE_MS),
             symbols.resolve(BACKOFF_MAX_MS));
         bus.addEventSink(sink);
-        connector.start(symbols.resolve(PEERS));
+        connector.start(peers);
+    }
+
+    /**
+     * Presence-driven activation via {@link SymbolSpec}: an explicit
+     * {@code events.enabled} wins — {@code true} turns the mesh on and
+     * {@code false} is the kill switch (suppressing even a configured peer
+     * list). Unset falls to the presence rule: configured peers imply a
+     * mesh. Nothing set leaves the module inert — installing
+     * CloudEventModule alone is never a side effect.
+     */
+    private static boolean meshOn(String enabledRaw, List<String> peers) {
+        return SymbolSpec.activated(CloudConfigKeys.EVENTS_ENABLED, enabledRaw, !peers.isEmpty());
     }
 
     @Override

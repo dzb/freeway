@@ -16,8 +16,12 @@ import java.util.List;
  * the remote handler map to 4xx plus the {@code X-RPC-Exception} /
  * {@code X-RPC-Message} headers and surface as
  * {@link RemoteInvocationException}; everything else reuses the transport
- * failure semantics of {@link CloudException} (retryable per existing rules),
- * so resilience policies configured for plain RPC apply unchanged.</p>
+ * failure semantics of {@link CloudException} — with one refinement: since
+ * the wire verb is POST (non-idempotent), ambiguous outcomes (timeout,
+ * mid-flight I/O, 5xx) are retried only for operations marked
+ * {@link Idempotent} (or when the explicit invoke overload says so).
+ * Unmarked operations fail after the first ambiguous outcome, because the
+ * remote handler may already have applied it.</p>
  *
  * <p>This class never touches {@code CallBus} itself — the local-vs-remote
  * fallback decision belongs to the caller (see design doc §3.3).</p>
@@ -44,7 +48,9 @@ public final class RemoteCaller {
 
     /**
      * Invokes the remote handler registered for {@code mapping + "." + method}
-     * in the target service.
+     * in the target service. The operation is treated as non-idempotent:
+     * ambiguous transport outcomes are not replayed — mark the operation
+     * safe via the {@link Idempotent}-aware overload.
      *
      * @param serviceId  discovery id of the target service
      * @param mapping    call-topic prefix (e.g. {@code "user"})
@@ -64,7 +70,7 @@ public final class RemoteCaller {
         List<?> args,
         Class<T> returnType
     ) throws CloudException {
-        return invoke(serviceId, mapping, method, args, returnType, null);
+        return invoke(serviceId, mapping, method, args, returnType, null, false);
     }
 
     /**
@@ -80,6 +86,25 @@ public final class RemoteCaller {
         List<?> args,
         Class<T> returnType,
         java.time.Duration timeout
+    ) throws CloudException {
+        return invoke(serviceId, mapping, method, args, returnType, timeout, false);
+    }
+
+    /**
+     * As {@link #invoke(String, String, String, List, Class, Duration)} with
+     * an explicit replay-safety verdict. {@code idempotent=true} lets the
+     * resilience loop replay ambiguous outcomes (timeout, mid-flight I/O,
+     * 5xx) — use it for handlers that safely re-execute; keep the default
+     * for handlers that must not.
+     */
+    public <T> T invoke(
+        String serviceId,
+        String mapping,
+        String method,
+        List<?> args,
+        Class<T> returnType,
+        java.time.Duration timeout,
+        boolean idempotent
     ) throws CloudException {
         RpcPaths.validateSegment(mapping, "mapping");
         RpcPaths.validateSegment(method, "method");
@@ -98,7 +123,8 @@ public final class RemoteCaller {
             java.util.Map.of(
                 "Content-Type", CONTENT_TYPE,
                 VERSION_HEADER, VERSION),
-            body.getBytes(StandardCharsets.UTF_8));
+            body.getBytes(StandardCharsets.UTF_8))
+            .idempotentWith(idempotent);
         CloudResponse response;
         try {
             if (timeout != null && !timeout.isZero() && !timeout.isNegative()) {

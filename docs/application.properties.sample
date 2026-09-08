@@ -4,6 +4,8 @@
 #  or application-{profile}.properties for profile-specific values.
 #
 #  Resolution order (lowest -> highest priority):
+#    0. Environment preset (-Dfreeway.preset=docker|local, bootstrap-only:
+#       fills defaults for a standard deployment environment)
 #    1. application.properties
 #    2. application.json
 #    3. application-{profile}.properties
@@ -14,6 +16,9 @@
 #  Activate profile: --freeway.profile=dev
 #  or env: FREEWAY_PROFILE=dev
 #
+#  Environment preset: -Dfreeway.preset=docker   (or FREEWAY_PRESET=docker)
+#    container platform defaults: bind 0.0.0.0, stdout-only logging
+#
 #  Custom env prefix: -Dfreeway.env.prefix=APP_
 #    then APP_SERVER_PORT -> server.port (passthrough)
 #
@@ -21,7 +26,7 @@
 #  必填配置（启动时必须设置，否则报错）:
 #    - freeway.db.url          (JDBC 连接 URL)
 #    - freeway.db.username     (数据库用户名)
-#    - freeway.http.ssl.enabled + 证书  (生产环境 HTTPS)
+#    - freeway.http.ssl.key-store + 证书  (生产环境 HTTPS)
 #  ========================================
 ##################################################################
 
@@ -140,16 +145,14 @@
 #  HTTP / HTTPS (TLS)
 # ================================
 
-# Enable HTTPS — requires key-store and password. When enabled the
-# existing HTTP port (default 8080) upgrades to TLS.
+# Enable HTTPS — presence-driven: a non-empty key-store path alone turns
+# the port into TLS. ssl.enabled=false is the kill switch (suppresses the
+# keystore, back to plaintext); ssl.enabled=true requires the keystore.
 # Scenario: enable in production with proper certificates from a CA or Vault.
-# [生产必填] 开发环境保持 false，生产必须设为 true 并配置证书.
-# freeway.http.ssl.enabled=false
-
-# Keystore path and password.
 # freeway.http.ssl.key-store=
 # freeway.http.ssl.key-store-password=
 # freeway.http.ssl.key-store-type=PKCS12
+# freeway.http.ssl.enabled=
 
 # HTTP/2 over TLS via ALPN negotiation.
 # freeway.http.ssl.http2=true
@@ -302,6 +305,12 @@
 # Enable RPC call tracing for debugging cross-service calls.
 # freeway.cloud.rpc.trace.enabled=true
 
+# Aggregate resilience switch: auto (default) = fine-grained keys below govern;
+# off = kill switch (no retry, no breaker, no limiter, fine keys ignored).
+# Scenario: set off when a service mesh already retries/breaks for you, or to
+# isolate variables while diagnosing an outage. Invalid values fail at startup.
+# freeway.cloud.rpc.resilience=auto
+
 # Retry configuration for transient failures.
 # Scenario: network glitches, brief downstream unavailability.
 # freeway.cloud.rpc.retry.max-attempts=3
@@ -333,8 +342,11 @@
 
 # Enable cross-node event mesh for distributed event publishing.
 # Scenario: multi-instance deployments needing event broadcast.
-# freeway.cloud.events.enabled=false
+# Presence-driven: a non-empty peers list alone activates the mesh; set
+# enabled=false to kill the mesh even with peers configured; set enabled=true
+# for a discovery-fed mesh without static peers. Nothing set = module inert.
 # freeway.cloud.events.peers=
+# freeway.cloud.events.enabled=
 # freeway.cloud.events.subscriptions=
 # CLASS-channel deserialization allowlist (empty = deny all typed events).
 # freeway.cloud.events.allowed-types=

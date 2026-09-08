@@ -312,9 +312,17 @@ rateLimiter.tryAcquire()
 - **被调方零要求**：就是普通 Freeway HTTP 应用，Route 照常贡献。
   无 `/rpc/*` 私有协议、无方法级派发、无跨边界异常序列化。
 - 重试**必须重新选实例**（换 discovery 刷新后的不同实例），不 hammer
-  死实例。连接失败/超时 retryable；**5xx 抛 `CloudException`（status>=500，
-  retryable）进重试+熔断统计；4xx 作为响应返回**（调用方拥有 body，
-  不重试）。`CloudException` 携带 retryable 标志。
+  死实例。重试经过**两道门**：① 类别门——连接失败/超时 retryable；
+  **5xx 抛 `CloudException`（status>=500，retryable）进重试+熔断统计；
+  4xx 作为响应返回**（调用方拥有 body，不重试）；② 幂等门——
+  timeout/中途 I/O/5xx 属"结果未知"（`CloudException.outcomeUnknown()`，
+  对端可能已执行请求），**仅对幂等操作重放**；connect 类失败请求未出
+  本进程，任何操作都可重放。幂等性由 `CloudRequest` 携带：按动词
+  RFC 9110 分类派生（GET/HEAD/PUT/DELETE/OPTIONS/TRACE 幂等，
+  POST/PATCH/未知动词否），`idempotentWith(...)` 显式覆盖；
+  远程 CallBus（线上恒为 POST）经 consumer 接口的 `@Idempotent`
+  注解（方法级/接口级）声明。模糊结局的熔断计数不受幂等门影响——
+  它仍是真实的服务失败。`CloudException` 携带 retryable 标志。
 - 超时：每调用 `HttpRequest.timeout(Duration)`，键
   `freeway.cloud.rpc.connect-timeout` / `request-timeout`。
 - 默认：`bind(CloudHttpClient)` → `CloudHttpClientDefault`，标记
@@ -395,7 +403,7 @@ public interface SecretStore {
   `RateLimiterDefault`：令牌桶，burst 默认 1（严格速率）。
 - **默认优先在 `CloudHttpClient` 层统一生效**（最稳定、最容易落地的
   路径，见 §5.2 编排）。编排顺序：rate-limiter → breaker → 选实例 →
-  发送；5xx/连接/超时进重试+熔断，重试重新选实例。**本地拒绝语义**：
+  发送；重试经过类别门与幂等门（§5.2），重试重新选实例。**本地拒绝语义**：
   circuit-open / rate-limited 是 retryable=false 的 `CloudException`
   （限流重试会立即再失败），且计入 `cloud.rpc.failures` 指标；
   限流先于熔断——本地拒绝不消耗半开探针名额。派发期的非预期本地异常
@@ -403,7 +411,10 @@ public interface SecretStore {
   `CloudException.dispatch`（retryable=false），保证调用面单一、半开
   探针总有结局。`@Retry`/`@CircuitBreak`/`@RateLimit` 注解 +
   `Advisor` 织入本地接口服务为后期可选（AOP 仅接口→实现约束）。
-- 配置键：`freeway.cloud.rpc.retry.*` / `circuit-breaker.*` /
+- 配置键：**聚合开关 `rpc.resilience = auto | off`**——`auto`（默认）由细项键治理，
+  `off` 是显式总闸（NO_RETRY / NOOP / UNLIMITED，忽略全部细项键；mesh 接管与
+  故障诊断的逃生口，启动钩子校验非法值即失败）；细项键
+  `freeway.cloud.rpc.retry.*` / `circuit-breaker.*` /
   `rate-limit.*`（熔断滑动窗口秒数由
   `circuit-breaker.failure-window` 控制，默认 60）；
   `circuit-breaker.enabled=false` → NOOP、

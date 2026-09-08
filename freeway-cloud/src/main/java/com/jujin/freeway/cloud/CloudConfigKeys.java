@@ -38,6 +38,17 @@ public final class CloudConfigKeys {
     public static final String REGISTRY_SERVICE_SCHEME_DEFAULT = "http";
 
     // ── RPC (remote invocation) ─────────────────────────────
+    /** Aggregate switch for the whole resilience bundle: {@code auto}
+     *  (default — the fine-grained {@code rpc.retry.*} /
+     *  {@code rpc.circuit-breaker.*} / {@code rpc.rate-limit.*} keys govern)
+     *  or {@code off} (kill switch — no retry, NOOP breaker, unlimited
+     *  limiter; the fine-grained keys are ignored). {@code off} is the
+     *  escape hatch for mesh takeover (the platform already retries) and
+     *  failure diagnosis; it must be explicit. Honored when
+     *  CloudResilienceModule is installed — the CloudModule default. */
+    public static final String RPC_RESILIENCE        = PREFIX + ".rpc.resilience";
+    public static final String RPC_RESILIENCE_AUTO   = "auto";
+    public static final String RPC_RESILIENCE_OFF    = "off";
     public static final String RPC_CONNECT_TIMEOUT     = PREFIX + ".rpc.connect-timeout";
     public static final String RPC_REQUEST_TIMEOUT     = PREFIX + ".rpc.request-timeout";
     public static final String RPC_RETRY_MAX_ATTEMPTS  = PREFIX + ".rpc.retry.max-attempts";
@@ -85,12 +96,16 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
 
     // ── CloudEventBus (cross-node EventBus mesh, see docs/freeway-cloud-events-design.md) ──
-    /** Master switch for the WS event mesh: when false the hub stays unwired
-     *  and the connector never starts (bus-level inbound dedup still arms if
-     *  configured — dedup is not a mesh property). */
+    /** Master switch for the WS event mesh — presence-driven: an explicit
+     *  value wins ({@code true} on, {@code false} = kill switch suppressing
+     *  even a configured peer list); unset falls to the presence rule —
+     *  configured peers imply a mesh. Unset with no peers leaves the mesh
+     *  unwired: installing CloudEventModule alone stays inert. */
     public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
     /** Static mesh endpoints to dial (host:port, see {@code PeerAddress}).
-     *  Discovery-fed peers are additive via {@code PeerConnector.setPeers}. */
+     *  Presence alone activates the mesh (unless {@code events.enabled=false}
+     *  explicitly suppresses it); discovery-fed peers are additive via
+     *  {@code PeerConnector.setPeers}. */
     public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
     /** CE type/topic prefixes this node declares in its hello — peers fan out
      *  only what matches, so empty = outbound-only (nothing to receive). */

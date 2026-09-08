@@ -2,6 +2,10 @@ package com.jujin.freeway.ioc.symbol;
 
 import com.jujin.freeway.commons.coercion.Coercer;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -44,9 +48,11 @@ public record SymbolSpec<T>(
 
     /**
      * Creates an optional key whose value is parsed by the container
-     * {@code Coercer} (no per-key parser needed — Duration, Boolean, List and
-     * user-registered {@code CoerceRule} targets all work). Consume via
-     * {@link #parse(String, Coercer)}.
+     * {@code Coercer} (no per-key parser needed — Duration, Boolean and
+     * user-registered {@code CoerceRule} targets all work; lists have a
+     * dedicated form in {@link #list}). Consume via
+     * {@link #parse(String, Coercer)} — or, inside a container, the one-step
+     * {@code resolve(spec)}.
      */
     public static <T> SymbolSpec<T> of(
         String key,
@@ -92,6 +98,79 @@ public record SymbolSpec<T>(
             Objects.requireNonNull(description, "description"),
             false
         );
+    }
+
+    /**
+     * A comma-separated list-valued key — the framework's encoding for
+     * multi-valued config, the same convention HTTP headers use for
+     * multi-value fields ({@code Accept}, {@code Cache-Control}): split on
+     * comma, trim each entry, drop empty entries. A key that is unset, set
+     * to {@code ""}, or set to {@code " , ,"} must always mean the same
+     * thing — an empty list — or a list silently changes meaning between
+     * an absent key and an empty one. Entries must not contain commas
+     * (the same limitation HTTP header lists carry).
+     */
+    public static SymbolSpec<List<String>> list(String key, List<String> defaultValue) {
+        return new SymbolSpec<>(
+            key,
+            (Class<List<String>>) (Class<?>) List.class,
+            defaultValue == null ? null : List.copyOf(defaultValue),
+            SymbolSpec::splitList,
+            "comma-separated list",
+            false
+        );
+    }
+
+    /** The list decoder — the single home of the comma-list encoding. */
+    public static List<String> splitList(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split(","))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .toList();
+    }
+
+    /**
+     * The tri-state activation shape: an explicit value must be
+     * {@code true} or {@code false} (case-insensitive) and wins; unset/blank
+     * falls to the caller's presence-derived verdict. Unknown values fail
+     * naming the key and the offending value. Knows no concrete keys — the
+     * key and the presence signal come from the caller.
+     */
+    public static boolean activated(String key, String explicitValue, boolean presenceSignal) {
+        String value = explicitValue == null || explicitValue.isBlank()
+            ? null
+            : explicitValue.trim().toLowerCase(Locale.ROOT);
+        if (value == null) {
+            return presenceSignal;
+        }
+        if (!value.equals("true") && !value.equals("false")) {
+            throw new IllegalArgumentException(
+                key + " must be true or false: " + explicitValue);
+        }
+        return Boolean.parseBoolean(value);
+    }
+
+    /**
+     * The token-switch shape: the explicit value (case-insensitive) must be
+     * one of {@code byToken}'s keys and maps to the target; unset/blank falls
+     * to {@code whenUnset}. Unknown values fail naming the key, the valid
+     * tokens and the offending value. Knows no concrete keys — the token
+     * table and the default come from the caller.
+     */
+    public static <T> T mode(String key, String raw, Map<String, T> byToken, T whenUnset) {
+        if (raw == null || raw.isBlank()) {
+            return whenUnset;
+        }
+        String token = raw.trim().toLowerCase(Locale.ROOT);
+        T mapped = byToken.get(token);
+        if (mapped == null && !byToken.containsKey(token)) {
+            throw new IllegalArgumentException(
+                key + " must be one of " + byToken.keySet() + ": " + raw);
+        }
+        return mapped != null ? mapped : whenUnset;
     }
 
     /** Creates a required key: absent/blank input fails fast on parse. */

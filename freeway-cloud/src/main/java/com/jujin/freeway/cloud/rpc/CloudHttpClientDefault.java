@@ -17,8 +17,10 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.ioc.annotation.PreDestroy;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
@@ -306,7 +308,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         CircuitBreaker breaker = breakerFor(serviceId);
         RateLimiter rateLimiter = rateLimiterFor(serviceId);
         return policy.run(serviceId, deadlineNanos, breaker, rateLimiter,
-            () -> attempt(serviceId, request, async));
+            request.idempotent(), () -> attempt(serviceId, request, async));
     }
 
     /** Per-service breaker shard. No injection → fresh default; an injected
@@ -407,13 +409,25 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
                 // Server errors are retryable failures — they must go through
                 // retry + circuit-breaker accounting, not return as normal
                 // responses (4xx stays a response: the caller owns the body).
+                // The retry itself is gated on idempotency by the policy: the
+                // peer may have applied the request before answering 5xx.
                 throw CloudException.http(instance.serviceId(), response.statusCode());
             }
             return new CloudResponse(response.statusCode(), response.headers().map(), response.body());
+        } catch (ConnectException e) {
+            // TCP connect refused/reset: the request never left this process.
+            throw CloudException.connect(instance.serviceId(), e);
+        } catch (HttpConnectTimeoutException e) {
+            // Connect-phase timeout (a HttpTimeoutException subtype — must be
+            // caught first): nothing was sent, so the outcome is known.
+            throw CloudException.connect(instance.serviceId(), e);
         } catch (HttpTimeoutException e) {
+            // Response never arrived in time: the peer may have applied it.
             throw CloudException.timeout(instance.serviceId(), e);
         } catch (IOException e) {
-            throw CloudException.connect(instance.serviceId(), e);
+            // Mid-flight I/O failure (reset after send, broken pipe): the
+            // request may have reached the peer — ambiguous outcome.
+            throw CloudException.transport(instance.serviceId(), e);
         } catch (InterruptedException e) {
             // The caller asked to stop: non-retryable, so outside a half-open
             // probe it is neither re-attempted nor fed into the failure window.

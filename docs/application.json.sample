@@ -99,6 +99,7 @@
 				"connect-timeout": 3000,
 				"request-timeout": 10000,
 				"trace": { "enabled": true },
+				"resilience": "auto",
 				"retry": { "max-attempts": 3, "backoff-base": 100, "backoff-max": 5000 },
 				"circuit-breaker": {
 					"enabled": true,

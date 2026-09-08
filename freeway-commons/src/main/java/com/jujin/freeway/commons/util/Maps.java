@@ -22,6 +22,11 @@ public final class Maps {
     /**
      * Recursively flattens nested maps and lists into a flat {@code Map<String, String>}
      * with {@code delimiter}-separated keys.
+     *
+     * <p>A scalar array joins into one comma-separated value under its own
+     * key (the list encoding of the config system, {@code SymbolSpec.list});
+     * arrays containing maps or lists keep indexed flattening
+     * ({@code key.0.host}).
      */
     public static Map<String, String> flatten(Map<String, Object> source, String delimiter) {
         Map<String, String> target = new LinkedHashMap<>();
@@ -61,13 +66,28 @@ public final class Maps {
         if (value instanceof Map<?, ?> map) {
             flatten(key, delimiter, (Map<String, Object>) map, target, visited);
         } else if (value instanceof List<?> list) {
-            flatten(key, delimiter, list, target, visited);
-        } else if (value != null) {
-            if (target.put(key, String.valueOf(value)) != null) {
-                throw new IllegalArgumentException(
-                    "Duplicate flattened key '" + key + "'"
-                );
+            if (list.stream().noneMatch(v -> v instanceof Map || v instanceof List)) {
+                // A scalar array joins into one comma-separated key — the
+                // list encoding of the config system (SymbolSpec.list), the
+                // same convention HTTP headers use. Indexed flattening
+                // (key.0/key.1) would destroy the value: no declared key
+                // ever matches those names.
+                putFlat(key, list.stream()
+                    .map(String::valueOf)
+                    .collect(java.util.stream.Collectors.joining(",")), target);
+            } else {
+                flatten(key, delimiter, list, target, visited);
             }
+        } else if (value != null) {
+            putFlat(key, String.valueOf(value), target);
+        }
+    }
+
+    private static void putFlat(String key, String value, Map<String, String> target) {
+        if (target.put(key, value) != null) {
+            throw new IllegalArgumentException(
+                "Duplicate flattened key '" + key + "'"
+            );
         }
     }
 

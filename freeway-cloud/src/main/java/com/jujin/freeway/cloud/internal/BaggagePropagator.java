@@ -3,6 +3,7 @@ package com.jujin.freeway.cloud.internal;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.Propagator;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -76,7 +77,7 @@ public final class BaggagePropagator implements Propagator {
         }
         Map<String, String> values = new HashMap<>();
         int entries = 0;
-        for (String pair : ConfigLists.splitAndTrim(raw)) {
+        for (String pair : SymbolSpec.splitList(raw)) {
             if (entries >= MAX_ENTRIES) {
                 LOG.debug("Baggage truncated at propagation limit ({} entries)", MAX_ENTRIES);
                 break;

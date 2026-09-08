@@ -115,6 +115,9 @@ public final class ContainerImpl implements Container {
     public ContainerImpl(Collection<? extends ModuleEx> modules) {
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
+        // The chain's coercer lets one-step resolve(spec) parse coercer-backed
+        // types (Duration, user rules) — no two-step idiom anywhere.
+        this.symbolSource.coercer(this.coercer);
         this.loggerSource = LoggerSourceImpl.INSTANCE;
         this.proxyFactory = new ProxyFactoryImpl();
         this.injectResolver = new InjectionResolver(this);

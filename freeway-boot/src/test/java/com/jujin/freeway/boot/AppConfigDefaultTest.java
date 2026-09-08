@@ -94,7 +94,7 @@ class AppConfigDefaultTest {
     // ==================== symbol sources (tiered declaration) ====================
 
     @Test
-    void bothFormsContributeThreeTieredSources() {
+    void bothFormsContributeTheTieredSources() {
         // Static form: the merged map becomes the file tier.
         assertTieredSources(new AppConfigDefault(Map.of("k", "static"), List.of()));
         // Tiered form: cli/env sources plus a files baseline.
@@ -106,9 +106,10 @@ class AppConfigDefaultTest {
         try {
             List<SymbolProvider> providers = config.providers();
             assertEquals(
-                List.of(SymbolProvider.TIER_CLI, SymbolProvider.TIER_ENV, SymbolProvider.TIER_FILES),
+                List.of(SymbolProvider.TIER_CLI, SymbolProvider.TIER_ENV,
+                    SymbolProvider.TIER_FILES, SymbolProvider.TIER_PRESET),
                 providers.stream().map(SymbolProvider::order).toList(),
-                "cli, env and files tiers in declared order");
+                "cli, env, files and preset tiers in declared order — the preset last");
         } finally {
             config.close();
         }

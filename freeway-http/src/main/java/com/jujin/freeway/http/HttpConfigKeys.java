@@ -66,9 +66,13 @@ public final class HttpConfigKeys {
 
     // ── SSL / HTTPS ─────────────────────────────────────────────
 
-    /** Set to true to enable HTTPS. Requires key-store and key-store-password. */
+    /** Master switch — presence-driven: an explicit value wins ({@code true}
+     *  on, {@code false} = kill switch suppressing a configured keystore);
+     *  unset falls to keystore presence — a configured keystore is an HTTPS
+     *  server, nothing set is plaintext. */
     public static final String SSL_ENABLED             = PREFIX + ".ssl.enabled";
-    /** Path to the keystore file (PKCS12 or JKS). */
+    /** Path to the keystore file (PKCS12 or JKS). Presence alone activates
+     *  HTTPS (unless {@code ssl.enabled=false} suppresses it). */
     public static final String SSL_KEY_STORE           = PREFIX + ".ssl.key-store";
     /** Password for the keystore file. */
     public static final String SSL_KEY_STORE_PASSWORD  = PREFIX + ".ssl.key-store-password";

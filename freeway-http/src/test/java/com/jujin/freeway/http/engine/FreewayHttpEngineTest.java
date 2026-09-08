@@ -23,6 +23,7 @@ import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -837,7 +838,7 @@ class FreewayHttpEngineTest {
         // CORS policy at all.
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
-            .cors(new CorsFilter(false, null, null, null, null, null, false))
+            .cors(new CorsFilter(false, List.of(), List.of(), List.of(), List.of(), null, false))
             .webSocketRoute(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP))
             .build();
         server.start();

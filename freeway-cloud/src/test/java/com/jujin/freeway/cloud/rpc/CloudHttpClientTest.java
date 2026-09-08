@@ -192,6 +192,60 @@ class CloudHttpClientTest {
     }
 
     @Test
+    void serverErrorIsNotReplayedForNonIdempotentRequests() {
+        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        try (AppRuntime app = FreewayApp.run(new CountingFailModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            app.get(ServiceRegistry.class).register(
+                ServiceInstance.of("failing", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            CloudHttpClient client = app.get(CloudHttpClient.class);
+
+            CloudException ex = assertThrows(CloudException.class, () ->
+                client.call("failing", CloudRequest.post("/api/fail", new byte[0], "application/json")));
+            assertTrue(ex.retryable(), "5xx is still a retryable class of failure");
+            assertTrue(ex.outcomeUnknown(), "the peer may have applied the POST before answering 5xx");
+            assertEquals(1, CountingFailModule.posts.get(),
+                "an ambiguous outcome must not be replayed for a POST");
+        } finally {
+            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            CountingFailModule.reset();
+        }
+    }
+
+    @Test
+    void markedIdempotentRequestsReplayAmbiguousOutcomes() {
+        System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
+        System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
+        // The retries below must not trip the default breaker (threshold 5)
+        // mid-test — this test pins retry counts, not breaker accounting.
+        System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "50");
+        try (AppRuntime app = FreewayApp.run(new CountingFailModule(), new HttpModule(), new CloudModule())) {
+            WebServer server = app.get(WebServer.class);
+            app.get(ServiceRegistry.class).register(
+                ServiceInstance.of("failing", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
+            CloudHttpClient client = app.get(CloudHttpClient.class);
+
+            CloudRequest marked = CloudRequest
+                .post("/api/fail", new byte[0], "application/json")
+                .idempotentWith(true);
+            assertThrows(CloudException.class, () -> client.call("failing", marked));
+            assertEquals(3, CountingFailModule.posts.get(),
+                "an explicitly idempotent POST is replayed: initial + two retries");
+
+            assertThrows(CloudException.class, () -> client.call("failing", CloudRequest.get("/api/fail")));
+            assertEquals(3, CountingFailModule.gets.get(),
+                "GET derives to idempotent and is replayed without a marker");
+        } finally {
+            System.clearProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS);
+            System.clearProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE);
+            System.clearProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD);
+            CountingFailModule.reset();
+        }
+    }
+
+    @Test
     void rateLimiterRejectsExcessCalls() {
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
@@ -385,6 +439,33 @@ class CloudHttpClientTest {
                         ctx.send(200, "{\"ok\":true}");
                     }
                 }));
+        }
+    }
+
+    /** Always fails with HTTP 500, counting hits per verb so tests can pin
+     *  exactly how often the ambiguous outcome was replayed. */
+    static class CountingFailModule implements ModuleEx {
+        static final java.util.concurrent.atomic.AtomicInteger posts =
+            new java.util.concurrent.atomic.AtomicInteger();
+        static final java.util.concurrent.atomic.AtomicInteger gets =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+        @Override
+        public void bind(Binder b) {
+            b.contribute(Route.class)
+                .add(Route.post("/api/fail", ctx -> {
+                    posts.incrementAndGet();
+                    ctx.send(500, "boom");
+                }))
+                .add(Route.get("/api/fail", ctx -> {
+                    gets.incrementAndGet();
+                    ctx.send(500, "boom");
+                }));
+        }
+
+        static void reset() {
+            posts.set(0);
+            gets.set(0);
         }
     }
 

@@ -110,19 +110,23 @@ X-RPC-Message: <URL-encoded exception message>  ← 仅 propagateMessage=true
 
 ### 2.4 响应 — 传输失败
 
-不加信封，直接沿用 CloudHttpClient 的既有行为：
+不加信封，直接沿用 CloudHttpClient 的既有行为——含 1.6 起的幂等门
+（timeout/中途 I/O/5xx 属"结果未知"，仅幂等操作重放）：
 
 | 情形 | 表现 |
 |---|---|
-| 无实例 / 连接拒绝 | `CloudException.noInstance(...)` / connect 失败 |
-| 对端 5xx 或超时 | retryable `CloudException`（可被 Retryer 重试） |
+| 无实例 / 连接拒绝 | `CloudException.noInstance(...)` / connect 失败（请求未出本进程，任何操作都可重试） |
+| 对端 5xx 或超时 | retryable `CloudException`，`outcomeUnknown()==true` —— **仅 `@Idempotent` 操作重放**（线上动词是 POST，默认不重放） |
 | 对端 400 族 | not-retryable `CloudException` |
 
 三个失败源在调用方的 catch 里以同一顶层类型区分：
 `CloudException` 一律是顶层异常——传输失败（连接/超时/5xx）retryable、
 无 RIE cause；业务失败 retryable=false 且 **cause 为
 `RemoteInvocationException`**（`remoteClass()` 携带对端异常类名）。
-两层不会混淆。
+两层不会混淆。connect 类失败（连接拒绝/连接超时）请求未送达，重放对
+任何操作都安全；其余模糊结局的重放安全性与 `@Idempotent` 标记
+（consumer 接口方法或整个接口）一致——未标记的操作在首个模糊结局
+即失败，绝不重放。
 
 ### 2.5 版本与兼容
 
@@ -157,7 +161,8 @@ public final class RemoteCaller {
   RpcPaths.endpoint(mapping, method), Map.of("Content-Type",
   "application/json", RemoteCaller.VERSION_HEADER, RemoteCaller.VERSION),
   bytes)`——版本头经显式 header 携带（`CloudRequest.post` 便捷工厂
-  不带版本头，无法用于本协议）。
+  不带版本头，无法用于本协议）；请求随后 `.idempotentWith(idempotent)`
+  携带消费方的重放安全裁定（§3.3 幂等标记）。
 - 传入的每调用超时经 `callAsync` + `orTimeout` 收敛为端到端预算
   （重试含内），到期映射为 retryable `CloudException.timeout`（§3.3）。
 - 服务发现的 serviceId 来自消费方的绑定 id 约定（见 §4）。
@@ -209,6 +214,13 @@ UserApi api = RemoteProxyFactory.of(callBus, remoteCaller)
 `orTimeout` 收窄等待；到期映射为 `CloudException.timeout`（retryable），
 与传输层超时语义一致。
 
+**幂等标记**（已实现）：proxy 每次派发反射读取接口方法/接口级
+`@Idempotent` 注解，转发给 `RemoteCaller.invoke(..., idempotent)`，
+最终落到 `CloudRequest.idempotentWith(...)`——决定传输层幂等门是否
+放行 timeout/中途 I/O/5xx 的重放。无注解魔法参与路由或注册，
+仅是消费方对重放安全的声明（与 §10 反注解魔法的立场不冲突：
+它不改变派发，只收紧传输层一个默认不安全的行为）。
+
 ## 4. 配置键（无新增）
 
 v1 实现**未引入**本节早期草案中的 `rpc.remote.enabled` /
@@ -236,7 +248,7 @@ JSON。沿用既有的 `rpc.connect-timeout` / `rpc.request-timeout` /
 |---|---|---|
 | handler 正常返回 | 返回值 JSON 反序列化 | — |
 | handler 抛业务异常 | `CloudException`(cause=`RemoteInvocationException(classFqn, message)`) | no |
-| 连接/超时/5xx | `CloudException` | per 既有规则 |
+| 连接/超时/5xx | `CloudException` | connect=是；timeout/中途 I/O/5xx 仅 `@Idempotent` 操作（幂等门） |
 | 4xx 非 2.3 结构 | `CloudException(status)` | no |
 | 回复体无法反序列化为 returnType | `CloudException(deserialization)` | no（确定性失败） |
 | 未知 `X-RPC-Version` | `CloudException(rejected)` | no |

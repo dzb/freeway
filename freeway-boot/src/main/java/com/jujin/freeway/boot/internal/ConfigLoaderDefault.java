@@ -3,6 +3,7 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppConfigDefault;
 import com.jujin.freeway.boot.ConfigLoader;
+import com.jujin.freeway.boot.internal.ConfigFileReader;
 import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
@@ -107,6 +108,10 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         return Map.copyOf(base);
     }
 
+    /** The classpath layers (base files, env, CLI args, profile variants).
+     *  Also consumed by {@link ApplicationLogConfigHomes}, so the bootstrap
+     *  log cascade's application file values match the main cascade's
+     *  classpath baseline exactly. */
     static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
         Map<String, String> environment = loadEnvironment();
         Map<String, String> properties = loadProperties(loader, "application.properties");

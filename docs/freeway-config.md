@@ -1,7 +1,7 @@
 # Freeway 配置参考
 
 > 所有配置项采用点号分隔的层级键，统一在 `freeway.*` 命名空间下。
-> 配置来源优先级（低 → 高）：`application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → 环境变量（`FREEWAY_*`） → CLI 参数（`--key=value`）。
+> 配置来源优先级（低 → 高）：**preset 预设**（`-Dfreeway.preset`，bootstrap-only） → `application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → 环境变量（`FREEWAY_*`） → CLI 参数（`--key=value`）。
 > 详见 [CLAUDE.md](CLAUDE.md) 配置级联章节。
 
 ---
@@ -15,7 +15,7 @@
 | **DB** | `freeway.db.url` | JDBC 连接 URL，无默认值，启动时必检 |
 | **DB** | `freeway.db.username` | 数据库用户名，无默认值，启动时必检 |
 | **DB** | `freeway.db.password` | 数据库密码（可为空，生产环境通过环境变量 `FREEWAY_DB_PASSWORD` 注入） |
-| **HTTP** | `freeway.http.ssl.enabled=true` + 证书 | 生产环境启用 HTTPS 时必填；开发环境可保持 `false` |
+| **HTTP** | `freeway.http.ssl.key-store` + 证书 | 生产环境启用 HTTPS 时必填（keystore 路径即启用）；开发不配即明文 |
 | **Cloud** | 全部可选 | 仅在使用 `freeway-cloud` 功能时需要 |
 
 > 其余所有配置项均有默认值，使用默认值即可正常运行，无需改动。
@@ -26,7 +26,7 @@
 
 | 模块 | 命名空间 | 说明 |
 |------|----------|------|
-| **Boot** | `freeway.profile`, `freeway.config.file`, `freeway.env.prefix` | 运行时启动与配置级联 |
+| **Boot** | `freeway.profile`, `freeway.config.file`, `freeway.env.prefix`, `freeway.preset` | 运行时启动与配置级联 |
 | **Commons** | `freeway.log.*`, `freeway.env.prefix` | 日志系统 |
 | **HTTP** | `freeway.http.*` | Web 服务器、路由、SSL |
 | **DB** | `freeway.db.*` | 数据库连接、池、Schema、迁移 |
@@ -45,6 +45,7 @@
 | `freeway.profile` | String | *(无)* | **是** | 激活的 Profile，支持逗号分隔多个。激活后加载 `application-{profile}.*`。开发用 `dev`，生产用 `prod` |
 | `freeway.config.file` | String | *(空)* | 否 | 额外配置文件路径（JVM 系统属性 `-D`），多个逗号分隔。参与文件级热重载 |
 | `freeway.env.prefix` | String | `FREEWAY_` | 否 | 环境变量前缀。仅 JVM 系统属性生效；自定义前缀时 `APP_SERVER_PORT` → `server.port`（透传） |
+| `freeway.preset` | String | *(未设)* | 否 | **环境预设**（bootstrap-only：`-D` 或 `FREEWAY_PRESET`，配置文件不可用）。第五级联 tier，优先级最低——只补所有更高来源都没设的键。`docker` = 容器平台通用（绑定 `0.0.0.0` + 日志仅 stdout：`log.file=off`），k8s/ecs 同属此预设；`local` = 显式声明开发环境（空 bundle，默认值即开发友好）。未知值启动即失败 |
 
 ### CLI 快捷规则
 
@@ -71,7 +72,17 @@
 
 ## 二、Commons — 日志系统
 
-### 配置项
+### 配置文件的两个家
+
+日志键可以住在两个地方（`-D` 系统属性与环境变量都高于两个文件；专用文件更具体、优先于 app 文件；本节全部键只在 `freeway.log.*` 命名空间内生效）：
+
+1. **专用文件** `freeway-log.properties`（classpath 根）——日志专属声明，**优先生效**
+2. **应用主配置** `application.properties` / `application.json`（classpath 根 + 工作目录 + 激活 profile 的变体，后读的文件赢）——只取 `freeway.log.*` 键
+
+注意两条边界：
+
+- **per-logger 级别**（`<logger>.level`）只支持专用文件——在应用主配置里它与普通点号键无法区分（会把任意应用键误认成 logger）。
+- 应用文件侧走主级联的 **classpath 基线**（含 `-D`/env/类路径文件声明的 profile 选择）；工作目录文件声明与热重载不参与日志侧。
 
 #### 全局日志
 
@@ -215,8 +226,8 @@
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.http.ssl.enabled` | Boolean | `false` | **生产是** | 启用 HTTPS。生产环境必须为 `true` 并配置证书；开发可保持 `false` |
-| `freeway.http.ssl.key-store` | String | *(空)* | **生产是** | 密钥库路径（PKCS12 或 JKS）。`ssl.enabled=true` 时必填 |
+| `freeway.http.ssl.key-store` | String | *(空)* | **生产是** | **presence 主键**——密钥库路径（PKCS12 或 JKS），非空即启用 HTTPS |
+| `freeway.http.ssl.enabled` | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（此时 key-store 必填）、`false` = 总闸（连已配置的 keystore 也压制，回明文）。未设时退到 presence 规则 |
 | `freeway.http.ssl.key-store-password` | String | *(空)* | **生产是** | 密钥库密码。建议通过环境变量 `FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD` 注入 |
 | `freeway.http.ssl.key-store-type` | String | `PKCS12` | 否 | 密钥库类型 |
 | `freeway.http.ssl.http2` | Boolean | `true` | 否 | 通过 ALPN 启用 HTTP/2 over TLS |
@@ -416,20 +427,27 @@
 | `freeway.cloud.rpc.connect-timeout` | Long | `3000` | 否 | 连接超时（毫秒） |
 | `freeway.cloud.rpc.request-timeout` | Long | `10000` | 否 | 请求超时（毫秒） |
 | `freeway.cloud.rpc.trace.enabled` | Boolean | `true` | 否 | 启用 RPC 调用链路追踪 |
+| `freeway.cloud.rpc.resilience` | String | `auto` | 否 | **聚合开关**：`auto` = 下方细项键各自生效；`off` = 总闸（不重试、熔断 NOOP、限流无限），忽略全部细项键。用于 mesh 接管（平台已做重试/熔断，应用层需退位）与故障诊断隔离变量。非法值启动即失败 |
 
 #### 弹性 — 重试
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.rpc.retry.max-attempts` | Integer | `3` | 否 | 最大重试次数 |
+| `freeway.cloud.rpc.retry.max-attempts` | Integer | `3` | 否 | 最大重试次数（`resilience=off` 时忽略） |
 | `freeway.cloud.rpc.retry.backoff-base` | Long | `100` | 否 | 重试退避基数（毫秒） |
 | `freeway.cloud.rpc.retry.backoff-max` | Long | `5000` | 否 | 最大退避时间（毫秒） |
+
+重试经过两道门：失败类别（连接失败/超时/中途 I/O/5xx 可重试，4xx 与本地拒绝不重试）与
+**幂等门**——timeout/中途 I/O/5xx 属"结果未知"（对端可能已执行请求），仅对幂等操作重放。
+幂等性由请求携带：按 HTTP 动词派生（`GET/HEAD/PUT/DELETE/OPTIONS/TRACE` 幂等，`POST/PATCH` 否），
+`CloudRequest.idempotentWith(true)` 显式覆盖；远程 CallBus 经 consumer 接口的 `@Idempotent`
+注解（方法级/接口级）声明。连接类失败请求未送达，任何操作都可重试。
 
 #### 弹性 — 熔断器
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.rpc.circuit-breaker.enabled` | Boolean | `true` | **生产是** | 启用熔断器。生产环境必须启用，防止级联故障 |
+| `freeway.cloud.rpc.circuit-breaker.enabled` | Boolean | `true` | **生产是** | 启用熔断器。生产环境必须启用，防止级联故障（`resilience=off` 时忽略） |
 | `freeway.cloud.rpc.circuit-breaker.failure-threshold` | Integer | `5` | 否 | 熔断触发阈值（滑动窗口内失败数） |
 | `freeway.cloud.rpc.circuit-breaker.failure-window` | Long | `60` | 否 | 滑动窗口时长（秒） |
 | `freeway.cloud.rpc.circuit-breaker.open-window` | Long | `30` | 否 | 熔断打开状态持续时长（秒） |
@@ -438,15 +456,15 @@
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.rpc.rate-limit.enabled` | Boolean | `false` | 否 | 启用限流。按需开启 |
+| `freeway.cloud.rpc.rate-limit.enabled` | Boolean | `false` | 否 | 启用限流。按需开启（`resilience=off` 时忽略） |
 | `freeway.cloud.rpc.rate-limit.per-second` | Double | `100` | 否 | 每秒最大请求数 |
 
 #### CloudEventBus — 跨节点事件网格
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.events.enabled` | Boolean | `false` | 否 | 启用 CloudEventBus。**默认关闭**，启用前确认网络可达 |
-| `freeway.cloud.events.peers` | String | *(空)* | 否 | 对等节点列表 |
+| `freeway.cloud.events.peers` | String | *(空)* | 否 | **对等节点列表（presence 主键）**——非空即启用 mesh；空 = 纯监听方需显式 `enabled=true`。启用前确认网络可达 |
+| `freeway.cloud.events.enabled` | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（含无 peers 的 discovery-fed mesh）、`false` = 总闸（连已配置的 peers 也压制）。未设时退到 presence 规则（peers 非空即开）。什么都不设 = 模块装了也不动 |
 | `freeway.cloud.events.subscriptions` | String | *(空)* | 否 | 订阅列表 |
 | `freeway.cloud.events.allowed-types` | String | *(空)* | 否 | CLASS 通道反序列化白名单，**空 = 拒绝全部**（deny-by-default，不回退到"放行任意类"） |
 | `freeway.cloud.events.allowed-topics` | String | *(空)* | 否 | TOPIC 通道白名单，空 = 放行全部 |
@@ -462,7 +480,7 @@
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.rpc.tls.key-store` | String | *(空)* | 否 | RPC 客户端密钥库路径（mTLS 场景） |
+| `freeway.cloud.rpc.tls.key-store` | String | *(空)* | 否 | **presence 主键**——RPC 客户端密钥库路径，非空即启用 mTLS；空 = 明文开发默认 |
 | `freeway.cloud.rpc.tls.key-store-password` | String | *(空)* | 否 | RPC 客户端密钥库密码 |
 | `freeway.cloud.rpc.tls.trust-store` | String | *(空)* | 否 | RPC 客户端信任库路径 |
 | `freeway.cloud.rpc.tls.trust-store-password` | String | *(空)* | 否 | RPC 客户端信任库密码 |
@@ -592,8 +610,17 @@ IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成�
 | Double | 数字 | `100.0` |
 | Boolean | `true` / `false` | `true` |
 | Duration | ISO-8601 或后缀 | `2s`, `30s`, `10m`, `30m`, `PT1H` |
+| List(String) | 逗号分隔（与 HTTP 头多值约定同形）| `a,b,c`；条目两端空白自动去除、空条目丢弃；未设 / `""` / `" , ,"` 一律空列表 |
 
 支持的后缀：`ms`（毫秒）、`s`（秒）、`m`（分钟）、`h`（小时）
+
+**列表键的两种写法**：properties/env/CLI 用逗号字符串；application.json 可写原生数组（展平时自动连接为同一逗号编码），两者等价——
+
+```json
+{ "freeway": { "cloud": { "events": { "peers": ["10.0.0.11:8080", "10.0.0.12:8080"] } } } }
+```
+
+等价于 `freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080`。列表条目不能包含逗号（与 HTTP 头列表同样的限制）。
 
 ---
 

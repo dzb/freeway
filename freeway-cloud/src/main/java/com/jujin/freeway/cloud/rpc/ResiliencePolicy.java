@@ -28,10 +28,21 @@ import java.time.Duration;
  * instance" — reports the probe outcome, so the breaker always settles
  * instead of wedging open.
  *
- * <p>Retryable = connect/timeout/5xx; 4xx, dispatch failures and local
- * rejections (no instance, circuit open, rate limited, thread interrupted)
- * fail immediately. Every failure mode — including unmapped local exceptions
- * from discovery or URL building — surfaces as a {@link CloudException}.
+ * <p>Retryable failures pass two gates before the {@link Retryer} is
+ * consulted. The <b>category gate</b> is {@code CloudException.retryable()}:
+ * transport failures and 5xx are candidates, 4xx, dispatch failures and
+ * local rejections (no instance, circuit open, rate limited, thread
+ * interrupted) fail immediately. The <b>idempotency gate</b> protects
+ * against duplicate execution: failures whose outcome is unknown (timeout,
+ * mid-flight I/O, 5xx) may already have been applied by the peer and are
+ * retried only when the operation is idempotent. Connect failures never
+ * reached the peer and retry regardless. Every failure mode — including
+ * unmapped local exceptions from discovery or URL building — surfaces as a
+ * {@link CloudException}.
+ *
+ * <p>The idempotency gate shapes <b>retries only</b>: an ambiguous failure
+ * from a non-idempotent operation still counts against the circuit breaker
+ * — it is just as real a service failure.</p>
  *
  * <p>One span per logical call (retries included); metrics count the same
  * unit. Both are wired only when CloudObserveModule is installed.
@@ -57,6 +68,8 @@ final class ResiliencePolicy {
      * @param deadlineNanos end-to-end budget for ALL attempts, {@code 0} = unbounded
      * @param breaker       the caller's per-service breaker shard
      * @param rateLimiter   the caller's per-service limiter shard
+     * @param idempotent    whether ambiguous outcomes (timeout/mid-flight I/O/5xx)
+     *                      may be replayed — see {@link CloudRequest#idempotent()}
      * @param attempt       one transport attempt (discovery, choose, send)
      */
     CloudResponse run(
@@ -64,6 +77,7 @@ final class ResiliencePolicy {
         long deadlineNanos,
         CircuitBreaker breaker,
         RateLimiter rateLimiter,
+        boolean idempotent,
         TransportAttempt attempt
     ) {
         Tracer.Span span = tracer != null ? tracer.start("cloud.rpc." + serviceId) : null;
@@ -106,7 +120,13 @@ final class ResiliencePolicy {
                     if (probe || failure.retryable()) {
                         breaker.onFailure();
                     }
-                    if (!failure.retryable() || !retryer.shouldRetry(attemptNo, failure)) {
+                    // Two gates: the category (retryable class of failure)
+                    // and idempotency (ambiguous outcomes may have been
+                    // applied by the peer). The Retryer only bounds attempts.
+                    boolean mayRetry = failure.retryable()
+                        && (idempotent || !failure.outcomeUnknown())
+                        && retryer.shouldRetry(attemptNo, failure);
+                    if (!mayRetry) {
                         recordFailure(startNanos);
                         throw failure;
                     }

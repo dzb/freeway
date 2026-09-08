@@ -17,6 +17,10 @@ public final class CloudHooks {
     /** Object-storage startup validation (backend type check). */
     public static final String STORAGE = "freeway.cloud.storage";
 
+    /** Resilience aggregate-mode startup validation
+     *  ({@code freeway.cloud.rpc.resilience} must be {@code auto} or {@code off}). */
+    public static final String RESILIENCE = "freeway.cloud.resilience";
+
     /** Registry-client connection; runs before the HTTP server. */
     public static final String DISCOVERY = "freeway.cloud.discovery";
 

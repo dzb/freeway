@@ -1,14 +1,15 @@
 package com.jujin.freeway.http.filter;
 
+import java.util.List;
 import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.HttpStatus;
 import com.jujin.freeway.http.route.RouteHandler;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 public final class CorsFilter implements HttpFilter {
     private static final Logger LOG = LoggerFactory.getLogger(CorsFilter.class);
@@ -31,26 +32,48 @@ public final class CorsFilter implements HttpFilter {
         return new Builder();
     }
 
-    public CorsFilter(boolean enabled, String allowedOrigins,
-                      String allowedMethods, String allowedHeaders,
-                      String exposedHeaders, String maxAge,
+    /** The list-typed constructor — the assembly path from the module's
+     *  list-valued config keys; header values echo as comma lists. */
+    public CorsFilter(boolean enabled, List<String> allowedOrigins,
+                      List<String> allowedMethods, List<String> allowedHeaders,
+                      List<String> exposedHeaders, String maxAge,
                       boolean allowCredentials) {
         this.enabled = enabled;
-        boolean all = "*".equals(allowedOrigins);
+        List<String> origins = allowedOrigins == null ? List.of() : allowedOrigins;
+        boolean all = origins.size() == 1 && "*".equals(origins.get(0));
         this.allowAll = all;
-        this.allowedOriginList = all || allowedOrigins == null || allowedOrigins.isBlank()
+        this.allowedOriginList = (all || origins.isEmpty())
             ? new String[0]
-            : allowedOrigins.split("\\s*,\\s*");
+            : origins.toArray(String[]::new);
         if (all && allowCredentials) {
             throw new IllegalArgumentException(
                 "allowCredentials=true is incompatible with allowed-origins=* — "
                     + "set explicit origins to use credentials");
         }
-        this.allowedMethods = allowedMethods;
-        this.allowedHeaders = allowedHeaders;
-        this.exposedHeaders = Strings.blankToNull(exposedHeaders);
+        this.allowedMethods = echoHeader(allowedMethods);
+        this.allowedHeaders = echoHeader(allowedHeaders);
+        this.exposedHeaders = echoHeader(exposedHeaders);
         this.maxAge = maxAge;
         this.allowCredentials = allowCredentials;
+    }
+
+    /** The string-form constructor (compatibility with the builder shape) —
+     *  decodes through the one list decoder, {@link SymbolSpec#splitList}. */
+    public CorsFilter(boolean enabled, String allowedOrigins,
+                      String allowedMethods, String allowedHeaders,
+                      String exposedHeaders, String maxAge,
+                      boolean allowCredentials) {
+        this(enabled,
+            SymbolSpec.splitList(allowedOrigins),
+            SymbolSpec.splitList(allowedMethods),
+            SymbolSpec.splitList(allowedHeaders),
+            SymbolSpec.splitList(exposedHeaders),
+            maxAge, allowCredentials);
+    }
+
+    /** Header echo form: {@code null} when empty, entries joined by ", ". */
+    private static String echoHeader(List<String> values) {
+        return values == null || values.isEmpty() ? null : String.join(", ", values);
     }
 
     /** Returns false when CORS is disabled — this filter is then a no-op pass-through. */

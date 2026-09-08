@@ -65,7 +65,7 @@ public final class AuthPropagator implements Propagator {
         if (name == null || name.isBlank()) {
             return InvocationContext.of(null, null, null);
         }
-        List<String> roles = ConfigLists.splitAndTrim(headers.get(HEADER_ROLES)).stream()
+        List<String> roles = SymbolSpec.splitList(headers.get(HEADER_ROLES)).stream()
             .map(BaggagePropagator::decode)
             .toList();
         return InvocationContext.of(null, PrincipalContext.of(name, roles), null);

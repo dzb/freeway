@@ -27,7 +27,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.List;
+
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -136,8 +137,8 @@ public final class DbModule implements ModuleEx {
     private static final SymbolSpec<Integer> POOL_MIN_IDLE =
         SymbolSpec.of(DbConfigKeys.POOL_MIN_IDLE, Integer.class,
             PoolConfig.DEFAULT_MIN_IDLE, Integer::parseInt);
-    // Duration keys: no per-key parser — resolved by the container Coercer
-    // ("2s" syntax, user-registered rules) via parse(raw, coercer).
+    // Duration keys: no per-key parser — the chain's Coercer resolves them
+    // ("2s" syntax, user-registered rules) via one-step resolve(spec).
     private static final SymbolSpec<Duration> POOL_CONNECTION_TIMEOUT =
         SymbolSpec.of(DbConfigKeys.POOL_CONNECTION_TIMEOUT, Duration.class,
             PoolConfig.DEFAULT_CONNECTION_TIMEOUT);
@@ -160,23 +161,24 @@ public final class DbModule implements ModuleEx {
         SymbolSpec.of(DbConfigKeys.MIGRATION_ENABLED, Boolean.class, true);
     private static final SymbolSpec<Boolean> SCHEMA_AUTO =
         SymbolSpec.of(DbConfigKeys.SCHEMA_AUTO, Boolean.class, true);
+    private static final SymbolSpec<List<String>> SCHEMA_GROUPS =
+        SymbolSpec.list(DbConfigKeys.SCHEMA_GROUPS, List.of());
 
     private static PoolConfig buildConfig(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        Coercer coercer = container.get(Coercer.class);
         return new PoolConfig(
             s.resolve(URL),
             s.resolve(USERNAME),
             s.resolve(DbConfigKeys.PASSWORD, ""),
             s.resolve(POOL_MAX_SIZE),
             s.resolve(POOL_MIN_IDLE),
-            POOL_CONNECTION_TIMEOUT.parse(s.resolve(POOL_CONNECTION_TIMEOUT.key(), null), coercer),
-            POOL_MAX_LIFETIME.parse(s.resolve(POOL_MAX_LIFETIME.key(), null), coercer),
-            POOL_MAX_IDLE_TIME.parse(s.resolve(POOL_MAX_IDLE_TIME.key(), null), coercer),
-            POOL_CLEAN_INTERVAL.parse(s.resolve(POOL_CLEAN_INTERVAL.key(), null), coercer),
+            s.resolve(POOL_CONNECTION_TIMEOUT),
+            s.resolve(POOL_MAX_LIFETIME),
+            s.resolve(POOL_MAX_IDLE_TIME),
+            s.resolve(POOL_CLEAN_INTERVAL),
             s.resolve(DbConfigKeys.POOL_HEALTH_CHECK_QUERY, null),
-            POOL_HEALTH_CHECK_TIMEOUT.parse(s.resolve(POOL_HEALTH_CHECK_TIMEOUT.key(), null), coercer),
-            QUERY_TIMEOUT.parse(s.resolve(QUERY_TIMEOUT.key(), null), coercer)
+            s.resolve(POOL_HEALTH_CHECK_TIMEOUT),
+            s.resolve(QUERY_TIMEOUT)
         );
     }
 
@@ -190,23 +192,24 @@ public final class DbModule implements ModuleEx {
 
     private static MigrationRunner buildMigrationRunner(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        Coercer coercer = container.get(Coercer.class);
+        // The lock TTL's unset value is null (the runner applies its own
+        // default); the list/coercer-backed read stays a raw resolve so an
+        // absent key never parses as Duration zero.
         String lockTtlRaw = s.resolve(DbConfigKeys.MIGRATION_LOCK_TTL, "");
         return new MigrationRunner(
             container.get(Database.class),
-            MIGRATION_ENABLED.parse(s.resolve(MIGRATION_ENABLED.key(), null), coercer),
+            s.resolve(MIGRATION_ENABLED),
             s.resolve(DbConfigKeys.MIGRATION_PATH, "db/migration/"),
             s.resolve(DbConfigKeys.MIGRATION_TABLE, "_migrations"),
             lockTtlRaw.isBlank()
                 ? null // runner applies its own default
-                : coercer.coerce(lockTtlRaw.trim(), Duration.class)
+                : container.get(Coercer.class).coerce(lockTtlRaw.trim(), Duration.class)
         );
     }
 
     private static void runSchema(Container container) {
         SymbolSource s = container.get(SymbolSource.class);
-        Coercer coercer = container.get(Coercer.class);
-        if (!SCHEMA_AUTO.parse(s.resolve(SCHEMA_AUTO.key(), null), coercer)) {
+        if (!s.resolve(SCHEMA_AUTO)) {
             return;
         }
         var entities = container.extension(SchemaEntity.class).all();
@@ -214,9 +217,7 @@ public final class DbModule implements ModuleEx {
             return;
         }
 
-        Set<String> enabledGroups = parseGroupFilter(
-            s.resolve(DbConfigKeys.SCHEMA_GROUPS, "")
-        );
+        Set<String> enabledGroups = Set.copyOf(s.resolve(SCHEMA_GROUPS));
 
         Database db = container.get(Database.class);
         int total = 0;
@@ -281,19 +282,5 @@ public final class DbModule implements ModuleEx {
     static String detectDialect(SymbolSource s) {
         String url = s.resolve(DbConfigKeys.URL, "");
         return DatabaseBuilder.dialectForUrl(url).dialectId();
-    }
-
-    private static Set<String> parseGroupFilter(String value) {
-        if (value == null || value.isBlank()) {
-            return Set.of();
-        }
-        Set<String> set = new LinkedHashSet<>();
-        for (String part : value.split(",")) {
-            String trimmed = part.trim();
-            if (!trimmed.isEmpty()) {
-                set.add(trimmed);
-            }
-        }
-        return Set.copyOf(set);
     }
 }

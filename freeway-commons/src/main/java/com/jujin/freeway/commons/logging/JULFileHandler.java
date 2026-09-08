@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.Properties;
 import java.util.Set;
 import java.util.logging.ErrorManager;
 import java.util.logging.Handler;
@@ -141,36 +142,41 @@ public final class JULFileHandler extends StreamHandler {
 
     /**
      * No-arg constructor for {@code logging.properties} / {@code LogManager}
-     * instantiation. Reads configuration from system properties.
+     * instantiation. Reads configuration through the same cascade as the
+     * bootstrap log configuration ({@link JULEnhancer#loadLogConfig()} —
+     * system properties, environment, the dedicated file, the application
+     * files and the preset) so a handler registered natively by the user
+     * resolves the same values the framework-managed path would.
      */
     public JULFileHandler() throws IOException {
+        Properties config = JULEnhancer.loadLogConfig();
         this(
-            requiredProperty("freeway.log.file"),
+            requiredProperty(config),
             LogConfig.propertyValue(
                 "freeway.log.file.max-size",
                 DEFAULT_MAX_SIZE,
-                System::getProperty,
+                config::getProperty,
                 Long::parseLong,
                 false
             ),
             LogConfig.propertyValue(
                 "freeway.log.file.max-history",
                 DEFAULT_MAX_HISTORY,
-                System::getProperty,
+                config::getProperty,
                 Integer::parseInt,
                 false
             ),
             LogConfig.propertyValue(
                 "freeway.log.file.compress",
                 DEFAULT_COMPRESS,
-                System::getProperty,
+                config::getProperty,
                 LogConfig::strictBoolean,
                 false
             ),
             LogConfig.propertyValue(
                 "freeway.log.file.flush-interval",
                 DEFAULT_FLUSH_INTERVAL_MS,
-                System::getProperty,
+                config::getProperty,
                 Long::parseLong,
                 false
             )
@@ -257,11 +263,11 @@ public final class JULFileHandler extends StreamHandler {
 
     // ── property helpers ─────────────────────────────────────────────
 
-    private static String requiredProperty(String key) {
-        String val = System.getProperty(key);
+    private static String requiredProperty(Properties config) {
+        String val = config.getProperty("freeway.log.file");
         if (val == null || val.isBlank()) {
             throw new IllegalArgumentException(
-                key + " is required to activate JULFileHandler"
+                "freeway.log.file is required to activate JULFileHandler"
             );
         }
         return val;

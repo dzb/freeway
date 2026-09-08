@@ -2,6 +2,7 @@ package com.jujin.freeway.boot;
 
 import com.jujin.freeway.boot.internal.BootConfigProvider;
 import com.jujin.freeway.boot.internal.ConfigFileReader;
+import com.jujin.freeway.boot.Presets;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.io.IOException;
@@ -76,6 +77,7 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
      * A null {@code profiles} list is treated as empty.
      */
     public AppConfigDefault(Map<String, String> values, List<String> profiles) {
+        Presets.validate(Presets.declared());
         this(Map.of(), Map.of(), cleaned(values),
             List.of(), profiles == null ? List.of() : profiles);
     }
@@ -94,6 +96,10 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
         List<Path> overrideFiles,
         List<String> profiles
     ) {
+        // An unknown preset name must fail startup here, not dissolve into
+        // "no values" — a typo'd environment class would silently leave the
+        // container defaults standing.
+        Presets.validate(Presets.declared());
         this.cli = Map.copyOf(Objects.requireNonNull(cli, "cli"));
         this.environment = Map.copyOf(Objects.requireNonNull(environment, "environment"));
         this.baseline = Map.copyOf(Objects.requireNonNull(baseline, "baseline"));
@@ -150,7 +156,19 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
             // reload reaches the symbol chain.
             new BootConfigProvider(() -> cli, SymbolProvider.TIER_CLI),
             new BootConfigProvider(() -> environment, SymbolProvider.TIER_ENV),
-            new BootConfigProvider(this::fileTier, SymbolProvider.TIER_FILES));
+            new BootConfigProvider(this::fileTier, SymbolProvider.TIER_FILES),
+            // The preset is the lowest tier: it fills only what no higher
+            // source set. The selector key itself is bootstrap-only (-D/env),
+            // so both this chain and the JUL log cascade see the same bundle.
+            new BootConfigProvider(
+                () -> presetTier(), SymbolProvider.TIER_PRESET));
+    }
+
+    /** The active preset's bundle; empty when no preset is declared. The
+     *  name was validated at construction. */
+    private static Map<String, String> presetTier() {
+        Map<String, String> bundle = Presets.bundle(Presets.declared());
+        return bundle == null ? Map.of() : bundle;
     }
 
     /** Current file tier (baseline + overrides) — read by the files source

@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.secret;
 
-import com.jujin.freeway.cloud.internal.ConfigLists;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 
 import java.util.List;
 import java.util.Objects;
@@ -76,6 +76,6 @@ public final class SecretSymbolSource implements SymbolProvider {
      *  "answer for any name", which is a different state from "an empty
      *  allowlist answers for none". */
     private static List<String> parseAllowedKeys(String raw) {
-        return raw == null || raw.isBlank() ? null : ConfigLists.splitAndTrim(raw);
+        return raw == null || raw.isBlank() ? null : SymbolSpec.splitList(raw);
     }
 }

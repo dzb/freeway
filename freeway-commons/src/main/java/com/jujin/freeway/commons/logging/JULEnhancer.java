@@ -1,5 +1,4 @@
 package com.jujin.freeway.commons.logging;
-import java.util.concurrent.ConcurrentHashMap;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,8 +8,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
@@ -26,9 +27,12 @@ import java.util.logging.SimpleFormatter;
  * Called at startup regardless of which SLF4J provider is active —
  * these enhancements are pure JDK and do not interfere with SLF4J.
  *
- * <p>Reads {@code freeway-log.properties} from the classpath root as the
- * primary configuration source. System properties ({@code -D}) with the
- * same keys override file values.
+ * <p>Log keys can live in two file homes: {@code freeway-log.properties} on
+ * the classpath root (the dedicated, more specific file) or the app's main
+ * config files — the boot cascade's classpath file baseline, supplied
+ * through the {@link LogConfigHomes} contract and taking only
+ * {@code freeway.log.*} keys. System properties ({@code -D}) and
+ * environment variables override both file homes.
  *
  * <h3>Handler ownership contract</h3>
  * Every handler on the root logger falls into exactly one tier, and each
@@ -79,7 +83,7 @@ final class JULEnhancer {
         }
 
         try {
-            Properties fileConfig = loadFreewayConfig();
+            Properties fileConfig = loadLogConfig();
             // Clear any stale named file configs from a previous failed
             // configure() run — prevents duplicates on retry.
             namedFileConfigs.clear();
@@ -105,48 +109,90 @@ final class JULEnhancer {
 
     // ── config loading ──────────────────────────────────────────
 
+    private static final String LOG_PROPERTIES = "freeway-log.properties";
+
     /**
-     * Loads {@code freeway-log.properties} from the classpath root if the
-     * user has provided one. Returns an empty {@code Properties} if the
-     * file is not present — the framework does not bundle a default copy.
-     *
-     * <p>Searches the thread context classloader first (user's classpath),
-     * then falls back to the classloader that loaded this class
-     * (module/JAR boundary), then the system classloader.
+     * Loads the log configuration, merging the file homes into one map where
+     * the dedicated file wins:
+     * <ol>
+     *   <li>The environment preset's log subset ({@link LogConfigHomes#presetValues()})
+     *       — lowest precedence, filling only what nothing above set
+     *   <li>The application's main config files ({@link LogConfigHomes#applicationValues()})
+     *       — {@code freeway.log.*} keys from application.properties /
+     *       application.json, supplied by the boot layer via ServiceLoader
+     *   <li>{@code freeway-log.properties} from the classpath root — the
+     *       dedicated log file, the more specific declaration
+     * </ol>
+     * The application-side homes are a boot-supplied contract
+     * ({@link LogConfigHomes}) — commons consumes it, boot owns the file
+     * family and preset knowledge. No provider (a bare container without
+     * boot) degenerates to the dedicated file plus -D/env. The container's
+     * config cascade is not involved: this runs at bootstrap, before any
+     * container exists.
      */
-    private static Properties loadFreewayConfig() {
-        Properties props = new Properties();
-        try (InputStream in = openConfigStream()) {
+    static Properties loadLogConfig() {
+        return loadLogConfig(resolvedHomes());
+    }
+
+    static Properties loadLogConfig(LogConfigHomes homes) {
+        Properties merged = new Properties();
+        if (homes != null) {
+            // Precedence inside one map = last put wins: preset first (lowest),
+            // then the application files, then the dedicated file on top.
+            // Defensive filter: the contract says only freeway.log.* keys
+            // arrive, but the consumer enforces it — a buggy provider must
+            // not feed the per-logger level enumeration phantom loggers.
+            mergeLogKeys(merged, homes.presetValues());
+            mergeLogKeys(merged, homes.applicationValues());
+        }
+        try (InputStream in = openStream(LOG_PROPERTIES)) {
             if (in != null) {
-                props.load(in);
+                merged.load(in);
             }
         } catch (IOException e) {
-            logEarly("Failed to load freeway-log.properties: " + e.getMessage());
+            logEarly("Failed to load " + LOG_PROPERTIES + ": " + e.getMessage());
         }
-        return props;
+        return merged;
+    }
+
+    private static void mergeLogKeys(Properties merged, Map<String, String> values) {
+        values.forEach((key, value) -> {
+            if (key.startsWith("freeway.log.")) {
+                merged.setProperty(key, value);
+            }
+        });
+    }
+
+    /** Resolves the boot-supplied homes once; absent without the boot layer. */
+    private static LogConfigHomes resolvedHomes() {
+        try {
+            return java.util.ServiceLoader.load(LogConfigHomes.class).findFirst().orElse(null);
+        } catch (RuntimeException e) {
+            logEarly("LogConfigHomes lookup failed: " + e.getMessage());
+            return null;
+        }
     }
 
     /**
-     * Opens {@code freeway-log.properties} from the classpath with
-     * cascading classloader search:
+     * Opens a classpath resource with cascading classloader search:
      * <ol>
      *   <li>Thread context classloader — user application classpath
      *   <li>Own classloader — same JAR/module boundary
      *   <li>System classloader — JVM classpath
      * </ol>
      */
-    private static InputStream openConfigStream() {
+    private static InputStream openStream(String name) {
         ClassLoader tccl = Thread.currentThread().getContextClassLoader();
         if (tccl != null) {
-            InputStream in = tccl.getResourceAsStream("freeway-log.properties");
+            InputStream in = tccl.getResourceAsStream(name);
             if (in != null) return in;
         }
         ClassLoader own = JULEnhancer.class.getClassLoader();
         if (own != null) {
-            InputStream in = own.getResourceAsStream("freeway-log.properties");
+            InputStream in = own.getResourceAsStream(name);
             if (in != null) return in;
         }
-        return ClassLoader.getSystemResourceAsStream("freeway-log.properties");
+        return ClassLoader.getSystemResourceAsStream(name);
     }
 
     /**
@@ -175,7 +221,9 @@ final class JULEnhancer {
      * <ol>
      *   <li>System property ({@code -Dkey=value}) — highest priority
      *   <li>Environment variable (prefix from {@link #envKeyFor}) — for {@code freeway.*} keys
-     *   <li>{@code freeway-log.properties} key
+     *   <li>File homes merged by {@link #loadLogConfig} — dedicated
+     *       {@code freeway-log.properties} first, then the application files,
+     *       then the preset's log subset (all ranked by the put order)
      *   <li>{@code defaultValue}
      * </ol>
      */
@@ -196,7 +244,8 @@ final class JULEnhancer {
             String stripped = envVal.strip();
             if (!stripped.isEmpty()) return stripped;
         }
-        // 3. Config file
+        // 3. File homes (dedicated file > app files > preset subset) — one
+        //    merged map; the put order in loadLogConfig ranks them.
         String fileVal = fileConfig.getProperty(key);
         if (fileVal != null) {
             String stripped = fileVal.strip();

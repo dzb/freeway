@@ -52,6 +52,14 @@ external dependencies.
   app code and config values.
 - Keep core modules free of external dependencies.
 - Prefer small explicit APIs over future-proof abstractions.
+- **Config ownership by layer**: `ioc.symbol` holds resolution mechanisms that
+  know no concrete keys — value types (`SymbolSpec.list`, `splitList`) and
+  shape rules (`SymbolSpec.activated`/`mode`), parameterized by the caller's
+  key. `boot` holds the application-configuration content — the config file
+  family, preset bundles, profile selection. Each feature module owns its own
+  keys' declarations, token tables and presence criteria. A mechanism with
+  application data in it moves down only when it carries no key names; data
+  about specific keys moves up to their owner.
 
 ## Testing
 
