@@ -1,7 +1,6 @@
-package com.jujin.freeway.boot;
+package com.jujin.freeway.boot.internal;
 
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Environment presets: one bootstrap key ({@code freeway.preset}) selects a
@@ -11,8 +10,20 @@ import java.util.Set;
  * source set (files, environment, system properties all outrank it), so it
  * can never override an explicit value. The key itself is bootstrap-only:
  * read from {@code -Dfreeway.preset} or {@code FREEWAY_PRESET}, never from
- * config files. Read only inside boot — the symbol-chain tier (order 25)
- * and the log-home implementation resolve it identically by construction.
+ * config files — the preset configures the very channels a config file
+ * would arrive through (a chicken-and-egg problem, so the JVM property and
+ * the raw environment variable are the only sources).
+ *
+ * <p>Where it connects — all internal wiring, the user's interface is the
+ * bootstrap key alone (documented in the config guide):
+ * <ul>
+ *   <li>{@link AppConfigDefault} validates the declared name at construction
+ *       (unknown names fail startup) and serves the bundle as the lowest
+ *       {@code SymbolProvider} tier (order 25);</li>
+ *   <li>{@link AppLogSource} exposes the bundle's {@code freeway.log.*}
+ *       subset to the bootstrap JUL log cascade — {@code docker}'s
+ *       {@code log.file=off} works because both cascades read this bundle.</li>
+ * </ul>
  *
  * <p>{@code docker} targets container platforms generally — docker, k8s,
  * ECS — because a containerized app's real differences from the defaults are
@@ -43,17 +54,6 @@ public final class Presets {
             return null;
         }
         return BUNDLES.get(name.strip());
-    }
-
-    /** Valid preset names — for validation error messages. */
-    public static Set<String> names() {
-        return BUNDLES.keySet();
-    }
-
-    /** The active preset's value for {@code key}, or null. */
-    public static String value(String key) {
-        Map<String, String> active = bundle(declared());
-        return active == null ? null : active.get(key);
     }
 
     /** The declared preset name: system property first, then environment;

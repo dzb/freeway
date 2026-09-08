@@ -11,11 +11,12 @@ import java.util.Map;
  *
  * <p><b>This is not a read API.</b> Whatever the source format (properties,
  * JSON, env mapping, CLI), the cascade normalizes everything to
- * {@code key=value} and {@code SymbolSource} is the single entry point for
- * reading values — one precedence chain for {@code @Symbol}/{@code @Value}
- * injection, module sources (secrets), and direct lookups. Typed reading is
- * an explicit post-processing step: declare a {@code SymbolSpec} and parse
- * the resolved value ({@code symbols.resolve(spec)}).
+ * {@code key=value} and {@link com.jujin.freeway.ioc.symbol.SymbolSource} is
+ * the single entry point for reading values — one precedence chain for
+ * {@code @Symbol}/{@code @Value} injection, module sources (secrets), and
+ * direct lookups. Typed reading is an explicit post-processing step: declare
+ * a {@code SymbolSpec} and parse the resolved value
+ * ({@code symbols.resolve(spec)}).
  *
  * <p>What this interface owns instead: {@link #profiles()} (boot-level
  * lifecycle metadata the chain cannot know), {@link #snapshot()} (the cascade
@@ -23,6 +24,12 @@ import java.util.Map;
  * never leak into a map; treat the map as the file-tier picture),
  * {@link #providers()} (how the cascade feeds the chain) and
  * {@link #close()} (stops the hot-reload watcher).
+ *
+ * <p>Construction: the framework's cascade loader produces the framework's
+ * implementation; for a custom source, construct
+ * {@link com.jujin.freeway.boot.internal.AppConfigDefault} directly (its
+ * constructors are public) or implement this interface and hand it to
+ * {@code AppBuilder.config(config)}.
  */
 public interface AppConfig {
 
@@ -41,7 +48,7 @@ public interface AppConfig {
      * The symbol sources this config contributes to the container, with
      * declared {@code SymbolProvider} orders. The default reports the merged
      * view as a single source on the file tier ({@code TIER_FILES}) — the
-     * behavior third-party {@link ConfigLoader} implementations get for
+     * behavior custom {@link AppConfig} implementations get for
      * free: an undifferentiated config behaves like the framework's file
      * tier and loses to env/CLI and module sources above it. The framework's
      * own config ({@code AppConfigDefault}) contributes one source per tier
@@ -49,18 +56,9 @@ public interface AppConfig {
      * cloud secret store) slot in between tiers by declaring their own order.
      */
     default List<SymbolProvider> providers() {
-        SymbolProvider merged = new SymbolProvider() {
-            @Override
-            public String lookup(String name) {
-                return snapshot().get(name);
-            }
-
-            @Override
-            public int order() {
-                return SymbolProvider.TIER_FILES;
-            }
-        };
-        return List.of(merged);
+        // One source over the merged view, re-read on every lookup — the
+        // same shape the framework's own file tier uses.
+        return List.of(SymbolProvider.of(this::snapshot, SymbolProvider.TIER_FILES));
     }
 
     /**

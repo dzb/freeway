@@ -16,10 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ConfigLoaderDefaultTest {
+class ConfigLoaderImplTest {
     @Test
     void keepsSourcesSeparateAndAppliesPrecedenceOnMerge() {
-        ConfigLoaderDefault.BootConfigLayers layers = ConfigLoaderDefault.loadLayers(
+        ConfigLoaderImpl.BootConfigLayers layers = ConfigLoaderImpl.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev",
             "--app.name=Overridden",
@@ -46,7 +46,7 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void autoPrefixesSimpleCliKeysWithFreewayNamespace() {
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "--profile=dev",
             "--verbose",
             "--app.name=Overridden",
@@ -69,7 +69,7 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void explicitFreewayPrefixStillWorks() {
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "--freeway.profile=dev"
         );
 
@@ -79,7 +79,7 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void parsesNegativeNumberValues() {
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "--offset=-1",
             "--port", "-1",
             "--ratio", "-2.5"
@@ -95,7 +95,7 @@ class ConfigLoaderDefaultTest {
     void rejectsNullArgument() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderDefault.parseArgs(new String[]{"--ok=1", null}));
+            () -> ConfigLoaderImpl.parseArgs(new String[]{"--ok=1", null}));
         assertTrue(ex.getMessage().contains("must not be null"),
             "got: " + ex.getMessage());
     }
@@ -104,7 +104,7 @@ class ConfigLoaderDefaultTest {
     void rejectsBareDoubleDash() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderDefault.parseArgs("--"));
+            () -> ConfigLoaderImpl.parseArgs("--"));
         assertTrue(ex.getMessage().contains("--"),
             "the error must name the offending argument, got: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("must not be empty"),
@@ -115,7 +115,7 @@ class ConfigLoaderDefaultTest {
     void rejectsDoubleDashWithEmptyKey() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderDefault.parseArgs("--=x"));
+            () -> ConfigLoaderImpl.parseArgs("--=x"));
         assertTrue(ex.getMessage().contains("--=x"),
             "the error must name the offending argument, got: " + ex.getMessage());
     }
@@ -124,7 +124,7 @@ class ConfigLoaderDefaultTest {
     void rejectsBarePropertyStyleDashD() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderDefault.parseArgs("-D"));
+            () -> ConfigLoaderImpl.parseArgs("-D"));
         assertTrue(ex.getMessage().contains("-D"),
             "the error must name the offending argument, got: " + ex.getMessage());
     }
@@ -133,7 +133,7 @@ class ConfigLoaderDefaultTest {
     void rejectsKeyContainingEqualsSign() {
         IllegalArgumentException ex = assertThrows(
             IllegalArgumentException.class,
-            () -> ConfigLoaderDefault.parseArgs("-D=x"));
+            () -> ConfigLoaderImpl.parseArgs("-D=x"));
         assertTrue(ex.getMessage().contains("-D=x"),
             "the error must name the offending argument, got: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("must not contain '='"),
@@ -143,7 +143,7 @@ class ConfigLoaderDefaultTest {
     @Test
     void equalsInValueIsAllowed() {
         // '=' inside the VALUE (after the first '=') is legitimate.
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "--app.url=http://h/p?a=b&c=d");
 
         assertEquals("http://h/p?a=b&c=d", args.get("app.url"));
@@ -154,7 +154,7 @@ class ConfigLoaderDefaultTest {
     void misspelledFlagBecomesHarmlessUnknownKey() {
         // A typo like --profle=dev must not silently activate the wrong
         // profile; it stays an unknown (harmless) key — frozen behavior.
-        Map<String, String> args = ConfigLoaderDefault.parseArgs("--profle=dev");
+        Map<String, String> args = ConfigLoaderImpl.parseArgs("--profle=dev");
 
         assertEquals("dev", args.get("freeway.profle"));
         assertFalse(args.containsKey("freeway.profile"));
@@ -165,7 +165,7 @@ class ConfigLoaderDefaultTest {
     void positionalArgumentsAreWarnedAndIgnored() {
         // Positional args are not config — they must not crash the parse,
         // but they must no longer be silently swallowed without a trace.
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "positional", "--ok=1", "another");
 
         assertEquals("1", args.get("freeway.ok"));
@@ -174,7 +174,7 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void followingFlagTurnsKeyIntoBoolean() {
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "--port", "--verbose"
         );
 
@@ -186,7 +186,7 @@ class ConfigLoaderDefaultTest {
     @Test
     void rejectsOversizedPropertiesResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigLoaderDefault.loadLayers(new OversizedPropertiesLoader()));
+            ConfigLoaderImpl.loadLayers(new OversizedPropertiesLoader()));
 
         assertTrue(ex.getMessage().contains("Unable to load application.properties"));
         assertTrue(ex.getCause().getMessage().contains("exceeds"));
@@ -195,7 +195,7 @@ class ConfigLoaderDefaultTest {
     @Test
     void rejectsOversizedJsonResource() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigLoaderDefault.loadLayers(new OversizedJsonLoader()));
+            ConfigLoaderImpl.loadLayers(new OversizedJsonLoader()));
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"));
         // The read cap is the direct cause — no intermediate wrapper.
@@ -205,8 +205,8 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void emptyJsonResourceIsTreatedAsNoConfig() {
-        ConfigLoaderDefault.BootConfigLayers layers =
-            ConfigLoaderDefault.loadLayers(new FixedContentLoader("application.json", ""));
+        ConfigLoaderImpl.BootConfigLayers layers =
+            ConfigLoaderImpl.loadLayers(new FixedContentLoader("application.json", ""));
 
         assertTrue(layers.json().isEmpty(),
             "an empty application.json must be skipped, not crash the load");
@@ -217,8 +217,8 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void blankJsonResourceIsTreatedAsNoConfig() {
-        ConfigLoaderDefault.BootConfigLayers layers =
-            ConfigLoaderDefault.loadLayers(new FixedContentLoader(
+        ConfigLoaderImpl.BootConfigLayers layers =
+            ConfigLoaderImpl.loadLayers(new FixedContentLoader(
                 "application.json", "  \n\t \r\n  "));
 
         assertTrue(layers.json().isEmpty(),
@@ -229,7 +229,7 @@ class ConfigLoaderDefaultTest {
     @Test
     void malformedJsonResourceStillFails() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigLoaderDefault.loadLayers(new FixedContentLoader(
+            ConfigLoaderImpl.loadLayers(new FixedContentLoader(
                 "application.json", "{\"bad\": ")));
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"),
@@ -238,7 +238,7 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void propertyStyleAndShortFlagsFollowPrefixingRules() {
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "-Dverbose",
             "-p", "dev",
             "-Dserver.port=9090"
@@ -252,7 +252,7 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void nonNumericNegativeArgumentIsNotConsumedAsValue() {
-        Map<String, String> args = ConfigLoaderDefault.parseArgs(
+        Map<String, String> args = ConfigLoaderImpl.parseArgs(
             "--port", "-1x"
         );
 
@@ -264,7 +264,7 @@ class ConfigLoaderDefaultTest {
     @Test
     void rejectsProfileNamesThatCanAddressOtherResources() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            ConfigLoaderDefault.loadLayers(ConfigLoaderDefaultTest.class.getClassLoader(), "--freeway.profile=../secret"));
+            ConfigLoaderImpl.loadLayers(ConfigLoaderImplTest.class.getClassLoader(), "--freeway.profile=../secret"));
 
         assertTrue(ex.getMessage().contains("Invalid freeway.profile value"));
     }
@@ -273,14 +273,14 @@ class ConfigLoaderDefaultTest {
     void envVarNamesConvertToFreewayConfigKeys() {
         // Default FREEWAY_ prefix maps into the freeway.* namespace.
         assertEquals("freeway.server.port",
-            ConfigLoaderDefault.convertEnvKey("FREEWAY_SERVER_PORT", "FREEWAY_", true));
+            ConfigLoaderImpl.convertEnvKey("FREEWAY_SERVER_PORT", "FREEWAY_", true));
         assertEquals("freeway.log.level",
-            ConfigLoaderDefault.convertEnvKey("FREEWAY_LOG_LEVEL", "FREEWAY_", true));
+            ConfigLoaderImpl.convertEnvKey("FREEWAY_LOG_LEVEL", "FREEWAY_", true));
         assertEquals("freeway.db.url",
-            ConfigLoaderDefault.convertEnvKey("FREEWAY_DB_URL", "FREEWAY_", true));
+            ConfigLoaderImpl.convertEnvKey("FREEWAY_DB_URL", "FREEWAY_", true));
         // Underscores inside a key segment become dots.
         assertEquals("freeway.log.file.max.size",
-            ConfigLoaderDefault.convertEnvKey("FREEWAY_LOG_FILE_MAX_SIZE", "FREEWAY_", true));
+            ConfigLoaderImpl.convertEnvKey("FREEWAY_LOG_FILE_MAX_SIZE", "FREEWAY_", true));
     }
 
     @Test
@@ -291,16 +291,16 @@ class ConfigLoaderDefaultTest {
         // freeway.http.port) and its own keys directly (APP_SERVER_PORT →
         // server.port).
         assertEquals("server.port",
-            ConfigLoaderDefault.convertEnvKey("APP_SERVER_PORT", "APP_", false));
+            ConfigLoaderImpl.convertEnvKey("APP_SERVER_PORT", "APP_", false));
         assertEquals("name",
-            ConfigLoaderDefault.convertEnvKey("APP_NAME", "APP_", false),
+            ConfigLoaderImpl.convertEnvKey("APP_NAME", "APP_", false),
             "passthrough strips only the prefix — no namespace inference");
         assertEquals("freeway.http.port",
-            ConfigLoaderDefault.convertEnvKey("APP_FREEWAY_HTTP_PORT", "APP_", false),
+            ConfigLoaderImpl.convertEnvKey("APP_FREEWAY_HTTP_PORT", "APP_", false),
             "freeway.* keys remain reachable under a custom prefix");
         // The freeway.* namespace is bound to the FREEWAY_ prefix itself.
         assertEquals("freeway.server.port",
-            ConfigLoaderDefault.convertEnvKey("APP_SERVER_PORT", "APP_", true),
+            ConfigLoaderImpl.convertEnvKey("APP_SERVER_PORT", "APP_", true),
             "namespace choice is explicit, not inferred from the prefix");
     }
 
@@ -311,7 +311,7 @@ class ConfigLoaderDefaultTest {
         // and ignores FREEWAY_*.
         System.setProperty("freeway.env.prefix", "APP_");
         try {
-            Map<String, String> mapped = ConfigLoaderDefault.loadEnvironment(
+            Map<String, String> mapped = ConfigLoaderImpl.loadEnvironment(
                 Map.of("APP_X", "1", "FREEWAY_Y", "2", "OTHER", "3"));
             assertEquals(Map.of("x", "1"), mapped,
                 "with -Dfreeway.env.prefix=APP_ only APP_* vars map, in passthrough namespace");
@@ -325,7 +325,7 @@ class ConfigLoaderDefaultTest {
         // No -Dfreeway.env.prefix: the mapping uses FREEWAY_ regardless of
         // anything else — APP_* vars are ignored, FREEWAY_* map into the
         // freeway.* namespace.
-        Map<String, String> mapped = ConfigLoaderDefault.loadEnvironment(
+        Map<String, String> mapped = ConfigLoaderImpl.loadEnvironment(
             Map.of("APP_X", "1", "FREEWAY_Y", "2"));
         assertEquals(Map.of("freeway.y", "2"), mapped);
     }
@@ -337,8 +337,8 @@ class ConfigLoaderDefaultTest {
         // environment layer maps vars (still FREEWAY_, JVM-property-driven).
         ClassLoader loader = new FixedContentLoader(
             "application.properties", "freeway.env.prefix=APP_\n");
-        ConfigLoaderDefault.BootConfigLayers layers =
-            ConfigLoaderDefault.loadLayers(loader);
+        ConfigLoaderImpl.BootConfigLayers layers =
+            ConfigLoaderImpl.loadLayers(loader);
 
         assertEquals("APP_", merged(layers).get("freeway.env.prefix"),
             "the file value is a normal config key");
@@ -350,7 +350,7 @@ class ConfigLoaderDefaultTest {
 
     @Test
     void multipleProfilesParseInOrder() {
-        ConfigLoaderDefault.BootConfigLayers layers = ConfigLoaderDefault.loadLayers(
+        ConfigLoaderImpl.BootConfigLayers layers = ConfigLoaderImpl.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev,prod"
         );
@@ -378,19 +378,20 @@ class ConfigLoaderDefaultTest {
 
         // Activation via the base properties layer (no CLI override): without
         // the fix the profile layer's "prod" outranks base "dev" in merged().
-        ConfigLoaderDefault.BootConfigLayers layers =
-            ConfigLoaderDefault.loadLayers(loader);
+        ConfigLoaderImpl.BootConfigLayers layers =
+            ConfigLoaderImpl.loadLayers(loader);
         assertEquals(List.of("dev"), layers.profiles());
         assertEquals("dev", merged(layers).get("freeway.profile"),
             "merged() must report the base-layer activation value, not the profile layer's");
         assertEquals("Dev Boot", merged(layers).get("app.name"),
             "the profile file's other keys must still apply");
-        assertEquals("prod", layers.profileProperties().get("freeway.profile"),
-            "the raw profile layer keeps the key; only the merged view strips it");
+        assertFalse(layers.profileProperties().containsKey("freeway.profile"),
+            "the activation key is stripped from profile layers at load time — "
+                + "the raw form never surfaces");
 
         // Activation via CLI --profile=dev: config().profiles() and
         // config().get("freeway.profile") must agree.
-        AppConfig config = new ConfigLoaderDefault().load(loader, "--profile=dev");
+        AppConfig config = new ConfigLoaderImpl().load(loader, "--profile=dev");
         assertEquals(List.of("dev"), config.profiles());
         assertEquals("dev", config.snapshot().get("freeway.profile"),
             "config().get(\"freeway.profile\") must agree with config().profiles()");
@@ -398,9 +399,9 @@ class ConfigLoaderDefaultTest {
 
     /**
      * The full layered view the tests assert on: file baseline + env + args —
-     * the merge production code performs in {@code AppConfigDefault.reload()}.
+     * the merge production code performs when {@code AppConfigDefault} builds its file tier.
      */
-    private static Map<String, String> merged(ConfigLoaderDefault.BootConfigLayers layers) {
+    private static Map<String, String> merged(ConfigLoaderImpl.BootConfigLayers layers) {
         Map<String, String> merged = new LinkedHashMap<>(layers.fileBaseline());
         merged.putAll(layers.environment());
         merged.putAll(layers.args());

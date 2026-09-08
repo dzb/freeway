@@ -6,6 +6,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import com.jujin.freeway.boot.internal.AppConfigDefault;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventSubscriber;
@@ -339,7 +340,7 @@ class FreewayAppTest {
     void builderWithCustomConfig() {
         AppRuntime app = FreewayApp.of()
             .add(new InstancePrimaryModule())
-            .config((loader, args) -> new AppConfigDefault(
+            .config(new AppConfigDefault(
                 Map.of("custom.key", "custom-value"), List.of()))
             .start();
         try {

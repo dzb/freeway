@@ -1,7 +1,8 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.BootConfigModule;
-import com.jujin.freeway.boot.Presets;
+import com.jujin.freeway.boot.internal.AppConfigDefault;
+import com.jujin.freeway.boot.internal.AppConfigModule;
+import com.jujin.freeway.boot.internal.Presets;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -33,7 +34,7 @@ class PresetTierTest {
     }
 
     private static String resolveHost(AppConfigDefault config) {
-        try (Container container = Freeway.create(new BootConfigModule(config))) {
+        try (Container container = Freeway.create(new AppConfigModule(config))) {
             return container.get(SymbolSource.class).resolve(HOST);
         } finally {
             config.close();
@@ -71,7 +72,7 @@ class PresetTierTest {
 
     @Test
     void noPresetLeavesTheChainUntouched() {
-        try (Container container = Freeway.create(new BootConfigModule(plainConfig()))) {
+        try (Container container = Freeway.create(new AppConfigModule(plainConfig()))) {
             assertNull(container.get(SymbolSource.class).resolve(HOST, null),
                 "without a preset the tier must not invent values");
         }

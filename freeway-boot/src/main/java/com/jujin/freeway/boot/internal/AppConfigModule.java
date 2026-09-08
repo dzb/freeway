@@ -11,10 +11,10 @@ import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import java.util.Objects;
 
 @Marker(Builtin.class)
-public final class BootConfigModule implements ModuleEx {
+public final class AppConfigModule implements ModuleEx {
     private final AppConfig config;
 
-    public BootConfigModule(AppConfig config) {
+    public AppConfigModule(AppConfig config) {
         this.config = Objects.requireNonNull(config, "config");
     }
 

@@ -1,5 +1,8 @@
 package com.jujin.freeway.ioc.symbol;
 
+import java.util.Map;
+import java.util.function.Supplier;
+
 /**
  * Pluggable provider for a single symbol namespace. Registered via
  * {@code binder.contribute(SymbolProvider.class)}.
@@ -11,6 +14,26 @@ package com.jujin.freeway.ioc.symbol;
  * }</pre>
  */
 public interface SymbolProvider {
+
+    /**
+     * A map-backed provider: {@code lookup} reads
+     * {@code values.get().get(name)} — re-reading the supplier on every
+     * lookup, so a live snapshot (a hot-reloading tier) and a constant map
+     * behave identically.
+     */
+    static SymbolProvider of(Supplier<Map<String, String>> values, int order) {
+        return new SymbolProvider() {
+            @Override
+            public String lookup(String name) {
+                return values.get().get(name);
+            }
+
+            @Override
+            public int order() {
+                return order;
+            }
+        };
+    }
 
     /**
      * Looks up a symbol by name.

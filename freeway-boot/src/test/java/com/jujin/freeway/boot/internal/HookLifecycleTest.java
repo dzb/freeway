@@ -1,7 +1,7 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.AppConfigDefault;
+import com.jujin.freeway.boot.internal.AppConfigDefault;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -76,7 +76,7 @@ class HookLifecycleTest {
                 }
             }
         };
-        return Freeway.create(new BootConfigModule(config), hooksModule);
+        return Freeway.create(new AppConfigModule(config), hooksModule);
     }
 
     @Test

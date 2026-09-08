@@ -42,7 +42,7 @@ AppRuntime app = FreewayApp.of(new MyModule())
     .classLoader(customLoader)
     .autoDiscovery(false)        // 禁用 SPI 模块发现
     .shutdownHook(false)         // 跳过 JVM shutdown hook
-    .config(myConfigLoader)        // 自定义 ConfigLoader
+    .config(myConfig)              // 预构建的 AppConfig
     .start();
 ```
 

@@ -1,7 +1,8 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.BootConfigModule;
-import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
+import com.jujin.freeway.boot.internal.AppConfigDefault;
+import com.jujin.freeway.boot.internal.AppConfigModule;
+import com.jujin.freeway.boot.internal.ConfigLoaderImpl;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
@@ -140,7 +141,7 @@ class AppConfigDefaultTest {
     private static AppConfig load(Path configFile) {
         System.setProperty(FILE_KEY, configFile.toString());
         try {
-            return new ConfigLoaderDefault().load(AppConfigDefaultTest.class.getClassLoader());
+            return new ConfigLoaderImpl().load(AppConfigDefaultTest.class.getClassLoader());
         } finally {
             System.clearProperty(FILE_KEY);
         }
@@ -229,8 +230,8 @@ class AppConfigDefaultTest {
         Path file = Files.writeString(dir.resolve("override.properties"), HOT_KEY + "=v1\n");
         System.setProperty(FILE_KEY, file.toString());
         try {
-            AppConfig config = new ConfigLoaderDefault().load(AppConfigDefaultTest.class.getClassLoader());
-            try (Container container = Freeway.create(new BootConfigModule(config))) {
+            AppConfig config = new ConfigLoaderImpl().load(AppConfigDefaultTest.class.getClassLoader());
+            try (Container container = Freeway.create(new AppConfigModule(config))) {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 assertEquals("v1", symbols.resolve(HOT_KEY));
                 Files.writeString(file, HOT_KEY + "=v2\n");

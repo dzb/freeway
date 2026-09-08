@@ -1,13 +1,18 @@
-package com.jujin.freeway.boot;
+package com.jujin.freeway.boot.internal;
 
-import com.jujin.freeway.boot.internal.HookLifecycle;
+import com.jujin.freeway.boot.AppConfig;
+import com.jujin.freeway.boot.AppRuntime;
+import com.jujin.freeway.boot.AppState;
+import com.jujin.freeway.boot.AppStartedEvent;
+import com.jujin.freeway.boot.AppStoppingEvent;
+
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-final class AppRuntimeDefault implements AppRuntime {
+public final class AppRuntimeDefault implements AppRuntime {
 
     private static final Logger LOG = LoggerFactory.getLogger(
         AppRuntimeDefault.class
@@ -17,7 +22,7 @@ final class AppRuntimeDefault implements AppRuntime {
     private volatile AppState state = AppState.CREATED;
     private boolean shutdownAttempted;
 
-    AppRuntimeDefault(Container container, AppConfig config) {
+    public AppRuntimeDefault(Container container, AppConfig config) {
         this.container = Objects.requireNonNull(container, "container");
         this.config = Objects.requireNonNull(config, "config");
     }
@@ -110,9 +115,12 @@ final class AppRuntimeDefault implements AppRuntime {
         state = AppState.STOPPING;
         RuntimeException failure = null;
         LOG.info("Application stopping");
-        // Lifecycle events only make sense for an application that actually
-        // ran — a FAILED (startup-aborted) runtime gets no AppStoppingEvent.
-        if (previous == AppState.RUNNING || previous == AppState.STARTING) {
+        // Lifecycle events and hook stops only make sense for an application
+        // that actually ran — a FAILED (startup-aborted) runtime gets no
+        // AppStoppingEvent, but its hooks may have started before the failure
+        // and must still be stopped.
+        boolean ran = previous == AppState.RUNNING || previous == AppState.STARTING;
+        if (ran) {
             // AppStoppingEvent delivery is a reliability point, by design:
             // shutdown must not silently complete while the stopping signal
             // failed to go out. Any failure to publish — a subscriber
@@ -128,7 +136,7 @@ final class AppRuntimeDefault implements AppRuntime {
                 LOG.warn("Failed to publish AppStoppingEvent", ex);
             }
         }
-        if (previous == AppState.RUNNING || previous == AppState.STARTING || previous == AppState.FAILED) {
+        if (ran || previous == AppState.FAILED) {
             try {
                 container.get(HookLifecycle.class).stop();
             } catch (RuntimeException ex) {

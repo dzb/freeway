@@ -1,8 +1,7 @@
-package com.jujin.freeway.boot;
+package com.jujin.freeway.boot.internal;
 
-import com.jujin.freeway.boot.internal.BootConfigProvider;
-import com.jujin.freeway.boot.internal.ConfigFileReader;
-import com.jujin.freeway.boot.Presets;
+import com.jujin.freeway.boot.AppConfig;
+
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.io.IOException;
@@ -70,14 +69,13 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
     /**
      * Static form: {@code values} is the whole config (it becomes the file
      * tier), no CLI/env tiers and no filesystem watching. Usable standalone
-     * for tests and custom {@link ConfigLoader} implementations.
+     * for tests and custom config sources.
      *
      * <p>Custom loaders may include null entries to mean "unset" — they are
      * skipped instead of failing with an opaque NPE from {@code Map.copyOf}.
      * A null {@code profiles} list is treated as empty.
      */
     public AppConfigDefault(Map<String, String> values, List<String> profiles) {
-        Presets.validate(Presets.declared());
         this(Map.of(), Map.of(), cleaned(values),
             List.of(), profiles == null ? List.of() : profiles);
     }
@@ -154,14 +152,13 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
             // One source per tier with a declared order; the files source
             // re-reads the live snapshot on every lookup — that is how hot
             // reload reaches the symbol chain.
-            new BootConfigProvider(() -> cli, SymbolProvider.TIER_CLI),
-            new BootConfigProvider(() -> environment, SymbolProvider.TIER_ENV),
-            new BootConfigProvider(this::fileTier, SymbolProvider.TIER_FILES),
+            SymbolProvider.of(() -> cli, SymbolProvider.TIER_CLI),
+            SymbolProvider.of(() -> environment, SymbolProvider.TIER_ENV),
+            SymbolProvider.of(() -> fileTier, SymbolProvider.TIER_FILES),
             // The preset is the lowest tier: it fills only what no higher
             // source set. The selector key itself is bootstrap-only (-D/env),
             // so both this chain and the JUL log cascade see the same bundle.
-            new BootConfigProvider(
-                () -> presetTier(), SymbolProvider.TIER_PRESET));
+            SymbolProvider.of(AppConfigDefault::presetTier, SymbolProvider.TIER_PRESET));
     }
 
     /** The active preset's bundle; empty when no preset is declared. The
@@ -171,14 +168,8 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
         return bundle == null ? Map.of() : bundle;
     }
 
-    /** Current file tier (baseline + overrides) — read by the files source
-     *  on every lookup, which is how hot reload reaches the symbol chain. */
-    private Map<String, String> fileTier() {
-        return fileTier;
-    }
-
     /** Re-reads every override file and swaps both snapshots atomically. */
-    public void reload() {
+    private void reload() {
         Map<String, String> files = new LinkedHashMap<>(baseline);
         for (Path file : overrideFiles) {
             readOverride(file).forEach(files::put); // later files win

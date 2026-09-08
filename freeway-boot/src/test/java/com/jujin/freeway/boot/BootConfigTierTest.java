@@ -1,6 +1,7 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.BootConfigModule;
+import com.jujin.freeway.boot.internal.AppConfigDefault;
+import com.jujin.freeway.boot.internal.AppConfigModule;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -32,7 +33,7 @@ class BootConfigTierTest {
     }
 
     private static String resolve(AppConfig config) {
-        try (Container container = Freeway.create(new BootConfigModule(config))) {
+        try (Container container = Freeway.create(new AppConfigModule(config))) {
             return container.get(SymbolSource.class).resolve(KEY);
         } finally {
             config.close();

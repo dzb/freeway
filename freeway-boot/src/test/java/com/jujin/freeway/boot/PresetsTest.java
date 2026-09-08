@@ -1,9 +1,11 @@
 package com.jujin.freeway.boot;
 
+import com.jujin.freeway.boot.internal.Presets;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -39,19 +41,19 @@ class PresetsTest {
     }
 
     @Test
-    void valueFollowsTheDeclaredPreset() {
-        assertNull(Presets.value("freeway.log.file"));
+    void bundleFollowsTheDeclaredPreset() {
+        assertNull(Presets.bundle(Presets.declared()), "no declaration, no bundle");
         System.setProperty(Presets.KEY, "docker");
-        assertEquals("off", Presets.value("freeway.log.file"));
-        assertEquals("0.0.0.0", Presets.value("freeway.http.server.host"));
-        assertNull(Presets.value("freeway.db.url"),
-            "only the bundle's keys are served");
+        Map<String, String> active = Presets.bundle(Presets.declared());
+        assertEquals("off", active.get("freeway.log.file"));
+        assertEquals("0.0.0.0", active.get("freeway.http.server.host"));
+        assertNull(active.get("freeway.db.url"), "only the bundle's keys are served");
     }
 
     @Test
     void unknownNameFailsNamingTheChoices() {
         assertThrows(IllegalArgumentException.class, () -> Presets.validate("kubernates"));
-        assertTrue(Presets.names().contains("docker"));
-        assertTrue(Presets.names().contains("local"));
+        assertDoesNotThrow(() -> Presets.validate("docker"));
+        assertDoesNotThrow(() -> Presets.validate("local"));
     }
 }

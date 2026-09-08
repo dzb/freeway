@@ -1,9 +1,6 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.AppConfigDefault;
-import com.jujin.freeway.boot.ConfigLoader;
-import com.jujin.freeway.boot.internal.ConfigFileReader;
 import com.jujin.freeway.commons.util.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,7 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Default {@link ConfigLoader} implementation. Loads configuration from
+ * The standard config cascade. Loads configuration from
  * the following sources in ascending priority order:
  * <ol>
  *   <li>{@code application.properties} / {@code application.json} (classpath
@@ -38,43 +35,41 @@ import org.slf4j.LoggerFactory;
  * re-read on change, so config edits are visible to later symbol lookups
  * without a restart.
  */
-public final class ConfigLoaderDefault implements ConfigLoader {
+public final class ConfigLoaderImpl {
     private static final Logger LOG = LoggerFactory.getLogger(
-        ConfigLoaderDefault.class
+        ConfigLoaderImpl.class
     );
     private static final Pattern PROFILE_NAME_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     /** The profile-activation key — see {@link BootConfigLayers#fileBaseline()}. */
     private static final String PROFILE_KEY = "freeway.profile";
 
+    /** The standard base config file family — one source of truth for the
+     *  classpath load, the working-directory overrides and the filesystem
+     *  base (profile variants are derived from these names). */
+    private static final String APPLICATION_PROPERTIES = "application.properties";
+    private static final String APPLICATION_JSON = "application.json";
+    private static final List<String> APPLICATION_FILES =
+        List.of(APPLICATION_PROPERTIES, APPLICATION_JSON);
+
     /** A value that begins with a minus sign but is a number (e.g. {@code -1}, {@code -2.5}, {@code -1e5}). */
     private static final Pattern NEGATIVE_NUMBER_PATTERN =
         Pattern.compile("-\\d+(\\.\\d+)?([eE][+-]?\\d+)?");
 
-    public ConfigLoaderDefault() {
-    }
-
-    @Override
     public AppConfig load(ClassLoader loader, String... args) {
-        BootConfigLayers layers = loadLayers(loader, args);
         // Filesystem base files participate in profile selection alongside
         // the classpath base (filesystem wins, env/CLI win over both).
-        Map<String, String> fsBase = readFilesystemBase();
-        Map<String, String> baseForProfiles = new LinkedHashMap<>();
-        baseForProfiles.putAll(layers.properties());
-        baseForProfiles.putAll(layers.json());
-        baseForProfiles.putAll(fsBase);
-        baseForProfiles.putAll(layers.environment());
-        baseForProfiles.putAll(layers.args());
-        List<String> profiles = parseProfiles(baseForProfiles.get(PROFILE_KEY));
+        BootConfigLayers layers = loadLayers(loader, readFilesystemBase(), args);
 
         List<Path> overrides = new ArrayList<>();
         Path workDir = Path.of("").toAbsolutePath();
-        overrides.add(workDir.resolve("application.properties"));
-        overrides.add(workDir.resolve("application.json"));
-        for (String profile : profiles) {
-            overrides.add(workDir.resolve(resourceName("application", profile, "properties")));
-            overrides.add(workDir.resolve(resourceName("application", profile, "json")));
+        for (String name : APPLICATION_FILES) {
+            overrides.add(workDir.resolve(name));
+        }
+        for (String profile : layers.profiles()) {
+            for (String base : APPLICATION_FILES) {
+                overrides.add(workDir.resolve(profileVariant(base, profile)));
+            }
         }
         for (String extra : System.getProperty("freeway.config.file", "").split(",")) {
             if (!extra.isBlank()) {
@@ -83,7 +78,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         }
 
         return new AppConfigDefault(
-            layers.args(), layers.environment(), layers.fileBaseline(), overrides, profiles);
+            layers.args(), layers.environment(), layers.fileBaseline(), overrides, layers.profiles());
     }
 
     /**
@@ -94,7 +89,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
      */
     private static Map<String, String> readFilesystemBase() {
         Map<String, String> base = new LinkedHashMap<>();
-        for (String name : List.of("application.properties", "application.json")) {
+        for (String name : APPLICATION_FILES) {
             Path file = Path.of(name).toAbsolutePath();
             if (!Files.isRegularFile(file)) {
                 continue;
@@ -108,24 +103,36 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         return Map.copyOf(base);
     }
 
-    /** The classpath layers (base files, env, CLI args, profile variants).
-     *  Also consumed by {@link ApplicationLogConfigHomes}, so the bootstrap
+    /** The classpath layers without filesystem base files — the form the
+     *  bootstrap log cascade reads ({@link AppLogSource}). */
+    static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
+        return loadLayers(loader, Map.of(), args);
+    }
+
+    /** The layers in ascending priority order. Also consumed by
+     *  {@link #load} and {@link AppLogSource}, so the bootstrap
      *  log cascade's application file values match the main cascade's
      *  classpath baseline exactly. */
-    static BootConfigLayers loadLayers(ClassLoader loader, String... args) {
+    static BootConfigLayers loadLayers(
+        ClassLoader loader,
+        Map<String, String> filesystemBase,
+        String... args
+    ) {
         Map<String, String> environment = loadEnvironment();
-        Map<String, String> properties = loadProperties(loader, "application.properties");
-        Map<String, String> json = loadJson(loader, "application.json");
+        Map<String, String> properties = loadResource(loader, APPLICATION_PROPERTIES);
+        Map<String, String> json = loadResource(loader, APPLICATION_JSON);
         Map<String, String> parsedArgs = parseArgs(args);
 
         Map<String, String> base = new LinkedHashMap<>();
         // Non-profile layers in ascending priority order (properties → json →
-        // environment → args). profile.* layers cannot participate here —
-        // their file names ARE the profile selection. Environment must
-        // outrank files: FREEWAY_PROFILE driving profile selection would
-        // otherwise silently lose to a freeway.profile key in a file.
+        // filesystem base → environment → args). profile.* layers cannot
+        // participate here — their file names ARE the profile selection.
+        // Environment must outrank files: FREEWAY_PROFILE driving profile
+        // selection would otherwise silently lose to a freeway.profile key
+        // in a file.
         base.putAll(properties);
         base.putAll(json);
+        base.putAll(filesystemBase);
         base.putAll(environment);
         base.putAll(parsedArgs);
 
@@ -133,9 +140,15 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         Map<String, String> profileProperties = new LinkedHashMap<>();
         Map<String, String> profileJson = new LinkedHashMap<>();
         for (String profile : profiles) {
-            profileProperties.putAll(loadProperties(loader, resourceName("application", profile, "properties")));
-            profileJson.putAll(loadJson(loader, resourceName("application", profile, "json")));
+            profileProperties.putAll(loadResource(loader, profileVariant(APPLICATION_PROPERTIES, profile)));
+            profileJson.putAll(loadResource(loader, profileVariant(APPLICATION_JSON, profile)));
         }
+        // The activation key is base-layer-only: a profile file that
+        // re-declares freeway.profile would otherwise make the merged view
+        // contradict profiles(). Stripped once, here — the layers never
+        // surface the raw form.
+        profileProperties.remove(PROFILE_KEY);
+        profileJson.remove(PROFILE_KEY);
 
         return new BootConfigLayers(
             profiles,
@@ -201,25 +214,16 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         return freewayNamespace ? "freeway." + base : base;
     }
 
-    private static Map<String, String> loadProperties(ClassLoader loader, String resourceName) {
-        try (InputStream bounded = findBoundedStream(loader, resourceName)) {
+    /** Loads a classpath config resource; a missing resource is "no config".
+     *  Parsing dispatches by name inside {@link ConfigFileReader#read}. */
+    private static Map<String, String> loadResource(ClassLoader loader, String name) {
+        try (InputStream bounded = findBoundedStream(loader, name)) {
             if (bounded == null) {
                 return Map.of();
             }
-            return ConfigFileReader.properties(bounded);
+            return ConfigFileReader.read(name, bounded);
         } catch (IOException ex) {
-            throw new IllegalStateException("Unable to load " + resourceName, ex);
-        }
-    }
-
-    private static Map<String, String> loadJson(ClassLoader loader, String resourceName) {
-        try (InputStream bounded = findBoundedStream(loader, resourceName)) {
-            if (bounded == null) {
-                return Map.of();
-            }
-            return ConfigFileReader.json(bounded, resourceName);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Unable to load " + resourceName, ex);
+            throw new IllegalStateException("Unable to load " + name, ex);
         }
     }
 
@@ -229,7 +233,7 @@ public final class ConfigLoaderDefault implements ConfigLoader {
      * the resource does not exist, so callers can treat it as "no config".
      */
     private static InputStream findBoundedStream(ClassLoader loader, String resourceName) {
-        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderDefault.class.getClassLoader();
+        ClassLoader effectiveLoader = loader != null ? loader : ConfigLoaderImpl.class.getClassLoader();
         InputStream stream = effectiveLoader.getResourceAsStream(resourceName);
         if (stream == null) {
             return null;
@@ -237,8 +241,11 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         return ByteStreams.bounded(stream, 16L * 1024 * 1024, resourceName);
     }
 
-    private static String resourceName(String baseName, String profile, String suffix) {
-        return baseName + "-" + profile + "." + suffix;
+    /** The {@code -profile} variant of a base file name:
+     *  {@code application.properties} → {@code application-dev.properties}. */
+    private static String profileVariant(String base, String profile) {
+        int dot = base.lastIndexOf('.');
+        return base.substring(0, dot) + '-' + profile + base.substring(dot);
     }
 
     /**
@@ -390,35 +397,19 @@ public final class ConfigLoaderDefault implements ConfigLoader {
         }
 
         /**
-         * The classpath file baseline: base files → profile files (the
-         * profile-activation key excluded from profile layers — it is
-         * redundant there, since profiles are selected from the base layers
-         * only), no environment/CLI. The dynamic file tier overlays the
-         * filesystem overrides on top of this.
+         * The classpath file baseline: base files → profile files (whose
+         * activation key was stripped at load time — it is redundant there,
+         * since profiles are selected from the base layers only), no
+         * environment/CLI. The dynamic file tier overlays the filesystem
+         * overrides on top of this.
          */
         public Map<String, String> fileBaseline() {
             Map<String, String> files = new LinkedHashMap<>();
             files.putAll(properties);
             files.putAll(json);
-            putAllExceptProfileKey(files, profileProperties);
-            putAllExceptProfileKey(files, profileJson);
+            files.putAll(profileProperties);
+            files.putAll(profileJson);
             return Map.copyOf(files);
-        }
-
-        /**
-         * Copies entries from {@code source} into {@code target}, skipping
-         * the profile-activation key (see the class javadoc).
-         */
-        private static void putAllExceptProfileKey(
-            Map<String, String> target,
-            Map<String, String> source
-        ) {
-            for (Map.Entry<String, String> entry : source.entrySet()) {
-                if (PROFILE_KEY.equals(entry.getKey())) {
-                    continue;
-                }
-                target.put(entry.getKey(), entry.getValue());
-            }
         }
     }
 }

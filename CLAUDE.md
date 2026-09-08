@@ -104,7 +104,7 @@ prefix, so `--profile=dev` and `--freeway.profile=dev` are equivalent.
 Dotted keys (`--app.name=foo`) pass through unchanged.
 Activate profiles: `--profile=dev`
 
-The framework owns config reading: `ConfigLoaderDefault` returns an
+The framework owns config reading: `ConfigLoaderImpl` returns an
 `AppConfigDefault` whose file tier merges the packaged classpath baseline
 with filesystem overrides (the same standard file names in the working
 directory, plus any files listed in the `freeway.config.file` system

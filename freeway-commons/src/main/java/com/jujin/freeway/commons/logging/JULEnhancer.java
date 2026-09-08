@@ -30,7 +30,7 @@ import java.util.logging.SimpleFormatter;
  * <p>Log keys can live in two file homes: {@code freeway-log.properties} on
  * the classpath root (the dedicated, more specific file) or the app's main
  * config files — the boot cascade's classpath file baseline, supplied
- * through the {@link LogConfigHomes} contract and taking only
+ * through the {@link LogConfigSource} contract and taking only
  * {@code freeway.log.*} keys. System properties ({@code -D}) and
  * environment variables override both file homes.
  *
@@ -112,38 +112,34 @@ final class JULEnhancer {
     private static final String LOG_PROPERTIES = "freeway-log.properties";
 
     /**
-     * Loads the log configuration, merging the file homes into one map where
-     * the dedicated file wins:
+     * Loads the log configuration, merging the app-side source below the
+     * dedicated file:
      * <ol>
-     *   <li>The environment preset's log subset ({@link LogConfigHomes#presetValues()})
-     *       — lowest precedence, filling only what nothing above set
-     *   <li>The application's main config files ({@link LogConfigHomes#applicationValues()})
-     *       — {@code freeway.log.*} keys from application.properties /
-     *       application.json, supplied by the boot layer via ServiceLoader
+     *   <li>{@link LogConfigSource#values()} — the application's main config
+     *       files and the active preset, supplied by the boot layer via
+     *       ServiceLoader — lowest precedence, filling only what nothing
+     *       above set
      *   <li>{@code freeway-log.properties} from the classpath root — the
      *       dedicated log file, the more specific declaration
      * </ol>
-     * The application-side homes are a boot-supplied contract
-     * ({@link LogConfigHomes}) — commons consumes it, boot owns the file
+     * The application-side source is a boot-supplied contract
+     * ({@link LogConfigSource}) — commons consumes it, boot owns the file
      * family and preset knowledge. No provider (a bare container without
      * boot) degenerates to the dedicated file plus -D/env. The container's
      * config cascade is not involved: this runs at bootstrap, before any
      * container exists.
      */
     static Properties loadLogConfig() {
-        return loadLogConfig(resolvedHomes());
+        return loadLogConfig(resolvedSource());
     }
 
-    static Properties loadLogConfig(LogConfigHomes homes) {
+    static Properties loadLogConfig(LogConfigSource source) {
         Properties merged = new Properties();
-        if (homes != null) {
-            // Precedence inside one map = last put wins: preset first (lowest),
-            // then the application files, then the dedicated file on top.
+        if (source != null) {
             // Defensive filter: the contract says only freeway.log.* keys
             // arrive, but the consumer enforces it — a buggy provider must
             // not feed the per-logger level enumeration phantom loggers.
-            mergeLogKeys(merged, homes.presetValues());
-            mergeLogKeys(merged, homes.applicationValues());
+            mergeLogKeys(merged, source.values());
         }
         try (InputStream in = openStream(LOG_PROPERTIES)) {
             if (in != null) {
@@ -164,11 +160,11 @@ final class JULEnhancer {
     }
 
     /** Resolves the boot-supplied homes once; absent without the boot layer. */
-    private static LogConfigHomes resolvedHomes() {
+    private static LogConfigSource resolvedSource() {
         try {
-            return java.util.ServiceLoader.load(LogConfigHomes.class).findFirst().orElse(null);
+            return java.util.ServiceLoader.load(LogConfigSource.class).findFirst().orElse(null);
         } catch (RuntimeException e) {
-            logEarly("LogConfigHomes lookup failed: " + e.getMessage());
+            logEarly("LogConfigSource lookup failed: " + e.getMessage());
             return null;
         }
     }
@@ -198,7 +194,7 @@ final class JULEnhancer {
     /**
      * Maps a config key to its environment variable name, honoring the
      * configurable env prefix ({@code freeway.env.prefix}, default
-     * {@code FREEWAY_}) — consistent with {@code ConfigLoaderDefault}'s
+     * {@code FREEWAY_}) — consistent with {@code ConfigLoaderImpl}'s
      * cascade mapping.
      *
      * <p>Default prefix: {@code "freeway.log.level"} → {@code "FREEWAY_LOG_LEVEL"},

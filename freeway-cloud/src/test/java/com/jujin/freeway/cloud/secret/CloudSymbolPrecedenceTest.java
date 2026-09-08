@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.secret;
 
 import com.jujin.freeway.boot.AppConfig;
-import com.jujin.freeway.boot.AppConfigDefault;
+import com.jujin.freeway.boot.internal.AppConfigDefault;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
@@ -92,7 +92,7 @@ class CloudSymbolPrecedenceTest {
             cli, env, Map.of(KEY, "from-file", HttpConfigKeys.SERVER_PORT, "0"),
             List.of(), List.of());
         try (AppRuntime app = FreewayApp.of(new CloudModule())
-                .config((loader, args) -> config)
+                .config(config)
                 .shutdownHook(false)
                 .start()) {
             assertEquals(expected, app.get(SymbolSource.class).resolve(KEY),

@@ -1,7 +1,8 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.BootConfigModule;
-import com.jujin.freeway.boot.internal.ConfigLoaderDefault;
+import com.jujin.freeway.boot.internal.AppConfigModule;
+import com.jujin.freeway.boot.internal.AppRuntimeDefault;
+import com.jujin.freeway.boot.internal.ConfigLoaderImpl;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;
@@ -23,7 +24,7 @@ import org.slf4j.LoggerFactory;
  *     .args("--freeway.profile=dev")
  *     .autoDiscovery(false)
  *     .shutdownHook(false)
- *     .config(myLoader)
+ *     .config(myConfig)
  *     .start();
  * }</pre>
  */
@@ -32,7 +33,7 @@ public final class AppBuilder {
 
     private final List<ModuleEx> modules = new ArrayList<>();
     private String[] args = new String[0];
-    private ConfigLoader configLoader;
+    private AppConfig config;
     private boolean autoDiscovery = true;
     private boolean shutdownHook = true;
     private ClassLoader classLoader;
@@ -61,9 +62,15 @@ public final class AppBuilder {
         return this;
     }
 
-    /** Use a custom {@link ConfigLoader} instead of the default cascade. */
-    public AppBuilder config(ConfigLoader loader) {
-        this.configLoader = Objects.requireNonNull(loader, "loader");
+    /**
+     * Use a pre-built {@link AppConfig} instead of the default cascade —
+     * the substitution point for custom config sources (remote servers,
+     * other file formats): construct
+     * {@link com.jujin.freeway.boot.internal.AppConfigDefault} (public
+     * constructors) or implement {@link AppConfig} yourself.
+     */
+    public AppBuilder config(AppConfig config) {
+        this.config = Objects.requireNonNull(config, "config");
         return this;
     }
 
@@ -103,13 +110,12 @@ public final class AppBuilder {
         long startNanos = System.nanoTime();
 
         ClassLoader effectiveLoader = resolveClassLoader();
-        ConfigLoader effectiveConfigLoader = configLoader != null
-            ? configLoader
-            : new ConfigLoaderDefault();
-        AppConfig config = effectiveConfigLoader.load(effectiveLoader, args);
+        AppConfig config = this.config != null
+            ? this.config
+            : new ConfigLoaderImpl().load(effectiveLoader, args);
 
         LinkedHashMap<Class<?>, ModuleEx> allModules = new LinkedHashMap<>();
-        allModules.put(BootConfigModule.class, new BootConfigModule(config));
+        allModules.put(AppConfigModule.class, new AppConfigModule(config));
         for (ModuleEx module : modules) {
             addModule(allModules, module, true);
         }
