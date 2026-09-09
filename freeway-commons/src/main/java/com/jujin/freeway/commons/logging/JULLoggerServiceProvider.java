@@ -44,9 +44,16 @@ public final class JULLoggerServiceProvider implements SLF4JServiceProvider {
         return mdcAdapter;
     }
 
+    /**
+     * Sentinel for "any 2.0 API" — SLF4J's own check is only
+     * {@code requested.startsWith("2.0")}; the value must NOT track the
+     * pom's slf4j version. Matches the reference implementation
+     * ({@code NOP_FallbackServiceProvider}, which uses {@code 2.0.99} and
+     * changes it only with major releases).
+     */
     @Override
     public String getRequestedApiVersion() {
-        return "2.0.17";
+        return "2.0.99";
     }
 
     @Override

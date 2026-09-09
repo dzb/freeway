@@ -1,6 +1,7 @@
 package com.jujin.freeway.boot;
 
 public interface AppRuntime extends AutoCloseable {
+
     AppConfig config();
 
     AppState state();

@@ -3,8 +3,8 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.AppState;
-import com.jujin.freeway.boot.AppStartedEvent;
-import com.jujin.freeway.boot.AppStoppingEvent;
+import com.jujin.freeway.boot.event.AppStartedEvent;
+import com.jujin.freeway.boot.event.AppStoppingEvent;
 
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
@@ -95,7 +95,7 @@ public final class AppRuntimeDefault implements AppRuntime {
      *
      * <p>Design: shutdown is attempted at most once. Even if the first
      * attempt fails (state {@code FAILED}), a repeated {@code close()} is a
-     * no-op — re-running it would republish lifecycle events and
+     * no-op — re-running it would republish lifecycle event and
      * double-close the container. Resolve shutdown failures at the source.</p>
      *
      * <p>Lifecycle-event failure semantics are intentionally asymmetric:
@@ -108,14 +108,14 @@ public final class AppRuntimeDefault implements AppRuntime {
     public synchronized void close() {
         // Once shutdown has been attempted, repeated close() is a no-op even
         // if the first attempt failed (state FAILED) — re-running it would
-        // republish lifecycle events and double-close the container.
+        // republish lifecycle event and double-close the container.
         if (state == AppState.STOPPED || shutdownAttempted) return;
         shutdownAttempted = true;
         var previous = state;
         state = AppState.STOPPING;
         RuntimeException failure = null;
         LOG.info("Application stopping");
-        // Lifecycle events and hook stops only make sense for an application
+        // Lifecycle event and hook stops only make sense for an application
         // that actually ran — a FAILED (startup-aborted) runtime gets no
         // AppStoppingEvent, but its hooks may have started before the failure
         // and must still be stopped.

@@ -22,7 +22,7 @@ final class Shutdown {
     /**
      * Container-managed message services ({@link EventBus}, {@link CallBus}),
      * closed only after every lifecycle callback has run: {@code @PreDestroy}
-     * code may still publish events and make calls (the documented "look up
+     * code may still publish event and make calls (the documented "look up
      * services during close" contract), and a bus closed mid-drain would turn
      * those into failures that abort the whole shutdown.
      */

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * File-system object storage: round-trip, listing, deletion, traversal and
- * symlink defenses, domain events.
+ * symlink defenses, domain event.
  */
 class ObjectStorageTest {
 

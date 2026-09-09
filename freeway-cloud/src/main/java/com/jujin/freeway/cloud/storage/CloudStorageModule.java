@@ -22,7 +22,7 @@ import java.util.function.Function;
  * → {@link ObjectStorageDefault} (local file system, {@code @Local} marker),
  * rooted at {@code freeway.cloud.storage.base-path}
  * (default {@code cloud-storage} in the working directory). Put/delete emit
- * domain events on the {@link EventBus}. Decoupled from the core
+ * domain event on the {@link EventBus}. Decoupled from the core
  * discovery/rpc/config/observe/resilience chain.
  */
 @Marker(Builtin.class)

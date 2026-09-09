@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import org.junit.jupiter.api.Test;
 
@@ -13,12 +13,12 @@ class PeerAddressTest {
 
     @Test
     void peerUrisCoverPlainHostPortAndIpv6() {
-        assertEquals("ws://host1:7001/cloud/events", PeerAddress.parse("host1:7001").toUri("ws").toString());
-        assertEquals("ws://host1:80/cloud/events", PeerAddress.parse("host1").toUri("ws").toString(),
+        assertEquals("ws://host1:7001/cloud/event", PeerAddress.parse("host1:7001").toUri("ws").toString());
+        assertEquals("ws://host1:80/cloud/event", PeerAddress.parse("host1").toUri("ws").toString(),
             "no port component → the ws default port");
-        assertEquals("ws://[::1]:7001/cloud/events", PeerAddress.parse("[::1]:7001").toUri("ws").toString(),
+        assertEquals("ws://[::1]:7001/cloud/event", PeerAddress.parse("[::1]:7001").toUri("ws").toString(),
             "bracketed IPv6 with a port");
-        assertEquals("ws://[fe80::1]:80/cloud/events", PeerAddress.parse("fe80::1").toUri("ws").toString(),
+        assertEquals("ws://[fe80::1]:80/cloud/event", PeerAddress.parse("fe80::1").toUri("ws").toString(),
             "a bare IPv6 literal (multiple colons) carries no port component");
     }
 

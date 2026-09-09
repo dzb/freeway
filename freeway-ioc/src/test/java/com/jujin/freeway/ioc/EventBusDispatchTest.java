@@ -146,7 +146,7 @@ class EventBusDispatchTest {
 
     @Test
     void subclassEventReachesSuperclassSubscribers() {
-        // A subscriber declared on a parent type receives subtype events.
+        // A subscriber declared on a parent type receives subtype event.
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
@@ -163,7 +163,7 @@ class EventBusDispatchTest {
 
     @Test
     void superclassEventDoesNotReachSubclassSubscribers() {
-        // A subscriber declared on a subtype must NOT receive parent events.
+        // A subscriber declared on a subtype must NOT receive parent event.
         List<String> log = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(
@@ -181,7 +181,7 @@ class EventBusDispatchTest {
     @Test
     void superclassSubscriberSuppressesDeadEventForSubclass() {
         // Regression: exact-match dispatch reported DeadEvent for subtype
-        // events even when a superclass subscriber existed.
+        // event even when a superclass subscriber existed.
         List<Object> received = new ArrayList<>();
         Container container = Freeway.create(
             binder -> binder.contribute(EventSubscriber.class).add(

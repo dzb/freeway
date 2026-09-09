@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import java.net.http.HttpClient;
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Outbound dialer for the event mesh: connects to configured peers
- * ({@code ws://host:port/cloud/events}), performs the hello handshake, and
+ * ({@code ws://host:port/cloud/event}), performs the hello handshake, and
  * keeps connections alive with exponential-backoff reconnects.
  *
  * <p>Peers resolve from a static list (zero-dependency start) — the discovery
@@ -60,12 +60,12 @@ public final class PeerConnector implements AutoCloseable {
     private final java.util.Set<Thread> dialers = ConcurrentHashMap.newKeySet();
     /** Arms the per-connection handshake watchdogs. */
     private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(
-        Thread.ofVirtual().name("cloud-events-handshake-", 0).factory());
+        Thread.ofVirtual().name("cloud-event-handshake-", 0).factory());
     private final Duration connectTimeout;
     private final String scheme;
     /** Handshake watchdog budget; a peer that accepts but never answers the
      *  hello is aborted so the dial loop can retry with backoff. Overridable
-     *  via {@code freeway.cloud.events.handshake-timeout-ms}. */
+     *  via {@code freeway.cloud.event.handshake-timeout-ms}. */
     private final Duration handshakeTimeout;
     private final long backoffBaseMs;
     private final long backoffMaxMs;
@@ -86,7 +86,7 @@ public final class PeerConnector implements AutoCloseable {
     /**
      * Full constructor with explicit networking timeouts. The other constructors
      * delegate here with the framework defaults so existing callers (and tests)
-     * are unaffected; production wiring passes the {@code freeway.cloud.events.*}
+     * are unaffected; production wiring passes the {@code freeway.cloud.event.*}
      * config values through {@link com.jujin.freeway.cloud.CloudConfigKeys}.
      */
     public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout,
@@ -192,7 +192,7 @@ public final class PeerConnector implements AutoCloseable {
         var handler = new ClientSessionHandler(peer);
         sessions.add(handler);
         return http.newWebSocketBuilder()
-            .subprotocols("freeway.events.v1")
+            .subprotocols("freeway.event.v1")
             .connectTimeout(connectTimeout)
             .buildAsync(peer.toUri(scheme), handler)
             .whenComplete((ws, err) -> {
@@ -357,7 +357,7 @@ public final class PeerConnector implements AutoCloseable {
             // racy. Queued == accepted: the socket serializes frames in
             // order, and a transport failure surfaces via onError/onClose
             // (handleDisconnect → reconnect). False negatives would drop
-            // events, so the return value never reports a queued send as
+            // event, so the return value never reports a queued send as
             // failed — but the send's completion stage is observed, so a
             // real flush failure reaches handleDisconnect (unregister +
             // reconnect) even when the JDK delivers no listener callback.

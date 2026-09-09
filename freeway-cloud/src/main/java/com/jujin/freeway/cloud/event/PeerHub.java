@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.commons.json.JsonArray;
 import com.jujin.freeway.commons.json.JsonCodec;
@@ -19,7 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The hub: registry of live peer connections + the server-side WS endpoint
- * ({@code /cloud/events}) + the inbound dispatch pipeline.
+ * ({@code /cloud/event}) + the inbound dispatch pipeline.
  *
  * <p>Lifecycle: constructed by {@link CloudEventModule} at bind time,
  * {@link #wire(Wiring)} runs from a RuntimeHook ordered before
@@ -102,13 +102,13 @@ public final class PeerHub implements WebSocketEndpoint {
             // Outbound-only role: the node declared no inbound interest, so
             // protocol-correct peers fan nothing out to it and the loose
             // allowlist/token posture below is moot. The endpoint still
-            // accepts sockets, though — events.allowed-topics / events.token
+            // accepts sockets, though — event.allowed-topics / event.token
             // gate what a direct push can do, with or without subscriptions.
             return;
         }
         if (allowedTypes.isEmpty()) {
             LOG.warn("CloudEventBus has no CLASS-channel type allowlist — CLASS-channel "
-                + "events are dropped (deny-by-default); set {} to accept typed events",
+                + "event are dropped (deny-by-default); set {} to accept typed event",
                 com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TYPES);
         }
         if (allowedTopics.isEmpty()) {
@@ -248,7 +248,7 @@ public final class PeerHub implements WebSocketEndpoint {
 
     @Override
     public java.util.Set<String> subprotocols() {
-        return java.util.Set.of("freeway.events.v1");
+        return java.util.Set.of("freeway.event.v1");
     }
 
     /**
@@ -256,7 +256,7 @@ public final class PeerHub implements WebSocketEndpoint {
      * must be hello (origin + subscriptions) → ack with own hello; the token
      * check runs only on that path, so CE frames before hello are closed
      * (1002) rather than dispatched — otherwise any client that can open a
-     * socket could skip admission and inject events (allowed-topics is
+     * socket could skip admission and inject event (allowed-topics is
      * accept-any by default). Hello is one-shot per session: a second hello
      * is a protocol error too.
      */

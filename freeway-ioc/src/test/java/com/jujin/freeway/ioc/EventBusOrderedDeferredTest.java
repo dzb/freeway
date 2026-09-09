@@ -38,7 +38,7 @@ class EventBusOrderedDeferredTest {
         Await.until(5000, () -> log.size() == 50);
         for (int i = 0; i < 50; i++) {
             assertEquals(Integer.valueOf(i), log.get(i),
-                "ordered events must dispatch in submission order");
+                "ordered event must dispatch in submission order");
         }
         bus.close();
     }
@@ -54,12 +54,12 @@ class EventBusOrderedDeferredTest {
             bus.publishOrdered(2);
             bus.publishOrdered(3);
             assertEquals(0, log.size(),
-                "ordered events inside a Defer scope must wait for the scope end");
+                "ordered event inside a Defer scope must wait for the scope end");
         });
         Await.until(2000, () -> log.size() == 3);
 
         assertEquals(List.of(1, 2, 3), log,
-            "ordered events must drain in call order after the scope commits");
+            "ordered event must drain in call order after the scope commits");
         bus.close();
     }
 
@@ -101,7 +101,7 @@ class EventBusOrderedDeferredTest {
 
     @Test
     void deferredEventsDrainingAfterCloseAreSilentNoOps() {
-        // Regression: events buffered before close() drained after close,
+        // Regression: event buffered before close() drained after close,
         // delivering to module subscribers only (runtime lists were cleared)
         // — a partial delivery of an accepted event.
         List<String> log = new ArrayList<>();
@@ -276,7 +276,7 @@ class EventBusOrderedDeferredTest {
         bus.publish(new PostCreatedEvent(new Post("second")));
 
         assertTrue(received.get(),
-            "module subscriber added after the first publish must receive events");
+            "module subscriber added after the first publish must receive event");
         container.close();
     }
 

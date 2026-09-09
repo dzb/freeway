@@ -128,7 +128,7 @@ class SseEmitterStreamTest {
         assertFalse(pump.isAlive(), "pump must end when the source fails");
         assertTrue(baos.toString(StandardCharsets.UTF_8)
                 .contains("data: before-crash\n\n"),
-            "events delivered before the failure must reach the wire");
+            "event delivered before the failure must reach the wire");
         // The emitter must be closed: further sends are no-ops.
         emitter.send("after-close");
         assertEquals("data: before-crash\n\n",

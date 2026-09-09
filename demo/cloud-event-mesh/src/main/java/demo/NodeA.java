@@ -2,7 +2,7 @@ package demo;
 
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.events.CloudEventModule;
+import com.jujin.freeway.cloud.event.CloudEventModule;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.EventBus;

@@ -1769,8 +1769,8 @@ Config (`freeway.cloud.events.*`) — presence-driven activation:
 # Static peers: presence alone activates the mesh — no enabled needed.
 freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080
 # Discovery-fed mesh without static peers needs the explicit switch:
-# freeway.cloud.events.enabled=true
-# freeway.cloud.events.enabled=false            # kill switch — suppresses even configured peers
+# freeway.cloud.event.enabled=true
+# freeway.cloud.event.enabled=false            # kill switch — suppresses even configured peers
 freeway.cloud.events.subscriptions=order.,user.created
 freeway.cloud.events.allowed-types=com.acme.OrderCreated
 freeway.cloud.events.allowed-topics=order.

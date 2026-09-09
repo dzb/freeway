@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;

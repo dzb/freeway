@@ -263,11 +263,11 @@ class SqlTextParserTest {
     @Test
     void postgresCastIsNotConfusedWithNamedParam() {
         var r = SqlTextParser.parseNamed(
-            "select created_at::timestamp from events where id = :id"
+            "select created_at::timestamp from event where id = :id"
         );
         assertEquals(List.of("id"), r.names());
         assertEquals(
-            "select created_at::timestamp from events where id = ?",
+            "select created_at::timestamp from event where id = ?",
             r.sql()
         );
     }

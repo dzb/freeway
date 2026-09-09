@@ -46,7 +46,7 @@ class MetricsTest {
     @Test
     void counterAccumulatesIntegerSemantics() {
         Metrics metrics = new CountingMetrics();
-        Metrics.Counter c = metrics.counter("events");
+        Metrics.Counter c = metrics.counter("event");
         c.increment();
         c.increment();
         c.add(40);

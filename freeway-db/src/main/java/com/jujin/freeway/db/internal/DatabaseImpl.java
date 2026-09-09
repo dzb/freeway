@@ -131,9 +131,9 @@ public final class DatabaseImpl implements Database {
     /**
      * Runs {@code work} inside a JDBC transaction.
      *
-     * <p>The transaction wraps via {@link Defer#within} so events published
+     * <p>The transaction wraps via {@link Defer#within} so event published
      * during the work are buffered and only drained after commit — if the
-     * transaction rolls back, the events are discarded.
+     * transaction rolls back, the event are discarded.
      *
      * <p>The transaction covers only this {@code Database}'s connection: SQL
      * executed on other {@code Database} instances (e.g. obtained from a

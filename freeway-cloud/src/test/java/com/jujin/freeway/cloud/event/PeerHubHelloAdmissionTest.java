@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.commons.json.JsonObject;
 import com.jujin.freeway.commons.json.JsonUtils;

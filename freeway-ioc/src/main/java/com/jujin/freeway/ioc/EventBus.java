@@ -46,13 +46,13 @@ import java.util.function.Supplier;
  * subscriber is isolated (other subscribers still receive the event) and
  * counted in {@link #stats()}; the event is not retried. A failing sink is
  * similarly isolated. Inside a {@code Defer} scope (e.g. a DB transaction),
- * events are buffered and dispatched only after the scope commits — a
+ * event are buffered and dispatched only after the scope commits — a
  * rollback discards them. Async dispatch ({@link #publishAsync}) has no
  * ordering guarantee; {@link #publishOrdered} provides a globally ordered
  * channel. Runtime subscribers live until {@link #close()} or explicit
  * {@link #unsubscribe}.
  *
- * <p><b>Inbound events:</b> events received from an external source (e.g. an
+ * <p><b>Inbound event:</b> event received from an external source (e.g. an
  * MQ subscriber) are injected through the adapter SPI
  * {@link EventBusInbound#publishInbound(Object, String)} /
  * {@link EventBusInbound#publishInbound(String, Object, String)} — they are
@@ -168,7 +168,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         }
         // DeadEvent always dispatches immediately — it is a diagnostic
         // event that fires when zero subscribers exist, and must not be
-        // re-deferred during drain of committed events.
+        // re-deferred during drain of committed event.
         boolean defer = Defer.isActive() && !(event instanceof DeadEvent);
         deferOrRun(defer, () -> dispatchEvent(event, inbound, eventId));
     }
@@ -234,7 +234,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     }
 
     /**
-     * Drops inbound events whose wire id has already been claimed, so an
+     * Drops inbound event whose wire id has already been claimed, so an
      * event that reaches this node over two transports is delivered once.
      *
      * <p>Off by default: dedup changes delivery semantics and costs memory,
@@ -341,16 +341,16 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     // ==================== ordered publish ====================
 
     /**
-     * Publishes an event on the globally ordered channel: events submitted
+     * Publishes an event on the globally ordered channel: event submitted
      * here are dispatched strictly in submission order (single-threaded
-     * FIFO), so a sequence of ordered events observes a total order. This is
-     * the channel for transaction-outbox-style ordering — events published
+     * FIFO), so a sequence of ordered event observes a total order. This is
+     * the channel for transaction-outbox-style ordering — event published
      * inside one {@code Defer} scope drain in call order and are dispatched
      * in that same order after the scope commits.
      *
      * <p>{@code key} names the ordering domain (e.g. the aggregate id) for
      * documentation and future per-key parallelism; the current
-     * implementation is globally serialized, so any two ordered events are
+     * implementation is globally serialized, so any two ordered event are
      * ordered regardless of key. Subscriber failures are isolated and
      * counted, never propagated to the submitter.
      */
@@ -403,7 +403,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     // ==================== reactive streams (JDK Flow) ====================
 
     /**
-     * Streams class-matched events as a JDK {@link Flow.Publisher} — the
+     * Streams class-matched event as a JDK {@link Flow.Publisher} — the
      * reactive-streams contract built into the JDK since 9, no external
      * dependency. The publisher is cold-lazy: the underlying bus
      * subscription is created on the first downstream {@code subscribe},
@@ -411,8 +411,8 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      *
      * <p>Backpressure: downstream demand is honored via
      * {@link SubmissionPublisher}; a consumer that cannot keep up
-     * overflow-drops events (non-blocking) rather than stalling bus
-     * dispatch for everyone else. Dropped events are logged at debug level.</p>
+     * overflow-drops event (non-blocking) rather than stalling bus
+     * dispatch for everyone else. Dropped event are logged at debug level.</p>
      *
      * <p>Lifecycle: any downstream {@code cancel()} ends the whole stream —
      * the subscription detaches from the bus and further subscribers see
@@ -460,7 +460,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      *                           post-close silent no-ops are excluded)
      * @param delivered          successful subscriber deliveries (one per subscriber)
      * @param subscriberFailures throwing subscriber executions
-     * @param deadEvents         DeadEvent diagnostics emitted for zero-subscriber events
+     * @param deadEvents         DeadEvent diagnostics emitted for zero-subscriber event
      */
     public record EventBusStats(
         long published,
@@ -471,7 +471,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
 
     /**
      * Snapshot of cumulative dispatch counters. Useful for operational
-     * observability (e.g. "subscriberFailures &gt; 0 for the last N events").
+     * observability (e.g. "subscriberFailures &gt; 0 for the last N event").
      */
     public EventBusStats stats() {
         return new EventBusStats(
@@ -547,7 +547,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * Events (or topic payloads) that can signal the publisher to stop
      * processing subsequent subscribers. Published by subscriber in a
      * multi-handler chain to short-circuit remaining handlers. Applies to
-     * both channels: class events and string-topic payloads — a stopped
+     * both channels: class event and string-topic payloads — a stopped
      * message is also withheld from the outbound {@link EventSink}.
      */
     public interface Stoppable {
@@ -560,7 +560,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      *
      * <p>Optional contract: when an event type implements this interface,
      * external event sinks (Kafka, RabbitMQ, ...) use {@link #key()} as the
-     * message key, so the broker keeps events of the same aggregate ordered
+     * message key, so the broker keeps event of the same aggregate ordered
      * and parallel consumers stay per-key serial. Events that do not
      * implement it are sent with a null key — no cross-JVM ordering
      * guarantee and no key-based parallelism on the consuming side.</p>

@@ -58,14 +58,7 @@ public final class HookLifecycle {
             if (current != null) {
                 failure = stopFailedHook(current);
             }
-            RuntimeException rollback = stopStarted();
-            if (rollback != null) {
-                if (failure == null) {
-                    failure = rollback;
-                } else {
-                    failure.addSuppressed(rollback);
-                }
-            }
+            failure = merge(failure, stopStarted());
             // Errors (AssertionError, OOM, ...) propagate as-is with any
             // rollback failures suppressed, so the caller can distinguish
             // e.g. AssertionError from an ordinary startup failure. Everything
@@ -97,6 +90,16 @@ public final class HookLifecycle {
         }
     }
 
+    /** The one failure-merge rule for hook shutdown: first failure wins,
+     *  later ones ride along as suppressed. */
+    private static RuntimeException merge(
+        RuntimeException first, RuntimeException second
+    ) {
+        if (first == null) return second;
+        if (second != null) first.addSuppressed(second);
+        return first;
+    }
+
     public synchronized void stop() {
         RuntimeException failure = stopStarted();
         if (failure != null) {
@@ -119,15 +122,8 @@ public final class HookLifecycle {
                 hook.stop(container);
             } catch (Throwable ex) {
                 LOG.warn("Hook stop failed: {}", ex.getMessage(), ex);
-                RuntimeException next = new RuntimeException(
-                    "Runtime hook stop failed",
-                    ex
-                );
-                if (failure == null) {
-                    failure = next;
-                } else {
-                    failure.addSuppressed(next);
-                }
+                failure = merge(failure, new RuntimeException(
+                    "Runtime hook stop failed", ex));
             }
         }
         return failure;

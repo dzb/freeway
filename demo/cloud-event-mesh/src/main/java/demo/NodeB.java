@@ -2,7 +2,7 @@ package demo;
 
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.events.CloudEventModule;
+import com.jujin.freeway.cloud.event.CloudEventModule;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.EventBus;
@@ -25,7 +25,7 @@ public final class NodeB {
     private static final AtomicInteger deliveries = new AtomicInteger();
 
     public static void main(String[] args) throws Exception {
-        // HTTP port for the /cloud/events WS endpoint (fixed for peer config).
+        // HTTP port for the /cloud/event WS endpoint (fixed for peer config).
         System.setProperty(HttpConfigKeys.SERVER_PORT, "18080");
         // CloudEventBus: pull "greet."-prefixed types; allowlist the CLASS type.
         System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");

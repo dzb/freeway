@@ -91,7 +91,7 @@ class EventBusSinkTest {
             received.stream().map(e -> e.post().title()).toList(),
             "inbound event must be delivered to local class subscribers");
         assertEquals(0, sent.size(),
-            "inbound events must never be sent back out to the MQ");
+            "inbound event must never be sent back out to the MQ");
         bus.close();
     }
 
@@ -109,7 +109,7 @@ class EventBusSinkTest {
         assertEquals(List.of("from-remote"), received,
             "inbound topic event must be delivered to local topic subscribers");
         assertEquals(0, sent.size(),
-            "inbound topic events must never be sent back out to the MQ");
+            "inbound topic event must never be sent back out to the MQ");
         bus.close();
     }
 
@@ -139,7 +139,7 @@ class EventBusSinkTest {
         assertEquals(
             List.of(EventSink.Channel.CLASS, EventSink.Channel.TOPIC),
             channels,
-            "class events must be sent as CLASS, topic events as TOPIC");
+            "class event must be sent as CLASS, topic event as TOPIC");
         bus.close();
     }
 

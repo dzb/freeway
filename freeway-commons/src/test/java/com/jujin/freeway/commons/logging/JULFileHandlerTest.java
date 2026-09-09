@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -574,5 +575,37 @@ class JULFileHandlerTest {
         // @TempDir teardown must not trip over the sabotage leftovers.
         Files.delete(archived.resolve("blocker"));
         Files.delete(archived);
+    }
+
+    @Test
+    void noArgConstructorResolvesThroughTheFullCascade(@TempDir Path tempDir) throws IOException {
+        // The no-arg constructor (logging.properties / LogManager path) must
+        // resolve values through the same cascade as the framework-managed
+        // path: a value known ONLY as a system property (-D, the cascade's
+        // highest source) drives the handler — it used to read the merged
+        // file map alone, so a -Dfreeway.log.file was ignored and the
+        // constructor failed outright when no file-tier value existed.
+        Path logFile = tempDir.resolve("from-dash-d").resolve("app.log");
+        System.setProperty("freeway.log.file", logFile.toString());
+        try {
+            JULFileHandler handler = new JULFileHandler();
+            handler.publish(new LogRecord(Level.INFO, "via -D"));
+            handler.close();
+
+            assertTrue(Files.exists(logFile),
+                "-Dfreeway.log.file must drive the natively registered handler");
+            assertTrue(Files.readString(logFile).contains("via -D"),
+                "records land in the -D-configured file");
+        } finally {
+            System.clearProperty("freeway.log.file");
+        }
+    }
+
+    @Test
+    void noArgConstructorStillFailsWithoutAnySource() {
+        // No -D, no env, no file-tier value: the required key stays missing.
+        System.clearProperty("freeway.log.file");
+        assertThrows(IllegalArgumentException.class, JULFileHandler::new,
+            "freeway.log.file is required — nothing may invent a default path");
     }
 }

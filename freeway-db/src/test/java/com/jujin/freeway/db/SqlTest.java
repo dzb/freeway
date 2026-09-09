@@ -478,19 +478,19 @@ class SqlTest {
     @Test
     void selectWithTypeCastAndNamedParam() {
         // PostgreSQL :: type cast must not be confused with :name
-        Sql q = Sql.select("*").from("events")
+        Sql q = Sql.select("*").from("event")
             .where("created_at::date = :d", LocalDate.of(2024, 1, 15));
-        assertEquals("SELECT * FROM events WHERE created_at::date = ?", q.sql());
+        assertEquals("SELECT * FROM event WHERE created_at::date = ?", q.sql());
         assertEquals(1, q.args().length);
     }
 
     @Test
     void selectWithTypeCastAndMultipleNamedParams() {
-        Sql q = Sql.select("*").from("events")
+        Sql q = Sql.select("*").from("event")
             .where("created_at::timestamp > :t AND id = :id",
                 LocalDateTime.of(2024, 6, 1, 0, 0), 1L);
         assertEquals(
-            "SELECT * FROM events WHERE created_at::timestamp > ? AND id = ?",
+            "SELECT * FROM event WHERE created_at::timestamp > ? AND id = ?",
             q.sql());
         assertEquals(2, q.args().length);
     }
@@ -498,11 +498,11 @@ class SqlTest {
     @Test
     void selectWithTypeCastAndMixedParam() {
         // ? positional + :: type cast — :: handling should not break ?
-        Sql q = Sql.select("*").from("events")
+        Sql q = Sql.select("*").from("event")
             .where("created_at::date > ? AND status = :s",
                 LocalDate.of(2024, 1, 1), "active");
         assertEquals(
-            "SELECT * FROM events WHERE created_at::date > ? AND status = ?",
+            "SELECT * FROM event WHERE created_at::date > ? AND status = ?",
             q.sql());
         assertEquals(2, q.args().length);
     }

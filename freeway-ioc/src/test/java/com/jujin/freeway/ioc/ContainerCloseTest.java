@@ -62,7 +62,7 @@ class ContainerCloseTest {
     void preDestroyCanPublishEventsDuringContainerClose() {
         // Regression: the container-managed EventBus used to be closed in an
         // unspecified order relative to other services — a @PreDestroy that
-        // published events hit a closed bus, threw IllegalStateException, and
+        // published event hit a closed bus, threw IllegalStateException, and
         // failed the whole shutdown. The bus is now closed only after every
         // lifecycle callback has run.
         var received = new CopyOnWriteArrayList<String>();
@@ -72,7 +72,7 @@ class ContainerCloseTest {
         containerRef.get(EventPublishingCleanup.class); // realize so PreDestroy fires on close
 
         assertDoesNotThrow(containerRef::close,
-            "close() must not fail when @PreDestroy publishes events");
+            "close() must not fail when @PreDestroy publishes event");
         assertEquals(List.of("cleanup-event"), received,
             "the event published from @PreDestroy must be delivered while the bus is still open");
     }
@@ -82,7 +82,7 @@ class ContainerCloseTest {
         // The AutoCloseable drain runs after the @PreDestroy drain, and the
         // EventBus is one of those closeables — before the fix it could be
         // closed before another service's close() ran, so a close() that
-        // published events threw IllegalStateException and failed shutdown.
+        // published event threw IllegalStateException and failed shutdown.
         var received = new CopyOnWriteArrayList<String>();
         containerRef = Freeway.create(binder ->
             binder.bind(ClosingPublisher.class).to(ClosingPublisher.class));
@@ -90,7 +90,7 @@ class ContainerCloseTest {
         containerRef.get(ClosingPublisher.class); // realize so close() fires on container close
 
         assertDoesNotThrow(containerRef::close,
-            "close() must not fail when a service close() callback publishes events");
+            "close() must not fail when a service close() callback publishes event");
         assertEquals(List.of("closing-event"), received,
             "the event published from a close() callback must be delivered while the bus is still open");
     }

@@ -16,7 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,7 +103,7 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
         this.overrideFiles = List.copyOf(Objects.requireNonNull(overrideFiles, "overrideFiles"));
         this.profiles = List.copyOf(Objects.requireNonNull(profiles, "profiles"));
         reload();
-        // Watch every override file's directory; events are filtered by
+        // Watch every override file's directory; event are filtered by
         // filename so unrelated writes in the same directory are ignored.
         WatchService ws = null;
         Thread thread = null;
@@ -138,7 +137,10 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
 
     @Override
     public Map<String, String> snapshot() {
-        return Map.copyOf(merged);
+        // merged is rebuilt as an immutable Map.copyOf on every reload —
+        // handing it out directly satisfies the snapshot contract without
+        // a redundant defensive copy per call.
+        return merged;
     }
 
     @Override

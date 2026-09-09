@@ -148,11 +148,11 @@ public class SseEmitter implements AutoCloseable {
     // ==================== reactive streams (JDK Flow) ====================
 
     /**
-     * Pumps SSE events from the given JDK {@link Flow.Publisher} until the
+     * Pumps SSE event from the given JDK {@link Flow.Publisher} until the
      * source completes or the emitter is closed. Equivalent to
      * {@code from(publisher, Function.identity())} on an event-valued stream.
      *
-     * @param publisher source of events; must emit {@link SseEvent} items
+     * @param publisher source of event; must emit {@link SseEvent} items
      */
     public void from(Flow.Publisher<SseEvent> publisher) {
         from(publisher, Function.identity());

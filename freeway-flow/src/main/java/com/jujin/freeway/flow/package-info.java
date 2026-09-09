@@ -21,7 +21,7 @@
  *   <li>{@link com.jujin.freeway.flow.FlowModule} — the Freeway IoC module entry point</li>
  * </ul>
  *
- * <h3>Interceptors and events</h3>
+ * <h3>Interceptors and event</h3>
  * <ul>
  *   <li>{@link com.jujin.freeway.flow.FlowInterceptor} / {@link com.jujin.freeway.flow.FlowInvocation} — the interceptor chain</li>
  *   <li>{@link com.jujin.freeway.flow.FlowEventBus} — the execution-level event bus</li>

@@ -27,9 +27,9 @@ import org.slf4j.LoggerFactory;
  * a link, never followed.
  *
  * <p>{@code presignedUrl} has no meaning on a local file system — empty.
- * Domain events ({@link com.jujin.freeway.cloud.storage.ObjectStoredEvent} /
+ * Domain event ({@link com.jujin.freeway.cloud.storage.ObjectStoredEvent} /
  * {@link com.jujin.freeway.cloud.storage.ObjectDeletedEvent}) are emitted via
- * the optional {@code events} consumer — the deleted event only when an
+ * the optional {@code event} consumer — the deleted event only when an
  * object was actually removed.
  */
 public final class ObjectStorageDefault implements ObjectStorage {

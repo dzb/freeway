@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 /**
  * Reassembles a WebSocket text message from its frames. A client listener sees

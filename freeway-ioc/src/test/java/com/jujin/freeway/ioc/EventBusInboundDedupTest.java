@@ -49,7 +49,7 @@ class EventBusInboundDedupTest {
         bus.publishInbound("three", "evt-3");
 
         assertEquals(List.of("one", "two", "three"), received,
-            "dedup keyed on the id must not swallow distinct events");
+            "dedup keyed on the id must not swallow distinct event");
         container.close();
     }
 
@@ -143,7 +143,7 @@ class EventBusInboundDedupTest {
     @Test
     void localPublishesAreNeverDeduped() {
         // Only inbound traffic carries a wire id; a local publish has none,
-        // so arming the window must not start swallowing local events.
+        // so arming the window must not start swallowing local event.
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();

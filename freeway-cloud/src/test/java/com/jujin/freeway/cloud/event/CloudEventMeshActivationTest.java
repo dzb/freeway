@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -12,7 +12,6 @@ import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.EventBus;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +20,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Presence-driven activation of the event mesh (design principle: explicit
  * wins, presence activates, default stays off): configured peers alone start
- * the dialing side; an explicit {@code events.enabled=false} is the kill
+ * the dialing side; an explicit {@code event.enabled=false} is the kill
  * switch; nothing set keeps the module inert; an invalid explicit value fails
  * startup naming the key.
  */
@@ -52,7 +51,7 @@ class CloudEventMeshActivationTest {
         System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, "greet.");
         nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
-        // Dialing side: peers alone — no events.enabled anywhere.
+        // Dialing side: peers alone — no event.enabled anywhere.
         System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
         System.clearProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS);
         System.setProperty(CloudConfigKeys.EVENTS_PEERS,
@@ -115,7 +114,7 @@ class CloudEventMeshActivationTest {
         System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "yolo");
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule()));
-        assertTrue(rootMessage(failure).contains("events.enabled"),
+        assertTrue(rootMessage(failure).contains("event.enabled"),
             "the failure must name the key: " + rootMessage(failure));
         assertTrue(rootMessage(failure).contains("yolo"),
             "the failure must show the offending value: " + rootMessage(failure));

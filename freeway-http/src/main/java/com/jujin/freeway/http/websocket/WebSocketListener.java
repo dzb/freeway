@@ -1,11 +1,11 @@
 package com.jujin.freeway.http.websocket;
 
 /**
- * Receives WebSocket frames and lifecycle events for a single connection.
+ * Receives WebSocket frames and lifecycle event for a single connection.
  * Implement one or more callback methods.
  */
 public interface WebSocketListener {
-    /** No-op listener that ignores all events. */
+    /** No-op listener that ignores all event. */
     WebSocketListener NOOP = new WebSocketListener() {};
 
     /** Called when the WebSocket connection has been established. The

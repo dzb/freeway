@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 
 import static java.util.Map.entry;
 
@@ -124,16 +125,9 @@ public final class CoercerDefault implements Coercer {
         if (rules.containsKey(new CoercionKey(sourceType, targetType))) {
             return true;
         }
-
-        List<CoerceRule<?, ?>> targetRules = rulesByTarget.get(targetType);
-        if (targetRules != null) {
-            for (CoerceRule<?, ?> rule : targetRules) {
-                if (rule.sourceType().isAssignableFrom(sourceType)) {
-                    return true;
-                }
-            }
+        if (findAssignableRule(sourceType, targetType) != null) {
+            return true;
         }
-
         return supportsBuiltin(sourceType, targetType);
     }
 
@@ -256,7 +250,6 @@ public final class CoercerDefault implements Coercer {
 
     @SuppressWarnings("unchecked")
     private static <T> T coerceInternal(Object value, Class<T> targetType) {
-        Objects.requireNonNull(targetType, "targetType");
         if (value == null) {
             if (targetType == OptionalInt.class) return (T) OptionalInt.empty();
             if (targetType == OptionalLong.class) return (T) OptionalLong.empty();
@@ -431,41 +424,26 @@ public final class CoercerDefault implements Coercer {
         // Non-exact sources route through their decimal representation so
         // fractional values truncate exactly like the string path does.
         if (targetType != Double.class && targetType != Float.class) {
-            if (n instanceof BigInteger bi) {
-                checkRange(bi, targetType);
-            } else if (n instanceof BigDecimal bd) {
-                checkRange(bd, targetType);
-            } else {
-                checkRange(new BigDecimal(String.valueOf(n)), targetType);
-            }
+            checkRange(exactIntegerValue(n), targetType);
         }
-        if (targetType == Integer.class) return n.intValue();
-        if (targetType == Long.class) return n.longValue();
-        if (targetType == Short.class) return n.shortValue();
-        if (targetType == Byte.class) return n.byteValue();
-        if (targetType == Double.class) {
-            // BigDecimal and other non-float sources can overflow to Infinity
-            // (e.g. 1e400 → Double) — reject instead of returning Infinity.
-            double d = n.doubleValue();
-            if (Double.isInfinite(d)) {
-                throw new IllegalArgumentException(
-                    "Cannot coerce " + n + " to Double: out of range"
-                );
-            }
-            return d;
-        }
-        if (targetType == Float.class) {
-            float f = n.floatValue();
-            if (Float.isInfinite(f)) {
-                throw new IllegalArgumentException(
-                    "Cannot coerce " + n + " to Float: out of range"
-                );
-            }
-            return f;
-        }
+        Function<Number, ? extends Number> narrower = NARROWERS.get(targetType);
         // Exhaustive over the boxed numeric targets routed here by
-        // BUILTIN_COERCERS; a new target must extend the chain above.
-        throw new IllegalStateException("Unhandled numeric target type: " + targetType);
+        // BUILTIN_COERCERS; a new target must extend the NARROWERS map.
+        if (narrower == null) {
+            throw new IllegalStateException(
+                "Unhandled numeric target type: " + targetType);
+        }
+        return narrower.apply(n);
+    }
+
+    /** The exact integer magnitude of any Number — BigInteger/BigDecimal
+     *  pass through their own exact form; everything else routes through the
+     *  decimal representation so fractional values truncate and out-of-range
+     *  magnitudes stay out of range (longValue() would saturate 1e30). */
+    private static BigInteger exactIntegerValue(Number n) {
+        if (n instanceof BigInteger i) return i;
+        if (n instanceof BigDecimal d) return d.toBigInteger();
+        return new BigDecimal(String.valueOf(n)).toBigInteger();
     }
 
     /**
@@ -483,6 +461,42 @@ public final class CoercerDefault implements Coercer {
         }
     }
 
+    /** Number→Number narrowing per boxed numeric target — the single
+     *  definition shared by the Number-source path and the BigDecimal
+     *  fallback of the string path. Double/Float reject an Infinity result
+     *  (a non-float source such as 1e400 would overflow to Infinity). */
+    private static final Map<Class<?>, Function<Number, ? extends Number>> NARROWERS =
+        Map.of(
+            Integer.class, Number::intValue,
+            Long.class,    Number::longValue,
+            Short.class,   Number::shortValue,
+            Byte.class,    Number::byteValue,
+            Double.class,  CoercerDefault::narrowDouble,
+            Float.class,   CoercerDefault::narrowFloat
+        );
+
+    private static Double narrowDouble(Number n) {
+        double d = n.doubleValue();
+        if (Double.isInfinite(d)) {
+            throw new IllegalArgumentException(
+                "Cannot coerce " + n + " to Double: out of range"
+            );
+        }
+        return d;
+    }
+
+    private static Float narrowFloat(Number n) {
+        float f = n.floatValue();
+        if (Float.isInfinite(f)) {
+            throw new IllegalArgumentException(
+                "Cannot coerce " + n + " to Float: out of range"
+            );
+        }
+        return f;
+    }
+
+    /** Range checks only ever see boxed targets — BUILTIN_COERCERS routes
+     *  the primitive spellings to the same boxed keys. */
     private static void checkRange(BigInteger bi, long min, long max, String typeName) {
         if (bi.compareTo(BigInteger.valueOf(max)) > 0
                 || bi.compareTo(BigInteger.valueOf(min)) < 0)
@@ -490,13 +504,13 @@ public final class CoercerDefault implements Coercer {
     }
 
     private static void checkRange(BigInteger bi, Class<?> targetType) {
-        if (targetType == Integer.class || targetType == int.class) {
+        if (targetType == Integer.class) {
             checkRange(bi, Integer.MIN_VALUE, Integer.MAX_VALUE, "Integer");
-        } else if (targetType == Long.class || targetType == long.class) {
+        } else if (targetType == Long.class) {
             checkRange(bi, Long.MIN_VALUE, Long.MAX_VALUE, "Long");
-        } else if (targetType == Short.class || targetType == short.class) {
+        } else if (targetType == Short.class) {
             checkRange(bi, Short.MIN_VALUE, Short.MAX_VALUE, "Short");
-        } else if (targetType == Byte.class || targetType == byte.class) {
+        } else if (targetType == Byte.class) {
             checkRange(bi, Byte.MIN_VALUE, Byte.MAX_VALUE, "Byte");
         }
     }
@@ -589,10 +603,7 @@ public final class CoercerDefault implements Coercer {
         } catch (NumberFormatException e) {
             BigDecimal bd = new BigDecimal(text);
             checkRange(bd, targetType);
-            if (targetType == Integer.class) return bd.intValue();
-            if (targetType == Long.class) return bd.longValue();
-            if (targetType == Short.class) return bd.shortValue();
-            return bd.byteValue();
+            return NARROWERS.get(targetType).apply(bd);
         }
     }
 

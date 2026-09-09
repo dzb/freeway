@@ -343,7 +343,7 @@ Extensions are released to Maven Central alongside the core at the same version.
 <dependency>
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-mq-kafka</artifactId>
-    <version>1.5.1</version>
+    <version>1.5.2-SNAPSHOT</version>
 </dependency>
 ```
 

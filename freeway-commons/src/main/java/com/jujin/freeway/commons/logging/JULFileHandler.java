@@ -149,37 +149,22 @@ public final class JULFileHandler extends StreamHandler {
      * resolves the same values the framework-managed path would.
      */
     public JULFileHandler() throws IOException {
+        // propertyValue resolves through the full cascade (-D > env > file),
+        // not the raw merged map: the map alone omits system properties and
+        // environment variables, and a natively registered handler must
+        // resolve the same values the framework-managed path does — same
+        // keys, same precedence, strict (lenient=false).
         Properties config = JULEnhancer.loadLogConfig();
         this(
             requiredProperty(config),
-            LogConfig.propertyValue(
-                "freeway.log.file.max-size",
-                DEFAULT_MAX_SIZE,
-                config::getProperty,
-                Long::parseLong,
-                false
-            ),
-            LogConfig.propertyValue(
-                "freeway.log.file.max-history",
-                DEFAULT_MAX_HISTORY,
-                config::getProperty,
-                Integer::parseInt,
-                false
-            ),
-            LogConfig.propertyValue(
-                "freeway.log.file.compress",
-                DEFAULT_COMPRESS,
-                config::getProperty,
-                LogConfig::strictBoolean,
-                false
-            ),
-            LogConfig.propertyValue(
-                "freeway.log.file.flush-interval",
-                DEFAULT_FLUSH_INTERVAL_MS,
-                config::getProperty,
-                Long::parseLong,
-                false
-            )
+            JULEnhancer.propertyValue(config, "freeway.log.file.max-size",
+                DEFAULT_MAX_SIZE, Long::parseLong, false),
+            JULEnhancer.propertyValue(config, "freeway.log.file.max-history",
+                DEFAULT_MAX_HISTORY, Integer::parseInt, false),
+            JULEnhancer.propertyValue(config, "freeway.log.file.compress",
+                DEFAULT_COMPRESS, JULEnhancer::strictBoolean, false),
+            JULEnhancer.propertyValue(config, "freeway.log.file.flush-interval",
+                DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong, false)
         );
     }
 
@@ -223,9 +208,10 @@ public final class JULFileHandler extends StreamHandler {
         this.currentIndex = 0;
         this.bytesWritten = 0;
 
-        Files.createDirectories(basePath.getParent());
         setFormatter(new JULFileFormatter());
         setLevel(Level.ALL);
+        // openCurrentFile() creates the parent directory — the one call that
+        // runs on every open path (initial open, daily and size rotations).
         rotateStaleFileOnStartup();
         openCurrentFile();
         this.flusher = startFlusher();
@@ -233,18 +219,16 @@ public final class JULFileHandler extends StreamHandler {
 
     /** If the log file exists and was last modified before today, archive it. */
     private void rotateStaleFileOnStartup() {
-        if (Files.exists(basePath) && fileSize(basePath) > 0) {
-            try {
-                LocalDate fileDate = LocalDate.ofInstant(
-                    Files.getLastModifiedTime(basePath).toInstant(),
-                    ZoneId.systemDefault()
-                );
-                if (fileDate.isBefore(currentLocalDate)) {
-                    archiveCurrentFile(DATE_FMT.format(fileDate), 0);
-                }
-            } catch (IOException e) {
-                // best-effort — open the existing file if rotation fails
+        try {
+            LocalDate fileDate = LocalDate.ofInstant(
+                Files.getLastModifiedTime(basePath).toInstant(),
+                ZoneId.systemDefault()
+            );
+            if (fileDate.isBefore(currentLocalDate)) {
+                archiveIfPopulated(DATE_FMT.format(fileDate), 0);
             }
+        } catch (IOException e) {
+            // best-effort — open the existing file if rotation fails
         }
         // Enforce the retention window even when nothing was rotated:
         // daily-restart workloads would otherwise accumulate archives forever.
@@ -264,7 +248,7 @@ public final class JULFileHandler extends StreamHandler {
     // ── property helpers ─────────────────────────────────────────────
 
     private static String requiredProperty(Properties config) {
-        String val = config.getProperty("freeway.log.file");
+        String val = JULEnhancer.cascadeReader(config).apply("freeway.log.file");
         if (val == null || val.isBlank()) {
             throw new IllegalArgumentException(
                 "freeway.log.file is required to activate JULFileHandler"
@@ -392,12 +376,7 @@ public final class JULFileHandler extends StreamHandler {
 
         // Archive the current file (best-effort)
         try {
-            if (Files.exists(basePath) && Files.size(basePath) > 0) {
-                archiveCurrentFile(
-                    DATE_FMT.format(currentLocalDate),
-                    currentIndex
-                );
-            }
+            archiveIfPopulated(DATE_FMT.format(currentLocalDate), currentIndex);
         } catch (IOException e) {
             reportError(
                 "Failed to archive log file",
@@ -435,6 +414,14 @@ public final class JULFileHandler extends StreamHandler {
         );
         if (compress) {
             COMPRESSOR.execute(() -> compressFile(archived));
+        }
+    }
+
+    /** Archives the base file when it exists and carries records — the
+     *  guard both rotation paths (stale-file startup, rollover) share. */
+    private void archiveIfPopulated(String date, int index) throws IOException {
+        if (Files.exists(basePath) && fileSize(basePath) > 0) {
+            archiveCurrentFile(date, index);
         }
     }
 

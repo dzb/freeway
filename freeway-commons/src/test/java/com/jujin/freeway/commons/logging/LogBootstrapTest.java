@@ -66,7 +66,6 @@ class LogBootstrapTest {
         assertNotNull(provider.getLoggerFactory());
         assertNotNull(provider.getMarkerFactory());
         assertNotNull(provider.getMDCAdapter());
-        assertEquals("2.0.17", provider.getRequestedApiVersion());
     }
 
     @Test

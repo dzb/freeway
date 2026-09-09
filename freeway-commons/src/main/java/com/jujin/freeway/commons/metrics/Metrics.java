@@ -6,7 +6,7 @@ import java.util.function.Supplier;
  * The framework-wide observability SPI: named counters, timers, and gauges.
  *
  * <p>Zero-dependency by design — enough for operational signals (dispatched
- * events, request durations, pool depth) without pulling in a metrics
+ * event, request durations, pool depth) without pulling in a metrics
  * library. Every framework component instruments through this one interface;
  * richer backends (Prometheus text export, OTLP) implement it rather than
  * introducing a parallel registry. Implementations are wired via the IoC

@@ -6,7 +6,7 @@
 
     <groupId>com.jujin8.freeway</groupId>
     <artifactId>freeway-parent</artifactId>
-    <version>1.5.1</version>
+    <version>1.5.2-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>Freeway Framework</name>
@@ -126,6 +126,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
+                <configuration>
+                    <!-- Test JVMs run inside target/ so working-dir-relative
+                         files (e.g. the default logs/ location) never land on
+                         the module root and mvn clean removes them. -->
+                    <workingDirectory>${project.build.directory}/test-work</workingDirectory>
+                </configuration>
             </plugin>
             <!-- Maven Central publishing: source and javadoc JARs -->
             <plugin>

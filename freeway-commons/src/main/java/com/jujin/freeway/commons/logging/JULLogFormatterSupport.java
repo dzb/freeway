@@ -44,10 +44,7 @@ final class JULLogFormatterSupport {
     private static final Set<String> MDC_PRIORITY_SET = Set.of(MDC_PRIORITY_KEYS);
 
     private static String[] loadMdcPriorityKeys() {
-        String override = System.getProperty(
-            "freeway.log.mdc.priority",
-            System.getenv(JULEnhancer.envKeyFor("freeway.log.mdc.priority"))
-        );
+        String override = JULEnhancer.sysOrEnv("freeway.log.mdc.priority");
         if (override != null && !override.isBlank()) {
             String[] keys = override.split(",");
             for (int i = 0; i < keys.length; i++) {

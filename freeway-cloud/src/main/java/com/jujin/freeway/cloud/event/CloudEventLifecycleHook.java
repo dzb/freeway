@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 
@@ -131,7 +131,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
 
     /**
      * Presence-driven activation via {@link SymbolSpec}: an explicit
-     * {@code events.enabled} wins — {@code true} turns the mesh on and
+     * {@code event.enabled} wins — {@code true} turns the mesh on and
      * {@code false} is the kill switch (suppressing even a configured peer
      * list). Unset falls to the presence rule: configured peers imply a
      * mesh. Nothing set leaves the module inert — installing

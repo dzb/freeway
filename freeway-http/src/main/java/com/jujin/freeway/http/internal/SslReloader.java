@@ -45,7 +45,7 @@ import com.jujin.freeway.http.engine.FreewayHttpEngine;
  * parent directories triggers an event-driven {@link #check()} (debounced so
  * atomic-replace writes settle), while the scheduled poll at
  * {@code reloadInterval} remains as the fallback for filesystems where watch
- * events are unreliable (NFS, some bind mounts) — either layer alone drives
+ * event are unreliable (NFS, some bind mounts) — either layer alone drives
  * the same snapshot comparison, so a missed watch event only delays the
  * reload to the next poll instead of losing it.
  */
@@ -199,12 +199,12 @@ public final class SslReloader implements AutoCloseable {
     }
 
     /**
-     * Event loop for {@link #watcher}. It translates filesystem events into
+     * Event loop for {@link #watcher}. It translates filesystem event into
      * {@link #signalChange()} calls and does nothing else — no I/O, no
      * sleeping. All snapshot/digest/reload work runs on the single scheduler
      * thread, so checks never overlap and no interleaving has to be reasoned
      * about. The snapshot comparison inside {@code check()} stays
-     * authoritative, so duplicate or stale events only cost a cheap digest
+     * authoritative, so duplicate or stale event only cost a cheap digest
      * pass, never a spurious reload.
      */
     private void watchLoop(WatchService ws, Path keyFile, Path trustFile, Path sniDir) {
@@ -244,7 +244,7 @@ public final class SslReloader implements AutoCloseable {
      * previously requested but not yet run one. Rescheduling (instead of a
      * sleeping watcher) coalesces bursts — editor save = CREATE+MODIFY,
      * atomic-replace = temp-write + rename — into a single digest pass, and
-     * keeps the watcher thread free to keep taking events.
+     * keeps the watcher thread free to keep taking event.
      */
     private void signalChange() {
         // Bounded debounce: long enough for atomic-replace writes to settle,

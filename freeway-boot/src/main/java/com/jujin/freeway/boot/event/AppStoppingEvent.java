@@ -1,4 +1,4 @@
-package com.jujin.freeway.boot;
+package com.jujin.freeway.boot.event;
 
 import com.jujin.freeway.ioc.Container;
 

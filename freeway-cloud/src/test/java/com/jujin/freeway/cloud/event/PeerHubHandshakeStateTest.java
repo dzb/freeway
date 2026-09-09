@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * session and is one-shot. The token check lives in the hello path, so a CE
  * frame before hello must be closed (server leg) / aborted (client leg)
  * rather than dispatched — otherwise any client that can open a socket skips
- * admission and injects TOPIC events (the allowlist is accept-any by
+ * admission and injects TOPIC event (the allowlist is accept-any by
  * default). Uses real WS transport on both legs.
  */
 class PeerHubHandshakeStateTest {
@@ -71,7 +71,7 @@ class PeerHubHandshakeStateTest {
         System.clearProperty(CloudConfigKeys.EVENTS_TOKEN);
     }
 
-    /** A real events node (HttpModule + CloudEventModule). */
+    /** A real event node (HttpModule + CloudEventModule). */
     private AppRuntime startEventsNode(String subscriptions, String token) {
         System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
         System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, subscriptions);
@@ -189,7 +189,8 @@ class PeerHubHandshakeStateTest {
             CompletableFuture<Integer> closeCode = new CompletableFuture<>();
             CompletableFuture<Void> opened = new CompletableFuture<>();
             WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
-                .buildAsync(URI.create("ws://127.0.0.1:" + port + "/cloud/events"),
+                .buildAsync(URI.create("ws://127.0.0.1:" + port
+                        + CloudConfigKeys.EVENTS_PATH_DEFAULT),
                     new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
@@ -219,7 +220,7 @@ class PeerHubHandshakeStateTest {
     }
 
     /**
-     * Fake events server: accepts the upgrade and immediately sends a CE
+     * Fake event server: accepts the upgrade and immediately sends a CE
      * frame — the pre-ack attack — then never answers hello.
      */
     private static final class MisbehavingServer {
@@ -240,7 +241,7 @@ class PeerHubHandshakeStateTest {
         @Override
         public void bind(Binder binder) {
             binder.contribute(WebSocketRoute.class)
-                .add("fake-events", WebSocketRoute.of(
+                .add("fake-event", WebSocketRoute.of(
                     CloudConfigKeys.EVENTS_PATH_DEFAULT, server.endpoint));
         }
     }

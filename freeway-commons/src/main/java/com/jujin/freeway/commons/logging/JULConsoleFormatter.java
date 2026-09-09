@@ -51,10 +51,7 @@ public final class JULConsoleFormatter extends Formatter {
         if (System.getenv().containsKey("NO_COLOR")) {
             return false;
         }
-        String override = System.getProperty(
-            "freeway.log.color",
-            System.getenv(JULEnhancer.envKeyFor("freeway.log.color"))
-        );
+        String override = JULEnhancer.sysOrEnv("freeway.log.color");
         if ("always".equalsIgnoreCase(override) || "true".equalsIgnoreCase(override)) {
             return true;
         }
@@ -69,10 +66,7 @@ public final class JULConsoleFormatter extends Formatter {
      * Controlled by -Dfreeway.log.mdc=true|false (default: true)
      */
     private static boolean detectShowMDC() {
-        String override = System.getProperty(
-            "freeway.log.mdc",
-            System.getenv(JULEnhancer.envKeyFor("freeway.log.mdc"))
-        );
+        String override = JULEnhancer.sysOrEnv("freeway.log.mdc");
         if (override != null) {
             return !"false".equalsIgnoreCase(override) && !"0".equals(override);
         }

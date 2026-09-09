@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
@@ -10,7 +10,7 @@ import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.http.websocket.WebSocketRoute;
 
 /**
- * Assembles the CloudEventBus: a WS endpoint at {@code /cloud/events}, the
+ * Assembles the CloudEventBus: a WS endpoint at {@code /cloud/event}, the
  * peer connector, and the outbound sink — wired so that a loaded module
  * turns {@code EventBus.publish} into a cross-node CloudEvents 1.0 broadcast.
  *
@@ -23,13 +23,13 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
  *     new AppModule(), new HttpModule(), new CloudEventModule());
  * }</pre>
  *
- * <p>Config ({@code freeway.cloud.events.*}): {@code enabled} (default
+ * <p>Config ({@code freeway.cloud.event.*}): {@code enabled} (default
  * false — the mesh stays unwired), {@code peers} (host:port list; optional
  * when a discovery backend feeds {@code setPeers}), {@code subscriptions}
  * (CE type prefixes this node pulls from the mesh; empty = outbound-only),
  * {@code allowed-types} (CLASS-channel deserialization allowlist; empty =
- * deny-by-default — CLASS-channel events are dropped). Installing this module
- * still arms {@code freeway.cloud.events.dedup.*} when configured: dedup is a
+ * deny-by-default — CLASS-channel event are dropped). Installing this module
+ * still arms {@code freeway.cloud.event.dedup.*} when configured: dedup is a
  * property of the EventBus, not of the WS mesh (see
  * {@code CloudEventLifecycleHook}).</p>
  */
@@ -44,7 +44,7 @@ public final class CloudEventModule implements ModuleEx {
         binder.bind(PeerHub.class).to(container -> hub);
 
         binder.contribute(WebSocketRoute.class)
-            .add("cloud-events", WebSocketRoute.of(
+            .add("cloud-event", WebSocketRoute.of(
                 CloudConfigKeys.EVENTS_PATH_DEFAULT, hub));
 
         binder.contribute(RuntimeHook.class)

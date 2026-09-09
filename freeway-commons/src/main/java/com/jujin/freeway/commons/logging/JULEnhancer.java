@@ -203,13 +203,30 @@ final class JULEnhancer {
      * {@code "APP_FREEWAY_LOG_LEVEL"} (the cascade maps that back to
      * {@code freeway.log.level}).</p>
      */
-    static String envKeyFor(String configKey) {
+    /** The declared env-mapping prefix: JVM system property
+     *  {@code freeway.env.prefix}, blank falling back to {@code FREEWAY_}.
+     *  The single definition both directions of the env mapping share. */
+    private static String envPrefix() {
         String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
         if (prefix.isEmpty()) {
             prefix = "FREEWAY_";
         }
+        return prefix;
+    }
+
+    static String envKeyFor(String configKey) {
+        String prefix = envPrefix();
         String upper = configKey.toUpperCase(Locale.ROOT).replace('.', '_');
         return "FREEWAY_".equals(prefix) ? upper : prefix + upper;
+    }
+
+    /** The -D/env band of the cascade alone — no file homes: the system
+     *  property, else the mapped environment variable, else null. The
+     *  formatter/adapter feature flags read at class-load time use this;
+     *  they share the env mapping with {@link #readProperty} but consult no
+     *  {@link LogConfigSource}. */
+    static String sysOrEnv(String key) {
+        return System.getProperty(key, System.getenv(envKeyFor(key)));
     }
 
     /**
@@ -332,10 +349,7 @@ final class JULEnhancer {
      * reconcile via {@link #resolveConfigKey}.
      */
     static String envToConfigKey(String envName) {
-        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
-        if (prefix.isEmpty()) {
-            prefix = "FREEWAY_";
-        }
+        String prefix = envPrefix();
         String candidate;
         if ("FREEWAY_".equals(prefix)) {
             candidate = envName;
@@ -615,6 +629,34 @@ final class JULEnhancer {
         fileHandlersByPath.putIfAbsent(path.toString(), handler);
     }
 
+    /**
+     * One file, exactly one handler: returns the registered handler for
+     * {@code path}, creating and registering a fresh one when absent. The
+     * single place both the default file and every named file go through —
+     * reuse (instead of a duplicate handler) is what keeps records out of
+     * a second, independent rotation state on the same file.
+     */
+    private static JULFileHandler obtainFileHandler(
+        String path,
+        long maxSize,
+        int maxHistory,
+        boolean compress,
+        long flushIntervalMs
+    ) throws IOException {
+        Path key = Paths.get(path).toAbsolutePath().normalize();
+        JULFileHandler handler = registeredHandler(key);
+        if (handler == null) {
+            handler = new JULFileHandler(
+                path, maxSize, maxHistory, compress, flushIntervalMs);
+            registerHandler(key, handler);
+        } else {
+            logDedup(
+                "Reusing existing handler for log file '" + path
+                    + "' (same file already owned by another logger)");
+        }
+        return handler;
+    }
+
     /** Debug-level note; only visible when JUL FINE diagnostics are enabled. */
     private static void logDedup(String message) {
         java.util.logging.Logger.getLogger(
@@ -678,22 +720,9 @@ final class JULEnhancer {
             // file must have exactly one handler; reuse the registered
             // handler for the second logger instead of creating a duplicate
             // with its own rotation state.
-            JULFileHandler handler = registeredHandler(configuredPath);
-            if (handler == null) {
-                handler = new JULFileHandler(
-                    cfg.path,
-                    cfg.maxSize,
-                    cfg.maxHistory,
-                    cfg.compress,
-                    cfg.flushIntervalMs
-                );
-                registerHandler(configuredPath, handler);
-            } else {
-                logDedup(
-                    "Reusing existing handler for log file '" + cfg.path
-                        + "' (same file already owned by another logger)"
-                );
-            }
+            JULFileHandler handler = obtainFileHandler(
+                cfg.path, cfg.maxSize(), cfg.maxHistory(),
+                cfg.compress(), cfg.flushIntervalMs());
             freewayHandlers.add(handler);
             if (cfg.level != null) handler.setLevel(cfg.level);
 
@@ -733,7 +762,6 @@ final class JULEnhancer {
      */
     private static void activateFileLogging(Properties fileConfig) {
         String raw = readProperty(fileConfig, "freeway.log.file", "auto");
-        Function<String, String> reader = cascadeReader(fileConfig);
 
         if (!"off".equalsIgnoreCase(raw)) {
             String path;
@@ -744,27 +772,11 @@ final class JULEnhancer {
             }
 
             try {
-                Path configuredPath = Paths.get(path).toAbsolutePath().normalize();
-                JULFileHandler fh = registeredHandler(configuredPath);
-                if (fh == null) {
-                    FileSettings settings = fileSettings(
-                        "freeway.log.file",
-                        reader
-                    );
-                    fh = new JULFileHandler(
-                        path,
-                        settings.maxSize(),
-                        settings.maxHistory(),
-                        settings.compress(),
-                        settings.flushIntervalMs()
-                    );
-                    registerHandler(configuredPath, fh);
-                } else {
-                    logDedup(
-                        "Reusing existing handler for default log file '"
-                            + path + "' (same file already owned by another logger)"
-                    );
-                }
+                FileSettings settings = fileSettings(
+                    "freeway.log.file", fileConfig);
+                JULFileHandler fh = obtainFileHandler(
+                    path, settings.maxSize(), settings.maxHistory(),
+                    settings.compress(), settings.flushIntervalMs());
                 freewayHandlers.add(fh);
                 Logger.getLogger("").addHandler(fh);
             } catch (IOException | RuntimeException e) {
@@ -812,8 +824,7 @@ final class JULEnhancer {
         }
 
         String loggerName = readProperty(fileConfig, prefix + ".logger", null);
-        Function<String, String> reader = cascadeReader(fileConfig);
-        FileSettings settings = fileSettings(prefix, reader);
+        FileSettings settings = fileSettings(prefix, fileConfig);
         NamedFileConfig cfg = new NamedFileConfig(
             path,
             settings.maxSize(),
@@ -843,50 +854,77 @@ final class JULEnhancer {
      * {@code compress}, {@code flush-interval}) under {@code prefix},
      * each falling back to its built-in default.
      */
-    private static FileSettings fileSettings(
-        String prefix,
-        Function<String, String> reader
-    ) {
+    private static FileSettings fileSettings(String prefix, Properties fileConfig) {
         return new FileSettings(
-            LogConfig.propertyValue(
-                prefix + ".max-size",
-                JULFileHandler.DEFAULT_MAX_SIZE,
-                reader,
-                Long::parseLong,
-                true
-            ),
-            LogConfig.propertyValue(
-                prefix + ".max-history",
-                JULFileHandler.DEFAULT_MAX_HISTORY,
-                reader,
-                Integer::parseInt,
-                true
-            ),
-            LogConfig.propertyValue(
-                prefix + ".compress",
-                JULFileHandler.DEFAULT_COMPRESS,
-                reader,
-                LogConfig::strictBoolean,
-                true
-            ),
-            LogConfig.propertyValue(
-                prefix + ".flush-interval",
-                JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
-                reader,
-                Long::parseLong,
-                true
-            )
+            propertyValue(fileConfig,
+                prefix + ".max-size", JULFileHandler.DEFAULT_MAX_SIZE,
+                Long::parseLong, true),
+            propertyValue(fileConfig,
+                prefix + ".max-history", JULFileHandler.DEFAULT_MAX_HISTORY,
+                Integer::parseInt, true),
+            propertyValue(fileConfig,
+                prefix + ".compress", JULFileHandler.DEFAULT_COMPRESS,
+                JULEnhancer::strictBoolean, true),
+            propertyValue(fileConfig,
+                prefix + ".flush-interval", JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
+                Long::parseLong, true)
         );
     }
 
     /**
      * The cascade reader used for every {@code freeway.log.*} lookup —
-     * {@code -D} > env > file > default (see {@link #readProperty}).
-     * Parse helpers live in {@link LogConfig}; the cascade parses leniently
-     * (an unparseable value falls back to its default instead of failing the
-     * whole configuration).
+     * {@code -D} > env > file > default (see {@link #readProperty}); value
+     * parsing and its lenient/strict policy live in {@link #propertyValue}.
      */
-    private static Function<String, String> cascadeReader(Properties fileConfig) {
+    static Function<String, String> cascadeReader(Properties fileConfig) {
         return k -> readProperty(fileConfig, k, null);
+    }
+
+    /**
+     * Strict boolean parser: {@code Boolean::parseBoolean} never throws, so
+     * garbage input would silently map to {@code false} instead of triggering
+     * the lenient fallback to the default. Rejecting anything but true/false
+     * makes the lenient contract real for Boolean values.
+     */
+    static Boolean strictBoolean(String value) {
+        if (value.equalsIgnoreCase("true")) {
+            return true;
+        }
+        if (value.equalsIgnoreCase("false")) {
+            return false;
+        }
+        throw new IllegalArgumentException(
+            "Invalid boolean value: '" + value + "' (expected true or false)");
+    }
+
+    /**
+     * Reads a config value via the full cascade ({@link #cascadeReader}) and
+     * parses it with {@code parser}, falling back to {@code defaultValue}
+     * when the value is absent or blank.
+     *
+     * @param lenient when true, a parse error also falls back to
+     *                {@code defaultValue} (the bootstrap cascade); when false
+     *                the error propagates (a system-property reader fails
+     *                loudly)
+     */
+    static <T> T propertyValue(
+        Properties fileConfig,
+        String key,
+        T defaultValue,
+        Function<String, T> parser,
+        boolean lenient
+    ) {
+        String raw = readProperty(fileConfig, key, null);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return parser.apply(raw.strip());
+        } catch (RuntimeException e) {
+            if (lenient) {
+                return defaultValue;
+            }
+            throw e;
+        }
     }
 }

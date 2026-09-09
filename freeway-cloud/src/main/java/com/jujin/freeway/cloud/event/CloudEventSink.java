@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.ioc.EventSink;
 import java.util.Objects;
@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Outbound hook for the CloudEventBus: translates {@code publish}ed events
+ * Outbound hook for the CloudEventBus: translates {@code publish}ed event
  * into CloudEvents 1.0 frames and fans them out to live peer connections,
  * filtered by each peer's declared subscription prefixes.
  *
@@ -82,7 +82,7 @@ public final class CloudEventSink implements EventSink {
                 LOG.warn("Send to peer {} failed — dropping connection", peer.remoteOrigin());
                 hub.unregister(peer);
                 // Unregistering only detaches the route; the socket stays
-                // open and keeps pushing inbound events we no longer trust
+                // open and keeps pushing inbound event we no longer trust
                 // with outbound traffic. Close it (idempotent) so the
                 // connection state converges.
                 peer.close();

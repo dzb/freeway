@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 /**
  * Inbound pipeline interceptor (contribution): runs on every frame received

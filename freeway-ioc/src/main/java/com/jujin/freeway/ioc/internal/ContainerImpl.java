@@ -295,7 +295,7 @@ public final class ContainerImpl implements Container {
             LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
             // The container-managed message services (EventBus, CallBus) are
             // closed only after every lifecycle callback has run (Shutdown
-            // defers them), so @PreDestroy code may still publish events and
+            // defers them), so @PreDestroy code may still publish event and
             // make calls during the drain without the buses rejecting them.
             // Deliberately NOT holding
             // ServiceRuntime.REALIZE_LOCK across the drain: user lifecycle

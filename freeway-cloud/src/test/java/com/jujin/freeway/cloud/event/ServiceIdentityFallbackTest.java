@@ -1,4 +1,4 @@
-package com.jujin.freeway.cloud.events;
+package com.jujin.freeway.cloud.event;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * P1-3 regression (service-id default chain): the registry identity resolved
- * by {@code HttpServiceDeclaration} and the events-mesh origin resolved by
+ * by {@code HttpServiceDeclaration} and the event-mesh origin resolved by
  * {@code CloudEventLifecycleHook} must walk the same fallback chain —
  * {@code freeway.cloud.registry.service-id} → {@code freeway.app.name} →
  * {@code "freeway-app"} — so a node configured only with
