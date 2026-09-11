@@ -5,13 +5,9 @@ import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.io.IOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,173 +18,111 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The framework's standard {@link AppConfig}: the boot cascade with a
- * hot-reloadable file tier. One implementation covers both the static form
- * (a plain merged map — the simple constructor) and the dynamic form
- * (tiered sources + filesystem watching).
+ * hot-reloadable file tier.
  *
  * <p><b>Tiers.</b> CLI arguments and environment variables are fixed at
  * startup; the file tier merges the classpath baseline (packaged
  * {@code application*.properties/json}, static — a jar cannot change) with
  * filesystem override files (the same standard names in the working
- * directory, plus any files listed in the {@code freeway.config.file} system
- * property, comma-separated). Filesystem files win over the classpath
- * baseline; later files win over earlier ones. The simple two-argument
- * constructor is the static form: the merged map becomes the file tier with
- * no overrides and no watcher.
+ * directory, plus any files listed in the {@code freeway.config.file}
+ * bootstrap key, comma-separated). Filesystem files win over the classpath
+ * baseline; later files win over earlier ones. {@link #of} is the static form:
+ * the given map becomes the file tier with no overrides and no watcher.
  *
- * <p><b>Hot reload.</b> When override files exist, a daemon
- * {@link WatchService} thread watches their directories and swaps the
- * file-tier snapshot on create/modify/delete — a deleted file contributes
- * nothing, so its values fall back to the baseline. Reload is pull-based:
- * the file tier's {@link SymbolProvider} reads the live snapshot on every
- * lookup, so {@code @Value}/{@code @Symbol} re-resolution sees new values
- * through the symbol chain with no push API. The {@code freeway.profile}
- * key and the active profile set stay startup-static.
+ * <p><b>Hot reload.</b> When override files exist, {@link ConfigFileWatcher}
+ * watches their directories and swaps the file tier on create/modify/delete —
+ * a deleted file contributes nothing, so its values fall back to the
+ * baseline. Reload is pull-based: the file tier's {@link SymbolProvider}
+ * reads the live map on every lookup, so {@code @Value}/{@code @Symbol}
+ * re-resolution sees new values through the symbol chain with no push API.
+ * The {@code freeway.profile} key and the active profile set stay
+ * startup-static.
+ *
+ * <p><b>No global state.</b> Everything this class serves arrives through
+ * {@link ConfigSources}; in particular the active preset bundle is resolved
+ * and validated by {@link ConfigLoaderImpl}, not read from the JVM on every
+ * lookup. A directly constructed instance therefore cannot be surprised by a
+ * system property.
  */
-public final class AppConfigDefault implements AppConfig, AutoCloseable {
+public final class AppConfigDefault implements AppConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(AppConfigDefault.class);
 
-    private final Map<String, String> cli;
-    private final Map<String, String> environment;
-    /** Classpath baseline — static by nature (a packaged jar cannot change). */
-    private final Map<String, String> baseline;
+    private final ConfigSources sources;
     /** Ordered filesystem override files (later wins over earlier). */
     private final List<Path> overrideFiles;
-    private final List<String> profiles;
 
-    /** Current file tier: baseline merged with the override snapshots. */
+    /** Current file tier: the classpath baseline overlaid with the overrides. */
     private volatile Map<String, String> fileTier;
-    /** Current merged view: cli + env + fileTier (env outranks files, cli outranks env). */
-    private volatile Map<String, String> merged;
+    /** Hot-reload watcher; null when there is nothing to watch. */
+    private final ConfigFileWatcher watcher;
 
-    private final WatchService watchService;
-    private final Thread watcher;
+    /**
+     * Tiered form: {@code sources} carries the cascade inputs the loader
+     * resolved (cli → environment → files → preset, plus the active profiles);
+     * {@code sources.files()} overlaid with {@code overrideFiles} forms the
+     * file tier, which is watched and re-read on change.
+     *
+     * @param overrideFiles ordered filesystem files merged over the baseline
+     */
+    public AppConfigDefault(ConfigSources sources, List<Path> overrideFiles) {
+        this.sources = Objects.requireNonNull(sources, "sources");
+        this.overrideFiles = List.copyOf(Objects.requireNonNull(overrideFiles, "overrideFiles"));
+        reload();
+        this.watcher = ConfigFileWatcher.start(this.overrideFiles, this::reload);
+    }
 
     /**
      * Static form: {@code values} is the whole config (it becomes the file
-     * tier), no CLI/env tiers and no filesystem watching. Usable standalone
-     * for tests and custom config sources.
+     * tier), no CLI/env/preset tiers and no filesystem watching. Usable
+     * standalone for tests and custom config sources.
      *
      * <p>Custom loaders may include null entries to mean "unset" — they are
      * skipped instead of failing with an opaque NPE from {@code Map.copyOf}.
      * A null {@code profiles} list is treated as empty.
      */
-    public AppConfigDefault(Map<String, String> values, List<String> profiles) {
-        this(Map.of(), Map.of(), cleaned(values),
-            List.of(), profiles == null ? List.of() : profiles);
-    }
-
-    /**
-     * Tiered form: CLI arguments and environment variables are fixed at
-     * startup; {@code baseline} plus {@code overrideFiles} form the file
-     * tier, which is watched and re-read on change.
-     *
-     * @param overrideFiles ordered filesystem files merged over the baseline
-     */
-    public AppConfigDefault(
-        Map<String, String> cli,
-        Map<String, String> environment,
-        Map<String, String> baseline,
-        List<Path> overrideFiles,
-        List<String> profiles
-    ) {
-        // An unknown preset name must fail startup here, not dissolve into
-        // "no values" — a typo'd environment class would silently leave the
-        // container defaults standing.
-        Presets.validate(Presets.declared());
-        this.cli = Map.copyOf(Objects.requireNonNull(cli, "cli"));
-        this.environment = Map.copyOf(Objects.requireNonNull(environment, "environment"));
-        this.baseline = Map.copyOf(Objects.requireNonNull(baseline, "baseline"));
-        this.overrideFiles = List.copyOf(Objects.requireNonNull(overrideFiles, "overrideFiles"));
-        this.profiles = List.copyOf(Objects.requireNonNull(profiles, "profiles"));
-        reload();
-        // Watch every override file's directory; event are filtered by
-        // filename so unrelated writes in the same directory are ignored.
-        WatchService ws = null;
-        Thread thread = null;
-        try {
-            ws = FileSystems.getDefault().newWatchService();
-            boolean watching = false;
-            for (Path file : this.overrideFiles) {
-                Path dir = file.toAbsolutePath().getParent();
-                if (dir != null && Files.isDirectory(dir)) {
-                    dir.register(ws, StandardWatchEventKinds.ENTRY_CREATE,
-                        StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE);
-                    watching = true;
-                }
-            }
-            if (watching) {
-                thread = Thread.ofPlatform()
-                    .daemon()
-                    .name("freeway-config-watch")
-                    .unstarted(this::watchLoop);
-            }
-        } catch (IOException e) {
-            LOG.warn("Config watch disabled: {}", e.getMessage());
-            ws = null;
-        }
-        this.watchService = ws;
-        this.watcher = thread;
-        if (thread != null) {
-            thread.start();
-        }
-    }
-
-    @Override
-    public Map<String, String> snapshot() {
-        // merged is rebuilt as an immutable Map.copyOf on every reload —
-        // handing it out directly satisfies the snapshot contract without
-        // a redundant defensive copy per call.
-        return merged;
+    public static AppConfigDefault of(Map<String, String> values, List<String> profiles) {
+        return new AppConfigDefault(
+            ConfigSources.of(cleaned(values), profiles == null ? List.of() : profiles),
+            List.of()
+        );
     }
 
     @Override
     public List<String> profiles() {
-        return profiles;
+        return sources.profiles();
     }
 
     @Override
     public List<SymbolProvider> providers() {
         return List.of(
             // One source per tier with a declared order; the files source
-            // re-reads the live snapshot on every lookup — that is how hot
-            // reload reaches the symbol chain.
-            SymbolProvider.of(() -> cli, SymbolProvider.TIER_CLI),
-            SymbolProvider.of(() -> environment, SymbolProvider.TIER_ENV),
+            // re-reads the live map on every lookup — that is how hot reload
+            // reaches the symbol chain.
+            SymbolProvider.of(sources::cli, SymbolProvider.TIER_CLI),
+            SymbolProvider.of(sources::environment, SymbolProvider.TIER_ENV),
             SymbolProvider.of(() -> fileTier, SymbolProvider.TIER_FILES),
             // The preset is the lowest tier: it fills only what no higher
             // source set. The selector key itself is bootstrap-only (-D/env),
             // so both this chain and the JUL log cascade see the same bundle.
-            SymbolProvider.of(AppConfigDefault::presetTier, SymbolProvider.TIER_PRESET));
+            SymbolProvider.of(sources::preset, SymbolProvider.TIER_PRESET));
     }
 
-    /** The active preset's bundle; empty when no preset is declared. The
-     *  name was validated at construction. */
-    private static Map<String, String> presetTier() {
-        Map<String, String> bundle = Presets.bundle(Presets.declared());
-        return bundle == null ? Map.of() : bundle;
-    }
-
-    /** Re-reads every override file and swaps both snapshots atomically. */
+    /** Re-reads every override file over the baseline and swaps the file tier. */
     private void reload() {
-        Map<String, String> files = new LinkedHashMap<>(baseline);
+        List<Map<String, String>> layers = new ArrayList<>(overrideFiles.size() + 1);
+        layers.add(sources.files());
         for (Path file : overrideFiles) {
-            readOverride(file).forEach(files::put); // later files win
+            layers.add(readOverride(file)); // later files win
         }
-        Map<String, String> tier = Map.copyOf(files);
-        Map<String, String> all = new LinkedHashMap<>(tier);
-        all.putAll(environment);
-        all.putAll(cli);
-        fileTier = tier;
-        merged = Map.copyOf(all);
+        fileTier = ConfigMaps.overlay(layers);
     }
 
     /**
      * The file's parsed content; a missing/unreadable file contributes
      * nothing. Parsed by the shared {@link ConfigFileReader} — a
-     * {@code .json} override file is JSON, everything else properties —
-     * so overrides parse identically to the startup cascade.
+     * {@code .json} override file is JSON, everything else properties — so
+     * overrides parse identically to the startup cascade.
      */
     private static Map<String, String> readOverride(Path file) {
         if (!Files.isRegularFile(file)) {
@@ -211,61 +145,13 @@ public final class AppConfigDefault implements AppConfig, AutoCloseable {
                 }
             });
         }
-        return Map.copyOf(cleaned);
+        return cleaned;
     }
 
     @Override
     public void close() {
         if (watcher != null) {
-            watcher.interrupt();
-        }
-        if (watchService != null) {
-            try {
-                watchService.close();
-            } catch (IOException e) {
-                LOG.debug("WatchService close failed", e);
-            }
-        }
-    }
-
-    private void watchLoop() {
-        while (!Thread.currentThread().isInterrupted()) {
-            WatchKey key;
-            try {
-                key = watchService.take();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return; // close() interrupts — the only expected exit
-            } catch (Exception terminal) {
-                return; // WatchService closed underneath us
-            }
-            try {
-                boolean reloaded = false;
-                for (WatchEvent<?> event : key.pollEvents()) {
-                    Object ctx = event.context();
-                    if (!(ctx instanceof Path changed)) {
-                        continue;
-                    }
-                    Path dir = (Path) key.watchable();
-                    Path absolute = dir.resolve(changed).toAbsolutePath().normalize();
-                    for (Path file : overrideFiles) {
-                        if (file.toAbsolutePath().normalize().equals(absolute)) {
-                            reloaded = true;
-                            break;
-                        }
-                    }
-                }
-                if (reloaded) {
-                    reload();
-                }
-            } catch (RuntimeException e) {
-                // One failed iteration must not silently end hot reload.
-                LOG.warn("Config watch iteration failed, continuing: {}", e.getMessage());
-            } finally {
-                // Always re-arm: skipping reset on a failed iteration would
-                // silently retire this directory from watching.
-                key.reset();
-            }
+            watcher.close();
         }
     }
 }

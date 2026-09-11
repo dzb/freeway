@@ -2,7 +2,6 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Binding;
-import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
@@ -26,7 +25,7 @@ final class BinderImpl implements Binder {
 
     /**
      * Sets the module class currently being processed. Called by
-     * {@link ContainerImpl#installModule} before {@code module.bind()}.
+     * {@code ContainerImpl.bindModule} before {@code module.bind()}.
      */
     void setCurrentModule(Class<?> moduleClass) {
         this.currentModule = moduleClass;
@@ -138,13 +137,6 @@ final class BinderImpl implements Binder {
                 return deferred;
             }
         };
-    }
-
-    @Override
-    public Binder install(ModuleEx module) {
-        Objects.requireNonNull(module, "module");
-        container.installModule(module, this);
-        return this;
     }
 
     /**

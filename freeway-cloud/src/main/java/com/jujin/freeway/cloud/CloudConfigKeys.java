@@ -95,7 +95,7 @@ public final class CloudConfigKeys {
     public static final String RPC_TLS_TRUST_STORE_DEFAULT = "";
     public static final String RPC_TLS_TRUST_STORE_PASSWORD_DEFAULT = "";
 
-    // ── CloudEventBus (cross-node EventBus mesh, see docs/freeway-cloud-event-design.md) ──
+    // ── CloudEventBus (cross-node EventBus mesh, see docs/freeway-cloud-events-design.md) ──
     /** Master switch for the WS event mesh — presence-driven: an explicit
      *  value wins ({@code true} on, {@code false} = kill switch suppressing
      *  even a configured peer list); unset falls to the presence rule —

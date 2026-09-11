@@ -1,5 +1,7 @@
 package com.jujin.freeway.boot.internal;
 
+import com.jujin.freeway.commons.util.EnvKeys;
+
 import java.util.Map;
 
 /**
@@ -36,9 +38,9 @@ public final class Presets {
 
     /** Bootstrap-only selector key ({@code -Dfreeway.preset}). */
     public static final String KEY = "freeway.preset";
-    /** Environment form of the selector; a custom {@code freeway.env.prefix}
-     *  does not apply to it — use the system property instead. */
-    public static final String ENV_KEY = "FREEWAY_PRESET";
+    /** Environment form of the selector ({@code FREEWAY_PRESET}); a custom
+     *  {@code freeway.env.prefix} deliberately does not apply to it. */
+    public static final String ENV_KEY = EnvKeys.name(KEY);
 
     private static final Map<String, Map<String, String>> BUNDLES = Map.of(
         "local", Map.of(),
@@ -56,18 +58,21 @@ public final class Presets {
         return BUNDLES.get(name.strip());
     }
 
-    /** The declared preset name: system property first, then environment;
-     *  null when neither is set. Bootstrap sources only. */
+    /** The declared preset name: system property first, then the
+     *  {@code FREEWAY_PRESET} environment variable; null when neither is set. */
     public static String declared() {
-        String v = System.getProperty(KEY);
-        if (v != null && !v.isBlank()) {
-            return v.strip();
-        }
-        String e = System.getenv(ENV_KEY);
-        if (e != null && !e.isBlank()) {
-            return e.strip();
-        }
-        return null;
+        return EnvKeys.bootstrap(KEY);
+    }
+
+    /**
+     * The active preset's bundle, or an empty map when no preset is declared
+     * (or the declared name is unknown). This is the tier the symbol chain
+     * serves: the loader resolves it once, so no consumer has to read the
+     * bootstrap key again.
+     */
+    public static Map<String, String> activeBundle() {
+        Map<String, String> bundle = bundle(declared());
+        return bundle == null ? Map.of() : bundle;
     }
 
     /** Validates a preset name at startup; an unknown name fails naming the

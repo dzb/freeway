@@ -125,12 +125,12 @@ java -cp target/cloud-event-mesh-1.0-SNAPSHOT.jar demo.NodeA
 | Key | Node A | Node B |
 |---|---|---|
 | `freeway.http.server.port` | `18081` | `18080` |
-| `freeway.cloud.events.enabled` | `true` | `true` |
-| `freeway.cloud.events.peers` | `127.0.0.1:18080` | *(none — waits for inbound)* |
-| `freeway.cloud.events.subscriptions` | `""` (outbound-only) | `greet.` |
-| `freeway.cloud.events.allowed-types` | *(none — no inbound)* | `demo.Events$Greeting` |
-| `freeway.cloud.events.allowed-topics` | *(none — no inbound)* | `greet.` |
-| `freeway.cloud.events.token` | *(none — demo runs on loopback)* | *(same value on both nodes)* |
+| `freeway.cloud.event.enabled` | `true` | `true` |
+| `freeway.cloud.event.peers` | `127.0.0.1:18080` | *(none — waits for inbound)* |
+| `freeway.cloud.event.subscriptions` | `""` (outbound-only) | `greet.` |
+| `freeway.cloud.event.allowed-types` | *(none — no inbound)* | `demo.Events$Greeting` |
+| `freeway.cloud.event.allowed-topics` | *(none — no inbound)* | `greet.` |
+| `freeway.cloud.event.token` | *(none — demo runs on loopback)* | *(same value on both nodes)* |
 | `freeway.kafka.bootstrap-servers` | `127.0.0.1:9092` | `127.0.0.1:9092` |
 | `freeway.kafka.client-id` | `node-a` | `node-b` |
 | `freeway.kafka.topics` | `greet.hello` | `greet.hello` |

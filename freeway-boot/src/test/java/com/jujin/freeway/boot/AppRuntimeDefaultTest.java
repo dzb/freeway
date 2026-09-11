@@ -3,7 +3,7 @@ package com.jujin.freeway.boot;
 import com.jujin.freeway.boot.event.AppStartedEvent;
 import com.jujin.freeway.boot.event.AppStoppingEvent;
 import com.jujin.freeway.boot.internal.AppConfigDefault;
-import com.jujin.freeway.boot.internal.AppConfigModule;
+import com.jujin.freeway.boot.internal.BootModule;
 import com.jujin.freeway.boot.internal.AppRuntimeDefault;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -34,8 +34,8 @@ class AppRuntimeDefaultTest {
 
     /** Build a standalone runtime for direct lifecycle observation. */
     private static AppRuntime runtime(ModuleEx module) {
-        AppConfig config = new AppConfigDefault(Map.of(), List.of());
-        Container container = Freeway.create(new AppConfigModule(config), module);
+        AppConfig config = AppConfigDefault.of(Map.of(), List.of());
+        Container container = Freeway.create(new BootModule(config), module);
         return new AppRuntimeDefault(container, config);
     }
 

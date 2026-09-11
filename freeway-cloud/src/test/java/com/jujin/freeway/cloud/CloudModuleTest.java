@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -38,6 +40,25 @@ class CloudModuleTest {
     void umbrellaModuleInstalls() {
         try (Container container = Freeway.create(new CloudModule())) {
             // Construction + container start is the acceptance check at scaffold stage.
+        }
+    }
+
+    @Test
+    void subModulesAreDeclaredOnceAndExposedAsIs() {
+        // The composition is a view, not a factory: the framework reads it more
+        // than once (entry point for discovery, container for resolution), and
+        // callers reconstruct the tree from the same instances the container
+        // bound. A method that built a fresh list per call would break that.
+        CloudModule module = new CloudModule();
+
+        List<ModuleEx> declared = module.subModules();
+        assertSame(declared, module.subModules(),
+            "the same view must come back on every call");
+        assertEquals(8, declared.size());
+
+        try (Container container = Freeway.create(module)) {
+            assertTrue(container.modules().containsAll(declared),
+                "the container binds exactly the declared instances");
         }
     }
 

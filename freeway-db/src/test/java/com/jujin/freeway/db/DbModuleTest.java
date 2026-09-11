@@ -35,8 +35,8 @@ class DbModuleTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> Freeway.create(new DbModule(), new DbModule()));
 
-        assertTrue(ex.getMessage().contains("installed twice"),
-            "explicit install + SPI auto-discovery duplicate must fail fast: "
+        assertTrue(ex.getMessage().contains("declared twice"),
+            "two instances of one module class must fail fast: "
                 + ex.getMessage());
         assertTrue(ex.getMessage().contains("DbModule"));
     }

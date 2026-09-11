@@ -1,5 +1,7 @@
 package com.jujin.freeway.commons.logging;
 
+import com.jujin.freeway.commons.util.EnvKeys;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -207,17 +209,12 @@ final class JULEnhancer {
      *  {@code freeway.env.prefix}, blank falling back to {@code FREEWAY_}.
      *  The single definition both directions of the env mapping share. */
     private static String envPrefix() {
-        String prefix = System.getProperty("freeway.env.prefix", "FREEWAY_").trim();
-        if (prefix.isEmpty()) {
-            prefix = "FREEWAY_";
-        }
-        return prefix;
+        String declared = EnvKeys.bootstrap("freeway.env.prefix");
+        return declared == null ? EnvKeys.DEFAULT_PREFIX : declared;
     }
 
     static String envKeyFor(String configKey) {
-        String prefix = envPrefix();
-        String upper = configKey.toUpperCase(Locale.ROOT).replace('.', '_');
-        return "FREEWAY_".equals(prefix) ? upper : prefix + upper;
+        return EnvKeys.name(envPrefix(), configKey);
     }
 
     /** The -D/env band of the cascade alone — no file homes: the system
@@ -288,19 +285,17 @@ final class JULEnhancer {
         Set<String> levelKeys = new HashSet<>();
         collectLevelKeys(levelKeys, fileConfig.stringPropertyNames());
         collectLevelKeys(levelKeys, System.getProperties().stringPropertyNames());
+        // Only honor env vars whose key is ALSO configured in the file or
+        // system properties: an unrelated *_LEVEL variable (LOG_LEVEL,
+        // CI_LEVEL, ...) must not create a phantom logger or silently override
+        // a logger's level. The env value itself still wins via readProperty's
+        // cascade.
+        Set<String> knownKeys = new HashSet<>(fileConfig.stringPropertyNames());
+        System.getProperties().stringPropertyNames().forEach(knownKeys::add);
         for (String envName : System.getenv().keySet()) {
             String candidate = envToConfigKey(envName);
-            if (candidate == null) {
-                continue;
-            }
-            // Only honor env vars whose key is ALSO configured in the file or
-            // system properties: an unrelated *_LEVEL variable (LOG_LEVEL,
-            // CI_LEVEL, ...) must not create a phantom logger or silently
-            // override a logger's level. The env value itself still wins via
-            // readProperty's cascade.
-            String configKey = resolveConfigKey(candidate, fileConfig);
-            if (configKey != null) {
-                collectLevelKeys(levelKeys, List.of(configKey));
+            if (candidate != null && knownKeys.contains(candidate)) {
+                collectLevelKeys(levelKeys, List.of(candidate));
             }
         }
 
@@ -341,17 +336,17 @@ final class JULEnhancer {
      * or {@code APP_FREEWAY_LOG_LEVEL} under a custom prefix {@code APP_}).
      * Returns {@code null} for environment variables outside the prefix.
      *
-     * <p>The mapping folds separators ({@code -}, {@code _} → {@code .}),
-     * which cannot be reversed uniquely — a dashed config key such as
-     * {@code freeway.log.file.max-size} maps forward to
-     * {@code FREEWAY_LOG_FILE_MAX-SIZE} but folds back to
-     * {@code freeway.log.file.max.size}. Callers that need the real key must
-     * reconcile via {@link #resolveConfigKey}.
+     * <p>Only {@code _} is a separator: it is what {@link #envKeyFor} produces
+     * for a key's dots. Every other character — a hyphen above all — is part of
+     * the key name and round-trips verbatim
+     * ({@code FREEWAY_LOG_FILE_MAX-SIZE} → {@code freeway.log.file.max-size}).
+     * Folding {@code -} into {@code .} here would be lossy: it would merge
+     * {@code max-size} with {@code max.size}.
      */
     static String envToConfigKey(String envName) {
         String prefix = envPrefix();
         String candidate;
-        if ("FREEWAY_".equals(prefix)) {
+        if (EnvKeys.DEFAULT_PREFIX.equals(prefix)) {
             candidate = envName;
         } else {
             if (!envName.startsWith(prefix)) {
@@ -360,34 +355,6 @@ final class JULEnhancer {
             candidate = envName.substring(prefix.length());
         }
         return candidate.toLowerCase(Locale.ROOT).replace('_', '.');
-    }
-
-    /**
-     * Reconciles a folded candidate key (see {@link #envToConfigKey}) against
-     * the keys actually present in the file config and system properties,
-     * returning the real key whose separator-folded form matches — so an env
-     * var for a dashed key ({@code FREEWAY_LOG_FILE_MAX_SIZE}) still finds
-     * {@code freeway.log.file.max-size}. Returns {@code null} when nothing
-     * matches; callers decide which resolved keys they act on.
-     */
-    static String resolveConfigKey(String candidate, Properties fileConfig) {
-        ArrayList<String> known = new ArrayList<>();
-        fileConfig.stringPropertyNames().forEach(known::add);
-        System.getProperties().stringPropertyNames().forEach(known::add);
-        String folded = foldKey(candidate);
-        for (String key : known) {
-            if (foldKey(key).equals(folded)) {
-                return key;
-            }
-        }
-        return null;
-    }
-
-    /** Lowercases and folds {@code -}/{@code _} into {@code .}. */
-    private static String foldKey(String key) {
-        return key.toLowerCase(Locale.ROOT)
-            .replace('-', '.')
-            .replace('_', '.');
     }
 
     /**

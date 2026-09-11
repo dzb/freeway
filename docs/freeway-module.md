@@ -17,9 +17,13 @@ Module is the unit of composition in Freeway. `ModuleEx` is the Java type name u
 ```java
 public final class AppModule implements ModuleEx {
     @Override
+    public List<ModuleEx> subModules() {
+        return List.of(new HttpModule(), new DbModule());
+    }
+
+    @Override
     public void bind(Binder b) {
         b.bind(UserService.class).to(UserServiceImpl.class);
-        b.install(new HttpModule()).install(new DbModule());
     }
 }
 ```
@@ -34,30 +38,49 @@ library
   └─ MyLibModule -> integrates with Freeway
 ```
 
-## Installing Modules
+## Composing Modules
 
-### Explicit install via `binder.install()`
+### Sub-modules are data: `subModules()`
 
-A module composes with other modules by calling `binder.install()` inside `bind()`:
+A module that groups others — an umbrella bundle — returns them from
+`subModules()`. The container resolves the whole tree *before* binding:
+this module first, then its sub-modules depth-first, siblings in declaration
+order.
 
 ```java
+private final List<ModuleEx> subModules = List.of(new HttpModule(), new DbModule());
+
 @Override
-public void bind(Binder b) {
-    b.install(new HttpModule()).install(new DbModule());
-    b.bind(MyService.class).to(MyServiceImpl.class);
+public List<ModuleEx> subModules() {
+    return subModules;
 }
 ```
 
-`install()` calls the module's `bind()` immediately — its services and extensions
-are registered in the same container. Returns this `Binder` for method chaining.
+`subModules()` is a **view of the composition, not a factory**: declare the
+list once (a field) and return it. The framework reads it more than once per
+startup — the entry point, to skip modules already declared here when SPI
+discovery runs, and the container, to resolve the tree — so a method that
+built a fresh list each call would start correctly but make the module set
+unobservable (`container.modules()` would report different instances than a
+caller reading `subModules()` sees).
 
-**去重语义（两条路径不同）**：
+There is deliberately no `binder.install(...)`: installing inside `bind()` made
+the module tree a side effect of call order, so nothing outside the binder
+(the application entry point, diagnostics, tests) could see what an app would
+load, and deduplication could not run before binding. Composition as data fixes
+both: `container.modules()` returns the flattened tree in bind order.
 
-- `binder.install()` / `Freeway.create()`：按模块**实例身份**去重——同一实例
-  重复安装是 no-op；同 class 的**不同实例**（如 `new HttpModule()` 两次）抛
-  `IllegalStateException`（"installed twice"，匿名/lambda 模块除外）。
-- `FreewayApp` / `AppBuilder`：按模块 **class** 去重（显式模块先注册、SPI
-  后来者不覆盖），同 class 多次添加静默合并。
+**去重语义**（对整张图统一生效）：
+
+- 同一**实例**在图上被到达两次（菱形依赖，或环）只绑定一次——这也让互相引用的
+  子模块自然终止。
+- 同 **class** 的**不同实例**（如 `new HttpModule()` 两次，或某模块既是伞形的
+  子模块又被显式添加）抛 `IllegalStateException`（"declared twice"）；
+  匿名/lambda 模块没有有意义的 class 身份，只看实例身份。
+- SPI 发现只补空缺：类已经在树里（含作为子模块）就不再被发现加入——"bundle 里
+  声明 `new HttpModule()`"与"自动发现"因此不会互相冲突。
+- `FreewayApp` / `AppBuilder` 仍按 class 对**入口模块列表**去重（显式模块先注册、
+  SPI 后来者不覆盖），随后容器对合并后的整张图执行上面的规则。
 
 ### Programmatic via `Freeway.create()` / `FreewayApp.run()`
 
@@ -86,13 +109,19 @@ and `freeway-http` with:
 com.jujin.freeway.http.HttpModule
 ```
 
-This means an application module can omit explicit `install()` calls for
-infrastructure modules and rely on discovery instead:
+This means an application can omit listing infrastructure modules and rely on
+discovery instead:
 
 ```java
 AppRuntime app = FreewayApp.run(new AppModule());
 // HttpModule and DbModule are auto-discovered when on the classpath
 ```
+
+Discovery **fills gaps**: a module class already declared anywhere in the
+module tree — including as a `subModules()` entry of a bundle — is not added
+again, so a bundle that declares `new HttpModule()` and an application with
+discovery on do not collide. The author's declaration wins, the same rule that
+makes an explicitly added module beat a discovered one.
 
 Auto-discovery is enabled by default. Disable it when you want only explicitly
 added modules:
@@ -103,10 +132,11 @@ AppRuntime app = FreewayApp.of(new AppModule())
     .start();
 ```
 
-Discovery deduplicates by module class — in the `FreewayApp` path an explicitly
-added instance always takes precedence over a SPI-discovered one of the same
-type (`Freeway.create`/`binder.install` has no such precedence: an explicit
-install plus SPI discovery of the same class fails startup instead).
+Discovery fills gaps only — in the `FreewayApp` path an explicitly added module
+always takes precedence over a SPI-discovered one of the same class, and
+discovery also skips any class already declared in the module tree (a
+`subModules()` entry counts). `Freeway.create` performs no discovery at all,
+so passing two distinct instances of one module class there fails startup.
 
 ## Composition Rules
 
@@ -133,4 +163,3 @@ Use module selection when a library needs one of several implementations, for ex
 - keep public library types free of IoC imports
 - use stable ids for runtime hooks and ordered contributions
 - keep module code declarative and testable
-

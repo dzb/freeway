@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -398,18 +399,20 @@ class JULEnhancerTest {
         }
     }
 
-    // ── env reverse mapping reconciles dashed keys ──────────────────
+    // ── env reverse mapping keeps hyphens verbatim ──────────────────
 
     @Test
-    void resolveConfigKeyReconcilesFoldedEnvCandidates() {
-        java.util.Properties props = new java.util.Properties();
-        props.setProperty("freeway.log.file.max-size", "100");
-
+    void envToConfigKeyKeepsHyphensInPlace() {
+        // Only '_' is the separator (what envKeyFor produces for a key's dots).
+        // A hyphen is part of the key name: folding it to '.' would make
+        // FREEWAY_LOG_FILE_MAX_SIZE look like the dashed key and route a value
+        // to the wrong one.
         assertEquals("freeway.log.file.max-size",
-            JULEnhancer.resolveConfigKey("freeway.log.file.max.size", props),
-            "FREEWAY_LOG_FILE_MAX_SIZE folds to max.size and must find the real dashed key");
-        assertNull(JULEnhancer.resolveConfigKey("totally.unrelated.level", props),
-            "no known key matches → no phantom logger");
+            JULEnhancer.envToConfigKey("FREEWAY_LOG_FILE_MAX-SIZE"));
+        assertEquals("com.my-app.level",
+            JULEnhancer.envToConfigKey("COM_MY-APP_LEVEL"));
+        assertNotEquals("freeway.log.file.max-size",
+            JULEnhancer.envToConfigKey("FREEWAY_LOG_FILE_MAX_SIZE"),
+            "the underscore spelling addresses max.size, a different key");
     }
 }
-

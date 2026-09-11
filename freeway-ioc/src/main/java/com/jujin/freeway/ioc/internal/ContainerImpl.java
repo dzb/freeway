@@ -9,13 +9,13 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
-import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.ModuleTree;
 import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Inject;
@@ -96,8 +96,7 @@ public final class ContainerImpl implements Container {
     private final InjectionResolver injectResolver;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
-    private final Set<ModuleEx> installedModules = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Set<Class<?>> installedClasses = ConcurrentHashMap.newKeySet();
+    /** The resolved module tree, flattened into bind order — see {@link #modules()}. */
     private final List<ModuleEx> loadedModules = new ArrayList<>();
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 
@@ -143,12 +142,59 @@ public final class ContainerImpl implements Container {
         registerBuiltinLazy(EventBus.class, EventBus::new, "EventBus");
         registerBuiltinLazy(CallBus.class, CallBus::new, "CallBus");
         loadAll(modules);
-        LOG.info("Loaded {} module(s): {}", loadedModules.size(),
-            loadedModules.stream().map(m -> m.getClass().getSimpleName()).toList());
+        LOG.info("Loaded {} module(s):{}", loadedModules.size(), moduleTreeLog());
+    }
+
+    /**
+     * The loaded modules as an indented tree, for the startup log. The
+     * parent/child edges come from {@link ModuleEx#subModules()}, which is a
+     * stable view by contract, so the instances here are the ones that were
+     * bound. A module already printed under an earlier parent (a shared
+     * sub-module, or a mutual reference) is not printed twice.
+     */
+    private String moduleTreeLog() {
+        Set<ModuleEx> children = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (ModuleEx module : loadedModules) {
+            children.addAll(module.subModules());
+        }
+        Set<ModuleEx> printed = Collections.newSetFromMap(new IdentityHashMap<>());
+        StringBuilder tree = new StringBuilder();
+        for (ModuleEx module : loadedModules) {
+            if (!children.contains(module)) {
+                appendModule(tree, module, printed, 0);
+            }
+        }
+        // Everything else printed under its parent; a module no root reaches
+        // (a mutual reference, say) is still worth a line — the count in the
+        // log line and the lines below it should agree.
+        for (ModuleEx module : loadedModules) {
+            appendModule(tree, module, printed, 0);
+        }
+        return tree.toString();
+    }
+
+    private static void appendModule(
+        StringBuilder tree, ModuleEx module, Set<ModuleEx> printed, int depth
+    ) {
+        if (!printed.add(module)) {
+            return; // already shown under an earlier parent
+        }
+        tree.append('\n')
+            .append("  ".repeat(depth))
+            .append("- ")
+            .append(module.getClass().getSimpleName());
+        for (ModuleEx sub : module.subModules()) {
+            appendModule(tree, sub, printed, depth + 1);
+        }
     }
 
     BindingIndex bindingIndex() {
         return bindingIndex;
+    }
+
+    @Override
+    public List<ModuleEx> modules() {
+        return List.copyOf(loadedModules);
     }
 
     LoggerSource loggerSource() {
@@ -183,45 +229,27 @@ public final class ContainerImpl implements Container {
         register(binding);
     }
 
-    void installModule(ModuleEx module, Binder binder) {
-        if (!installedModules.add(module)) {
-            LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
-            return;
-        }
-        Class<?> moduleClass = module.getClass();
-        // Fail fast when two distinct instances of the same module class are
-        // installed — typically an explicit install plus SPI auto-discovery.
-        // Lambda/anonymous modules keep identity-based semantics (they have no
-        // meaningful class identity).
-        if (!moduleClass.isAnonymousClass()
-                && !moduleClass.isSynthetic()
-                && !installedClasses.add(moduleClass)) {
-            throw new IllegalStateException(
-                "Module " + moduleClass.getName() + " installed twice. "
-                    + "Likely cause: an explicit install plus SPI auto-discovery "
-                    + "both loaded it. Fix: remove one of them, disable "
-                    + "autoDiscovery, or use FreewayApp (which deduplicates by class)."
-            );
-        }
-        LOG.debug("Installing module: {}", moduleClass.getSimpleName());
-        loadedModules.add(module);
-        BinderImpl binderImpl = (BinderImpl) binder;
-        Class<?> previousModule = binderImpl.currentModule();
-        binderImpl.setCurrentModule(moduleClass);
-        module.bind(binder);
-        binderImpl.restoreCurrentModule(previousModule);
-        binderImpl.flushPending();
-    }
-
     private void loadAll(Collection<? extends ModuleEx> modules) {
         BinderImpl binder = new BinderImpl(this);
-        for (ModuleEx module : modules == null ? List.<ModuleEx>of() : List.copyOf(modules)) {
-            installModule(module, binder);
+        for (ModuleEx module : ModuleTree.flatten(modules)) {
+            bindModule(module, binder);
         }
         // Instantiate class contributions only now — every module's bindings
         // are registered, so a contributed class may depend on services from
         // any module regardless of declaration order.
         binder.flushPendingCreates();
+    }
+
+    /** Binds one resolved module and registers the bindings it declared. */
+    private void bindModule(ModuleEx module, BinderImpl binder) {
+        Class<?> moduleClass = module.getClass();
+        LOG.debug("Installing module: {}", moduleClass.getSimpleName());
+        loadedModules.add(module);
+        Class<?> previousModule = binder.currentModule();
+        binder.setCurrentModule(moduleClass);
+        module.bind(binder);
+        binder.restoreCurrentModule(previousModule);
+        binder.flushPending();
     }
 
     /**
@@ -419,9 +447,9 @@ public final class ContainerImpl implements Container {
 
     /**
      * Reflects markers added after the binding was already flushed (e.g. a
-     * module holding a {@code Binding} handle across a nested
-     * {@code binder.install(...)}) into the marker index. No-op when the
-     * binding is not yet registered — {@link #register} covers that path.
+     * module holding a {@code Binding} handle that a later module extends)
+     * into the marker index. No-op when the binding is not yet registered —
+     * {@link #register} covers that path.
      */
     synchronized void syncMarkers(BindingImpl<?> binding) {
         if (bindingIndex.contains(binding)) {

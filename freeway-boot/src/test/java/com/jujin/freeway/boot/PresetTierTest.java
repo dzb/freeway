@@ -1,7 +1,8 @@
 package com.jujin.freeway.boot;
 
 import com.jujin.freeway.boot.internal.AppConfigDefault;
-import com.jujin.freeway.boot.internal.AppConfigModule;
+import com.jujin.freeway.boot.internal.BootModule;
+import com.jujin.freeway.boot.internal.ConfigSources;
 import com.jujin.freeway.boot.internal.Presets;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
@@ -15,13 +16,13 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * The preset tier: the lowest-precedence {@code SymbolProvider} — it fills
- * only what no higher source set, and the selector key itself is
- * bootstrap-only ({@code -Dfreeway.preset}), which is why it can also serve
- * keys outside the container's interest (e.g. the JUL log cascade's keys).
+ * The preset tier: the lowest-precedence symbol source — it fills only what no
+ * higher source set, so it can also serve keys outside the container's
+ * interest (e.g. the JUL log cascade's keys). The bundle arrives as a source
+ * like any other; resolving the bootstrap key is the loader's job
+ * ({@code ConfigLoaderImplTest} covers the -D/env selection and validation).
  */
 class PresetTierTest {
 
@@ -34,53 +35,51 @@ class PresetTierTest {
     }
 
     private static String resolveHost(AppConfigDefault config) {
-        try (Container container = Freeway.create(new AppConfigModule(config))) {
-            return container.get(SymbolSource.class).resolve(HOST);
+        try (Container container = Freeway.create(new BootModule(config))) {
+            return container.get(SymbolSource.class).resolve(HOST, null);
         } finally {
             config.close();
         }
     }
 
-    private static AppConfigDefault plainConfig() {
-        return new AppConfigDefault(Map.of(), Map.of(), Map.of(), List.of(), List.of());
+    /** The active preset exactly as the loader delivers it: one more source. */
+    private static AppConfigDefault withDockerPreset(Map<String, String> files) {
+        return new AppConfigDefault(
+            new ConfigSources(
+                Map.of(), Map.of(), files, Presets.bundle("docker"), List.of()),
+            List.of());
     }
 
     @Test
     void presetFillsWhatNothingHigherSet() {
-        System.setProperty(Presets.KEY, "docker");
-        assertEquals("0.0.0.0", resolveHost(plainConfig()),
+        assertEquals("0.0.0.0", resolveHost(withDockerPreset(Map.of())),
             "the docker preset binds all interfaces by default");
     }
 
     @Test
     void systemPropertyOutranksThePreset() {
-        System.setProperty(Presets.KEY, "docker");
         System.setProperty(HOST, "127.0.0.1");
-        assertEquals("127.0.0.1", resolveHost(plainConfig()));
+        assertEquals("127.0.0.1", resolveHost(withDockerPreset(Map.of())));
     }
 
     @Test
     void fileTierOutranksThePreset() {
-        System.setProperty(Presets.KEY, "docker");
         assertEquals("192.168.1.10",
-            resolveHost(new AppConfigDefault(
-                Map.of(), Map.of(),
-                Map.of(HOST, "192.168.1.10"), // baseline = the files tier
-                List.of(), List.of())),
+            resolveHost(withDockerPreset(Map.of(HOST, "192.168.1.10"))),
             "an explicit file value must win over the preset bundle");
     }
 
     @Test
-    void noPresetLeavesTheChainUntouched() {
-        try (Container container = Freeway.create(new AppConfigModule(plainConfig()))) {
-            assertNull(container.get(SymbolSource.class).resolve(HOST, null),
-                "without a preset the tier must not invent values");
+    void emptyBundleLeavesTheChainUntouched() {
+        // No preset declared: the loader contributes an empty source, which
+        // must not invent values.
+        AppConfigDefault config = new AppConfigDefault(
+            new ConfigSources(Map.of(), Map.of(), Map.of(), Map.of(), List.of()),
+            List.of());
+        try (Container container = Freeway.create(new BootModule(config))) {
+            assertNull(container.get(SymbolSource.class).resolve(HOST, null));
+        } finally {
+            config.close();
         }
-    }
-
-    @Test
-    void unknownPresetNameFailsAtConstruction() {
-        System.setProperty(Presets.KEY, "kubernates");
-        assertThrows(IllegalArgumentException.class, PresetTierTest::plainConfig);
     }
 }

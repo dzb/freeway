@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,30 +19,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigLoaderImplTest {
     @Test
-    void keepsSourcesSeparateAndAppliesPrecedenceOnMerge() {
-        ConfigLoaderImpl.BootConfigLayers layers = ConfigLoaderImpl.loadLayers(
+    void loadsEverySourceSeparatelyAndFoldsTheFilesBaseline() {
+        ConfigSources sources = ConfigLoaderImpl.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev",
             "--app.name=Overridden",
             "--server.port=7070"
         );
 
-        assertEquals(List.of("dev"), layers.profiles());
-        assertEquals("Freeway Boot", layers.properties().get("app.name"));
-        assertEquals("9090", layers.properties().get("server.port"));
-        assertEquals("Standalone IoC container", layers.json().get("app.description"));
-        assertEquals("1.0.0", layers.json().get("app.version"));
-        assertEquals("localhost", layers.json().get("server.host"));
-        assertEquals("Dev Boot", layers.profileProperties().get("app.name"));
-        assertEquals("9191", layers.profileProperties().get("server.port"));
-        assertEquals("Profiled IoC container", layers.profileJson().get("app.description"));
-        assertEquals("dev.localhost", layers.profileJson().get("server.host"));
-        assertEquals("Overridden", layers.args().get("app.name"));
-        assertEquals("7070", layers.args().get("server.port"));
-        assertEquals("Overridden", merged(layers).get("app.name"));
-        assertEquals("7070", merged(layers).get("server.port"));
-        assertEquals("Profiled IoC container", merged(layers).get("app.description"));
-        assertEquals("dev.localhost", merged(layers).get("server.host"));
+        assertEquals(List.of("dev"), sources.profiles());
+        assertEquals("Overridden", sources.cli().get("app.name"));
+        assertEquals("7070", sources.cli().get("server.port"));
+
+        // The file baseline folds the classpath layers: base properties →
+        // base json → profile properties → profile json, later winning.
+        assertEquals("Dev Boot", sources.files().get("app.name"),
+            "the dev profile properties override the base application.properties");
+        assertEquals("9191", sources.files().get("server.port"),
+            "the dev profile properties override the base application.properties");
+        assertEquals("Profiled IoC container", sources.files().get("app.description"),
+            "the dev profile json overrides the base application.json");
+        assertEquals("dev.localhost", sources.files().get("server.host"));
+        assertEquals("1.0.0", sources.files().get("app.version"),
+            "a base json key with no profile counterpart survives the fold");
+
+        // CLI outranks every file layer in the merged picture.
+        assertEquals("Overridden", merged(sources).get("app.name"));
+        assertEquals("7070", merged(sources).get("server.port"));
     }
 
     @Test
@@ -205,31 +209,29 @@ class ConfigLoaderImplTest {
 
     @Test
     void emptyJsonResourceIsTreatedAsNoConfig() {
-        ConfigLoaderImpl.BootConfigLayers layers =
-            ConfigLoaderImpl.loadLayers(new FixedContentLoader("application.json", ""));
+        ConfigSources sources =
+            ConfigLoaderImpl.loadLayers(new MultiContentLoader("application.json", ""));
 
-        assertTrue(layers.json().isEmpty(),
-            "an empty application.json must be skipped, not crash the load");
-        assertEquals("Freeway Boot", layers.properties().get("app.name"),
+        assertEquals("Freeway Boot", sources.files().get("app.name"),
             "the properties layer must still load normally");
-        assertEquals("Freeway Boot", merged(layers).get("app.name"));
+        assertEquals("Freeway Boot", merged(sources).get("app.name"),
+            "an empty application.json must be skipped, not crash the load");
     }
 
     @Test
     void blankJsonResourceIsTreatedAsNoConfig() {
-        ConfigLoaderImpl.BootConfigLayers layers =
-            ConfigLoaderImpl.loadLayers(new FixedContentLoader(
+        ConfigSources sources =
+            ConfigLoaderImpl.loadLayers(new MultiContentLoader(
                 "application.json", "  \n\t \r\n  "));
 
-        assertTrue(layers.json().isEmpty(),
+        assertEquals("Freeway Boot", merged(sources).get("app.name"),
             "a whitespace-only application.json must be skipped, not crash the load");
-        assertEquals("Freeway Boot", merged(layers).get("app.name"));
     }
 
     @Test
     void malformedJsonResourceStillFails() {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            ConfigLoaderImpl.loadLayers(new FixedContentLoader(
+            ConfigLoaderImpl.loadLayers(new MultiContentLoader(
                 "application.json", "{\"bad\": ")));
 
         assertTrue(ex.getMessage().contains("Unable to load application.json"),
@@ -305,6 +307,25 @@ class ConfigLoaderImplTest {
     }
 
     @Test
+    void hyphenatedKeysKeepTheirHyphenInTheEnvMapping() {
+        // A key's dots become underscores in the env spelling; every other
+        // character — a hyphen above all — is part of the key name and is
+        // carried through verbatim. Folding '-' to '.' would merge two
+        // distinct keys ('key-store-password' vs 'key.store.password').
+        assertEquals("freeway.http.ssl.key-store-password",
+            ConfigLoaderImpl.convertEnvKey(
+                "FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD", "FREEWAY_", true));
+        assertEquals("freeway.log.file.max-size",
+            ConfigLoaderImpl.convertEnvKey("FREEWAY_LOG_FILE_MAX-SIZE", "FREEWAY_", true),
+            "the dashed key is reachable only through its exact env spelling");
+        // The underscore spelling can therefore only produce dot segments: it
+        // addresses a DIFFERENT key, it does not alias the hyphenated one.
+        assertEquals("freeway.http.ssl.key.store.password",
+            ConfigLoaderImpl.convertEnvKey(
+                "FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD", "FREEWAY_", true));
+    }
+
+    @Test
     void jvmSystemPropertyDrivesEnvPrefix() {
         // freeway.env.prefix is read from the JVM system property only
         // (-Dfreeway.env.prefix=APP_): a custom prefix then maps APP_* vars
@@ -335,14 +356,14 @@ class ConfigLoaderImplTest {
         // Regression (frozen behavior): freeway.env.prefix configured in a
         // config file is an ordinary config key — it must NOT change how the
         // environment layer maps vars (still FREEWAY_, JVM-property-driven).
-        ClassLoader loader = new FixedContentLoader(
+        ClassLoader loader = new MultiContentLoader(
             "application.properties", "freeway.env.prefix=APP_\n");
-        ConfigLoaderImpl.BootConfigLayers layers =
+        ConfigSources sources =
             ConfigLoaderImpl.loadLayers(loader);
 
-        assertEquals("APP_", merged(layers).get("freeway.env.prefix"),
+        assertEquals("APP_", merged(sources).get("freeway.env.prefix"),
             "the file value is a normal config key");
-        for (String key : layers.environment().keySet()) {
+        for (String key : sources.environment().keySet()) {
             assertTrue(key.startsWith("freeway."),
                 "env mapping must still use the FREEWAY_ prefix, got: " + key);
         }
@@ -350,15 +371,15 @@ class ConfigLoaderImplTest {
 
     @Test
     void multipleProfilesParseInOrder() {
-        ConfigLoaderImpl.BootConfigLayers layers = ConfigLoaderImpl.loadLayers(
+        ConfigSources sources = ConfigLoaderImpl.loadLayers(
             Thread.currentThread().getContextClassLoader(),
             "--freeway.profile=dev,prod"
         );
-        assertEquals(List.of("dev", "prod"), layers.profiles(),
+        assertEquals(List.of("dev", "prod"), sources.profiles(),
             "comma-separated profiles must be parsed in order");
         // dev profile resources exist in the test classpath; prod does not —
         // the missing profile must be skipped, not fail the load.
-        assertTrue(merged(layers).containsKey("app.name"));
+        assertTrue(merged(sources).containsKey("app.name"));
     }
 
     @Test
@@ -370,7 +391,7 @@ class ConfigLoaderImplTest {
         // is ["dev"] — two authoritative views contradicting each other. The
         // merged view must strip the activation key from the profile layers;
         // the raw layer keeps it.
-        ClassLoader loader = new ProfileForkLoader(
+        ClassLoader loader = new MultiContentLoader(
             "application.properties",
             "app.name=Freeway Boot\nfreeway.profile=dev\n",
             "application-dev.properties",
@@ -378,34 +399,103 @@ class ConfigLoaderImplTest {
 
         // Activation via the base properties layer (no CLI override): without
         // the fix the profile layer's "prod" outranks base "dev" in merged().
-        ConfigLoaderImpl.BootConfigLayers layers =
+        ConfigSources sources =
             ConfigLoaderImpl.loadLayers(loader);
-        assertEquals(List.of("dev"), layers.profiles());
-        assertEquals("dev", merged(layers).get("freeway.profile"),
+        assertEquals(List.of("dev"), sources.profiles());
+        assertEquals("dev", merged(sources).get("freeway.profile"),
             "merged() must report the base-layer activation value, not the profile layer's");
-        assertEquals("Dev Boot", merged(layers).get("app.name"),
+        assertEquals("Dev Boot", merged(sources).get("app.name"),
             "the profile file's other keys must still apply");
-        assertFalse(layers.profileProperties().containsKey("freeway.profile"),
-            "the activation key is stripped from profile layers at load time — "
-                + "the raw form never surfaces");
+        assertEquals("dev", sources.files().get("freeway.profile"),
+            "the activation key is stripped from the profile files at load time — "
+                + "only the base layer's value surfaces");
 
-        // Activation via CLI --profile=dev: config().profiles() and
-        // config().get("freeway.profile") must agree.
-        AppConfig config = new ConfigLoaderImpl().load(loader, "--profile=dev");
+        // Activation via CLI --profile=dev: profiles() and the resolved
+        // freeway.profile value must agree.
+        AppConfig config = ConfigLoaderImpl.load(loader, "--profile=dev");
         assertEquals(List.of("dev"), config.profiles());
-        assertEquals("dev", config.snapshot().get("freeway.profile"),
-            "config().get(\"freeway.profile\") must agree with config().profiles()");
+        assertEquals("dev", value(config, "freeway.profile"),
+            "the resolved freeway.profile must agree with config().profiles()");
+    }
+
+    @Test
+    void jsonOutranksPropertiesInTheClasspathBaseline() {
+        ConfigSources sources = ConfigLoaderImpl.loadLayers(new MultiContentLoader(
+            "application.properties", "app.name=from-properties\n",
+            "application.json", "{\"app.name\": \"from-json\"}"));
+
+        assertEquals("from-json", sources.files().get("app.name"),
+            "application.json outranks application.properties");
+    }
+
+    @Test
+    void profileJsonOutranksAnotherProfilesProperties() {
+        // The profile band merges as two format passes — every profile's
+        // properties, then every profile's json — so the file format outranks
+        // the profile order: application-dev.json beats
+        // application-prod.properties. Pinned because the rule is otherwise
+        // invisible (and was undocumented).
+        ConfigSources sources = ConfigLoaderImpl.loadLayers(new MultiContentLoader(
+            "application.properties", "freeway.profile=dev,prod\n",
+            "application-dev.json", "{\"app.name\": \"from-dev-json\"}",
+            "application-prod.properties", "app.name=from-prod-properties\n"));
+
+        assertEquals(List.of("dev", "prod"), sources.profiles());
+        assertEquals("from-dev-json", sources.files().get("app.name"),
+            "json outranks properties across profiles, not the later profile");
+    }
+
+    @Test
+    void unknownPresetNameFailsTheLoad() {
+        System.setProperty(Presets.KEY, "kubernates");
+        try {
+            IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> ConfigLoaderImpl.load(ConfigLoaderImplTest.class.getClassLoader()));
+            assertTrue(ex.getMessage().contains("freeway.preset"),
+                "the error must name the bootstrap key, got: " + ex.getMessage());
+        } finally {
+            System.clearProperty(Presets.KEY);
+        }
+    }
+
+    @Test
+    void activePresetReachesTheLowestTier() {
+        System.setProperty(Presets.KEY, "docker");
+        try {
+            AppConfig config = ConfigLoaderImpl.load(
+                ConfigLoaderImplTest.class.getClassLoader());
+            try {
+                assertEquals("0.0.0.0", value(config, "freeway.http.server.host"),
+                    "the loader resolves -Dfreeway.preset into the lowest tier");
+                assertEquals("off", value(config, "freeway.log.file"),
+                    "the same bundle serves the JUL log cascade's keys");
+            } finally {
+                config.close();
+            }
+        } finally {
+            System.clearProperty(Presets.KEY);
+        }
     }
 
     /**
-     * The full layered view the tests assert on: file baseline + env + args —
-     * the merge production code performs when {@code AppConfigDefault} builds its file tier.
+     * The full layered view the tests assert on: file baseline + env + cli —
+     * the same overlay the symbol chain applies tier by tier.
      */
-    private static Map<String, String> merged(ConfigLoaderImpl.BootConfigLayers layers) {
-        Map<String, String> merged = new LinkedHashMap<>(layers.fileBaseline());
-        merged.putAll(layers.environment());
-        merged.putAll(layers.args());
-        return merged;
+    private static Map<String, String> merged(ConfigSources sources) {
+        return ConfigMaps.overlay(
+            List.of(sources.files(), sources.environment(), sources.cli()));
+    }
+
+    /** Resolves a key through the config's own providers, in declared order. */
+    private static String value(AppConfig config, String key) {
+        for (SymbolProvider provider : config.providers()) {
+            String value = provider.lookup(key);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private static final class OversizedPropertiesLoader extends ClassLoader {
@@ -429,37 +519,19 @@ class ConfigLoaderImplTest {
     }
 
     /** Serves fixed content for one named resource, delegating everything else. */
-    private static final class FixedContentLoader extends ClassLoader {
-        private final String resourceName;
-        private final byte[] content;
-
-        private FixedContentLoader(String resourceName, String content) {
-            this.resourceName = resourceName;
-            this.content = content.getBytes(StandardCharsets.UTF_8);
-        }
-
-        @Override
-        public InputStream getResourceAsStream(String name) {
-            if (resourceName.equals(name)) {
-                return new ByteArrayInputStream(content);
-            }
-            return super.getResourceAsStream(name);
-        }
-    }
-
     /**
-     * Serves fixed properties content for two named resources (e.g. base and
-     * profile files), delegating everything else to the real classpath.
+     * Serves fixed content for named resources, delegating everything else to
+     * the real classpath. Content is given as name, text pairs.
      */
-    private static final class ProfileForkLoader extends ClassLoader {
+    private static final class MultiContentLoader extends ClassLoader {
         private final Map<String, byte[]> overrides = new LinkedHashMap<>();
 
-        private ProfileForkLoader(
-            String firstName, String firstContent,
-            String secondName, String secondContent
-        ) {
-            overrides.put(firstName, firstContent.getBytes(StandardCharsets.UTF_8));
-            overrides.put(secondName, secondContent.getBytes(StandardCharsets.UTF_8));
+        private MultiContentLoader(String... nameAndContent) {
+            for (int i = 0; i < nameAndContent.length; i += 2) {
+                overrides.put(
+                    nameAndContent[i],
+                    nameAndContent[i + 1].getBytes(StandardCharsets.UTF_8));
+            }
         }
 
         @Override

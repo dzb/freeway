@@ -10,11 +10,21 @@ import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import java.util.Objects;
 
+/**
+ * The boot substrate: wires the loaded {@link AppConfig} into the container as
+ * a binding plus its symbol sources, and binds the {@link HookLifecycle} that
+ * {@link AppRuntimeDefault} drives.
+ *
+ * <p>Both belong here rather than in separate modules because the app runtime
+ * assumes them unconditionally: {@code AppBuilder} always adds this module,
+ * so the two container-level services the runtime resolves by type are
+ * guaranteed to exist.
+ */
 @Marker(Builtin.class)
-public final class AppConfigModule implements ModuleEx {
+public final class BootModule implements ModuleEx {
     private final AppConfig config;
 
-    public AppConfigModule(AppConfig config) {
+    public BootModule(AppConfig config) {
         this.config = Objects.requireNonNull(config, "config");
     }
 

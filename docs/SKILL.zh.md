@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、binder.install、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、subModules、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway 开发技能
@@ -55,10 +55,6 @@ public class AppModule implements ModuleEx {
     public void bind(Binder b) {
         // 绑定服务
         b.bind(UserService.class).to(UserServiceImpl.class);
-
-        // 安装子模块（链式调用）
-        b.install(new HttpModule())
-         .install(new DbModule());
 
         // 贡献扩展（路由、hooks、事件订阅者等）
         b.contribute(Route.class)
@@ -871,9 +867,12 @@ Schema.ensure(db, User.class, Post.class);
 
 ```java
 public class AppModule implements ModuleEx {
-    public void bind(Binder b) {
-        b.install(new DbModule());
+    // 子模块以数据声明：容器先解析整张图，再按序 bind
+    public List<ModuleEx> subModules() {
+        return List.of(new DbModule());
+    }
 
+    public void bind(Binder b) {
         // 注册实体类 → 启动时自动建表
         b.contribute(SchemaEntity.class)
             .add(SchemaEntity.of("app", User.class, Post.class));
@@ -1108,8 +1107,8 @@ CREATED → STARTING → RUNNING → STOPPING → STOPPED
 
 ```java
 AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
-Container c = runtime.container();        // 获取容器
-AppConfig cfg = runtime.config();          // 获取配置
+AppConfig cfg = runtime.config();          // 获取配置（profiles / 符号源 / 生命周期）
+Greeter greeter = runtime.get(Greeter.class); // 按类型取服务
 AppState state = runtime.state();          // 当前状态
 runtime.start();                           // 手动启动（run() 已自动启动）
 runtime.close();                           // 停止应用
@@ -1123,6 +1122,8 @@ runtime.close();                           // 停止应用
 4. `application-{profile}.json`
 5. 环境变量（`FREEWAY_` 前缀）
 6. CLI 参数（`--key=value`, `-Dkey=value`）
+
+另有最低优先级的 preset 预设（`-Dfreeway.preset` / `FREEWAY_PRESET`，bootstrap-only），只补所有更高来源都没设的键。
 
 Dotted keys（如 `--app.name=foo`）原样透传。不含 `.` 的简单键自动加 `freeway.` 前缀。
 激活 profile：`--profile=dev`（等同于 `--freeway.profile=dev`）

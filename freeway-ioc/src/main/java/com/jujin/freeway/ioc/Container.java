@@ -2,6 +2,7 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.extension.Extension;
 import java.lang.annotation.Annotation;
+import java.util.List;
 
 /**
  * Service lookup container. Created by {@link Freeway#create(ModuleEx...)}.
@@ -116,6 +117,16 @@ public interface Container extends AutoCloseable {
      * @return a new, injected instance (caller owns the lifecycle)
      */
     <T> T create(Class<T> type);
+
+    /**
+     * The module tree this container loaded, flattened into bind order: each
+     * module followed by its {@link ModuleEx#subModules() sub-modules},
+     * siblings in declaration order. A snapshot — later changes to the
+     * container do not affect it.
+     *
+     * @return the loaded modules, never null
+     */
+    List<ModuleEx> modules();
 
     /**
      * Closes the container: runs {@code @PreDestroy} and {@code AutoCloseable}

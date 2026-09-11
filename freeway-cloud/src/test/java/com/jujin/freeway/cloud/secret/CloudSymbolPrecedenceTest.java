@@ -2,6 +2,7 @@ package com.jujin.freeway.cloud.secret;
 
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.internal.AppConfigDefault;
+import com.jujin.freeway.boot.internal.ConfigSources;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
@@ -89,8 +90,10 @@ class CloudSymbolPrecedenceTest {
         // The custom config replaces the default cascade, so the ephemeral
         // HTTP port has to ride the file tier instead of a system property.
         AppConfig config = new AppConfigDefault(
-            cli, env, Map.of(KEY, "from-file", HttpConfigKeys.SERVER_PORT, "0"),
-            List.of(), List.of());
+            new ConfigSources(
+                cli, env, Map.of(KEY, "from-file", HttpConfigKeys.SERVER_PORT, "0"),
+                Map.of(), List.of()),
+            List.of());
         try (AppRuntime app = FreewayApp.of(new CloudModule())
                 .config(config)
                 .shutdownHook(false)

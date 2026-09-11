@@ -3,11 +3,10 @@ package com.jujin.freeway.boot;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 
 import java.util.List;
-import java.util.Map;
 
 /**
- * The loaded configuration cascade: active profiles, an unmodifiable
- * snapshot, and the lifecycle of its sources.
+ * The loaded configuration cascade: active profiles, the symbol sources it
+ * contributes to the container, and the lifecycle of those sources.
  *
  * <p><b>This is not a read API.</b> Whatever the source format (properties,
  * JSON, env mapping, CLI), the cascade normalizes everything to
@@ -19,52 +18,45 @@ import java.util.Map;
  * ({@code symbols.resolve(spec)}).
  *
  * <p>What this interface owns instead: {@link #profiles()} (boot-level
- * lifecycle metadata the chain cannot know), {@link #snapshot()} (the cascade
- * snapshot — the chain cannot enumerate keys, and secret-backed values must
- * never leak into a map; treat the map as the file-tier picture),
- * {@link #providers()} (how the cascade feeds the chain) and
- * {@link #close()} (stops the hot-reload watcher).
+ * lifecycle metadata the chain cannot know), {@link #providers()} (how the
+ * cascade feeds the chain) and {@link #close()} (stops the hot-reload watcher,
+ * if any). Note what is deliberately absent: a map of the resolved values. The
+ * chain does not expose one, and a second, map-shaped view of the same cascade
+ * would be free to disagree with it — or to leak environment/CLI-injected
+ * secrets into a public snapshot.
  *
  * <p>Construction: the framework's cascade loader produces the framework's
- * implementation; for a custom source, construct
- * {@link com.jujin.freeway.boot.internal.AppConfigDefault} directly (its
- * constructors are public) or implement this interface and hand it to
+ * implementation; for a custom source, call
+ * {@link com.jujin.freeway.boot.internal.AppConfigDefault#of(java.util.Map, java.util.List)}
+ * or implement this interface and hand it to
  * {@code AppBuilder.config(config)}.
  */
-public interface AppConfig {
+public interface AppConfig extends AutoCloseable {
 
     /** Returns the active profiles in priority order, as an unmodifiable list. */
     List<String> profiles();
 
     /**
-     * Returns the cascade snapshot (CLI, env and file tiers merged) as an
-     * unmodifiable map. Implementations must return a snapshot — mutations to
-     * the returned map are not supported and modifying the source after this
-     * call must not affect the returned map.
-     */
-    Map<String, String> snapshot();
-
-    /**
      * The symbol sources this config contributes to the container, with
-     * declared {@code SymbolProvider} orders. The default reports the merged
-     * view as a single source on the file tier ({@code TIER_FILES}) — the
-     * behavior custom {@link AppConfig} implementations get for
-     * free: an undifferentiated config behaves like the framework's file
-     * tier and loses to env/CLI and module sources above it. The framework's
-     * own config ({@code AppConfigDefault}) contributes one source per tier
-     * (cli → env → files), which is what lets module sources (e.g. the
-     * cloud secret store) slot in between tiers by declaring their own order.
+     * declared {@link SymbolProvider#order() orders}. This is the config's
+     * whole content contract — the chain, not the config, decides precedence,
+     * so a source that must be consulted early cannot be silently outranked by
+     * module install order.
+     *
+     * <p>An undifferentiated config behaves like the framework's file tier in
+     * one line — {@code List.of(SymbolProvider.of(values::get, TIER_FILES))} —
+     * which places it below env/CLI; a module source (e.g. the cloud secret
+     * store) slots in between tiers by declaring its own order. The
+     * framework's own config ({@code AppConfigDefault}) contributes one source
+     * per tier (cli → env → files → preset).
      */
-    default List<SymbolProvider> providers() {
-        // One source over the merged view, re-read on every lookup — the
-        // same shape the framework's own file tier uses.
-        return List.of(SymbolProvider.of(this::snapshot, SymbolProvider.TIER_FILES));
-    }
+    List<SymbolProvider> providers();
 
     /**
      * Releases resources held by this config (e.g. a hot-reload watcher).
      * Static configurations hold nothing and keep the default no-op.
      */
+    @Override
     default void close() {
     }
 }

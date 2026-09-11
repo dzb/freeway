@@ -5,7 +5,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 ## Stable API
 
 - `Container` - `get(Class)`, `get(Class, String)`, `get(Class, Annotation...)`, `isActiveBinding(Class, Annotation...)`, `extension(Class)`, `create(Class)`, `close()`
-- `Binder` - `bind(Class)`, `contribute(Class)`, `install(ModuleEx)`; `ModuleEx` is the module entry-point type
+- `Binder` - `bind(Class)`, `contribute(Class)`; `ModuleEx` is the module entry-point type, and declares its composition via `subModules()`
 - `Binding<T>` - `to(Class)`, `to(c -> ...)` (provider), `id(String)`, `primary()`, `marker(Annotation...)`, `scope(Scope)`, `advise(...)`; there is no `to(instance)`
 - `ModuleEx` - module entry-point type: `bind(Binder)`
 - `Scope` - `SINGLETON`, `THREAD`, `PROTOTYPE`

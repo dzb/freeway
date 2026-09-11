@@ -79,14 +79,14 @@ class MarkerAndConcurrencyTest {
 
     @Test
     void markerDeclaredAfterFlushStillResolves() {
-        // Regression: a binding flushed by a nested install, then receiving
-        // .marker() afterwards, was invisible to marker-based resolution —
-        // the MarkerIndex was never updated for the late declaration.
-        Container container = Freeway.create(binder -> {
-            Binding<Cache> binding = binder.bind(Cache.class).to(FastCache.class);
-            binder.install(ignored -> {});  // flush triggers registration
-            binding.marker(Fast.class);      // late marker on a registered binding
-        });
+        // Regression: a binding registered by the module that declared it, then
+        // receiving .marker() from a LATER module, was invisible to
+        // marker-based resolution — the MarkerIndex was never updated for the
+        // late declaration. The handle is shared across the two modules.
+        Binding<Cache>[] shared = new Binding[1];
+        Container container = Freeway.create(
+            binder -> shared[0] = binder.bind(Cache.class).to(FastCache.class),
+            binder -> shared[0].marker(Fast.class));
 
         Cache cache = container.get(Cache.class, Fast.class);
         assertEquals("fast", cache.name());

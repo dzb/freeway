@@ -66,7 +66,7 @@ class HookLifecycleTest {
     }
 
     private static Container containerWith(RuntimeHook... hooks) {
-        AppConfig config = new AppConfigDefault(Map.of(), List.of());
+        AppConfig config = AppConfigDefault.of(Map.of(), List.of());
         ModuleEx hooksModule = new ModuleEx() {
             @Override
             public void bind(com.jujin.freeway.ioc.Binder binder) {
@@ -76,7 +76,7 @@ class HookLifecycleTest {
                 }
             }
         };
-        return Freeway.create(new AppConfigModule(config), hooksModule);
+        return Freeway.create(new BootModule(config), hooksModule);
     }
 
     @Test

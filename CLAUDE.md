@@ -113,16 +113,19 @@ WatchService-hot-reloaded and reaches the symbol chain because each
 `SymbolProvider` lookup reads the current snapshot — no restart, no push
 API. Profile activation stays startup-static.
 SymbolProvider precedence is declared via `order()` (CLI 0 > JVM system
-properties 5 > env 10 > cloud secret store 15 > files 20) — four tiers,
+properties 5 > env 10 > cloud secret store 15 > files 20 > preset 25) —
 each answering one ownership question (app launch args; the
 process-environment band, JVM-level verbatim overrides above boot's
-declared env mapping; the deployable file baseline); never module
-install order. All providers live in one ordered list. `SymbolSource` is
+declared env mapping; the deployable file baseline; the environment-class
+defaults a preset bundle fills); never module install order. All providers
+live in one ordered list. `SymbolSource` is
 the single read entry (raw strings); typed reading is explicit
 post-processing — declare a `SymbolSpec`, parse the resolved value
 (`spec.parse(symbols.resolve(spec.key(), null))`). `AppConfig` is not a
-reader: it owns profiles, the cascade snapshot and the hot-reload
-lifecycle. Modules with domain-specific sources (secrets, ...) contribute
+reader and exposes no value map: it owns the active profiles, the symbol
+sources it contributes (`providers()`), and the hot-reload lifecycle — a
+second, map-shaped view of the cascade would be free to disagree with the
+chain. Modules with domain-specific sources (secrets, ...) contribute
 their own `SymbolProvider` via `Extension` and slot in by declaring their
 order.
 

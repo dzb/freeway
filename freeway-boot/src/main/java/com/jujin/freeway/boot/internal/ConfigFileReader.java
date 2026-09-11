@@ -1,6 +1,7 @@
 package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.commons.json.JsonUtils;
+import com.jujin.freeway.commons.util.ByteStreams;
 import com.jujin.freeway.commons.util.Maps;
 
 import java.io.IOException;
@@ -26,12 +27,23 @@ import java.util.Properties;
  * no matter where it lives (classpath, working directory) or when it is
  * read (startup, hot reload).
  *
+ * <p>Both entries apply the same {@link #MAX_BYTES read cap}, so the bound is
+ * a property of the parser rather than of the caller: a runaway file fails
+ * identically whether it sits on the classpath or in the working directory.
+ *
  * <p>Properties text keeps the {@code java.util.Properties} key/value
  * syntax; JSON objects are nested freely and flattened to dotted keys
  * ({@code {"db": {"host": "x"}}} → {@code db.host=x}). A blank JSON document
  * means "no config", mirroring an empty {@code application.properties}.
  */
 public final class ConfigFileReader {
+
+    /**
+     * Read cap for every config source: a file that exceeds it fails loudly
+     * instead of exhausting memory. High enough that only a runaway file hits
+     * it.
+     */
+    public static final long MAX_BYTES = 16L * 1024 * 1024;
 
     private ConfigFileReader() {}
 
@@ -44,8 +56,15 @@ public final class ConfigFileReader {
     }
 
     /** Reads a config source, dispatching by name extension (see the class
-     *  javadoc). The stream is fully consumed by this call. */
+     *  javadoc). The stream is fully consumed and closed by this call, and
+     *  only {@link #MAX_BYTES} are ever read from it. */
     public static Map<String, String> read(String name, InputStream in) throws IOException {
+        try (InputStream bounded = ByteStreams.bounded(in, MAX_BYTES, name)) {
+            return parse(name, bounded);
+        }
+    }
+
+    private static Map<String, String> parse(String name, InputStream in) throws IOException {
         if (name.toLowerCase(Locale.ROOT).endsWith(".json")) {
             return json(new String(in.readAllBytes(), StandardCharsets.UTF_8), name);
         }

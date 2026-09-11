@@ -72,9 +72,8 @@ class FreewayAppTest {
             assertEquals("1.0.0", symbolSource.resolve(APP_VERSION_KEY));
             assertEquals("dev.localhost", symbolSource.resolve(SERVER_HOST_KEY));
             assertEquals(List.of("dev"), app.config().profiles());
-            assertEquals("dev", app.config().snapshot().get("freeway.profile"));
-            assertEquals("Overridden", app.config().snapshot().get(APP_NAME_KEY));
-            assertEquals("9191", app.config().snapshot().get(SERVER_PORT_KEY));
+            assertEquals("dev", symbolSource.resolve("freeway.profile"),
+                "the activation key agrees with config().profiles() on the chain");
 
             Greeter greeter = app.get(Greeter.class);
             assertEquals("Hello, World!", greeter.greet("World"));
@@ -206,6 +205,50 @@ class FreewayAppTest {
         assertEquals(AppState.STOPPED, app.state());
     }
 
+    /** A bundle that declares an SPI-discoverable module as a sub-module. */
+    static final class BundleWithAutoModule implements ModuleEx {
+        @Override
+        public List<ModuleEx> subModules() {
+            return List.of(new AutoModule());
+        }
+
+        @Override
+        public void bind(Binder binder) {
+        }
+    }
+
+    @Test
+    void discoveredModuleAlreadyDeclaredInTheTreeIsNotAddedTwice() {
+        // AutoModule is also on the SPI classpath. A bundle that declares it as
+        // a sub-module must not collide with discovery: the declared instance
+        // wins, exactly as an explicitly added module beats a discovered one.
+        AppRuntime app = FreewayApp.of(new BundleWithAutoModule())
+            .args("--app.name=Bundle")
+            .shutdownHook(false)
+            .start();
+        try {
+            assertEquals("auto", app.get(AutoMarker.class).value());
+        } finally {
+            app.close();
+        }
+    }
+
+    @Test
+    void moduleDeclaredInTheTreeAndAddedExplicitlyStillFails() {
+        // Two authored instances of one class — the tree admits one instance per
+        // module class, so this stays an error even though discovery no longer
+        // causes it.
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            FreewayApp.of(new BundleWithAutoModule(), new AutoModule())
+                .autoDiscovery(false)
+                .shutdownHook(false)
+                .start());
+        assertTrue(ex.getMessage().contains("AutoModule"),
+            "the error names the module class, got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("declared twice"),
+            "got: " + ex.getMessage());
+    }
+
     public static class ValueHolder {
         @Value("${server.port}")
         String port;
@@ -232,7 +275,8 @@ class FreewayAppTest {
                 ValueHolder holder = app.get(ValueHolder.class);
                 assertEquals("7070", holder.port,
                     "@Value must honor the CLI argument over the JVM system property");
-                assertEquals("7070", app.config().snapshot().get(SERVER_PORT_KEY));
+                assertEquals("7070", app.get(SymbolSource.class).resolve(SERVER_PORT_KEY),
+                    "the same value resolves through the symbol chain");
             } finally {
                 app.close();
             }
@@ -342,11 +386,12 @@ class FreewayAppTest {
     void builderWithCustomConfig() {
         AppRuntime app = FreewayApp.of()
             .add(new InstancePrimaryModule())
-            .config(new AppConfigDefault(
+            .config(AppConfigDefault.of(
                 Map.of("custom.key", "custom-value"), List.of()))
             .start();
         try {
-            assertEquals("custom-value", app.config().snapshot().get("custom.key"));
+            assertEquals("custom-value",
+                app.get(SymbolSource.class).resolve("custom.key"));
         } finally {
             app.close();
         }

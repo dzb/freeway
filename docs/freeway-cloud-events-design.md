@@ -111,7 +111,7 @@ stream:
 
 ### 2.3 心跳与保活
 
-v1 未实现应用层心跳（`freeway.cloud.events.keepalive` 键未实现）：
+v1 未实现应用层心跳（`freeway.cloud.event.keepalive` 键未实现）：
 连接活性依赖 TCP/WS 层行为、发送失败检测（出站 send 失败即摘除连接）
 与对端 close 即时感知。客户端侧有**握手看门狗**：socket 打开后
 `events.handshake-timeout-ms`（默认 10s）内未完成 hello/ack 即中止并走
@@ -134,7 +134,7 @@ v1 未实现应用层心跳（`freeway.cloud.events.keepalive` 键未实现）�
 5. 双向可用。对端关闭/握手失败 → unregister → "下线"
 
 peers 解析（双源）:
-  a. freeway.cloud.events.peers=host:port,…（静态配置，@Local 后端的引导输入；
+  a. freeway.cloud.event.peers=host:port,…（静态配置，@Local 后端的引导输入；
      IPv6 字面量支持方括号与裸写两种形态）
   b. 有外部 registry 后端（替换 discovery 接口的适配器，freeway-ext
      未交付，见 unified-design §8）时: 经 setPeers 动态喂入
@@ -250,7 +250,7 @@ token 是**全节点共享**的握手密钥，双向生效：本节点出站时�
   派发（fan-out），同一事件经两条通道到达同一节点时由共享事件 id +
   入站去重窗口收敛（`events.dedup.enabled`）。双通道并存属用户显式
   选择，框架支持。
-- CE 翻译器（envelope）作为独立纯函数类放在 `cloud.events` 子包；
+- CE 翻译器（envelope）作为独立纯函数类放在 `cloud.event` 子包；
   将来 Kafka 桥想发 CE 格式，可直接复用翻译器（ext 可选依赖 cloud）。
 - 出站派发在发布线程上同步执行（JDK WS `sendText` 为排队式非阻塞），
   at-most-once、best-effort：发送失败的连接被摘除，重连是 connector
@@ -260,15 +260,15 @@ token 是**全节点共享**的握手密钥，双向生效：本节点出站时�
 
 | 组件 | 包 | 职责 |
 |---|---|---|
-| `CloudEventEnvelope` | cloud.events | CE 1.0 翻译器：translate/parse，属性映射表见 §2.2 |
-| `PeerHub` | cloud.events | WS 端点（`WebSocketEndpoint`）：握手/hello/token 门禁/订阅声明/入站管道 + 连接表（按 origin 去重） |
-| `PeerConnector` | cloud.events | peers 解析（config/discovery 双源）+ 连接生命周期 + 退避重连 + 握手看门狗 |
-| `PeerConnection` | cloud.events | 一条活跃连接：对端身份、订阅前缀、发送器（close 恰好一次） |
-| `CloudEventSink` | cloud.events | 出站钩子（实现 `EventSink`）：遍历活跃连接、前缀过滤、发送 |
-| `CloudEventInterceptor` | cloud.events | 入站拦截器位（contribution）：审计/租户/自定义过滤 |
-| `CloudEventModule` | cloud.events | 装配：endpoint route + connector hook + sink 安装 + 去重开关 |
+| `CloudEventEnvelope` | cloud.event | CE 1.0 翻译器：translate/parse，属性映射表见 §2.2 |
+| `PeerHub` | cloud.event | WS 端点（`WebSocketEndpoint`）：握手/hello/token 门禁/订阅声明/入站管道 + 连接表（按 origin 去重） |
+| `PeerConnector` | cloud.event | peers 解析（config/discovery 双源）+ 连接生命周期 + 退避重连 + 握手看门狗 |
+| `PeerConnection` | cloud.event | 一条活跃连接：对端身份、订阅前缀、发送器（close 恰好一次） |
+| `CloudEventSink` | cloud.event | 出站钩子（实现 `EventSink`）：遍历活跃连接、前缀过滤、发送 |
+| `CloudEventInterceptor` | cloud.event | 入站拦截器位（contribution）：审计/租户/自定义过滤 |
+| `CloudEventModule` | cloud.event | 装配：endpoint route + connector hook + sink 安装 + 去重开关 |
 
-配置键（`freeway.cloud.events.*`，全部已在 `CloudConfigKeys` 落地）：
+配置键（`freeway.cloud.event.*`，全部已在 `CloudConfigKeys` 落地）：
 `enabled`（默认 false）、`peers`、`subscriptions`（本节点出站订阅
 声明）、`allowed-types` / `allowed-topics`（入站双白名单，语义见 §4.3）、
 `token`（mesh 握手共享密钥，常量时间比较；多节点生产部署必配，

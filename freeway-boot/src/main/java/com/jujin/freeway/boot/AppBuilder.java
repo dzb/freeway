@@ -1,14 +1,18 @@
 package com.jujin.freeway.boot;
 
-import com.jujin.freeway.boot.internal.AppConfigModule;
 import com.jujin.freeway.boot.internal.AppRuntimeDefault;
+import com.jujin.freeway.boot.internal.BootModule;
 import com.jujin.freeway.boot.internal.ConfigLoaderImpl;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.ModuleTree;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
@@ -65,9 +69,9 @@ public final class AppBuilder {
     /**
      * Use a pre-built {@link AppConfig} instead of the default cascade —
      * the substitution point for custom config sources (remote servers,
-     * other file formats): construct
-     * {@link com.jujin.freeway.boot.internal.AppConfigDefault} (public
-     * constructors) or implement {@link AppConfig} yourself.
+     * other file formats): call
+     * {@link com.jujin.freeway.boot.internal.AppConfigDefault#of(java.util.Map, java.util.List)}
+     * or implement {@link AppConfig} yourself.
      */
     public AppBuilder config(AppConfig config) {
         this.config = Objects.requireNonNull(config, "config");
@@ -112,16 +116,31 @@ public final class AppBuilder {
         ClassLoader effectiveLoader = resolveClassLoader();
         AppConfig config = this.config != null
             ? this.config
-            : new ConfigLoaderImpl().load(effectiveLoader, args);
+            : ConfigLoaderImpl.load(effectiveLoader, args);
 
         LinkedHashMap<Class<?>, ModuleEx> allModules = new LinkedHashMap<>();
-        allModules.put(AppConfigModule.class, new AppConfigModule(config));
+        allModules.put(BootModule.class, new BootModule(config));
         for (ModuleEx module : modules) {
             addModule(allModules, module, true);
         }
         if (autoDiscovery) {
+            // Discovery fills gaps. A module class already declared anywhere in
+            // the tree — including as a sub-module of a bundle — is not added
+            // again: the author's declaration wins, exactly as an explicitly
+            // added module already wins over a discovered one.
+            Set<Class<?>> declared = treeClasses(allModules.values());
             for (ModuleEx module : ServiceLoader.load(ModuleEx.class, effectiveLoader)) {
                 try {
+                    if (declared.contains(module.getClass())) {
+                        LOG.debug(
+                            "Ignoring discovered module already declared in the module "
+                                + "tree: {}",
+                            module.getClass().getSimpleName()
+                        );
+                        continue;
+                    }
+                    declared.add(module.getClass());
+                    declared.addAll(treeClasses(List.of(module)));
                     addModule(allModules, module, false);
                 } catch (ServiceConfigurationError ex) {
                     throw new IllegalStateException(
@@ -134,8 +153,21 @@ public final class AppBuilder {
         }
         List<ModuleEx> moduleList = List.copyOf(allModules.values());
 
-        Container container = Freeway.create(moduleList);
-        AppRuntime app = new AppRuntimeDefault(container, config);
+        Container container;
+        AppRuntime app;
+        try {
+            container = Freeway.create(moduleList);
+            app = new AppRuntimeDefault(container, config);
+        } catch (Throwable ex) {
+            // The container never came up, so no runtime hook will run: release
+            // whatever the config holds open (e.g. the hot-reload watcher).
+            try {
+                config.close();
+            } catch (RuntimeException closeFailure) {
+                ex.addSuppressed(closeFailure);
+            }
+            throw ex;
+        }
         Thread shutdownThread = null;
 
         if (shutdownHook) {
@@ -194,7 +226,8 @@ public final class AppBuilder {
         if (explicit) {
             if (existing == module) {
                 // The identical instance was added twice (e.g. add(mod, mod))
-                // — harmless, keep a single copy, mirroring ContainerImpl.
+                // — harmless, keep a single copy, mirroring the container's
+                // identity-based collapse in ModuleTree.
                 LOG.debug(
                     "Ignoring repeated module instance: {}",
                     module.getClass().getSimpleName()
@@ -207,7 +240,7 @@ public final class AppBuilder {
             Class<?> moduleClass = module.getClass();
             if (moduleClass.isAnonymousClass() || moduleClass.isSynthetic()) {
                 // Anonymous/lambda modules have no meaningful class identity —
-                // keep identity-based semantics like ContainerImpl.installModule.
+                // keep identity-based semantics, like the tree resolver.
                 LOG.debug(
                     "Ignoring duplicate module: {}",
                     moduleClass.getSimpleName()
@@ -226,6 +259,20 @@ public final class AppBuilder {
         // Explicit instances win over SPI-discovered ones — the explicit
         // module was already in the map, so the discovery copy is dropped.
         LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
+    }
+
+    /**
+     * Every module class reachable in the tree of {@code modules}, sub-modules
+     * included. Resolution also validates the tree, so an author-level
+     * duplicate (the same class declared twice) fails here, before the
+     * container is built.
+     */
+    private static Set<Class<?>> treeClasses(Collection<ModuleEx> modules) {
+        Set<Class<?>> classes = new HashSet<>();
+        for (ModuleEx module : ModuleTree.flatten(modules)) {
+            classes.add(module.getClass());
+        }
+        return classes;
     }
 
     private ClassLoader resolveClassLoader() {

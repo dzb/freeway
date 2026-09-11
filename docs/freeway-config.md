@@ -42,10 +42,17 @@
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.profile` | String | *(无)* | **是** | 激活的 Profile，支持逗号分隔多个。激活后加载 `application-{profile}.*`。开发用 `dev`，生产用 `prod` |
-| `freeway.config.file` | String | *(空)* | 否 | 额外配置文件路径（JVM 系统属性 `-D`），多个逗号分隔。参与文件级热重载 |
-| `freeway.env.prefix` | String | `FREEWAY_` | 否 | 环境变量前缀。仅 JVM 系统属性生效；自定义前缀时 `APP_SERVER_PORT` → `server.port`（透传） |
-| `freeway.preset` | String | *(未设)* | 否 | **环境预设**（bootstrap-only：`-D` 或 `FREEWAY_PRESET`，配置文件不可用）。第五级联 tier，优先级最低——只补所有更高来源都没设的键。`docker` = 容器平台通用（绑定 `0.0.0.0` + 日志仅 stdout：`log.file=off`），k8s/ecs 同属此预设；`local` = 显式声明开发环境（空 bundle，默认值即开发友好）。未知值启动即失败 |
+| `freeway.profile` | String | *(无)* | 否 | 激活的 Profile，支持逗号分隔多个。不设则不加载任何 profile 变体文件。开发用 `dev`，生产用 `prod` |
+| `freeway.config.file` | String | *(空)* | 否 | 额外配置文件路径，多个逗号分隔。参与文件级热重载 |
+| `freeway.env.prefix` | String | `FREEWAY_` | 否 | 环境变量前缀；自定义前缀时 `APP_SERVER_PORT` → `server.port`（透传） |
+| `freeway.preset` | String | *(未设)* | 否 | **环境预设**。第五级联 tier，优先级最低——只补所有更高来源都没设的键。`docker` = 容器平台通用（绑定 `0.0.0.0` + 日志仅 stdout：`log.file=off`），k8s/ecs 同属此预设；`local` = 显式声明开发环境（空 bundle，默认值即开发友好）。未知值启动即失败 |
+
+前三行（`freeway.config.file`、`freeway.env.prefix`、`freeway.preset`）是
+**bootstrap-only 键**：它们配置的就是配置系统本身，因此只能来自 `-D<键>` 或
+`FREEWAY_<键>`（如 `FREEWAY_PRESET`、`FREEWAY_ENV_PREFIX`、`FREEWAY_CONFIG_FILE`）。
+写进 `application.properties`/`application.json` 无效——启动时会打 WARN 点名，
+不再静默忽略。`FREEWAY_` 前缀对这三个键固定不变（否则就要用被 `env.prefix`
+配置的映射去读 `env.prefix`）；`freeway.profile` 不是 bootstrap 键，走正常级联。
 
 ### CLI 快捷规则
 
@@ -228,7 +235,7 @@
 |----|------|--------|------|------|
 | `freeway.http.ssl.key-store` | String | *(空)* | **生产是** | **presence 主键**——密钥库路径（PKCS12 或 JKS），非空即启用 HTTPS |
 | `freeway.http.ssl.enabled` | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（此时 key-store 必填）、`false` = 总闸（连已配置的 keystore 也压制，回明文）。未设时退到 presence 规则 |
-| `freeway.http.ssl.key-store-password` | String | *(空)* | **生产是** | 密钥库密码。建议通过环境变量 `FREEWAY_HTTP_SSL_KEY_STORE_PASSWORD` 注入 |
+| `freeway.http.ssl.key-store-password` | String | *(空)* | **生产是** | 密钥库密码。键名含连字符，环境变量名也含连字符（`FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD`）：用 `-D`、`env 'NAME=...'` 或容器 `-e` 注入；shell 的 `export` 不支持含 `-` 的名字 |
 | `freeway.http.ssl.key-store-type` | String | `PKCS12` | 否 | 密钥库类型 |
 | `freeway.http.ssl.http2` | Boolean | `true` | 否 | 通过 ALPN 启用 HTTP/2 over TLS |
 | `freeway.http.ssl.trust-store` | String | *(空)* | 否 | 可选信任库路径（mTLS 场景） |
@@ -463,18 +470,18 @@
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.cloud.events.peers` | String | *(空)* | 否 | **对等节点列表（presence 主键）**——非空即启用 mesh；空 = 纯监听方需显式 `enabled=true`。启用前确认网络可达 |
-| `freeway.cloud.events.enabled` | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（含无 peers 的 discovery-fed mesh）、`false` = 总闸（连已配置的 peers 也压制）。未设时退到 presence 规则（peers 非空即开）。什么都不设 = 模块装了也不动 |
-| `freeway.cloud.events.subscriptions` | String | *(空)* | 否 | 订阅列表 |
-| `freeway.cloud.events.allowed-types` | String | *(空)* | 否 | CLASS 通道反序列化白名单，**空 = 拒绝全部**（deny-by-default，不回退到"放行任意类"） |
-| `freeway.cloud.events.allowed-topics` | String | *(空)* | 否 | TOPIC 通道白名单，空 = 放行全部 |
-| `freeway.cloud.events.token` | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENTS_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
-| `freeway.cloud.events.dedup.enabled` | Boolean | `false` | 否 | 启用事件去重（消耗内存，按需开启） |
-| `freeway.cloud.events.dedup.capacity` | Integer | `4096` | 否 | 去重 ID 缓存容量 |
-| `freeway.cloud.events.connect-timeout-ms` | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |
-| `freeway.cloud.events.handshake-timeout-ms` | Long | `10000` | 否 | 握手看门狗：连接建立后等待 hello/ack 的超时（毫秒） |
-| `freeway.cloud.events.backoff-base-ms` | Long | `1000` | 否 | 断线重连退避基数（毫秒，指数退避） |
-| `freeway.cloud.events.backoff-max-ms` | Long | `30000` | 否 | 断线重连退避上限（毫秒） |
+| `freeway.cloud.event.peers` | String | *(空)* | 否 | **对等节点列表（presence 主键）**——非空即启用 mesh；空 = 纯监听方需显式 `enabled=true`。启用前确认网络可达 |
+| `freeway.cloud.event.enabled` | Boolean | *(未设)* | 否 | 显式主开关，**设了就赢**：`true` 开（含无 peers 的 discovery-fed mesh）、`false` = 总闸（连已配置的 peers 也压制）。未设时退到 presence 规则（peers 非空即开）。什么都不设 = 模块装了也不动 |
+| `freeway.cloud.event.subscriptions` | String | *(空)* | 否 | 订阅列表 |
+| `freeway.cloud.event.allowed-types` | String | *(空)* | 否 | CLASS 通道反序列化白名单，**空 = 拒绝全部**（deny-by-default，不回退到"放行任意类"） |
+| `freeway.cloud.event.allowed-topics` | String | *(空)* | 否 | TOPIC 通道白名单，空 = 放行全部 |
+| `freeway.cloud.event.token` | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENTS_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
+| `freeway.cloud.event.dedup.enabled` | Boolean | `false` | 否 | 启用事件去重（消耗内存，按需开启） |
+| `freeway.cloud.event.dedup.capacity` | Integer | `4096` | 否 | 去重 ID 缓存容量 |
+| `freeway.cloud.event.connect-timeout-ms` | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |
+| `freeway.cloud.event.handshake-timeout-ms` | Long | `10000` | 否 | 握手看门狗：连接建立后等待 hello/ack 的超时（毫秒） |
+| `freeway.cloud.event.backoff-base-ms` | Long | `1000` | 否 | 断线重连退避基数（毫秒，指数退避） |
+| `freeway.cloud.event.backoff-max-ms` | Long | `30000` | 否 | 断线重连退避上限（毫秒） |
 
 #### RPC / TLS
 
@@ -543,7 +550,7 @@
           "trust-store-password": ""
         }
       },
-      "events": {
+      "event": {
         "enabled": false,
         "peers": "",
         "subscriptions": "",
@@ -617,10 +624,10 @@ IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成�
 **列表键的两种写法**：properties/env/CLI 用逗号字符串；application.json 可写原生数组（展平时自动连接为同一逗号编码），两者等价——
 
 ```json
-{ "freeway": { "cloud": { "events": { "peers": ["10.0.0.11:8080", "10.0.0.12:8080"] } } } }
+{ "freeway": { "cloud": { "event": { "peers": ["10.0.0.11:8080", "10.0.0.12:8080"] } } } }
 ```
 
-等价于 `freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080`。列表条目不能包含逗号（与 HTTP 头列表同样的限制）。
+等价于 `freeway.cloud.event.peers=10.0.0.11:8080,10.0.0.12:8080`。列表条目不能包含逗号（与 HTTP 头列表同样的限制）。
 
 ---
 
@@ -631,7 +638,16 @@ IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成�
 - `freeway.db.url` → `FREEWAY_DB_URL`
 - `freeway.log.level` → `FREEWAY_LOG_LEVEL`
 
-带连字符的键（如 `max-size`）不支持环境变量，需用 `-D` 系统属性。
+映射规则只有一条，没有例外：**键名的 `.` 换成 `_`，其余字符原样保留**。`-` 是普通字符，不参与转换——`key-store` 与 `key.store` 是两个不同的键，绝不能让同一个变量同时喂给它们（那正是"折叠"式映射的歧义来源，本框架不采用）。
+
+因此含连字符的键，其环境变量名里就是**字面连字符**：
+
+```
+freeway.http.ssl.key-store-password  →  FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD
+freeway.db.pool.max-size             →  FREEWAY_DB_POOL_MAX-SIZE
+```
+
+shell 的 `export` 不接受含 `-` 的名字，这是 shell 的限制、不是映射的例外：用 `-D`、`env 'NAME=value'`、systemd `Environment=` 或容器 `-e` 传入。变量名写错（例如用 `_` 代替 `-`）不会被特殊处理——它会映射成另一个键名；若没人声明那个键，它就像任何拼错的键一样静默无效（与 CLI 拼错参数的行为一致）。
 
 例外（读自 JVM 系统属性，不参与上述级联）：`freeway.cloud.secret.file`、
 `freeway.cloud.secret.keys` —— 两者只能 `-D` 设置，否则静默无效。

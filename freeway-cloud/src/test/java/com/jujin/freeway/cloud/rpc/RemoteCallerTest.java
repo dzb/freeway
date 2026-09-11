@@ -60,6 +60,7 @@ class RemoteCallerTest {
             }
             public <T> com.jujin.freeway.ioc.extension.Extension<T> extension(Class<T> entryType) { throw new UnsupportedOperationException(); }
             public <T> T create(Class<T> type) { throw new UnsupportedOperationException(); }
+            public java.util.List<com.jujin.freeway.ioc.ModuleEx> modules() { return java.util.List.of(); }
             public void close() {}
         }
 

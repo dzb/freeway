@@ -719,7 +719,7 @@ the wrong order.
 
 The symbol chain resolves every config lookup (`@Symbol`/`@Value` and
 `SymbolSource.resolve` — the single read entry; `AppConfig` only carries
-profiles, the snapshot and lifecycle). Lowest to highest priority —
+profiles, the sources it contributes and lifecycle). Lowest to highest priority —
 every tier is a `SymbolProvider` with a declared `order()`, and each
 answers one ownership question:
 
@@ -777,7 +777,17 @@ activated from the base layers (`application.properties`/`application.json`,
 env, CLI) only, so a profile file cannot re-select profiles.
 
 **Environment variables and namespaces:** The `FREEWAY_` prefix maps into the
-`freeway.*` namespace (`FREEWAY_LOG_FILE_MAX_SIZE` → `freeway.log.file.max.size`).
+`freeway.*` namespace; a key's dots become underscores and every other
+character is carried through verbatim, so a key containing `-` needs that
+hyphen in its variable name (`freeway.http.ssl.key-store-password` ↔
+`FREEWAY_HTTP_SSL_KEY-STORE-PASSWORD`).
+
+That is the entire rule — no folding, no aliases. Folding `-` into `.` would
+let one variable feed two distinct keys, and no shell's inability to export a
+name containing `-` justifies that: use `-D`, `env`, or a container's `-e`.
+A variable whose spelling matches no declared key is simply inert, like any
+other unknown key.
+
 A single configurable prefix, `freeway.env.prefix` (default `FREEWAY_`), can
 **replace** it entirely: set `-Dfreeway.env.prefix=APP_` and the app owns the
 mapping — prefix stripped, `_` → `.`, no namespace inference:
@@ -794,7 +804,7 @@ is unaffected).
 
 **Reading values — one entry point:** the symbol chain is the single way to
 read configuration; `AppConfig` is not a reader (it owns profiles, the
-cascade snapshot and lifecycle only). Direct lookups resolve through the
+contributed symbol sources and lifecycle only). Direct lookups resolve through the
 chain, and typing is an explicit post-processing step with a declared
 `SymbolSpec` — key, type, default and description stated once, parse errors
 naming the key:
@@ -1521,10 +1531,11 @@ Schema.ensure(db, User.class, Post.class);
 
 ```java
 public class AppModule implements ModuleEx {
-    public void bind(Binder b) {
-        b.install(new HttpModule())
-         .install(new DbModule());
+    public List<ModuleEx> subModules() {
+        return List.of(new HttpModule(), new DbModule());
+    }
 
+    public void bind(Binder b) {
         // Register entities for auto-DDL on startup
         b.contribute(SchemaEntity.class)
             .add(SchemaEntity.of("app", User.class, Post.class, Comment.class));
@@ -1752,7 +1763,7 @@ effects belong on the EventBus (Defer buffering), not on RPC.
 
 ---
 
-## CloudEventBus (`freeway-cloud.events`)
+## CloudEventBus (`freeway-cloud.event`)
 
 Cross-node broadcast for the EventBus fact channel, over a WebSocket mesh —
 CloudEvents 1.0 on the wire. Add `CloudEventModule` to every node that
@@ -1763,18 +1774,18 @@ FreewayApp.run(new String[0],
     new AppModule(), new HttpModule(), new CloudEventModule());
 ```
 
-Config (`freeway.cloud.events.*`) — presence-driven activation:
+Config (`freeway.cloud.event.*`) — presence-driven activation:
 
 ```properties
 # Static peers: presence alone activates the mesh — no enabled needed.
-freeway.cloud.events.peers=10.0.0.11:8080,10.0.0.12:8080
+freeway.cloud.event.peers=10.0.0.11:8080,10.0.0.12:8080
 # Discovery-fed mesh without static peers needs the explicit switch:
 # freeway.cloud.event.enabled=true
 # freeway.cloud.event.enabled=false            # kill switch — suppresses even configured peers
-freeway.cloud.events.subscriptions=order.,user.created
-freeway.cloud.events.allowed-types=com.acme.OrderCreated
-freeway.cloud.events.allowed-topics=order.
-freeway.cloud.events.token=mesh-secret         # blank = no peer auth (warned); MUST be set in production
+freeway.cloud.event.subscriptions=order.,user.created
+freeway.cloud.event.allowed-types=com.acme.OrderCreated
+freeway.cloud.event.allowed-topics=order.
+freeway.cloud.event.token=mesh-secret         # blank = no peer auth (warned); MUST be set in production
 ```
 
 - `peers` — nodes to dial; a non-empty list **is the activation** (the
@@ -1851,8 +1862,8 @@ bus.enableInboundDeduplication(4096);   // remember the last 4096 inbound ids
 or declaratively, which `CloudEventModule` does on your behalf:
 
 ```properties
-freeway.cloud.events.dedup.enabled=true
-freeway.cloud.events.dedup.capacity=4096
+freeway.cloud.event.dedup.enabled=true
+freeway.cloud.event.dedup.capacity=4096
 ```
 
 Dedup is **off by default**: it changes delivery semantics and costs memory,

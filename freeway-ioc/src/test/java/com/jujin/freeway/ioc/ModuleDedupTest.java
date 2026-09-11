@@ -33,10 +33,10 @@ class ModuleDedupTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> Freeway.create(new NamedModule(), new NamedModule()));
 
-        assertTrue(ex.getMessage().contains("installed twice"),
+        assertTrue(ex.getMessage().contains("declared twice"),
             "message must name the duplicate-module problem: " + ex.getMessage());
-        assertTrue(ex.getMessage().contains("SPI auto-discovery"),
-            "message must point at the likely cause: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("one instance per module class"),
+            "message must state the rule: " + ex.getMessage());
     }
 
     @Test
