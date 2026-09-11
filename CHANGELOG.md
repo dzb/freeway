@@ -5,6 +5,48 @@ All notable changes to Freeway 2 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **`Binder.install(ModuleEx)` 移除（freeway-ioc，破坏性）** — 模块组合不再通过 `bind()`
+  内的命令式安装表达，改为在 `ModuleEx.subModules()` 中声明（返回稳定的子模块视图，通常
+  是字段 + getter）。迁移：`b.install(new HttpModule())` → 覆写 `subModules()` 返回
+  `List.of(new HttpModule())`。动机：安装式组合让模块图成为 `bind()` 的副作用，框架的其余
+  部分（装配校验、SPI 去重、启动日志、测试）都看不到真实的模块集合。
+- **`AppConfig.snapshot()` 移除（freeway-boot，破坏性）** — 级联不再对外暴露 map 形态：
+  `SymbolSource` 是唯一读取入口，`AppConfig` 收窄为 `profiles()` / `providers()` /
+  `close()`。迁移：`config.snapshot().get(k)` →
+  `container.get(SymbolSource.class).resolve(k, null)`（或按声明 `resolve(spec)`）。
+
+### Changed
+
+- **模块组合改为数据（freeway-ioc）** — 容器在绑定任何模块之前一次性解析整棵模块树：父模块
+  先于其子模块、同级按声明顺序；同一实例被到达两次（共享子模块或互相引用）只绑定一次，
+  同 class 的两个实例启动即失败。`subModules()` 必须是稳定视图，被读取多次。
+- **SPI 发现只补空缺（freeway-boot）** — 类已在模块树中声明（含作为子模块）时不再被自动发现
+  重复加入，因此"`subModules()` 里声明 `new HttpModule()`"与"开启 autoDiscovery"不再冲突。
+- **bootstrap 键通道统一（freeway-boot，行为变更）** — `freeway.env.prefix` /
+  `freeway.preset` / `freeway.config.file` 统一为 `-D<键>` 或 `FREEWAY_<键>`；写进配置文件
+  不再静默忽略，启动时 WARN 点名。
+- **配置文件读取上限统一（freeway-boot，行为变更）** — 16 MiB 上限从"仅类路径资源"扩展到
+  所有来源：工作目录覆盖文件、`freeway.config.file` 附加文件与热重载重读一视同仁。
+- **`AppConfigDefault` 构造方式变更（freeway-boot，破坏性）** — 静态形态改用
+  `AppConfigDefault.of(Map<String,String>, List<String>)`；级联形态改为
+  `AppConfigDefault(ConfigSources, List<Path>)`。
+- **`AppConfigModule` → `BootModule`（freeway-boot）** — 该模块同时装配配置与 runtime hook
+  生命周期，改名以反映职责（位于 `boot.internal`，无稳定性承诺）。
+- **CloudEventBus 命名统一为单数（freeway-cloud，破坏性）** — 包名 `cloud.events` →
+  `cloud.event`、WS 端点 `/cloud/events` → `/cloud/event`、配置键
+  `freeway.cloud.events.*` → `freeway.cloud.event.*`、常量 `CloudConfigKeys.EVENTS_*` →
+  `EVENT_*` 与 `CloudHooks.EVENTS` → `EVENT`，boot 的事件类移入 `boot.event`。配置语义
+  不变，仅命名；引用常量的代码与配置文件/env 中的键名需同步改名。
+
+### Added
+
+- **`Container.modules()`（freeway-ioc，破坏性）** — 返回容器加载的模块树（绑定顺序的只读
+  快照）；启动日志随之输出缩进树形。自定义 `Container` 实现需补上该方法。
+
 ## [1.5.1] — 2026-09-06
 
 ### Added
@@ -1197,6 +1239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **freeway-db** — JDBC data access with ORM, connection pooling, transactions, and query builder with named parameters and collection expansion.
 - Extension adapters (robaho, undertow, jetty, hikari, kafka) available in [freeway-ext](https://github.com/dzb/freeway-ext).
 
+[Unreleased]: https://github.com/dzb/freeway/compare/v1.5.1...HEAD
 [1.5.1]: https://github.com/dzb/freeway/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/dzb/freeway/compare/v1.4.0...v1.5.0
 [1.3.1]: https://github.com/dzb/freeway/compare/v1.2.2...v1.3.1
