@@ -38,22 +38,22 @@ class CloudEventMeshActivationTest {
         if (nodeA != null) nodeA.close();
         if (nodeB != null) nodeB.close();
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENTS_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS);
+        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
+        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
     }
 
     @Test
     void peersActivateTheMeshWithoutEnabled() throws Exception {
         // Listener side: explicit true (a pure listener has no peers to name).
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, "greet.");
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, "greet.");
         nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         // Dialing side: peers alone — no event.enabled anywhere.
-        System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS);
-        System.setProperty(CloudConfigKeys.EVENTS_PEERS,
+        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
+        System.setProperty(CloudConfigKeys.EVENT_PEERS,
             "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.WebServer.class).port());
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
@@ -72,13 +72,13 @@ class CloudEventMeshActivationTest {
 
     @Test
     void explicitFalseSuppressesConfiguredPeers() throws Exception {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, "greet.");
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, "greet.");
         nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         // Kill switch wins over presence: peers configured, enabled=false.
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "false");
-        System.setProperty(CloudConfigKeys.EVENTS_PEERS,
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "false");
+        System.setProperty(CloudConfigKeys.EVENT_PEERS,
             "127.0.0.1:" + nodeB.get(com.jujin.freeway.http.WebServer.class).port());
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
@@ -95,12 +95,12 @@ class CloudEventMeshActivationTest {
 
     @Test
     void unsetWithNoPeersStaysInert() throws Exception {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
         nodeB = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         // Dialer with zero configuration: installing the module is not a
         // side effect — no mesh, no dials.
-        System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
+        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
 
         Thread.sleep(900);
@@ -110,7 +110,7 @@ class CloudEventMeshActivationTest {
 
     @Test
     void invalidEnabledValueFailsStartupNamingTheKey() {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "yolo");
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "yolo");
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule()));
         assertTrue(rootMessage(failure).contains("event.enabled"),

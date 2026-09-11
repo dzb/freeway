@@ -40,7 +40,7 @@ class ServiceIdentityFallbackTest {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(CloudConfigKeys.REGISTRY_SERVICE_ID);
         System.clearProperty(APP_NAME_KEY);
-        System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
+        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
     }
 
     @Test
@@ -75,7 +75,7 @@ class ServiceIdentityFallbackTest {
 
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
         return FreewayApp.run(
             new HttpModule(), new CloudModule(), new CloudEventModule());
     }

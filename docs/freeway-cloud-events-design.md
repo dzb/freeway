@@ -68,7 +68,7 @@ stream:
     大的一方主动关闭自己发起的那条——**保留对端发起的连接**，其
     hello 已携带对端订阅）。
   - `subscribe`：订阅声明数组。**v1 线上元素就是前缀字符串**
-    （与配置 `events.subscriptions` 同形）；解析器向后兼容
+    （与配置 `event.subscriptions` 同形）；解析器向后兼容
     `{ "prefix": ..., "group": ... }` 对象形态（只取 `prefix`）。
     空数组 = 不收事件（单向发布者）。
     **`group` 竞争投递语义**（吸收 solon EventLevel+group 的语义）：
@@ -114,10 +114,10 @@ stream:
 v1 未实现应用层心跳（`freeway.cloud.event.keepalive` 键未实现）：
 连接活性依赖 TCP/WS 层行为、发送失败检测（出站 send 失败即摘除连接）
 与对端 close 即时感知。客户端侧有**握手看门狗**：socket 打开后
-`events.handshake-timeout-ms`（默认 10s）内未完成 hello/ack 即中止并走
+`event.handshake-timeout-ms`（默认 10s）内未完成 hello/ack 即中止并走
 退避重连，半开连接不会悬挂；出站拨号超时与退避参数为
-`events.connect-timeout-ms`（默认 3s）、`events.backoff-base-ms` /
-`events.backoff-max-ms`（默认 1s/30s）。应用层心跳列为待定扩展。
+`event.connect-timeout-ms`（默认 3s）、`event.backoff-base-ms` /
+`event.backoff-max-ms`（默认 1s/30s）。应用层心跳列为待定扩展。
 
 ## 3. 节点发现与连接生命周期（connection-as-fact）
 
@@ -141,8 +141,8 @@ peers 解析（双源）:
      （外部后端自带的 push 能力由适配器接，core 不做 watch）
 ```
 
-- 断线重连：指数退避（默认 `events.backoff-base-ms` 1s 起、
-  `events.backoff-max-ms` 30s 封顶），重连成功重走握手
+- 断线重连：指数退避（默认 `event.backoff-base-ms` 1s 起、
+  `event.backoff-max-ms` 30s 封顶），重连成功重走握手
   （订阅状态在连接里，天然重置）。
 - 节点关闭：deregister（既有 hook）+ 主动 close 所有 WS（对端立即
   感知，不等心跳超时）。
@@ -189,7 +189,7 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 - 跨传输幂等去重**不在拦截器**（拦截器只看得到 mesh 帧，会漏掉经
   broker 到达的同一事件）：落在 `publishInboundWithId` 这一所有传输
   共用的漏斗上，`EventBus.enableInboundDeduplication(capacity)` 显式
-  开启（`events.dedup.enabled`，窗口容量 `events.dedup.capacity`，
+  开启（`event.dedup.enabled`，窗口容量 `event.dedup.capacity`，
   默认 4096），依据是总线铸造的共享事件 id。
 - 回环防护：`fworigin == 本节点 origin` 的入站帧丢弃（自身经 mesh
   环回的事件；配合 publishInbound 的"不回桥"语义双保险）。
@@ -200,9 +200,9 @@ mesh 端点 `/cloud/events` 一开就有**三道独立的入站门**，各守一
 
 | 门 | 配置键 | 守住的东西 | 空值语义 |
 |---|---|---|---|
-| 对等认证 | `events.token` | 谁可以连进来（握手身份） | **空 = 不校验**（文档化默认，仅适用可信内网） |
-| CLASS 反序列化 | `events.allowed-types` | 入站帧可以要求本节点实例化哪些类 | **空 = 全部拒绝**（deny-by-default） |
-| TOPIC 注入 | `events.allowed-topics` | 对端可以往哪些 topic 投递 | 空 = 放行全部 |
+| 对等认证 | `event.token` | 谁可以连进来（握手身份） | **空 = 不校验**（文档化默认，仅适用可信内网） |
+| CLASS 反序列化 | `event.allowed-types` | 入站帧可以要求本节点实例化哪些类 | **空 = 全部拒绝**（deny-by-default） |
+| TOPIC 注入 | `event.allowed-topics` | 对端可以往哪些 topic 投递 | 空 = 放行全部 |
 
 **token 是"门锁"，白名单是"门后的第二道防线"**——两者不互相替代：
 token 决定"谁能连上"，白名单决定"连上之后能要求本节点做什么"。
@@ -222,7 +222,7 @@ token 是**全节点共享**的握手密钥，双向生效：本节点出站时�
 2. **经环境变量注入，不要写进配置文件**（与数据库口令、keystore 口令
    同一处理方式）：
    ```bash
-   export FREEWAY_CLOUD_EVENTS_TOKEN='<随机长密钥>'
+   export FREEWAY_CLOUD_EVENT_TOKEN='<随机长密钥>'
    ```
    properties / JSON 写法见 `docs/application-prod.*.sample`；
 3. **比较是常量时间的**（`MessageDigest.isEqual`），token 无法被计时
@@ -248,7 +248,7 @@ token 是**全节点共享**的握手密钥，双向生效：本节点出站时�
 - `EventSink` 是 broker 语义（send-and-forget 到持久通道），由 ext
   适配器实现；CE-WS 桥与 Kafka 桥**可以并存**——总线对每个 sink 都
   派发（fan-out），同一事件经两条通道到达同一节点时由共享事件 id +
-  入站去重窗口收敛（`events.dedup.enabled`）。双通道并存属用户显式
+  入站去重窗口收敛（`event.dedup.enabled`）。双通道并存属用户显式
   选择，框架支持。
 - CE 翻译器（envelope）作为独立纯函数类放在 `cloud.event` 子包；
   将来 Kafka 桥想发 CE 格式，可直接复用翻译器（ext 可选依赖 cloud）。

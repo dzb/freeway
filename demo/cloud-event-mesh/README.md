@@ -27,7 +27,7 @@ the delivery counter in B's log proves both paths end-to-end.
 | Cross-JVM publish → subscribe (Kafka) | the same two events arrive at B via the broker |
 | `@Topic` routing key | `Greeting` maps to `greet.hello`; B subscribes the `greet.` prefix |
 | `Keyed` → CE `subject` / Kafka record key | `key()` = `name`; per-aggregate ordering on both channels |
-| Type allowlists gate deserialization | `EVENTS_ALLOWED_TYPES` (CE) and `freeway.kafka.allowed-event-types` (Kafka) must name the type |
+| Type allowlists gate deserialization | `EVENT_ALLOWED_TYPES` (CE) and `freeway.kafka.allowed-event-types` (Kafka) must name the type |
 | Silent-partition checklist | B needs module + enabled + subscriptions + allowlist; any miss = no delivery, no error |
 
 ## Prerequisites

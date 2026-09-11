@@ -37,15 +37,15 @@ class PeerConnectorReconnectTest {
             nodeB.close();
         }
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENTS_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS);
+        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
+        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
     }
 
     private static AppRuntime startEventsNode(String peers, String subscriptions) {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_PEERS, peers);
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, subscriptions);
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_PEERS, peers);
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
         return FreewayApp.run(new HttpModule(), new CloudEventModule());
     }
 

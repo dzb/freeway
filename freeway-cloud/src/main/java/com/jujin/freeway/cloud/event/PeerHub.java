@@ -109,17 +109,17 @@ public final class PeerHub implements WebSocketEndpoint {
         if (allowedTypes.isEmpty()) {
             LOG.warn("CloudEventBus has no CLASS-channel type allowlist — CLASS-channel "
                 + "event are dropped (deny-by-default); set {} to accept typed event",
-                com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TYPES);
+                com.jujin.freeway.cloud.CloudConfigKeys.EVENT_ALLOWED_TYPES);
         }
         if (allowedTopics.isEmpty()) {
             LOG.warn("CloudEventBus accepts TOPIC-channel payloads on ANY topic from "
                 + "connected peers — set {} to restrict inbound topics",
-                com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_ALLOWED_TOPICS);
+                com.jujin.freeway.cloud.CloudConfigKeys.EVENT_ALLOWED_TOPICS);
         }
         if (token.isBlank()) {
             LOG.warn("CloudEventBus has no mesh token — any peer that can reach the "
                 + "endpoint may connect; set {} to require one",
-                com.jujin.freeway.cloud.CloudConfigKeys.EVENTS_TOKEN);
+                com.jujin.freeway.cloud.CloudConfigKeys.EVENT_TOKEN);
         }
     }
 

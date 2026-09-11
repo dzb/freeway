@@ -29,15 +29,15 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final Logger LOG = LoggerFactory.getLogger(CloudEventLifecycleHook.class);
 
     private static final SymbolSpec<Integer> DEDUP_CAPACITY = SymbolSpec.of(
-        CloudConfigKeys.EVENTS_DEDUP_CAPACITY, Integer.class,
-        CloudConfigKeys.EVENTS_DEDUP_CAPACITY_DEFAULT, Integer::parseInt);
+        CloudConfigKeys.EVENT_DEDUP_CAPACITY, Integer.class,
+        CloudConfigKeys.EVENT_DEDUP_CAPACITY_DEFAULT, Integer::parseInt);
     /** The explicit form of the master switch, kept raw so "unset" (blank)
      *  is distinguishable from an explicit {@code false} — the presence rule
      *  applies only to the unset case. */
-    private static final SymbolSpec<String> EVENTS_ENABLED_EXPLICIT = SymbolSpec.of(
-        CloudConfigKeys.EVENTS_ENABLED, String.class, "", Function.identity());
+    private static final SymbolSpec<String> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
+        CloudConfigKeys.EVENT_ENABLED, String.class, "", Function.identity());
     private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.EVENTS_DEDUP_ENABLED, Boolean.class, false, Boolean::parseBoolean);
+        CloudConfigKeys.EVENT_DEDUP_ENABLED, Boolean.class, false, Boolean::parseBoolean);
 
     private static final SymbolSpec<String> SERVICE_INSTANCE_ID = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID, String.class, "", Function.identity());
@@ -45,27 +45,27 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
-        CloudConfigKeys.EVENTS_TOKEN, String.class, "", Function.identity());
+        CloudConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
     private static final SymbolSpec<List<String>> SUBSCRIPTIONS =
-        SymbolSpec.list(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENT_SUBSCRIPTIONS, List.of());
     private static final SymbolSpec<List<String>> ALLOWED_TYPES =
-        SymbolSpec.list(CloudConfigKeys.EVENTS_ALLOWED_TYPES, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENT_ALLOWED_TYPES, List.of());
     private static final SymbolSpec<List<String>> ALLOWED_TOPICS =
-        SymbolSpec.list(CloudConfigKeys.EVENTS_ALLOWED_TOPICS, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENT_ALLOWED_TOPICS, List.of());
     private static final SymbolSpec<List<String>> PEERS =
-        SymbolSpec.list(CloudConfigKeys.EVENTS_PEERS, List.of());
+        SymbolSpec.list(CloudConfigKeys.EVENT_PEERS, List.of());
     private static final SymbolSpec<Long> CONNECT_TIMEOUT_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENTS_CONNECT_TIMEOUT_MS, Long.class,
-            CloudConfigKeys.EVENTS_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(CloudConfigKeys.EVENT_CONNECT_TIMEOUT_MS, Long.class,
+            CloudConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> HANDSHAKE_TIMEOUT_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENTS_HANDSHAKE_TIMEOUT_MS, Long.class,
-            CloudConfigKeys.EVENTS_HANDSHAKE_TIMEOUT_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(CloudConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS, Long.class,
+            CloudConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> BACKOFF_BASE_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENTS_BACKOFF_BASE_MS, Long.class,
-            CloudConfigKeys.EVENTS_BACKOFF_BASE_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(CloudConfigKeys.EVENT_BACKOFF_BASE_MS, Long.class,
+            CloudConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Long> BACKOFF_MAX_MS =
-        SymbolSpec.of(CloudConfigKeys.EVENTS_BACKOFF_MAX_MS, Long.class,
-            CloudConfigKeys.EVENTS_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
+        SymbolSpec.of(CloudConfigKeys.EVENT_BACKOFF_MAX_MS, Long.class,
+            CloudConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT, Long::parseLong);
 
     private final PeerHub hub;
     private final CloudEventSink sink;
@@ -87,10 +87,10 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         }
 
         List<String> peers = symbols.resolve(PEERS);
-        if (!meshOn(symbols.resolve(EVENTS_ENABLED_EXPLICIT), peers)) {
+        if (!meshOn(symbols.resolve(EVENT_ENABLED_EXPLICIT), peers)) {
             LOG.info("CloudEventBus not wired — dial peers with {}=<host:port,...> "
                     + "or set {}=true (discovery-fed mesh)",
-                CloudConfigKeys.EVENTS_PEERS, CloudConfigKeys.EVENTS_ENABLED);
+                CloudConfigKeys.EVENT_PEERS, CloudConfigKeys.EVENT_ENABLED);
             return;
         }
 
@@ -138,7 +138,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
      * CloudEventModule alone is never a side effect.
      */
     private static boolean meshOn(String enabledRaw, List<String> peers) {
-        return SymbolSpec.activated(CloudConfigKeys.EVENTS_ENABLED, enabledRaw, !peers.isEmpty());
+        return SymbolSpec.activated(CloudConfigKeys.EVENT_ENABLED, enabledRaw, !peers.isEmpty());
     }
 
     @Override

@@ -1789,7 +1789,7 @@ freeway.cloud.event.token=mesh-secret         # blank = no peer auth (warned); M
 ```
 
 - `peers` — nodes to dial; a non-empty list **is the activation** (the
-  dialing side never needs `events.enabled`). An external registry backend
+  dialing side never needs `event.enabled`). An external registry backend
   could feed these
   dynamically instead (via `PeerConnector.setPeers`; that needs a discovery
   adapter — an ext concern, none is shipped today). The endpoint rides the
@@ -1808,7 +1808,7 @@ freeway.cloud.event.token=mesh-secret         # blank = no peer auth (warned); M
   that can reach the endpoint may connect. **Multi-node production
   deployments must set it**: the value must be identical on every node (a
   mismatch closes the connection with WS `1008`), injected via
-  `FREEWAY_CLOUD_EVENTS_TOKEN` rather than committed to a config file, and
+  `FREEWAY_CLOUD_EVENT_TOKEN` rather than committed to a config file, and
   rotated with a rolling restart.
 
 **Publishing is unchanged** — the same `EventBus.publish` fans out locally

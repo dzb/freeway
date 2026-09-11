@@ -633,24 +633,24 @@ public final class CloudConfigKeys {
     public static final String AUTH_EXTRACT_ENABLED = PREFIX + ".auth.extract.enabled"; // 默认关
 
     // ── CloudEventBus（WS 事件网格，见 freeway-cloud-event-design.md）──
-    public static final String EVENTS_ENABLED        = PREFIX + ".events.enabled";
-    public static final String EVENTS_PEERS          = PREFIX + ".events.peers";
-    public static final String EVENTS_SUBSCRIPTIONS  = PREFIX + ".events.subscriptions";
-    public static final String EVENTS_ALLOWED_TYPES  = PREFIX + ".events.allowed-types";
-    public static final String EVENTS_ALLOWED_TOPICS = PREFIX + ".events.allowed-topics";
-    public static final String EVENTS_TOKEN          = PREFIX + ".events.token";
-    public static final String EVENTS_DEDUP_ENABLED  = PREFIX + ".events.dedup.enabled";
-    public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".events.dedup.capacity";
-    public static final int    EVENTS_DEDUP_CAPACITY_DEFAULT = 4096;
-    public static final String EVENTS_PATH_DEFAULT   = "/cloud/event";
-    public static final String EVENTS_CONNECT_TIMEOUT_MS   = PREFIX + ".events.connect-timeout-ms";
-    public static final long   EVENTS_CONNECT_TIMEOUT_MS_DEFAULT   = 3000;
-    public static final String EVENTS_HANDSHAKE_TIMEOUT_MS = PREFIX + ".events.handshake-timeout-ms";
-    public static final long   EVENTS_HANDSHAKE_TIMEOUT_MS_DEFAULT = 10_000;
-    public static final String EVENTS_BACKOFF_BASE_MS = PREFIX + ".events.backoff-base-ms";
-    public static final long   EVENTS_BACKOFF_BASE_MS_DEFAULT = 1000;
-    public static final String EVENTS_BACKOFF_MAX_MS  = PREFIX + ".events.backoff-max-ms";
-    public static final long   EVENTS_BACKOFF_MAX_MS_DEFAULT  = 30_000;
+    public static final String EVENT_ENABLED        = PREFIX + ".event.enabled";
+    public static final String EVENT_PEERS          = PREFIX + ".event.peers";
+    public static final String EVENT_SUBSCRIPTIONS  = PREFIX + ".event.subscriptions";
+    public static final String EVENT_ALLOWED_TYPES  = PREFIX + ".event.allowed-types";
+    public static final String EVENT_ALLOWED_TOPICS = PREFIX + ".event.allowed-topics";
+    public static final String EVENT_TOKEN          = PREFIX + ".event.token";
+    public static final String EVENT_DEDUP_ENABLED  = PREFIX + ".event.dedup.enabled";
+    public static final String EVENT_DEDUP_CAPACITY = PREFIX + ".event.dedup.capacity";
+    public static final int    EVENT_DEDUP_CAPACITY_DEFAULT = 4096;
+    public static final String EVENT_PATH_DEFAULT   = "/cloud/event";
+    public static final String EVENT_CONNECT_TIMEOUT_MS   = PREFIX + ".event.connect-timeout-ms";
+    public static final long   EVENT_CONNECT_TIMEOUT_MS_DEFAULT   = 3000;
+    public static final String EVENT_HANDSHAKE_TIMEOUT_MS = PREFIX + ".event.handshake-timeout-ms";
+    public static final long   EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT = 10_000;
+    public static final String EVENT_BACKOFF_BASE_MS = PREFIX + ".event.backoff-base-ms";
+    public static final long   EVENT_BACKOFF_BASE_MS_DEFAULT = 1000;
+    public static final String EVENT_BACKOFF_MAX_MS  = PREFIX + ".event.backoff-max-ms";
+    public static final long   EVENT_BACKOFF_MAX_MS_DEFAULT  = 30_000;
 }
 ```
 （`freeway.cloud.config.*` 旧键已随配置中心删除，见 §3.5/§5.3。）

@@ -45,10 +45,10 @@ public final class CloudEventModule implements ModuleEx {
 
         binder.contribute(WebSocketRoute.class)
             .add("cloud-event", WebSocketRoute.of(
-                CloudConfigKeys.EVENTS_PATH_DEFAULT, hub));
+                CloudConfigKeys.EVENT_PATH_DEFAULT, hub));
 
         binder.contribute(RuntimeHook.class)
-            .add(CloudHooks.EVENTS, new CloudEventLifecycleHook(hub, sink))
+            .add(CloudHooks.EVENT, new CloudEventLifecycleHook(hub, sink))
             .before(CloudHooks.HTTP_SERVER);
     }
 }

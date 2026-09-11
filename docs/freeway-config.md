@@ -475,7 +475,7 @@
 | `freeway.cloud.event.subscriptions` | String | *(空)* | 否 | 订阅列表 |
 | `freeway.cloud.event.allowed-types` | String | *(空)* | 否 | CLASS 通道反序列化白名单，**空 = 拒绝全部**（deny-by-default，不回退到"放行任意类"） |
 | `freeway.cloud.event.allowed-topics` | String | *(空)* | 否 | TOPIC 通道白名单，空 = 放行全部 |
-| `freeway.cloud.event.token` | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENTS_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
+| `freeway.cloud.event.token` | String | *(空)* | 否 | Mesh 握手共享密钥（空 = 无对等认证）。**多节点生产必配**：全节点值一致、经 `FREEWAY_CLOUD_EVENT_TOKEN` 注入；不一致以 WS `1008` 断开，轮换需滚动重启 |
 | `freeway.cloud.event.dedup.enabled` | Boolean | `false` | 否 | 启用事件去重（消耗内存，按需开启） |
 | `freeway.cloud.event.dedup.capacity` | Integer | `4096` | 否 | 去重 ID 缓存容量 |
 | `freeway.cloud.event.connect-timeout-ms` | Long | `3000` | 否 | 出站拨号 socket 连接超时（毫秒） |

@@ -22,9 +22,9 @@ public final class NodeA {
         // A's own HTTP port — must differ from B's (both run locally).
         System.setProperty(HttpConfigKeys.SERVER_PORT, "18081");
         // CloudEventBus: dial B; A declares no subscriptions (outbound-only).
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_PEERS, "127.0.0.1:18080");
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, "");
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_PEERS, "127.0.0.1:18080");
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, "");
         // Kafka: same broker, distinct consumer group and origin identity.
         System.setProperty("freeway.kafka.bootstrap-servers", "127.0.0.1:9092");
         System.setProperty("freeway.kafka.group-id", "mesh-demo-a");

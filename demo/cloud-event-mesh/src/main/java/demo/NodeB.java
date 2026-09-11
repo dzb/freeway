@@ -28,9 +28,9 @@ public final class NodeB {
         // HTTP port for the /cloud/event WS endpoint (fixed for peer config).
         System.setProperty(HttpConfigKeys.SERVER_PORT, "18080");
         // CloudEventBus: pull "greet."-prefixed types; allowlist the CLASS type.
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, "greet.");
-        System.setProperty(CloudConfigKeys.EVENTS_ALLOWED_TYPES, Events.Greeting.class.getName());
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, "greet.");
+        System.setProperty(CloudConfigKeys.EVENT_ALLOWED_TYPES, Events.Greeting.class.getName());
         // Kafka: same logical stream via the broker. allowlist BOTH the CLASS
         // type and the TOPIC payload type (java.lang.String) — the bridge
         // gates every deserialization type, exactly like the CE allowlist.

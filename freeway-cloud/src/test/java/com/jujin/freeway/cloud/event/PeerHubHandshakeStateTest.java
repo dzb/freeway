@@ -65,18 +65,18 @@ class PeerHubHandshakeStateTest {
             node.close();
         }
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
-        System.clearProperty(CloudConfigKeys.EVENTS_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS);
-        System.clearProperty(CloudConfigKeys.EVENTS_TOKEN);
+        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
+        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
+        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
+        System.clearProperty(CloudConfigKeys.EVENT_TOKEN);
     }
 
     /** A real event node (HttpModule + CloudEventModule). */
     private AppRuntime startEventsNode(String subscriptions, String token) {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, subscriptions);
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
         if (token != null) {
-            System.setProperty(CloudConfigKeys.EVENTS_TOKEN, token);
+            System.setProperty(CloudConfigKeys.EVENT_TOKEN, token);
         }
         return FreewayApp.run(new HttpModule(), new CloudEventModule());
     }
@@ -136,8 +136,8 @@ class PeerHubHandshakeStateTest {
         MisbehavingServer fake = new MisbehavingServer();
         AppRuntime fakeNode = FreewayApp.run(new HttpModule(), new MisbehavingServerModule(fake));
         try {
-            System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-            System.setProperty(CloudConfigKeys.EVENTS_PEERS,
+            System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+            System.setProperty(CloudConfigKeys.EVENT_PEERS,
                 "127.0.0.1:" + fakeNode.get(WebServer.class).port());
             node = FreewayApp.run(new HttpModule(), new CloudEventModule());
             PeerHub hub = node.get(PeerHub.class);
@@ -190,7 +190,7 @@ class PeerHubHandshakeStateTest {
             CompletableFuture<Void> opened = new CompletableFuture<>();
             WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
                 .buildAsync(URI.create("ws://127.0.0.1:" + port
-                        + CloudConfigKeys.EVENTS_PATH_DEFAULT),
+                        + CloudConfigKeys.EVENT_PATH_DEFAULT),
                     new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
@@ -242,7 +242,7 @@ class PeerHubHandshakeStateTest {
         public void bind(Binder binder) {
             binder.contribute(WebSocketRoute.class)
                 .add("fake-event", WebSocketRoute.of(
-                    CloudConfigKeys.EVENTS_PATH_DEFAULT, server.endpoint));
+                    CloudConfigKeys.EVENT_PATH_DEFAULT, server.endpoint));
         }
     }
 }

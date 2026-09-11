@@ -45,27 +45,27 @@ class CloudEventBusTest {
         if (nodeA != null) nodeA.close();
         if (nodeB != null) nodeB.close();
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
-        System.clearProperty(CloudConfigKeys.EVENTS_PEERS);
-        System.clearProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS);
-        System.clearProperty(CloudConfigKeys.EVENTS_ALLOWED_TYPES);
-        System.clearProperty(CloudConfigKeys.EVENTS_ENABLED);
+        System.clearProperty(CloudConfigKeys.EVENT_PEERS);
+        System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
+        System.clearProperty(CloudConfigKeys.EVENT_ALLOWED_TYPES);
+        System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
     }
 
     /** Starts node B first (peers empty — waits for inbound connections). */
     private AppRuntime startB(String subscriptions, String allowedTypes) {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, subscriptions);
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
         if (allowedTypes != null) {
-            System.setProperty(CloudConfigKeys.EVENTS_ALLOWED_TYPES, allowedTypes);
+            System.setProperty(CloudConfigKeys.EVENT_ALLOWED_TYPES, allowedTypes);
         }
         return FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
     }
 
     /** Starts node A dialing node B. */
     private AppRuntime startA(int bPort, String subscriptions) {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "true");
-        System.setProperty(CloudConfigKeys.EVENTS_PEERS, "127.0.0.1:" + bPort);
-        System.setProperty(CloudConfigKeys.EVENTS_SUBSCRIPTIONS, subscriptions);
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
+        System.setProperty(CloudConfigKeys.EVENT_PEERS, "127.0.0.1:" + bPort);
+        System.setProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS, subscriptions);
         return FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
     }
 
@@ -184,7 +184,7 @@ class CloudEventBusTest {
 
     @Test
     void disabledModuleIsInert() {
-        System.setProperty(CloudConfigKeys.EVENTS_ENABLED, "false");
+        System.setProperty(CloudConfigKeys.EVENT_ENABLED, "false");
         nodeA = FreewayApp.run(new String[0], new HttpModule(), new CloudEventModule());
         // publish with no sink, no peers — must be a clean local-only no-op
         nodeA.get(EventBus.class).publish("greet.hello", "bob");

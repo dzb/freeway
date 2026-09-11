@@ -101,50 +101,50 @@ public final class CloudConfigKeys {
      *  even a configured peer list); unset falls to the presence rule —
      *  configured peers imply a mesh. Unset with no peers leaves the mesh
      *  unwired: installing CloudEventModule alone stays inert. */
-    public static final String EVENTS_ENABLED        = PREFIX + ".event.enabled";
+    public static final String EVENT_ENABLED        = PREFIX + ".event.enabled";
     /** Static mesh endpoints to dial (host:port, see {@code PeerAddress}).
      *  Presence alone activates the mesh (unless {@code event.enabled=false}
      *  explicitly suppresses it); discovery-fed peers are additive via
      *  {@code PeerConnector.setPeers}. */
-    public static final String EVENTS_PEERS          = PREFIX + ".event.peers";
+    public static final String EVENT_PEERS          = PREFIX + ".event.peers";
     /** CE type/topic prefixes this node declares in its hello — peers fan out
      *  only what matches, so empty = outbound-only (nothing to receive). */
-    public static final String EVENTS_SUBSCRIPTIONS  = PREFIX + ".event.subscriptions";
+    public static final String EVENT_SUBSCRIPTIONS  = PREFIX + ".event.subscriptions";
     /** CLASS-channel deserialization allowlist; empty = deny-by-default
      *  (CLASS-channel event are dropped). */
-    public static final String EVENTS_ALLOWED_TYPES  = PREFIX + ".event.allowed-types";
+    public static final String EVENT_ALLOWED_TYPES  = PREFIX + ".event.allowed-types";
     /** TOPIC-channel allowlist; empty = accept any topic from an admitted peer. */
-    public static final String EVENTS_ALLOWED_TOPICS = PREFIX + ".event.allowed-topics";
+    public static final String EVENT_ALLOWED_TOPICS = PREFIX + ".event.allowed-topics";
     /** Shared secret the mesh handshake must present; blank = no peer auth. */
-    public static final String EVENTS_TOKEN      = PREFIX + ".event.token";
+    public static final String EVENT_TOKEN      = PREFIX + ".event.token";
     /** Off by default: dedup changes delivery semantics (an event reaching
      *  this node over two transports is delivered once) and costs memory, so
      *  it is opt-in rather than a side effect of installing a second
      *  transport. Only meaningful when inbound event carry the bus-minted
      *  wire id. */
-    public static final String EVENTS_DEDUP_ENABLED  = PREFIX + ".event.dedup.enabled";
+    public static final String EVENT_DEDUP_ENABLED  = PREFIX + ".event.dedup.enabled";
     /** How many inbound ids to remember — the window in which a second copy
      *  of an event is still recognized. Too small and a slow second copy
      *  slips through; too large and the window costs memory for nothing. */
-    public static final String EVENTS_DEDUP_CAPACITY = PREFIX + ".event.dedup.capacity";
-    public static final int EVENTS_DEDUP_CAPACITY_DEFAULT = 4096;
-    public static final String EVENTS_PATH_DEFAULT   = "/cloud/event";
+    public static final String EVENT_DEDUP_CAPACITY = PREFIX + ".event.dedup.capacity";
+    public static final int EVENT_DEDUP_CAPACITY_DEFAULT = 4096;
+    public static final String EVENT_PATH_DEFAULT   = "/cloud/event";
 
     // ── CloudEventBus networking timeouts ──────────────────
     // Shared by the CloudEventLifecycleHook specs and PeerConnector's
     // library fallback — one value per timeout.
     /** Socket connect timeout for outbound mesh peer dials. */
-    public static final String EVENTS_CONNECT_TIMEOUT_MS   = PREFIX + ".event.connect-timeout-ms";
-    public static final long EVENTS_CONNECT_TIMEOUT_MS_DEFAULT   = 3000;
+    public static final String EVENT_CONNECT_TIMEOUT_MS   = PREFIX + ".event.connect-timeout-ms";
+    public static final long EVENT_CONNECT_TIMEOUT_MS_DEFAULT   = 3000;
     /** A peer that accepts the socket but never answers the hello must not pin
      *  a half-open connection forever. */
-    public static final String EVENTS_HANDSHAKE_TIMEOUT_MS = PREFIX + ".event.handshake-timeout-ms";
-    public static final long EVENTS_HANDSHAKE_TIMEOUT_MS_DEFAULT = 10000;
+    public static final String EVENT_HANDSHAKE_TIMEOUT_MS = PREFIX + ".event.handshake-timeout-ms";
+    public static final long EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT = 10000;
     /** Reconnect backoff floor / ceiling (exponential, capped). */
-    public static final String EVENTS_BACKOFF_BASE_MS = PREFIX + ".event.backoff-base-ms";
-    public static final long EVENTS_BACKOFF_BASE_MS_DEFAULT = 1000;
-    public static final String EVENTS_BACKOFF_MAX_MS  = PREFIX + ".event.backoff-max-ms";
-    public static final long EVENTS_BACKOFF_MAX_MS_DEFAULT  = 30000;
+    public static final String EVENT_BACKOFF_BASE_MS = PREFIX + ".event.backoff-base-ms";
+    public static final long EVENT_BACKOFF_BASE_MS_DEFAULT = 1000;
+    public static final String EVENT_BACKOFF_MAX_MS  = PREFIX + ".event.backoff-max-ms";
+    public static final long EVENT_BACKOFF_MAX_MS_DEFAULT  = 30000;
 
     // ── Auth propagation ────────────────────────────────────
     /** Off by default: inbound {@code x-principal} extraction trusts client

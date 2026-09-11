@@ -28,7 +28,7 @@ public final class CloudHooks {
     public static final String REGISTRY = "freeway.cloud.registry";
 
     /** CloudEventBus wiring; runs before the HTTP server. */
-    public static final String EVENTS = "freeway.cloud.event";
+    public static final String EVENT = "freeway.cloud.event";
 
     /** The HTTP server hook from freeway-http, referenced for ordering. */
     public static final String HTTP_SERVER = HttpModule.SERVER_HOOK;
