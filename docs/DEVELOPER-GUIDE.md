@@ -208,7 +208,7 @@ ordinary constructor injection cannot express:
 | Construction must branch on configuration | `.to(Class)` always uses the same constructor path | HTTP engine chooses plaintext or TLS constructor from `ssl.enabled` |
 | Object graph aggregates contributions | Constructor injection sees bound services, not collected extension points | `RouteIndex` collects `Route`/`RouteGroup`; `WebServer` assembles filters, mounts and error handlers |
 | A pre-created or externally owned object must be bound | The container must not re-construct it, but should still own its lifecycle | boot's `AppConfig`; a `PeerHub` shared with a sink and WS route |
-| Construction must wait until all modules are composed | Realization happens on first resolution, after contributions are final | lazy builtins such as `EventBus`/`CallBus` resolving a user-supplied primary `Metrics` |
+| Construction must wait until all modules are composed | Realization happens on first resolution, after contributions are final | the lazy `EventBus` builtin resolving a user-supplied primary `Metrics` |
 
 ```java
 // Class binding: the container injects GreeterImpl's constructor.
@@ -1698,14 +1698,34 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ---
 
-## Remote CallBus (`freeway-cloud.rpc`)
+## Remote invocation (`freeway-cloud.rpc`)
 
-Cross-process request-reply for the `CallBus` channel. A provider registers
-handlers in its own JVM; a consumer calls them through the same interface —
-dispatch rides `CloudHttpClient`, so discovery, load balancing, retry,
-circuit breaking, and propagation all apply.
+Cross-process method calls: a provider declares which mappings may be called
+from outside, a consumer binds a typed client to that mapping. Dispatch rides
+`CloudHttpClient`, so discovery, load balancing, retry, circuit breaking and
+propagation all apply.
 
-**Server side — export an explicit mapping:**
+**The same interface serves both shapes.** Business code always says
+`@Inject UserApi`; whether the implementation is in this process or behind
+HTTP is a composition decision:
+
+```java
+// monolith: the local implementation
+binder.bind(UserApi.class).to(UserApiImpl.class);
+
+// split out: the typed remote client
+binder.bind(UserApi.class).to(container -> RemoteProxyFactory
+    .of(container.get(RemoteCaller.class))
+    .serviceId("user-service")      // discovery id of the serving service
+    .mapping("user")                // call-topic prefix the provider exported
+    .build(UserApi.class));
+```
+
+Call sites do not change between the two; only the composition root does. That
+is also why the interface can be shared without the two modules depending on
+each other.
+
+**Server side — declare the export:**
 
 ```java
 public final class UserRpcModule implements ModuleEx {
@@ -1720,44 +1740,42 @@ public final class UserRpcModule implements ModuleEx {
 
 **An export is a declaration, not a wiring job.** `RpcExport.of(mapping, type)`
 names what may be called and who serves it; the framework resolves the handler
-from the container, registers its public methods on the **container's** CallBus
-(`mapping.method` becomes the topic) and serves one `/rpc/{mapping}/{method}`
-route. The application never holds a bus, a codec or a route — which is also why
-a client's local-first dispatch and the endpoint can never end up on different
-buses.
+from the container and serves one wildcard route, `POST /rpc/{mapping}/{method}`.
+The endpoint invokes the container's handler directly — there is no registry in
+between that could disagree with what was declared.
 
-Two things fail startup instead of answering 404 later: exporting one mapping
-twice, and exporting a type that is not bound (the message names the missing
-`binder.bind(...)`). Export is explicit — **only declared mappings are
-reachable**: one wildcard route serves them all, `POST /rpc/{mapping}/{method}`,
-an undeclared mapping is rejected before the bus is consulted, and several
-mappings live side by side without adding a route. The mapping name is validated
-when you export it (`[A-Za-z0-9_.]`), and arguments travel as a positional JSON
-array. Add `.propagateMessages()` to a declaration to forward the handler's
-exception message (the class always crosses; the message is free text and stays
-local by default).
+Only declared mappings are reachable: an undeclared mapping is rejected before
+any handler is consulted, and several mappings live side by side without adding
+a route. The mapping name is validated when you export it (`[A-Za-z0-9_.]`), and
+arguments travel as a positional JSON array. Add `.propagateMessages()` to a
+declaration to forward the handler's exception message (the class always
+crosses; the message is free text and stays local by default).
 
-**Consumer side — three shapes:**
+Three wiring mistakes fail startup instead of answering 404 (or the wrong
+shape) later: exporting one mapping twice, exporting a type that is not bound
+(the message names the missing `binder.bind(...)`), and a handler with
+overloaded methods — positional arguments cannot tell overloads apart.
+
+**Consumer side — direct call or typed client:**
 
 ```java
 @Inject RemoteCaller caller;   // framework-bound: CloudHttpClient + JsonCodec assembled for you
-@Inject CallBus callBus;       // local-first dispatch
 
 // 1. direct call
-Greeting g = caller.invoke("user", "user", "greet", List.of("bob"), Greeting.class);
+Greeting g = caller.invoke("user-service", "user", "greet", List.of("bob"), Greeting.class);
 
-// 2. typed proxy, always remote
-UserApi api = RemoteProxyFactory.of(null, caller)
-    .serviceId("user").mapping("user").remoteOnly()
-    .build(UserApi.class);
-
-// 3. typed proxy, local-first: same-process modules hit the in-memory bus,
-//    DeadCall falls through to the remote service — the smooth path from
-//    monolith to services.
-UserApi api2 = RemoteProxyFactory.of(callBus, caller)
-    .serviceId("user").mapping("user").localFirst()
+// 2. typed client, bound once at the composition root (see above);
+//    a per-call budget is available here too:
+UserApi api = RemoteProxyFactory.of(caller)
+    .serviceId("user-service").mapping("user")
+    .timeout(Duration.ofSeconds(5))          // end-to-end, retries included
     .build(UserApi.class);
 ```
+
+**Absent or unreachable capabilities fail loudly.** "The service is not
+deployed" is a composition decision (bind a default implementation, or do not
+call it); once a call is made, `CloudException.noInstance(serviceId)` says the
+address does not resolve — there is no silent fallback to a default value.
 
 **Error model — two classes, two instincts:**
 
@@ -1771,7 +1789,7 @@ A retryable failure passes two gates before the Retryer is consulted: the
 failure category and idempotency. Plain `CloudHttpClient` requests derive
 idempotency from the verb (GET/PUT/DELETE/OPTIONS/HEAD/TRACE replay; POST/PATCH
 do not) and can override it with `CloudRequest.idempotentWith(true)`. Remote
-CallBus calls travel as POST, so mark consumer interface methods — or the whole
+calls travel as POST, so mark consumer interface methods — or the whole
 interface — with `@Idempotent` when their remote handlers replay safely:
 
 ```java

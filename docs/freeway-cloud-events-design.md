@@ -5,9 +5,9 @@
 > 目标：装载 `freeway-cloud` 后，`EventBus` 获得"跨 JVM 事件通道"：
 > A 节点 publish 的事件，以 CloudEvents 1.0 格式实时推送到所有订阅的
 > 对端节点并触发本地订阅者。
-> 前置阅读：`EventBus` javadoc（消息域三通道）、
+> 前置阅读：`EventBus` javadoc（消息域两通道）、
 > `freeway-cloud-unified-design.md`（§5.1 discovery/registry）。
-> 关联：`freeway-remote-callbus-design.md`（question 通道的跨进程形态，
+> 关联：`freeway-cloud-rpc-design.md`（question 通道的跨进程形态，
 > 本文是 fact 通道的对应物）。
 
 ## 0. 定位与原则
@@ -42,8 +42,8 @@ fact 通道:
   跨 JVM   → CloudEventSink(WS) → 对端 /cloud/event → publishInbound
            → KafkaEventSink（ext, 并存）→ broker → 订阅者
 question 通道:
-  同 JVM   → CallBus → 本地槽位
-  跨 JVM   → RemoteCaller → /rpc/*（RemoteProxyFactory.localFirst）
+  同 JVM   → 绑定表上的方法调用（@Inject Api）
+  跨 JVM   → RemoteProxyFactory → RemoteCaller → /rpc/*
 stream:
   本地     → EventBus.stream → Flow.Publisher（SSE 泵）
 ```

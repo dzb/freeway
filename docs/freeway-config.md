@@ -482,7 +482,7 @@ OS/JDK 默认或无限制，空表示 JDK 默认。下面各表内已按此顺�
 重试经过两道门：失败类别（连接失败/超时/中途 I/O/5xx 可重试，4xx 与本地拒绝不重试）与
 **幂等门**——timeout/中途 I/O/5xx 属"结果未知"（对端可能已执行请求），仅对幂等操作重放。
 幂等性由请求携带：按 HTTP 动词派生（`GET/HEAD/PUT/DELETE/OPTIONS/TRACE` 幂等，`POST/PATCH` 否），
-`CloudRequest.idempotentWith(true)` 显式覆盖；远程 CallBus 经 consumer 接口的 `@Idempotent`
+`CloudRequest.idempotentWith(true)` 显式覆盖；远程调用经 consumer 接口的 `@Idempotent`
 注解（方法级/接口级）声明。连接类失败请求未送达，任何操作都可重试。
 
 #### 弹性 — 熔断器

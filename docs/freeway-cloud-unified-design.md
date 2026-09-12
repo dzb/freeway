@@ -7,8 +7,8 @@
 > **2026-09-03 维护说明**：1.4.0 起配置级联与热重载统一归
 > `freeway-boot`（`AppConfigDefault` / `freeway.config.file`），cloud 的
 > `config/` 包与 `CloudConfig*` API 已删除（§3.5/§5.3/§7 已按此改写）；
-> CloudEventBus 与 CallBus 远程桥分别以
-> `freeway-cloud-events-design.md`、`freeway-remote-callbus-design.md`
+> CloudEventBus 与远程调用分别以
+> `freeway-cloud-events-design.md`、`freeway-cloud-rpc-design.md`
 > 为最新边界。云模块当前结构以源码、`docs/freeway-config.md` 与
 > `docs/DEVELOPER-GUIDE.md` 为准。
 >
@@ -175,9 +175,9 @@ com.jujin.freeway.cloud
 │                              LoadBalancer(+Default)（§5.1）
 ├── rpc/                       CloudRpcModule; CloudHttpClient(+Default),
 │                              CloudRequest, CloudResponse, CloudException,
-│                              TransportSecurity(+Default); CallBus 远端桥接
+│                              TransportSecurity(+Default); 远程调用
 │                              RemoteCaller / RemoteProxyFactory /
-│                              RpcExport 导出申报 + RpcEndpoint（见 freeway-remote-callbus-design.md）
+│                              RpcExport 导出申报 + RpcEndpoint（见 freeway-cloud-rpc-design.md）
 ├── observe/                   CloudObserveModule; Tracer(+Default),
 │                              MetricsDefault, MetricsSnapshot（§5.5）
 ├── resilience/                CloudResilienceModule; CircuitBreaker(+Default),
@@ -329,7 +329,7 @@ rateLimiter.tryAcquire()
   本进程，任何操作都可重放。幂等性由 `CloudRequest` 携带：按动词
   RFC 9110 分类派生（GET/HEAD/PUT/DELETE/OPTIONS/TRACE 幂等，
   POST/PATCH/未知动词否），`idempotentWith(...)` 显式覆盖；
-  远程 CallBus（线上恒为 POST）经 consumer 接口的 `@Idempotent`
+  远程调用（线上恒为 POST）经 consumer 接口的 `@Idempotent`
   注解（方法级/接口级）声明。模糊结局的熔断计数不受幂等门影响——
   它仍是真实的服务失败。`CloudException` 携带 retryable 标志。
 - 超时：每调用 `HttpRequest.timeout(Duration)`，键
@@ -703,8 +703,8 @@ public final class CloudConfigKeys {
 
 - 透明远程 bean / `@CloudClient` 接口代理 / `CloudExporter` 服务端导出 /
   `/rpc/*` **私有**协议（二进制/多路复用面）。注意区分：基于
-  `CloudHttpClient` 的 **JSON 显式 topic RPC**（CallBus 远端桥接，
-  文档见 `freeway-remote-callbus-design.md`）不在排除之列——它以
+  `CloudHttpClient` 的 **JSON 显式 RPC**（导出申报 + 类型化客户端，
+  文档见 `freeway-cloud-rpc-design.md`）不在排除之列——它以
   HTTP 为传输、以声明式 mapping 为边界，无注解魔法、无自动导出。
 - classpath 扫描式自动注册（`ServiceLoader` 除外，可关）。
 - 业务数据进入 `InvocationContext`；实例属性进入 `@Marker`。

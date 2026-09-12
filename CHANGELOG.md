@@ -14,19 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **RPC 导出改为申报式（freeway-cloud，破坏性）** — 应用在装载期不再需要持有 `CallBus`/
-  `JsonCodec`，也不再为每个 mapping 写路由：
-  - 导出是一条数据贡献 `binder.contribute(RpcExport.class).add(RpcExport.of("user",
-    UserHandlers.class))`（可选 `.propagateMessages()`）；
-  - 框架在组合期贡献**一条** `/rpc/{mapping}/{method}` 通配路由，并贡献一个
-    `.before(HTTP_SERVER)` 的装配 hook：解析每条导出（重复 mapping、类型未绑定 → **启动失败并点名**，
-    后者给出要补的 `binder.bind(...)`）、把 handler 注册到**容器总线**、填好路由所需状态；
-  - 由此消除的失效形态：应用自造总线导致"端点查一条、本地优先客户端查另一条"的静默 404；
-  - `RemoteCaller` 由框架绑定（`CloudHttpClient` + `JsonCodec` 组装），调用方注入即可；
-  - 线协议不变（路径、位置参数数组、版本头、异常头全不动）。
-  - 破坏性：`RpcEndpoint.of(mapping, bus, codec[, propagateMessage])` 删除；独立组装（ext 引擎的
-    `RouteIndex`、自定义挂载）改用容器无关的 `RpcEndpoint.route(RpcExport, CallBus, JsonCodec)`。
-    freeway-ext 的 Undertow/Jetty RPC 集成测试同步迁移（各一行）；应用迁移见 DEVELOPER-GUIDE。
+- **远程调用收敛为一条显式通道（freeway-cloud，破坏性）** — provider 声明导出、consumer
+  在组合根绑类型化客户端，位置（本地实现还是远端）是**组合**的事实而不是运行期的猜测：
+  - 导出是一条数据贡献：`binder.contribute(RpcExport.class).add(RpcExport.of("user",
+    UserHandlers.class))`（可选 `.propagateMessages()`）；框架贡献**一条**
+    `/rpc/{mapping}/{method}` 通配路由与一个 `.before(HTTP_SERVER)` 装配 hook，hook 从容器解析
+    handler（注入、单例、生命周期归容器）并建方法派发表，请求直接调用它——中间没有注册表，
+    也就没有"端点查一条、客户端查另一条"的可能；
+  - 启动期能查的全查并**点名失败**：重复 mapping、导出类型未绑定（消息给出要补的
+    `binder.bind(...)`）、handler 方法重载（位置参数无法区分重载）；
+  - consumer 侧：`RemoteProxyFactory.of(caller).serviceId(..).mapping(..).build(Api.class)`
+    绑到接口上，业务代码照旧 `@Inject Api`；`RemoteCaller` 仍由框架绑定，直接调用与每调用
+    预算走它的 `invoke` 重载；
+  - 线协议不变（路径、位置参数数组、版本头、异常头全不动），幂等门/错误映射/韧性/传播不变。
+  - 破坏性：`RpcEndpoint.of(mapping, bus, codec[, propagateMessage])` 删除（v2 起）；
+    `RemoteProxyFactory.of(callBus, caller)` → `of(caller)`，`Mode`/`localFirst()`/`remoteOnly()`
+    删除（只剩远端一种模式）；独立组装（ext 引擎的 `RouteIndex`、自定义挂载）改用容器无关的
+    `RpcEndpoint.route(RpcExport, handler, JsonCodec)`——它接收已拿到的 handler 实例，不再需要
+    假容器或总线。freeway-ext 的 Undertow/Jetty RPC 集成测试同步迁移；应用迁移见 DEVELOPER-GUIDE。
 - **路由重复规则统一（freeway-http，行为变更）** — WebSocket 路由此前在 `WebSocketIndex` 里按 path 去重，
   规则是"显式路由覆盖组展开的同名路由"，而 HTTP 路由在 `RouteIndex` 里对同 method+path 直接
   **启动失败**——同一个框架、同一棵 trie，两条相反的规则。现统一为**重复即失败**：组展开的与显式声明的
@@ -114,6 +119,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`CallBus` 及其卫星类型删除（freeway-ioc，破坏性）** — 删除 `CallBus`、`CallTargetRegistry`、
+  `CallAdviceChain`、`CallProxyFactory`、`CallStats`、`DeadCallException` 六个公开类型（core 主体
+  718 行、测试 1076 行），容器不再注册 `CallBus` 内置服务。理由：同进程调用能力与 IoC 注入重合
+  （互相依赖的服务容器能直接解析），"可选能力缺席即降级"在 IoC 里就是绑一个默认实现，
+  运行期热替换与"组合是数据、启动静态"的框架立场冲突；它独有的"结构化接口"（零编译期边）
+  用组合根的一个适配器即可达成且换回编译期检查。跨进程调用改为显式：位置由组合决定、
+  导出由 `RpcExport` 声明、地址由 `serviceId` 给出。同进程调用改用 `@Inject`（含互相依赖），
+  跨进程调用用 `RemoteProxyFactory`（见上条）。`EventBus` 的消息域描述随之从三通道改为两通道。
+  设计文档 `freeway-remote-callbus-design.md` 更名为 `freeway-cloud-rpc-design.md` 并重写立场章节。
 - **`Binder.install(ModuleEx)` 移除（freeway-ioc，破坏性）** — 模块组合不再通过 `bind()`
   内的命令式安装表达，改为在 `ModuleEx.subModules()` 中声明（返回稳定的子模块视图，通常
   是字段 + getter）。迁移：`b.install(new HttpModule())` → 覆写 `subModules()` 返回
