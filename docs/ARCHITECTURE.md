@@ -60,7 +60,7 @@ freeway-commons         zero deps
   `LogBootstrap.ensureProvider()` probes the classpath for an external provider
   (Logback, Log4j, slf4j-simple) and pins `slf4j.provider` so that one wins,
   leaving JUL as the fallback. That provider reads the user-provided
-  `freeway-log.properties` from the classpath root (not bundled in the JAR);
+  `freeway-logging.properties` from the classpath root (not bundled in the JAR);
   `-D` values override file values, and all defaults are built into code.
   Framework code uses `LoggerFactory.getLogger()`.
 - **HTTP** — `FreewayHttpEngine` (virtual threads, synchronous socket I/O,

@@ -71,7 +71,7 @@ Freeway 2 keeps its core concepts intentionally small:
 - `Scoping` executes work inside a `Scope.THREAD` boundary via `within()`, backed by JDK 25 `ScopedValue`.
 - `RuntimeHook` is the module-level start/stop extension. Hooks are contributed through the normal contribution mechanism and can be ordered with `before/after`.
 - `HttpModule` contributes the HTTP server hook with stable id `freeway.http.server`; app launch starts and stops the server through `AppRuntime`.
-- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and configurable file logging (single or multi-file) with time+size rotation and GZIP compression. Configured via `freeway-log.properties` or `-D` flags. External SLF4J providers (Logback, Log4j, slf4j-simple) are auto-detected at startup and win over the JUL fallback; drop in Logback for advanced needs.
+- `LoggerSource` is the built-in logger service. Commons provides a JUL-backed SLF4J 2 provider with ANSI-colored console output and configurable file logging (single or multi-file) with time+size rotation and GZIP compression. Configured via `freeway-logging.properties` or `-D` flags. External SLF4J providers (Logback, Log4j, slf4j-simple) are auto-detected at startup and win over the JUL fallback; drop in Logback for advanced needs.
 - Implementation naming is settled on one question — **can the outside replace the role?** The framework's default of a replaceable role is `XDefault` (`AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`); assembly pieces and engine-internal components are `XImpl` (`HttpContextImpl`). Package location is orthogonal: `internal` marks "no stability promise". See the Naming section in [AGENTS.md](AGENTS.md) and the developer guide.
 
 See [freeway-module.md](docs/freeway-module.md) and [freeway-commons.md](docs/freeway-commons.md) for deeper module notes.
@@ -173,7 +173,7 @@ Freeway uses **SLF4J 2** as its logging API — `LoggerFactory.getLogger()` ever
 </dependency>
 ```
 
-**Configuration** via `freeway-log.properties` on the classpath root. Priority: `-D` > `FREEWAY_` env vars > config file > code defaults.
+**Configuration** via `freeway-logging.properties` on the classpath root. Priority: `-D` > `FREEWAY_` env vars > config file > code defaults.
 
 ```properties
 freeway.log.level=INFO
@@ -203,7 +203,7 @@ freeway.log.file.flush-interval=250      # ms; 0 = flush per record
 -Dorg.hibernate.level=WARNING
 ```
 
-See [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md#logging-service) and [docs/freeway-log.properties.reference](docs/freeway-log.properties.reference) for the full reference.
+See [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md#logging-service) and [docs/freeway-logging.properties.reference](docs/freeway-logging.properties.reference) for the full reference.
 
 ### IoC (`freeway-ioc`)
 

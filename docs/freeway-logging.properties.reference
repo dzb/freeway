@@ -2,14 +2,23 @@
 # Freeway 日志配置 — 参考模板
 # ═══════════════════════════════════════════════════════════════
 #
-# 此文件是 Freeway JUL 日志体系的专用配置文件（日志键也可以住在应用
+# 此文件是 Freeway JUL 日志体系的专用配置文件（多数日志键也可以住在应用
 # 主配置 application.properties / application.json 的 freeway.log.* 下，
 # 本文件优先于它——更具体的声明赢）。
 # 由 JULEnhancer 在 bootstrap 阶段加载，替代 JUL 标准的 logging.properties。
 #
+# 文件必须叫 freeway-logging.properties（放在 classpath 根）。
+# 旧名 freeway-log.properties 只在新名不存在时作为过渡被读取，并打一行告警；
+# 该兼容下一版本移除。
+#
 # 系统属性（-D 参数）与环境变量同名 key 会覆盖文件中的值，优先级：
-#   -D 参数 > 环境变量 FREEWAY_* > freeway-log.properties
+#   -D 参数 > 环境变量 FREEWAY_* > freeway-logging.properties
 #     > application.*（freeway.log.* 键）> preset 预设 > 代码默认值
+#
+# 例外：下面四项只有 -D/env，写进任何文件都无效（它们在类加载期读取，
+# 早于文件解析）——本文件里保留它们只作为"存在这些键"的说明：
+#   freeway.log.color / freeway.log.mdc / freeway.log.mdc.priority /
+#   freeway.log.caller-info
 #
 # 每组属性也支持通过环境变量 FREEWAY_<KEY> 传入：
 #   freeway.log.files       → FREEWAY_LOG_FILES
@@ -49,6 +58,7 @@ freeway.log.console.enabled=true
 
 # 颜色：auto = 跟随 format 行为。always 强制开启，never 强制关闭。
 # 遵循 NO_COLOR 环境变量规范（https://no-color.org）。
+# 【仅 -D/env，写本文件无效】
 #
 # freeway.log.color=auto
 
@@ -57,16 +67,19 @@ freeway.log.console.enabled=true
 # 典型用途：分布式链路追踪、请求关联 —— 在请求入口将 traceId/requestId
 # 放入 MDC，后续所有日志自动携带该上下文，无需每条日志手动传入。
 # 默认 key 顺序: code(业务码) market(市场) diagId(诊断ID)，其余按字母序。
+# 【仅 -D/env，写本文件无效】
 #
 # freeway.log.mdc=true
 
 # MDC 键显示优先级（逗号分隔），优先显示的键按此顺序排列，
 # 其余键按字母序排列。默认值: code,market,diagId
+# 【仅 -D/env，写本文件无效】
 # freeway.log.mdc.priority=code,market,diagId
 
 # 调用者信息：每条日志解析 source class/method（供 formatter 使用）。
 # 默认 true。日志量极大且自定义 formatter 不展示调用者时，设 false
 # 可跳过每次日志的栈遍历，显著提升吞吐。
+# 【仅 -D/env，写本文件无效】
 #
 # freeway.log.caller-info=true
 

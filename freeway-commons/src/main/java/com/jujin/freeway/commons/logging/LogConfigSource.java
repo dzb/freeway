@@ -6,7 +6,7 @@ import java.util.Map;
  * The application-side source of log config values, supplied by the boot
  * layer — commons consumes the contract, boot owns the knowledge. The log
  * cascade reads values from (highest first): system properties, environment,
- * the dedicated {@code freeway-log.properties}, then {@link #values()} (the
+ * the dedicated {@code freeway-logging.properties}, then {@link #values()} (the
  * application's main config files, merged in the provider's own precedence).
  *
  * <p>No provider on the classpath (a bare {@code Freeway.create} container

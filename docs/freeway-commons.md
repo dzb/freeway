@@ -59,9 +59,9 @@ Freeway bundles a JUL-backed SLF4J 2 provider. Adding Logback to the classpath s
 
 ### Configuration
 
-Logging is configured through `freeway-log.properties` at the classpath root. The file is **not bundled in the JAR** — create it in your project's `src/main/resources/` only when needed. All defaults are built into code.
+Logging is configured through `freeway-logging.properties` at the classpath root. The file is **not bundled in the JAR** — create it in your project's `src/main/resources/` only when needed. All defaults are built into code.
 
-**Config cascade:** `-D` flag > env var > `freeway-log.properties` > code default. The env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix.
+**Config cascade:** `-D` flag > env var > `freeway-logging.properties` > code default. The env prefix follows `freeway.env.prefix` (default `FREEWAY_`), same convention as the config cascade: `freeway.log.level` ↔ `FREEWAY_LOG_LEVEL`, or `APP_FREEWAY_LOG_LEVEL` under a custom prefix.
 
 ```properties
 # ── Global ──
@@ -122,4 +122,4 @@ Console colors auto-detected from TTY. Force on/off with `-Dfreeway.log.color=al
 
 ### Reference Template
 
-See [`docs/freeway-log.properties.reference`](freeway-log.properties.reference) for annotated examples with best practices.
+See [`docs/freeway-logging.properties.reference`](freeway-logging.properties.reference) for annotated examples with best practices.

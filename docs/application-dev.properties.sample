@@ -11,7 +11,7 @@
 # ================================
 #  Logging
 # ================================
-# See freeway-log.properties (classpath root) for all supported keys.
+# See freeway-logging.properties (classpath root) for all supported keys.
 # -D flags and FREEWAY_ env vars override file values.
 # Scenario: DEBUG level for local development to trace issues.
 

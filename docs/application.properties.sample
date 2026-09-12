@@ -50,9 +50,9 @@
 # ================================
 #  Logging
 # ================================
-# Logging config lives in freeway-log.properties (classpath root).
+# Logging config lives in freeway-logging.properties (classpath root).
 # System properties (-D) and FREEWAY_ env vars override file values.
-# See docs/freeway-log.properties.reference for all supported keys.
+# See docs/freeway-logging.properties.reference for all supported keys.
 # See docs/freeway-config.md for JSON-style configuration.
 # com.myapp.audit.level=FINE
 

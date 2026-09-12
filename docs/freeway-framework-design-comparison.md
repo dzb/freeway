@@ -67,7 +67,7 @@ Container → Binder → ModuleEx → Defer → Extension<T> → RuntimeHook
 - `@Named` — 被 `@Inject("id")` 取代
 - `Module2`（更名为 `ModuleEx`）— 因为和 `java.lang.Module` 冲突
 - Strict mode — 因为 `System.setProperty` 作为副作用通道
-- `logging.properties` — 被 `freeway-log.properties` 取代
+- `logging.properties` — 被 `freeway-logging.properties` 取代
 - Extension 适配器模块、benchmark 模块 — 移到外部仓库
 - `Route.handlerType` 字段 — 因为 4 字段版本的约束不变量散布在多个消费者中
 

@@ -29,7 +29,7 @@ import java.util.logging.SimpleFormatter;
  * Called at startup regardless of which SLF4J provider is active —
  * these enhancements are pure JDK and do not interfere with SLF4J.
  *
- * <p>Log keys can live in two file homes: {@code freeway-log.properties} on
+ * <p>Log keys can live in two file homes: {@code freeway-logging.properties} on
  * the classpath root (the dedicated, more specific file) or the app's main
  * config files — the boot cascade's classpath file baseline, supplied
  * through the {@link LogConfigSource} contract and taking only
@@ -111,7 +111,14 @@ final class JULEnhancer {
 
     // ── config loading ──────────────────────────────────────────
 
-    private static final String LOG_PROPERTIES = "freeway-log.properties";
+    private static final String LOG_PROPERTIES = "freeway-logging.properties";
+
+    /**
+     * The pre-1.5.2 name of {@link #LOG_PROPERTIES}. Read only as a fallback
+     * so an upgrade cannot silently drop a logging configuration; the startup
+     * warning names the rename. Scheduled for removal in the next release.
+     */
+    private static final String LEGACY_LOG_PROPERTIES = "freeway-log.properties";
 
     /**
      * Loads the log configuration, merging the app-side source below the
@@ -120,7 +127,7 @@ final class JULEnhancer {
      *   <li>{@link LogConfigSource#values()} — the application's main config
      *       files, supplied by the boot layer via ServiceLoader — lowest
      *       precedence, filling only what nothing above set
-     *   <li>{@code freeway-log.properties} from the classpath root — the
+     *   <li>{@code freeway-logging.properties} from the classpath root — the
      *       dedicated log file, the more specific declaration
      * </ol>
      * The application-side source is a boot-supplied contract
@@ -142,12 +149,20 @@ final class JULEnhancer {
             // not feed the per-logger level enumeration phantom loggers.
             mergeLogKeys(merged, source.values());
         }
-        try (InputStream in = openStream(LOG_PROPERTIES)) {
+        InputStream in = openStream(LOG_PROPERTIES);
+        if (in == null) {
+            in = openStream(LEGACY_LOG_PROPERTIES);
             if (in != null) {
-                merged.load(in);
+                logEarly(LEGACY_LOG_PROPERTIES + " is being read as a fallback: rename it to "
+                    + LOG_PROPERTIES + " — the old name is deprecated and will be removed");
             }
-        } catch (IOException e) {
-            logEarly("Failed to load " + LOG_PROPERTIES + ": " + e.getMessage());
+        }
+        if (in != null) {
+            try (InputStream stream = in) {
+                merged.load(stream);
+            } catch (IOException e) {
+                logEarly("Failed to load " + LOG_PROPERTIES + ": " + e.getMessage());
+            }
         }
         return merged;
     }
@@ -222,7 +237,7 @@ final class JULEnhancer {
      *   <li>System property ({@code -Dkey=value}) — highest priority
      *   <li>Environment variable (prefix from {@link #envKeyFor}) — for {@code freeway.*} keys
      *   <li>File homes merged by {@link #loadLogConfig} — dedicated
-     *       {@code freeway-log.properties} first, then the application files
+     *       {@code freeway-logging.properties} first, then the application files
      *       (both ranked by the put order)
      *   <li>{@code defaultValue}
      * </ol>
@@ -512,7 +527,7 @@ final class JULEnhancer {
      * also fall back to {@code auto}.
      *
      * <p>Supports system property ({@code -Dfreeway.log.format}), env var
-     * ({@code FREEWAY_LOG_FORMAT}), and {@code freeway-log.properties}.
+     * ({@code FREEWAY_LOG_FORMAT}), and {@code freeway-logging.properties}.
      */
     private static String formatMode(Properties fileConfig) {
         String v = readProperty(fileConfig, "freeway.log.format", "auto");

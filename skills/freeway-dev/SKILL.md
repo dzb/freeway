@@ -25,7 +25,7 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 
 ## Core Shape
 
-- `freeway-commons` - shared JSON, coercion, scoped primitives (`Defer` for commit-time deferral, `ScopedCache` for scope-lifetime caching), bean, validation, logging (SLF4J 2 + JUL backend, `freeway-log.properties`, multi-file, env-var cascade)
+- `freeway-commons` - shared JSON, coercion, scoped primitives (`Defer` for commit-time deferral, `ScopedCache` for scope-lifetime caching), bean, validation, logging (SLF4J 2 + JUL backend, `freeway-logging.properties`, multi-file, env-var cascade)
 - `freeway-ioc` - container, binding DSL, scopes, injection, markers, contributions, AOP, event bus;
   `Binding` exposes `.to(Class)` and `.to(c -> ...)` only — there is no `.to(instance)`. Bind an
   existing object by returning it from a singleton provider

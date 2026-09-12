@@ -401,7 +401,7 @@ class LogBootstrapTest {
             java.util.logging.Logger root =
                 java.util.logging.Logger.getLogger("");
             assertEquals(Level.FINE, root.getLevel(),
-                "System property should override freeway-log.properties");
+                "System property should override the logging config file");
         } finally {
             System.clearProperty("freeway.log.level");
             System.clearProperty("freeway.log.file");

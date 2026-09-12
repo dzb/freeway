@@ -1057,10 +1057,10 @@ if (result.hasErrors()) { ... }
 
 Freeway 内置 SLF4J 2 + JUL 日志后端，零依赖可用。添加 Logback 自动切换。
 
-**配置：** `freeway-log.properties`（classpath 根），框架不打包此文件。优先级：
+**配置：** `freeway-logging.properties`（classpath 根），框架不打包此文件。优先级：
 
 ```
--D 参数 > FREEWAY_ 环境变量 > freeway-log.properties > 代码默认值
+-D 参数 > FREEWAY_ 环境变量 > freeway-logging.properties > 代码默认值
 ```
 
 **零配置使用：**
@@ -1085,7 +1085,7 @@ freeway.log.file.compress=true                # GZIP
 -Dfreeway.log.file.audit.logger=com.myapp.audit
 ```
 
-每个文件有独立的 `JULFileHandler`（时间+大小双滚动+GZIP），路由到指定 Logger。配置写入 `freeway-log.properties` 或通过 `-D` 覆盖。
+每个文件有独立的 `JULFileHandler`（时间+大小双滚动+GZIP），路由到指定 Logger。配置写入 `freeway-logging.properties` 或通过 `-D` 覆盖。
 
 **级别支持：** SLF4J 名（TRACE/DEBUG/INFO/WARN/ERROR）和 JUL 名（FINEST/FINE/INFO/WARNING/SEVERE），不区分大小写。
 

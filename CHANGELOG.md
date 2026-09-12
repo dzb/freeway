@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **日志专用配置文件更名：`freeway-log.properties` → `freeway-logging.properties`（freeway-commons）** — 新名是唯一
+  正式名字，放在 classpath 根；旧名只在新名不存在时作为过渡读入并打一行 stderr 告警（升级不会静默丢掉日志配置），
+  该兼容下一版本移除。参考模板同步更名 `docs/freeway-logging.properties.reference`。同时改正"所有日志键都能住进
+  文件"的说法：`freeway.log.color` / `.mdc` / `.mdc.priority` / `.caller-info` 四项只在 `-D`/环境变量生效
+  （它们在类加载期读取，早于文件解析），模板与文档都按此标注。
+
 - **文档：freeway-cloud 四份设计文档合并为 `docs/freeway-cloud-design.md`** — `freeway-cloud-unified-design.md`
   （总设计）、`freeway-cloud-events-design.md`、`freeway-cloud-rpc-design.md`、`freeway-cloud-implementation-plan.md`
   四份文档互有重复且已出现实质矛盾（总设计头部宣布"不做方法级 RPC"、§10 又把它排除在排除之外；hook 顺序与
