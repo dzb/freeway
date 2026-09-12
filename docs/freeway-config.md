@@ -251,7 +251,7 @@ OS/JDK 默认或无限制，空表示 JDK 默认。下面各表内已按此顺�
 > `GET /health/live`（进程存活）与 `GET /health/ready`（依赖就绪聚合，
 > 全健康 200、否则 503），路径**不可配**；与 `/healthz`
 > （`freeway.http.health.path`）是两套端点，勿配成同一路径。详见
-> `docs/freeway-cloud-unified-design.md` §5.7。
+> `docs/freeway-cloud-design.md` §5.6。
 
 #### 请求体
 

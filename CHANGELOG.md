@@ -14,6 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **文档：freeway-cloud 四份设计文档合并为 `docs/freeway-cloud-design.md`** — `freeway-cloud-unified-design.md`
+  （总设计）、`freeway-cloud-events-design.md`、`freeway-cloud-rpc-design.md`、`freeway-cloud-implementation-plan.md`
+  四份文档互有重复且已出现实质矛盾（总设计头部宣布"不做方法级 RPC"、§10 又把它排除在排除之外；hook 顺序与
+  events/rpc 两份及代码不符；去重位置写成拦截器而非 `EventBus.publishInbound`；错误映射表缺
+  `INTERRUPTED`/`DISPATCH`/`OTHER`）。现在合成一份设计基线：定位与原则、模块与装配、核心对象、九项能力设计
+  （含线上协议表与 `kind()` 全表）、配置键形态、明确不做、路线图、修订记录；四份旧文档删除，仓库内引用
+  （`DEVELOPER-GUIDE`、`freeway-config`、`RemoteCaller`/`RpcExport` javadoc）改指新文档。逐键清单不再复制，
+  统一指向 `docs/freeway-config.md` 以免两处漂移；已交付的 Phase 0–8 任务清单只保留交付标准与回归清单，
+  仍然有效的排除项（MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项并入
+  §7/§8；同时补上此前未记录的能力边界（无应用层心跳、网格无背压、指标无标签、readiness 未发布到注册表）。
+
 - **文档：AGENTS.md 成为唯一约定源，架构下沉 docs/ARCHITECTURE.md（仓库根）** — `CLAUDE.md` 与
   `AGENTS.md` 此前是两份自动加载的指导文件，内容互有重叠。现在分成三层，每层一个家：
   **`AGENTS.md`**＝仓库级**约定**（构建、模块地图、命名、设计规则、测试、回归清单、提交规则、阅读清单）；

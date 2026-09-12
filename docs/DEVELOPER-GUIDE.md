@@ -1754,7 +1754,7 @@ filesystem storage, built-in metrics registry) so a single-node deployment
 needs no backend at all; an external one arrives as an adapter that binds
 `.primary()` — see [freeway-ext](https://github.com/dzb/freeway-ext). The full
 key list is in [freeway-config.md](freeway-config.md); the design rationale is
-in [freeway-cloud-unified-design.md](freeway-cloud-unified-design.md).
+in [freeway-cloud-design.md](freeway-cloud-design.md).
 
 **`freeway.cloud.*.type` declares intent; it does not choose an implementation.**
 The framework never loads a class by name (no classpath scanning, no reflection
