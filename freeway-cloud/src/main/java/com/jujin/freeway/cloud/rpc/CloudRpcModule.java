@@ -92,6 +92,7 @@ public final class CloudRpcModule implements ModuleEx {
                     Path.of(keyStore), keyPassword,
                     trustStore.isBlank() ? null : Path.of(trustStore), trustPassword);
             })
+            .marker(Local.class)   // the file-backed default an ext mTLS source replaces
             ;
 
         b.bind(CloudHttpClient.class)

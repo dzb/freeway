@@ -58,7 +58,7 @@ public final class PeerConnection {
     }
 
     /** Sends one wire frame; returns false (and never throws) on failure. */
-    public boolean send(String json) {
+    boolean send(String json) {
         try {
             return sender.send(json);
         } catch (RuntimeException e) {
@@ -72,7 +72,7 @@ public final class PeerConnection {
      * the CE {@code type} (event class FQN for the CLASS channel) and the
      * resolved topic ({@code @Topic} value or simple name).
      */
-    public boolean matches(String type, String topic) {
+    boolean matches(String type, String topic) {
         for (String prefix : remotePrefixes) {
             if (prefix.isEmpty()) {
                 return true;

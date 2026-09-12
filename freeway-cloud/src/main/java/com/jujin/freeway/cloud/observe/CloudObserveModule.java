@@ -56,10 +56,12 @@ public final class CloudObserveModule implements ModuleEx {
         b.bind(MetricsDefault.class).to(MetricsDefault.class);
         b.bind(Metrics.class)
             .to((Container container) -> container.get(MetricsDefault.class))
-            .primary();
+            .primary()
+            .marker(Local.class);
         b.bind(MetricsSnapshot.class)
             .to((Container container) -> container.get(MetricsDefault.class));
-        b.contribute(Route.class).add("metrics", Route.get("/metrics", MetricsHandler.class));
+        b.contribute(Route.class)
+            .add("freeway.cloud.metrics", Route.get("/metrics", MetricsHandler.class));
         // Inbound server spans: this module owns the Tracer, so the filter is
         // contributed here rather than by the context module (which must stay
         // installable without a tracer).

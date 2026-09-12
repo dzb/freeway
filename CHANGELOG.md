@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **API 一致性：贡献 id 命名空间、网格内部面收窄、`@Local` 覆盖补齐（freeway-cloud）** — 三处
+  与框架既有规则不一致的地方：
+  - **贡献 id**：控制器/路由 id 此前混用裸名（`metrics`、`health-live`、`health-ready`、
+    `cloud-event`、`trace`、`baggage`、`http`）与点分名（`freeway.cloud.rpc`）。id 是**每种扩展类型
+    一个全局命名空间**且重复即启动失败，裸名会让应用给一条**不同路径**的路由起名 `metrics` 时莫名
+    启动失败。现框架侧一律 `freeway.cloud.*`（`freeway.cloud.metrics`、`freeway.cloud.health.live`、
+    `freeway.cloud.event`、`freeway.cloud.propagation.trace`/`.baggage`、
+    `freeway.cloud.declaration.http`）；"抢占框架路由"的意图仍由**重复路径**与**重复主绑定**响亮拒绝
+    （`Duplicate route detected: GET /metrics` / `AmbiguousBindingException`），语义比"重复 id"清楚。
+    破坏性：以裸 id 作 `before`/`after` 锚点的代码需改名（仓库内无此类锚点）。
+  - **网格内部面**：`PeerConnector`、`CloudEventSink` 收窄为包私有；`PeerHub`/`PeerConnection` 只保留
+    **检查面**为 public——`connections()`/`origin()`/`serviceId()` 与连接的只读访问器加 `close()`——
+    `wire`/`addInterceptor`/`register`/`unregister`/`token`/`subscriptions`/`receive`/`codec`/`send`/
+    `matches` 全部回到包内（此前它们只是顺带 public）。类文档写明公开面就是检查面。
+  - **`@Local` 标记**：凡"有内置实现、可被适配器 `.primary()` 替换"的角色都应带该标记（它同时是
+    注入点限定符与后端守卫的判据）。`Metrics` 与 `TransportSecurity` 此前漏了，现补上。
 - **停机收尾：drain 窗口 + 在飞调用优雅结束 + 网格告别帧（freeway-cloud）** — 此前摘除注册与关闭
   socket 之间没有任何间隔，滚动更新时仍持有该端点的负载均衡会打到已关闭的连接；出站在飞调用则被
   `close()` 直接以异常失败（对端可能已经执行）。现在：

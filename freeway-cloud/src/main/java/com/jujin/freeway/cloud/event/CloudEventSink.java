@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * short-circuited by {@code Stoppable} never leave the JVM. This class never
  * blocks the publishing thread beyond a socket write.</p>
  */
-public final class CloudEventSink implements EventSink {
+final class CloudEventSink implements EventSink {
 
     private static final Logger LOG = LoggerFactory.getLogger(CloudEventSink.class);
 

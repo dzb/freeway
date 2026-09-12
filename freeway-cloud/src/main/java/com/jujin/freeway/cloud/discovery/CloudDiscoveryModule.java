@@ -59,7 +59,8 @@ public final class CloudDiscoveryModule implements ModuleEx {
         RegistryRenewal renewal = new RegistryRenewal();
         b.bind(RegistryRenewal.class).to(container -> renewal);
 
-        b.contribute(ServiceDeclaration.class).add("http", new HttpServiceDeclaration());
+        b.contribute(ServiceDeclaration.class)
+            .add("freeway.cloud.declaration.http", new HttpServiceDeclaration());
         // Readiness contributor for /health/ready — belongs here, not in the
         // health module: it probes the registry store, so standalone health
         // installs (without discovery) stay dependency-free. It deactivates

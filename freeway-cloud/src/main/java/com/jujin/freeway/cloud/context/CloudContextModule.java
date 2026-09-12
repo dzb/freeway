@@ -19,13 +19,13 @@ public final class CloudContextModule implements ModuleEx {
 
     @Override
     public void bind(Binder b) {
-        b.contribute(Propagator.class).add("trace", new TracePropagator());
+        b.contribute(Propagator.class).add("freeway.cloud.propagation.trace", new TracePropagator());
         // Container-created so the auth propagator can read the
         // freeway.cloud.auth.extract.enabled switch from the SymbolSource.
         b.contribute(Propagator.class).add(AuthPropagator.class);
         // After trace/auth: their extract() leaves unset baggage as null, so
         // the merge keeps the baggage parsed here (null wins only when absent).
-        b.contribute(Propagator.class).add("baggage", new BaggagePropagator());
+        b.contribute(Propagator.class).add("freeway.cloud.propagation.baggage", new BaggagePropagator());
         b.contribute(HttpFilter.class).add(PropagationFilter.class);
     }
 }

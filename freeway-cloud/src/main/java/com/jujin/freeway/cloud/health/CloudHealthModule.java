@@ -27,8 +27,9 @@ public final class CloudHealthModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
         b.contribute(Route.class)
-            .add("health-live", Route.get("/health/live", ctx -> ctx.send(200, "{\"status\":\"ok\"}")));
+            .add("freeway.cloud.health.live",
+                Route.get("/health/live", ctx -> ctx.send(200, "{\"status\":\"ok\"}")));
         b.contribute(Route.class)
-            .add("health-ready", Route.get("/health/ready", ReadyHandler.class));
+            .add("freeway.cloud.health.ready", Route.get("/health/ready", ReadyHandler.class));
     }
 }

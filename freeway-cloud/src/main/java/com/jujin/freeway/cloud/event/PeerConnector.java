@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * backend path is additive and left to the caller to feed via
  * {@link #setPeers(List)} when a registry backend is installed.</p>
  */
-public final class PeerConnector implements AutoCloseable {
+final class PeerConnector implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnector.class);
     /** Default reconnect backoff floor / ceiling (exponential, capped) — one

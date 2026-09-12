@@ -46,7 +46,7 @@ public final class CloudEventModule implements ModuleEx {
         binder.bind(PeerHub.class).to(container -> hub);
 
         binder.contribute(WebSocketRoute.class)
-            .add("cloud-event", WebSocketRoute.of(
+            .add("freeway.cloud.event", WebSocketRoute.of(
                 CloudConfigKeys.EVENT_PATH_DEFAULT, hub));
 
         binder.contribute(RuntimeHook.class)

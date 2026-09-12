@@ -28,6 +28,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Connection state is the fact; the registry view (peers map) is its
  * projection — this class only tracks connections and never dials.</p>
+ *
+ * <p><b>The public surface here is the mesh's inspection face</b> —
+ * {@link #connections()} (who this node is connected to),
+ * {@link #origin()} and {@link #serviceId()} (the identity peers see).
+ * Registration, wiring, interception and frame dispatch are the connector's and
+ * the session handler's business and stay inside this package; an application
+ * that wants a different view of the mesh contributes a
+ * {@link CloudEventInterceptor} or reads the peers, it does not drive them.</p>
  */
 public final class PeerHub implements WebSocketEndpoint {
 
@@ -60,7 +68,7 @@ public final class PeerHub implements WebSocketEndpoint {
      * @param allowedTopics  TOPIC-channel allowlist (empty = any)
      * @param token          mesh handshake token (blank = peer auth off)
      */
-    public record Wiring(
+    record Wiring(
         EventBusInbound bus,
         JsonCodec codec,
         String serviceId,
@@ -72,7 +80,7 @@ public final class PeerHub implements WebSocketEndpoint {
     ) {}
 
     /** RuntimeHook-time wiring: resolves builtins and config-derived state. */
-    public void wire(Wiring w) {
+    void wire(Wiring w) {
         this.bus = Objects.requireNonNull(w.bus(), "bus");
         this.codec = Objects.requireNonNull(w.codec(), "codec");
         this.serviceId = w.serviceId();
@@ -122,7 +130,7 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     /** Registers an inbound interceptor (called by the module from contributions). */
-    public void addInterceptor(CloudEventInterceptor interceptor) {
+    void addInterceptor(CloudEventInterceptor interceptor) {
         interceptors.add(Objects.requireNonNull(interceptor, "interceptor"));
     }
 
@@ -132,7 +140,7 @@ public final class PeerHub implements WebSocketEndpoint {
      * the lexicographically smaller origin (both sides apply the same rule,
      * so simultaneous dials converge on one surviving socket).
      */
-    public void register(PeerConnection connection) {
+    void register(PeerConnection connection) {
         String remote = connection.remoteOrigin();
         while (true) {
             PeerConnection previous = peers.get(remote);
@@ -187,11 +195,14 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     /** Removes a peer connection if it is still the registered one (disconnect). */
-    public void unregister(PeerConnection connection) {
+    void unregister(PeerConnection connection) {
         peers.remove(connection.remoteOrigin(), connection);
     }
 
     /** Live peer connections — the sink iterates this for outbound fan-out. */
+    /** The peers currently connected, in either direction — the mesh's
+     *  inspection point for health checks, admin routes and tests. The
+     *  returned connections are live views, not snapshots. */
     public List<PeerConnection> connections() {
         return List.copyOf(peers.values());
     }
@@ -216,15 +227,15 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     /** The mesh token the connector presents on its outbound handshake. */
-    public String token() {
+    String token() {
         return token;
     }
 
-    public List<String> subscriptions() {
+    List<String> subscriptions() {
         return subscriptions;
     }
 
-    public boolean wired() {
+    boolean wired() {
         return wired;
     }
 
@@ -368,7 +379,7 @@ public final class PeerHub implements WebSocketEndpoint {
     // ── inbound pipeline (shared by server + client legs) ─────────────────
 
     /** Dispatches one decoded wire frame through interceptors → local bus. */
-    public void receive(CloudEventEnvelope.Parsed frame) {
+    void receive(CloudEventEnvelope.Parsed frame) {
         if (frame.origin().equals(origin)) {
             return; // our own event looped back through the mesh — drop
         }
@@ -491,7 +502,7 @@ public final class PeerHub implements WebSocketEndpoint {
     }
 
     /** Codec accessor for the connector (client leg parses acks too). */
-    public JsonCodec codec() {
+    JsonCodec codec() {
         return codec;
     }
 }
