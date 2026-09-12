@@ -125,8 +125,12 @@ public final class RpcEndpoint {
             boolean propagateMessage, Throwable ex) throws IOException {
         // The detail is always available to operators on THIS side; what
         // crosses the boundary is the class (the contract) and, only on
-        // request, the free-text message.
+        // request, the free-text message. The warn line names the mapping and
+        // the failing class — the signal an alert rule greps — while the stack
+        // stays at debug: most of these are expected business failures, and
+        // paying a stack trace for each would bury the one that is a bug.
         LOG.warn("RPC handler failed for mapping '{}': {}", mapping, ex.toString());
+        LOG.debug("RPC handler failure detail for mapping '{}'", mapping, ex);
         String className = ex.getClass().getName();
         String message = propagateMessage
             ? String.valueOf(ex.getMessage())
