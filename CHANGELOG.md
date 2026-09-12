@@ -65,14 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   §7/§8；同时补上此前未记录的能力边界（无应用层心跳、网格无背压、指标无标签、readiness 未发布到注册表）。
 
 - **文档：AGENTS.md 成为唯一约定源，架构下沉 docs/ARCHITECTURE.md（仓库根）** — `CLAUDE.md` 与
-  `AGENTS.md` 此前是两份自动加载的指导文件，内容互有重叠。现在分成三层，每层一个家：
+  `AGENTS.md` 此前是两份自动加载的指导文件，内容互有重叠。现在分成两层，每层一个家：
   **`AGENTS.md`**＝仓库级**约定**（构建、模块地图、命名、设计规则、测试、回归清单、提交规则、阅读清单）；
   **`docs/ARCHITECTURE.md`**＝**架构与内部机制**（依赖图、各模块边界、注入注解、配置级联机制、生命周期），
-  README/AGENTS/指南按需指向它，**不自动加载**以免每次对话都带上；**`CLAUDE.md`** 只剩一行
-  `@AGENTS.md`（Claude Code 的原生 import，它不原生读 AGENTS.md），因此 Claude Code 与其他 agent 读到
-  的是同一份文件。配套清理：DEVELOPER-GUIDE 的 "Naming Rules"/"Code Style" 两节（同一批规则的第三份
-  副本）合并为一行指向 AGENTS.md 的指针，并修掉其中引用的不存在类型 `RequestContext`；设计文档与
-  README 中"遵循 CLAUDE.md"的引用改指 ARCHITECTURE.md/AGENTS.md。
+  README/AGENTS/指南按需指向它，**不自动加载**以免每次对话都带上。配套清理：DEVELOPER-GUIDE 的
+  "Naming Rules"/"Code Style" 两节（同一批规则的第三份副本）合并为一行指向 AGENTS.md 的指针，并修掉
+  其中引用的不存在类型 `RequestContext`；设计文档与 README 中"遵循 CLAUDE.md"的引用改指
+  ARCHITECTURE.md/AGENTS.md。`CLAUDE.md` 最终删除，见 Removed。
 
 - **API 审计落实：失败判别、注册表心跳契约、网格 TLS（freeway-cloud）** — 三处 API 设计问题与一条
   成文规则：
@@ -92,9 +91,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     遵守它，事件网格自建 `HttpClient` 不接 TLS 配置——于是 wss 拨号拿不到客户端身份。现
     `PeerConnector` 用同一份 `TransportSecurity` 的 `SSLContext` 建客户端（可选依赖：不装 RPC 模块
     时退回 JDK 默认），角色文档写明"两条出站腿共用一个身份"与"启动期解析一次，轮换需重启"。
-  - **文档**：CLAUDE.md 新增 API 形状规则——一到两个可选参数用逐级 javadoc 的重载阶梯，三个以上用
-    参数记录（`defaults()` + withers）；记录作为适配器装配点时，新增组件必须保留旧 arity 的委托
-    构造器（ext 引擎测试被这一点打断过一次）。
+  - **文档**：API 形状规则写入 `AGENTS.md` 的设计规则（当时还在 `CLAUDE.md`）——一到两个可选参数用
+    逐级 javadoc 的重载阶梯，三个以上用参数记录（`defaults()` + withers）；记录作为适配器装配点时，
+    新增组件必须保留旧 arity 的委托构造器（ext 引擎测试被这一点打断过一次）。
 
 - **API 一致性：贡献 id 命名空间、网格内部面收窄、`@Local` 覆盖补齐（freeway-cloud）** — 三处
   与框架既有规则不一致的地方：
@@ -246,6 +245,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   不变，仅命名；引用常量的代码与配置文件/env 中的键名需同步改名。
 
 ### Removed
+
+- **`CLAUDE.md` 删除（仓库根）** — 它此前只剩一行 `@AGENTS.md`（Claude Code 的原生 import，因为 Claude
+  Code 不原生读 `AGENTS.md`）。删掉的理由：仓库里"每个约定只有一个家"已经成立，再留一个只为某个工具
+  存在的转发文件，就是同一份规则的第二条入口。用 Claude Code 的话，二选一即可——放一个一行的
+  `@AGENTS.md` 文件，或用读 `AGENTS.md` 的插件；其他 agent（Codex、DSH 等）本就读 `AGENTS.md`，行为不变。
 
 - **`CallBus` 及其卫星类型删除（freeway-ioc，破坏性）** — 删除 `CallBus`、`CallTargetRegistry`、
   `CallAdviceChain`、`CallProxyFactory`、`CallStats`、`DeadCallException` 六个公开类型（core 主体
