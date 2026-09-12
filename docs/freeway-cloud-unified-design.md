@@ -195,8 +195,7 @@ com.jujin.freeway.cloud
 ```
 
 - `XDefault` 默认实现位于各自功能包（`discovery/` `rpc/` `observe/`
-  `resilience/` `secret/` `storage/`），是可替换扩展点（CLAUDE.md 命名
-  规则）；`internal/` 不含默认实现。`config/` 包已于 1.4.0 删除（§3.5）。
+  `resilience/` `secret/` `storage/`），是可替换扩展点（AGENTS.md 命名规则）；`internal/` 不含默认实现。`config/` 包已于 1.4.0 删除（§3.5）。
 
 ### 4.1 装配方式
 
@@ -727,7 +726,7 @@ public final class CloudConfigKeys {
    （`InjectionResolver` 一次性警告）。规避约定（本地默认 `@Local`
    标记兜底，§6.1）仍然成立。
 5. **命名位置**：默认实现是功能包内的公开扩展点（`XDefault`），不在
-   `internal/`（CLAUDE.md 命名规则）——早期"默认实现在 `internal/`"
+   `internal/`（AGENTS.md 命名规则）——早期"默认实现在 `internal/`"
    的表述已修正（§1/§4/§8）。
 6. **测试框架**：根 pom `junit.version=6.1.3`（JUnit 6.x，非 5.12）。
 7. **`ServiceId` 不造公开类型**：遵循 CLAUDE.md（"ServiceId is

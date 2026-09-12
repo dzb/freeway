@@ -1,19 +1,11 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Framework architecture and internals, for work inside this repository.
 
-## Build
-
-Requires JDK 25+ (JUnit 6.1.3, SLF4J 2.0.18).
-
-```bash
-mvn test                            # all core modules
-mvn -pl freeway-boot -am test       # one module + its upstream deps
-mvn test -Dtest=CoercerDefaultTest  # one test class
-```
-
-Third-party adapters (Undertow/Jetty engines, HikariCP, Kafka) live in
-[freeway-ext](https://github.com/dzb/freeway-ext): `mvn install` the core first.
+**Repo-wide conventions live in [AGENTS.md](AGENTS.md)** — build commands, the
+module map, naming rules (`XDefault`/`XImpl`, `internal`), design rules,
+testing, the regression watch-list and the commit rules. Read it first; this
+file does not repeat them.
 
 ## Module Dependency Graph
 
@@ -26,8 +18,6 @@ freeway-commons         zero deps
  │   └─ freeway-cloud   depends on ioc + commons + http (boot is test-scope only)
  └─ freeway-db          depends on commons (+ ioc, DbModule only)
 ```
-
-Core modules have no external dependencies beyond SLF4J.
 
 ## Architecture Boundaries
 
@@ -87,35 +77,10 @@ Core modules have no external dependencies beyond SLF4J.
   (START/END/ACTIVITY/EXCLUSIVE/INCLUSIVE/PARALLEL/LOOP), JSON definitions via
   `Graph.fromText(json)`, a hand-written `ExprEvaluator` and `FlowEventBus`,
   PlantUML export, tracing with pause/resume, subgraph calls (`#graphId`) and
-  interceptor chains. Tasks resolve as `@bean` / `#graph` / `$meta`. Zero
+  interceptor chains. Tasks resolve by prefix — `@bean` (IoC binding id),
+  `#graph` (nested subflow), `$meta` (graph metadata), `!marker`
+  (`@FlowMarker` intersection); the guide's flow section tabulates them. Zero
   dependencies beyond commons + ioc.
-
-## Naming Rules
-
-- Public interfaces use the domain name: `Container`, `JsonCodec`, `Route`.
-- `ModuleEx` is the module entry point — spelled that way to avoid colliding
-  with `java.lang.Module`.
-- **`XDefault` vs `XImpl`** — the deciding question is whether the *outside can
-  substitute* the implementation for that role:
-  - `XDefault` — it can: an extension binds an alternative with `.primary()`,
-    an adapter builds on the default, or config activates another one.
-    Examples: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`,
-    `FlowDriverDefault`, `FlowEngineDefault`, `ExchangeMetaDefault` and the
-    twelve cloud defaults.
-  - `XImpl` — it cannot: container-internal assembly (`ContainerImpl`,
-    `BindingImpl`, `DatabaseImpl`, `QueryImpl`), engine-internal components
-    (`HttpContextImpl`), or per-owner types that coexist with other
-    implementations (`PooledConnectionImpl`). A type stays `XDefault` even
-    where the framework wires it concretely.
-- `DefaultX` is avoided — `XDefault` keeps the interface name dominant.
-- Package location is orthogonal to the suffix: `internal` means "no stability
-  promise" for callers, not "physically hidden" — classes there stay `public`
-  where sibling packages assemble them, and an `XDefault` may live there
-  (`PoolDefault` sits in `db/internal` yet is substituted from outside).
-- An owner's collaborators live in the owner's package, package-private: a
-  type is `public` only when another package must assemble or substitute it.
-  `ioc.internal` therefore holds exactly one public type — `ContainerImpl`,
-  the thing `Freeway` constructs.
 
 ## Injection Annotations
 
@@ -130,24 +95,6 @@ All in `com.jujin.freeway.ioc.annotation`:
 
 `binding.primary()` maps to the `@Primary` marker internally, so both forms
 resolve through the same marker index.
-
-## Design Rules
-
-- No classpath scanning. No bytecode weaving.
-- Constructor injection for framework internals; field injection acceptable for
-  app code and config values.
-- Core modules keep external dependencies out; adapters with third-party deps
-  live in freeway-ext.
-- Prefer small explicit APIs over future-proof abstractions.
-- **Optional inputs**: one or two of them use a documented overload ladder, each
-  step stating what it adds (`RemoteCaller.invoke`); three or more use a
-  parameter record with `defaults()` and per-field withers
-  (`CloudHttpClientDefault.Wiring`), so a call site cannot drift between
-  overloads. A record's canonical constructor changes shape whenever a component
-  is added, so a record used for adapter assembly keeps its previous arity as a
-  delegating constructor — an already-compiled adapter must not break on a new
-  knob (the ext engine tests did, once).
-- Keep concepts few: Module, Service, Extension, Scope, Runtime.
 
 ## Config Cascade
 
@@ -205,12 +152,6 @@ with a domain-specific source (secrets, ...) contributes a `SymbolProvider`
 through `binder.contribute(SymbolProvider.class)` and slots in by declaring its
 `order()`.
 
-## Commit Rules
-
-- Never include `Co-Authored-By`, AI tool names, or any form of AI attribution in commit messages.
-- Commit messages describe the change itself, never the process or tooling used.
-- All commits appear under the user's name only.
-
 ## Lifecycle notes
 
 - `Container.close()` runs `@PreDestroy` before sealing the container, so
@@ -218,9 +159,3 @@ through `binder.contribute(SymbolProvider.class)` and slots in by declaring its
   up (a never-invoked lazy proxy gets no `@PreDestroy`).
 - Thread-scope values stay registered after close so scope-exit hooks still
   clean them up.
-
-## Further Reading
-
-- [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) — comprehensive guide: modules, HTTP, DB, config, boot
-- [docs/freeway-config.md](docs/freeway-config.md) — every config key, by module
-- [docs/](docs/) — config samples, DB usage, Defer summary
