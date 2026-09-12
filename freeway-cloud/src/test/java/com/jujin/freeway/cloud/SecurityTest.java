@@ -176,6 +176,18 @@ class SecurityTest {
                 return v;
             }
 
+            /** Mirrors the container: coercer-parsed specs need a Coercer. */
+            @Override
+            public <T> T resolve(com.jujin.freeway.ioc.symbol.SymbolSpec<T> spec) {
+                String raw;
+                try {
+                    raw = resolve(spec.key());
+                } catch (com.jujin.freeway.ioc.symbol.UnknownSymbolException e) {
+                    raw = null;
+                }
+                return spec.parse(raw, new com.jujin.freeway.commons.coercion.CoercerDefault());
+            }
+
             @Override
             public String expand(String input) {
                 if (input.startsWith("${") && input.endsWith("}")) {

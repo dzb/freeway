@@ -40,7 +40,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<String> EVENT_ENABLED_EXPLICIT = SymbolSpec.of(
         CloudConfigKeys.EVENT_ENABLED, String.class, "", Function.identity());
     private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.EVENT_DEDUP_ENABLED, Boolean.class, false, Boolean::parseBoolean);
+        CloudConfigKeys.EVENT_DEDUP_ENABLED, Boolean.class, false);
 
     private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,

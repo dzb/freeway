@@ -30,7 +30,7 @@ public final class AuthPropagator implements Propagator {
 
     /** Off by default: see the trust boundary above. */
     private static final SymbolSpec<Boolean> EXTRACT_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.AUTH_EXTRACT_ENABLED, Boolean.class, false, Boolean::parseBoolean);
+        CloudConfigKeys.AUTH_EXTRACT_ENABLED, Boolean.class, false);
 
     private final boolean extractEnabled;
 

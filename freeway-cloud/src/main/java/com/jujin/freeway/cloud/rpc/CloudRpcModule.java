@@ -54,7 +54,7 @@ public final class CloudRpcModule implements ModuleEx {
         CloudConfigKeys.RPC_CONNECT_TIMEOUT, Long.class,
         CloudConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> TRACE_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true, Boolean::parseBoolean);
+        CloudConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true);
 
     /** Shutdown drain for in-flight calls, from the shared default. */
     private static final SymbolSpec<Duration> SHUTDOWN_GRACE = SymbolSpec.of(

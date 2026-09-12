@@ -8,10 +8,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +58,8 @@ public final class AppConfigDefault implements AppConfig {
     private volatile Map<String, String> fileTier;
     /** Hot-reload watcher; null when there is nothing to watch. */
     private final ConfigFileWatcher watcher;
+    /** {@code key\0earlier\0later} of every duplicate already named. */
+    private final Set<String> warnedDuplicates = ConcurrentHashMap.newKeySet();
 
     /**
      * Tiered form: {@code sources} carries the cascade inputs the loader
@@ -110,10 +115,42 @@ public final class AppConfigDefault implements AppConfig {
     private void reload() {
         List<Map<String, String>> layers = new ArrayList<>(overrideFiles.size() + 1);
         layers.add(sources.files());
+        // Who declared a key among the override files. A key in two of them is
+        // a silent override today — later file wins — which is invisible at
+        // the file that lost, so both are named (once per pair, so a hot
+        // reload does not repeat it).
+        Map<String, Path> declaredBy = new HashMap<>();
         for (Path file : overrideFiles) {
-            layers.add(readOverride(file)); // later files win
+            Map<String, String> values = readOverride(file);
+            warnAboutDuplicateKeys(file, values, declaredBy);
+            values.keySet().forEach(key -> declaredBy.putIfAbsent(key, file));
+            layers.add(values); // later files win
         }
         fileTier = ConfigMaps.overlay(layers);
+    }
+
+    /**
+     * Names every key an override file declares that an earlier override file
+     * already declared. The classpath baseline is deliberately not compared:
+     * an override file shadowing a packaged value is the point of the file
+     * tier, while two override files carrying the same key means one of them
+     * is dead — and which one depends on a list order that is not visible in
+     * either file.
+     */
+    private void warnAboutDuplicateKeys(
+        Path file, Map<String, String> values, Map<String, Path> declaredBy
+    ) {
+        for (String key : values.keySet()) {
+            Path earlier = declaredBy.get(key);
+            if (earlier == null || earlier.equals(file)) {
+                continue;
+            }
+            if (warnedDuplicates.add(key + '\u0000' + earlier + '\u0000' + file)) {
+                LOG.warn(
+                    "Config key {} is declared by both {} and {} — {} wins (later file)",
+                    key, earlier, file, file.getFileName());
+            }
+        }
     }
 
     /**

@@ -53,7 +53,7 @@ public final class CloudResilienceModule implements ModuleEx {
         CloudConfigKeys.RPC_RETRY_BACKOFF_MAX, Long.class,
         CloudConfigKeys.RPC_RETRY_BACKOFF_MAX_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> CB_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.RPC_CB_ENABLED, Boolean.class, true, Boolean::parseBoolean);
+        CloudConfigKeys.RPC_CB_ENABLED, Boolean.class, true);
     private static final SymbolSpec<Integer> CB_FAILURE_THRESHOLD = SymbolSpec.of(
         CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, Integer.class,
         CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD_DEFAULT, Integer::parseInt);
@@ -64,7 +64,7 @@ public final class CloudResilienceModule implements ModuleEx {
         CloudConfigKeys.RPC_CB_OPEN_WINDOW, Long.class,
         CloudConfigKeys.RPC_CB_OPEN_WINDOW_DEFAULT, Long::parseLong);
     private static final SymbolSpec<Boolean> RATE_LIMIT_ENABLED = SymbolSpec.of(
-        CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, Boolean.class, false, Boolean::parseBoolean);
+        CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, Boolean.class, false);
     private static final SymbolSpec<Double> RATE_LIMIT_PER_SECOND = SymbolSpec.of(
         CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, Double.class,
         CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND_DEFAULT, Double::parseDouble);
