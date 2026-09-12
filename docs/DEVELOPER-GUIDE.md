@@ -1698,6 +1698,66 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ---
 
+## Cloud (`freeway-cloud`)
+
+**Installing the module is the integration.** `new CloudModule()` composes
+context propagation, secrets, discovery, remote invocation, observability,
+resilience, health and object storage; the event mesh is the one capability you
+add explicitly (`new CloudEventModule()`), because it opens a network listener
+of its own. Everything below is then wired without further application code.
+
+**Three ways an application touches the module:**
+
+| Tier | What the application writes | What it covers |
+|------|-----------------------------|----------------|
+| **Ambient** | nothing — just install the module | the instance registers itself in discovery after the HTTP server starts (renewed by a heartbeat, deregistered before shutdown), `GET /health/live`, `/health/ready` and `/metrics` are served, and every outbound call carries metrics, tracing, resilience and propagated context |
+| **Declarative** | data contributions: `binder.bind(Handlers.class)` + `contribute(RpcExport.class)`, `contribute(EventSubscriber.class)` / `EventSink.class`, `contribute(CloudHealthContributor.class)` | what this service offers the rest of the system |
+| **Consumption** | `@Inject ServiceDiscovery` / `ObjectStorage` / `SecretStore` / `Metrics` / `Tracer` / …, and `binder.bind(Api.class).to(...)` | what this service uses from others |
+
+**The two cut points of a distributed call** — the only places where "we are
+more than one process" appears in application code:
+
+```java
+// Provider: this mapping is served here.
+binder.bind(UserHandlers.class);
+binder.contribute(RpcExport.class).add(RpcExport.of("user", UserHandlers.class));
+
+// Consumer: this interface is implemented elsewhere.
+binder.bind(UserApi.class).to(container -> RemoteProxyFactory
+    .of(container.get(RemoteCaller.class))
+    .serviceId("user-service")            // discovery id of the serving service
+    .mapping("user")                      // the exported call-topic prefix
+    .build(UserApi.class));
+```
+
+Business code writes `@Inject UserApi` in both shapes — the composition root is
+the only file that knows which one it is (see *Remote invocation* below).
+
+**Capability index** — what to write, and where the rest is documented:
+
+| Capability | Application side | Keys / notes |
+|------------|------------------|--------------|
+| Discovery / registry | nothing (self-registration); `@Inject ServiceDiscovery` to resolve instances, `ServiceRegistry.register(ServiceInstance.of(...))` for a static peer, `.primary()` for an external backend | `freeway.cloud.registry.*` |
+| Load balancing | default round-robin; replace the strategy with `.primary()` | `ServiceInstance.weight()/zone()/version()/isCanary()` are the inputs such a strategy reads |
+| Remote invocation (outbound) | `RemoteProxyFactory` for a typed client, `RemoteCaller.invoke(...)` for a direct call, `CloudHttpClient` for plain HTTP against a peer that is not a Freeway RPC provider | `freeway.cloud.rpc.*` |
+| Export (inbound) | an `RpcExport` declaration | see *Remote invocation* |
+| Event mesh | add `CloudEventModule`; `contribute(EventSubscriber.class)` to subscribe, `EventSink.class` for another transport | `freeway.cloud.event.*` |
+| Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot` for a scrape-ready view | `GET /metrics` |
+| Resilience | the defaults bind and the RPC client uses them; `@Inject Retryer` / `CircuitBreaker` / `RateLimiter`, or `.primary()` to replace one | `freeway.cloud.rpc.resilience=auto\|off` and the fine-grained keys |
+| Health | `contribute(CloudHealthContributor.class)` for a readiness check of your own dependency | `GET /health/live`, `GET /health/ready` (plus the HTTP module's `/healthz`) |
+| Context propagation | `InvocationContext.current()` reads baggage/principal/trace; nothing to wire | inbound filter + outbound header injection |
+| Secrets | `@Inject SecretStore`; secrets are also symbol-resolvable, so `@Symbol("db.password")` finds them | `freeway.cloud.secret.*` (system properties only) |
+| Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published on the bus | `freeway.cloud.storage.*` |
+
+Every capability has an in-process default (local registry, env/file secrets,
+filesystem storage, built-in metrics registry) so a single-node deployment
+needs no backend at all; an external one arrives as an adapter that binds
+`.primary()` — see [freeway-ext](https://github.com/dzb/freeway-ext). The full
+key list is in [freeway-config.md](freeway-config.md); the design rationale is
+in [freeway-cloud-unified-design.md](freeway-cloud-unified-design.md).
+
+---
+
 ## Remote invocation (`freeway-cloud.rpc`)
 
 Cross-process method calls: a provider declares which mappings may be called
