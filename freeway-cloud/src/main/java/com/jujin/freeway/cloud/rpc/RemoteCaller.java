@@ -7,8 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Consumer-side bridge from {@link com.jujin.freeway.ioc.CallBus}'s
- * topic contract to a remote process over {@link CloudHttpClient}.
+ * Consumer-side transport for remote invocation: turns a
+ * {@code mapping.method} call into one request over {@link CloudHttpClient}.
  *
  * <p>Wire shape (see docs/freeway-remote-callbus-design.md §2):
  * {@code POST /rpc/{mapping}/{method}} with the positional arguments as a
@@ -23,8 +23,9 @@ import java.util.List;
  * Unmarked operations fail after the first ambiguous outcome, because the
  * remote handler may already have applied it.</p>
  *
- * <p>This class never touches {@code CallBus} itself — the local-vs-remote
- * fallback decision belongs to the caller (see design doc §3.3).</p>
+ * <p>{@link RemoteProxyFactory} builds typed clients on top of this class;
+ * applications that need a named target, a per-call budget or an explicit
+ * idempotency verdict can use it directly.</p>
  */
 public final class RemoteCaller {
 

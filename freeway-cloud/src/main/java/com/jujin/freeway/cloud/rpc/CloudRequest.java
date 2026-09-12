@@ -51,7 +51,7 @@ public record CloudRequest(
     /**
      * Explicitly marks (or unmarks) this request as safe to replay on
      * ambiguous outcomes. Use it when a non-idempotent verb carries an
-     * idempotent operation — e.g. the remote-CallBus bridge forwards the
+     * idempotent operation — e.g. the RPC client forwards the
      * {@link Idempotent} marker from the consumer's interface method.
      */
     public CloudRequest idempotentWith(boolean value) {

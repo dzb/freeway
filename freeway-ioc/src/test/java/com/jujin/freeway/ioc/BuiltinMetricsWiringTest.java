@@ -30,19 +30,6 @@ class BuiltinMetricsWiringTest {
         }
     }
 
-    @Test
-    void callBusCountersReachThePrimaryMetrics() {
-        RecordingMetrics metrics = new RecordingMetrics();
-        try (Container container = Freeway.create(
-            binder -> binder.bind(Metrics.class).to(c -> metrics).primary())) {
-            container.get(CallBus.class).call("nobody");
-
-            assertEquals(1, metrics.counterValue("callbus.called"),
-                "the primary registry must observe the bus's counters");
-            assertEquals(1, metrics.counterValue("callbus.dead"));
-        }
-    }
-
     /** A class-channel event nobody subscribes to. */
     static final class UnsubscribedEvent {}
 

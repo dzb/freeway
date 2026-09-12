@@ -21,21 +21,18 @@ import java.util.function.Supplier;
  * ({@link #stream(Class)}/{@link #stream(String)}, JDK {@link Flow}), and an
  * optional external event sink.
  *
- * <p><b>The message domain has three channels:</b></p>
+ * <p><b>The message domain has two channels:</b></p>
  * <ul>
  *   <li>broadcast — {@link #publish}: facts about what happened; topic
  *       grammar is past tense ({@code user.created});</li>
- *   <li>request-reply — {@link CallBus#call}/{@link CallBus#consumer}:
- *       commands and queries; topic grammar is {@code mapping.methodName}
- *       ({@code user.getUser}); lives in its own registry, never sent
- *       to MQ;</li>
  *   <li>streams — {@link #stream(Class)}/{@link #stream(String)}: a
  *       {@link Flow.Publisher} view over the same subscriptions as
  *       broadcast.</li>
  * </ul>
- * <p>Broadcast and streams share one subscriber registry; calls are a
- * separate world. The grammatical split — facts vs commands — is what
- * keeps the two topic namespaces from tangling.</p>
+ * <p>Both share one subscriber registry and one topic grammar. A question
+ * that expects a reply is not a fact: it is a method call — in-process
+ * through the binding table, across processes through freeway-cloud's
+ * typed remote invocation.</p>
  *
  * <p><b>Delivery semantics:</b> at-most-once, best-effort. A throwing
  * subscriber is isolated (other subscribers still receive the event) and
@@ -508,10 +505,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
         sinkRegistry.clear();
         subscriptions.clearRuntime();
         // Broadcast semantics: post-close publishes are silent no-ops — a
-        // fact nobody consumes must not abort shutdown. The counterpart
-        // CallBus takes the opposite stance deliberately: pending calls fail
-        // explicitly, because a request-reply caller blocked on join() must
-        // never wait forever on a dead bus.
+        // fact nobody consumes must not abort shutdown.
         // Complete live streams so downstream subscribers are not left
         // hanging on a dead bus.
         streams.closeAll();

@@ -16,10 +16,10 @@ import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.RuntimeHook;
+import com.jujin.freeway.ioc.annotation.Inject;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -30,9 +30,10 @@ import org.junit.jupiter.api.Test;
  * once an application declares {@link RpcExport} — and what it refuses to
  * start with.
  *
- * <p>These are the properties that replaced a hand-wired bus: registration
- * happens on the container's bus, a wiring mistake fails startup with an
- * actionable message, and nothing depends on runtime-hook ordering.
+ * <p>The endpoint serves the handlers the container resolved (injected, one
+ * instance, container-owned lifecycle) and nothing else: only declared
+ * mappings exist, and every wiring mistake that can be seen at startup stops
+ * the boot with an actionable message.
  */
 class RpcExportWiringTest {
 
@@ -42,6 +43,29 @@ class RpcExportWiringTest {
 
     public static class OtherHandlers {
         public String charge(String id) { return "charged:" + id; }
+    }
+
+    /** Counts its own calls, so the test can see handler identity across calls. */
+    public static class Counter {
+        private int hits;
+
+        public synchronized String next() { return "hit-" + (++hits); }
+    }
+
+    /** Handler with a dependency: only container resolution can build it. */
+    public static class InjectedHandlers {
+        private final Counter counter;
+
+        @Inject
+        public InjectedHandlers(Counter counter) { this.counter = counter; }
+
+        public String hit() { return counter.next(); }
+    }
+
+    /** Two public methods with one name: the positional wire cannot split them. */
+    public static class OverloadedHandlers {
+        public String pick(String a) { return a; }
+        public String pick(String a, String b) { return a + b; }
     }
 
     private AppRuntime app;
@@ -81,14 +105,24 @@ class RpcExportWiringTest {
     }
 
     @Test
-    void handlersRegisterOnTheContainerBus() {
-        app = run(new UserExports());
+    void endpointServesTheContainerResolvedHandler() throws Exception {
+        app = run(new ModuleEx() {
+            @Override
+            public void bind(Binder binder) {
+                binder.bind(Counter.class);
+                binder.bind(InjectedHandlers.class);
+                binder.contribute(RpcExport.class)
+                    .add(RpcExport.of("count", InjectedHandlers.class));
+            }
+        });
+        pointDiscoveryAt(app, "target");
 
-        // The invariant the hand-wired bus could not guarantee: the route
-        // dispatches on the very bus the container hands out, so a local-first
-        // client and the endpoint can never look at different buses.
-        assertTrue(app.get(CallBus.class).handles("user.greet"),
-            "the export must register its handler on the container's CallBus");
+        var caller = app.get(RemoteCaller.class);
+        // Constructor injection happened (the handler has no default constructor)
+        // and both calls reached the same container-managed instance: the
+        // endpoint serves the service, not a per-request copy.
+        assertEquals("hit-1", caller.invoke("target", "count", "hit", List.of(), String.class));
+        assertEquals("hit-2", caller.invoke("target", "count", "hit", List.of(), String.class));
     }
 
     @Test
@@ -117,8 +151,9 @@ class RpcExportWiringTest {
 
     @Test
     void duplicateMappingFailsStartup() {
-        // Two declarations of one mapping would silently hot-swap handlers on
-        // the bus (register replaces per method), so it stops startup instead.
+        // Two declarations of one mapping would leave the second handler
+        // unreachable (the first one owns the name), so it stops startup
+        // instead of silently serving one of them.
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
             run(new UserExports(), new ModuleEx() {
                 @Override
@@ -131,6 +166,24 @@ class RpcExportWiringTest {
 
         assertTrue(chainMessages(failure).contains("exported twice"),
             "the failure must name the collision, got: " + chainMessages(failure));
+    }
+
+    @Test
+    void overloadedHandlerMethodFailsStartup() {
+        // Positional arguments cannot disambiguate overloads: serving one of
+        // them silently would be a coin flip, so the boot stops instead.
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
+            run(new ModuleEx() {
+                @Override
+                public void bind(Binder binder) {
+                    binder.bind(OverloadedHandlers.class);
+                    binder.contribute(RpcExport.class)
+                        .add(RpcExport.of("picky", OverloadedHandlers.class));
+                }
+            }));
+
+        assertTrue(chainMessages(failure).contains("overloads"),
+            "the failure must explain the positional contract, got: " + chainMessages(failure));
     }
 
     @Test

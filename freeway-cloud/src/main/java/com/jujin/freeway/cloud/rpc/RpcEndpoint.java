@@ -1,10 +1,11 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
-import com.jujin.freeway.ioc.CallBus;
 import java.io.IOException;
+import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,20 +15,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Server side of the remote-CallBus bridge: serves
- * {@code POST /rpc/{mapping}/{method}} by dispatching on the local
- * {@link CallBus}, so a remote call behaves exactly like a local one inside the
- * serving JVM — including in-transaction semantics.
+ * Server side of remote invocation: serves
+ * {@code POST /rpc/{mapping}/{method}} by invoking the exported handler
+ * directly, so a remote call runs in the serving JVM like any other method
+ * call — in whatever transaction context the request thread is in.
  *
  * <p><b>Applications do not use this class.</b> They declare what to expose
- * with an {@link RpcExport} contribution; the framework contributes the route,
- * resolves the handlers and registers them on the container's bus (see
- * {@code RpcExportHook}). This class is the protocol: version check, export
- * gate, argument decoding, dispatch and the exception boundary. Its two entries
- * exist for the two assemblies that need a route without the module:
- * {@link #route} for a standalone {@code WebServer} (an ext engine's
- * {@code RouteIndex}, a custom mount), and {@link #exportsRoute} for the
- * framework's own wildcard route.
+ * with an {@link RpcExport} contribution; the framework contributes the route
+ * and resolves the handlers (see {@code RpcExportHook}). This class is the
+ * protocol: version check, handler lookup, argument decoding, dispatch and the
+ * exception boundary. Its two entries exist for the two assemblies that need a
+ * route without the module: {@link #route} for a standalone {@code WebServer}
+ * (an ext engine's {@code RouteIndex}, a custom mount) and {@link #exportsRoute}
+ * for the framework's own wildcard route.
  */
 public final class RpcEndpoint {
 
@@ -37,17 +37,18 @@ public final class RpcEndpoint {
 
     /**
      * A route serving one mapping at its own literal path — the assembly for
-     * callers that own a bus and a codec already (standalone servers, ext
+     * callers that own the handler instance already (standalone servers, ext
      * engines, a custom mount). The application path is the {@link RpcExport}
      * contribution; this is the composition escape hatch.
      */
-    public static Route route(RpcExport export, CallBus callBus, JsonCodec codec) {
+    public static Route route(RpcExport export, Object handler, JsonCodec codec) {
         Objects.requireNonNull(export, "export");
-        Objects.requireNonNull(callBus, "callBus");
+        Objects.requireNonNull(handler, "handler");
         Objects.requireNonNull(codec, "codec");
+        RpcTarget target = RpcTarget.of(export, handler);
         return Route.post(
             RpcPaths.routePattern(export.mapping()),
-            ctx -> serve(ctx, export.mapping(), export.propagateMessage(), callBus, codec));
+            ctx -> serve(ctx, export.mapping(), target, codec));
     }
 
     /**
@@ -64,20 +65,20 @@ public final class RpcEndpoint {
      * The protocol body, shared by both entries: version check, handler gate,
      * positional-argument decode, dispatch, exception boundary.
      */
-    static void serve(HttpContext ctx, String mapping, boolean propagateMessage,
-                      CallBus callBus, JsonCodec codec) throws IOException {
+    static void serve(HttpContext ctx, String mapping, RpcTarget target, JsonCodec codec)
+            throws IOException {
         String rpcVersion = ctx.header(RemoteCaller.VERSION_HEADER).orElse(null);
         if (!RemoteCaller.VERSION.equals(rpcVersion)) {
             reject(ctx, codec, 400, "unsupported rpc version: " + rpcVersion);
             return;
         }
         String method = ctx.pathVar(RpcPaths.METHOD_VAR).orElse("");
-        String topic = mapping + "." + method;
-        // The mapping was validated at declaration time and the gate already ran,
-        // so anything the bus does not know is a missing method, not a missing
-        // export; the bus stays the authority on what is handled.
-        if (!callBus.handles(topic)) {
-            reject(ctx, codec, 404, "no handler for topic " + topic);
+        // The export table is the authority on what is reachable: an unexported
+        // mapping never gets here, and an unsupported method name is a 404 —
+        // the same answer as "nobody exports that name".
+        MethodHandle handle = target.method(method);
+        if (handle == null) {
+            reject(ctx, codec, 404, "no handler for topic " + mapping + "." + method);
             return;
         }
 
@@ -90,20 +91,17 @@ public final class RpcEndpoint {
             return;
         }
         try {
-            Object result = callBus.call(topic, List.of(args)).toCompletableFuture().join();
+            Object result = MethodHandleUtils.invokeOn(handle, target.handler(), args);
             if (result == null) {
                 ctx.send(200, "");
             } else {
                 ctx.setHeader("Content-Type", "application/json");
                 ctx.send(200, codec.toJson(result));
             }
-        } catch (java.util.concurrent.CompletionException e) {
-            Throwable cause = e.getCause() == null ? e : e.getCause();
-            encodeBusinessFailure(ctx, codec, mapping, propagateMessage, cause);
-        } catch (RuntimeException e) {
-            // Inline dispatch surface: DeadCall raced past handles(), or an
-            // advice failed before reaching the handler.
-            encodeBusinessFailure(ctx, codec, mapping, propagateMessage, e);
+        } catch (Throwable e) {
+            // Handler failures (business or otherwise) never escape as a 500:
+            // the class crosses the boundary, the message only on request.
+            encodeBusinessFailure(ctx, codec, mapping, target.propagateMessage(), e);
         }
     }
 

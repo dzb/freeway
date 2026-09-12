@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.EventBus;
 
 final class Shutdown {
@@ -20,11 +19,11 @@ final class Shutdown {
     private final Set<Object> preDestroyed = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Object> closed = Collections.newSetFromMap(new IdentityHashMap<>());
     /**
-     * Container-managed message services ({@link EventBus}, {@link CallBus}),
+     * The container-managed message service ({@link EventBus}),
      * closed only after every lifecycle callback has run: {@code @PreDestroy}
-     * code may still publish event and make calls (the documented "look up
-     * services during close" contract), and a bus closed mid-drain would turn
-     * those into failures that abort the whole shutdown.
+     * code may still publish events (the documented "look up services during
+     * close" contract), and a bus closed mid-drain would turn those into
+     * failures that abort the whole shutdown.
      */
     private final List<AutoCloseable> deferredMessageServices = new ArrayList<>();
 
@@ -107,7 +106,6 @@ final class Shutdown {
                         // still publish); arm order is load-bearing and
                         // compiler-checked — AutoCloseable last.
                         case EventBus bus -> deferredMessageServices.add(bus);
-                        case CallBus bus -> deferredMessageServices.add(bus);
                         case AutoCloseable closeable -> closeable.close();
                         default -> {}
                     }

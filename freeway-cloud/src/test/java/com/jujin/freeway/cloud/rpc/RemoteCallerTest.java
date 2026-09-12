@@ -17,7 +17,6 @@ import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import java.util.List;
@@ -26,9 +25,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Contract tests for the remote-CallBus bridge: a real server container
- * registers CallBus handlers and exports them via {@link RpcEndpoint}; the
- * test drives {@link RemoteCaller} against it over HTTP (design doc §8-C).
+ * Wire contract tests for remote invocation: a real server container declares
+ * {@link RpcExport RPC exports} (the framework resolves the handlers and serves
+ * them through {@link RpcEndpoint}); the test drives {@link RemoteCaller}
+ * against it over HTTP (design doc §8-C).
  */
 class RemoteCallerTest {
 
@@ -39,10 +39,10 @@ class RemoteCallerTest {
     }
 
     /**
-     * Exposes the server's mappings the application way: declare the exports,
-     * and let the framework resolve the handlers from the container and
-     * register them on the container's bus. Nothing here holds a bus, a codec
-     * or a route — that is the point of the export declaration.
+     * Exposes the server's mappings the application way: bind the handlers and
+     * declare the exports; the framework resolves them from the container and
+     * serves them. Nothing here holds a handler, a codec or a route — that is
+     * the point of the export declaration.
      */
     static class RpcExportModule implements ModuleEx {
         @Override
@@ -57,8 +57,8 @@ class RemoteCallerTest {
     }
 
     /** Server-side handlers — a plain object, no interface required.
-     *  Must be public: CallBus reflective dispatch honors module access rules
-     *  even when the registered instance comes through a lambda/hook. */
+     *  Must be public: reflective dispatch through method handles honors
+     *  module access rules even when the instance comes from the container. */
     public static class Handlers {
         public Greeting greet(String name) { return new Greeting("hi " + name); }
         public int add(int a, int b) { return a + b; }
@@ -83,7 +83,7 @@ class RemoteCallerTest {
         caller = server.get(RemoteCaller.class);   // framework-bound, not hand-wired
 
         ServiceRegistry registry = server.get(ServiceRegistry.class);
-        // The bridge itself is served by the same app here; in production the
+        // The provider is served by the same app here; in production the
         // consumer discovers the *provider's* instances. Same mechanics either way.
         registry.register(ServiceInstance.of(
             "target", "i1",
@@ -96,8 +96,6 @@ class RemoteCallerTest {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
         System.clearProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT);
     }
-
-    /** Resolves the test app's own HTTP server as the RPC transport target. */
 
     @Test
     void roundTripReturnsDeserializedValue() {
@@ -171,8 +169,8 @@ class RemoteCallerTest {
 
     @Test
     void exportGateStaysPerMappingPrefix() {
-        // order.charge exists, user.charge does not: a sibling's topic must not
-        // become reachable just because it lives on the same bus.
+        // order.charge exists, user.charge does not: a sibling mapping's method
+        // must not become reachable under another mapping's name.
         CloudException ex = assertThrows(CloudException.class, () ->
             caller.invoke("target", "user", "charge", List.of("9"), String.class));
         assertEquals(404, ex.status());

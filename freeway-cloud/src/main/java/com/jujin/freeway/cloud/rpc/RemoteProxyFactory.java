@@ -1,170 +1,103 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.ioc.CallBus;
-import com.jujin.freeway.ioc.DeadCallException;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletionException;
 
 /**
- * Typed consumer proxy that can resolve CallBus calls locally, remotely, or
- * both (design doc §3.3). The fluent builder is explicit about the mode —
- * there is no silent default.
+ * Typed consumer client for a remote mapping: every interface method becomes
+ * one {@code POST /rpc/{mapping}/{method}} call, with the arguments carried
+ * positionally as a JSON array.
  *
  * <pre>{@code
- * UserApi api = RemoteProxyFactory.of(callBus, remoteCaller)
- *     .serviceId("user")     // required for remote dispatch
- *     .mapping("user")       // call-topic prefix
- *     .localFirst()          // or .remoteOnly()
- *     .build(UserApi.class);
+ * binder.bind(UserApi.class).to(container -> RemoteProxyFactory
+ *     .of(container.get(RemoteCaller.class))
+ *     .serviceId("user-service")   // discovery id of the serving instance
+ *     .mapping("user")             // call topic prefix the provider exported
+ *     .build(UserApi.class));
  * }</pre>
  *
- * <p><b>localFirst</b>: try the local CallBus slot first — same-process
- * modules skip serialization entirely; a {@link DeadCallException} (no local
- * provider) transparently falls through to the remote caller. <b>remoteOnly</b>:
- * every call goes over the wire. Both modes preserve CallBus positional-arg
- * semantics; Object methods (toString/hashCode/equals) are answered locally
- * and never dispatched.</p>
+ * <p>Binding the client once at the composition root is the intended shape:
+ * call sites stay {@code @Inject UserApi} and never learn whether the
+ * implementation is in-process or remote — that decision belongs to the
+ * composition (bind the local implementation, or this client), which is also
+ * why the interface can be shared without the modules depending on each
+ * other.</p>
  *
- * <p>Remote failures surface unchanged: {@link CloudException} for transport
- * failures, and the {@link RemoteInvocationException} carried as its cause
- * when the remote handler threw — callers keep one honest catch shape per
- * failure class. {@link #timeout(Duration)} bounds the whole call, retries
- * included; without it only the configured request-timeout applies.</p>
+ * <p>Object methods ({@code toString}/{@code hashCode}/{@code equals}) are
+ * answered locally and never dispatched. Remote failures surface unchanged:
+ * {@link CloudException} for transport failures, with
+ * {@link RemoteInvocationException} as its cause when the remote handler threw
+ * a business failure. {@link #timeout(Duration)} bounds a call end to end,
+ * retries included; without it the transport's configured request timeout
+ * applies.</p>
  *
- * <p>Ambiguous transport outcomes (timeout, mid-flight I/O, 5xx) are
- * replayed only for operations the interface marks {@link Idempotent} —
- * on the method or the whole interface. Unmarked operations fail after the
- * first ambiguous outcome, because the remote handler may already have
- * applied it.</p>
+ * <p>Ambiguous transport outcomes (timeout, mid-flight I/O, 5xx) are replayed
+ * only for operations the interface marks {@link Idempotent} — on the method
+ * or on the whole interface. Unmarked operations fail after the first
+ * ambiguous outcome, because the remote handler may already have applied it.</p>
  */
 public final class RemoteProxyFactory {
 
-    /** Dispatch mode — explicit, no default. */
-    public enum Mode { LOCAL_FIRST, REMOTE_ONLY }
-
-    private final CallBus callBus;
     private final RemoteCaller remote;
     private String serviceId;
     private String mapping;
-    private Mode mode;
     private Duration timeout;
 
-    private RemoteProxyFactory(CallBus callBus, RemoteCaller remote) {
-        this.callBus = callBus;
+    private RemoteProxyFactory(RemoteCaller remote) {
         this.remote = remote;
     }
 
-    /**
-     * Starts a factory. Either dependency may be {@code null} when its mode
-     * will not be used — but at least one must be present.
-     */
-    public static RemoteProxyFactory of(CallBus callBus, RemoteCaller remote) {
-        if (callBus == null && remote == null) {
-            throw new IllegalArgumentException(
-                "at least one of callBus/remoteCaller is required");
-        }
-        return new RemoteProxyFactory(callBus, remote);
+    /** Starts a client bound to a caller — the transport the framework wires. */
+    public static RemoteProxyFactory of(RemoteCaller remote) {
+        return new RemoteProxyFactory(Objects.requireNonNull(remote, "remote"));
     }
 
-    /** Discovery id of the remote service (required for remote dispatch). */
+    /** Discovery id of the serving service. */
     public RemoteProxyFactory serviceId(String serviceId) {
         this.serviceId = Objects.requireNonNull(serviceId, "serviceId");
         return this;
     }
 
-    /** Call-topic prefix shared with the provider (e.g. {@code "user"}). */
+    /** Call-topic prefix the provider exported (e.g. {@code "user"}). */
     public RemoteProxyFactory mapping(String mapping) {
         this.mapping = Objects.requireNonNull(mapping, "mapping");
         return this;
     }
 
-    /** Local slot first, remote on {@code DeadCall}. Requires a non-null CallBus. */
-    public RemoteProxyFactory localFirst() {
-        this.mode = Mode.LOCAL_FIRST;
-        return this;
-    }
-
-    /** Every invocation goes over the wire; the CallBus is never consulted. */
-    public RemoteProxyFactory remoteOnly() {
-        this.mode = Mode.REMOTE_ONLY;
-        return this;
-    }
-
     /**
-     * End-to-end deadline for every proxied remote call (all retries
-     * included). Without it a proxy is bounded only by the transport's
-     * per-request timeout — a call can occupy a thread for request-timeout ×
-     * attempts plus backoff.
+     * End-to-end deadline for every proxied call (all retries included).
+     * Without it a call is bounded only by the transport's per-request
+     * timeout — it can occupy a thread for request-timeout × attempts plus
+     * backoff.
      */
     public RemoteProxyFactory timeout(Duration timeout) {
         this.timeout = timeout;
         return this;
     }
 
-    /** Builds the proxy. Validates the mode/builder combination up front. */
+    /** Builds the client. Validates the declaration up front. */
     public <T> T build(Class<T> api) {
         Objects.requireNonNull(api, "api");
         if (!api.isInterface()) {
             throw new IllegalArgumentException(
                 "RemoteProxyFactory can only proxy interfaces: " + api.getName());
         }
-        if (mode == null) {
+        if (serviceId == null) {
             throw new IllegalStateException(
-                "Choose a dispatch mode: localFirst() or remoteOnly()");
-        }
-        if (mode == Mode.LOCAL_FIRST && callBus == null) {
-            throw new IllegalStateException(
-                "localFirst() requires a CallBus — construct the factory with of(callBus, remote)");
-        }
-        if (mode == Mode.REMOTE_ONLY && remote == null) {
-            throw new IllegalStateException(
-                "remoteOnly() requires a RemoteCaller — construct the factory with of(callBus, remote)");
-        }
-        if (mode == Mode.REMOTE_ONLY && serviceId == null) {
-            throw new IllegalStateException(
-                "remoteOnly() requires serviceId(...) — the remote target must be named");
-        }
-        if (mode == Mode.LOCAL_FIRST && remote != null && serviceId == null) {
-            // The remote leg is only reached after a local DeadCall — but the
-            // misconfiguration is knowable now, and surfacing it at first
-            // fallback would present an unrelated "serviceId must not be
-            // blank" as a runtime transport failure.
-            throw new IllegalStateException(
-                "localFirst() with a RemoteCaller fallback requires serviceId(...) "
-                    + "— the remote target must be named");
+                "serviceId(...) is required — the remote target must be named");
         }
         if (mapping == null) {
             throw new IllegalStateException("mapping(...) is required");
         }
-        InvocationHandler handler = mode == Mode.LOCAL_FIRST
-            ? this::localFirstDispatch
-            : this::remoteOnlyDispatch;
         return api.cast(Proxy.newProxyInstance(
-            api.getClassLoader(), new Class<?>[]{api}, handler));
+            api.getClassLoader(), new Class<?>[]{api}, this::dispatch));
     }
 
-    private Object localFirstDispatch(Object proxy, Method method, Object[] args) throws Throwable {
-        if (method.getDeclaringClass() == Object.class) {
-            return objectMethod(proxy, method, args);
-        }
-        try {
-            return callBus.call(topic(method), asList(args))
-                .toCompletableFuture().join();
-        } catch (CompletionException e) {
-            if (e.getCause() instanceof DeadCallException && remote != null) {
-                return remoteDispatch(method, args);
-            }
-            throw e.getCause() == null ? e : e.getCause();
-        }
-    }
-
-    private Object remoteOnlyDispatch(Object proxy, Method method, Object[] args) throws Throwable {
+    private Object dispatch(Object proxy, Method method, Object[] args) throws Throwable {
         if (method.getDeclaringClass() == Object.class) {
             return objectMethod(proxy, method, args);
         }
@@ -186,16 +119,13 @@ public final class RemoteProxyFactory {
 
     private Object objectMethod(Object proxy, Method method, Object[] args) {
         return switch (method.getName()) {
-            case "toString" -> getClass().getSimpleName() + "{mapping=" + mapping + "}";
+            case "toString" -> getClass().getSimpleName()
+                + "{serviceId=" + serviceId + ", mapping=" + mapping + "}";
             case "hashCode" -> System.identityHashCode(proxy);
             case "equals" -> args != null && args.length > 0 && proxy == args[0];
             default -> throw new IllegalStateException(
                 "Unsupported Object method: " + method.getName());
         };
-    }
-
-    private String topic(Method method) {
-        return mapping + "." + method.getName();
     }
 
     private static List<Object> asList(Object[] args) {

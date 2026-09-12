@@ -253,8 +253,8 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         InvocationContext ctx = InvocationContext.current().orElse(null);
         // A task still queued when close() shuts the executor down is dropped
         // and would never complete on its own — so the future is registered
-        // under close()'s monitor BEFORE the work is submitted, mirroring
-        // CallBus's "no caller waits forever on shutdown".
+        // under close()'s monitor BEFORE the work is submitted: no caller
+        // waits forever on shutdown.
         java.util.concurrent.CompletableFuture<CloudResponse> future =
             new java.util.concurrent.CompletableFuture<>();
         synchronized (this) {

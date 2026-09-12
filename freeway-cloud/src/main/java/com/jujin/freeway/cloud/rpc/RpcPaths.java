@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 /**
- * Wire-path arithmetic shared by the remote-CallBus consumer
+ * Wire-path arithmetic shared by the RPC consumer
  * ({@link RemoteCaller}) and server endpoint ({@code RpcEndpoint}).
  * Kept in one place so the two sides cannot drift apart.
  */

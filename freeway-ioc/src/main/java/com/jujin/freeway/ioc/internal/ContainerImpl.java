@@ -8,7 +8,6 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
-import com.jujin.freeway.ioc.CallBus;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
@@ -136,7 +135,6 @@ public final class ContainerImpl implements Container {
         // builtin. Their close is deferred past every lifecycle callback
         // (see Shutdown); a bus that was never resolved has nothing to close.
         registerBuiltinLazy(EventBus.class, EventBus::new, "EventBus");
-        registerBuiltinLazy(CallBus.class, CallBus::new, "CallBus");
         loadAll(modules);
         LOG.info("Loaded {} module(s):{}", loadedModules.size(), moduleTreeLog());
     }
@@ -312,7 +310,7 @@ public final class ContainerImpl implements Container {
                 return;
             }
             LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
-            // The container-managed message services (EventBus, CallBus) are
+            // The container-managed message service (EventBus) is
             // closed only after every lifecycle callback has run (Shutdown
             // defers them), so @PreDestroy code may still publish event and
             // make calls during the drain without the buses rejecting them.

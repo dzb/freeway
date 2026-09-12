@@ -1,7 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
 /**
- * Thrown when a remote CallBus handler completed but threw a business
+ * Thrown when a remote handler completed but threw a business
  * exception. Rebuilt from the {@code X-RPC-Exception} / {@code X-RPC-Message}
  * headers — the original class is deliberately <b>not</b> reconstructed:
  * the class may not exist on this side, and faking an inheritance chain
