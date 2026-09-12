@@ -1,6 +1,6 @@
 ---
 name: freeway-dev
-description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、subModules、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
+description: 基于 Freeway 框架构建 Java 应用。当用户提到 Freeway、FreewayApp、ModuleEx、ModuleNode、IoC 容器、DbModule、HttpModule、AppBuilder、路由、ORM、EventBus、Defer、ScopedCache、HealthCheck、HealthFilter、PooledConnection、PostgresDialect、SchemaEntity、freeway-ext 等框架相关术语时触发。涵盖模块编写、依赖注入、HTTP API、数据库操作、事务、事件总线、类型转换、延迟执行、验证、连接池、数据库方言、Schema 迁移等所有方面。同时也适用于回答 Freeway API 用法、项目结构、最佳实践和代码生成类问题。
 ---
 
 # Freeway 开发技能
@@ -867,11 +867,6 @@ Schema.ensure(db, User.class, Post.class);
 
 ```java
 public class AppModule implements ModuleEx {
-    // 子模块以数据声明：容器先解析整张图，再按序 bind
-    public List<ModuleEx> subModules() {
-        return List.of(new DbModule());
-    }
-
     public void bind(Binder b) {
         // 注册实体类 → 启动时自动建表
         b.contribute(SchemaEntity.class)

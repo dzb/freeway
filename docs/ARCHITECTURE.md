@@ -26,16 +26,19 @@ freeway-commons         zero deps
 
 - **`Container`** — IoC boundary only: `get(type[, id | markers])`,
   `isActiveBinding`, `extension`, `create` (a factory — full injection without
-  caching), `modules()` (the loaded module tree in bind order), `close()`.
-  Created via `Freeway.create(ModuleEx...)`.
+  caching), `moduleTree()` (the loaded `ModuleNode`: structure via `tree()`,
+  bind order via `bindOrder()`), `close()`.
+  Created via `Freeway.create(ModuleEx...)` or `Freeway.create(ModuleNode)`.
 - **`AppRuntime`** — application boundary above Container: owns config,
   profiles, startup/shutdown and runtime hooks. Created via
   `FreewayApp.run(args, ModuleEx...)`.
-- **`ModuleEx`** — a module declares its bindings in `bind(Binder)` and its
-  composition in `subModules()`, a stable view the framework reads more than
-  once. The container resolves the whole tree before binding anything: a module
-  binds before its sub-modules, siblings in declaration order. The same
-  instance reached twice binds once; two instances of one class fail startup.
+- **`ModuleEx`** — a leaf: it declares its bindings in `bind(Binder)` and
+  nothing about composition. **`ModuleNode`** is the composition — an immutable
+  tree built at the entry point (`app` / `group` / `leaf` / `of`), validated
+  while it is built: the same instance reached twice collapses, two instances of
+  one module class fail with both paths named, cycles are unrepresentable. The
+  container binds its pre-order (parents before children, siblings in
+  declaration order) and holds the value it bound.
 - **`ServiceId`** is intentionally not a public type — service ids are plain
   strings, normalized internally by `ServiceIds`.
 - **Scopes** are declared only through `bind().scope(...)`: `SINGLETON`,

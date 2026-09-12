@@ -107,11 +107,6 @@ Container container = Freeway.create(
 
 ```java
 public final class App implements ModuleEx {
-    @Override
-    public List<ModuleEx> subModules() {
-        return List.of(new HttpModule());
-    }
-
     public void bind(Binder b) {
         b.contribute(Route.class)
             .add(Route.get("/", ctx ->

@@ -9,8 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`Container.modules()`（freeway-ioc，破坏性）** — 返回容器加载的模块树（绑定顺序的只读
-  快照）；启动日志随之输出缩进树形。自定义 `Container` 实现需补上该方法。
+- **`TreeNode<T>`（freeway-commons）** — 不可变树值：`value` / `children` + 迭代式
+  `preOrder()` / `levelOrder()`（含起始节点、耗尽抛 `NoSuchElementException`）+ `size()` /
+  `height()` / `isLeaf()`。深树不递归（显式栈），没有父指针、没有 `add/remove/set`，因此
+  环不可表达、共享无需 `clone`；相等性是结构相等，节点身份由调用方按 `preOrder()` 建索引
+  自行判定。它服务模块组合，也可用于任何只读层次结构（配置键树、路由清单）。
+- **`ModuleNode`（freeway-ioc）** — 模块组合的值类型：`app(name, …)` 应用根、`group(name, …)`
+  命名分组、`leaf(module)`、`of(module, …)`，外加 `of(TreeNode<ModuleEx>)` 接管已有片段。
+  `bindOrder()` 给出绑定序（前序），`tree()` 给出结构，`classes()` 给 SPI 发现看"哪些
+  class 已在树里"，`isApplication()` 让入口复用调用方建好的根。
 
 ### Changed
 
@@ -261,10 +268,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   跨进程调用用 `RemoteProxyFactory`（见上条）。`EventBus` 的消息域描述随之从三通道改为两通道。
   设计文档 `freeway-remote-callbus-design.md` 更名为 `freeway-cloud-rpc-design.md` 并重写立场章节。
 - **`Binder.install(ModuleEx)` 移除（freeway-ioc，破坏性）** — 模块组合不再通过 `bind()`
-  内的命令式安装表达，改为在 `ModuleEx.subModules()` 中声明（返回稳定的子模块视图，通常
-  是字段 + getter）。迁移：`b.install(new HttpModule())` → 覆写 `subModules()` 返回
-  `List.of(new HttpModule())`。动机：安装式组合让模块图成为 `bind()` 的副作用，框架的其余
-  部分（装配校验、SPI 去重、启动日志、测试）都看不到真实的模块集合。
+  内的命令式安装表达。动机：安装式组合让模块图成为 `bind()` 的副作用，框架的其余部分
+  （装配校验、SPI 去重、启动日志、测试）都看不到真实的模块集合。期间一度改为
+  `ModuleEx.subModules()`，最终定为**入口构建的 `ModuleNode` 树**（见下一条）。
+- **`ModuleEx.subModules()` 与 `ModuleTree` 移除：模块组合成为入口构建的树（freeway-ioc，
+  破坏性）** — `ModuleEx` 只剩 `bind(Binder)`（外加展示用的 `name()` 默认方法），模块是
+  叶子；组合由入口代码构建：`ModuleNode.app("order-service", ModuleNode.leaf(new
+  OrderModule()), CloudModules.standard())`，容器绑定它的前序并持有它。迁移：
+  `b.install(new HttpModule())` / `subModules()` → `ModuleNode.app("app",
+  ModuleNode.leaf(new HttpModule()))`（`FreewayApp.run(new HttpModule())` 是同一件事的扁平
+  写法：应用根的直接孩子）。动机：`subModules()` 让组合成为框架**回调用户代码**的方法
+  （每次启动被读多次，于是要靠"必须是稳定视图、请用字段 + getter"的契约去约束），而且伞
+  模块因此拥有自己的子模块、应用无法替换其中一个；树是值——构建一次、装配处可见、片段可
+  复用、校验落在构建它的那行代码上。同一实例重复到达仍折叠（共享片段是正常用法），同
+  class 两个实例仍启动失败，但错误现在点名两条路径（`app → web → HttpModule`）。绑定序
+  ＝前序，确定性但**不再是契约**：需要时序请用 `RuntimeHook` 锚点或贡献自己的 `order()`。
+  启动日志与 `Container.moduleTree()` 读的是同一份值，`Container.modules()`（同轮引入，未
+  发布）随之删除。
+- **`CloudModule` 删除，改为 `CloudModules.standard()` 片段（freeway-cloud，破坏性）** —
+  片段是 `ModuleNode`，可以整包放进树、嵌进自己的分组，或者只取其中一个模块（`ModuleNode
+  .leaf(new CloudRpcModule())`）——这是伞模块做不到的。迁移：`new CloudModule()` →
+  `CloudModules.standard()`；与普通模块混装用 `FreewayApp.of(a).add(CloudModules.standard())
+  .start()`。
 - **`AppConfig.snapshot()` 移除（freeway-boot，破坏性）** — 级联不再对外暴露 map 形态：
   `SymbolSource` 是唯一读取入口，`AppConfig` 收窄为 `profiles()` / `providers()` /
   `close()`。迁移：`config.snapshot().get(k)` →

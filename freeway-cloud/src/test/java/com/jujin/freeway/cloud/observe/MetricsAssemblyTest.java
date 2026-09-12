@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Metrics wiring under assembly: the standard {@code CloudModule} must serve
+ * Metrics wiring under assembly: the standard {@code CloudModules.standard()} bundle must serve
  * {@code /metrics} from the same registry the {@code Metrics} SPI records
  * into (both roles bound to one instance — the snapshot view is never derived
  * from a container proxy by instanceof), and a replacement backend installs

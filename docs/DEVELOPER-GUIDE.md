@@ -1545,10 +1545,6 @@ Schema.ensure(db, User.class, Post.class);
 
 ```java
 public class AppModule implements ModuleEx {
-    public List<ModuleEx> subModules() {
-        return List.of(new HttpModule(), new DbModule());
-    }
-
     public void bind(Binder b) {
         // Register entities for auto-DDL on startup
         b.contribute(SchemaEntity.class)
@@ -1700,11 +1696,22 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Cloud (`freeway-cloud`)
 
-**Installing the module is the integration.** `new CloudModule()` composes
-context propagation, secrets, discovery, remote invocation, observability,
-resilience, health and object storage; the event mesh is the one capability you
-add explicitly (`new CloudEventModule()`), because it opens a network listener
-of its own. Everything below is then wired without further application code.
+**Placing the bundle in the tree is the integration.** `CloudModules.standard()`
+is a composition fragment holding context propagation, secrets, discovery,
+remote invocation, observability, resilience, health and object storage; the
+event mesh is the one capability you add explicitly (`new CloudEventModule()`),
+because it opens a network listener of its own. Everything below is then wired
+without further application code — and because a fragment is data, taking one
+module out of it is ordinary composition:
+
+```java
+FreewayApp.run(ModuleNode.app("order-service",
+    ModuleNode.leaf(new OrderModule()),
+    CloudModules.standard()));                       // the whole bundle
+
+FreewayApp.run(ModuleNode.app("order-service",
+    ModuleNode.leaf(new CloudRpcModule())));          // just the client
+```
 
 **Three ways an application touches the module:**
 

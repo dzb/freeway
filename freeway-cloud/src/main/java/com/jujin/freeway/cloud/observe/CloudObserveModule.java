@@ -34,9 +34,9 @@ import com.jujin.freeway.ioc.annotation.Marker;
  * {@code primary()} binding per type, so an external metrics backend cannot
  * add a second primary alongside this module (that is an
  * {@code AmbiguousBindingException} at first resolution). To use a backend,
- * install it <i>instead of</i> this module (CloudModule is the umbrella that
- * always installs it — use the cloud sub-modules without
- * CloudObserveModule for subset assembly). The backend binds
+ * place the modules you want instead: {@code CloudModules.standard()} is a
+ * fragment, so leaving this one out is ordinary composition
+ * ({@code ModuleNode.of(new CloudRpcModule())} and friends). The backend binds
  * {@code Metrics.class} as {@code primary()} and supplies its own
  * {@code /metrics} route (and its own export view, e.g. a
  * {@link MetricsSnapshot} binding) — nothing in this module is auto-followed.

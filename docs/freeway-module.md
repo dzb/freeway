@@ -6,95 +6,113 @@ Module is the unit of composition in Freeway. `ModuleEx` is the Java type name u
 
 - binds services
 - contributes extensions
-- composes with other modules
 
 `bind()` declares. It does not start work. Initialization happens when services are resolved or when runtime hooks fire.
 
-## Typical Shapes
-
-### Application module
+A module is a **leaf**: it knows nothing about how the application is composed. Grouping lives in the composition itself — a `ModuleNode` tree built at the entry point and handed to the container as a value.
 
 ```java
-public final class AppModule implements ModuleEx {
-    @Override
-    public List<ModuleEx> subModules() {
-        return List.of(new HttpModule(), new DbModule());
-    }
-
+public final class OrderModule implements ModuleEx {
     @Override
     public void bind(Binder b) {
-        b.bind(UserService.class).to(UserServiceImpl.class);
+        b.bind(OrderService.class).to(OrderServiceImpl.class);
     }
 }
-```
-
-### Library module
-
-Library modules keep the public API independent of IoC and expose one integration module:
-
-```text
-library
-  ├─ public API types
-  └─ MyLibModule -> integrates with Freeway
 ```
 
 ## Composing Modules
 
-### Sub-modules are data: `subModules()`
+### The module tree is a value
 
-A module that groups others — an umbrella bundle — returns them from
-`subModules()`. The container resolves the whole tree *before* binding:
-this module first, then its sub-modules depth-first, siblings in declaration
-order.
+`ModuleNode` is the composition. Build it where the application is assembled, name it there, and pass it to the container:
 
 ```java
-private final List<ModuleEx> subModules = List.of(new HttpModule(), new DbModule());
+ModuleNode app = ModuleNode.app("order-service",
+    ModuleNode.leaf(new OrderModule()),
+    ModuleNode.group("web",
+        ModuleNode.leaf(new HttpModule()),
+        ModuleNode.leaf(new WebSocketModule())),
+    CloudModules.standard());          // a fragment built the same way
 
-@Override
-public List<ModuleEx> subModules() {
-    return subModules;
+FreewayApp.run(app);
+```
+
+| Factory | Meaning |
+|---|---|
+| `app(name, …)` | the application root: it names the tree and binds nothing |
+| `group(name, …)` | a named bundle node — how a library ships several modules at once |
+| `leaf(module)` | a single module, no children |
+| `of(module, …)` | a module that groups others |
+
+The flat entry points stay as sugar for "the application root's children":
+
+```java
+FreewayApp.run(new HttpModule(), new DbModule());
+// ≡ FreewayApp.run(ModuleNode.app("application",
+//       ModuleNode.leaf(new HttpModule()), ModuleNode.leaf(new DbModule())));
+```
+
+`Freeway.create(...)` (test and standalone usage) takes the same two forms. `FreewayApp.of(...)` + `.add(...)` accepts modules and fragments in any order:
+
+```java
+FreewayApp.of(new OrderModule())
+    .add(CloudModules.standard())
+    .add(new HttpModule())
+    .start();
+```
+
+### Fragments: shipping several modules at once
+
+A library that needs more than one module exposes a **fragment factory** returning a `ModuleNode` — a plain value a caller can place, nest, inspect or leave out:
+
+```java
+public final class CloudModules {
+    public static ModuleNode standard() {
+        return ModuleNode.group("freeway-cloud",
+            ModuleNode.leaf(new CloudContextModule()),
+            ModuleNode.leaf(new CloudRpcModule()),
+            /* … */);
+    }
 }
 ```
 
-`subModules()` is a **view of the composition, not a factory**: declare the
-list once (a field) and return it. The framework reads it more than once per
-startup — the entry point, to skip modules already declared here when SPI
-discovery runs, and the container, to resolve the tree — so a method that
-built a fresh list each call would start correctly but make the module set
-unobservable (`container.modules()` would report different instances than a
-caller reading `subModules()` sees).
+This is what the deleted umbrella *module* could not do. `CloudModule` was a `ModuleEx` whose `subModules()` owned its children, so an application could not replace or omit one of them (two instances of a module class are refused). A fragment is data: taking it apart is normal composition.
 
-There is deliberately no `binder.install(...)`: installing inside `bind()` made
-the module tree a side effect of call order, so nothing outside the binder
-(the application entry point, diagnostics, tests) could see what an app would
-load, and deduplication could not run before binding. Composition as data fixes
-both: `container.modules()` returns the flattened tree in bind order.
+### What construction guarantees
 
-**去重语义**（对整张图统一生效）：
+`ModuleNode` normalizes and validates while it is built — cycles are unrepresentable (a child cannot reference a node that does not exist yet), and a tree that names a module twice is refused:
 
-- 同一**实例**在图上被到达两次（菱形依赖，或环）只绑定一次——这也让互相引用的
-  子模块自然终止。
-- 同 **class** 的**不同实例**（如 `new HttpModule()` 两次，或某模块既是伞形的
-  子模块又被显式添加）抛 `IllegalStateException`（"declared twice"）；
-  匿名/lambda 模块没有有意义的 class 身份，只看实例身份。
-- SPI 发现只补空缺：类已经在树里（含作为子模块）就不再被发现加入——"bundle 里
-  声明 `new HttpModule()`"与"自动发现"因此不会互相冲突。
-- `FreewayApp` / `AppBuilder` 仍按 class 对**入口模块列表**去重（显式模块先注册、
-  SPI 后来者不覆盖），随后容器对合并后的整张图执行上面的规则。
+| Case | Result |
+|---|---|
+| two **instances** of one module class | `IllegalStateException` naming both paths (`app → web → HttpModule`, …) and stating the rule |
+| the same **instance** reached twice | collapsed, keeping the first placement — sharing a fragment is normal |
+| anonymous / lambda modules | compared by identity only (no meaningful class) |
+| `app` / `group` nodes | structural: they bind nothing and are exempt from the class rule |
 
-### Programmatic via `Freeway.create()` / `FreewayApp.run()`
+Failures surface where the tree is built — the assembly code — not at container startup.
+
+### The container holds the tree
 
 ```java
-Freeway.create(new HttpModule(), new DbModule(), new AppModule());
-FreewayApp.run(new HttpModule(), new DbModule(), new AppModule());
+Container c = Freeway.create(app);
+c.moduleTree();                 // the same ModuleNode the container bound
+c.moduleTree().tree();          // TreeNode<ModuleEx>: preOrder / levelOrder / size / height
+c.moduleTree().bindOrder();     // modules in binding order (pre-order)
 ```
 
-### SPI auto-discovery
+**Binding order is the tree's pre-order**: parents before children, siblings in declaration order. It is deterministic but **not a contract** — sequencing belongs to `RuntimeHook` anchors (`before`/`after` ids) and contribution `order()`, not to where a module sits in the tree. `TreeNode.levelOrder()` exists for display.
 
-Modules can be discovered automatically through the Java `ServiceLoader` SPI.
-When a library places its module class name in
-`META-INF/services/com.jujin.freeway.ioc.ModuleEx`, it is picked up at startup
-without the caller explicitly listing it.
+### Entry points
+
+```java
+Freeway.create(app);                                   // returns the Container
+FreewayApp.run(app);                                   // returns the AppRuntime
+FreewayApp.run(new String[]{"--freeway.profile=dev"}, app);
+```
+
+## SPI auto-discovery
+
+Modules can be discovered automatically through the Java `ServiceLoader` SPI. When a library places its module class name in `META-INF/services/com.jujin.freeway.ioc.ModuleEx`, it is picked up at startup without the caller explicitly listing it.
 
 For example, `freeway-db` ships with:
 
@@ -109,53 +127,36 @@ and `freeway-http` with:
 com.jujin.freeway.http.HttpModule
 ```
 
-This means an application can omit listing infrastructure modules and rely on
-discovery instead:
+Discovery **fills gaps**: it is skipped for any class the tree already declares — anywhere, fragments included — so a fragment that places `new HttpModule()` and an application with discovery on do not collide. The author's declaration wins.
 
 ```java
 AppRuntime app = FreewayApp.run(new AppModule());
 // HttpModule and DbModule are auto-discovered when on the classpath
 ```
 
-Discovery **fills gaps**: a module class already declared anywhere in the
-module tree — including as a `subModules()` entry of a bundle — is not added
-again, so a bundle that declares `new HttpModule()` and an application with
-discovery on do not collide. The author's declaration wins, the same rule that
-makes an explicitly added module beat a discovered one.
-
-Auto-discovery is enabled by default. Disable it when you want only explicitly
-added modules:
+Auto-discovery is enabled by default. Disable it when you want only the modules you placed:
 
 ```java
-AppRuntime app = FreewayApp.of(new AppModule())
-    .autoDiscovery(false)
-    .start();
+AppRuntime app = FreewayApp.of(app).autoDiscovery(false).start();
 ```
 
-Discovery fills gaps only — in the `FreewayApp` path an explicitly added module
-always takes precedence over a SPI-discovered one of the same class, and
-discovery also skips any class already declared in the module tree (a
-`subModules()` entry counts). `Freeway.create` performs no discovery at all,
-so passing two distinct instances of one module class there fails startup.
+`Freeway.create` performs no discovery at all.
 
 ## Composition Rules
 
-- Compose modules explicitly at startup.
-- SPI-discovered modules are additive — they do not replace explicit installs.
+- Compose modules explicitly at the entry point; a module never installs another module.
+- Ship a fragment factory when a library needs more than one module.
 - Bindings and contributions merge across module boundaries.
 - Ordered contributions can span modules.
 - A module should not start servers, open connections, or launch background work in `bind()`.
+- Do not rely on bind order; use hooks and contribution order for sequencing.
 
 ## Common Patterns
 
 - application modules wire the app together
-- library modules adapt standalone code to the container
+- library modules adapt standalone code to the container, plus a fragment factory for bundles
 - framework modules register infrastructure and defaults
 - config-driven modules select a concrete implementation from config or environment
-
-## Module Selection
-
-Use module selection when a library needs one of several implementations, for example selecting a SQL dialect or a connection pool based on config.
 
 ## Best Practices
 
@@ -163,3 +164,4 @@ Use module selection when a library needs one of several implementations, for ex
 - keep public library types free of IoC imports
 - use stable ids for runtime hooks and ordered contributions
 - keep module code declarative and testable
+- place a fragment once per tree: one module instance belongs to one place in one composition

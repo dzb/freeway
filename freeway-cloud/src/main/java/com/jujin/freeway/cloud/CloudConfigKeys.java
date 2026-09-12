@@ -172,7 +172,7 @@ public final class CloudConfigKeys {
      *  limiter; the fine-grained keys are ignored). {@code off} is the
      *  escape hatch for mesh takeover (the platform already retries) and
      *  failure diagnosis; it must be explicit. Honored when
-     *  CloudResilienceModule is installed — the CloudModule default. */
+     *  CloudResilienceModule is installed — the CloudModules.standard() default. */
     public static final String RPC_RESILIENCE        = PREFIX + ".rpc.resilience";
     public static final String RPC_RESILIENCE_AUTO   = "auto";
     public static final String RPC_RESILIENCE_OFF    = "off";
