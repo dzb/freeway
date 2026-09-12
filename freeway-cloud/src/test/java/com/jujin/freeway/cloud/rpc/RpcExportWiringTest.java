@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -8,7 +10,6 @@ import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.cloud.CloudHooks;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
@@ -18,6 +19,8 @@ import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
+import java.util.ArrayList;
+import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Inject;
 import java.util.List;
@@ -82,11 +85,13 @@ class RpcExportWiringTest {
 
     private AppRuntime run(ModuleEx... modules) {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
-        ModuleEx[] all = new ModuleEx[modules.length + 2];
-        all[0] = new HttpModule();
-        all[1] = new CloudModule();
-        System.arraycopy(modules, 0, all, 2, modules.length);
-        return FreewayApp.run(all);
+        List<ModuleNode> children = new ArrayList<>();
+        children.add(ModuleNode.leaf(new HttpModule()));
+        children.add(CloudModules.standard());
+        for (ModuleEx module : modules) {
+            children.add(ModuleNode.leaf(module));
+        }
+        return FreewayApp.run(ModuleNode.app("test", children.toArray(ModuleNode[]::new)));
     }
 
     private static void pointDiscoveryAt(AppRuntime app, String serviceId) {

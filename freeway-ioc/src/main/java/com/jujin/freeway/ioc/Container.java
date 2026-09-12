@@ -119,14 +119,15 @@ public interface Container extends AutoCloseable {
     <T> T create(Class<T> type);
 
     /**
-     * The module tree this container loaded, flattened into bind order: each
-     * module followed by its {@link ModuleEx#subModules() sub-modules},
-     * siblings in declaration order. A snapshot — later changes to the
-     * container do not affect it.
+     * The module tree this container loaded — the same value the container
+     * bound, not a second walk of the composition. Structure comes from
+     * {@link ModuleNode#tree()}, binding order from
+     * {@link ModuleNode#bindOrder()}: parents before children, siblings in
+     * declaration order.
      *
-     * @return the loaded modules, never null
+     * @return the loaded composition, never null
      */
-    List<ModuleEx> modules();
+    ModuleNode moduleTree();
 
     /**
      * Closes the container: runs {@code @PreDestroy} and {@code AutoCloseable}

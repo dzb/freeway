@@ -1,8 +1,9 @@
 package com.jujin.freeway.cloud.context;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
@@ -53,8 +54,7 @@ class TracePropagationTest {
 
     @Test
     void inboundExtractionAndOutboundInjectionCarryTheSameTrace() throws Exception {
-        try (AppRuntime app = FreewayApp.run(
-            new TraceModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new TraceModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
                     Endpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.WebServer.class).port()),

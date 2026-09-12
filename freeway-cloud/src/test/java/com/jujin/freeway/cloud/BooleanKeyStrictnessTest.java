@@ -29,7 +29,7 @@ class BooleanKeyStrictnessTest {
     void unreadableBooleanFailsStartupNamingTheKey() {
         System.setProperty(CloudConfigKeys.AUTH_EXTRACT_ENABLED, "maybe");
         RuntimeException failure = assertThrows(RuntimeException.class,
-            () -> FreewayApp.run(new CloudModule()));
+            () -> FreewayApp.of().add(CloudModules.standard()).start());
         assertTrue(chainMessages(failure).contains("auth.extract.enabled"),
             "the failure must name the key: " + chainMessages(failure));
         assertTrue(chainMessages(failure).contains("maybe"),
@@ -40,7 +40,7 @@ class BooleanKeyStrictnessTest {
     void readableBooleanSpellingsAreAccepted() {
         System.setProperty(CloudConfigKeys.AUTH_EXTRACT_ENABLED, "yes");
         System.setProperty(CloudConfigKeys.RPC_TRACE_ENABLED, "off");
-        try (AppRuntime app = FreewayApp.run(new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
             assertNotNull(app, "the framework's boolean vocabulary (yes/off) boots");
         }
     }

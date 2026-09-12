@@ -1,9 +1,10 @@
 package com.jujin.freeway.cloud.rpc;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.context.Baggage;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.discovery.Endpoint;
@@ -50,8 +51,7 @@ class CloudHttpClientTest {
 
     @Test
     void callsRegisteredHttpService() {
-        try (AppRuntime app = FreewayApp.run(
-            new EchoModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new EchoModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("echo", "i1",
@@ -66,8 +66,7 @@ class CloudHttpClientTest {
 
     @Test
     void asyncCallPreservesInvocationContext() throws Exception {
-        try (AppRuntime app = FreewayApp.run(
-                new HeaderEchoModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new HeaderEchoModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("echo", "i1",
@@ -86,7 +85,7 @@ class CloudHttpClientTest {
 
     @Test
     void unknownServiceThrowsNoInstance() {
-        try (AppRuntime app = FreewayApp.run(new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModules.standard()).start()) {
             CloudHttpClient client = app.get(CloudHttpClient.class);
             CloudException ex = assertThrows(CloudException.class,
                 () -> client.call("missing", CloudRequest.get("/x")));
@@ -118,7 +117,7 @@ class CloudHttpClientTest {
 
     @Test
     void unreachableInstanceThrowsRetryableConnectFailure() {
-        try (AppRuntime app = FreewayApp.run(new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModules.standard()).start()) {
             // Nothing listens on port 1 on localhost.
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("dead", "i1", Endpoint.of("http", "127.0.0.1", 1), Map.of()));
@@ -131,7 +130,7 @@ class CloudHttpClientTest {
     @Test
     void slowEndpointTimesOut() {
         System.setProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT, "200");
-        try (AppRuntime app = FreewayApp.run(new SlowModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new SlowModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("slow", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -147,7 +146,7 @@ class CloudHttpClientTest {
     void retriesWithANewInstanceWhenTheFirstIsDown() {
         System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
         System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
-        try (AppRuntime app = FreewayApp.run(new EchoModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new EchoModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
             registry.register(ServiceInstance.of("retry-svc", "dead", Endpoint.of("http", "127.0.0.1", 1), Map.of()));
@@ -168,7 +167,7 @@ class CloudHttpClientTest {
         System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
         System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
         System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "60");
-        try (AppRuntime app = FreewayApp.run(new FailModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new FailModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("failing", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -195,7 +194,7 @@ class CloudHttpClientTest {
     void serverErrorIsNotReplayedForNonIdempotentRequests() {
         System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "2");
         System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
-        try (AppRuntime app = FreewayApp.run(new CountingFailModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new CountingFailModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("failing", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -221,7 +220,7 @@ class CloudHttpClientTest {
         // The retries below must not trip the default breaker (threshold 5)
         // mid-test — this test pins retry counts, not breaker accounting.
         System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "50");
-        try (AppRuntime app = FreewayApp.run(new CountingFailModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new CountingFailModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("failing", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -249,7 +248,7 @@ class CloudHttpClientTest {
     void rateLimiterRejectsExcessCalls() {
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
-        try (AppRuntime app = FreewayApp.run(new EchoModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new EchoModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("limited", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -274,7 +273,7 @@ class CloudHttpClientTest {
         System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
         System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
         System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "1");
-        try (AppRuntime app = FreewayApp.run(new FlippingModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new FlippingModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("flip", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -310,7 +309,7 @@ class CloudHttpClientTest {
 
     @Test
     void interruptedCallIsNotRetried() throws Exception {
-        try (AppRuntime app = FreewayApp.run(new SlowModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new SlowModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("slow", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -348,7 +347,7 @@ class CloudHttpClientTest {
         System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "0");
         System.setProperty(CloudConfigKeys.RPC_CB_FAILURE_THRESHOLD, "2");
         System.setProperty(CloudConfigKeys.RPC_CB_OPEN_WINDOW, "60");
-        try (AppRuntime app = FreewayApp.run(new TwoRouteModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new TwoRouteModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
             registry.register(
@@ -377,7 +376,7 @@ class CloudHttpClientTest {
     void rateLimitIsPerService() {
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
-        try (AppRuntime app = FreewayApp.run(new TwoRouteModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new TwoRouteModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             ServiceRegistry registry = app.get(ServiceRegistry.class);
             registry.register(

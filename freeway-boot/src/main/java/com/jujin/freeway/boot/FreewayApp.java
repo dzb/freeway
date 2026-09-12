@@ -2,6 +2,7 @@ package com.jujin.freeway.boot;
 
 import com.jujin.freeway.commons.logging.LogBootstrap;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.ModuleNode;
 
 /**
  * Entry point for building and starting a Freeway application.
@@ -10,6 +11,15 @@ import com.jujin.freeway.ioc.ModuleEx;
  * <pre>{@code
  * AppRuntime app = FreewayApp.run(new MyModule());
  * AppRuntime app = FreewayApp.run(new String[]{"--freeway.profile=dev"}, new MyModule());
+ * }</pre>
+ *
+ * <h3>Composed usage</h3>
+ * <pre>{@code
+ * // Grouping is part of the composition, not of a module: the tree is a value
+ * // built here, named here, and handed to the container.
+ * AppRuntime app = FreewayApp.run(ModuleNode.app("order-service",
+ *     ModuleNode.leaf(new OrderModule()),
+ *     CloudModules.standard()));
  * }</pre>
  *
  * <h3>Builder usage</h3>
@@ -55,6 +65,20 @@ public final class FreewayApp {
         return of(modules).args(args).start();
     }
 
+    /**
+     * Start an application from an explicitly composed module tree — the form
+     * that expresses grouping and fragment reuse. Discovery still fills the
+     * gaps: a module class the tree already declares is not added again.
+     */
+    public static AppRuntime run(ModuleNode tree) {
+        return run(new String[0], tree);
+    }
+
+    /** @see #run(ModuleNode) */
+    public static AppRuntime run(String[] args, ModuleNode tree) {
+        return of(tree).args(args).start();
+    }
+
     /** Create an {@link AppBuilder} pre-populated with the given modules. */
     public static AppBuilder of(ModuleEx... modules) {
         AppBuilder b = new AppBuilder();
@@ -62,5 +86,10 @@ public final class FreewayApp {
             b.add(modules);
         }
         return b;
+    }
+
+    /** Create an {@link AppBuilder} over a composed module tree. */
+    public static AppBuilder of(ModuleNode tree) {
+        return new AppBuilder().add(tree);
     }
 }

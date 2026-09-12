@@ -1,9 +1,10 @@
 package com.jujin.freeway.cloud.context;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
@@ -53,8 +54,7 @@ class PrincipalPropagationTest {
 
     @Test
     void principalPropagatesAcrossTheCall() throws Exception {
-        try (AppRuntime app = FreewayApp.run(
-            new IdentityModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new IdentityModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -81,8 +81,7 @@ class PrincipalPropagationTest {
         // Regression: roles were joined with a bare ",", so a role like
         // "admin,root" arrived as two roles on the receiving side — silent
         // permission drift. Roles share the baggage percent codec now.
-        try (AppRuntime app = FreewayApp.run(
-            new IdentityModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new IdentityModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));

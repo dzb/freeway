@@ -1,12 +1,13 @@
 package com.jujin.freeway.cloud.event;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.http.HttpConfigKeys;
@@ -76,8 +77,7 @@ class ServiceIdentityFallbackTest {
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        return FreewayApp.run(
-            new HttpModule(), new CloudModule(), new CloudEventModule());
+        return FreewayApp.of(new HttpModule()).add(CloudModules.standard()).add(new CloudEventModule()).start();
     }
 
     /** Reads the identity HttpServiceDeclaration registered for this app. */

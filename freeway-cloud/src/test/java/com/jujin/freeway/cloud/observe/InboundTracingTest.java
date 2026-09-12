@@ -1,12 +1,13 @@
 package com.jujin.freeway.cloud.observe;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.context.InvocationContext;
 import com.jujin.freeway.cloud.context.TraceContext;
 import com.jujin.freeway.http.HttpConfigKeys;
@@ -70,7 +71,7 @@ class InboundTracingTest {
 
     @Test
     void requestRunsInsideTheServerSpanAndLogsCarryItsTrace() throws Exception {
-        try (AppRuntime app = FreewayApp.run(new HttpModule(), new CloudModule(), new Routes())) {
+        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModules.standard()).add(new Routes()).start()) {
             assertEquals(200, get(app, "/api/thing", true).statusCode());
 
             TraceContext seen = Seen.CONTEXT.get();
@@ -87,7 +88,7 @@ class InboundTracingTest {
 
     @Test
     void withoutAnInboundTraceTheRequestStillGetsATrace() throws Exception {
-        try (AppRuntime app = FreewayApp.run(new HttpModule(), new CloudModule(), new Routes())) {
+        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModules.standard()).add(new Routes()).start()) {
             assertEquals(200, get(app, "/api/thing", false).statusCode());
 
             TraceContext seen = Seen.CONTEXT.get();
@@ -100,8 +101,7 @@ class InboundTracingTest {
     @Test
     void probesAndScrapeEndpointAreNotTraced() throws Exception {
         RecordingTracer tracer = new RecordingTracer();
-        try (AppRuntime app = FreewayApp.run(new HttpModule(), new CloudModule(),
-                new Routes(), binder -> binder.bind(Tracer.class).to(container -> tracer).primary())) {
+        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModules.standard()).add(new Routes()).add(binder -> binder.bind(Tracer.class).to(container -> tracer).primary()).start()) {
             assertEquals(200, get(app, "/healthz", true).statusCode());
             assertEquals(200, get(app, "/health/ready", true).statusCode());
             assertEquals(200, get(app, "/metrics", true).statusCode());

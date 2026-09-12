@@ -8,12 +8,13 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
+import com.jujin.freeway.commons.util.TreeNode;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.ModuleTree;
+import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Inject;
@@ -24,14 +25,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -92,8 +96,8 @@ public final class ContainerImpl implements Container {
     private final InjectionResolver injectResolver;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
-    /** The resolved module tree, flattened into bind order — see {@link #modules()}. */
-    private final List<ModuleEx> loadedModules = new ArrayList<>();
+    /** The composition this container bound — see {@link #moduleTree()}. */
+    private final ModuleNode moduleTree;
     private final Map<Class<?>, Extension<?>> extensions = new ConcurrentHashMap<>();
 
     /**
@@ -107,7 +111,8 @@ public final class ContainerImpl implements Container {
     private final Map<Class<?>, Consumer<Object>> infrastructureWiring =
         new HashMap<>();
 
-    public ContainerImpl(Collection<? extends ModuleEx> modules) {
+    public ContainerImpl(ModuleNode moduleTree) {
+        this.moduleTree = Objects.requireNonNull(moduleTree, "moduleTree");
         this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
         // The chain's coercer lets one-step resolve(spec) parse coercer-backed
@@ -135,51 +140,33 @@ public final class ContainerImpl implements Container {
         // builtin. Their close is deferred past every lifecycle callback
         // (see Shutdown); a bus that was never resolved has nothing to close.
         registerBuiltinLazy(EventBus.class, EventBus::new, "EventBus");
-        loadAll(modules);
-        LOG.info("Loaded {} module(s):{}", loadedModules.size(), moduleTreeLog());
+        loadAll();
+        LOG.info("Loaded {} module(s):{}", moduleTree.bindOrder().size(), moduleTreeLog());
     }
 
     /**
-     * The loaded modules as an indented tree, for the startup log. The
-     * parent/child edges come from {@link ModuleEx#subModules()}, which is a
-     * stable view by contract, so the instances here are the ones that were
-     * bound. A module already printed under an earlier parent (a shared
-     * sub-module, or a mutual reference) is not printed twice.
+     * The composition as an indented tree, for the startup log — rendered from
+     * the tree value the container bound, so the lines describe exactly what
+     * was loaded. Iterative: a tree is data, and its depth must not become
+     * call depth.
      */
     private String moduleTreeLog() {
-        Set<ModuleEx> children = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (ModuleEx module : loadedModules) {
-            children.addAll(module.subModules());
-        }
-        Set<ModuleEx> printed = Collections.newSetFromMap(new IdentityHashMap<>());
+        record Frame(TreeNode<ModuleEx> node, int depth) {}
         StringBuilder tree = new StringBuilder();
-        for (ModuleEx module : loadedModules) {
-            if (!children.contains(module)) {
-                appendModule(tree, module, printed, 0);
+        Deque<Frame> pending = new ArrayDeque<>();
+        pending.push(new Frame(moduleTree.tree(), 0));
+        while (!pending.isEmpty()) {
+            Frame frame = pending.pop();
+            tree.append('\n')
+                .append("  ".repeat(frame.depth()))
+                .append("- ")
+                .append(frame.node().value().name());
+            List<TreeNode<ModuleEx>> children = frame.node().children();
+            for (int i = children.size() - 1; i >= 0; i--) {
+                pending.push(new Frame(children.get(i), frame.depth() + 1));
             }
         }
-        // Everything else printed under its parent; a module no root reaches
-        // (a mutual reference, say) is still worth a line — the count in the
-        // log line and the lines below it should agree.
-        for (ModuleEx module : loadedModules) {
-            appendModule(tree, module, printed, 0);
-        }
         return tree.toString();
-    }
-
-    private static void appendModule(
-        StringBuilder tree, ModuleEx module, Set<ModuleEx> printed, int depth
-    ) {
-        if (!printed.add(module)) {
-            return; // already shown under an earlier parent
-        }
-        tree.append('\n')
-            .append("  ".repeat(depth))
-            .append("- ")
-            .append(module.getClass().getSimpleName());
-        for (ModuleEx sub : module.subModules()) {
-            appendModule(tree, sub, printed, depth + 1);
-        }
     }
 
     BindingIndex bindingIndex() {
@@ -187,8 +174,8 @@ public final class ContainerImpl implements Container {
     }
 
     @Override
-    public List<ModuleEx> modules() {
-        return List.copyOf(loadedModules);
+    public ModuleNode moduleTree() {
+        return moduleTree;
     }
 
     @Override
@@ -219,9 +206,9 @@ public final class ContainerImpl implements Container {
         register(binding);
     }
 
-    private void loadAll(Collection<? extends ModuleEx> modules) {
+    private void loadAll() {
         BinderImpl binder = new BinderImpl(this);
-        for (ModuleEx module : ModuleTree.flatten(modules)) {
+        for (ModuleEx module : moduleTree.bindOrder()) {
             bindModule(module, binder);
         }
         // Instantiate class contributions only now — every module's bindings
@@ -233,8 +220,7 @@ public final class ContainerImpl implements Container {
     /** Binds one resolved module and registers the bindings it declared. */
     private void bindModule(ModuleEx module, BinderImpl binder) {
         Class<?> moduleClass = module.getClass();
-        LOG.debug("Installing module: {}", moduleClass.getSimpleName());
-        loadedModules.add(module);
+        LOG.debug("Installing module: {}", module.name());
         binder.setCurrentModule(moduleClass);
         module.bind(binder);
         binder.setCurrentModule(null);
@@ -309,7 +295,7 @@ public final class ContainerImpl implements Container {
             if (closed) {
                 return;
             }
-            LOG.debug("Container closing — {} module(s) loaded", loadedModules.size());
+            LOG.debug("Container closing — {} module(s) loaded", moduleTree.bindOrder().size());
             // The container-managed message service (EventBus) is
             // closed only after every lifecycle callback has run (Shutdown
             // defers them), so @PreDestroy code may still publish event and
@@ -352,7 +338,7 @@ public final class ContainerImpl implements Container {
                 LOG.error("Container close failed", failure);
                 throw failure;
             }
-            LOG.info("Container closed — {} module(s) unloaded", loadedModules.size());
+            LOG.info("Container closed — {} module(s) unloaded", moduleTree.bindOrder().size());
         }
     }
 

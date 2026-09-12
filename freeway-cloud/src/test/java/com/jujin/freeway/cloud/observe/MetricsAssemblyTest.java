@@ -1,8 +1,9 @@
 package com.jujin.freeway.cloud.observe;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.route.Route;
@@ -10,6 +11,7 @@ import com.jujin.freeway.ioc.AmbiguousBindingException;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
+import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.ModuleEx;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +51,7 @@ class MetricsAssemblyTest {
 
     @Test
     void standardCloudModuleServesMetricsFromTheActiveRegistry() throws Exception {
-        try (AppRuntime app = FreewayApp.run(new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
             app.get(Metrics.class).counter("hits").increment();
 
             HttpResponse<String> metrics = get(app, "/metrics");
@@ -61,7 +63,7 @@ class MetricsAssemblyTest {
 
     @Test
     void metricsSnapshotResolvesAndRendersTheModuleRegistry() {
-        try (Container container = Freeway.create(new CloudModule())) {
+        try (Container container = Freeway.create(CloudModules.standard())) {
             container.get(Metrics.class).counter("hits").add(2);
             String text = container.get(MetricsSnapshot.class).prometheusText();
             assertTrue(text.contains("hits 2"),
@@ -84,8 +86,9 @@ class MetricsAssemblyTest {
 
     @Test
     void coexistingSecondMetricsPrimaryFailsLoudly() {
-        try (Container container = Freeway.create(
-                new CloudModule(), new SecondMetricsPrimaryModule())) {
+        try (Container container = Freeway.create(ModuleNode.app("test",
+                CloudModules.standard(),
+                ModuleNode.leaf(new SecondMetricsPrimaryModule())))) {
             assertThrows(AmbiguousBindingException.class,
                 () -> container.get(Metrics.class),
                 "two primary Metrics bindings must fail loudly at first resolution — "

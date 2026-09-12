@@ -30,10 +30,25 @@ public final class Freeway {
     private Freeway() {}
 
     public static Container create(ModuleEx... modules) {
-        return create(modules == null ? List.of() : List.of(modules));
+        return create(ModuleNode.app(modules == null ? new ModuleEx[0] : modules));
     }
 
     public static Container create(Collection<? extends ModuleEx> modules) {
-        return new ContainerImpl(modules == null ? List.of() : modules);
+        return create(ModuleNode.app(modules == null
+            ? new ModuleEx[0] : modules.toArray(ModuleEx[]::new)));
+    }
+
+    /**
+     * Creates the container over an explicitly composed module tree — the form
+     * that expresses grouping and per-fragment reuse:
+     *
+     * <pre>{@code
+     * Container c = Freeway.create(ModuleNode.app("orders",
+     *     ModuleNode.leaf(new OrderModule()),
+     *     CloudModules.standard()));
+     * }</pre>
+     */
+    public static Container create(ModuleNode tree) {
+        return new ContainerImpl(tree);
     }
 }

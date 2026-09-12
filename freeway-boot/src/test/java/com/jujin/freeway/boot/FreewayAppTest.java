@@ -13,6 +13,7 @@ import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventSubscriber;
 import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Value;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
@@ -205,24 +206,19 @@ class FreewayAppTest {
         assertEquals(AppState.STOPPED, app.state());
     }
 
-    /** A bundle that declares an SPI-discoverable module as a sub-module. */
-    static final class BundleWithAutoModule implements ModuleEx {
-        @Override
-        public List<ModuleEx> subModules() {
-            return List.of(new AutoModule());
-        }
-
-        @Override
-        public void bind(Binder binder) {
+    /** A fragment that places the SPI-discoverable module in the tree. */
+    static final class AutoFragment {
+        static ModuleNode standard() {
+            return ModuleNode.app("auto-fragment", ModuleNode.leaf(new AutoModule()));
         }
     }
 
     @Test
     void discoveredModuleAlreadyDeclaredInTheTreeIsNotAddedTwice() {
-        // AutoModule is also on the SPI classpath. A bundle that declares it as
-        // a sub-module must not collide with discovery: the declared instance
-        // wins, exactly as an explicitly added module beats a discovered one.
-        AppRuntime app = FreewayApp.of(new BundleWithAutoModule())
+        // AutoModule is also on the SPI classpath. A fragment that places it in
+        // the tree must not collide with discovery: the declared instance wins,
+        // exactly as an explicitly added module beats a discovered one.
+        AppRuntime app = FreewayApp.of(AutoFragment.standard())
             .args("--app.name=Bundle")
             .shutdownHook(false)
             .start();
@@ -239,7 +235,8 @@ class FreewayAppTest {
         // module class, so this stays an error even though discovery no longer
         // causes it.
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.of(new BundleWithAutoModule(), new AutoModule())
+            FreewayApp.of(ModuleNode.app("bundle",
+                    AutoFragment.standard(), ModuleNode.leaf(new AutoModule())))
                 .autoDiscovery(false)
                 .shutdownHook(false)
                 .start());
@@ -350,7 +347,7 @@ class FreewayAppTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> FreewayApp.of(new DupModule("a"), new DupModule("b")).start());
 
-        assertTrue(ex.getMessage().contains("added twice"),
+        assertTrue(ex.getMessage().contains("declared twice"),
             "got: " + ex.getMessage());
         assertTrue(ex.getMessage().contains(DupModule.class.getName()),
             "message must name the module class, got: " + ex.getMessage());

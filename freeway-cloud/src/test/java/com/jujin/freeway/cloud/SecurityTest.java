@@ -86,7 +86,7 @@ class SecurityTest {
         Path secrets = dir.resolve("secrets.properties");
         Files.writeString(secrets, "db.password=hunter2\n");
         System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
-        try (AppRuntime app = FreewayApp.run(new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("hunter2", symbols.resolve("db.password"));
             assertNull(symbols.resolve("db.username", null), "absent secret stays absent");
@@ -101,7 +101,7 @@ class SecurityTest {
         Files.writeString(config, "db.password=config-value\napp.feature=true\n");
         System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
         System.setProperty("freeway.config.file", config.toString());
-        try (AppRuntime app = FreewayApp.run(new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("secret-value", symbols.resolve("db.password"),
                 "the secret tier (15) outranks the framework file tier (20)");
@@ -121,7 +121,7 @@ class SecurityTest {
         System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_FILE, secrets.toString());
         System.setProperty("freeway.config.file", config.toString());
         System.setProperty(com.jujin.freeway.cloud.CloudConfigKeys.SECRET_KEYS, "db.password");
-        try (AppRuntime app = FreewayApp.run(new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("secret-value", symbols.resolve("db.password"),
                 "a declared key still resolves from the secret store");
@@ -135,7 +135,7 @@ class SecurityTest {
 
     @Test
     void transportSecurityDefaultsToNone() {
-        try (AppRuntime app = FreewayApp.run(new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
             TransportSecurity security = app.get(TransportSecurity.class);
             assertNull(security.sslContext(), "plaintext development default");
         }

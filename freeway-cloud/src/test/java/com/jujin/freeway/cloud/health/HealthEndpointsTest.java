@@ -1,8 +1,9 @@
 package com.jujin.freeway.cloud.health;
 
+import com.jujin.freeway.cloud.CloudModules;
+
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
-import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
@@ -41,7 +42,7 @@ class HealthEndpointsTest {
 
     @Test
     void liveAndReadyAreOkByDefault() throws Exception {
-        try (AppRuntime app = FreewayApp.run(new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModules.standard()).start()) {
             HttpResponse<String> live = get(app, "/health/live");
             assertEquals(200, live.statusCode());
             assertTrue(live.body().contains("\"ok\""));
@@ -60,7 +61,7 @@ class HealthEndpointsTest {
 
     @Test
     void readyFailsWhenAContributorIsUnhealthy() throws Exception {
-        try (AppRuntime app = FreewayApp.run(new FailingContributorModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new FailingContributorModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(503, ready.statusCode());
             assertTrue(ready.body().contains("unhealthy"));
@@ -70,8 +71,7 @@ class HealthEndpointsTest {
 
     @Test
     void localRegistryContributorIsOmittedWhenAnExternalBackendIsPrimary() throws Exception {
-        try (AppRuntime app = FreewayApp.run(
-                new ExternalRegistryModule(), new HttpModule(), new CloudModule())) {
+        try (AppRuntime app = FreewayApp.of(new ExternalRegistryModule(), new HttpModule()).add(CloudModules.standard()).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(200, ready.statusCode());
             assertTrue(ready.body().contains("external-registry"),

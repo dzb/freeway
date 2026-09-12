@@ -202,23 +202,15 @@ class ContributionWiringTest {
     }
 
     @Test
-    void subModuleClassContributionResolvesOuterBindings() {
-        // A sub-module contributes a class whose constructor needs a service
+    void nestedModuleClassContributionResolvesOuterBindings() {
+        // A nested module contributes a class whose constructor needs a service
         // bound by the module that declares it. Class contributions run only
-        // after every module (sub-modules included) has bound, so this must
-        // resolve regardless of declaration order.
-        Container container = Freeway.create(new ModuleEx() {
-            @Override
-            public void bind(Binder outer) {
-                outer.bind(NestedDep.class).to(NestedDepImpl.class);
-            }
-
-            @Override
-            public List<ModuleEx> subModules() {
-                return List.of(inner ->
-                    inner.contribute(NestedDepConsumer.class).add(NestedDepConsumerImpl.class));
-            }
-        });
+        // after every module has bound, so this must resolve regardless of
+        // declaration order.
+        Container container = Freeway.create(ModuleNode.app("test",
+            ModuleNode.leaf(outer -> outer.bind(NestedDep.class).to(NestedDepImpl.class)),
+            ModuleNode.leaf(inner ->
+                inner.contribute(NestedDepConsumer.class).add(NestedDepConsumerImpl.class))));
         var consumers = container.extension(NestedDepConsumer.class).all();
         assertEquals(1, consumers.size());
         assertTrue(consumers.getFirst() instanceof NestedDepConsumerImpl);

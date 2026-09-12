@@ -6,7 +6,7 @@ import com.jujin.freeway.boot.internal.ConfigLoaderImpl;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.ModuleTree;
+import com.jujin.freeway.ioc.ModuleNode;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -35,7 +35,13 @@ import org.slf4j.LoggerFactory;
 public final class AppBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(AppBuilder.class);
 
-    private final List<ModuleEx> modules = new ArrayList<>();
+    /** The application node's name — what the startup log shows as its root line. */
+    private static final String APP_NAME = "application";
+
+    /** The application's children: one node per added module or fragment. */
+    private final List<ModuleNode> children = new ArrayList<>();
+    /** The application node the caller already composed, if any. */
+    private ModuleNode applicationTree;
     private String[] args = new String[0];
     private AppConfig config;
     private boolean autoDiscovery = true;
@@ -50,12 +56,31 @@ public final class AppBuilder {
     AppBuilder() {
     }
 
-    /** Add one or more modules to the application. */
+    /** Add one or more modules to the application — each becomes a leaf of the tree. */
     public AppBuilder add(ModuleEx... modules) {
         Objects.requireNonNull(modules, "modules");
         for (ModuleEx m : modules) {
-            Objects.requireNonNull(m, "module");
-            this.modules.add(m);
+            this.children.add(ModuleNode.leaf(Objects.requireNonNull(m, "module")));
+        }
+        return this;
+    }
+
+    /**
+     * Add one or more composed fragments: a fragment is a {@link ModuleNode}
+     * built with {@code app/leaf/of}, so grouping and reuse are expressed here
+     * rather than inside a module.
+     */
+    public AppBuilder add(ModuleNode... trees) {
+        Objects.requireNonNull(trees, "trees");
+        for (ModuleNode tree : trees) {
+            ModuleNode node = Objects.requireNonNull(tree, "tree");
+            if (node.isApplication() && applicationTree == null) {
+                // The caller composed the application root: reuse it (name and
+                // children) instead of nesting a second root around it.
+                applicationTree = node;
+            } else {
+                this.children.add(node);
+            }
         }
         return this;
     }
@@ -118,45 +143,27 @@ public final class AppBuilder {
             ? this.config
             : ConfigLoaderImpl.load(effectiveLoader, args);
 
-        LinkedHashMap<Class<?>, ModuleEx> allModules = new LinkedHashMap<>();
-        allModules.put(BootModule.class, new BootModule(config));
-        for (ModuleEx module : modules) {
-            addModule(allModules, module, true);
+        // The composition is built once, here: the application node with every
+        // added module or fragment, plus whatever SPI discovery fills in. The
+        // tree — not a per-layer bookkeeping map — is what decides duplicates,
+        // order and (for discovery) which classes are already declared.
+        List<ModuleNode> composed = new ArrayList<>();
+        String appName = APP_NAME;
+        if (applicationTree != null) {
+            appName = applicationTree.name();
+            applicationTree.children().forEach(child -> composed.add(ModuleNode.of(child)));
         }
+        composed.add(ModuleNode.leaf(new BootModule(config)));
+        composed.addAll(children);
+        ModuleNode tree = ModuleNode.app(appName, composed.toArray(ModuleNode[]::new));
         if (autoDiscovery) {
-            // Discovery fills gaps. A module class already declared anywhere in
-            // the tree — including as a sub-module of a bundle — is not added
-            // again: the author's declaration wins, exactly as an explicitly
-            // added module already wins over a discovered one.
-            Set<Class<?>> declared = treeClasses(allModules.values());
-            for (ModuleEx module : ServiceLoader.load(ModuleEx.class, effectiveLoader)) {
-                try {
-                    if (declared.contains(module.getClass())) {
-                        LOG.debug(
-                            "Ignoring discovered module already declared in the module "
-                                + "tree: {}",
-                            module.getClass().getSimpleName()
-                        );
-                        continue;
-                    }
-                    declared.add(module.getClass());
-                    declared.addAll(treeClasses(List.of(module)));
-                    addModule(allModules, module, false);
-                } catch (ServiceConfigurationError ex) {
-                    throw new IllegalStateException(
-                        "Failed to load a ServiceLoader-discovered ModuleEx "
-                            + "provider (classloader: " + effectiveLoader + ")",
-                        ex
-                    );
-                }
-            }
+            tree = discover(tree, effectiveLoader, composed);
         }
-        List<ModuleEx> moduleList = List.copyOf(allModules.values());
 
         Container container;
         AppRuntime app;
         try {
-            container = Freeway.create(moduleList);
+            container = Freeway.create(tree);
             app = new AppRuntimeDefault(container, config);
         } catch (Throwable ex) {
             // The container never came up, so no runtime hook will run: release
@@ -214,65 +221,37 @@ public final class AppBuilder {
         return app;
     }
 
-    private static void addModule(
-        LinkedHashMap<Class<?>, ModuleEx> allModules,
-        ModuleEx module,
-        boolean explicit
-    ) {
-        ModuleEx existing = allModules.putIfAbsent(module.getClass(), module);
-        if (existing == null) {
-            return;
-        }
-        if (explicit) {
-            if (existing == module) {
-                // The identical instance was added twice (e.g. add(mod, mod))
-                // — harmless, keep a single copy, mirroring the container's
-                // identity-based collapse in ModuleTree.
-                LOG.debug(
-                    "Ignoring repeated module instance: {}",
-                    module.getClass().getSimpleName()
-                );
-                return;
-            }
-            // Two distinct instances of the same class would silently drop
-            // one module's configuration (e.g. add(new DbModule("ds1"), new
-            // DbModule("ds2")) keeps only ds1). Fail fast instead.
-            Class<?> moduleClass = module.getClass();
-            if (moduleClass.isAnonymousClass() || moduleClass.isSynthetic()) {
-                // Anonymous/lambda modules have no meaningful class identity —
-                // keep identity-based semantics, like the tree resolver.
-                LOG.debug(
-                    "Ignoring duplicate module: {}",
-                    moduleClass.getSimpleName()
-                );
-                return;
-            }
-            throw new IllegalStateException(
-                "Module " + moduleClass.getName() + " added twice with "
-                    + "two different instances. Likely cause: the same "
-                    + "module class was added more than once explicitly "
-                    + "(deduplication would silently drop one module's "
-                    + "configuration). Fix: keep a single instance of each "
-                    + "module class."
-            );
-        }
-        // Explicit instances win over SPI-discovered ones — the explicit
-        // module was already in the map, so the discovery copy is dropped.
-        LOG.debug("Ignoring duplicate module: {}", module.getClass().getSimpleName());
-    }
-
     /**
-     * Every module class reachable in the tree of {@code modules}, sub-modules
-     * included. Resolution also validates the tree, so an author-level
-     * duplicate (the same class declared twice) fails here, before the
-     * container is built.
+     * Fills the gaps with ServiceLoader-discovered modules: a class the tree
+     * already declares — anywhere, fragments included — is not added again, so
+     * an author's declaration always wins over discovery.
      */
-    private static Set<Class<?>> treeClasses(Collection<ModuleEx> modules) {
-        Set<Class<?>> classes = new HashSet<>();
-        for (ModuleEx module : ModuleTree.flatten(modules)) {
-            classes.add(module.getClass());
+    private static ModuleNode discover(
+        ModuleNode tree, ClassLoader loader, List<ModuleNode> composed
+    ) {
+        String appName = tree.name();
+        Set<Class<?>> declared = new HashSet<>(tree.classes());
+        List<ModuleNode> discovered = new ArrayList<>();
+        for (ModuleEx module : ServiceLoader.load(ModuleEx.class, loader)) {
+            try {
+                if (!declared.add(module.getClass())) {
+                    LOG.debug("Ignoring discovered module already declared in the module "
+                            + "tree: {}", module.getClass().getSimpleName());
+                    continue;
+                }
+                discovered.add(ModuleNode.leaf(module));
+            } catch (ServiceConfigurationError ex) {
+                throw new IllegalStateException(
+                    "Failed to load a ServiceLoader-discovered ModuleEx provider (classloader: "
+                        + loader + ")", ex);
+            }
         }
-        return classes;
+        if (discovered.isEmpty()) {
+            return tree;
+        }
+        List<ModuleNode> all = new ArrayList<>(composed);
+        all.addAll(discovered);
+        return ModuleNode.app(appName, all.toArray(ModuleNode[]::new));
     }
 
     private ClassLoader resolveClassLoader() {
