@@ -1,7 +1,5 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.ioc.internal.EventSinkRegistry;
-import com.jujin.freeway.ioc.internal.EventStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

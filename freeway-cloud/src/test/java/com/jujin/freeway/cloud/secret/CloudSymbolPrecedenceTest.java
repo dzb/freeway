@@ -92,7 +92,7 @@ class CloudSymbolPrecedenceTest {
         AppConfig config = new AppConfigDefault(
             new ConfigSources(
                 cli, env, Map.of(KEY, "from-file", HttpConfigKeys.SERVER_PORT, "0"),
-                Map.of(), List.of()),
+                List.of()),
             List.of());
         try (AppRuntime app = FreewayApp.of(new CloudModule())
                 .config(config)

@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.ioc.CallBus;
@@ -13,7 +13,7 @@ import java.util.concurrent.CompletionException;
 /**
  * Internal typed consumer proxy factory for {@link CallBus}.
  */
-public final class CallProxyFactory {
+final class CallProxyFactory {
 
     public static final CallProxyFactory INSTANCE = new CallProxyFactory();
 

@@ -42,7 +42,6 @@ public record SymbolSpec<T>(
     Class<T> type,
     T defaultValue,
     Function<String, T> parser,
-    String description,
     boolean required
 ) {
 
@@ -59,17 +58,7 @@ public record SymbolSpec<T>(
         Class<T> type,
         T defaultValue
     ) {
-        return of(key, type, defaultValue, null, "");
-    }
-
-    /** Coercer-parsed optional key with a human-readable description. */
-    public static <T> SymbolSpec<T> of(
-        String key,
-        Class<T> type,
-        T defaultValue,
-        String description
-    ) {
-        return of(key, type, defaultValue, null, description);
+        return of(key, type, defaultValue, null);
     }
 
     /** Creates an optional key with a default; absent/blank falls back. */
@@ -79,23 +68,11 @@ public record SymbolSpec<T>(
         T defaultValue,
         Function<String, T> parser
     ) {
-        return of(key, type, defaultValue, parser, "");
-    }
-
-    /** Optional key with a human-readable description (docs/registry use). */
-    public static <T> SymbolSpec<T> of(
-        String key,
-        Class<T> type,
-        T defaultValue,
-        Function<String, T> parser,
-        String description
-    ) {
         return new SymbolSpec<>(
             normalizedKey(key, type, parser),
             type,
             defaultValue,
             parser,
-            Objects.requireNonNull(description, "description"),
             false
         );
     }
@@ -116,7 +93,6 @@ public record SymbolSpec<T>(
             (Class<List<String>>) (Class<?>) List.class,
             defaultValue == null ? null : List.copyOf(defaultValue),
             SymbolSpec::splitList,
-            "comma-separated list",
             false
         );
     }
@@ -173,36 +149,25 @@ public record SymbolSpec<T>(
         return mapped != null ? mapped : whenUnset;
     }
 
+    /** Coercer-parsed required key: absent/blank input fails fast. */
+    public static <T> SymbolSpec<T> required(
+        String key,
+        Class<T> type
+    ) {
+        return required(key, type, null);
+    }
+
     /** Creates a required key: absent/blank input fails fast on parse. */
     public static <T> SymbolSpec<T> required(
         String key,
         Class<T> type,
         Function<String, T> parser
     ) {
-        return required(key, type, parser, "");
-    }
-
-    /** Coercer-parsed required key: absent/blank input fails fast. */
-    public static <T> SymbolSpec<T> required(
-        String key,
-        Class<T> type
-    ) {
-        return required(key, type, null, "");
-    }
-
-    /** Required key with a human-readable description. */
-    public static <T> SymbolSpec<T> required(
-        String key,
-        Class<T> type,
-        Function<String, T> parser,
-        String description
-    ) {
         return new SymbolSpec<>(
             normalizedKey(key, type, parser),
             type,
             null,
             parser,
-            Objects.requireNonNull(description, "description"),
             true
         );
     }

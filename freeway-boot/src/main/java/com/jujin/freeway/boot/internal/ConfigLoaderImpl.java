@@ -33,10 +33,6 @@ import org.slf4j.LoggerFactory;
  * <p>Returns an {@link AppConfigDefault} built from the loaded
  * {@link ConfigSources}: the file tier is watched and re-read on change, so
  * config edits are visible to later symbol lookups without a restart.
- *
- * <p>The active preset ({@code freeway.preset}) is resolved and validated
- * here — startup policy lives in the loader, so {@link AppConfigDefault} stays
- * a pure holder of the sources it is given.
  */
 public final class ConfigLoaderImpl {
     private static final Logger LOG = LoggerFactory.getLogger(
@@ -47,19 +43,19 @@ public final class ConfigLoaderImpl {
     /** The profile-activation key — see {@link #loadLayers}. */
     private static final String PROFILE_KEY = "freeway.profile";
 
-    /** The env-prefix bootstrap key ({@code -D} or {@code FREEWAY_ENV_PREFIX}). */
-    private static final String ENV_PREFIX_KEY = "freeway.env.prefix";
+    /** The env-prefix bootstrap key — spelled once, in {@link EnvKeys}. */
+    private static final String ENV_PREFIX_KEY = EnvKeys.PREFIX_KEY;
 
     /** The extra-config-file bootstrap key ({@code -D} or {@code FREEWAY_CONFIG_FILE}). */
     private static final String CONFIG_FILE_KEY = "freeway.config.file";
 
     /**
      * Keys that configure the cascade itself and therefore cannot come from
-     * it: a config file declaring one is ignored (see
-     * {@link #warnAboutBootstrapKeysInFiles}).
+     * it: a config file or CLI argument declaring one is ignored and named in
+     * a startup WARN (see {@link #warnAboutBootstrapKeys}).
      */
     private static final List<String> BOOTSTRAP_ONLY_KEYS = List.of(
-        CONFIG_FILE_KEY, ENV_PREFIX_KEY, Presets.KEY);
+        CONFIG_FILE_KEY, ENV_PREFIX_KEY);
 
     /** The standard base config file family — one source of truth for the
      *  classpath load, the working-directory overrides and the filesystem
@@ -75,52 +71,76 @@ public final class ConfigLoaderImpl {
 
     /**
      * Loads the cascade and returns it: classpath files plus filesystem
-     * overrides as the file tier (watched for changes), the mapped environment,
-     * the CLI arguments, and the active preset as the lowest tier.
+     * overrides as the file tier (watched for changes), the mapped
+     * environment, and the CLI arguments.
      */
     public static AppConfig load(ClassLoader loader, String... args) {
-        // An unknown preset name must fail startup here, not dissolve into
-        // "no values" — a typo'd environment class would silently leave the
-        // container defaults standing.
-        Presets.validate(Presets.declared());
-
         // Filesystem base files participate in profile selection alongside
         // the classpath base (filesystem wins, env/CLI win over both).
         ConfigSources sources = loadLayers(loader, readFilesystemBase(), args);
 
-        List<Path> overrides = new ArrayList<>();
+        warnAboutBootstrapKeys("the classpath config files", sources.files());
+        warnAboutBootstrapKeys("the command-line arguments", sources.cli());
+        return new AppConfigDefault(sources, overrideFiles(sources.profiles()));
+    }
+
+    /**
+     * The ordered filesystem files the file tier folds over the classpath
+     * baseline (later wins): the working-directory base files, then the
+     * variants of every active profile, then the files named by the
+     * {@code freeway.config.file} bootstrap key.
+     *
+     * <p>The profile band is laid out exactly as the classpath load lays it
+     * out — every profile's {@code .properties}, then every profile's
+     * {@code .json} — so the source format outranks the profile order
+     * wherever a file lives ({@code application-a.json} beats
+     * {@code application-b.properties} on both sides of the baseline).
+     *
+     * <p>Named separately from {@link #load} because it is the one part of
+     * the cascade whose order is pure data: the file names, not their
+     * contents, decide precedence.
+     */
+    static List<Path> overrideFiles(List<String> profiles) {
         Path workDir = Path.of("").toAbsolutePath();
+        List<Path> files = new ArrayList<>();
         for (String name : APPLICATION_FILES) {
-            overrides.add(workDir.resolve(name));
+            files.add(workDir.resolve(name));
         }
-        for (String profile : sources.profiles()) {
-            for (String base : APPLICATION_FILES) {
-                overrides.add(workDir.resolve(profileVariant(base, profile)));
+        for (String base : APPLICATION_FILES) {
+            for (String profile : profiles) {
+                files.add(workDir.resolve(profileVariant(base, profile)));
             }
         }
         String configFiles = EnvKeys.bootstrap(CONFIG_FILE_KEY);
         for (String extra : (configFiles == null ? "" : configFiles).split(",")) {
             if (!extra.isBlank()) {
-                overrides.add(Path.of(extra.trim()));
+                files.add(Path.of(extra.trim()));
             }
         }
-
-        warnAboutBootstrapKeysInFiles(sources.files());
-        return new AppConfigDefault(sources, overrides);
+        return List.copyOf(files);
     }
 
     /**
-     * A bootstrap-only key in a config file has no effect: it would have to be
-     * read before that file is. Silently ignoring it is how a misplaced
-     * setting survives to production, so name it at startup.
+     * A bootstrap-only key declares where a source comes from, so it must be
+     * read before that source exists: a value of such a key in any other
+     * channel is ignored. Silently ignoring it is how a misplaced setting
+     * survives to production, so name the key and the channel at startup.
+     *
+     * <p>The classpath file maps arrive merged, so their origin is named by
+     * channel; filesystem files are read one by one and name themselves —
+     * {@link AppConfigDefault#readOverride} calls this for each of them, which
+     * is what covers the working-directory base files, the profile variants
+     * and the {@code freeway.config.file} extras alike.
+     *
+     * @param origin where the value came from — part of the message
      */
-    private static void warnAboutBootstrapKeysInFiles(Map<String, String> files) {
+    static void warnAboutBootstrapKeys(String origin, Map<String, String> values) {
         for (String key : BOOTSTRAP_ONLY_KEYS) {
-            if (files.containsKey(key)) {
+            String value = values.get(key);
+            if (value != null) {
                 LOG.warn(
-                    "{} is bootstrap-only (-D{} or {}) — the value in a config file "
-                        + "({}) is ignored",
-                    key, key, EnvKeys.name(key), files.get(key));
+                    "{} is bootstrap-only (-D{} or {}) — ignoring \"{}\" from {}",
+                    key, key, EnvKeys.name(key), value, origin);
             }
         }
     }
@@ -206,7 +226,6 @@ public final class ConfigLoaderImpl {
             cli,
             environment,
             ConfigMaps.overlay(fileLayers),
-            Presets.activeBundle(),
             profiles
         );
     }
@@ -227,16 +246,14 @@ public final class ConfigLoaderImpl {
 
     /**
      * Maps environment variables to config keys using the
-     * {@code freeway.env.prefix} prefix.
+     * {@code freeway.env.prefix} prefix ({@link EnvKeys#prefix()}).
      *
-     * <p>The prefix is read exclusively from the JVM system property
-     * {@code freeway.env.prefix} (set via {@code -Dfreeway.env.prefix=APP_}).
-     * Configuring that key in {@code application.properties}, a profile file,
-     * the environment, or CLI arguments does NOT change how the environment
-     * layer is mapped — it stays an ordinary config value with no special
-     * effect. This is deliberate: the prefix itself would have to come from
-     * the cascade's env layer, which the prefix configures — a
-     * chicken-and-egg problem — so the JVM property is the only source.</p>
+     * <p>The prefix is a bootstrap key: read from {@code -Dfreeway.env.prefix}
+     * or {@code FREEWAY_ENV_PREFIX}, never from a config file — a value there
+     * is an ordinary config key with no effect on the mapping. This is
+     * deliberate: the prefix configures the very env layer it would have to
+     * be read from — a chicken-and-egg problem — so only the two bootstrap
+     * channels count.</p>
      *
      * <p>The mechanical spelling is the whole rule: the prefix is stripped and
      * {@code _} becomes {@code .}; every other character, a hyphen above all,
@@ -251,8 +268,7 @@ public final class ConfigLoaderImpl {
      * {@code APP_FREEWAY_HTTP_PORT} → {@code freeway.http.port}.</p>
      */
     static Map<String, String> loadEnvironment(Map<String, String> environment) {
-        String declared = EnvKeys.bootstrap(ENV_PREFIX_KEY);
-        String prefix = declared == null ? EnvKeys.DEFAULT_PREFIX : declared;
+        String prefix = EnvKeys.prefix();
         boolean freewayNamespace = EnvKeys.DEFAULT_PREFIX.equals(prefix);
         Map<String, String> values = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : environment.entrySet()) {

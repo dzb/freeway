@@ -5,8 +5,7 @@ import java.util.Locale;
 /**
  * The environment-variable spelling of config keys, and the resolution of the
  * bootstrap keys — the handful of settings that configure the configuration
- * system itself ({@code freeway.env.prefix}, {@code freeway.preset},
- * {@code freeway.config.file}).
+ * system itself ({@code freeway.env.prefix}, {@code freeway.config.file}).
  *
  * <p><b>Spelling.</b> A key's environment name is the prefix plus the
  * upper-cased key with <em>dots</em> turned into underscores. That is the whole
@@ -30,7 +29,23 @@ public final class EnvKeys {
     /** The default namespace prefix for both spellings of a key. */
     public static final String DEFAULT_PREFIX = "FREEWAY_";
 
+    /** The bootstrap key selecting the env-mapping prefix. */
+    public static final String PREFIX_KEY = "freeway.env.prefix";
+
     private EnvKeys() {}
+
+    /**
+     * The env-mapping prefix in force: the declared {@link #PREFIX_KEY
+     * bootstrap key}, or {@link #DEFAULT_PREFIX} when it is unset.
+     *
+     * <p>The one definition both directions of the mapping share — boot's
+     * env-name→key mapping and the log cascade's key→env-name spelling — so
+     * the two cannot drift into disagreeing about which variables exist.
+     */
+    public static String prefix() {
+        String declared = bootstrap(PREFIX_KEY);
+        return declared == null ? DEFAULT_PREFIX : declared;
+    }
 
     /**
      * The environment name of a key under {@code prefix}:

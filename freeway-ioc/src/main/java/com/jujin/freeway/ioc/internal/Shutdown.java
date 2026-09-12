@@ -54,11 +54,8 @@ final class Shutdown {
         for (AutoCloseable service : deferredMessageServices) {
             try {
                 service.close();
-            } catch (RuntimeException | Error ex) {
-                failure = accumulateFailure(failure,
-                    "Unable to close container-managed message service", ex);
-            } catch (Exception ex) {
-                // AutoCloseable.close() declares checked Exception
+            } catch (Exception | Error ex) {
+                // Exception covers AutoCloseable.close()'s checked declaration.
                 failure = accumulateFailure(failure,
                     "Unable to close container-managed message service", ex);
             }

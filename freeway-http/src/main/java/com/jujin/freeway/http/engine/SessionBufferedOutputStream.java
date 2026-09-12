@@ -13,10 +13,6 @@ final class SessionBufferedOutputStream extends OutputStream {
     private byte[] buf = new byte[1024];
     private int count;
 
-    public SessionBufferedOutputStream(OutputStream out) {
-        this(out, 1024);
-    }
-
     public SessionBufferedOutputStream(OutputStream out, int bufferSize) {
         this.out = out;
         if (bufferSize < 256) throw new IllegalArgumentException("bufferSize must be at least 256");

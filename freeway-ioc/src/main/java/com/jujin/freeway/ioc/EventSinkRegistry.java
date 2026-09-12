@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.EventSink;
 import java.util.ArrayList;
@@ -8,7 +8,7 @@ import java.util.List;
  * Internal registry of {@link EventSink} instances for
  * {@link com.jujin.freeway.ioc.EventBus}.
  */
-public final class EventSinkRegistry {
+final class EventSinkRegistry {
 
     private final List<EventSink> sinks = new ArrayList<>();
 

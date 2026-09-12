@@ -1,6 +1,5 @@
 package com.jujin.freeway.http.engine.http2;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -9,10 +8,6 @@ import java.util.Arrays;
 
 public final class SettingsFrame extends BaseFrame {
     public final ArrayList<SettingParameter> params = new ArrayList<>();
-
-    public SettingsFrame() {
-        this(new FrameHeader(0, FrameType.SETTINGS, FrameFlag.FlagSet.of(FrameFlag.ACK), 0));
-    }
 
     public SettingsFrame(FrameHeader header) {
         super(header);
@@ -37,9 +32,4 @@ public final class SettingsFrame extends BaseFrame {
         for (var param : params) param.writeTo(outputStream);
     }
 
-    public byte[] encode() {
-        var bos = new ByteArrayOutputStream();
-        try { writeTo(bos); } catch (IOException ignored) {}
-        return bos.toByteArray();
-    }
 }

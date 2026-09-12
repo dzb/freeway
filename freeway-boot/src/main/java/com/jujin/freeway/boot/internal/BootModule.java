@@ -2,23 +2,16 @@ package com.jujin.freeway.boot.internal;
 
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
-import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Builtin;
 import com.jujin.freeway.ioc.annotation.Marker;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import java.util.Objects;
 
 /**
- * The boot substrate: wires the loaded {@link AppConfig} into the container as
- * a binding plus its symbol sources, and binds the {@link HookLifecycle} that
- * {@link AppRuntimeDefault} drives.
- *
- * <p>Both belong here rather than in separate modules because the app runtime
- * assumes them unconditionally: {@code AppBuilder} always adds this module,
- * so the two container-level services the runtime resolves by type are
- * guaranteed to exist.
+ * Wires the loaded {@link AppConfig} into the container: the config itself plus
+ * the symbol sources it declares. That is the whole job — the runtime's other
+ * collaborators belong to the runtime, not to the container's service set.
  */
 @Marker(Builtin.class)
 public final class BootModule implements ModuleEx {
@@ -31,23 +24,11 @@ public final class BootModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
         binder.bind(AppConfig.class).to(container -> config);
-        binder.bind(HookLifecycle.class).to(container -> new HookLifecycle(container));
         // The config declares its own symbol sources with their orders —
         // precedence comes from the declaration, never from module install
         // order, and a hot-reloading config's sources read live snapshots.
         for (SymbolProvider provider : config.providers()) {
             binder.contribute(SymbolProvider.class).add(provider);
         }
-        binder.contribute(RuntimeHook.class)
-            .add("freeway.config", new RuntimeHook() {
-                @Override
-                public void start(Container container) {
-                }
-
-                @Override
-                public void stop(Container container) {
-                    config.close(); // stop the hot-reload watcher, if any
-                }
-            });
     }
 }

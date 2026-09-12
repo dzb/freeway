@@ -82,11 +82,12 @@ public final class RegistryStore {
         if (instances == null || instances.isEmpty()) {
             return List.of();
         }
-        Instant cutoff = Instant.now().minus(maxAge);
         List<ServiceInstance> result = new ArrayList<>();
         for (Map.Entry<String, Entry> me : instances.entrySet()) {
             Entry e = me.getValue();
-            if (e.health.lastSeen().isBefore(cutoff)) {
+            // One definition of the threshold, owned by Health — this method
+            // used to spell the same comparison out inline.
+            if (e.health.isStale(maxAge)) {
                 // Stale — evict so the map cannot grow without bound.
                 instances.remove(me.getKey(), e);
             } else if (e.health.live() && e.health.ready()) {

@@ -19,12 +19,16 @@ public final class AppRuntimeDefault implements AppRuntime {
     );
     private final Container container;
     private final AppConfig config;
+    /** Drives the container's contributed hooks; a collaborator of this
+     *  runtime, not a service anyone else resolves. */
+    private final HookLifecycle hooks;
     private volatile AppState state = AppState.CREATED;
     private boolean shutdownAttempted;
 
     public AppRuntimeDefault(Container container, AppConfig config) {
         this.container = Objects.requireNonNull(container, "container");
         this.config = Objects.requireNonNull(config, "config");
+        this.hooks = new HookLifecycle(container);
     }
 
     @Override
@@ -60,7 +64,7 @@ public final class AppRuntimeDefault implements AppRuntime {
         state = AppState.STARTING;
         LOG.info("Application starting");
         try {
-            container.get(HookLifecycle.class).start();
+            hooks.start();
             // A hook may have triggered shutdown (reentrant close()) while
             // startup was still in progress: the nested close() already ran
             // the full shutdown sequence and left the state at STOPPED/FAILED.
@@ -91,7 +95,8 @@ public final class AppRuntimeDefault implements AppRuntime {
 
     /**
      * Stops the application: publishes {@link AppStoppingEvent}, stops
-     * runtime hooks in reverse order, closes the container.
+     * runtime hooks in reverse order, releases the config, closes the
+     * container.
      *
      * <p>Design: shutdown is attempted at most once. Even if the first
      * attempt fails (state {@code FAILED}), a repeated {@code close()} is a
@@ -138,11 +143,21 @@ public final class AppRuntimeDefault implements AppRuntime {
         }
         if (ran || previous == AppState.FAILED) {
             try {
-                container.get(HookLifecycle.class).stop();
+                hooks.stop();
             } catch (RuntimeException ex) {
                 failure = accumulate(failure, "Error during hook shutdown", ex);
                 LOG.error("Error during hook shutdown", ex);
             }
+        }
+        // The runtime owns the config it was handed, so it releases it here:
+        // after the hooks (a hook may still read config values while stopping)
+        // and before the container. A config failure marks shutdown FAILED like
+        // any other, and the config itself makes repeated close() a no-op.
+        try {
+            config.close();
+        } catch (RuntimeException ex) {
+            failure = accumulate(failure, "Error closing config", ex);
+            LOG.error("Error closing config", ex);
         }
         try {
             container.close();

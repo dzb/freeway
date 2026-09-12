@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.metrics.Metrics;
 import java.util.concurrent.atomic.LongAdder;
@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.LongAdder;
 /**
  * Internal counters for {@link com.jujin.freeway.ioc.CallBus}.
  */
-public final class CallStats {
+final class CallStats {
 
     private final Metrics.Counter cCalled;
     private final Metrics.Counter cServed;

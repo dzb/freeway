@@ -39,10 +39,9 @@ import org.slf4j.LoggerFactory;
  * startup-static.
  *
  * <p><b>No global state.</b> Everything this class serves arrives through
- * {@link ConfigSources}; in particular the active preset bundle is resolved
- * and validated by {@link ConfigLoaderImpl}, not read from the JVM on every
- * lookup. A directly constructed instance therefore cannot be surprised by a
- * system property.
+ * {@link ConfigSources} — the loader reads the JVM and the environment once,
+ * at startup. A directly constructed instance therefore cannot be surprised
+ * by a system property.
  */
 public final class AppConfigDefault implements AppConfig {
 
@@ -59,7 +58,7 @@ public final class AppConfigDefault implements AppConfig {
 
     /**
      * Tiered form: {@code sources} carries the cascade inputs the loader
-     * resolved (cli → environment → files → preset, plus the active profiles);
+     * resolved (cli → environment → files, plus the active profiles);
      * {@code sources.files()} overlaid with {@code overrideFiles} forms the
      * file tier, which is watched and re-read on change.
      *
@@ -74,8 +73,8 @@ public final class AppConfigDefault implements AppConfig {
 
     /**
      * Static form: {@code values} is the whole config (it becomes the file
-     * tier), no CLI/env/preset tiers and no filesystem watching. Usable
-     * standalone for tests and custom config sources.
+     * tier), no CLI/env tiers and no filesystem watching. Usable standalone
+     * for tests and custom config sources.
      *
      * <p>Custom loaders may include null entries to mean "unset" — they are
      * skipped instead of failing with an opaque NPE from {@code Map.copyOf}.
@@ -83,9 +82,12 @@ public final class AppConfigDefault implements AppConfig {
      */
     public static AppConfigDefault of(Map<String, String> values, List<String> profiles) {
         return new AppConfigDefault(
-            ConfigSources.of(cleaned(values), profiles == null ? List.of() : profiles),
-            List.of()
-        );
+            new ConfigSources(
+                Map.of(),          // no CLI tier
+                Map.of(),          // no environment mapping
+                cleaned(values),   // the given map IS the file tier
+                profiles == null ? List.of() : profiles),
+            List.of());
     }
 
     @Override
@@ -101,11 +103,7 @@ public final class AppConfigDefault implements AppConfig {
             // reaches the symbol chain.
             SymbolProvider.of(sources::cli, SymbolProvider.TIER_CLI),
             SymbolProvider.of(sources::environment, SymbolProvider.TIER_ENV),
-            SymbolProvider.of(() -> fileTier, SymbolProvider.TIER_FILES),
-            // The preset is the lowest tier: it fills only what no higher
-            // source set. The selector key itself is bootstrap-only (-D/env),
-            // so both this chain and the JUL log cascade see the same bundle.
-            SymbolProvider.of(sources::preset, SymbolProvider.TIER_PRESET));
+            SymbolProvider.of(() -> fileTier, SymbolProvider.TIER_FILES));
     }
 
     /** Re-reads every override file over the baseline and swaps the file tier. */
@@ -123,13 +121,24 @@ public final class AppConfigDefault implements AppConfig {
      * nothing. Parsed by the shared {@link ConfigFileReader} — a
      * {@code .json} override file is JSON, everything else properties — so
      * overrides parse identically to the startup cascade.
+     *
+     * <p>Every filesystem file passes through here — the working-directory
+     * base files, the profile variants and the {@code freeway.config.file}
+     * extras — so a bootstrap-only key is named whichever of them declares it,
+     * and a hot reload that re-reads an offending file warns again: the
+     * warning describes the file's current content, not the first time it was
+     * seen.
      */
     private static Map<String, String> readOverride(Path file) {
         if (!Files.isRegularFile(file)) {
             return Map.of();
         }
         try {
-            return ConfigFileReader.read(file);
+            Map<String, String> values = ConfigFileReader.read(file);
+            Path name = file.getFileName();
+            ConfigLoaderImpl.warnAboutBootstrapKeys(
+                name != null ? name.toString() : file.toString(), values);
+            return values;
         } catch (IOException e) {
             LOG.warn("Failed to read config file {}: {}", file, e.getMessage());
             return Map.of();

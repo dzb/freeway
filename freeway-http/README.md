@@ -96,7 +96,7 @@ replaced busy-wait with blocking I/O.
 
 **General**: All I/O migrated from NIO selectors to virtual-thread blocking I/O,
 removed Robaho's Logger in favor of SLF4J, unified error handling through
-ExceptionMapper pipeline, integrated with Freeway's request/response lifecycle.
+ErrorHandler pipeline, integrated with Freeway's request/response lifecycle.
 TLS is configurable through `HttpModule` (`freeway.http.ssl.*`): optional
 truststore for client-certificate validation, `client-auth` for mutual TLS,
 and protocol/cipher-suite restrictions.

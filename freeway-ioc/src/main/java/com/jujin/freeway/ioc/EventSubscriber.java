@@ -13,7 +13,7 @@ import java.util.function.Consumer;
  * binder.contribute(EventSubscriber.class)
  *     .add(EventSubscriber.of(PostCreated.class, e -> index(e)));
  *
- * // Named + ordered
+ * // Named + ordered: the id belongs to the contribution, not the subscriber
  * binder.contribute(EventSubscriber.class)
  *     .add("notify", EventSubscriber.of(PostCreated.class, e -> sendEmail(e)))
  *     .after("index");
@@ -34,83 +34,38 @@ public final class EventSubscriber<E> {
 
     private final Class<E> eventType;
     private final Consumer<E> handler;
-    private final String id;
+    /** Non-null for a string-topic subscriber; null for a class subscriber. */
     private final String topic;
 
-    private EventSubscriber(
-        Class<E> eventType,
-        Consumer<E> handler,
-        String id,
-        String topic
-    ) {
+    private EventSubscriber(Class<E> eventType, Consumer<E> handler, String topic) {
         this.eventType = eventType;
         this.handler = Objects.requireNonNull(handler, "handler");
-        this.id = id;
         this.topic = topic;
     }
 
-    /** Class-based subscriber. */
+    /** Class-based subscriber: receives events of {@code eventType} and below. */
     public static <E> EventSubscriber<E> of(
         Class<E> eventType,
         Consumer<E> handler
     ) {
         return new EventSubscriber<>(
-            Objects.requireNonNull(eventType, "eventType"),
-            handler,
-            null,
-            null
-        );
+            Objects.requireNonNull(eventType, "eventType"), handler, null);
     }
 
     /**
-     * Class-based subscriber with id for ordering.
+     * String-topic subscriber: the first parameter is the <b>topic</b>
+     * (e.g. {@code "order.placed"}).
      *
-     * @param id contribution id used for {@code before/after} ordering
-     *           (distinct from the string-topic overloads, where the first
-     *           String is the topic)
-     */
-    public static <E> EventSubscriber<E> of(
-        String id,
-        Class<E> eventType,
-        Consumer<E> handler
-    ) {
-        return new EventSubscriber<>(
-            Objects.requireNonNull(eventType, "eventType"),
-            handler,
-            Objects.requireNonNull(id, "id"),
-            null
-        );
-    }
-
-    /**
-     * String-topic subscriber. The first parameter is the <b>topic</b>
-     * (e.g. {@code "order.placed"}) — not an ordering id; see the two-id
-     * overload for named topic subscriptions.
+     * <p>Naming a subscriber for {@code before/after} ordering is the
+     * contribution's job, not the subscriber's — pass the id to
+     * {@code Contributions.add(id, value)}.
      */
     public static EventSubscriber<Object> of(
         String topic,
         Consumer<Object> handler
     ) {
         return new EventSubscriber<>(
-            Object.class,
-            handler,
-            null,
-            Objects.requireNonNull(topic, "topic")
-        );
-    }
-
-    /** String-topic subscriber with id for ordering. */
-    public static EventSubscriber<Object> of(
-        String id,
-        String topic,
-        Consumer<Object> handler
-    ) {
-        return new EventSubscriber<>(
-            Object.class,
-            handler,
-            Objects.requireNonNull(id, "id"),
-            Objects.requireNonNull(topic, "topic")
-        );
+            Object.class, handler, Objects.requireNonNull(topic, "topic"));
     }
 
     Class<E> eventType() {
@@ -119,10 +74,6 @@ public final class EventSubscriber<E> {
 
     Consumer<E> handler() {
         return handler;
-    }
-
-    String id() {
-        return id;
     }
 
     String topic() {

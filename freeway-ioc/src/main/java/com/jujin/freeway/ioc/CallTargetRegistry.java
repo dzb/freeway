@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.ioc.DeadCallException;
@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Internal registry of call targets for {@link com.jujin.freeway.ioc.CallBus}.
  */
-public final class CallTargetRegistry {
+final class CallTargetRegistry {
 
     private final ConcurrentHashMap<String, MethodTarget> targets = new ConcurrentHashMap<>();
 

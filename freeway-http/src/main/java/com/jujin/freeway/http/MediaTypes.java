@@ -30,11 +30,13 @@ public final class MediaTypes {
             || (mediaType.startsWith("application/") && mediaType.endsWith("+json"));
     }
 
-    /** True when the Content-Type identifies multipart/form-data. */
+    /** True when the Content-Type identifies multipart/form-data — the media
+     *  type is compared, so a parameter that merely mentions the string
+     *  ({@code text/plain; note=multipart/form-data}) is not an upload. */
     public static boolean isMultipartFormData(String contentType) {
-        return contentType != null
-            && contentType.toLowerCase(Locale.ROOT)
-                .contains("multipart/form-data");
+        if (contentType == null) return false;
+        return "multipart/form-data".equals(
+            contentType.toLowerCase(Locale.ROOT).split(";")[0].trim());
     }
 
     /** True when a response Content-Type is eligible for gzip compression. */

@@ -24,6 +24,11 @@ public final class CloudHooks {
     /** Registry-client connection; runs before the HTTP server. */
     public static final String DISCOVERY = "freeway.cloud.discovery";
 
+    /** RPC export wiring: resolves the declared exports, registers their
+     *  handlers on the container bus and arms the {@code /rpc/} route; runs
+     *  before the HTTP server so a call can never arrive unwired. */
+    public static final String RPC = "freeway.cloud.rpc";
+
     /** Registry registration + heartbeat; runs after the HTTP server. */
     public static final String REGISTRY = "freeway.cloud.registry";
 

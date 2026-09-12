@@ -39,14 +39,6 @@ final class HttpConnection {
     /** Best-effort hook run before a shutdown force-close (H2 GOAWAY). */
     private volatile Runnable preCloseHook;
 
-    HttpConnection(Socket socket) throws IOException {
-        this(socket, 1024, 0);
-    }
-
-    HttpConnection(Socket socket, int bufferSize) throws IOException {
-        this(socket, bufferSize, 0);
-    }
-
     HttpConnection(Socket socket, int bufferSize, long writeTimeoutMillis)
             throws IOException {
         this.socket = socket;
@@ -70,14 +62,6 @@ final class HttpConnection {
     Socket socket() { return socket; }
     InputStream inputStream() { return bufferedIn; }
     OutputStream outputStream() { return bufferedOut; }
-
-    InetSocketAddress remoteAddress() {
-        return (InetSocketAddress) socket.getRemoteSocketAddress();
-    }
-
-    InetSocketAddress localAddress() {
-        return (InetSocketAddress) socket.getLocalSocketAddress();
-    }
 
     /**
      * sendfile fast path: transfers {@code count} bytes of {@code channel}

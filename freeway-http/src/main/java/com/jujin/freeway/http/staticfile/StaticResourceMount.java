@@ -91,18 +91,6 @@ public final class StaticResourceMount {
         return fallthrough;
     }
 
-    public String mountPath() {
-        return mountPath;
-    }
-
-    public long cacheMaxAgeSeconds() {
-        return cacheMaxAgeSeconds;
-    }
-
-    public boolean immutable() {
-        return immutable;
-    }
-
     public boolean matches(String method, String path) {
         if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
             return false;
@@ -140,7 +128,7 @@ public final class StaticResourceMount {
             : null;
 
         if (range != null && !range.satisfiable()) {
-            response.setStatus(416);
+            response.setStatus(HttpStatus.RANGE_NOT_SATISFIABLE);
             response.setHeader("Content-Range", "bytes */" + meta.size());
             response.output(new byte[0]);
             return true;
@@ -148,7 +136,7 @@ public final class StaticResourceMount {
 
         if (range != null) {
             long length = range.end() - range.start() + 1;
-            response.setStatus(206);
+            response.setStatus(HttpStatus.PARTIAL_CONTENT);
             response.setHeader("Content-Range",
                 "bytes " + range.start() + "-" + range.end() + "/" + meta.size());
             if (!serveBytes(request, response, meta, relative, range.start(), length)) {

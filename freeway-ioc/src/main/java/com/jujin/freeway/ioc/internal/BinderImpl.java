@@ -24,19 +24,12 @@ final class BinderImpl implements Binder {
     }
 
     /**
-     * Sets the module class currently being processed. Called by
-     * {@code ContainerImpl.bindModule} before {@code module.bind()}.
+     * Sets the module class currently being processed — {@code ContainerImpl}
+     * sets it before {@code module.bind()} and clears it after, since the tree
+     * is flattened before binding and modules never nest.
      */
     void setCurrentModule(Class<?> moduleClass) {
         this.currentModule = moduleClass;
-    }
-
-    void restoreCurrentModule(Class<?> previous) {
-        this.currentModule = previous;
-    }
-
-    Class<?> currentModule() {
-        return currentModule;
     }
 
     @Override

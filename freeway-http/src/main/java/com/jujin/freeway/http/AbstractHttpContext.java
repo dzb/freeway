@@ -311,6 +311,11 @@ public abstract class AbstractHttpContext implements HttpContext {
         String charset = ct.substring(idx + 8).trim();
         int semi = charset.indexOf(';');
         if (semi >= 0) charset = charset.substring(0, semi).trim();
+        // A quoted parameter value is the same charset: charset="ISO-8859-1"
+        // must not fall back to UTF-8 (and mojibake the body).
+        if (charset.length() > 1 && charset.startsWith("\"") && charset.endsWith("\"")) {
+            charset = charset.substring(1, charset.length() - 1).trim();
+        }
         try { return Charset.forName(charset); } catch (Exception e) {
             return StandardCharsets.UTF_8;
         }

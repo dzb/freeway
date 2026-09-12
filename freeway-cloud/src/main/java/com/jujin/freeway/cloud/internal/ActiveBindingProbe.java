@@ -3,7 +3,6 @@ package com.jujin.freeway.cloud.internal;
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.ioc.Container;
 
-import java.lang.annotation.Annotation;
 import java.util.Objects;
 
 /**
@@ -20,13 +19,8 @@ public final class ActiveBindingProbe {
         this.container = Objects.requireNonNull(container, "container");
     }
 
-    /** True when {@code type}'s selected binding carries {@code marker}. */
-    public <T> boolean hasMarker(Class<T> type, Class<? extends Annotation> marker) {
-        return container.isActiveBinding(type, marker);
-    }
-
     /** True when {@code type}'s selected binding is still the {@code @Local} default. */
     public <T> boolean isLocal(Class<T> type) {
-        return hasMarker(type, Local.class);
+        return container.isActiveBinding(type, Local.class);
     }
 }

@@ -131,7 +131,7 @@ public final class CorsFilter implements HttpFilter {
             if (maxAge != null) {
                 ctx.setHeader("Access-Control-Max-Age", maxAge);
             }
-            ctx.send(204, "");
+            ctx.send(HttpStatus.NO_CONTENT, "");
             return;
         }
 
@@ -169,12 +169,18 @@ public final class CorsFilter implements HttpFilter {
         return false;
     }
 
+    /**
+     * Builds a filter that differs from {@link #DEFAULT} only in origins and
+     * credential handling — the two things a deployment actually decides. The
+     * remaining fields keep the {@code DEFAULT} values, so there is exactly one
+     * place where a CORS default can drift.
+     */
     public static final class Builder {
         private String allowedOrigins = "*";
-        private String allowedMethods = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
-        private String allowedHeaders = "Content-Type, Authorization";
-        private String exposedHeaders;
-        private String maxAge = "3600";
+        private final String allowedMethods = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+        private final String allowedHeaders = "Content-Type, Authorization";
+        private final String exposedHeaders = null;
+        private final String maxAge = "3600";
         private boolean allowCredentials;
 
         public Builder allowAllOrigins() {
@@ -184,26 +190,6 @@ public final class CorsFilter implements HttpFilter {
 
         public Builder allowedOrigins(String origins) {
             this.allowedOrigins = origins;
-            return this;
-        }
-
-        public Builder allowedMethods(String methods) {
-            this.allowedMethods = methods;
-            return this;
-        }
-
-        public Builder allowedHeaders(String headers) {
-            this.allowedHeaders = headers;
-            return this;
-        }
-
-        public Builder exposedHeaders(String headers) {
-            this.exposedHeaders = headers;
-            return this;
-        }
-
-        public Builder maxAge(String maxAge) {
-            this.maxAge = maxAge;
             return this;
         }
 

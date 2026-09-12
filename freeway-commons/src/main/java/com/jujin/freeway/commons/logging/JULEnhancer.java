@@ -118,16 +118,15 @@ final class JULEnhancer {
      * dedicated file:
      * <ol>
      *   <li>{@link LogConfigSource#values()} — the application's main config
-     *       files and the active preset, supplied by the boot layer via
-     *       ServiceLoader — lowest precedence, filling only what nothing
-     *       above set
+     *       files, supplied by the boot layer via ServiceLoader — lowest
+     *       precedence, filling only what nothing above set
      *   <li>{@code freeway-log.properties} from the classpath root — the
      *       dedicated log file, the more specific declaration
      * </ol>
      * The application-side source is a boot-supplied contract
      * ({@link LogConfigSource}) — commons consumes it, boot owns the file
-     * family and preset knowledge. No provider (a bare container without
-     * boot) degenerates to the dedicated file plus -D/env. The container's
+     * family. No provider (a bare container without boot) degenerates to the
+     * dedicated file plus -D/env. The container's
      * config cascade is not involved: this runs at bootstrap, before any
      * container exists.
      */
@@ -195,9 +194,8 @@ final class JULEnhancer {
 
     /**
      * Maps a config key to its environment variable name, honoring the
-     * configurable env prefix ({@code freeway.env.prefix}, default
-     * {@code FREEWAY_}) — consistent with {@code ConfigLoaderImpl}'s
-     * cascade mapping.
+     * configurable env prefix ({@link EnvKeys#prefix()}, default
+     * {@code FREEWAY_}) — the same one boot's cascade mapping uses.
      *
      * <p>Default prefix: {@code "freeway.log.level"} → {@code "FREEWAY_LOG_LEVEL"},
      * {@code "com.myapp.level"} → {@code "COM_MYAPP_LEVEL"}.
@@ -205,16 +203,8 @@ final class JULEnhancer {
      * {@code "APP_FREEWAY_LOG_LEVEL"} (the cascade maps that back to
      * {@code freeway.log.level}).</p>
      */
-    /** The declared env-mapping prefix: JVM system property
-     *  {@code freeway.env.prefix}, blank falling back to {@code FREEWAY_}.
-     *  The single definition both directions of the env mapping share. */
-    private static String envPrefix() {
-        String declared = EnvKeys.bootstrap("freeway.env.prefix");
-        return declared == null ? EnvKeys.DEFAULT_PREFIX : declared;
-    }
-
     static String envKeyFor(String configKey) {
-        return EnvKeys.name(envPrefix(), configKey);
+        return EnvKeys.name(EnvKeys.prefix(), configKey);
     }
 
     /** The -D/env band of the cascade alone — no file homes: the system
@@ -232,8 +222,8 @@ final class JULEnhancer {
      *   <li>System property ({@code -Dkey=value}) — highest priority
      *   <li>Environment variable (prefix from {@link #envKeyFor}) — for {@code freeway.*} keys
      *   <li>File homes merged by {@link #loadLogConfig} — dedicated
-     *       {@code freeway-log.properties} first, then the application files,
-     *       then the preset's log subset (all ranked by the put order)
+     *       {@code freeway-log.properties} first, then the application files
+     *       (both ranked by the put order)
      *   <li>{@code defaultValue}
      * </ol>
      */
@@ -254,8 +244,8 @@ final class JULEnhancer {
             String stripped = envVal.strip();
             if (!stripped.isEmpty()) return stripped;
         }
-        // 3. File homes (dedicated file > app files > preset subset) — one
-        //    merged map; the put order in loadLogConfig ranks them.
+        // 3. File homes (dedicated file > app files) — one merged map; the
+        //    put order in loadLogConfig ranks them.
         String fileVal = fileConfig.getProperty(key);
         if (fileVal != null) {
             String stripped = fileVal.strip();
@@ -344,7 +334,7 @@ final class JULEnhancer {
      * {@code max-size} with {@code max.size}.
      */
     static String envToConfigKey(String envName) {
-        String prefix = envPrefix();
+        String prefix = EnvKeys.prefix();
         String candidate;
         if (EnvKeys.DEFAULT_PREFIX.equals(prefix)) {
             candidate = envName;

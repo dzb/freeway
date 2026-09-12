@@ -10,6 +10,10 @@ import com.jujin.freeway.cloud.resilience.CircuitBreaker;
 import com.jujin.freeway.cloud.resilience.RateLimiter;
 import com.jujin.freeway.cloud.resilience.Retryer;
 import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.cloud.CloudHooks;
+import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.http.route.Route;
+import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.MissingBindingException;
@@ -109,6 +113,25 @@ public final class CloudRpcModule implements ModuleEx {
             })
             .marker(Local.class)
             ;
+
+        // The consumer side needs one hand-wired object fewer: the caller is a
+        // plain composition of two builtins, so the framework assembles it and
+        // an application injects it instead of building it.
+        b.bind(RemoteCaller.class)
+            .to((Container container) -> new RemoteCaller(
+                container.get(CloudHttpClient.class),
+                container.get(JsonCodec.class)));
+
+        // The server side is one wildcard route plus the startup hook that
+        // resolves the declared exports: the route is contributed here (bind
+        // time, the designed write path) so nothing depends on hook ordering,
+        // and the hook fills the state the route needs before the server starts.
+        var exportHook = new RpcExportHook();
+        b.contribute(Route.class)
+            .add("freeway.cloud.rpc", RpcEndpoint.exportsRoute(exportHook));
+        b.contribute(RuntimeHook.class)
+            .add(CloudHooks.RPC, exportHook)
+            .before(CloudHooks.HTTP_SERVER);
     }
 
     private static <T> T optional(Container container, Class<T> type) {

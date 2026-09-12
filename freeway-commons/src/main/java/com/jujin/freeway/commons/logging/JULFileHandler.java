@@ -145,8 +145,8 @@ public final class JULFileHandler extends StreamHandler {
      * instantiation. Reads configuration through the same cascade as the
      * bootstrap log configuration ({@link JULEnhancer#loadLogConfig()} —
      * system properties, environment, the dedicated file, the application
-     * files and the preset) so a handler registered natively by the user
-     * resolves the same values the framework-managed path would.
+     * files) so a handler registered natively by the user resolves the same
+     * values the framework-managed path would.
      */
     public JULFileHandler() throws IOException {
         // propertyValue resolves through the full cascade (-D > env > file),

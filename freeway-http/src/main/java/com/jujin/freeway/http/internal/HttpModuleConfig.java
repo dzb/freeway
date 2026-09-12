@@ -109,8 +109,8 @@ public record HttpModuleConfig(
             List.of("Content-Type", "Authorization"));
     private static final SymbolSpec<List<String>> CORS_EXPOSED_HEADERS =
         SymbolSpec.list(HttpConfigKeys.CORS_EXPOSED_HEADERS, List.of());
-    private static final SymbolSpec<String> CORS_MAX_AGE =
-        SymbolSpec.of(HttpConfigKeys.CORS_MAX_AGE, String.class, "3600");
+    private static final SymbolSpec<Integer> CORS_MAX_AGE =
+        SymbolSpec.of(HttpConfigKeys.CORS_MAX_AGE, Integer.class, 3600);
     private static final SymbolSpec<Boolean> CORS_ALLOW_CREDENTIALS =
         SymbolSpec.of(HttpConfigKeys.CORS_ALLOW_CREDENTIALS, Boolean.class, false);
 
@@ -186,7 +186,7 @@ public record HttpModuleConfig(
                 symbols.resolve(CORS_ALLOWED_METHODS),
                 symbols.resolve(CORS_ALLOWED_HEADERS),
                 symbols.resolve(CORS_EXPOSED_HEADERS),
-                symbols.resolve(CORS_MAX_AGE),
+                String.valueOf(symbols.resolve(CORS_MAX_AGE)),
                 symbols.resolve(CORS_ALLOW_CREDENTIALS)),
             new Health(
                 symbols.resolve(HEALTH_ENABLED),

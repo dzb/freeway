@@ -2,7 +2,6 @@ package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.commons.bean.BeanConstructor;
 import com.jujin.freeway.commons.bean.BeanIntrospector;
-import com.jujin.freeway.commons.bean.BeanParameter;
 import com.jujin.freeway.commons.coercion.CoerceRule;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
@@ -46,20 +45,19 @@ public final class ContainerImpl implements Container {
     private static final Logger LOG = LoggerFactory.getLogger(ContainerImpl.class);
 
     /**
-     * Thread-scope values realized by containers, mapped to their owning
-     * container. The {@link ScopedCache} close hook runs container lifecycle
-     * only for these — values cached by standalone {@code ScopedCache} users
-     * are left untouched. Values stay registered until their scope exits
-     * (even if the owning container closes first), so the hook always cleans
-     * them up.
+     * Thread-scope values realized by a container — the ones whose lifecycle
+     * runs when their scope exits. The {@link ScopedCache} close hook acts only
+     * on these; values cached by standalone {@code ScopedCache} users are left
+     * untouched. Values stay registered until their scope exits (even if the
+     * container closes first), so the hook always cleans them up.
      */
-    private static final Map<Object, ContainerImpl> MANAGED_SCOPE_VALUES =
-        Collections.synchronizedMap(new IdentityHashMap<>());
+    private static final Set<Object> MANAGED_SCOPE_VALUES =
+        Collections.synchronizedSet(
+            Collections.newSetFromMap(new IdentityHashMap<>()));
 
     static {
         ScopedCache.onClose(v -> {
-            ContainerImpl owner = MANAGED_SCOPE_VALUES.remove(v);
-            if (owner == null) {
+            if (!MANAGED_SCOPE_VALUES.remove(v)) {
                 return;
             }
             Lifecycle.invokePreDestroy(v);
@@ -73,9 +71,9 @@ public final class ContainerImpl implements Container {
         });
     }
 
-    /** Marks a value as owned by {@code owner} so scope exit runs its lifecycle. */
-    static void manageScopeValue(ContainerImpl owner, Object value) {
-        MANAGED_SCOPE_VALUES.put(value, owner);
+    /** Marks {@code value} as container-managed, so scope exit runs its lifecycle. */
+    static void manageScopeValue(Object value) {
+        MANAGED_SCOPE_VALUES.add(value);
     }
 
     private volatile boolean closed;
@@ -91,8 +89,7 @@ public final class ContainerImpl implements Container {
     private final SymbolSourceDefault symbolSource;
     private final CoercerDefault coercer;
     private final LoggerSource loggerSource;
-    private final Scoping scoping;
-    private final ProxyFactory proxyFactory;
+    private final ProxyFactoryImpl proxyFactory;
     private final InjectionResolver injectResolver;
     private final Shutdown shutdown;
     private final ServiceRuntime serviceRuntime;
@@ -120,7 +117,6 @@ public final class ContainerImpl implements Container {
         this.loggerSource = LoggerSourceImpl.INSTANCE;
         this.proxyFactory = new ProxyFactoryImpl();
         this.injectResolver = new InjectionResolver(this);
-        this.scoping = this::scopedWithin;
         this.shutdown = new Shutdown(targetCache);
         this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);
         infrastructureWiring.put(SymbolProvider.class,
@@ -131,7 +127,7 @@ public final class ContainerImpl implements Container {
         registerBuiltin(Metrics.class, NoopMetrics.INSTANCE, "Metrics");
         registerBuiltin(Coercer.class, coercer, "Coercer");
         registerBuiltin(LoggerSource.class, loggerSource, "LoggerSource");
-        registerBuiltin(Scoping.class, scoping, "Scoping");
+        registerBuiltin(Scoping.class, this::scopedWithin, "Scoping");
         // Message domain: both buses are container-managed builtins so the
         // documented usage (container.get(...)) works out of the box. They
         // realize lazily on first resolution — always after every module has
@@ -197,10 +193,6 @@ public final class ContainerImpl implements Container {
         return List.copyOf(loadedModules);
     }
 
-    LoggerSource loggerSource() {
-        return loggerSource;
-    }
-
     @Override
     @SuppressWarnings("unchecked")
     public <T> Extension<T> extension(Class<T> entryType) {
@@ -245,10 +237,9 @@ public final class ContainerImpl implements Container {
         Class<?> moduleClass = module.getClass();
         LOG.debug("Installing module: {}", moduleClass.getSimpleName());
         loadedModules.add(module);
-        Class<?> previousModule = binder.currentModule();
         binder.setCurrentModule(moduleClass);
         module.bind(binder);
-        binder.restoreCurrentModule(previousModule);
+        binder.setCurrentModule(null);
         binder.flushPending();
     }
 
@@ -352,6 +343,7 @@ public final class ContainerImpl implements Container {
                 targetCache.clear();
             }
             bindingIndex.clear();
+            markerIndex.clear();
             coercer.clearRules();
             extensions.clear();
             // Thread-scope values are deliberately NOT unregistered here: their
@@ -442,7 +434,7 @@ public final class ContainerImpl implements Container {
 
     <T> void register(BindingImpl<T> binding) {
         bindingIndex.register(binding);
-        markerIndex.register(binding);
+        markerIndex.sync(binding);
     }
 
     /**
@@ -506,9 +498,6 @@ public final class ContainerImpl implements Container {
         Lifecycle.invokePostConstruct(instance);
     }
 
-    Object[] resolveArguments(Class<?> ownerType, List<BeanParameter> parameters) {
-        return injectResolver.resolveArguments(ownerType, parameters);
-    }
 
     private void injectFields(Object instance) {
         injectResolver.injectFields(instance);

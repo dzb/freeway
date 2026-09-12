@@ -3,7 +3,10 @@ package com.jujin.freeway.http.engine.http2;
 import java.io.IOException;
 import java.io.OutputStream;
 
-final class ContinuationFrame extends BaseFrame {
+/** A header block split across frames (RFC 9113 §6.10). Public because
+ *  {@code hpack.HPackContext} owns header framing and cannot see
+ *  package-private siblings — an intra-engine contract, not API. */
+public final class ContinuationFrame extends BaseFrame {
     private final byte[] headerBlock;
 
     public ContinuationFrame(FrameHeader header, byte[] headerBlock) {

@@ -31,7 +31,6 @@ class BootConfigTierTest {
                 cliValue == null ? Map.of() : Map.of(KEY, cliValue),
                 envValue == null ? Map.of() : Map.of(KEY, envValue),
                 fileValue == null ? Map.of() : Map.of(KEY, fileValue),
-                Map.of(),
                 List.of()),
             List.of());
     }

@@ -113,11 +113,11 @@ class AppConfigDefaultTest {
     void bothFormsContributeTheTieredSources() {
         // Static form: the given map becomes the file tier.
         assertTieredSources(AppConfigDefault.of(Map.of("k", "static"), List.of()));
-        // Tiered form: cli/env/preset sources plus a files baseline.
+        // Tiered form: cli/env sources plus a files baseline.
         assertTieredSources(new AppConfigDefault(
             new ConfigSources(
                 Map.of("k", "cli"), Map.of("k", "env"), Map.of("k", "from-file"),
-                Map.of("k", "preset"), List.of()),
+                List.of()),
             List.of()));
     }
 
@@ -126,9 +126,9 @@ class AppConfigDefaultTest {
             List<SymbolProvider> providers = config.providers();
             assertEquals(
                 List.of(SymbolProvider.TIER_CLI, SymbolProvider.TIER_ENV,
-                    SymbolProvider.TIER_FILES, SymbolProvider.TIER_PRESET),
+                    SymbolProvider.TIER_FILES),
                 providers.stream().map(SymbolProvider::order).toList(),
-                "cli, env, files and preset tiers in declared order — the preset last");
+                "cli, env and files tiers in declared order");
         } finally {
             config.close();
         }
@@ -142,21 +142,6 @@ class AppConfigDefaultTest {
             assertEquals("from-file", files.lookup("k"),
                 "an undifferentiated config behaves like the file tier — env/CLI "
                     + "and module sources (e.g. secrets) outrank it");
-        } finally {
-            config.close();
-        }
-    }
-
-    @Test
-    void presetOnlyFillsWhatNoHigherTierSet() {
-        AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(
-                Map.of("k", "cli"), Map.of(), Map.of(), Map.of("k", "preset"), List.of()),
-            List.of());
-        try {
-            assertEquals("cli", value(config, "k"), "cli outranks the preset");
-            assertEquals("preset", config.providers().get(3).lookup("k"),
-                "the preset still carries the fallback value");
         } finally {
             config.close();
         }
@@ -265,7 +250,7 @@ class AppConfigDefaultTest {
         // externalize config next to a deployed jar.
         Path file = dir.resolve("late.properties");
         AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(Map.of(), Map.of(), Map.of("k", "v"), Map.of(), List.of()),
+            new ConfigSources(Map.of(), Map.of(), Map.of("k", "v"), List.of()),
             List.of(file));
         try {
             assertNull(value(config, HOT_KEY));
@@ -282,7 +267,7 @@ class AppConfigDefaultTest {
         // The runtime hook closes the config, and a failed startup closes it
         // too — a second close must not throw or corrupt the file tier.
         AppConfigDefault config = new AppConfigDefault(
-            new ConfigSources(Map.of(), Map.of(), Map.of("k", "v"), Map.of(), List.of()),
+            new ConfigSources(Map.of(), Map.of(), Map.of("k", "v"), List.of()),
             List.of(dir.resolve("missing.properties")));
         config.close();
         config.close();

@@ -14,13 +14,12 @@ import java.util.Objects;
  * which tier answered. The field names are the tiers —
  * {@link com.jujin.freeway.ioc.symbol.SymbolProvider#TIER_CLI cli} →
  * {@code TIER_CLI}, {@code environment} → {@code TIER_ENV}, {@code files} →
- * {@code TIER_FILES}, {@code preset} → {@code TIER_PRESET}.
+ * {@code TIER_FILES}.
  */
 public record ConfigSources(
     Map<String, String> cli,
     Map<String, String> environment,
     Map<String, String> files,
-    Map<String, String> preset,
     List<String> profiles
 ) {
 
@@ -28,15 +27,6 @@ public record ConfigSources(
         cli = Map.copyOf(Objects.requireNonNull(cli, "cli"));
         environment = Map.copyOf(Objects.requireNonNull(environment, "environment"));
         files = Map.copyOf(Objects.requireNonNull(files, "files"));
-        preset = Map.copyOf(Objects.requireNonNull(preset, "preset"));
         profiles = List.copyOf(Objects.requireNonNull(profiles, "profiles"));
-    }
-
-    /**
-     * The static form: {@code values} is the whole file tier — no CLI, no
-     * environment mapping, no preset. Used for custom config sources and tests.
-     */
-    public static ConfigSources of(Map<String, String> values, List<String> profiles) {
-        return new ConfigSources(Map.of(), Map.of(), values, Map.of(), profiles);
     }
 }

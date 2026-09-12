@@ -23,8 +23,10 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
  *     new AppModule(), new HttpModule(), new CloudEventModule());
  * }</pre>
  *
- * <p>Config ({@code freeway.cloud.event.*}): {@code enabled} (default
- * false — the mesh stays unwired), {@code peers} (host:port list; optional
+ * <p>Config ({@code freeway.cloud.event.*}): {@code enabled} (presence-driven —
+ * unset with no peers leaves the mesh unwired, {@code peers} below wire it;
+ * {@code false} is a kill switch that suppresses even a configured peer list),
+ * {@code peers} (host:port list; optional
  * when a discovery backend feeds {@code setPeers}), {@code subscriptions}
  * (CE type prefixes this node pulls from the mesh; empty = outbound-only),
  * {@code allowed-types} (CLASS-channel deserialization allowlist; empty =
@@ -49,6 +51,10 @@ public final class CloudEventModule implements ModuleEx {
 
         binder.contribute(RuntimeHook.class)
             .add(CloudHooks.EVENT, new CloudEventLifecycleHook(hub, sink))
-            .before(CloudHooks.HTTP_SERVER);
+            // After the server: the mesh origin is the node identity, which
+            // needs the port this node actually serves on. A peer that dials
+            // during the short window before wiring is closed with 1013 and
+            // reconnects on its backoff — the mesh treats that as normal.
+            .after(CloudHooks.HTTP_SERVER);
     }
 }

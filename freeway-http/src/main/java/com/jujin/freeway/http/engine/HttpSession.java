@@ -43,12 +43,6 @@ final class HttpSession implements Runnable {
 
     HttpSession(Socket socket, ExchangeHandler handler,
             JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
-            HttpServerConfig config, ConnectionRegistry registry) {
-        this(socket, handler, jsonCodec, coercer, engine, config, registry, null);
-    }
-
-    HttpSession(Socket socket, ExchangeHandler handler,
-            JsonCodec jsonCodec, Coercer coercer, FreewayHttpEngine engine,
             HttpServerConfig config, ConnectionRegistry registry,
             Semaphore connectionPermits) {
         this.rawSocket = socket;

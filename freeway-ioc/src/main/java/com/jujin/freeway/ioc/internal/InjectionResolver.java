@@ -7,6 +7,7 @@ import com.jujin.freeway.commons.bean.BeanProperty;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.util.Types;
 import com.jujin.freeway.ioc.MissingBindingException;
+import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
@@ -238,7 +239,12 @@ final class InjectionResolver {
 
     private Logger resolveLogger(Class<?> ownerType, AnnotationLookup lookup) {
         String id = resolveId(lookup);
-        return id == null ? container.loggerSource().get(Objects.requireNonNull(ownerType, "ownerType")) : container.loggerSource().get(id);
+        // Through the container, like SymbolSource and Coercer: a module that
+        // binds its own primary LoggerSource must be honored here too.
+        LoggerSource loggers = container.get(LoggerSource.class);
+        return id == null
+            ? loggers.get(Objects.requireNonNull(ownerType, "ownerType"))
+            : loggers.get(id);
     }
 
     private static boolean hasInjectionAnnotation(AnnotationLookup lookup) {

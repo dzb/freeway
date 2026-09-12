@@ -5,85 +5,79 @@ import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.CallBus;
 import java.io.IOException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Server side of the remote-CallBus bridge: exposes the container's
- * registered CallBus mappings over {@code POST /rpc/<mapping>/{method}}.
- * Reuses the local bus for dispatch — inside the serving JVM a remote call
- * behaves exactly like a local one, including in-transaction semantics.
+ * Server side of the remote-CallBus bridge: serves
+ * {@code POST /rpc/{mapping}/{method}} by dispatching on the local
+ * {@link CallBus}, so a remote call behaves exactly like a local one inside the
+ * serving JVM — including in-transaction semantics.
  *
- * <p>Export is <b>explicit</b>: each mapping you hand to {@link #of} contributes
- * its own route and becomes reachable; nothing is auto-discovered (design doc
- * §3.2 — no CloudExporter). The mapping is baked into the route as a path
- * literal, so one process can export as many mappings as it has handlers for.</p>
+ * <p><b>Applications do not use this class.</b> They declare what to expose
+ * with an {@link RpcExport} contribution; the framework contributes the route,
+ * resolves the handlers and registers them on the container's bus (see
+ * {@code RpcExportHook}). This class is the protocol: version check, export
+ * gate, argument decoding, dispatch and the exception boundary. Its two entries
+ * exist for the two assemblies that need a route without the module:
+ * {@link #route} for a standalone {@code WebServer} (an ext engine's
+ * {@code RouteIndex}, a custom mount), and {@link #exportsRoute} for the
+ * framework's own wildcard route.
  */
 public final class RpcEndpoint {
 
-
     private static final Logger LOG = LoggerFactory.getLogger(RpcEndpoint.class);
-    private final String mapping;
-    private final CallBus callBus;
-    private final JsonCodec codec;
-    /** When false, the handler's free-text message stays on this side. */
-    private final boolean propagateMessage;
 
-    private RpcEndpoint(String mapping, CallBus callBus, JsonCodec codec,
-                        boolean propagateMessage) {
-        this.mapping = mapping;
-        this.callBus = callBus;
-        this.codec = codec;
-        this.propagateMessage = propagateMessage;
+    private RpcEndpoint() {}
+
+    /**
+     * A route serving one mapping at its own literal path — the assembly for
+     * callers that own a bus and a codec already (standalone servers, ext
+     * engines, a custom mount). The application path is the {@link RpcExport}
+     * contribution; this is the composition escape hatch.
+     */
+    public static Route route(RpcExport export, CallBus callBus, JsonCodec codec) {
+        Objects.requireNonNull(export, "export");
+        Objects.requireNonNull(callBus, "callBus");
+        Objects.requireNonNull(codec, "codec");
+        return Route.post(
+            RpcPaths.routePattern(export.mapping()),
+            ctx -> serve(ctx, export.mapping(), export.propagateMessage(), callBus, codec));
     }
 
     /**
-     * Creates the route contribution for one mapping. The handler's exception
-     * message is <b>not</b> sent to the caller — see
-     * {@link #of(String, CallBus, JsonCodec, boolean)}.
-     *
-     * @param mapping call-topic prefix to expose (e.g. {@code "user"}) —
-     *                topics beyond this prefix stay local-only
+     * The framework's route: one wildcard pattern, gated by the export set the
+     * hook resolved at startup. Letting the hook own the gate keeps the export
+     * declaration the single source of truth for what is reachable.
      */
-    public static Route of(String mapping, CallBus callBus, JsonCodec codec) {
-        return of(mapping, callBus, codec, false);
+    static Route exportsRoute(RpcExportHook hook) {
+        Objects.requireNonNull(hook, "hook");
+        return Route.post(RpcPaths.ROUTE_PATTERN, hook::serve);
     }
 
     /**
-     * As {@link #of(String, CallBus, JsonCodec)} with an explicit choice about
-     * the exception message. The exception <i>class</i> always crosses — it is
-     * the caller's dispatch contract. The <i>message</i> is free text and
-     * routinely carries SQL, host names and identifiers, so it stays here
-     * unless you opt in on a mesh you control end to end.
-     *
-     * @param propagateMessage send the handler's message to the caller
-     * @throws IllegalArgumentException mapping is blank or holds a character
-     *         outside {@code [A-Za-z0-9_.]} — it names a path segment, so a
-     *         bad value fails the wiring instead of silently shadowing a
-     *         sibling mapping at request time
+     * The protocol body, shared by both entries: version check, handler gate,
+     * positional-argument decode, dispatch, exception boundary.
      */
-    public static Route of(String mapping, CallBus callBus, JsonCodec codec,
-                           boolean propagateMessage) {
-        RpcEndpoint endpoint = new RpcEndpoint(mapping, callBus, codec, propagateMessage);
-        return Route.post(RpcPaths.routePattern(mapping), endpoint::serve);
-    }
-
-    private void serve(HttpContext ctx) throws IOException {
+    static void serve(HttpContext ctx, String mapping, boolean propagateMessage,
+                      CallBus callBus, JsonCodec codec) throws IOException {
         String rpcVersion = ctx.header(RemoteCaller.VERSION_HEADER).orElse(null);
         if (!RemoteCaller.VERSION.equals(rpcVersion)) {
-            reject(ctx, 400, "unsupported rpc version: " + rpcVersion);
+            reject(ctx, codec, 400, "unsupported rpc version: " + rpcVersion);
             return;
         }
-        String method = ctx.pathVar("method").orElse("");
+        String method = ctx.pathVar(RpcPaths.METHOD_VAR).orElse("");
         String topic = mapping + "." + method;
-        // The mapping is a route literal, so only topics under our own prefix
-        // can reach this handler; the bus decides what is actually exported.
+        // The mapping was validated at declaration time and the gate already ran,
+        // so anything the bus does not know is a missing method, not a missing
+        // export; the bus stays the authority on what is handled.
         if (!callBus.handles(topic)) {
-            reject(ctx, 404, "no handler for topic " + topic);
+            reject(ctx, codec, 404, "no handler for topic " + topic);
             return;
         }
 
@@ -92,7 +86,7 @@ public final class RpcEndpoint {
             byte[] rawBody = ctx.body();
             args = decodeArgs(new String(rawBody, StandardCharsets.UTF_8));
         } catch (RuntimeException e) {
-            reject(ctx, 400, "malformed argument array: " + e.getMessage());
+            reject(ctx, codec, 400, "malformed argument array: " + e.getMessage());
             return;
         }
         try {
@@ -105,16 +99,16 @@ public final class RpcEndpoint {
             }
         } catch (java.util.concurrent.CompletionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
-            encodeBusinessFailure(ctx, cause);
+            encodeBusinessFailure(ctx, codec, mapping, propagateMessage, cause);
         } catch (RuntimeException e) {
             // Inline dispatch surface: DeadCall raced past handles(), or an
             // advice failed before reaching the handler.
-            encodeBusinessFailure(ctx, e);
+            encodeBusinessFailure(ctx, codec, mapping, propagateMessage, e);
         }
     }
 
     /** Positional JSON array → arguments; the element decoder never guesses types. */
-    private Object[] decodeArgs(String json) {
+    private static Object[] decodeArgs(String json) {
         var elements = com.jujin.freeway.commons.json.JsonUtils.parseArray(json);
         List<Object> args = new ArrayList<>(elements.size());
         for (int i = 0; i < elements.size(); i++) {
@@ -128,7 +122,9 @@ public final class RpcEndpoint {
         return args.toArray();
     }
 
-    private void encodeBusinessFailure(HttpContext ctx, Throwable ex) throws IOException {
+    private static void encodeBusinessFailure(
+            HttpContext ctx, JsonCodec codec, String mapping,
+            boolean propagateMessage, Throwable ex) throws IOException {
         // The detail is always available to operators on THIS side; what
         // crosses the boundary is the class (the contract) and, only on
         // request, the free-text message.
@@ -141,14 +137,15 @@ public final class RpcEndpoint {
         ctx.setHeader("Content-Type", "application/json");
         ctx.setHeader(RemoteCaller.EXCEPTION_CLASS_HEADER, headerText(className));
         ctx.setHeader(RemoteCaller.EXCEPTION_MESSAGE_HEADER, headerText(message));
-        ctx.send(400, errorBody(className));
+        ctx.send(400, errorBody(codec, className));
     }
 
-    private void reject(HttpContext ctx, int status, String message) throws IOException {
+    static void reject(HttpContext ctx, JsonCodec codec, int status, String message)
+            throws IOException {
         ctx.setStatus(status);
         ctx.setHeader("Content-Type", "application/json");
         ctx.setHeader("X-RPC-Reject-Reason", headerText(message));
-        ctx.send(status, errorBody(message));
+        ctx.send(status, errorBody(codec, message));
     }
 
     /**
@@ -163,7 +160,7 @@ public final class RpcEndpoint {
 
     /** Bodies go through the codec: an invalid JSON error document is a worse
      *  failure than the one it reports. */
-    private String errorBody(String message) {
+    private static String errorBody(JsonCodec codec, String message) {
         return codec.toJson(Map.of("error", message));
     }
 }

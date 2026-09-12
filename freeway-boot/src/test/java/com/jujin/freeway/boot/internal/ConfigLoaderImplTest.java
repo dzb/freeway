@@ -6,11 +6,19 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,6 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigLoaderImplTest {
+
+    @TempDir
+    Path dir;
+
     @Test
     void loadsEverySourceSeparatelyAndFoldsTheFilesBaseline() {
         ConfigSources sources = ConfigLoaderImpl.loadLayers(
@@ -446,36 +458,86 @@ class ConfigLoaderImplTest {
     }
 
     @Test
-    void unknownPresetNameFailsTheLoad() {
-        System.setProperty(Presets.KEY, "kubernates");
+    void filesystemOverrideFilesMirrorTheClasspathBandOrder() {
+        // The filesystem half of the same rule: the base files, then every
+        // profile's properties, then every profile's json — so the format
+        // outranks the profile order on both sides of the baseline — and
+        // finally the freeway.config.file extras, in the declared order.
+        System.setProperty("freeway.config.file",
+            " extra.properties , second.properties ");
         try {
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ConfigLoaderImpl.load(ConfigLoaderImplTest.class.getClassLoader()));
-            assertTrue(ex.getMessage().contains("freeway.preset"),
-                "the error must name the bootstrap key, got: " + ex.getMessage());
+            List<String> names = ConfigLoaderImpl
+                .overrideFiles(List.of("dev", "prod"))
+                .stream()
+                .map(path -> path.getFileName().toString())
+                .toList();
+
+            assertEquals(List.of(
+                "application.properties", "application.json",
+                "application-dev.properties", "application-prod.properties",
+                "application-dev.json", "application-prod.json",
+                "extra.properties", "second.properties"), names);
         } finally {
-            System.clearProperty(Presets.KEY);
+            System.clearProperty("freeway.config.file");
         }
     }
 
     @Test
-    void activePresetReachesTheLowestTier() {
-        System.setProperty(Presets.KEY, "docker");
+    void bootstrapOnlyKeyOnTheCommandLineLosesAndIsNamedInAWarning() throws IOException {
+        // A bootstrap key declares where a source comes from, so it is read
+        // before the CLI exists: the -D channel names the file that is loaded,
+        // the CLI spelling names one that is not — and it says so.
+        Path declared = Files.writeString(
+            dir.resolve("declared.properties"), "bootstrap.probe=from-bootstrap\n");
+        Path ignored = dir.resolve("ignored.properties");
+        System.setProperty("freeway.config.file", declared.toString());
+        AppConfig[] loaded = new AppConfig[1];
+        List<String> warnings;
         try {
-            AppConfig config = ConfigLoaderImpl.load(
-                ConfigLoaderImplTest.class.getClassLoader());
-            try {
-                assertEquals("0.0.0.0", value(config, "freeway.http.server.host"),
-                    "the loader resolves -Dfreeway.preset into the lowest tier");
-                assertEquals("off", value(config, "freeway.log.file"),
-                    "the same bundle serves the JUL log cascade's keys");
-            } finally {
-                config.close();
-            }
+            warnings = captureWarnings(() -> loaded[0] = ConfigLoaderImpl.load(
+                ConfigLoaderImplTest.class.getClassLoader(),
+                "--freeway.config.file=" + ignored));
         } finally {
-            System.clearProperty(Presets.KEY);
+            System.clearProperty("freeway.config.file");
         }
+        try {
+            assertEquals("from-bootstrap", value(loaded[0], "bootstrap.probe"),
+                "the bootstrap channel decides; the CLI spelling is not a channel");
+        } finally {
+            loaded[0].close();
+        }
+
+        assertTrue(
+            warnings.stream().anyMatch(warning ->
+                warning.contains("freeway.config.file")
+                    && warning.contains("the command-line arguments")),
+            "a bootstrap key on the command line must be named in a WARN, got: "
+                + warnings);
+    }
+
+    @Test
+    void bootstrapOnlyKeyInAnExtraFileIsNamedInAWarning() throws IOException {
+        // The freeway.config.file extras are the other file channel that never
+        // participates in bootstrap resolution — the file is named in the
+        // warning, so the operator knows which file to fix.
+        Path extra = Files.writeString(
+            dir.resolve("extra.properties"), "freeway.env.prefix=APP_\n");
+        System.setProperty("freeway.config.file", extra.toString());
+        List<String> warnings;
+        try {
+            warnings = captureWarnings(() ->
+                ConfigLoaderImpl.load(ConfigLoaderImplTest.class.getClassLoader())
+                    .close());
+        } finally {
+            System.clearProperty("freeway.config.file");
+        }
+
+        assertTrue(
+            warnings.stream().anyMatch(warning ->
+                warning.contains("freeway.env.prefix")
+                    && warning.contains("extra.properties")),
+            "an extra config file declaring a bootstrap key must be named in a "
+                + "WARN, got: " + warnings);
     }
 
     /**
@@ -498,11 +560,49 @@ class ConfigLoaderImplTest {
         return null;
     }
 
+    /**
+     * The WARN messages logged under the loader's logger while {@code action}
+     * runs — the only observable effect of a bootstrap key appearing in a
+     * channel it cannot come from. The framework's SLF4J provider is
+     * JUL-backed, so the messages arrive as JUL records.
+     */
+    private static List<String> captureWarnings(Runnable action) {
+        Logger logger = Logger.getLogger(ConfigLoaderImpl.class.getName());
+        List<String> messages = new ArrayList<>();
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getLevel().intValue() >= Level.WARNING.intValue()
+                        && record.getMessage() != null) {
+                    messages.add(record.getMessage());
+                }
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        boolean parentHandlers = logger.getUseParentHandlers();
+        logger.setUseParentHandlers(false);
+        logger.addHandler(handler);
+        try {
+            action.run();
+        } finally {
+            logger.removeHandler(handler);
+            logger.setUseParentHandlers(parentHandlers);
+        }
+        return messages;
+    }
+
     private static final class OversizedPropertiesLoader extends ClassLoader {
         @Override
         public InputStream getResourceAsStream(String name) {
             if ("application.properties".equals(name)) {
-                return new RepeatingInputStream(16L * 1024 * 1024 + 1);
+                return new RepeatingInputStream(ConfigFileReader.MAX_BYTES + 1);
             }
             return null;
         }
@@ -512,7 +612,7 @@ class ConfigLoaderImplTest {
         @Override
         public InputStream getResourceAsStream(String name) {
             if ("application.json".equals(name)) {
-                return new RepeatingInputStream(16L * 1024 * 1024 + 1);
+                return new RepeatingInputStream(ConfigFileReader.MAX_BYTES + 1);
             }
             return null;
         }

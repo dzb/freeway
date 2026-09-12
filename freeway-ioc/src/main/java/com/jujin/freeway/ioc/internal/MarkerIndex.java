@@ -36,24 +36,12 @@ final class MarkerIndex {
     }
 
     /**
-     * Registers a binding in the marker index. Called after the binding
-     * is fully configured (markers populated).
-     */
-    void register(BindingImpl<?> binding) {
-        Set<Class<?>> markers = binding.markers();
-        if (markers.isEmpty()) {
-            return;
-        }
-        for (Class<?> marker : markers) {
-            validateMarkerAnnotation(marker);
-            markerToBindings.computeIfAbsent(marker, k -> new CopyOnWriteArrayList<>()).add(binding);
-        }
-    }
-
-    /**
-     * Adds markers that were declared on an already-registered binding
-     * (via {@code .marker(...)}/{@code .primary()} after flush). Does not
-     * duplicate entries; removing markers is not supported.
+     * Puts a binding into the index under each of its markers — the one entry
+     * point, used both when the binding is flushed and when markers are added
+     * later (via {@code .marker(...)}/{@code .primary()} on a handle a later
+     * module extends). Does not duplicate entries; removing markers is not
+     * supported. Marker annotations were already validated where they entered
+     * the binding ({@link BindingImpl#addMarkers}/{@link BindingImpl#marker}).
      */
     void sync(BindingImpl<?> binding) {
         for (Class<?> marker : binding.markers()) {
@@ -208,6 +196,11 @@ final class MarkerIndex {
             "Marker annotation " + markerClass.getName()
                 + " must have @Retention(RetentionPolicy.RUNTIME)"
         );
+    }
+
+    /** Releases every indexed binding. */
+    void clear() {
+        markerToBindings.clear();
     }
 
     private static String markerNames(Class<? extends Annotation>[] markers) {

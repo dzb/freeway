@@ -52,7 +52,6 @@ public final class PeerConnector implements AutoCloseable {
     private final HttpClient http;
     private final PeerHub hub;
     private final Map<PeerAddress, AtomicInteger> backoffByPeer = new ConcurrentHashMap<>();
-    private final List<PeerAddress> staticPeers;
     /** Open client sessions, so {@link #close()} can abort their sockets. */
     private final java.util.Set<ClientSessionHandler> sessions =
         ConcurrentHashMap.newKeySet();
@@ -72,29 +71,17 @@ public final class PeerConnector implements AutoCloseable {
     private volatile boolean started;
     private volatile boolean closed;
 
-    /** Peers as host:port strings (design §3, zero-dependency start). */
-    public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout) {
-        this(hub, staticPeers, connectTimeout, "ws");
-    }
-
-    /** Creates a connector with an explicit outbound WS scheme ({@code ws} or {@code wss}). */
-    public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout, String scheme) {
-        this(hub, staticPeers, connectTimeout, scheme,
-            HANDSHAKE_TIMEOUT, BACKOFF_BASE_MS, BACKOFF_MAX_MS);
-    }
-
     /**
-     * Full constructor with explicit networking timeouts. The other constructors
-     * delegate here with the framework defaults so existing callers (and tests)
-     * are unaffected; production wiring passes the {@code freeway.cloud.event.*}
-     * config values through {@link com.jujin.freeway.cloud.CloudConfigKeys}.
+     * Peers arrive through {@link #start(List)} or {@link #setPeers(List)} —
+     * the configured ones from the lifecycle hook, the discovered ones from an
+     * adapter. There is no separate constructor-supplied set: it would be a
+     * second way to feed the same thing, and production never used it.
+     * Networking values come from the {@code freeway.cloud.event.*} config via
+     * {@link com.jujin.freeway.cloud.CloudConfigKeys}.
      */
-    public PeerConnector(PeerHub hub, List<String> staticPeers, Duration connectTimeout,
+    public PeerConnector(PeerHub hub, Duration connectTimeout,
             String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs) {
         this.hub = hub;
-        this.staticPeers = staticPeers.stream()
-            .map(PeerAddress::parse)
-            .toList();
         this.connectTimeout = connectTimeout;
         this.scheme = scheme == null || scheme.isBlank() ? "ws" : scheme;
         this.handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
@@ -105,22 +92,16 @@ public final class PeerConnector implements AutoCloseable {
             .build();
     }
 
-    /** Dials every configured peer (virtual threads; failures back off). */
-    public void start() {
-        start(List.of());
-    }
-
-    /** As {@link #start()} with additional dynamically-resolved peers. */
-    public synchronized void start(List<String> dynamicPeers) {
+    /** Dials the given peers (virtual threads; failures back off). */
+    public synchronized void start(List<String> peers) {
         if (started) {
-            // late dynamic peers are handled by setPeers — no double dial
-            setPeers(dynamicPeers);
+            // late peers are handled by setPeers — no double dial
+            setPeers(peers);
             return;
         }
         started = true;
         var all = new java.util.LinkedHashMap<PeerAddress, Boolean>();
-        for (PeerAddress peer : staticPeers) all.put(peer, true);
-        for (String p : dynamicPeers) all.put(PeerAddress.parse(p), true);
+        for (String p : peers) all.put(PeerAddress.parse(p), true);
         for (PeerAddress k : backoffByPeer.keySet()) all.put(k, true);
         for (PeerAddress peer : all.keySet()) {
             spawnDial(peer);
@@ -135,7 +116,7 @@ public final class PeerConnector implements AutoCloseable {
      *  neither and silently lost. */
     public synchronized void setPeers(List<String> peers) {
         for (PeerAddress peer : peers.stream().map(PeerAddress::parse).toList()) {
-            boolean known = staticPeers.contains(peer) || backoffByPeer.containsKey(peer);
+            boolean known = backoffByPeer.containsKey(peer);
             if (!known && started) {
                 spawnDial(peer);
             } else if (!known) {

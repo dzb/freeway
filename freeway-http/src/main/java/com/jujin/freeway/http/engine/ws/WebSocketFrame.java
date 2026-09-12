@@ -58,11 +58,9 @@ final class WebSocketFrame {
 
     // --- close frame info (populated when opCode == Close) ---
 
-    private CloseCode closeCode;
     private String closeReason;
     private int closeCodeValue = 1000;
 
-    CloseCode closeCode() { return closeCode; }
     String closeReason() { return closeReason; }
     int closeCodeValue() { return closeCodeValue; }
 
@@ -245,7 +243,6 @@ final class WebSocketFrame {
             int codeVal = (payload[0] & 0xFF) << 8 | (payload[1] & 0xFF);
             if (isValidWireCloseCode(codeVal)) {
                 this.closeCodeValue = codeVal;
-                this.closeCode = CloseCode.find(codeVal);
             } else {
                 // RFC 6455 §7.4.1: reserved codes and 1016-2999 must not be
                 // sent on the wire; treat them as a protocol error.

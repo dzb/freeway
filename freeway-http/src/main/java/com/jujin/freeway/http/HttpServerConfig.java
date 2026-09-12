@@ -99,7 +99,9 @@ public record HttpServerConfig(
             new CompressionConfig(true, 256);
 
         public CompressionConfig {
-            if (minSize < 0) minSize = 256;
+            if (minSize < 0) {
+                throw new IllegalArgumentException("compression minSize must be >= 0: " + minSize);
+            }
         }
     }
 

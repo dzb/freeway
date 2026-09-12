@@ -44,8 +44,20 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
     /** Bind-all addresses: reachable locally, unreachable from other nodes. */
     private static final Set<String> UNROUTABLE_HOSTS = Set.of("0.0.0.0", "::", "");
 
+    /**
+     * The instance this node registers — and the identity it presents to the
+     * rest of the system. Every consumer resolves it here: the registry through
+     * {@link #resolve}, the event mesh through this factory, so a node cannot
+     * present two names. Null when there is no HTTP module (nothing to
+     * register).
+     */
     @Override
     public ServiceInstance resolve(Container container) {
+        return of(container);
+    }
+
+    /** @see #resolve */
+    public static ServiceInstance of(Container container) {
         WebServer server;
         try {
             server = container.get(WebServer.class);

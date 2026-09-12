@@ -185,7 +185,7 @@ public final class MetricsDefault implements Metrics, MetricsSnapshot {
         }
     }
 
-    public static final class TimerData {
+    private static final class TimerData {
         private final LongAdder count = new LongAdder();
         private final LongAdder totalNanos = new LongAdder();
 

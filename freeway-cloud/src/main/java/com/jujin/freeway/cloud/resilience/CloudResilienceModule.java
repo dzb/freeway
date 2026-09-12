@@ -35,12 +35,14 @@ public final class CloudResilienceModule implements ModuleEx {
     // the raw value and the spec post-processes it. Defaults come from the
     // shared CloudConfigKeys sources so the config layer and the library
     // fallback (CloudHttpClientDefault) cannot drift apart.
-    /** Aggregate mode: auto = fine-grained keys govern; off = kill switch. */
+    /**
+     * Aggregate mode: auto = fine-grained keys govern; off = kill switch that
+     * disables retry, breaker and limiter as one explicit switch and ignores
+     * the fine-grained rpc.* resilience keys.
+     */
     private static final SymbolSpec<String> RESILIENCE_MODE = SymbolSpec.of(
         CloudConfigKeys.RPC_RESILIENCE, String.class,
-        CloudConfigKeys.RPC_RESILIENCE_AUTO, Function.identity(),
-        "auto | off — off disables retry, breaker and limiter as one explicit "
-            + "kill switch and ignores the fine-grained rpc.* resilience keys");
+        CloudConfigKeys.RPC_RESILIENCE_AUTO, Function.identity());
     private static final SymbolSpec<Integer> RETRY_MAX_ATTEMPTS = SymbolSpec.of(
         CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, Integer.class,
         CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS_DEFAULT, Integer::parseInt);

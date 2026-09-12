@@ -1,4 +1,4 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.ioc.CallBus.CallAdvice;
 import com.jujin.freeway.ioc.CallBus.CallChain;
@@ -10,7 +10,7 @@ import java.util.function.Predicate;
 /**
  * Internal advice chain for {@link com.jujin.freeway.ioc.CallBus}.
  */
-public final class CallAdviceChain {
+final class CallAdviceChain {
 
     private final CopyOnWriteArrayList<CallAdviceEntry> advices = new CopyOnWriteArrayList<>();
 

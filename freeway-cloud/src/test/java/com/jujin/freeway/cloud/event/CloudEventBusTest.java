@@ -9,6 +9,8 @@ import com.jujin.freeway.boot.FreewayApp;
 import com.jujin.freeway.cloud.CloudConfigKeys;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
+import com.jujin.freeway.ioc.EventSink;
 import com.jujin.freeway.ioc.EventBus;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -180,6 +182,35 @@ class CloudEventBusTest {
         nodeA.get(EventBus.class).publish(new OrderedEvent("order-42"));
         assertTrue(received.await(awaitSeconds(), TimeUnit.SECONDS));
         assertEquals("order-42", eventAtB.get().id);
+    }
+
+    @Test
+    void keyedEventCarriesItsKeyAsTheWireSubject() throws Exception {
+        // The wire contract the Kafka bridge reads as the record key: a Keyed
+        // event's key() becomes the envelope's `subject`. The mesh test above
+        // only asserts the delivered event, so without this the subject could
+        // stop being written and nothing would notice.
+        var envelope = CloudEventEnvelope.translate(
+            new OrderedEvent("order-42"), OrderedEvent.class.getName(), EventSink.Channel.CLASS,
+            "node-a@127.0.0.1:8080", "orders", new JsonCodecDefault(),
+            "wire-id-1");
+        var frame = com.jujin.freeway.commons.json.JsonUtils.parseObject(envelope);
+
+        assertEquals("order-42", frame.getString("subject"),
+            "a keyed typed event carries its key as the subject, got: " + envelope);
+        assertEquals(OrderedEvent.class.getName(), frame.getString("type"),
+            "the CLASS channel types the frame by event class");
+        assertEquals("wire-id-1", frame.getString("id"),
+            "the bus-minted id is carried verbatim");
+
+        // A topic payload is opaque: no subject, and the topic is the type.
+        var topicFrame = com.jujin.freeway.commons.json.JsonUtils.parseObject(
+            CloudEventEnvelope.translate(
+                "plain", "order.placed", EventSink.Channel.TOPIC,
+                "node-a@127.0.0.1:8080", "orders", new JsonCodecDefault(), "wire-id-2"));
+        assertFalse(topicFrame.containsKey("subject"),
+            "a topic payload has no ordering key, got: " + topicFrame);
+        assertEquals("order.placed", topicFrame.getString("type"));
     }
 
     @Test

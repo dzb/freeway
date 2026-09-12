@@ -164,6 +164,8 @@ final class Http1xResponseWriter implements HttpResponseWriter {
         REASON_BYTES[404] = "Not Found".getBytes(StandardCharsets.ISO_8859_1);
         REASON_BYTES[405] = "Method Not Allowed".getBytes(StandardCharsets.ISO_8859_1);
         REASON_BYTES[413] = "Payload Too Large".getBytes(StandardCharsets.ISO_8859_1);
+        REASON_BYTES[415] = "Unsupported Media Type".getBytes(StandardCharsets.ISO_8859_1);
+        REASON_BYTES[416] = "Range Not Satisfiable".getBytes(StandardCharsets.ISO_8859_1);
         REASON_BYTES[422] = "Unprocessable Content".getBytes(StandardCharsets.ISO_8859_1);
         REASON_BYTES[426] = "Upgrade Required".getBytes(StandardCharsets.ISO_8859_1);
         REASON_BYTES[429] = "Too Many Requests".getBytes(StandardCharsets.ISO_8859_1);

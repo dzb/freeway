@@ -26,7 +26,6 @@ class SymbolSpecTest {
         SymbolSpec<Integer> port = SymbolSpec.of("server.port", Integer.class, 8080);
         assertEquals(8080, port.parse(null, coercer));
         assertEquals(8080, port.parse("   ", coercer));
-        assertTrue(port.description().isEmpty());
         assertFalse(port.required());
     }
 

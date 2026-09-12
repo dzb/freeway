@@ -31,7 +31,7 @@ final class ServiceRuntime {
      */
     static final Object REALIZE_LOCK = new Object();
 
-    private final ProxyFactory proxyFactory;
+    private final ProxyFactoryImpl proxyFactory;
     private final Map<ServiceKey, Object> serviceCache;
     private final Map<ServiceKey, Object> targetCache;
     private final ThreadLocal<Set<ServiceKey>> realizeStack =
@@ -40,7 +40,7 @@ final class ServiceRuntime {
 
     ServiceRuntime(
         ContainerImpl container,
-        ProxyFactory proxyFactory,
+        ProxyFactoryImpl proxyFactory,
         Map<ServiceKey, Object> serviceCache,
         Map<ServiceKey, Object> targetCache
     ) {
@@ -132,7 +132,7 @@ final class ServiceRuntime {
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
         return withCycleGuard(key, () -> binding.type().cast(ScopedCache.get(key, () -> {
             Object created = binding.directInstance();
-            ContainerImpl.manageScopeValue(container, created);
+            ContainerImpl.manageScopeValue(created);
             return created;
         })));
     }

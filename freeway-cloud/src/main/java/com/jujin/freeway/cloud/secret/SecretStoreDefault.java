@@ -39,8 +39,8 @@ public final class SecretStoreDefault implements SecretStore {
         return Optional.ofNullable(cached.get(key));
     }
 
-    /** Re-reads the secrets file (called on startup; rotation handling is TTL-based in adapters). */
-    public void reload() {
+    /** Re-reads the secrets file at startup; rotation is an adapter concern. */
+    private void reload() {
         if (!Files.isRegularFile(file)) {
             cached = Map.of();
             return;

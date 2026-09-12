@@ -10,7 +10,6 @@ final class HeadersFrame extends BaseFrame {
     private long dependentStreamId;
     private byte[] headerBlock;
 
-    public HeadersFrame() { this(new FrameHeader(0, FrameType.HEADERS, FrameFlag.NONE, 0)); }
     public HeadersFrame(FrameHeader header) { super(header); }
 
     public byte[] headerBlock() { return headerBlock; }
@@ -45,11 +44,16 @@ final class HeadersFrame extends BaseFrame {
         return frame;
     }
 
+    /**
+     * Serializes this frame with its own parsed flags — the uniform shape of
+     * every frame class here. The <em>response</em> path does not use it: a
+     * server-side header block needs END_STREAM on the HEADERS frame and
+     * END_HEADERS withheld when the block continues in CONTINUATION frames
+     * (RFC 9113 §6.10), which
+     * {@code hpack.HPackContext.encodeResponseHeaders} owns.
+     */
     public void writeTo(OutputStream outputStream) throws IOException {
-        byte[] buffer = headerBlock;
-        FrameHeader.writeTo(outputStream, buffer.length, FrameType.HEADERS,
-            FrameFlag.FlagSet.of(FrameFlag.END_HEADERS), header().streamId());
-        outputStream.write(buffer);
-        outputStream.flush();
+        header().writeTo(outputStream);
+        outputStream.write(headerBlock);
     }
 }

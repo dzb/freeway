@@ -74,7 +74,9 @@ final class Http1xSession {
                 if (isH2cUpgradeRequest(req)) {
                     SettingsFrame h2cSettings = tryPrepareH2cUpgrade(req);
                     if (h2cSettings != null) {
-                        ctx.metrics().requestsTotal().increment();
+                        // No request counter here: the upgraded request is served
+                        // as HTTP/2 stream 1, so SessionContext counts it exactly
+                        // like any other stream request.
                         new Http2Session(ctx).handleH2cUpgrade(connection, req, parser, h2cSettings);
                         return;
                     }
@@ -98,7 +100,7 @@ final class Http1xSession {
                     : in;
                 context.reset(req.method(), req.path(), req.queryString(),
                     req.headers(), bodyStream, bodyLength, req.isChunked(),
-                    out, correlationId, req.isHttp10(), req.keepAlive());
+                    out, correlationId, req.keepAlive());
                 // The correlation id is echoed for tracing only — a hostile
                 // value must never break the session. (HTTP/1.1 parsing now
                 // rejects CTL, so this guard is defense-in-depth.)

@@ -32,7 +32,7 @@ class ObjectStorageTest {
 
         var put = storage.put("assets", "a/b.txt", data, ObjectMetadata.of("text/plain"));
         assertNotNull(put.etag());
-        assertNotNull(put.versionId());
+
 
         byte[] read = storage.get("assets", "a/b.txt").orElseThrow();
         assertArrayEquals(data, read, "read bytes match written bytes");

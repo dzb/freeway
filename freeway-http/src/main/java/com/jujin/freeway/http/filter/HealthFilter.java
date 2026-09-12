@@ -1,5 +1,6 @@
 package com.jujin.freeway.http.filter;
 
+import com.jujin.freeway.http.HttpStatus;
 import java.nio.charset.StandardCharsets;
 
 import com.jujin.freeway.http.HttpContext;
@@ -50,11 +51,11 @@ public final class HealthFilter implements HttpFilter {
                 && healthPath.equals(PathPattern.normalizePath(
                     ctx.path()))) {
             if (healthCheck instanceof HealthCheck.Default) {
-                ctx.setStatus(200).setHeader(
+                ctx.setStatus(HttpStatus.OK).setHeader(
                         "Content-Type", MediaTypes.JSON_UTF8)
                     .output(DEFAULT_RESPONSE);
             } else {
-                ctx.sendJson(200, healthCheck.check());
+                ctx.sendJson(HttpStatus.OK, healthCheck.check());
             }
             return;
         }

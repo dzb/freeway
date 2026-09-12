@@ -89,10 +89,6 @@ final class Headers {
         values.clear();
     }
 
-    int size() {
-        return values.size();
-    }
-
     /** Unmodifiable snapshot of the entries in insertion order, flattened so
      *  a multi-valued header becomes one entry per value. */
     List<Map.Entry<String, String>> entries() {

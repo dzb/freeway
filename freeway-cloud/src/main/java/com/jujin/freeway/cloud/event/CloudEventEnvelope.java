@@ -8,7 +8,6 @@ import com.jujin.freeway.ioc.EventBus;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * CloudEvents 1.0 (JSON content mode) translator — the single place where a
@@ -16,7 +15,8 @@ import java.util.UUID;
  *
  * <p>Attribute mapping: {@code type} = event class name (CLASS channel) or
  * the string topic (TOPIC channel); {@code subject} = {@link EventBus.Keyed#key()}
- * (partition-ordering key, preserved across the wire); {@code source} =
+ * on the CLASS channel only — the ordering key applies to typed events, while a
+ * topic payload is opaque to the bus and carries no subject; {@code source} =
  * {@code freeway://{serviceId}}; {@code id} = the dispatch identity the bus
  * minted once and handed to every transport (so the copies can be
  * correlated); extensions {@code fwchannel}/{@code fworigin} carry the
@@ -48,23 +48,6 @@ public final class CloudEventEnvelope {
         EventSink.Channel channel,
         String dataJson
     ) {}
-
-    /** Translates one outbound event (or topic payload) into a CE JSON frame. */
-    public static String translate(
-        Object event,
-        String topic,
-        EventSink.Channel channel,
-        String origin,
-        String serviceId,
-        JsonCodec codec
-    ) {
-        // Direct caller, not the bus: no shared identity to reuse, so mint
-        // one. Two transports translating the same event through this path
-        // produce unrelated ids — precisely what the bus-supplied id avoids.
-        return translate(
-            event, topic, channel, origin, serviceId, codec,
-            UUID.randomUUID().toString());
-    }
 
     /**
      * Translates using {@code eventId} — the identity the bus minted for

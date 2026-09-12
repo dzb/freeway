@@ -10,8 +10,8 @@ import org.junit.jupiter.api.Test;
 /**
  * The boot-supplied source ({@link LogConfigSource}) ranks below the
  * dedicated {@code freeway-log.properties} and above code defaults. commons
- * only consumes the contract — the application file family, preset knowledge
- * and their relative precedence live in boot.
+ * only consumes the contract — the application file family and its
+ * precedence live in boot.
  */
 class JULEnhancerLogSourceTest {
 

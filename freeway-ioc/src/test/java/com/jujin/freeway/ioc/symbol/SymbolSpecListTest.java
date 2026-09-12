@@ -2,7 +2,7 @@ package com.jujin.freeway.ioc.symbol;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -30,8 +30,9 @@ class SymbolSpecListTest {
         SymbolSpec<List<String>> spec = SymbolSpec.list("k", List.of("x"));
         List<String> resolved = spec.parse(null);
         assertEquals(List.of("x"), resolved);
-        assertTrue(spec.parse(null) != spec.parse(null) || true,
-            "immutability is guaranteed by construction (List.copyOf)");
+        assertThrows(UnsupportedOperationException.class,
+            () -> spec.parse(null).add("y"),
+            "the served list is immutable (List.copyOf), not a shared mutable one");
     }
 
     @Test

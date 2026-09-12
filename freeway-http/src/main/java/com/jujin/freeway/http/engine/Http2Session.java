@@ -97,7 +97,7 @@ final class Http2Session {
             }
 
             if (ssl) {
-                if (!h2conn.hasProperPreface(true))
+                if (!h2conn.hasProperPreface())
                     throw new IOException("Invalid HTTP/2 TLS preface");
             }
             h2conn.sendMySettings();
@@ -189,7 +189,7 @@ final class Http2Session {
             context.setSslSession(sslSession);
             context.setRemoteAddress(HttpSession.remoteAddress(socket));
             context.reset(method, path, rawQuery, headers, in, -1, false,
-                out, correlationId, false, false);
+                out, correlationId, false);
             context.setWriter(new Http2ResponseWriter(stream));
             // Echo for tracing only — a hostile value (e.g. CR/LF inside an
             // HPACK-encoded header) must never poison the response head; the

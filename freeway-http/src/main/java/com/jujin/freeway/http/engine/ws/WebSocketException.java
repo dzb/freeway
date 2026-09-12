@@ -13,12 +13,6 @@ final class WebSocketException extends IOException {
         this.reason = reason;
     }
 
-    public WebSocketException(CloseCode code, String reason, Throwable cause) {
-        super(code + ": " + reason, cause);
-        this.code = code;
-        this.reason = reason;
-    }
-
     CloseCode closeCode() { return code; }
     String closeReason() { return reason; }
 }

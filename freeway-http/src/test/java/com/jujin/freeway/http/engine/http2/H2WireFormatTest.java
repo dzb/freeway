@@ -117,6 +117,63 @@ class H2WireFormatTest {
     }
 
     @Test
+    void oversizedHeaderBlockIsSplitIntoContinuationFrames() throws Exception {
+        // RFC 9113 §6.10: a header block may span HEADERS + CONTINUATION, and
+        // no other frame may sit between them. A block larger than the peer's
+        // SETTINGS_MAX_FRAME_SIZE must be split — one oversized HEADERS frame is
+        // a connection error (FRAME_SIZE_ERROR) at the peer.
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        headers.put(":status", List.of("200"));
+        // ~2 KB of header value, framed at 512 bytes => several frames
+        headers.put("x-big", List.of("v".repeat(2048)));
+
+        var hpack = new HPackContext();
+        List<byte[]> frames = hpack.encodeResponseHeaders(headers, 3, true, 512);
+
+        assertTrue(frames.size() > 1,
+            "a block larger than maxFrameSize must span frames, got " + frames.size());
+
+        int maxPayload = 0;
+        for (int i = 0; i < frames.size(); i++) {
+            BaseFrame frame = FrameSerializer.deserialize(
+                new ByteArrayInputStream(frames.get(i)));
+            boolean last = i == frames.size() - 1;
+            if (i == 0) {
+                assertEquals(FrameType.HEADERS, frame.header().type(),
+                    "the block always starts with HEADERS");
+                assertTrue(frame.header().flags().contains(FrameFlag.END_STREAM),
+                    "END_STREAM rides on the HEADERS frame");
+            } else {
+                assertEquals(FrameType.CONTINUATION, frame.header().type(),
+                    "frame " + i + " must be CONTINUATION");
+            }
+            assertEquals(last, frame.header().flags().contains(FrameFlag.END_HEADERS),
+                "only the final frame carries END_HEADERS");
+            FrameFlag.validate(frame.header().flags().value(), frame.header().type());
+            maxPayload = Math.max(maxPayload, frame.header().length());
+        }
+        assertTrue(maxPayload <= 512,
+            "no frame may exceed the advertised limit, saw " + maxPayload);
+
+        // The split must reassemble into exactly the single-frame block.
+        byte[] whole = hpack.encodeResponseHeaders(headers, 3, true, 1 << 20).getFirst();
+        byte[] reassembled = new byte[0];
+        for (int i = 0; i < frames.size(); i++) {
+            byte[] block = i == 0
+                ? ((HeadersFrame) FrameSerializer.deserialize(
+                    new ByteArrayInputStream(frames.get(i)))).headerBlock()
+                : ((ContinuationFrame) FrameSerializer.deserialize(
+                    new ByteArrayInputStream(frames.get(i)))).headerBlock();
+            byte[] grown = Arrays.copyOf(reassembled, reassembled.length + block.length);
+            System.arraycopy(block, 0, grown, reassembled.length, block.length);
+            reassembled = grown;
+        }
+        assertEquals(HEX.formatHex(Arrays.copyOfRange(whole, 9, whole.length)),
+            HEX.formatHex(reassembled),
+            "split frames must carry the identical header block");
+    }
+
+    @Test
     void continuationRejectsNonEndHeadersFlags() {
         byte[] header = FrameHeader.encode(0, FrameType.CONTINUATION,
             FrameFlag.FlagSet.of(FrameFlag.END_STREAM), 1);

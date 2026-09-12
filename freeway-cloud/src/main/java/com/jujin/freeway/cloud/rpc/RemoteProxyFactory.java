@@ -172,20 +172,16 @@ public final class RemoteProxyFactory {
     }
 
     private Object remoteDispatch(Method method, Object[] args) throws Throwable {
-        try {
-            // The consumer interface owns the replay-safety verdict: an
-            // @Idempotent method (or interface) tells the resilience loop
-            // that ambiguous outcomes may be replayed. Read reflectively
-            // per call — no scanning, no wire change.
-            boolean idempotent = method.isAnnotationPresent(Idempotent.class)
-                || method.getDeclaringClass().isAnnotationPresent(Idempotent.class);
-            return remote.invoke(serviceId, mapping, method.getName(), asList(args),
-                method.getReturnType(), timeout, idempotent);
-        } catch (CloudException e) {
-            // Transport failures keep their type; business failures are wrapped
-            // (RemoteInvocationException) — both land here as CloudException.
-            throw e;
-        }
+        // The consumer interface owns the replay-safety verdict: an @Idempotent
+        // method (or interface) tells the resilience loop that ambiguous
+        // outcomes may be replayed. Read reflectively per call — no scanning,
+        // no wire change.
+        boolean idempotent = method.isAnnotationPresent(Idempotent.class)
+            || method.getDeclaringClass().isAnnotationPresent(Idempotent.class);
+        // Failures keep their type: transport failures arrive as CloudException,
+        // business failures as RemoteInvocationException.
+        return remote.invoke(serviceId, mapping, method.getName(), asList(args),
+            method.getReturnType(), timeout, idempotent);
     }
 
     private Object objectMethod(Object proxy, Method method, Object[] args) {

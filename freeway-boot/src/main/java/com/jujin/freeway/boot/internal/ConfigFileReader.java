@@ -7,7 +7,6 @@ import com.jujin.freeway.commons.util.Maps;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,9 +40,10 @@ public final class ConfigFileReader {
     /**
      * Read cap for every config source: a file that exceeds it fails loudly
      * instead of exhausting memory. High enough that only a runaway file hits
-     * it.
+     * it — the tests derive their boundary input from this constant, so
+     * lowering it cannot leave them passing while no longer exercising the cap.
      */
-    public static final long MAX_BYTES = 16L * 1024 * 1024;
+    static final long MAX_BYTES = 16L * 1024 * 1024;
 
     private ConfigFileReader() {}
 
@@ -64,20 +64,13 @@ public final class ConfigFileReader {
         }
     }
 
+    /** Dispatches on the name extension; see the class javadoc. */
     private static Map<String, String> parse(String name, InputStream in) throws IOException {
         if (name.toLowerCase(Locale.ROOT).endsWith(".json")) {
             return json(new String(in.readAllBytes(), StandardCharsets.UTF_8), name);
         }
-        return properties(in);
-    }
-
-    private static Map<String, String> properties(InputStream in) throws IOException {
-        return properties(new InputStreamReader(in, StandardCharsets.UTF_8));
-    }
-
-    private static Map<String, String> properties(Reader reader) throws IOException {
         Properties props = new Properties();
-        props.load(reader);
+        props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
         Map<String, String> values = new LinkedHashMap<>();
         props.forEach((k, v) -> values.put(String.valueOf(k), String.valueOf(v)));
         return values;
@@ -90,7 +83,11 @@ public final class ConfigFileReader {
      */
     private static Map<String, String> json(String text, String name) {
         if (text.startsWith("\uFEFF")) {
-            text = text.substring(1); // strip UTF-8 BOM like JsonParser
+            // The JSON parser strips a leading BOM itself, so this is not
+            // needed to parse. It is what makes a document consisting only of
+            // a BOM count as blank below — "no config", like an empty file —
+            // instead of failing as malformed.
+            text = text.substring(1);
         }
         if (text.isBlank()) {
             return Map.of();

@@ -95,7 +95,13 @@ public final class Http2Stream {
      * END_STREAM after a reset is a protocol violation and races with the
      * handler's own writes on the shared connection.
      */
-    void markAborted() { responseAborted.set(true); }
+    void markAborted() {
+        responseAborted.set(true);
+        // No further frames for this stream: the RST_STREAM has been sent, so
+        // the output is closed as surely as in abortResponse(). Without this the
+        // handler's next write would emit response frames after the reset.
+        streamOutputClosed = true;
+    }
 
     /**
      * Aborts the response after a framing violation (e.g. body length does
@@ -197,9 +203,13 @@ public final class Http2Stream {
         if (connection.isClosed()) throw new IOException("connection closed");
         connection.lock();
         try {
-            byte[] frame = connection.hpack().encodeResponseHeaders(
-                responseHeaders, streamId, closeStream);
-            connection.writeFrame(frame);
+            // The peer's advertised SETTINGS_MAX_FRAME_SIZE bounds each frame:
+            // a larger one is a connection error at its end, so an oversized
+            // header block becomes HEADERS + CONTINUATION. One writeFrame call
+            // keeps the sequence contiguous (RFC 9113 §6.10).
+            var frames = connection.hpack().encodeResponseHeaders(
+                responseHeaders, streamId, closeStream, connection.peerMaxFrameSize);
+            connection.writeFrame(frames.toArray(byte[][]::new));
             if (closeStream) streamOutputClosed = true;
         } finally {
             connection.unlock();
@@ -236,8 +246,10 @@ public final class Http2Stream {
             if (peerReset) throw new IOException("stream reset by peer");
             waitForSendWindow();
             if (connection.isClosed()) throw new IOException("connection closed");
-            writeResponseHeaders(false);
+            // Checked before the header write: an aborted/reset stream must not
+            // emit a response head either.
             if (streamOutputClosed) throw new IOException("output closed");
+            writeResponseHeaders(false);
 
             while (length > 0) {
                 int chunkSize = (int) Math.min(Math.min(length, connection.peerMaxFrameSize),

@@ -39,7 +39,6 @@ public final class Http2Connection {
     public static final String PARTIAL_PREFACE = "\r\nSM\r\n\r\n";
 
     private static final int DEFAULT_WINDOW_SIZE = 65535;
-    private static final int DEFAULT_MAX_FRAME_SIZE = 16384;
     /**
      * Server-side cap on open streams (RFC 7540 §5.1.2). Excess streams are
      * rejected with RST_STREAM(REFUSED_STREAM) instead of opening unbounded
@@ -88,7 +87,7 @@ public final class Http2Connection {
     private final HPackContext hpack = new HPackContext();
     final ConcurrentHashMap<Integer, Http2Stream> streams = new ConcurrentHashMap<>();
     /** Peer's advertised SETTINGS_MAX_FRAME_SIZE — caps our OUTBOUND DATA chunking. */
-    volatile int peerMaxFrameSize = 16384;
+    volatile int peerMaxFrameSize = FrameHeader.DEFAULT_MAX_FRAME_SIZE;
     private final Settings remoteSettings = new Settings();
     private final Settings localSettings = new Settings();
     /** Reused by the single reader thread to avoid per-frame header allocation. */
@@ -153,7 +152,8 @@ public final class Http2Connection {
         this.readTimeoutMillis = readTimeoutMillis;
         this.resetBurstLimit = resetBurstLimit;
         this.resetWindowNanos = resetWindow.toNanos();
-        localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_MAX_FRAME_SIZE, DEFAULT_MAX_FRAME_SIZE));
+        localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_MAX_FRAME_SIZE,
+            FrameHeader.DEFAULT_MAX_FRAME_SIZE));
         localSettings.set(new SettingParameter(SettingIdentifier.SETTINGS_INITIAL_WINDOW_SIZE, DEFAULT_WINDOW_SIZE));
         localSettings.set(new SettingParameter(
             SettingIdentifier.SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS));
@@ -197,11 +197,11 @@ public final class Http2Connection {
         }
     }
 
-    public boolean hasProperPreface(boolean ssl) throws IOException {
-        String expected = ssl ? PREFACE : PARTIAL_PREFACE;
-        byte[] buffer = new byte[expected.length()];
+    /** Reads and verifies the client connection preface. */
+    public boolean hasProperPreface() throws IOException {
+        byte[] buffer = new byte[PREFACE.length()];
         FrameSerializer.readFully(inputStream, buffer);
-        return expected.equals(new String(buffer, StandardCharsets.US_ASCII));
+        return PREFACE.equals(new String(buffer, StandardCharsets.US_ASCII));
     }
 
     void writeFrame(byte[]... frames) throws IOException {
@@ -229,7 +229,7 @@ public final class Http2Connection {
         while (!closed.get()) {
             updateReadTimeout();
             var frame = FrameSerializer.deserialize(
-                inputStream, DEFAULT_MAX_FRAME_SIZE, frameHeaderBuffer);
+                inputStream, FrameHeader.DEFAULT_MAX_FRAME_SIZE, frameHeaderBuffer);
             int streamId = frame.header().streamId();
             Http2FrameValidator.requireClientStreamId(streamId);
 
@@ -676,14 +676,6 @@ public final class Http2Connection {
 
     private void sendPingAck(PingFrame pingFrame) throws IOException {
         writeFrame(new PingFrame(pingFrame).encode());
-    }
-
-    InetSocketAddress remoteAddress() {
-        return (InetSocketAddress) socket.getRemoteSocketAddress();
-    }
-
-    InetSocketAddress localAddress() {
-        return (InetSocketAddress) socket.getLocalSocketAddress();
     }
 
     @FunctionalInterface

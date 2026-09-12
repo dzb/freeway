@@ -38,51 +38,21 @@ class RemoteCallerTest {
         BusinessFailure(String m) { super(m); }
     }
 
-    /** Exposes the server's CallBus mapping through RpcEndpoint. */
+    /**
+     * Exposes the server's mappings the application way: declare the exports,
+     * and let the framework resolve the handlers from the container and
+     * register them on the container's bus. Nothing here holds a bus, a codec
+     * or a route — that is the point of the export declaration.
+     */
     static class RpcExportModule implements ModuleEx {
-        private final CallBus binderBindTimeBus = new CallBus(new CallBusContainerShim());
-
-        /** Minimal view serving exactly what the CallBus constructor needs. */
-        static final class CallBusContainerShim implements Container {
-            private final com.jujin.freeway.commons.metrics.Metrics metrics
-                = new com.jujin.freeway.commons.metrics.NoopMetrics();
-            @SuppressWarnings("unchecked")
-            public <T> T get(Class<T> type) {
-                if (type == com.jujin.freeway.commons.metrics.Metrics.class) return (T) metrics;
-                throw new UnsupportedOperationException(String.valueOf(type));
-            }
-            public <T> T get(Class<T> type, String id) { return get(type); }
-            @SafeVarargs public final <T> T get(Class<T> type, Class<? extends java.lang.annotation.Annotation>... markers) { return get(type); }
-            @Override public <T> boolean isActiveBinding(
-                Class<T> type,
-                Class<? extends java.lang.annotation.Annotation>... markers) {
-                throw new UnsupportedOperationException();
-            }
-            public <T> com.jujin.freeway.ioc.extension.Extension<T> extension(Class<T> entryType) { throw new UnsupportedOperationException(); }
-            public <T> T create(Class<T> type) { throw new UnsupportedOperationException(); }
-            public java.util.List<com.jujin.freeway.ioc.ModuleEx> modules() { return java.util.List.of(); }
-            public void close() {}
-        }
-
         @Override
         public void bind(Binder binder) {
-            // Handlers register NOW (bind time) on the module-owned bus —
-            // the same instance RpcEndpoint serves. No lazy-service trap: a
-            // fresh bus per module instance is created before bind() runs.
-            binderBindTimeBus.register("user", new Handlers());
-            binderBindTimeBus.register("order", new OrderHandlers());
-            // Two exports in one process: each mapping owns its route, so the
-            // second must not collide with the first.
-            binder.contribute(com.jujin.freeway.http.route.Route.class)
-                .add("rpc-user", RpcEndpoint.of(
-                    "user",
-                    binderBindTimeBus,
-                    new JsonCodecDefault()));
-            binder.contribute(com.jujin.freeway.http.route.Route.class)
-                .add("rpc-order", RpcEndpoint.of(
-                    "order",
-                    binderBindTimeBus,
-                    new JsonCodecDefault()));
+            binder.bind(Handlers.class);
+            binder.bind(OrderHandlers.class);
+            // Two exports in one process: the declarations do not collide, and
+            // each keeps its own mapping.
+            binder.contribute(RpcExport.class).add(RpcExport.of("user", Handlers.class));
+            binder.contribute(RpcExport.class).add(RpcExport.of("order", OrderHandlers.class));
         }
     }
 
@@ -110,7 +80,7 @@ class RemoteCallerTest {
         System.setProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
         server = FreewayApp.run(new HttpModule(), new CloudModule(), new RpcExportModule());
         var webServer = server.get(com.jujin.freeway.http.WebServer.class);
-        caller = new RemoteCaller(server.get(CloudHttpClient.class), new JsonCodecDefault());
+        caller = server.get(RemoteCaller.class);   // framework-bound, not hand-wired
 
         ServiceRegistry registry = server.get(ServiceRegistry.class);
         // The bridge itself is served by the same app here; in production the
@@ -209,10 +179,11 @@ class RemoteCallerTest {
     }
 
     @Test
-    void illegalMappingNameFailsAtExportTime() {
-        CallBus bus = new CallBus(new RpcExportModule.CallBusContainerShim());
+    void illegalMappingNameFailsAtDeclarationTime() {
+        // The declaration is where a bad mapping belongs: it names a path
+        // segment, so it must fail when the module binds, not per request.
         assertThrows(IllegalArgumentException.class,
-            () -> RpcEndpoint.of("us er", bus, new JsonCodecDefault()));
+            () -> RpcExport.of("us er", Handlers.class));
     }
 
     @Test

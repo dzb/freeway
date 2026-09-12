@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -66,6 +65,14 @@ public final class ObjectStorageDefault implements ObjectStorage {
         }
     }
 
+    /**
+     * Writes the object and returns its content digest.
+     *
+     * <p>The local backend stores bytes: {@code metadata} is part of the
+     * {@link ObjectStorage} contract for backends that have somewhere to put it
+     * (content type and user metadata on an object store), and is deliberately
+     * ignored here rather than half-honored.
+     */
     @Override
     public PutResult put(String bucket, String key, byte[] data, ObjectMetadata metadata) throws StorageException {
         java.util.Objects.requireNonNull(data, "data");
@@ -109,7 +116,7 @@ public final class ObjectStorageDefault implements ObjectStorage {
         String etag = etag(data);
         long size = data.length;
         emit(new com.jujin.freeway.cloud.storage.ObjectStoredEvent(bucket, key, size, etag));
-        return new PutResult(etag, UUID.randomUUID().toString());
+        return new PutResult(etag);
     }
 
     @Override

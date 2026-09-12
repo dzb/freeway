@@ -14,15 +14,28 @@ final class RpcPaths {
         return "/rpc/" + mapping + "/" + method;
     }
 
+    /** Path variable holding the mapping of an inbound call. */
+    static final String MAPPING_VAR = "mapping";
+    /** Path variable holding the method of an inbound call. */
+    static final String METHOD_VAR = "method";
+
     /**
-     * The route pattern one exported mapping serves. The mapping is a path
-     * <i>literal</i>, not a pattern variable: a single {@code {mapping}} node
-     * would make every export fight for the same route, so a second mapping
-     * could never be installed.
+     * The framework's route: one wildcard pattern serves every declared export,
+     * and the export set decides which mappings answer — the alternative
+     * (a route per mapping) cannot be contributed at composition time, because
+     * the declarations live in modules that may bind later.
+     */
+    static final String ROUTE_PATTERN = "/rpc/{" + MAPPING_VAR + "}/{" + METHOD_VAR + "}";
+
+    /**
+     * The route pattern for one mapping mounted on its own: used by
+     * {@link RpcEndpoint#route} for standalone assembly (an ext engine's
+     * {@code RouteIndex}, a custom mount), where the mapping is known at
+     * composition time and is therefore a path <i>literal</i>.
      */
     static String routePattern(String mapping) {
         validateSegment(mapping, "mapping");
-        return "/rpc/" + mapping + "/{method}";
+        return "/rpc/" + mapping + "/{" + METHOD_VAR + "}";
     }
 
     /**

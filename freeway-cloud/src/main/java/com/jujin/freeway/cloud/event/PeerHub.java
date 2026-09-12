@@ -76,9 +76,7 @@ public final class PeerHub implements WebSocketEndpoint {
         this.bus = Objects.requireNonNull(w.bus(), "bus");
         this.codec = Objects.requireNonNull(w.codec(), "codec");
         this.serviceId = w.serviceId();
-        this.origin = w.instanceId() != null && !w.instanceId().isBlank()
-            ? w.instanceId()
-            : w.serviceId() + "@" + java.util.UUID.randomUUID();
+        this.origin = Objects.requireNonNull(w.instanceId(), "instanceId");
         this.subscriptions = List.copyOf(w.subscriptions());
         this.allowedTypes = List.copyOf(w.allowedTypes());
         this.allowedTopics = List.copyOf(w.allowedTopics());

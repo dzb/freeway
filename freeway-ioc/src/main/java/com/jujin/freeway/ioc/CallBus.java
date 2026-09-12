@@ -1,10 +1,6 @@
 package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.metrics.Metrics;
-import com.jujin.freeway.ioc.internal.CallAdviceChain;
-import com.jujin.freeway.ioc.internal.CallProxyFactory;
-import com.jujin.freeway.ioc.internal.CallStats;
-import com.jujin.freeway.ioc.internal.CallTargetRegistry;
 
 import java.time.Duration;
 import java.util.List;
@@ -216,8 +212,11 @@ public final class CallBus implements AutoCloseable {
      *
      * <p><b>Registration timing:</b> a provider bound as a lazy service
      * registers only when something resolves it — a listener nobody injects
-     * never registers, and its topics answer dead. For eager startup
-     * registration, contribute a {@link RuntimeHook}:
+     * never registers, and its topics answer dead. When the handler is meant to
+     * be reachable over HTTP, declare it instead of registering by hand —
+     * {@code freeway-cloud}'s {@code RpcExport} contribution resolves the type
+     * and registers it here at startup. Otherwise register eagerly from a
+     * {@link RuntimeHook}:
      * <pre>{@code
      * binder.contribute(RuntimeHook.class).add("user.rpc", new RuntimeHook() {
      *     public void start(Container c) {

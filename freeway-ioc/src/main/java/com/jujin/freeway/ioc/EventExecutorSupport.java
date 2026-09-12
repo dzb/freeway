@@ -1,23 +1,22 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.BooleanSupplier;
 
 /**
  * Internal executor management for {@link com.jujin.freeway.ioc.EventBus}.
  */
-public final class EventExecutorSupport {
+final class EventExecutorSupport {
 
-    private final BooleanSupplier requireOpen;
+    private final Runnable ensureOpen;
     private volatile Executor asyncExecutor;
     private volatile ExecutorService defaultAsyncExecutor;
     private volatile ExecutorService orderedExecutor;
 
-    public EventExecutorSupport(BooleanSupplier requireOpen) {
-        this.requireOpen = Objects.requireNonNull(requireOpen, "requireOpen");
+    public EventExecutorSupport(Runnable ensureOpen) {
+        this.ensureOpen = Objects.requireNonNull(ensureOpen, "ensureOpen");
     }
 
     public void setAsyncExecutor(Executor executor) {
@@ -36,7 +35,7 @@ public final class EventExecutorSupport {
         synchronized (this) {
             d = defaultAsyncExecutor;
             if (d == null) {
-                requireOpen.getAsBoolean();
+                ensureOpen.run();
                 d = defaultAsyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
             }
             return d;
@@ -51,7 +50,7 @@ public final class EventExecutorSupport {
         synchronized (this) {
             e = orderedExecutor;
             if (e == null) {
-                requireOpen.getAsBoolean();
+                ensureOpen.run();
                 e = orderedExecutor = Executors.newSingleThreadExecutor(
                     Thread.ofVirtual().factory()
                 );

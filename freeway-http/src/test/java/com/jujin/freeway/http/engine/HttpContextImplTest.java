@@ -84,7 +84,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         ctx.send(200, "hello");
 
@@ -107,7 +107,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         ctx.setStatus(201);
         ctx.setHeader("X-Custom", "abc");
@@ -123,7 +123,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         ctx.send(200, "ok");
 
@@ -136,7 +136,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
         ctx.setHeader("Date", "custom-date");
 
         ctx.send(200, "ok");
@@ -161,7 +161,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         try (var emitter = ctx.sse()) {
             emitter.send("ok");
@@ -177,7 +177,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("POST", "/", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         ctx.setStatus(204);
         ctx.output("should-be-ignored".getBytes());
@@ -195,7 +195,7 @@ class HttpContextImplTest {
         // a suppressed body.
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.setStatus(204).setHeader("Content-Length", "999");
         ctx.output(new byte[0]);
@@ -209,7 +209,7 @@ class HttpContextImplTest {
     void notModifiedStatusDropsHandlerSetContentLength() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.setStatus(304).setHeader("Content-Length", "999");
         ctx.output(new byte[0]);
@@ -224,7 +224,7 @@ class HttpContextImplTest {
         // A body-allowed status keeps the handler's Content-Length verbatim.
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.setHeader("Content-Length", "5");
         ctx.output("hello".getBytes(StandardCharsets.UTF_8));
@@ -239,7 +239,7 @@ class HttpContextImplTest {
     void defaultsToHttp1Writer() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
 
         ctx.send(200, "ok");
 
@@ -253,7 +253,7 @@ class HttpContextImplTest {
     void queryParamsAreDeeplyUnmodifiable() throws Exception {
         var ctx = context(new RecordingWriter());
         ctx.reset("GET", "/path", "a=1&a=2", Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         Map<String, List<String>> params = ctx.queryParams();
         assertThrows(UnsupportedOperationException.class, () ->
@@ -267,7 +267,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("GET", "/", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         ctx.send(200, "first");
         ctx.send(200, "second");
@@ -315,7 +315,7 @@ class HttpContextImplTest {
     void http1WriterEmitsMultipleSetCookieLines() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false, false);
+        ctx.reset("GET", "/", null, Map.of(), null, -1, false, out, null, false);
         ctx.addHeader("Set-Cookie", "a=1");
         ctx.addHeader("Set-Cookie", "b=2");
         ctx.send(200, "ok");
@@ -375,7 +375,7 @@ class HttpContextImplTest {
         var ctx = context(writer);
         ctx.reset("GET", "/", null,
             Map.of("accept-encoding", List.of("gzip")), null, -1, false,
-            new ByteArrayOutputStream(), null, false, false);
+            new ByteArrayOutputStream(), null, false);
         ctx.setStatus(204).setHeader("Content-Type", "text/plain");
         ctx.output(new byte[512]);
         assertFalse(writer.headHeaders.containsKey("Content-Encoding"));
@@ -385,7 +385,7 @@ class HttpContextImplTest {
     void http1StreamingKnownLengthUsesContentLength() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+        ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false);
 
         ctx.output(new ByteArrayInputStream("hello".getBytes()), 5);
 
@@ -399,7 +399,7 @@ class HttpContextImplTest {
     void http1StreamingUnknownLengthUsesChunked() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+        ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false);
 
         ctx.output(new ByteArrayInputStream("hello".getBytes()), -1);
 
@@ -414,7 +414,7 @@ class HttpContextImplTest {
         var ctx = new HttpContextImpl(CODEC, COERCER);
         ctx.reset("POST", "/", null,
             Map.of("accept-encoding", List.of("gzip")), null, 0, false,
-            out, null, false, false);
+            out, null, false);
         ctx.setHeader("Content-Type", "text/plain");
         String original = "hello gzip ".repeat(64);
         ctx.output(original.getBytes(StandardCharsets.UTF_8));
@@ -436,7 +436,7 @@ class HttpContextImplTest {
         var ctx = new HttpContextImpl(CODEC, COERCER);
         ctx.reset("POST", "/", null,
             Map.of("accept-encoding", List.of("gzip")), null, 0, false,
-            out, null, false, false);
+            out, null, false);
         ctx.setHeader("Content-Type", "text/plain");
         byte[] body = "stream ".repeat(64).getBytes(StandardCharsets.UTF_8);
 
@@ -452,7 +452,7 @@ class HttpContextImplTest {
     void http1HeadSuppressesBodyButKeepsLength() throws Exception {
         var out = new ByteArrayOutputStream();
         var ctx = new HttpContextImpl(CODEC, COERCER);
-        ctx.reset("HEAD", "/", null, Map.of(), null, 0, false, out, null, false, false);
+        ctx.reset("HEAD", "/", null, Map.of(), null, 0, false, out, null, false);
 
         ctx.send(200, "hello");
 
@@ -474,7 +474,7 @@ class HttpContextImplTest {
                 transferred[0] = offset;
                 transferred[1] = length;
             });
-            ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+            ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false);
 
             try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
                 ctx.outputFile(channel, 0, size);
@@ -492,7 +492,7 @@ class HttpContextImplTest {
     void keepAliveResetClearsPrincipalAttributesAndRollsCorrelationId() {
         var ctx = context(new RecordingWriter());
         ctx.reset("GET", "/one", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
         ctx.setPrincipal("alice");
         ctx.setAttribute("cart", List.of("a", "b"));
         String firstId = ctx.correlationId();
@@ -500,7 +500,7 @@ class HttpContextImplTest {
 
         // Second request on the same keep-alive connection, no X-Request-Id.
         ctx.reset("GET", "/two", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         assertNull(ctx.principal(),
             "principal must not leak to the next keep-alive request");
@@ -516,12 +516,12 @@ class HttpContextImplTest {
     void keepAliveResetHonorsIncomingCorrelationId() {
         var ctx = context(new RecordingWriter());
         ctx.reset("GET", "/one", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), "req-1", false, false);
+                new ByteArrayOutputStream(), "req-1", false);
         ctx.setPrincipal("alice");
         ctx.setAttribute("k", "v");
 
         ctx.reset("GET", "/two", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), "req-2", false, false);
+                new ByteArrayOutputStream(), "req-2", false);
 
         assertEquals("req-2", ctx.correlationId(),
             "an incoming X-Request-Id must be applied after the reset");
@@ -533,12 +533,12 @@ class HttpContextImplTest {
     void keepAliveResetRefreshesStartTime() throws Exception {
         var ctx = context(new RecordingWriter());
         ctx.reset("GET", "/one", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
         Instant first = ctx.startTime();
 
         Thread.sleep(10);
         ctx.reset("GET", "/two", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
 
         assertTrue(ctx.startTime().isAfter(first),
             "startTime must be refreshed per request so timing stats stay accurate");
@@ -549,7 +549,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("HEAD", "/big.bin", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
         Path file = Files.createTempFile("head-sendfile", ".bin");
         try (FileChannel channel = FileChannel.open(file,
                 StandardOpenOption.READ)) {
@@ -580,7 +580,7 @@ class HttpContextImplTest {
             ctx.setFileSender((c, o, l) -> {
                 throw new AssertionError("small file must not use sendfile");
             });
-            ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false, false);
+            ctx.reset("GET", "/", null, Map.of(), null, 0, false, out, null, false);
 
             try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
                 ctx.outputFile(channel, 0, content.length);
@@ -599,7 +599,7 @@ class HttpContextImplTest {
         var writer = new RecordingWriter();
         var ctx = context(writer);
         ctx.reset("GET", "/big.bin", null, Map.of(), null, -1, false,
-                new ByteArrayOutputStream(), null, false, false);
+                new ByteArrayOutputStream(), null, false);
         Path file = Files.createTempFile("get-sendfile", ".bin");
         try (FileChannel channel = FileChannel.open(file,
                 StandardOpenOption.READ)) {

@@ -63,10 +63,6 @@ public final class MultipartForm {
         return byName.getOrDefault(name, List.of());
     }
 
-    public Optional<Part> part(String name) {
-        return parts(name).stream().findFirst();
-    }
-
     public List<Part> files(String name) {
         return parts(name).stream().filter(Part::isFile).toList();
     }

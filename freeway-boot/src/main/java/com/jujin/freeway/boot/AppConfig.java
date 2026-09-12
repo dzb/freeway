@@ -33,7 +33,21 @@ import java.util.List;
  */
 public interface AppConfig extends AutoCloseable {
 
-    /** Returns the active profiles in priority order, as an unmodifiable list. */
+    /**
+     * Returns the active profiles in priority order, as an unmodifiable list.
+     *
+     * <p>Profiles are selected from the base layers only — the packaged and
+     * working-directory base files ({@code application.properties} /
+     * {@code application.json}), the mapped environment and the CLI arguments.
+     * A profile variant that re-declares {@code freeway.profile} is stripped,
+     * so this list and the resolved value of that key cannot disagree.
+     *
+     * <p>Two channels set the key without activating a profile, because
+     * neither is a base layer: a JVM system property
+     * ({@code -Dfreeway.profile=dev}) and an extra file named by
+     * {@code freeway.config.file}. Use a base file, {@code FREEWAY_PROFILE}
+     * or {@code --profile=dev} to activate one.
+     */
     List<String> profiles();
 
     /**
@@ -48,7 +62,7 @@ public interface AppConfig extends AutoCloseable {
      * which places it below env/CLI; a module source (e.g. the cloud secret
      * store) slots in between tiers by declaring its own order. The
      * framework's own config ({@code AppConfigDefault}) contributes one source
-     * per tier (cli → env → files → preset).
+     * per tier (cli → env → files).
      */
     List<SymbolProvider> providers();
 

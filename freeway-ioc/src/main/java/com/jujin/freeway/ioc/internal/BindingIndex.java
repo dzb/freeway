@@ -108,20 +108,6 @@ final class BindingIndex {
         bindingOrder.addAll(reordered);
         bindings.remove(previousKey);
         bindings.put(newKey, binding);
-        // Update type index
-        List<BindingImpl<?>> typeBindings = typeIndex.get(binding.type());
-        if (typeBindings != null) {
-            int idx = -1;
-            for (int i = 0; i < typeBindings.size(); i++) {
-                if (typeBindings.get(i) == binding) {
-                    idx = i;
-                    break;
-                }
-            }
-            if (idx >= 0) {
-                typeBindings.set(idx, binding);
-            }
-        }
         return true;
     }
 
@@ -132,7 +118,6 @@ final class BindingIndex {
             return (BindingImpl<T>) exact;
         }
         ScanResult<T> scan = scanBindings(
-            type,
             binding -> id.equals(binding.id()) && type.isAssignableFrom(binding.type()),
             false
         );
@@ -153,12 +138,12 @@ final class BindingIndex {
             }
             return selectUnique(
                 type,
-                scanBindings(type, binding -> binding.type().equals(type), true)
+                scanBindings(binding -> binding.type().equals(type), true)
             );
         }
         return selectUnique(
             type,
-            scanBindings(type, binding -> type.isAssignableFrom(binding.type()), true)
+            scanBindings(binding -> type.isAssignableFrom(binding.type()), true)
         );
     }
 
@@ -185,7 +170,6 @@ final class BindingIndex {
 
     @SuppressWarnings("unchecked")
     private <T> ScanResult<T> scanBindings(
-        Class<T> type,
         Predicate<BindingImpl<?>> predicate,
         boolean trackPrimary
     ) {

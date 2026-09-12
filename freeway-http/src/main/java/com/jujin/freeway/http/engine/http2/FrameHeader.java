@@ -15,6 +15,12 @@ import java.io.OutputStream;
  * </pre>
  */
 public final class FrameHeader {
+
+    /** SETTINGS_MAX_FRAME_SIZE initial value (RFC 9113 §6.5.2): the largest
+     *  frame payload a peer accepts until it advertises a bigger one. Frames
+     *  larger than the peer's limit are a connection error at its end. */
+    public static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
+
     private final int len;
     private final FrameType type;
     private final FrameFlag.FlagSet flags;
@@ -82,13 +88,4 @@ public final class FrameHeader {
         BinUtils.writeInt(outputStream, streamId);
     }
 
-    /** Encodes this header as a 9-byte array. */
-    public byte[] encode() {
-        byte[] buffer = new byte[9];
-        BinUtils.writeInt(buffer, 0, len, 3);
-        buffer[3] = (byte) (type.value & 0xFF);
-        buffer[4] = flags.value();
-        BinUtils.writeInt(buffer, 5, streamId);
-        return buffer;
-    }
 }

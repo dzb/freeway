@@ -11,9 +11,13 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
-final class ProxyFactoryImpl implements ProxyFactory {
-    @Override
-    public <T> T create(Class<T> interfaceType, Supplier<T> provider, String description) {
+/**
+ * Creates the JDK proxies behind every interface binding: the lazy resolving
+ * proxy, the advice chain, and the one-instance-per-get rule for prototype
+ * targets.
+ */
+final class ProxyFactoryImpl {
+    <T> T create(Class<T> interfaceType, Supplier<T> provider, String description) {
         return createAdvised(interfaceType, provider, description, List.of(), false);
     }
 
@@ -29,9 +33,18 @@ final class ProxyFactoryImpl implements ProxyFactory {
         };
     }
 
+    /**
+     * The resolving proxy: the provider runs on first invocation, and the
+     * advices whose selector matches wrap the invocation. When
+     * {@code cacheTarget} is set the handler resolves the provider exactly once
+     * per proxy and reuses that target for every subsequent invocation — used
+     * for PROTOTYPE targets so a proxy behaves like a single lazily-created
+     * instance ("one instance per get(), state persists across calls") instead
+     * of creating a fresh target per method call. Must NOT be set for
+     * THREAD-scoped targets — their identity is per-scope, not per-proxy.
+     */
     @SuppressWarnings("unchecked")
-    @Override
-    public <T> T createAdvised(
+    <T> T createAdvised(
         Class<T> interfaceType,
         Supplier<T> provider,
         String description,

@@ -65,7 +65,8 @@ class HookLifecycleTest {
         }
     }
 
-    private static Container containerWith(RuntimeHook... hooks) {
+    /** The lifecycle over a container holding exactly {@code hooks}. */
+    private static HookLifecycle lifecycleWith(RuntimeHook... hooks) {
         AppConfig config = AppConfigDefault.of(Map.of(), List.of());
         ModuleEx hooksModule = new ModuleEx() {
             @Override
@@ -76,17 +77,18 @@ class HookLifecycleTest {
                 }
             }
         };
-        return Freeway.create(new BootModule(config), hooksModule);
+        Container container = Freeway.create(new BootModule(config), hooksModule);
+        return new HookLifecycle(container);
     }
 
     @Test
     void startsInDeclaredOrderStopsInReverse() {
         List<String> log = new ArrayList<>();
-        HookLifecycle lifecycle = containerWith(
+        HookLifecycle lifecycle = lifecycleWith(
             new RecordingHook("a", log),
             new RecordingHook("b", log),
             new RecordingHook("c", log)
-        ).get(HookLifecycle.class);
+        );
 
         lifecycle.start();
         lifecycle.stop();
@@ -97,11 +99,11 @@ class HookLifecycleTest {
     void failedStartStopsFailingHookThenRollsBackStartedOnes() {
         List<String> log = new ArrayList<>();
         RuntimeException cause = new RuntimeException("boot failure");
-        HookLifecycle lifecycle = containerWith(
+        HookLifecycle lifecycle = lifecycleWith(
             new RecordingHook("a", log),
             new RecordingHook("b", log, cause, null, null),
             new RecordingHook("c", log)
-        ).get(HookLifecycle.class);
+        );
 
         RuntimeException ex = assertThrows(RuntimeException.class, lifecycle::start);
         assertEquals("Runtime hook start failed", ex.getMessage());
@@ -115,9 +117,9 @@ class HookLifecycleTest {
     void errorFromStartPropagatesUnwrappedAfterRollback() {
         List<String> log = new ArrayList<>();
         AssertionError error = new AssertionError("fatal");
-        HookLifecycle lifecycle = containerWith(
+        HookLifecycle lifecycle = lifecycleWith(
             new RecordingHook("a", log, null, error, null)
-        ).get(HookLifecycle.class);
+        );
 
         AssertionError thrown = assertThrows(AssertionError.class, lifecycle::start);
         assertSame(error, thrown);
@@ -127,10 +129,10 @@ class HookLifecycleTest {
     @Test
     void stopFailuresAccumulateIntoOneSuppressionChain() {
         List<String> log = new ArrayList<>();
-        HookLifecycle lifecycle = containerWith(
+        HookLifecycle lifecycle = lifecycleWith(
             new RecordingHook("a", log, null, null, new RuntimeException("a-stop")),
             new RecordingHook("c", log, null, null, new RuntimeException("c-stop"))
-        ).get(HookLifecycle.class);
+        );
 
         lifecycle.start();
         RuntimeException failure = assertThrows(RuntimeException.class, lifecycle::stop);
@@ -149,8 +151,7 @@ class HookLifecycleTest {
     @Test
     void repeatedStartIsNoOpAndStopWithoutStartIsEmpty() {
         List<String> log = new ArrayList<>();
-        HookLifecycle lifecycle = containerWith(new RecordingHook("a", log))
-            .get(HookLifecycle.class);
+        HookLifecycle lifecycle = lifecycleWith(new RecordingHook("a", log));
 
         lifecycle.start();
         assertDoesNotThrow(lifecycle::start);

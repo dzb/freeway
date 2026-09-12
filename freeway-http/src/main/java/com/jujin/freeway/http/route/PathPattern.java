@@ -122,10 +122,6 @@ public final class PathPattern {
         }
     }
 
-    String template() {
-        return template;
-    }
-
     /** Parsed literal segments (null slot = parameter segment). Package-private
      *  so {@link RouteIndex} reuses this template parse for its trie; do not
      *  mutate — the arrays back this template. */

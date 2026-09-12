@@ -2,6 +2,8 @@ package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
 
+import com.jujin.freeway.cloud.discovery.ServiceInstance;
+import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.ioc.Container;
@@ -39,8 +41,6 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
         CloudConfigKeys.EVENT_DEDUP_ENABLED, Boolean.class, false, Boolean::parseBoolean);
 
-    private static final SymbolSpec<String> SERVICE_INSTANCE_ID = SymbolSpec.of(
-        CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID, String.class, "", Function.identity());
     private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
@@ -94,17 +94,21 @@ final class CloudEventLifecycleHook implements RuntimeHook {
             return;
         }
 
+        // The mesh presents the identity the registry registers — literally
+        // the same resolution, not a second derivation of it. This hook runs
+        // after the HTTP server (see CloudEventModule), so host:port are the
+        // ones this node actually serves on.
+        ServiceInstance self = HttpServiceDeclaration.of(container);
+        if (self == null) {
+            throw new IllegalStateException(
+                "CloudEventBus needs the HTTP module: its mesh endpoint lives on "
+                    + "the HTTP server, so the node's identity cannot be derived");
+        }
         hub.wire(new PeerHub.Wiring(
             bus,
             container.get(JsonCodec.class),
-            // Same fallback chain as HttpServiceDeclaration (registry
-            // service-id → freeway.app.name → "freeway-app"): the mesh origin
-            // identity must equal the identity registered in discovery, or a
-            // node configured only with freeway.app.name would present two
-            // names to the rest of the system.
-            symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_ID,
-                symbols.resolve("freeway.app.name", "freeway-app")),
-            symbols.resolve(SERVICE_INSTANCE_ID),
+            self.serviceId(),
+            self.instanceId(),
             symbols.resolve(SUBSCRIPTIONS),
             symbols.resolve(ALLOWED_TYPES),
             symbols.resolve(ALLOWED_TOPICS),
@@ -119,7 +123,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         // actually enabled so a disabled module stays cheap.
         String registryScheme = symbols.resolve(SERVICE_SCHEME);
         String wsScheme = "https".equalsIgnoreCase(registryScheme) ? "wss" : "ws";
-        connector = new PeerConnector(hub, List.of(),
+        connector = new PeerConnector(hub,
             Duration.ofMillis(symbols.resolve(CONNECT_TIMEOUT_MS)),
             wsScheme,
             Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)),

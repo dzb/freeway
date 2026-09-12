@@ -4,11 +4,6 @@ import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.extension.Extension;
-import com.jujin.freeway.ioc.internal.EventSinkRegistry;
-import com.jujin.freeway.ioc.internal.EventExecutorSupport;
-import com.jujin.freeway.ioc.internal.EventStats;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -62,8 +57,6 @@ import java.util.function.Supplier;
  */
 public final class EventBus implements EventBusInbound, AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(EventBus.class);
-
     private final Container container;
     private final EventStats stats;
     private final EventSinkRegistry sinkRegistry = new EventSinkRegistry();
@@ -96,10 +89,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
             this::publish,
             EventBus::resolveTopic
         );
-        this.executors = new EventExecutorSupport(() -> {
-            requireOpen();
-            return true;
-        });
+        this.executors = new EventExecutorSupport(this::requireOpen);
     }
 
     /** Adds a sink alongside existing ones — every sink receives every
@@ -348,11 +338,9 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * inside one {@code Defer} scope drain in call order and are dispatched
      * in that same order after the scope commits.
      *
-     * <p>{@code key} names the ordering domain (e.g. the aggregate id) for
-     * documentation and future per-key parallelism; the current
-     * implementation is globally serialized, so any two ordered event are
-     * ordered regardless of key. Subscriber failures are isolated and
-     * counted, never propagated to the submitter.
+     * <p>Ordering is global: any two ordered events are ordered relative to
+     * each other. Subscriber failures are isolated and counted, never
+     * propagated to the submitter.
      */
     public void publishOrdered(Object event) {
         Objects.requireNonNull(event, "event");

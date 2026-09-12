@@ -3,21 +3,24 @@ package com.jujin.freeway.boot.internal;
 import com.jujin.freeway.commons.logging.LogConfigSource;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
  * The boot-side {@link LogConfigSource}: exposes the {@code freeway.log.*}
- * subset of the application's main config files through the SAME read the
+ * subset of the application's classpath config files through the SAME read the
  * main cascade performs — {@link ConfigLoaderImpl#loadLayers} and the
  * {@code files} source it returns — so a log key in {@code application.properties}/
- * {@code application.json} (or a profile variant) resolves identically no
- * matter which cascade reads it, and the file-family knowledge exists exactly
- * once. Also merges in the active environment preset's log subset (ranked
- * below the files — the preset fills only what they did not set). Registered
- * via {@code META-INF/services} — ServiceLoader is how the boot layer hands
- * the bootstrap log cascade its application knowledge without inverting a
- * dependency.
+ * {@code application.json} (or a profile variant) is parsed by one shared
+ * implementation and the file-family knowledge exists exactly once.
+ *
+ * <p>The boundary is the classpath baseline: filesystem overrides and their
+ * hot reload deliberately stay out, so a {@code freeway.log.*} key set only in
+ * a working-directory file reaches the main cascade but not the bootstrap log
+ * configuration.
+ *
+ * <p>Registered via {@code META-INF/services} — ServiceLoader is how the boot
+ * layer hands the bootstrap log cascade its application knowledge without
+ * inverting a dependency.
  */
 public final class AppLogSource implements LogConfigSource {
 
@@ -34,11 +37,7 @@ public final class AppLogSource implements LogConfigSource {
         ConfigSources sources = ConfigLoaderImpl.loadLayers(
             loader != null ? loader : AppLogSource.class.getClassLoader(),
             new String[0]);
-        // The same precedence the symbol chain applies: the preset fills only
-        // what the file baseline did not set.
-        return ConfigMaps.overlay(List.of(
-            logSubset(sources.preset()),
-            logSubset(sources.files())));
+        return logSubset(sources.files());
     }
 
     /** The {@code freeway.log.*} subset of {@code values}. */

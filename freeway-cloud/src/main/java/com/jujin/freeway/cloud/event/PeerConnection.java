@@ -27,10 +27,6 @@ public final class PeerConnection {
     private final Runnable closer;
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    public PeerConnection(String remoteOrigin, List<String> remotePrefixes, Sender sender) {
-        this(remoteOrigin, remotePrefixes, sender, false, () -> {});
-    }
-
     public PeerConnection(String remoteOrigin, List<String> remotePrefixes, Sender sender,
                           boolean outbound, Runnable closer) {
         this.remoteOrigin = Objects.requireNonNull(remoteOrigin, "remoteOrigin");
@@ -42,10 +38,6 @@ public final class PeerConnection {
 
     public String remoteOrigin() {
         return remoteOrigin;
-    }
-
-    public List<String> remotePrefixes() {
-        return remotePrefixes;
     }
 
     /** True when this side initiated the connection; false for an inbound peer connection. */

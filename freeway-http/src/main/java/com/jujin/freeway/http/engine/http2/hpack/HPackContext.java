@@ -15,6 +15,7 @@ import com.jujin.freeway.http.engine.http2.FrameFlag;
 import com.jujin.freeway.http.engine.http2.FrameHeader;
 import com.jujin.freeway.http.engine.http2.FrameType;
 import com.jujin.freeway.http.engine.http2.BinUtils;
+import com.jujin.freeway.http.engine.http2.ContinuationFrame;
 import com.jujin.freeway.http.engine.http2.Http2ErrorCode;
 import com.jujin.freeway.http.engine.http2.Http2Exception;
 import com.jujin.freeway.http.engine.http2.Http2HeaderField;
@@ -415,27 +416,78 @@ public final class HPackContext {
     private static final int MAX_RESPONSE_HEADER_BYTES = 64 * 1024;
 
     /**
-     * Writes response headers to the output stream.
-     *
-     * @param headers   the response header map
-     * @param out       the output stream
-     * @param streamId  the stream ID
-     * @param endStream whether to end the stream
+     * Writes the whole response-header frame sequence to {@code out}, framed at
+     * the protocol's initial maximum frame size — the convenience form used by
+     * wire-format tests. The server itself writes the sequence through
+     * {@link #encodeResponseHeaders} so it can honour the peer's advertised
+     * limit and keep the frames contiguous on the connection.
      */
     public void writeResponseHeaders(Map<String, List<String>> headers, OutputStream out, int streamId, boolean endStream) throws IOException {
-        out.write(encodeResponseHeaders(headers, streamId, endStream));
+        for (byte[] frame : encodeResponseHeaders(
+                headers, streamId, endStream, FrameHeader.DEFAULT_MAX_FRAME_SIZE)) {
+            out.write(frame);
+        }
     }
 
     /**
-     * Encodes response headers as a complete HEADERS frame (header block +
-     * frame header) so callers can queue the frame onto a batched outbound
-     * path. Must be invoked under the connection lock: the encoder's dynamic
-     * table state advances with each block, so encode order must equal frame
-     * send order.
+     * Encodes response headers as the frames the wire needs, in order: one
+     * HEADERS frame when the block fits {@code maxFrameSize}, otherwise that
+     * HEADERS frame without END_HEADERS followed by CONTINUATION frames, the
+     * last carrying END_HEADERS (RFC 9113 §6.10). END_STREAM, when requested,
+     * rides on the HEADERS frame.
+     *
+     * <p>{@code maxFrameSize} is the peer's advertised SETTINGS_MAX_FRAME_SIZE:
+     * a larger frame is a connection error (FRAME_SIZE_ERROR) at its end, so
+     * the block is split rather than sent whole. The returned sequence must be
+     * written contiguously — no other frame may be interleaved into a header
+     * block.
+     *
+     * <p>Must be invoked under the connection lock: the encoder's dynamic table
+     * state advances with each block, so encode order must equal frame send
+     * order.
      */
-    public byte[] encodeResponseHeaders(
-            Map<String, List<String>> headers, int streamId, boolean endStream)
-            throws IOException {
+    public List<byte[]> encodeResponseHeaders(
+            Map<String, List<String>> headers, int streamId, boolean endStream,
+            int maxFrameSize) throws IOException {
+        byte[] headerBlock = encodeHeaderBlock(headers);
+        int limit = Math.max(1, maxFrameSize);
+        List<byte[]> frames = new ArrayList<>();
+        int offset = 0;
+        boolean first = true;
+        while (true) {
+            int length = Math.min(limit, headerBlock.length - offset);
+            boolean last = offset + length >= headerBlock.length;
+            byte[] payload = Arrays.copyOfRange(headerBlock, offset, offset + length);
+            if (first) {
+                FrameFlag.FlagSet flags = last
+                    ? (endStream
+                        ? FrameFlag.FlagSet.of(FrameFlag.END_HEADERS, FrameFlag.END_STREAM)
+                        : FrameFlag.FlagSet.of(FrameFlag.END_HEADERS))
+                    : (endStream
+                        ? FrameFlag.FlagSet.of(FrameFlag.END_STREAM)
+                        : FrameFlag.NONE);
+                frames.add(BinUtils.combine(
+                    FrameHeader.encode(length, FrameType.HEADERS, flags, streamId), payload));
+                first = false;
+            } else {
+                frames.add(new ContinuationFrame(
+                    new FrameHeader(length, FrameType.CONTINUATION,
+                        last ? FrameFlag.FlagSet.of(FrameFlag.END_HEADERS)
+                             : FrameFlag.NONE,
+                        streamId),
+                    payload).encode());
+            }
+            offset += length;
+            if (last) break;
+        }
+        return frames;
+    }
+
+    /**
+     * The HPACK block for one response, capped at
+     * {@link #MAX_RESPONSE_HEADER_BYTES}.
+     */
+    private byte[] encodeHeaderBlock(Map<String, List<String>> headers) throws IOException {
         var buffer = new ByteArrayOutputStream(256);
 
         // Write :status pseudo-header
@@ -451,13 +503,7 @@ public final class HPackContext {
             }
         }
 
-        byte[] headerBlock = buffer.toByteArray();
-        var flags = endStream
-            ? FrameFlag.FlagSet.of(FrameFlag.END_HEADERS, FrameFlag.END_STREAM)
-            : FrameFlag.FlagSet.of(FrameFlag.END_HEADERS);
-        byte[] frameHeader = FrameHeader.encode(
-            headerBlock.length, FrameType.HEADERS, flags, streamId);
-        return BinUtils.combine(frameHeader, headerBlock);
+        return buffer.toByteArray();
     }
 
     /**

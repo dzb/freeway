@@ -41,7 +41,7 @@ public class HttpContextImpl extends AbstractHttpContext {
     private String remoteAddress = "";
     private Headers requestHeaders;
     private Map<String, List<String>> queryParams;
-    private boolean http10, keepAlive;
+    private boolean keepAlive;
     OutputStream rawOut;
     private final Headers responseHeaders = new Headers();
     private RequestBody requestBody;
@@ -120,8 +120,7 @@ public class HttpContextImpl extends AbstractHttpContext {
     void reset(String method, String path, String rawQuery,
                Map<String, List<String>> requestHeaders,
                InputStream bodyStream, long contentLength, boolean chunked,
-               OutputStream rawOut, String correlationId,
-               boolean http10, boolean keepAlive) {
+               OutputStream rawOut, String correlationId, boolean keepAlive) {
         this.method = method;
         this.path = path;
         this.requestHeaders = Headers.copyOf(requestHeaders);
@@ -134,7 +133,6 @@ public class HttpContextImpl extends AbstractHttpContext {
         // applied on top.
         resetExchangeMeta();
         setCorrelationId(correlationId);
-        this.http10 = http10;
         this.keepAlive = keepAlive;
         this.queryParams = HttpUtils.parseQueryParams(rawQuery);
         this.responseStatus = 200;
@@ -478,7 +476,6 @@ public class HttpContextImpl extends AbstractHttpContext {
 
     boolean isKeepAlive() { return keepAlive; }
 
-    boolean isHttp10() { return http10; }
 
     @Override
     public boolean isResponded() { return responded; }

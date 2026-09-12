@@ -66,6 +66,31 @@ class WebSocketReadLoopTest {
     }
 
     @Test
+    void pingAndTextBatchProduceTheirFramesInOrder() throws Exception {
+        // Both are documented public session API (keepalive + batched fan-out)
+        // with no in-repo caller: the applications that use them live outside
+        // this repository, so the wire contract is pinned here.
+        var out = new ByteArrayOutputStream();
+        var session = new WebSocketSessionImpl(
+            "GET", "/", null, Map.of(),
+            new ByteArrayInputStream(new byte[0]), out, Map.of(), null);
+
+        session.ping(new byte[] {1, 2, 3});
+        session.sendTextBatch(List.of("first", "second"));
+
+        var wire = new ByteArrayInputStream(out.toByteArray());
+        var ping = WebSocketFrame.read(wire);
+        assertEquals(OpCode.Ping, ping.opCode(), "ping() emits a PING frame");
+        assertArrayEquals(new byte[] {1, 2, 3}, ping.payload(),
+            "the ping payload is carried verbatim");
+
+        assertEquals("first", WebSocketFrame.read(wire).payloadAsString(),
+            "sendTextBatch keeps the given order");
+        assertEquals("second", WebSocketFrame.read(wire).payloadAsString());
+        assertEquals(0, wire.available(), "a batch sends exactly its messages");
+    }
+
+    @Test
     void largeBinaryMessageIsSentFragmented() throws Exception {
         var out = new ByteArrayOutputStream();
         var session = new WebSocketSessionImpl(

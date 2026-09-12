@@ -21,8 +21,6 @@ final class Http1xParser {
     private static final int MAX_HEADER_COUNT = 200;
     private static final int MAX_HEADER_SIZE = 8192;
     private static final int MAX_REQUEST_LINE_SIZE = 8192;
-    static final char CR = '\r';
-    static final char LF = '\n';
 
     private InputStream in;
     private final byte[] buf = new byte[4096]; // reusable bulk-read buffer
@@ -101,7 +99,7 @@ final class Http1xParser {
         if (isHttp2Preface && !"PRI".equals(method))
             throw new IOException("Unsupported HTTP version: " + httpVersion);
         if (isHttp2Preface)
-            return new ParsedRequest("PRI", "*", null, "HTTP/2.0",
+            return new ParsedRequest("PRI", "*", null,
                 Map.of(), -1, false, false, false, false, true);
 
         Map<String, List<String>> headers = parseHeaders();
@@ -177,7 +175,7 @@ final class Http1xParser {
             throw new IOException("Invalid request: both Content-Length and Transfer-Encoding: chunked");
         }
 
-        return new ParsedRequest(method, path, queryString, httpVersion, headers,
+        return new ParsedRequest(method, path, queryString, headers,
             contentLength, isChunked, isHttp10, keepAlive,
             connectionUpgrade && upgradeWebsocket, false);
     }
@@ -432,7 +430,7 @@ final class Http1xParser {
     }
 
     record ParsedRequest(
-        String method, String path, String queryString, String httpVersion,
+        String method, String path, String queryString,
         Map<String, List<String>> headers, long contentLength, boolean isChunked,
         boolean isHttp10, boolean keepAlive, boolean isUpgradeRequest,
         boolean isHttp2Preface

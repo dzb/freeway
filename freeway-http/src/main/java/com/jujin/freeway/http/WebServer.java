@@ -85,9 +85,9 @@ public final class WebServer implements AutoCloseable {
         this.filterChain = buildChain(this::dispatchToRoute, this.filters);
         this.engine = Objects.requireNonNull(engine, "engine");
         this.config = Objects.requireNonNull(config, "config");
-        this.eventSink = eventSink != null ? eventSink : event -> {};
+        this.eventSink = eventSink != null ? eventSink : NOOP_SINK;
         this.readinessProbe = Objects.requireNonNull(readinessProbe, "readinessProbe");
-        // Skip event computation when sink is the noop sentinel
+        // Skip event computation when the sink is the noop sentinel
         this.publishEvents = this.eventSink != NOOP_SINK;
 
         RouteHandler request = ctx -> {
@@ -270,7 +270,7 @@ public final class WebServer implements AutoCloseable {
             if (anyMountMatched && !fallthroughMiss) {
                 // Every matching mount is a non-fallthrough miss — a terminal
                 // 404, mirroring a single mount's direct serve() result.
-                notFound(ctx);
+                ErrorResponses.notFound(ctx);
                 return;
             }
         }
@@ -287,10 +287,6 @@ public final class WebServer implements AutoCloseable {
     }
 
     /** Commits the standard plain-text 404 response. */
-    private void notFound(HttpContext ctx) throws IOException {
-        ErrorResponses.notFound(ctx);
-    }
-
     private boolean handleException(HttpContext ctx, Exception exception) {
         for (ErrorHandler handler : errorHandlers) {
             try {

@@ -40,10 +40,6 @@ final class DataFrame extends BaseFrame {
     }
 
     /** Padding bytes (excluding the pad-length byte itself). */
-    public int padLength() {
-        return padLength;
-    }
-
     /** Flow-controlled length: data + pad-length byte + padding (RFC 7540 §6.9.1). */
     public int flowLength() {
         return body.length + padLength + (header().flags().contains(FrameFlag.PADDED) ? 1 : 0);
