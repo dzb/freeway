@@ -110,7 +110,7 @@
 				"rate-limit": { "enabled": false, "per-second": 100 },
 				"tls": { "key-store": "", "key-store-password": "", "trust-store": "", "trust-store-password": "" }
 			},
-			"events": {
+			"event": {
 				"enabled": false,
 				"peers": "",
 				"subscriptions": "",

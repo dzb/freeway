@@ -1,24 +1,42 @@
 # Freeway 配置参考
 
 > 所有配置项采用点号分隔的层级键，统一在 `freeway.*` 命名空间下。
-> 配置来源优先级（低 → 高）：**preset 预设**（`-Dfreeway.preset`，bootstrap-only） → `application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → 环境变量（`FREEWAY_*`） → CLI 参数（`--key=value`）。
+> 配置来源优先级（低 → 高）：`application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → **工作目录/`freeway.config.file` 覆盖文件**（同名同序，文件系统整体高于类路径基线，可热重载） → **模块贡献的源**（如 cloud secret store，`order()=15`） → 环境变量（`FREEWAY_*`，`order()=10`） → **JVM 系统属性**（主类启动前 `-Dkey=value`，键原样，`order()=5`） → CLI 参数（`--key=value`，`order()=0`）。
+> 优先级由各来源声明的 `SymbolProvider.order()` 决定（升序查找、首个命中即胜），与模块安装顺序无关。
 > 详见 [CLAUDE.md](CLAUDE.md) 配置级联章节。
 
 ---
 
-## 必填配置速查
+## 决策键速查
 
-以下配置项**必须设置**，其余均有合理默认值，非必要无需改动：
+配置面分三档；**只有第一档需要你做决定**，其余默认即最优：
 
-| 模块 | 必填键 | 说明 |
+| 档 | 含义 | 你需要做什么 |
+|----|------|-------------|
+| **决策键** | 没有合理默认，或默认是开发姿态 | 按部署改掉（下表） |
+| **默认最优** | 每个特性一个开关，默认就是推荐姿态 | 不动；只在要关掉某特性时写 `false` |
+| **高级（小概率）** | 调优数字，默认即框架推荐值 | 不动；只在明确知道为什么时覆盖 |
+
+**你必须知道的决策键**（一个不涉及 HTTPS、不面向浏览器的服务只需要其中 2 个）：
+
+| 模块 | 决策键 | 说明 |
 |------|--------|------|
 | **DB** | `freeway.db.url` | JDBC 连接 URL，无默认值，启动时必检 |
-| **DB** | `freeway.db.username` | 数据库用户名，无默认值，启动时必检 |
-| **DB** | `freeway.db.password` | 数据库密码（可为空，生产环境通过环境变量 `FREEWAY_DB_PASSWORD` 注入） |
-| **HTTP** | `freeway.http.ssl.key-store` + 证书 | 生产环境启用 HTTPS 时必填（keystore 路径即启用）；开发不配即明文 |
-| **Cloud** | 全部可选 | 仅在使用 `freeway-cloud` 功能时需要 |
+| **DB** | `freeway.db.username` / `freeway.db.password` | 用户名必检；密码可用 `FREEWAY_DB_PASSWORD` 注入 |
+| **HTTP** | `freeway.http.server.host` / `.port` | 默认 `127.0.0.1:8080`；容器里通常要改成 `0.0.0.0` |
+| **HTTP** | `freeway.http.ssl.key-store` + `-password` | 生产启用 HTTPS 时必填（keystore 路径即启用）；不配即明文 |
+| **HTTP** | `freeway.http.cors.allowed-origins` | 默认 `*` 是开发姿态，部署时应写上真实域名 |
+| **Cloud** | `freeway.cloud.event.peers` + `.token` | 启用事件网格时两者都要（peers 的存在即开关；token 全节点一致） |
+| **Cloud** | `freeway.cloud.rpc.tls.key-store` + `-password` | 出站 RPC 走 mTLS 时必填（路径即启用） |
+| **Cloud** | `freeway.cloud.secret.file` / `.keys` | 密钥后端自身配置，仅 `-D`/`FREEWAY_*` 可读 |
 
-> 其余所有配置项均有默认值，使用默认值即可正常运行，无需改动。
+**高级档为什么不需要新开关**：每个高级簇已经有一个聚合键在管它，加第二个开关只是换一种说法说"关"：
+
+- `freeway.cloud.rpc.resilience=auto|off` —— `auto` 下九个 `rpc.retry.*`/`circuit-breaker.*`/`rate-limit.*` 调优键才生效；`off` 一个总闸全关（网格已代劳重试、或排障隔离变量时用）。
+- `freeway.cloud.event.enabled`（presence 驱动）—— peers 非空即开网格；四个 `event.*-ms` 传输超时只有在网格存在后才谈得上。
+- `freeway.http.ssl.enabled`（presence 驱动）—— keystore 非空即 HTTPS，显式 `false` 是压制已配置 keystore 的总闸。
+- 各特性一个 `.enabled`：`compression`、`access-log`、`cors`、`health`、`event.dedup`、`auth.extract`。
+- 调优键自己就写着"用平台默认"：`0` = OS/JDK 默认或无限制，空 = JDK 默认。
 
 ---
 
@@ -26,7 +44,7 @@
 
 | 模块 | 命名空间 | 说明 |
 |------|----------|------|
-| **Boot** | `freeway.profile`, `freeway.config.file`, `freeway.env.prefix`, `freeway.preset` | 运行时启动与配置级联 |
+| **Boot** | `freeway.profile`, `freeway.config.file`, `freeway.env.prefix` | 运行时启动与配置级联 |
 | **Commons** | `freeway.log.*`, `freeway.env.prefix` | 日志系统 |
 | **HTTP** | `freeway.http.*` | Web 服务器、路由、SSL |
 | **DB** | `freeway.db.*` | 数据库连接、池、Schema、迁移 |
@@ -45,14 +63,21 @@
 | `freeway.profile` | String | *(无)* | 否 | 激活的 Profile，支持逗号分隔多个。不设则不加载任何 profile 变体文件。开发用 `dev`，生产用 `prod` |
 | `freeway.config.file` | String | *(空)* | 否 | 额外配置文件路径，多个逗号分隔。参与文件级热重载 |
 | `freeway.env.prefix` | String | `FREEWAY_` | 否 | 环境变量前缀；自定义前缀时 `APP_SERVER_PORT` → `server.port`（透传） |
-| `freeway.preset` | String | *(未设)* | 否 | **环境预设**。第五级联 tier，优先级最低——只补所有更高来源都没设的键。`docker` = 容器平台通用（绑定 `0.0.0.0` + 日志仅 stdout：`log.file=off`），k8s/ecs 同属此预设；`local` = 显式声明开发环境（空 bundle，默认值即开发友好）。未知值启动即失败 |
 
-前三行（`freeway.config.file`、`freeway.env.prefix`、`freeway.preset`）是
-**bootstrap-only 键**：它们配置的就是配置系统本身，因此只能来自 `-D<键>` 或
-`FREEWAY_<键>`（如 `FREEWAY_PRESET`、`FREEWAY_ENV_PREFIX`、`FREEWAY_CONFIG_FILE`）。
-写进 `application.properties`/`application.json` 无效——启动时会打 WARN 点名，
-不再静默忽略。`FREEWAY_` 前缀对这三个键固定不变（否则就要用被 `env.prefix`
-配置的映射去读 `env.prefix`）；`freeway.profile` 不是 bootstrap 键，走正常级联。
+`freeway.config.file` 与 `freeway.env.prefix` 是 **bootstrap-only 键**：
+它们配置的就是配置系统本身，因此只能来自 `-D<键>` 或 `FREEWAY_<键>`
+（如 `FREEWAY_ENV_PREFIX`、`FREEWAY_CONFIG_FILE`）。
+写进 `application.properties`/`application.json`（类路径或工作目录）无效，作为
+CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WARN 点名来源文件或
+"命令行参数"，不再静默忽略。`FREEWAY_` 前缀对这两个键固定不变（否则就要用被
+`env.prefix` 配置的映射去读 `env.prefix`）；`freeway.profile` 不是 bootstrap
+键，走正常级联。
+
+激活 profile 的只有**基础层**：类路径与工作目录的 `application.properties`/
+`application.json`、映射后的环境变量（`FREEWAY_PROFILE`）、CLI 参数
+（`--profile=dev`）。profile 变体文件里重写 `freeway.profile` 会被剥离，避免
+`profiles()` 与解析值互相矛盾；另外两个渠道只写入普通配置值、**不激活 profile**：
+`-Dfreeway.profile=dev`（JVM 系统属性）与 `freeway.config.file` 附加文件。
 
 ### CLI 快捷规则
 
@@ -171,6 +196,11 @@
 
 ### 配置项
 
+**分档**：决策键 = `server.host`/`server.port`、`ssl.key-store`+`-password`、
+`cors.allowed-origins`；默认最优 = 各特性的 `.enabled`（`compression`、`access-log`、
+`cors`、`health`）；其余全部是**高级（小概率）**——调优数字默认即推荐值，`0` 表示
+OS/JDK 默认或无限制，空表示 JDK 默认。下面各表内已按此顺序排列。
+
 #### 服务器
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
@@ -251,8 +281,8 @@
 
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
-| `freeway.http.h2.reset-burst-limit` | Integer | `200` | 否 | 入站 RST 突发熔断：窗口内未响应即取消超过此数即 GOAWAY(ENHANCE_YOUR_CALM) 并拆连接（`0` = 禁用） |
-| `freeway.http.h2.reset-window` | Duration | `10s` | 否 | RST 突发计数的滑动窗口 |
+| `freeway.http.h2.reset-burst-limit` | Integer | `200` | 否 | 入站 RST 突发熔断：窗口内未响应即取消超过此数即 GOAWAY(ENHANCE_YOUR_CALM) 并拆连接（`0` = 整个防护关闭） |
+| `freeway.http.h2.reset-window` | Duration | `10s` | 否 | RST 突发计数的滑动窗口。**与上一行是一对**：`reset-burst-limit=0` 时本键无意义（代码直接返回），所以二者不是两个独立决定 |
 
 ### 示例
 
@@ -399,6 +429,11 @@
 ## 五、Cloud — 云原生
 
 ### 配置项
+
+**分档**：决策键 = `event.peers`+`event.token`、`rpc.tls.key-store`+`-password`、
+`secret.file`/`secret.keys`；默认最优 = 四个 `*.type`（空 = 内置本地后端）、registry
+的派生项、各特性开关；其余全部是**高级（小概率）**，且每个簇都已有一个聚合键在管它
+（`rpc.resilience=auto|off`、`event.enabled` presence、`event.dedup.enabled`）。
 
 #### 密钥
 
@@ -634,7 +669,7 @@ IoC 容器不提供外部化配置键。所有配置通过编程式 API 完成�
 ## 环境变量映射
 
 默认前缀 `FREEWAY_`，下划线转点号：
-- `freeway.http.port` → `FREEWAY_HTTP_PORT`
+- `freeway.http.server.port` → `FREEWAY_HTTP_SERVER_PORT`
 - `freeway.db.url` → `FREEWAY_DB_URL`
 - `freeway.log.level` → `FREEWAY_LOG_LEVEL`
 

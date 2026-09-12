@@ -4,20 +4,18 @@
 #  or application-{profile}.properties for profile-specific values.
 #
 #  Resolution order (lowest -> highest priority):
-#    0. Environment preset (-Dfreeway.preset=docker|local, bootstrap-only:
-#       fills defaults for a standard deployment environment)
 #    1. application.properties
 #    2. application.json
 #    3. application-{profile}.properties
 #    4. application-{profile}.json
+#       (these four, packaged on the classpath; then the same names in the
+#        working directory, then freeway.config.file extras — filesystem wins,
+#        hot-reloaded)
 #    5. Environment variables (FREEWAY_ prefix, configurable)
 #    6. CLI args (--key=value, -Dkey=value)
 #
 #  Activate profile: --freeway.profile=dev
 #  or env: FREEWAY_PROFILE=dev
-#
-#  Environment preset: -Dfreeway.preset=docker   (or FREEWAY_PRESET=docker)
-#    container platform defaults: bind 0.0.0.0, stdout-only logging
 #
 #  Custom env prefix: -Dfreeway.env.prefix=APP_
 #    then APP_SERVER_PORT -> server.port (passthrough)
@@ -39,11 +37,12 @@
 # Scenario: dev for local, prod for production, test for CI.
 # freeway.profile=
 
-# Additional config files (JVM system property only, comma-separated).
+# Additional config files (bootstrap-only: -D or FREEWAY_CONFIG_FILE,
+# comma-separated). A value in a config file is ignored with a startup WARN.
 # -Dfreeway.config.file=/path/to/extra.properties
 
-# Environment variable prefix (JVM system property only).
-# Default FREEWAY_ maps FREEWAY_HTTP_PORT -> freeway.http.port.
+# Environment variable prefix (bootstrap-only: -D or FREEWAY_ENV_PREFIX).
+# Default FREEWAY_ maps FREEWAY_HTTP_SERVER_PORT -> freeway.http.server.port.
 # Set to APP_ for passthrough: APP_SERVER_PORT -> server.port.
 # freeway.env.prefix=FREEWAY_
 
@@ -345,26 +344,26 @@
 # Presence-driven: a non-empty peers list alone activates the mesh; set
 # enabled=false to kill the mesh even with peers configured; set enabled=true
 # for a discovery-fed mesh without static peers. Nothing set = module inert.
-# freeway.cloud.events.peers=
-# freeway.cloud.events.enabled=
-# freeway.cloud.events.subscriptions=
+# freeway.cloud.event.peers=
+# freeway.cloud.event.enabled=
+# freeway.cloud.event.subscriptions=
 # CLASS-channel deserialization allowlist (empty = deny all typed events).
-# freeway.cloud.events.allowed-types=
+# freeway.cloud.event.allowed-types=
 # TOPIC-channel allowlist (empty = allow any topic).
-# freeway.cloud.events.allowed-topics=
+# freeway.cloud.event.allowed-topics=
 # Shared secret for mesh handshake (empty = no peer auth).
 # Scenario: multi-node production MUST set it — identical on every node,
-#   injected via FREEWAY_CLOUD_EVENTS_TOKEN; a mismatch closes with WS 1008.
-# freeway.cloud.events.token=
+#   injected via FREEWAY_CLOUD_EVENT_TOKEN; a mismatch closes with WS 1008.
+# freeway.cloud.event.token=
 # Enable event deduplication (opt-in; consumes memory for dedup IDs).
-# freeway.cloud.events.dedup.enabled=false
+# freeway.cloud.event.dedup.enabled=false
 # Dedup ID cache capacity (default 4096).
-# freeway.cloud.events.dedup.capacity=4096
+# freeway.cloud.event.dedup.capacity=4096
 # Mesh network timeouts (ms): outbound connect, hello/ack watchdog, backoff.
-# freeway.cloud.events.connect-timeout-ms=3000
-# freeway.cloud.events.handshake-timeout-ms=10000
-# freeway.cloud.events.backoff-base-ms=1000
-# freeway.cloud.events.backoff-max-ms=30000
+# freeway.cloud.event.connect-timeout-ms=3000
+# freeway.cloud.event.handshake-timeout-ms=10000
+# freeway.cloud.event.backoff-base-ms=1000
+# freeway.cloud.event.backoff-max-ms=30000
 
 
 # ================================

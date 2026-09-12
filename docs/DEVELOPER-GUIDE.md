@@ -508,7 +508,7 @@ In-process publish-subscribe built on the Extension mechanism. Events are plain 
 // Module-level subscribers (startup-time, supports ordering)
 binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(PostCreatedEvent.class, e -> index(e.post())))
-    .add(EventSubscriber.of("notify", PostCreatedEvent.class, e -> sendEmail(e)))
+    .add("notify", EventSubscriber.of(PostCreatedEvent.class, e -> sendEmail(e)))
     .after("index");
 
 // String-topic subscribers (no event class needed)
@@ -741,6 +741,13 @@ answers one ownership question:
 4. CLI arguments (`TIER_CLI` 0, `--key=value`, `-Dkey=value`) — the app
    launcher's verbatim overrides, parsed by boot
 
+Two keys configure the cascade itself and so cannot come from it —
+`freeway.env.prefix` and `freeway.config.file`. Each has exactly two channels,
+the JVM system property `-D<key>` and the fixed `FREEWAY_`-spelled environment
+variable; a value in a config file or a CLI argument is ignored and named in a
+startup WARN. `freeway.profile` is not one of them — it is read from the base
+layers like any other key.
+
 The two band tiers stay separate — merging them would pair a verbatim
 mechanism with a mapped one under one name, force the prefix policy into
 ioc or strip sysprops from bare containers, and reintroduce
@@ -795,7 +802,7 @@ mapping — prefix stripped, `_` → `.`, no namespace inference:
 ```bash
 -Dfreeway.env.prefix=APP_
 APP_SERVER_PORT       → server.port
-APP_FREEWAY_HTTP_PORT → freeway.http.port
+APP_FREEWAY_HTTP_SERVER_PORT → freeway.http.server.port
 ```
 
 With a custom prefix, `FREEWAY_*` variables are no longer read by the config
@@ -1697,26 +1704,37 @@ circuit breaking, and propagation all apply.
 public final class UserRpcModule implements ModuleEx {
     @Override
     public void bind(Binder binder) {
-        var bus = container.get(CallBus.class);            // container builtin
-        bus.register("user", new UserHandlers());          // public methods become topics
-
-        binder.contribute(Route.class)
-            .add("user-rpc", RpcEndpoint.of("user", bus, new JsonCodecDefault()));
+        binder.bind(UserHandlers.class);          // container-managed: injected, lifecycle, resolvable
+        binder.contribute(RpcExport.class)
+            .add(RpcExport.of("user", UserHandlers.class));   // the whole export declaration
     }
 }
 ```
 
-Only mappings passed to `RpcEndpoint.of(...)` are reachable over HTTP —
-nothing is auto-exported. Each call contributes its own route serving
-`POST /rpc/<mapping>/{method}` (the mapping is a path literal, so several
-mappings can be exported side by side), with positional arguments as a JSON
-array. The mapping name is validated when you export it: `[A-Za-z0-9_.]` only.
+**An export is a declaration, not a wiring job.** `RpcExport.of(mapping, type)`
+names what may be called and who serves it; the framework resolves the handler
+from the container, registers its public methods on the **container's** CallBus
+(`mapping.method` becomes the topic) and serves one `/rpc/{mapping}/{method}`
+route. The application never holds a bus, a codec or a route — which is also why
+a client's local-first dispatch and the endpoint can never end up on different
+buses.
+
+Two things fail startup instead of answering 404 later: exporting one mapping
+twice, and exporting a type that is not bound (the message names the missing
+`binder.bind(...)`). Export is explicit — **only declared mappings are
+reachable**: one wildcard route serves them all, `POST /rpc/{mapping}/{method}`,
+an undeclared mapping is rejected before the bus is consulted, and several
+mappings live side by side without adding a route. The mapping name is validated
+when you export it (`[A-Za-z0-9_.]`), and arguments travel as a positional JSON
+array. Add `.propagateMessages()` to a declaration to forward the handler's
+exception message (the class always crosses; the message is free text and stays
+local by default).
 
 **Consumer side — three shapes:**
 
 ```java
-RemoteCaller caller = new RemoteCaller(container.get(CloudHttpClient.class),
-    container.get(JsonCodec.class));
+@Inject RemoteCaller caller;   // framework-bound: CloudHttpClient + JsonCodec assembled for you
+@Inject CallBus callBus;       // local-first dispatch
 
 // 1. direct call
 Greeting g = caller.invoke("user", "user", "greet", List.of("bob"), Greeting.class);
@@ -1794,7 +1812,7 @@ freeway.cloud.event.token=mesh-secret         # blank = no peer auth (warned); M
   dynamically instead (via `PeerConnector.setPeers`; that needs a discovery
   adapter — an ext concern, none is shipped today). The endpoint rides the
   existing HTTP server at
-  `/cloud/events`. IPv6 literals work bracketed (`[::1]:8080`) or bare.
+  `/cloud/event`. IPv6 literals work bracketed (`[::1]:8080`) or bare.
 - `subscriptions` — CloudEvents `type` prefixes this node pulls from the
   mesh; empty = outbound-only. Prefixes match the event class FQN and the
   `@Topic` value.

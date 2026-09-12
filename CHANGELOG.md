@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`Container.modules()`（freeway-ioc，破坏性）** — 返回容器加载的模块树（绑定顺序的只读
+  快照）；启动日志随之输出缩进树形。自定义 `Container` 实现需补上该方法。
+
+### Changed
+
+- **RPC 导出改为申报式（freeway-cloud，破坏性）** — 应用在装载期不再需要持有 `CallBus`/
+  `JsonCodec`，也不再为每个 mapping 写路由：
+  - 导出是一条数据贡献 `binder.contribute(RpcExport.class).add(RpcExport.of("user",
+    UserHandlers.class))`（可选 `.propagateMessages()`）；
+  - 框架在组合期贡献**一条** `/rpc/{mapping}/{method}` 通配路由，并贡献一个
+    `.before(HTTP_SERVER)` 的装配 hook：解析每条导出（重复 mapping、类型未绑定 → **启动失败并点名**，
+    后者给出要补的 `binder.bind(...)`）、把 handler 注册到**容器总线**、填好路由所需状态；
+  - 由此消除的失效形态：应用自造总线导致"端点查一条、本地优先客户端查另一条"的静默 404；
+  - `RemoteCaller` 由框架绑定（`CloudHttpClient` + `JsonCodec` 组装），调用方注入即可；
+  - 线协议不变（路径、位置参数数组、版本头、异常头全不动）。
+  - 破坏性：`RpcEndpoint.of(mapping, bus, codec[, propagateMessage])` 删除；独立组装（ext 引擎的
+    `RouteIndex`、自定义挂载）改用容器无关的 `RpcEndpoint.route(RpcExport, CallBus, JsonCodec)`。
+    freeway-ext 的 Undertow/Jetty RPC 集成测试同步迁移（各一行）；应用迁移见 DEVELOPER-GUIDE。
+- **应用面 API 补钉测试 + 状态码词汇表统一（freeway-http）** — 新增两组端到端测试，钉住此前零覆盖、
+  但**应用开发者会用**的公共面（仓库内没有调用者只说明用它的应用在仓库之外）：
+  `TypedRequestApiTest` 覆盖 `HttpRequest` 的类型化读取族（`queryParam/header/pathVar` 带 `Class`：
+  正常解析、缺省为空、非法值报错而非放行垃圾）、类型化 body 工厂（`post/put/patch(path, type, handler)`
+  的反序列化与路由顺序）、**bean 校验失败 → 400**（`Route.wrapBody` 的校验分支此前被判定"仓库内不可达"），
+  以及 `Route.head/options` 的动词语义；`WebSocketReadLoopTest` 新增用例钉住 `WebSocketSession.ping`
+  与 `sendTextBatch` 的帧序列（PING 载荷原样、批量保持顺序、恰好发送给定条数）。
+  同时把四处硬编码状态码改用 `HttpStatus` 常量（`StaticResourceMount` 的 416/206、`CorsFilter` 的 204、
+  `HealthFilter` 的 200）——常量是给用户的状态码词汇表，**保留**，缺的是模块自己用它。
+- **删除 cloud 侧同类成员（freeway-cloud）** — 判据同上一批（"定义处 + 调用处"逐个看，两仓库确认）：
+  `PeerConnector` 的两个委托构造器、无参 `start()`，以及**永远为空的 `staticPeers`**（唯一的构造点传
+  `List.of()`，配置里的 peers 走 `start(peers)`/`setPeers`）——peers 因此只剩一条入口；
+  `PeerConnection` 的 3 参构造器与 `remotePrefixes()`；`CloudEventEnvelope` 的 6 参 `translate`
+  （自带铸造 UUID 的第二条翻译路径）；`RemoteProxyFactory` 里 catch 后原样重抛的空操作；
+  `ActiveBindingProbe.hasMarker`（唯一调用者只是转发，内联进 `isLocal`）；
+  `SecretStoreDefault.reload()` 降为 private（只在构造器调用）；
+  `MetricsDefault.TimerData` 降为 private（实现内部持有结构）。
+  另修一处**文档过度承诺**：`CloudEventEnvelope` 的 javadoc 写 `subject` = `Keyed#key()` 而未限定通道，
+  实际只在 CLASS 通道写入（topic 载荷对总线不透明，没有排序键）——新增测试
+  `keyedEventCarriesItsKeyAsTheWireSubject` 把两个通道的行为都钉住（CLASS 带 subject 与类名 type、
+  TOPIC 无 subject 且 type 即 topic），并同步收窄 javadoc。这条测试在写的时候就先失败了一次，
+  正是"未钉住的线上契约"的实证。
+- **删除引擎内触达不到的成员（freeway-http）** — 逐项判别"定义处 + 调用处"的分布后才删，
+  并在 workspace 与 `freeway-ext` 两处确认零引用：
+  - 只写不读的状态：`HttpContextImpl` 的 `http10` 字段与 `isHttp10()`（HTTP/1.0 keep-alive 由
+    `Http1xParser` 的 `keepAlive = !isHttp10` 决定，上下文里的副本从未被读）——`reset(...)` 随之
+    少一个参数；`ParsedRequest.httpVersion` 组件（解析用局部变量仍在，组件无读者）；
+    `WebSocketFrame.closeCode` 字段与访问器（`CloseCode` 枚举**保留**：它是用户传给
+    `session.close(int, String)` 的协议词汇表，与 `HttpStatus` 同理）。
+  - 无调用者的成员：`Headers.size()`、`Http1xParser` 的 `CR`/`LF` 常量（代码用 `'\r'`/`'\n'` 字面量）、
+    `FrameHeader` 实例 `encode()`（静态重载才是真源）、`WebServer.notFound`（并入 `ErrorResponses` 调用）、
+    `DataFrame.padLength()`、`MultipartForm.part(String)`、`PathPattern.template()`、
+    `StaticResourceMount` 的三个无调用 getter（setter 是文档化 API，保留）。
+  - 无调用者的重载构造器：`HttpSession` 7 参、`HttpConnection` 1/2 参、`SessionBufferedOutputStream`
+    1 参、`SettingsFrame()`/`HeadersFrame()` 无参、`WebSocketException` 3 参；以及
+    `HttpConnection`/`Http2Connection` 各一对地址访问器（地址一律经
+    `HttpSession.remoteAddress(connection.socket())` 取得）。
+- **模块组合改为数据（freeway-ioc）** — 容器在绑定任何模块之前一次性解析整棵模块树：父模块
+  先于其子模块、同级按声明顺序；同一实例被到达两次（共享子模块或互相引用）只绑定一次，
+  同 class 的两个实例启动即失败。`subModules()` 必须是稳定视图，被读取多次。
+- **SPI 发现只补空缺（freeway-boot）** — 类已在模块树中声明（含作为子模块）时不再被自动发现
+  重复加入，因此"`subModules()` 里声明 `new HttpModule()`"与"开启 autoDiscovery"不再冲突。
+- **bootstrap 键通道统一（freeway-boot，行为变更）** — `freeway.env.prefix` /
+  `freeway.config.file` 统一为 `-D<键>` 或 `FREEWAY_<键>`；写进配置文件
+  不再静默忽略，启动时 WARN 点名。
+- **配置文件读取上限统一（freeway-boot，行为变更）** — 16 MiB 上限从"仅类路径资源"扩展到
+  所有来源：工作目录覆盖文件、`freeway.config.file` 附加文件与热重载重读一视同仁。
+- **`AppConfigDefault` 构造方式变更（freeway-boot，破坏性）** — 静态形态改用
+  `AppConfigDefault.of(Map<String,String>, List<String>)`；级联形态改为
+  `AppConfigDefault(ConfigSources, List<Path>)`。
+- **`AppConfigModule` → `BootModule`（freeway-boot）** — 改名并收窄职责：该模块只做一件事，
+  把加载好的 `AppConfig`（及其声明的 symbol source）接入容器。runtime hook 生命周期与配置
+  释放归 `AppRuntimeDefault` 自己的协作者所有，`HookLifecycle` 不再注册为容器服务，
+  `"freeway.config"` 这个 hook id 随之消失（以它为 `before`/`after` 锚点的代码会在启动时
+  报到未知 hook id）。（位于 `boot.internal`，无稳定性承诺）
+- **CloudEventBus 命名统一为单数（freeway-cloud，破坏性）** — 包名 `cloud.events` →
+  `cloud.event`、WS 端点 `/cloud/events` → `/cloud/event`、配置键
+  `freeway.cloud.events.*` → `freeway.cloud.event.*`、常量 `CloudConfigKeys.EVENTS_*` →
+  `EVENT_*` 与 `CloudHooks.EVENTS` → `EVENT`，boot 的事件类移入 `boot.event`。配置语义
+  不变，仅命名；引用常量的代码与配置文件/env 中的键名需同步改名。
+
 ### Removed
 
 - **`Binder.install(ModuleEx)` 移除（freeway-ioc，破坏性）** — 模块组合不再通过 `bind()`
@@ -18,34 +99,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SymbolSource` 是唯一读取入口，`AppConfig` 收窄为 `profiles()` / `providers()` /
   `close()`。迁移：`config.snapshot().get(k)` →
   `container.get(SymbolSource.class).resolve(k, null)`（或按声明 `resolve(spec)`）。
+- **`PutResult.versionId`（freeway-cloud，破坏性）** — 接口没有按版本寻址的读/删
+  （`get`/`delete` 只按 key，`ObjectEntry` 也没有版本字段），这个每次写入新铸的 UUID
+  调用方除了打印什么也做不了：契约不成立。版本能力与其可用的操作一起排期，而不是先留一个
+  拿不到东西的返回值。同步更新设计文档；`ObjectStorageDefault.put` 的 javadoc 写明本地
+  后端**刻意忽略** `ObjectMetadata`（content-type/用户元数据是给 ext 后端的契约），
+  而不是半兑现。
+- **`EventSubscriber` 的排序 id（freeway-ioc，破坏性）** — `id` 字段、`of(String id, Class,
+  Consumer)`、`of(String id, String topic, Consumer)` 与包内 `id()` 全部删除：该 id 从未被
+  任何读取方使用（订阅索引只读 topic/eventType/handler），排序 id 属于 contribution ——
+  `Contributions.add(id, value)` 才是唯一定义处。原文档示例写着
+  `.add(EventSubscriber.of("notify", …)).after("index")`，既编译不过（`add(T)` 返回的
+  `Contributions` 没有 `after`）又会静默排错序；两个示例已改为
+  `.add("notify", EventSubscriber.of(…)).after("index")`。
+- **`SymbolSpec.description` 与两个零调用者工厂（freeway-ioc，破坏性）** — `description`
+  组件只写不读（javadoc 承诺的 "docs/registry use" 并不存在），随之删除
+  `of(key, type, default, description)` 与 `required(key, type, parser, description)`；
+  唯一传过它的调用点（`CloudResilienceModule`）把那句说明改为注释。记录现在只剩机制真正
+  使用的输入：key、type、default、parser、required。
 
-### Changed
+### Fixed
 
-- **模块组合改为数据（freeway-ioc）** — 容器在绑定任何模块之前一次性解析整棵模块树：父模块
-  先于其子模块、同级按声明顺序；同一实例被到达两次（共享子模块或互相引用）只绑定一次，
-  同 class 的两个实例启动即失败。`subModules()` 必须是稳定视图，被读取多次。
-- **SPI 发现只补空缺（freeway-boot）** — 类已在模块树中声明（含作为子模块）时不再被自动发现
-  重复加入，因此"`subModules()` 里声明 `new HttpModule()`"与"开启 autoDiscovery"不再冲突。
-- **bootstrap 键通道统一（freeway-boot，行为变更）** — `freeway.env.prefix` /
-  `freeway.preset` / `freeway.config.file` 统一为 `-D<键>` 或 `FREEWAY_<键>`；写进配置文件
-  不再静默忽略，启动时 WARN 点名。
-- **配置文件读取上限统一（freeway-boot，行为变更）** — 16 MiB 上限从"仅类路径资源"扩展到
-  所有来源：工作目录覆盖文件、`freeway.config.file` 附加文件与热重载重读一视同仁。
-- **`AppConfigDefault` 构造方式变更（freeway-boot，破坏性）** — 静态形态改用
-  `AppConfigDefault.of(Map<String,String>, List<String>)`；级联形态改为
-  `AppConfigDefault(ConfigSources, List<Path>)`。
-- **`AppConfigModule` → `BootModule`（freeway-boot）** — 该模块同时装配配置与 runtime hook
-  生命周期，改名以反映职责（位于 `boot.internal`，无稳定性承诺）。
-- **CloudEventBus 命名统一为单数（freeway-cloud，破坏性）** — 包名 `cloud.events` →
-  `cloud.event`、WS 端点 `/cloud/events` → `/cloud/event`、配置键
-  `freeway.cloud.events.*` → `freeway.cloud.event.*`、常量 `CloudConfigKeys.EVENTS_*` →
-  `EVENT_*` 与 `CloudHooks.EVENTS` → `EVENT`，boot 的事件类移入 `boot.event`。配置语义
-  不变，仅命名；引用常量的代码与配置文件/env 中的键名需同步改名。
-
-### Added
-
-- **`Container.modules()`（freeway-ioc，破坏性）** — 返回容器加载的模块树（绑定顺序的只读
-  快照）；启动日志随之输出缩进树形。自定义 `Container` 实现需补上该方法。
+- **框架扩展面的两处契约表述（freeway-cloud）** — `LoadBalancer` 的接口 javadoc 原写
+  "Reads routing inputs (zone/weight/canary) from `ServiceInstance#metadata()`"，作为对
+  **默认实现**的描述是假的（`LoadBalancerDefault` 是纯轮询，不读任何实例属性），作为对
+  **角色**的描述才是真的。现写明：默认轮询不读属性，weighted/zone-aware/canary 是应用或
+  适配器 `.primary()` 的活（设计文档 §263-266 的既定分工），而
+  `ServiceInstance.weight()/zone()/version()/isCanary()` 是这些策略的**输入词汇表**
+  （键名与解析的定义处，应用不应自己读 metadata 键）。这些访问器**保留**——仓库内没有
+  调用者只说明"那个 CanaryLb 在仓库之外"。
+  `RegistryStore.liveReady` 此前把 `Health.isStale` 的阈值判断内联重写了一遍，现调用
+  `Health.isStale(maxAge)`，规则回到它自己的 owner（`Health` 的 javadoc 本就声明了这条淘汰
+  语义），访问器因此不再是"没人读的成员"。
+- **响应头块超过对端帧上限时不再发出超限 HEADERS 帧（freeway-http，协议修复）** —
+  `HPackContext.encodeResponseHeaders` 把整个头块编成**一个** HEADERS 帧，且从不比较对端的
+  `SETTINGS_MAX_FRAME_SIZE`（初值 16384，`Http2Connection.peerMaxFrameSize`），而本地预算却是
+  64 KiB；同时该上限此前只用于 DATA 分片。于是 16 KiB–64 KiB 的响应头块（多个 `Set-Cookie`、
+  长 CSP/Link、或单纯头多）会以超限帧发出，一致的对端必须按 FRAME_SIZE_ERROR 判定为**连接
+  错误**。现按对端上限切分为 HEADERS + CONTINUATION（RFC 9113 §6.10），`END_STREAM` 留在
+  HEADERS、`END_HEADERS` 只在末帧，整串由 `Http2FrameWriter` 一次加锁连续写出（不得插入其他
+  帧）；`ContinuationFrame` 由"仅解析"变为真实写出路径，`FrameHeader.DEFAULT_MAX_FRAME_SIZE`
+  成为该协议常量的唯一定义处（原先 `Http2Connection` 里另有一个同值字面量）。
+  `HeadersFrame.writeTo` 改为按自身解析出的 flags 序列化——`BaseFrame.writeTo` 是抽象方法，
+  该类必须实现它，此前它硬编码 `END_HEADERS`、丢弃 `END_STREAM`，是个只会产出错帧的陷阱。
+  新增 `H2WireFormatTest.oversizedHeaderBlockIsSplitIntoContinuationFrames`：按 512 字节
+  切分 2 KiB 头块，逐帧校验类型/flags/上限，并用引擎自身解码器重组回同一头块。
+- **节点身份统一为一处推导（freeway-cloud）** — 此前注册表的实例 id 是
+  `service-instance-id` 或 `service-id@host:port`（HTTP server 起来后推导），而事件网格的
+  origin 是 `service-id@<随机 UUID>`（网格在 HTTP server 之前接线，端口未知），注释与设计
+  文档却声称二者相同。现在 `HttpServiceDeclaration.of(container)` 是唯一定义处，注册与网格
+  都消费它返回的同一个 `ServiceInstance`，网格改用 `.after(HTTP_SERVER)` 接线以获得真实
+  端口；代价是接线前到达的 hello 会收到 1013 并按既有退避重连（网格本就以此为准）。
+  `PeerHub` 不再自造 UUID 回退。
+- **HTTP 引擎三处行为缺陷（freeway-http）** — 均由审计以具体输入复现：
+  - **RST 之后的响应帧泄漏**：`markAborted()` 只置 `responseAborted` 而未置
+    `streamOutputClosed`，且写出前的检查排在 `writeResponseHeaders` 之后——收到
+    `HEADERS[END_STREAM]` 后再来一个 DATA 帧时，服务器发完 RST_STREAM 仍会继续发
+    HEADERS/DATA/END_STREAM（RFC 9113 §5.1）。现两处都修，该输入下不再发帧。
+  - **带引号的 charset 导致乱码**：`Content-Type: text/plain; charset="ISO-8859-1"` 时
+    `bodyText()` 因 `Charset.forName("\"ISO-8859-1\"")` 失败而静默回退 UTF-8；同一个头
+    `Part.text()` 却解码正确。现去掉引号后再查表，两条路径一致。
+  - **`isMultipart()` 是子串判断**：`text/plain; note=multipart/form-data` 被当作上传，
+    `multipart()` 抛错、默认处理器回 400。现按媒体类型精确比较。
+  - 另修：`CompressionConfig` 负值静默改成 256（同记录其他分量都抛），现抛
+    `IllegalArgumentException`；HTTP/1.1 补齐 415/416 的 reason phrase（此前线上出现
+    `HTTP/1.1 415 ` 空原因短语）；`WebServer` 的 null sink 现在走 noop 哨兵；
+    `cors.max-age` 由未校验的 String 改为 Integer（`=abc` 不再被原样写进响应头，改为启动即失败）。
+- **配置面分档与文档纠错（freeway-http / freeway-cloud / docs）** — `HttpConfigKeys` 与
+  `CloudConfigKeys` 按「决策键 / 默认最优 / 高级（小概率）」重组并写明理由，高级簇各自
+  标出管辖它的聚合键（`rpc.resilience=auto|off`、`event.enabled` presence、
+  `event.dedup.enabled`）；`docs/freeway-config.md` 的「必填配置速查」换成「决策键速查」。
+  纠错：文档四处用 `freeway.http.port` 当例子，但该键**不存在**（真实键
+  `freeway.http.server.port` ↔ `FREEWAY_HTTP_SERVER_PORT`）；`secret.file`/`secret.keys`
+  标注为仅 `-D`；`rpc.connect-timeout`/`request-timeout` 明确**不受** `resilience=off`
+  管辖；WS 端点 `/cloud/events` → `/cloud/event`（6 处）；`CloudEventModule` 的
+  "enabled default false" 改为 presence 驱动的真实规则；`ExceptionMapper` →
+  `ErrorHandler`（1.3.8 改名后的残留）；DEVELOPER-GUIDE 的 RPC 导出示例在
+  `bind(Binder)` 里引用 `container`（编译不过），改为模块持有 `CallBus`。
+- **`freeway-ioc` 内部收敛（无 API 变化）** — 按"概念要挣到自己的位置"清理：
+  - 总线协作者与宿主同包同可见性：`EventStats`/`EventSinkRegistry`/`EventExecutorSupport`/
+    `CallStats`/`CallTargetRegistry`/`CallAdviceChain`/`CallProxyFactory` 由 `ioc.internal`
+    （public）移入 `ioc`（包私有），与既有的 `EventDispatcher`/`EventStreams`/
+    `EventSubscriptionIndex` 一致；`ioc.internal` 现只剩 `ContainerImpl` 一个 public 类型。
+  - `ProxyFactory`（包私有接口 + 唯一实现，无外部可代换点）并入 `ProxyFactoryImpl`。
+  - `@Inject Logger` 改走 `container.get(LoggerSource.class)`（与 `SymbolSource`/`Coercer`
+    同一原则）：此前走硬连线字段，绑定一个 primary `LoggerSource` 替代实现对其无效。
+  - `ContainerImpl`：删除零调用者的纯转发 `resolveArguments`；模块上下文的 save/restore
+    永远恢复 null（树先展平、不递归）改为 set/clear；单用处 `Scoping` 字段内联；
+    `close()` 补 `markerIndex.clear()`（此前标记索引长期持有全部 binding）。
+  - `BindingIndex`：`updateId` 里写回同一引用的"更新类型索引"空操作块、`scanBindings`
+    未使用的 `type` 参数删除。`MarkerIndex.register`/`sync` 合一（marker 校验已在 binding
+    入口完成，不再三处重复）。
+  - `Shutdown` 两个 catch 体相同者合一；`EventExecutorSupport` 恒真且返回值被丢弃的
+    `BooleanSupplier` 改为 `Runnable`；`EventBus` 删除提取 `EventDispatcher` 后遗留的未使用
+    `LOG` 字段、修正 `publishOrdered` 里描述已删参数 `key` 的 javadoc；`ContainerImpl`
+    线程作用域登记表去掉从未读取的 owner 值（`Map<Object,ContainerImpl>` → 恒等 `Set`）。
+- **文件系统覆盖文件的 profile 段顺序（freeway-boot）** — 工作目录与
+  `freeway.config.file` 的 profile 变体此前按「每个 profile 的 properties+json」排列，
+  与类路径段的「先全部 properties、再全部 json」不一致：多 profile 时同一份文件内容在两侧
+  会得出不同的赢家（`application-dev.json` 在类路径赢过 `application-prod.properties`，
+  在文件系统侧却输给它）。两侧现统一为格式优先。
+- **bootstrap-only 键的 WARN 覆盖全部配置文件渠道（freeway-boot）** — 此前只检查类路径
+  文件；工作目录的 profile 变体与 `freeway.config.file` 附加文件中声明
+  `freeway.env.prefix`/`freeway.config.file` 仍被静默忽略。现由
+  `AppConfigDefault` 统一在读取每个文件系统文件时点名（含文件名），CLI 参数
+  （`--freeway.config.file=...`）同样点名。
 
 ## [1.5.1] — 2026-09-06
 

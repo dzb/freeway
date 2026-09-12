@@ -11,7 +11,7 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 - `WebServer`
 - `HttpContext`
 - `Route`, `RouteGroup`, `WebSocketRoute`, `WebSocketGroup`
-- `HttpFilter`, `ExceptionMapper`, `HealthFilter`, `HealthCheck`
+- `HttpFilter`, `ErrorHandler`, `HealthFilter`, `HealthCheck`
 - `StaticResourceMount`
 
 ## Configuration Keys

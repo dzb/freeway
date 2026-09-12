@@ -39,7 +39,7 @@
 ```
 fact 通道:
   同 JVM   → publish → 本地订阅者（对象直递, Stoppable 短路有效）
-  跨 JVM   → CloudEventSink(WS) → 对端 /cloud/events → publishInbound
+  跨 JVM   → CloudEventSink(WS) → 对端 /cloud/event → publishInbound
            → KafkaEventSink（ext, 并存）→ broker → 订阅者
 question 通道:
   同 JVM   → CallBus → 本地槽位
@@ -52,9 +52,9 @@ stream:
 
 ### 2.1 连接与握手
 
-- 对端地址：`ws(s)://{host}:{port}/cloud/events`（复用 HTTP 端口与
+- 对端地址：`ws(s)://{host}:{port}/cloud/event`（复用 HTTP 端口与
   TLS 配置；`REGISTRY_SERVICE_SCHEME` 推导 ws/wss）。
-- 握手即 HTTP upgrade——既有 WS 面（subprotocol `freeway.events.v1`）
+- 握手即 HTTP upgrade——既有 WS 面（subprotocol `freeway.event.v1`）
   完成协议协商，无需新机制。
 - **首帧（hello，连接发起方发送）**：
   ```json
@@ -111,7 +111,7 @@ stream:
 
 ### 2.3 心跳与保活
 
-v1 未实现应用层心跳（`freeway.cloud.event.keepalive` 键未实现）：
+v1 未实现应用层心跳（设计里预留过 `keepalive` 键，未落地——`freeway.cloud.event.*` 中没有这个键）：
 连接活性依赖 TCP/WS 层行为、发送失败检测（出站 send 失败即摘除连接）
 与对端 close 即时感知。客户端侧有**握手看门狗**：socket 打开后
 `event.handshake-timeout-ms`（默认 10s）内未完成 hello/ack 即中止并走
@@ -125,7 +125,7 @@ v1 未实现应用层心跳（`freeway.cloud.event.keepalive` 键未实现）：
 
 ```
 启动序列（每节点对称）:
-1. HTTP server 启动（承载 /cloud/events WS 端点）——已有
+1. HTTP server 启动（承载 /cloud/event WS 端点）——已有
 2. ServiceDeclaration → RegistryStore / 外部注册表（已有, 零改动）
 3. PeerConnector: 解析 peers → 逐个发起 WS 连接（握手 + hello）
 4. 服务侧接受连接 → PeerHub 连接表登记（key = hello.origin，
@@ -196,7 +196,7 @@ onText → CloudEventEnvelope.parse(json) → {type, channel, payload}
 
 ### 4.3 入站门禁：token 与双白名单（生产部署必读）
 
-mesh 端点 `/cloud/events` 一开就有**三道独立的入站门**，各守一件事：
+mesh 端点 `/cloud/event` 一开就有**三道独立的入站门**，各守一件事：
 
 | 门 | 配置键 | 守住的东西 | 空值语义 |
 |---|---|---|---|
@@ -209,7 +209,7 @@ token 决定"谁能连上"，白名单决定"连上之后能要求本节点做�
 
 #### 多节点生产环境必须配置 token
 
-`token` 为空时，任何能连到 `/cloud/events` 的对等方都被当作合法节点，
+`token` 为空时，任何能连到 `/cloud/event` 的对等方都被当作合法节点，
 握手不做身份校验。这在**可信内网**是合理的默认（省去密钥分发成本，也
 是双节点契约测试所覆盖的形态），但**多节点生产部署必须显式配置**。
 

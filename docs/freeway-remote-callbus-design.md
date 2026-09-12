@@ -99,7 +99,7 @@ X-RPC-Message: <URL-encoded exception message>  ← 仅 propagateMessage=true
   client error=not retryable）严丝合缝——**业务异常天然落在 not-retryable 一侧**。
 - 异常类名总是跨边界（调用方派发契约的一部分）；**自由文本 message
   默认不跨边界**（服务端回 `"remote handler failed"` 占位，原文只留在
-  服务端日志），`RpcEndpoint.of(..., propagateMessage=true)` 显式开启
+  服务端日志），`RpcExport.of(...).propagateMessages()` 显式开启
   才回传——消息常携带 SQL、主机名等内部细节。
 - 调用方侧重建为 `RemoteInvocationException(RuntimeException)`，作为
   非 retryable `CloudException` 的 **cause** 携带（见 §2.4/§6）——**绝不
@@ -167,17 +167,23 @@ public final class RemoteCaller {
   （重试含内），到期映射为 retryable `CloudException.timeout`（§3.3）。
 - 服务发现的 serviceId 来自消费方的绑定 id 约定（见 §4）。
 
-### 3.2 server 侧：`RpcEndpoint`（cloud 新增）
+### 3.2 server 侧：`RpcExport` 申报 + `RpcEndpoint`（cloud 新增）
 
 ```java
-/** 把本容器注册过的 mapping 发布为 HTTP 端点。 */
-binder.contribute(Route.class)
-    .add(RpcEndpoint.of("user", callBus, codec));          // message 不跨边界
-binder.contribute(Route.class)
-    .add(RpcEndpoint.of("user", callBus, codec, true));    // 回传异常消息
+/** 申报"这个 mapping 可被远程调用"；handler 由容器解析。 */
+binder.bind(UserHandlers.class);
+binder.contribute(RpcExport.class)
+    .add(RpcExport.of("user", UserHandlers.class));                    // message 不跨边界
+binder.contribute(RpcExport.class)
+    .add(RpcExport.of("user", UserHandlers.class).propagateMessages()); // 回传异常消息
 ```
 
-- `RpcEndpoint.of(mapping, callBus, codec[, propagateMessage])` 返回
+框架侧：组合期贡献一条通配路由 `/rpc/{mapping}/{method}`，并在 `.before(HTTP_SERVER)` 的装配
+hook 里解析导出（重复 mapping / 类型未绑定 → 启动失败）、把 handler 注册到**容器总线**。
+应用因此不持有总线、编解码器或路由；`RpcEndpoint.route(export, bus, codec)` 保留给独立组装
+（ext 引擎的 `RouteIndex`、自定义挂载）。
+
+- `RpcExport.of(mapping, type)` 申报导出；框架解析 handler、注册到容器总线并服务
   `Route.post("/rpc/<mapping>/{method}", ...)`——mapping 以**路径字面量**
   参与路由，每次导出各占一个节点，因此同进程可并存多个 mapping（早先共用
   `{mapping}` 模式变量时，第二个导出会在启动期撞 `Duplicate route`）。
@@ -225,7 +231,7 @@ UserApi api = RemoteProxyFactory.of(callBus, remoteCaller)
 
 v1 实现**未引入**本节早期草案中的 `rpc.remote.enabled` /
 `remote.path-prefix` / `remote.serialization` 键：导出面由显式的
-`RpcEndpoint.of(mapping, ...)` 声明决定（比全局开关更保守，呼应
+`RpcExport.of(mapping, type)` 声明决定（比全局开关更保守，呼应
 "无 CloudExporter"），路径固定 `/rpc/{mapping}/{method}`，序列化仅
 JSON。沿用既有的 `rpc.connect-timeout` / `rpc.request-timeout` /
 `rpc.tls.*` / 韧性三件套，**不新增超时或 TLS 键**——远程 CallBus 就是
@@ -277,7 +283,7 @@ message 为对端消息。**不伪造原类型继承链**
 |---|---|---|
 | A（本文档） | 协议与组件契约定稿 | 无 |
 | B | `RemoteCaller` + `RemoteInvocationException` + `of()` 工厂；consumer 侧单测（MockWebServer 层面） | cloud 1.3.10 |
-| C | `RpcEndpoint` server 面 + `RemoteProxyFactory` 双模式；契约测试（真实双容器互调） | B |
+| C | `RpcExport` 导出申报 + `RpcEndpoint` server 面 + `RemoteProxyFactory` 双模式；契约测试（真实双容器互调） | B |
 | D | ext `freeway-http-*` 合入验证 + 文档进 DEVELOPER-GUIDE | C |
 
 > **状态（2026-08-27）**：A–D 全部完成，另含 `callAsync` 异步传输面与

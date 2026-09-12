@@ -410,7 +410,7 @@ point-in-time 快照，后续贡献只对新调用可见。
 ```java
 binder.contribute(EventSubscriber.class)
     .add(EventSubscriber.of(PostCreatedEvent.class, e -> index(e.post())))
-    .add(EventSubscriber.of("notify", PostCreatedEvent.class, e -> sendEmail(e)))
+    .add("notify", EventSubscriber.of(PostCreatedEvent.class, e -> sendEmail(e)))
     .after("index");
 
 // 字符串主题订阅
@@ -1116,14 +1116,14 @@ runtime.close();                           // 停止应用
 
 ### 配置级联（优先级从低到高）
 
-1. `application.properties`
-2. `application.json`
-3. `application-{profile}.properties`
-4. `application-{profile}.json`
-5. 环境变量（`FREEWAY_` 前缀）
-6. CLI 参数（`--key=value`, `-Dkey=value`）
+1. 配置文件——类路径基线 → 工作目录同名覆盖 → `freeway.config.file` 附加文件；每层内部
+   `application.properties` → `application.json` → `application-{profile}.properties`
+   → `application-{profile}.json`（同层内格式优先于 profile 顺序）
+2. 模块贡献的源（如 cloud secret store）
+3. 环境变量（默认前缀 `FREEWAY_`，映射进 `freeway.*`）
+4. JVM 系统属性（主类启动前 `-Dkey=value`，键原样）
+5. CLI 参数（`--key=value`、`--key value`、`--key`、`-Dkey=value`）
 
-另有最低优先级的 preset 预设（`-Dfreeway.preset` / `FREEWAY_PRESET`，bootstrap-only），只补所有更高来源都没设的键。
 
 Dotted keys（如 `--app.name=foo`）原样透传。不含 `.` 的简单键自动加 `freeway.` 前缀。
 激活 profile：`--profile=dev`（等同于 `--freeway.profile=dev`）

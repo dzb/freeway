@@ -177,7 +177,7 @@ com.jujin.freeway.cloud
 │                              CloudRequest, CloudResponse, CloudException,
 │                              TransportSecurity(+Default); CallBus 远端桥接
 │                              RemoteCaller / RemoteProxyFactory /
-│                              RpcEndpoint（见 freeway-remote-callbus-design.md）
+│                              RpcExport 导出申报 + RpcEndpoint（见 freeway-remote-callbus-design.md）
 ├── observe/                   CloudObserveModule; Tracer(+Default),
 │                              MetricsDefault, MetricsSnapshot（§5.5）
 ├── resilience/                CloudResilienceModule; CircuitBreaker(+Default),
@@ -463,9 +463,10 @@ public interface SecretStore {
   `list` 跳过指向根外的 symlink（与 get 的拒绝语义一致，避免泄露外部
   文件名）。`delete` 仅在真实移除（symlink 或普通文件）时发
   `ObjectDeletedEvent`——**不存在的键是 no-op，不发幽灵删除事件**。
-  `presignedUrl` 本地无签名语义返回 empty；etag 为 SHA-256、
-  versionId 每次写入新 UUID（`list` 条目的 etag 是 size+mtime 派生值，
-  非内容哈希）。`storage.base-path` 默认工作目录下 `cloud-storage`。
+  `presignedUrl` 本地无签名语义返回 empty；`put` 返回 etag（SHA-256）——
+  **不返回 versionId**：接口没有按版本寻址的读/删，版本标识只能是调用方
+  打印一下就扔掉的值，版本能力与其可用的操作一起排期（`list` 条目的 etag
+  是 size+mtime 派生值，非内容哈希）。`storage.base-path` 默认工作目录下 `cloud-storage`。
 - 领域事件 `ObjectStoredEvent` / `ObjectDeletedEvent`（EventBus，经构造
   注入的发布回调）。
 - 与主链路（discovery/rpc/observe/resilience）解耦，可独立安装。
