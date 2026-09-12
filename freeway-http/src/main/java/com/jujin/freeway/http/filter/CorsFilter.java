@@ -16,8 +16,10 @@ public final class CorsFilter implements HttpFilter {
 
     /** CORS enabled, allow all origins, common methods and headers. */
     public static final CorsFilter DEFAULT = new CorsFilter(
-        true, "*", "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-        "Content-Type, Authorization", null, "3600", false);
+        true, List.of("*"),
+        List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"),
+        List.of("Content-Type", "Authorization"),
+        List.of(), "3600", false);
 
     private final boolean enabled;
     private final boolean allowAll;
@@ -32,8 +34,9 @@ public final class CorsFilter implements HttpFilter {
         return new Builder();
     }
 
-    /** The list-typed constructor — the assembly path from the module's
-     *  list-valued config keys; header values echo as comma lists. */
+    /** The one constructor — list-valued, so the module's config lists pass
+     *  through unchanged and a comma spelling decodes at the boundary that has
+     *  one ({@link SymbolSpec#splitList}). Header values echo as comma lists. */
     public CorsFilter(boolean enabled, List<String> allowedOrigins,
                       List<String> allowedMethods, List<String> allowedHeaders,
                       List<String> exposedHeaders, String maxAge,
@@ -55,20 +58,6 @@ public final class CorsFilter implements HttpFilter {
         this.exposedHeaders = echoHeader(exposedHeaders);
         this.maxAge = maxAge;
         this.allowCredentials = allowCredentials;
-    }
-
-    /** The string-form constructor (compatibility with the builder shape) —
-     *  decodes through the one list decoder, {@link SymbolSpec#splitList}. */
-    public CorsFilter(boolean enabled, String allowedOrigins,
-                      String allowedMethods, String allowedHeaders,
-                      String exposedHeaders, String maxAge,
-                      boolean allowCredentials) {
-        this(enabled,
-            SymbolSpec.splitList(allowedOrigins),
-            SymbolSpec.splitList(allowedMethods),
-            SymbolSpec.splitList(allowedHeaders),
-            SymbolSpec.splitList(exposedHeaders),
-            maxAge, allowCredentials);
     }
 
     /** Header echo form: {@code null} when empty, entries joined by ", ". */
@@ -204,7 +193,12 @@ public final class CorsFilter implements HttpFilter {
                     "Access-Control-Allow-Origin '*' cannot be used with credentials"
                 );
             }
-            return new CorsFilter(true, allowedOrigins, allowedMethods, allowedHeaders, exposedHeaders, maxAge, allowCredentials);
+            return new CorsFilter(true,
+                SymbolSpec.splitList(allowedOrigins),
+                SymbolSpec.splitList(allowedMethods),
+                SymbolSpec.splitList(allowedHeaders),
+                SymbolSpec.splitList(exposedHeaders),
+                maxAge, allowCredentials);
         }
     }
 }

@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 破坏性：`RpcEndpoint.of(mapping, bus, codec[, propagateMessage])` 删除；独立组装（ext 引擎的
     `RouteIndex`、自定义挂载）改用容器无关的 `RpcEndpoint.route(RpcExport, CallBus, JsonCodec)`。
     freeway-ext 的 Undertow/Jetty RPC 集成测试同步迁移（各一行）；应用迁移见 DEVELOPER-GUIDE。
+- **`CorsFilter` 收敛为单一构造器（freeway-http，破坏性）** — 两个 7 参构造器只差元素类型
+  （`List<String>` 与逗号字符串），既是"同一条规则的两种说法"，也让传 `null` 的调用点直接编译不过
+  （`new CorsFilter(false, null, null, null, null, null, false)` 两个重载都匹配——freeway-ext 的引擎
+  测试正是这样被卡住的）。保留列表形态这一个：它是精确形态，模块装配把配置的列表原样传入，
+  逗号拼写只在确实持有字符串的边界解码（`CorsFilter.DEFAULT` 与 `Builder.build()` 显式调用
+  `SymbolSpec.splitList`）。迁移：字符串形态改用 `CorsFilter.builder().allowAllOrigins()/.allowedOrigins(s)
+  .allowCredentials(b).build()`，或把逗号串换成 `SymbolSpec.splitList(s)` / `List.of(...)`。
 - **应用面 API 补钉测试 + 状态码词汇表统一（freeway-http）** — 新增两组端到端测试，钉住此前零覆盖、
   但**应用开发者会用**的公共面（仓库内没有调用者只说明用它的应用在仓库之外）：
   `TypedRequestApiTest` 覆盖 `HttpRequest` 的类型化读取族（`queryParam/header/pathVar` 带 `Class`：

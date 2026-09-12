@@ -855,8 +855,8 @@ class FreewayHttpEngineTest {
         // the list must be rejected with 403.
         WebServer server = WebServerBuilder.builder()
             .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
-            .cors(new CorsFilter(true, "https://allowed.example",
-                "GET", "", "", "", false))
+            .cors(new CorsFilter(true, List.of("https://allowed.example"),
+                List.of("GET"), List.of(), List.of(), "", false))
             .webSocketRoute(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP))
             .build();
         server.start();

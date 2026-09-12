@@ -1,9 +1,10 @@
 package com.jujin.freeway.http.filter;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import com.jujin.freeway.http.StubHttpContext;
-import com.jujin.freeway.http.filter.CorsFilter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -42,8 +43,8 @@ class CorsFilterTest {
 
     @Test
     void mergesOriginIntoExistingVaryHeader() throws Exception {
-        CorsFilter filter = new CorsFilter(true, "https://example.com",
-            "GET", null, null, null, false);
+        CorsFilter filter = new CorsFilter(true, List.of("https://example.com"),
+            List.of("GET"), List.of(), List.of(), null, false);
         StubHttpContext ctx = new StubHttpContext("GET", "/api")
             .requestHeader("Origin", "https://example.com");
         ctx.setHeader("Vary", "Accept");
