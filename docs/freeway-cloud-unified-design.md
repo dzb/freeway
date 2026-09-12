@@ -676,7 +676,9 @@ public final class CloudConfigKeys {
   替代实现并 `.primary()`；如自带后端注解则随适配器定义并注册为
   marker（core 不预铺，§6.1）。后端选择键 `freeway.cloud.secret.type` /
   `discovery.type` / `registry.type` / `storage.type` 在替代实现生效时被
-  其消费；仍用本地实现时 `BackendTypeGuard` 对非空且非 `local` 的值
+  其消费；**`*.type` 是声明键而非选择键**（框架不做类名反射加载或 classpath 扫描，
+  真正选择实现的是 `.primary()` / `@Local` 标记 / 适配器模块），仍用本地实现时
+  `BackendTypeGuard` 对非空且非 `local` 的值
   启动告警一次（§6.1）。类型键默认空 = 本地后端。
 - **freeway-ext 现状**：仓库模块为 `freeway-db-hikari` /
   `freeway-http-undertow` / `freeway-http-jetty` / `freeway-mq-kafka` /

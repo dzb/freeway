@@ -1756,6 +1756,15 @@ needs no backend at all; an external one arrives as an adapter that binds
 key list is in [freeway-config.md](freeway-config.md); the design rationale is
 in [freeway-cloud-unified-design.md](freeway-cloud-unified-design.md).
 
+**`freeway.cloud.*.type` declares intent; it does not choose an implementation.**
+The framework never loads a class by name (no classpath scanning, no reflection
+by configuration), so the selector is the binding: an adapter binds the role
+with `.primary()` and the built-in default steps aside. The `type` key is the
+human- and adapter-readable declaration of which backend is expected; when it
+names something other than the built-in and no adapter took over, the local
+provider warns once at startup instead of letting a declaration look like it
+took effect (`BackendTypeGuard`).
+
 **Cloud keys are read once, when the component that owns them is built.**
 Hot-reloading a watched config file changes what the symbol chain resolves from
 then on, not what an already-constructed client, registry declaration or

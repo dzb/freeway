@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`@Local` 去掉类级位置（freeway-cloud，编译期收紧）** — 与 `@Marker`/`@Primary`/`@Builtin` 同一
+  判据：`@Local` 的 `TYPE` 没有任何读取方（类上的框架 marker 由 ioc 的 `MarkerIndex` 读取，而它
+  不能认识 cloud 的注解），写在实现类上会**编译通过却静默无效**。现只保留注入点位置
+  （`PARAMETER`/`FIELD`，经 marker 索引读取）；标记实现请用绑定侧
+  `.marker(Local.class)` 或模块级 `@Marker(Local.class)`。加测试钉住位置集合。
+- **文档：区分"声明键"与"选择键"（freeway-cloud）** — `freeway.cloud.*.type` 四个键保留，但
+  文档此前没有说清它们**不选择实现**：框架不做类名反射加载、不做 classpath 扫描，真正决定实现的
+  是 `.primary()` 绑定 / `@Local` 标记 / 适配器模块；`*.type` 只是"我期望用哪个后端"的声明，由
+  适配器消费，并在"声明了外部后端而本地实现仍活跃"时启动告警一次（`BackendTypeGuard`）。
+  `freeway-config.md`（两类键对照表）、DEVELOPER-GUIDE、cloud 设计文档三处同步。
+- **文档：静态文件的校验器契约（freeway-http）** — 缓存头取自请求开始时的探测、正文在其后打开，
+  因此并发替换的窗口里可能"正文与 ETag 不同代"。这是 stat-then-sendfile 的固有 TOCTOU，本框架
+  **有意保留**（路径在使用时重新解析以守住挂载根，防符号链接换链）；它会自洽收敛：下一次
+  `If-None-Match`/`If-Range` 对照的是当时的文件。契约现已写在 `serve(...)` 的 javadoc 里，
+  不再是一句无法兑现的注释。
+
 - **远程调用收敛为一条显式通道（freeway-cloud，破坏性）** — provider 声明导出、consumer
   在组合根绑类型化客户端，位置（本地实现还是远端）是**组合**的事实而不是运行期的猜测：
   - 导出是一条数据贡献：`binder.contribute(RpcExport.class).add(RpcExport.of("user",

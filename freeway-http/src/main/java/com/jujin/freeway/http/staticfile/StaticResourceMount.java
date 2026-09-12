@@ -104,6 +104,19 @@ public final class StaticResourceMount {
     /**
      * Handles a static resource request.
      *
+     * <p><b>Validator contract under concurrent modification.</b> The cache
+     * headers ({@code ETag}, {@code Last-Modified}, ranges) describe the file as
+     * probed at the start of this call; the body is opened and read afterwards.
+     * A file replaced in that window can therefore be served with the previous
+     * generation's validator — the same TOCTOU every stat-then-sendfile server
+     * has, and the one this class deliberately keeps, because the path is
+     * re-resolved at use time to stay inside the mount root
+     * (symlink-swap defense). It converges rather than corrupts: the next
+     * {@code If-None-Match}/{@code If-Range} is compared against the file as it
+     * is then, so a client holding the mismatch revalidates and receives the
+     * current bytes. Serving from a single held descriptor instead would fix
+     * this window at the cost of the containment re-check.</p>
+     *
      * @return true if the request was handled (file sent or 404 returned);
      *         false if the file was not found and {@link #fallthrough} is on, so the request should continue
      */

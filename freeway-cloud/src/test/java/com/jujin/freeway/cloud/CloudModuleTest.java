@@ -20,6 +20,9 @@ import com.jujin.freeway.cloud.storage.CloudStorageModule;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.Freeway;
 import com.jujin.freeway.ioc.ModuleEx;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Target;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -95,6 +98,17 @@ class CloudModuleTest {
             assertNotNull(container.get(ServiceDiscovery.class, Local.class));
             assertNotNull(container.get(LoadBalancer.class, Local.class));
         }
+    }
+
+    @Test
+    void localMarkerDeclaresOnlyPositionsTheFrameworkReads() {
+        // Same rule as ioc's annotation-target test: a position without a
+        // reader is an affordance the framework does not keep. @Local is read
+        // at injection points (through the marker index) and as a marker value
+        // in .marker(...)/@Marker(...); ioc's MarkerIndex cannot read a cloud
+        // annotation off a class, so TYPE would silently do nothing.
+        assertEquals(Set.of(ElementType.FIELD, ElementType.PARAMETER),
+            Set.of(Local.class.getAnnotation(Target.class).value()));
     }
 
     @Test
