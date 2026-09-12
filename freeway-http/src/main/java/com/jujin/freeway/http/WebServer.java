@@ -48,6 +48,8 @@ public final class WebServer implements AutoCloseable {
     private final ExchangeHandler exchangeHandler;
     private final RouteHandler filterChain;
     private final boolean publishEvents;
+    /** Resolved transport verdict: this server was configured to serve TLS. */
+    private final boolean secure;
 
     private volatile HttpServerHandle handle;
 
@@ -57,7 +59,7 @@ public final class WebServer implements AutoCloseable {
         Consumer<Object> eventSink,
         RequestComponents pipeline
     ) {
-        this(engine, config, eventSink, pipeline, (host, port) -> port > 0);
+        this(engine, config, eventSink, pipeline, (host, port) -> port > 0, false);
     }
 
     WebServer(
@@ -67,6 +69,18 @@ public final class WebServer implements AutoCloseable {
         RequestComponents pipeline,
         ReadinessProbe readinessProbe
     ) {
+        this(engine, config, eventSink, pipeline, readinessProbe, false);
+    }
+
+    WebServer(
+        HttpEngine engine,
+        HttpServerConfig config,
+        Consumer<Object> eventSink,
+        RequestComponents pipeline,
+        ReadinessProbe readinessProbe,
+        boolean secure
+    ) {
+        this.secure = secure;
         this.routes = Objects.requireNonNull(pipeline.routes(), "routes");
         this.websocketIndex = Objects.requireNonNull(pipeline.websocketIndex(), "websocketIndex");
         this.corsFilter = Objects.requireNonNull(pipeline.corsFilter(), "corsFilter");
@@ -163,6 +177,18 @@ public final class WebServer implements AutoCloseable {
 
     public boolean isRunning() {
         return handle != null;
+    }
+
+    /**
+     * Whether this server was configured to serve TLS — the HTTP module's
+     * resolved verdict ({@code http.ssl.*}: an explicit {@code enabled} wins,
+     * otherwise a key-store path means HTTPS). Answers the scheme question for
+     * collaborators that build the node's externally visible identity (the
+     * cloud registry endpoint, the event mesh origin), so they do not
+     * re-derive another module's presence rule.
+     */
+    public boolean secure() {
+        return secure;
     }
 
     @Override

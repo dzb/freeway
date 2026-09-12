@@ -12,6 +12,7 @@ import com.jujin.freeway.ioc.RuntimeHook;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -38,7 +39,11 @@ public final class RegistryLifecycleHook implements RuntimeHook {
 
     private static final Logger LOG = LoggerFactory.getLogger(RegistryLifecycleHook.class);
     private static final Duration RENEW_INTERVAL = Duration.ofSeconds(10);
-    /** Deployment drain window; the default comes from the shared key source. */
+    /** Raw drain token: {@code auto} (the default) defers to the registry. */
+    private static final SymbolSpec<String> SHUTDOWN_DRAIN_RAW = SymbolSpec.of(
+        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, String.class,
+        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO, Function.identity());
+    /** Explicit drain window — resolved only when the token is not {@code auto}. */
     private static final SymbolSpec<Duration> SHUTDOWN_DRAIN = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, Duration.class,
         CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT);
@@ -65,7 +70,8 @@ public final class RegistryLifecycleHook implements RuntimeHook {
     public void start(Container container) throws Exception {
         ServiceRegistry registry = container.get(ServiceRegistry.class);
         registryRef = registry;
-        shutdownDrain = container.get(SymbolSource.class).resolve(SHUTDOWN_DRAIN);
+        SymbolSource symbols = container.get(SymbolSource.class);
+        shutdownDrain = resolveDrain(symbols.resolve(SHUTDOWN_DRAIN_RAW), registry, symbols);
         for (ServiceDeclaration declaration : container.extension(ServiceDeclaration.class).all()) {
             ServiceInstance instance = declaration.resolve(container);
             if (instance == null) {
@@ -84,6 +90,39 @@ public final class RegistryLifecycleHook implements RuntimeHook {
             scheduler.scheduleWithFixedDelay(this::heartbeat, intervalMillis, intervalMillis,
                 TimeUnit.MILLISECONDS);
         }
+    }
+
+    /**
+     * {@code auto} (the default) asks the bound registry for its propagation
+     * window: the built-in in-process registry answers zero — an endpoint
+     * disappears the moment it is unregistered — while an adapter backed by
+     * Nacos or Kubernetes endpoints answers the window that backend needs, so
+     * no deployment has to know its registry's number. An explicit duration
+     * always wins, and must be non-negative.
+     */
+    static Duration resolveDrain(String raw, ServiceRegistry registry, SymbolSource symbols) {
+        if (raw == null || raw.isBlank()
+                || CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_AUTO.equalsIgnoreCase(raw.trim())) {
+            Duration answered = registry.drainWindow();
+            Duration window = answered == null
+                ? CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT : answered;
+            LOG.info("registry.shutdown-drain=auto → {} (answered by {})",
+                window, registryName(registry));
+            return window;
+        }
+        Duration explicit = symbols.resolve(SHUTDOWN_DRAIN);
+        if (explicit.isNegative()) {
+            throw new IllegalArgumentException(CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN
+                + " must not be negative: " + raw);
+        }
+        LOG.info("registry.shutdown-drain={} (explicit)", explicit);
+        return explicit;
+    }
+
+    /** The registry's own name for the log — a JDK proxy has none worth printing. */
+    private static String registryName(ServiceRegistry registry) {
+        String name = registry.getClass().getSimpleName();
+        return name.isEmpty() || name.startsWith("$") ? "the bound ServiceRegistry" : name;
     }
 
     /**

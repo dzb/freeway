@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **注册身份的 `auto` 推导：scheme / host / drain（freeway-cloud + freeway-http）** — 三个键的默认值都改成
+  `auto`，因为它们的正确值在这台机器上才成立、静态写不出来；三者都在启动日志里说明选了哪个：
+  - **`registry.service-scheme`**：新增 `WebServer.secure()`（`HttpModule` 传入解析后的 SSL 判决，
+    `WebServerBuilder` 传入是否提供了 `SSLContext`），`auto`（默认）跟随 HTTP 服务器是否启用 TLS。
+    注册的 `http/https` 与事件网格拨号的 `ws/wss` 现在出自**同一次推导**（网格读的是 `HttpServiceDeclaration`
+    解析出的实例端点）——此前默认硬编码 `http`，启用 TLS 后忘改这个键就会注册 `http://` 并且网格明文拨号，
+    只有"配了 token 又用 ws"这一种组合会告警。显式值只接受 `http`/`https`，其它值启动失败点名键。
+  - **`registry.service-host`**：`auto`（默认）在服务器绑定具体地址时就用该地址（它只在那里监听），绑定
+    `0.0.0.0`/`::` 时优先 `POD_IP`、其次首个可路由本地地址（IPv4，排除回环/链路本地/any），都没有才回落
+    绑定地址并保留原有的不可路由告警。多网卡主机显式点名，推导不猜。
+  - **`registry.shutdown-drain`**：`auto`（默认）由注册表后端回答——新增
+    `ServiceRegistry.drainWindow()` 默认方法（默认 `0s`）：内置进程内注册表答 0，适配器答自己的传播窗口。
+    此前文档只能要求"用注册中心时手配 5s"，现在由真正知道这个数的后端回答；显式时长优先，负值启动失败。
+  - 破坏性：无（三者都是默认值变更 + 新增默认方法与访问器；显式配置行为不变）。
+
 - **日志专用配置文件更名：`freeway-log.properties` → `freeway-logging.properties`（freeway-commons）** — 新名是唯一
   正式名字，放在 classpath 根；旧名只在新名不存在时作为过渡读入并打一行 stderr 告警（升级不会静默丢掉日志配置），
   该兼容下一版本移除。参考模板同步更名 `docs/freeway-logging.properties.reference`。同时改正"所有日志键都能住进

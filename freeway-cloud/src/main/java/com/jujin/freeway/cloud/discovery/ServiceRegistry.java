@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud.discovery;
 
+import java.time.Duration;
+
 /**
  * Lifecycle side of the registry: register / renew (heartbeat) / unregister.
  * Driven by the discovery module's {@code RuntimeHook}s (register on start,
@@ -24,4 +26,21 @@ public interface ServiceRegistry {
 
     /** Removes the instance from the registry. */
     void unregister(ServiceInstance instance);
+
+    /**
+     * How long this registry needs after an {@link #unregister unregister} for
+     * the removal to reach the consumers that route to the instance — the
+     * window {@code freeway.cloud.registry.shutdown-drain=auto} waits out
+     * before the socket closes.
+     *
+     * <p>The default is zero, which is right for the built-in in-process
+     * registry: an endpoint disappears the moment it is unregistered, so there
+     * is no propagation to wait for. An adapter backed by a real registry
+     * answers its own window (a Nacos or Kubernetes-endpoints backend typically
+     * needs a few seconds), which is knowledge the adapter has and the
+     * deployment should not have to repeat per environment.</p>
+     */
+    default Duration drainWindow() {
+        return Duration.ZERO;
+    }
 }

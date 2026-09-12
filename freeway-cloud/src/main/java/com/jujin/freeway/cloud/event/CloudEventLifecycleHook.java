@@ -42,9 +42,6 @@ final class CloudEventLifecycleHook implements RuntimeHook {
     private static final SymbolSpec<Boolean> DEDUP_ENABLED = SymbolSpec.of(
         CloudConfigKeys.EVENT_DEDUP_ENABLED, Boolean.class, false);
 
-    private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
-        CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
-        CloudConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
     private static final SymbolSpec<String> TOKEN = SymbolSpec.of(
         CloudConfigKeys.EVENT_TOKEN, String.class, "", Function.identity());
     private static final SymbolSpec<List<String>> SUBSCRIPTIONS =
@@ -121,9 +118,16 @@ final class CloudEventLifecycleHook implements RuntimeHook {
             .forEach(hub::addInterceptor);
 
         // The connector owns an HttpClient; create it only when the mesh is
-        // actually enabled so a disabled module stays cheap.
-        String registryScheme = symbols.resolve(SERVICE_SCHEME);
-        String wsScheme = "https".equalsIgnoreCase(registryScheme) ? "wss" : "ws";
+        // actually enabled so a disabled module stays cheap. The dial scheme
+        // is read off the identity resolved above — the same `auto` derivation
+        // the registry stores — so a node cannot register https:// and dial
+        // ws:// (or the reverse).
+        String wsScheme = switch (self.endpoint().scheme()) {
+            case "https" -> "wss";
+            case "http" -> "ws";
+            default -> throw new IllegalStateException(
+                "Unsupported registered scheme: " + self.endpoint().scheme());
+        };
         warnIfTokenOverCleartext(wsScheme, hub.token());
         // Outbound TLS material is shared with the RPC client: the mesh is an
         // outbound path too, and a wss:// dial must present the same identity.

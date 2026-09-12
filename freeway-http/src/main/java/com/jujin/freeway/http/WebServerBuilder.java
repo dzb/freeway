@@ -191,7 +191,9 @@ public final class WebServerBuilder {
             List.copyOf(filters),
             List.copyOf(handlers)
         );
-        return new WebServer(engine, config, eventSink, pipeline);
+        // An explicitly supplied SSLContext means this server terminates TLS.
+        return new WebServer(engine, config, eventSink, pipeline,
+            (host, port) -> port > 0, sslContext != null);
     }
 
     /** Class-based routes resolve via container.create() and need the IoC

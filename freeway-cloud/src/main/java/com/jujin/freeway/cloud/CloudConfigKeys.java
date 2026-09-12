@@ -106,24 +106,56 @@ public final class CloudConfigKeys {
     /** Local backend root under the working directory. */
     public static final String STORAGE_BASE_PATH_DEFAULT = "cloud-storage";
     public static final String REGISTRY_SERVICE_ID   = PREFIX + ".registry.service-id";
+    /**
+     * Host other nodes should use to reach this instance.
+     *
+     * <p>{@code auto} (the default) picks a routable local address: the
+     * {@code POD_IP} environment variable when the platform injects it,
+     * otherwise the first non-loopback interface address. Falling back to the
+     * HTTP server's bind address is the last resort — a bind-all address
+     * registers an endpoint peers cannot call, so it is warned about. Set this
+     * explicitly on a host with several addresses, where no derivation can
+     * know which one peers should use.</p>
+     */
     public static final String REGISTRY_SERVICE_HOST = PREFIX + ".registry.service-host";
-    /** Scheme registered for this instance (http or https); default http. */
+    /** Value of {@link #REGISTRY_SERVICE_HOST} that derives a local address. */
+    public static final String REGISTRY_SERVICE_HOST_AUTO = "auto";
+    /** Host used when {@link #REGISTRY_SERVICE_HOST} is unset: derive it. */
+    public static final String REGISTRY_SERVICE_HOST_DEFAULT = REGISTRY_SERVICE_HOST_AUTO;
+    /**
+     * Scheme registered for this instance — and the scheme the event mesh
+     * dials with ({@code http}→{@code ws}, {@code https}→{@code wss}).
+     *
+     * <p>{@code auto} (the default) follows the HTTP server's own transport:
+     * https when TLS is enabled, http otherwise. The two cannot disagree, and
+     * enabling TLS cannot leave a node registering {@code http://} (or dialing
+     * {@code ws://}) by omission.</p>
+     */
     public static final String REGISTRY_SERVICE_SCHEME = PREFIX + ".registry.service-scheme";
+    /** Value of {@link #REGISTRY_SERVICE_SCHEME} that follows the HTTP server. */
+    public static final String REGISTRY_SERVICE_SCHEME_AUTO = "auto";
+    /** Scheme used when {@link #REGISTRY_SERVICE_SCHEME} is unset: follow the
+     *  HTTP server. */
+    public static final String REGISTRY_SERVICE_SCHEME_DEFAULT = REGISTRY_SERVICE_SCHEME_AUTO;
     public static final String REGISTRY_SERVICE_PORT = PREFIX + ".registry.service-port";
     public static final String REGISTRY_SERVICE_INSTANCE_ID = PREFIX + ".registry.service-instance-id";
-    /** Scheme used when {@link #REGISTRY_SERVICE_SCHEME} is unset. */
-    public static final String REGISTRY_SERVICE_SCHEME_DEFAULT = "http";
     /**
      * Time to keep serving after deregistering, so a load balancer that still
      * holds this endpoint can notice before the socket closes.
      *
-     * <p>Default 0: the built-in registry is in-process, where an endpoint
-     * disappears the moment it is unregistered — there is nothing to wait for.
-     * A registry adapter (Nacos, Kubernetes endpoints, ...) has a propagation
-     * window the framework cannot know, so the deployment states it here.</p>
+     * <p>{@code auto} (the default) asks the bound registry for its own
+     * propagation window ({@link com.jujin.freeway.cloud.discovery.ServiceRegistry#drainWindow()}): the built-in
+     * in-process registry answers zero — an endpoint disappears the moment it
+     * is unregistered, there is nothing to wait for — while an adapter backed
+     * by Nacos or Kubernetes endpoints answers the window that backend needs.
+     * A deployment therefore does not have to know its registry's number, and
+     * an explicit duration still wins.</p>
      */
     public static final String REGISTRY_SHUTDOWN_DRAIN = PREFIX + ".registry.shutdown-drain";
-    /** Library default for {@link #REGISTRY_SHUTDOWN_DRAIN}. */
+    /** Value of {@link #REGISTRY_SHUTDOWN_DRAIN} that asks the registry. */
+    public static final String REGISTRY_SHUTDOWN_DRAIN_AUTO = "auto";
+    /** Window used when {@link #REGISTRY_SHUTDOWN_DRAIN} is unset and the
+     *  registry answers nothing: the in-process default. */
     public static final Duration REGISTRY_SHUTDOWN_DRAIN_DEFAULT = Duration.ZERO;
 
     // ── Advanced: timeouts (NOT governed by resilience — they always apply) ──

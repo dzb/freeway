@@ -138,7 +138,9 @@ public final class HttpModule implements ModuleEx {
                 engine,
                 cfg.server(),
                 eventSink,
-                pipeline
+                pipeline,
+                (host, port) -> port > 0,
+                cfg.ssl().enabled()
             );
         });
 

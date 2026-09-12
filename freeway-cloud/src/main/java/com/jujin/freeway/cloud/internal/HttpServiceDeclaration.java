@@ -13,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -23,9 +22,11 @@ import java.util.function.Function;
  * {@code freeway.app.name} → {@code freeway-app}).
  *
  * <p>Returns {@code null} when no {@link WebServer} is bound (HTTP module not
- * installed) — the registry hook skips it. Host override via
- * {@code freeway.cloud.registry.service-host} covers 0.0.0.0 / Pod IP
- * injection; the instance id defaults to a derived key and can be pinned via
+ * installed) — the registry hook skips it. Scheme and host default to
+ * {@code auto} ({@link ServiceIdentity}): the scheme follows the server's
+ * transport, the host prefers {@code POD_IP} and then a routable local
+ * address, so a container does not register a bind-all endpoint by omission.
+ * The instance id defaults to a derived key and can be pinned via
  * {@code freeway.cloud.registry.service-instance-id}.
  */
 public final class HttpServiceDeclaration implements ServiceDeclaration {
@@ -36,13 +37,15 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
     private static final SymbolSpec<Integer> SERVICE_PORT = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_PORT, Integer.class, null, Integer::parseInt);
 
-    /** Static default only — host/port/instance-id fallbacks are dynamic and stay raw. */
+    /** Scheme/host defaults are the {@code auto} token; the derivation lives in
+     *  {@link ServiceIdentity}, shared with the event mesh. */
     private static final SymbolSpec<String> SERVICE_SCHEME = SymbolSpec.of(
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME, String.class,
         CloudConfigKeys.REGISTRY_SERVICE_SCHEME_DEFAULT, Function.identity());
+    private static final SymbolSpec<String> SERVICE_HOST = SymbolSpec.of(
+        CloudConfigKeys.REGISTRY_SERVICE_HOST, String.class,
+        CloudConfigKeys.REGISTRY_SERVICE_HOST_DEFAULT, Function.identity());
 
-    /** Bind-all addresses: reachable locally, unreachable from other nodes. */
-    private static final Set<String> UNROUTABLE_HOSTS = Set.of("0.0.0.0", "::", "");
 
     /**
      * The instance this node registers — and the identity it presents to the
@@ -67,15 +70,17 @@ public final class HttpServiceDeclaration implements ServiceDeclaration {
         SymbolSource symbols = container.get(SymbolSource.class);
         String serviceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_ID,
             symbols.resolve("freeway.app.name", "freeway-app"));
-        String host = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_HOST, server.host());
+        String scheme = ServiceIdentity.scheme(
+            symbols.resolve(SERVICE_SCHEME), server.secure(), serviceId);
+        String host = ServiceIdentity.host(
+            symbols.resolve(SERVICE_HOST), server.host(), serviceId);
         // The default port is the live server's port, not a static value —
         // resolve raw and fall back manually.
         Integer configuredPort = symbols.resolve(SERVICE_PORT);
         int port = configuredPort != null ? configuredPort : server.port();
-        String scheme = symbols.resolve(SERVICE_SCHEME);
         String instanceId = symbols.resolve(CloudConfigKeys.REGISTRY_SERVICE_INSTANCE_ID,
             serviceId + "@" + host + ":" + port);
-        if (UNROUTABLE_HOSTS.contains(host)) {
+        if (ServiceIdentity.isBindAll(host)) {
             LOG.warn("Registering unroutable host '{}' for service '{}' — peers cannot call it;"
                     + " set {} to the address other nodes should use (e.g. a Pod IP)",
                 host, serviceId, CloudConfigKeys.REGISTRY_SERVICE_HOST);
