@@ -80,7 +80,10 @@ final class EventDispatcher {
 
         deliverTo(payload, moduleHandlers, runtimeHandlers, "topic '" + topic + "'");
 
-        if (!hasSubscribers) {
+        // Same guard as the CLASS channel: a DeadEvent is the diagnostic for
+        // zero subscribers and must never trigger one of its own (re-publishing
+        // it as a topic payload would otherwise emit two diagnostics).
+        if (!hasSubscribers && !(payload instanceof DeadEvent)) {
             stats.deadEvent();
             deadEventPublisher.accept(new DeadEvent(this, payload));
         }

@@ -90,6 +90,17 @@ class RouteIndexTest {
     }
 
     @Test
+    void rejectsGroupRouteCollidingWithAnExplicitRoute() {
+        // One rule for both declaration forms: a group route and an explicit
+        // route with the same method+path collide loudly instead of one of
+        // them silently winning.
+        assertThrows(IllegalStateException.class, () -> new RouteIndex(
+            List.of(Route.get("/api/users", ctx -> ctx.send(200, "explicit"))),
+            List.of(RouteGroup.of("/api", Route.get("/users", ctx -> ctx.send(200, "group"))))
+        ));
+    }
+
+    @Test
     void rejectsEncodedTraversalInHttpRouteRegistration() {
         assertThrows(IllegalArgumentException.class, () ->
             Route.get("/files/%2e%2e", ctx -> ctx.send(200, "ok")));

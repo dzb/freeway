@@ -6,6 +6,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Target;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -102,6 +105,25 @@ class MarkerAndConcurrencyTest {
 
         assertThrows(IllegalArgumentException.class, () ->
                 container.get(Cache.class, Fast.class));
+    }
+
+    @Test
+    void annotationTargetsDeclareOnlyPositionsTheFrameworkReads() {
+        // A declared position that no reader consults is an affordance the
+        // framework does not keep: @Marker and @Primary are read on TYPE
+        // (module/implementation classes) and, at an injection point, on
+        // FIELD/PARAMETER through the marker index; @Builtin is a marker
+        // applied by module-level @Marker(Builtin.class) or .marker(...), so
+        // annotating a class with it does nothing. There is no producer-method
+        // binding to read a METHOD position.
+        assertEquals(Set.of(ElementType.TYPE), targets(Marker.class));
+        assertEquals(Set.of(ElementType.TYPE, ElementType.FIELD, ElementType.PARAMETER),
+            targets(Primary.class));
+        assertEquals(Set.of(ElementType.FIELD, ElementType.PARAMETER), targets(Builtin.class));
+    }
+
+    private static Set<ElementType> targets(Class<?> annotation) {
+        return Set.of(annotation.getAnnotation(Target.class).value());
     }
 
     @Test

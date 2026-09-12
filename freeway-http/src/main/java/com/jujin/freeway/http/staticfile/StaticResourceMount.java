@@ -561,7 +561,10 @@ public final class StaticResourceMount {
 
     private record AssetMeta(String name, long size, long lastModifiedMillis, String etag) {}
 
-    private record StaticAsset(AssetMeta meta, byte[] bytes) {
+    /** Loaded asset: the bytes only. Caching headers come from a separate
+     *  {@link ResourceSource#meta} probe taken before the body is served, so a
+     *  metadata component here would be written and never read. */
+    private record StaticAsset(byte[] bytes) {
         StaticAsset {
             bytes = bytes.clone();
         }
@@ -613,15 +616,7 @@ public final class StaticResourceMount {
                     + " (" + Files.size(real) + " bytes, max "
                     + MAX_FILE_SIZE_BYTES + ")");
             }
-            byte[] bytes = Files.readAllBytes(real);
-            if (bytes.length != meta.size()) {
-                // File changed between meta() and load() — refresh metadata so
-                // the ETag/Last-Modified headers match the bytes being sent.
-                long lastModified = Files.getLastModifiedTime(real).toMillis();
-                meta = new AssetMeta(
-                    meta.name(), bytes.length, lastModified, etag(lastModified, bytes.length));
-            }
-            return new StaticAsset(meta, bytes);
+            return new StaticAsset(Files.readAllBytes(real));
         }
 
         @Override
@@ -774,7 +769,7 @@ public final class StaticResourceMount {
                 return null;
             }
             try (InputStream in = url.openConnection().getInputStream()) {
-                return new StaticAsset(meta, ByteStreams.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName));
+                return new StaticAsset(ByteStreams.readBytes(in, MAX_FILE_SIZE_BYTES, resourceName));
             }
         }
     }

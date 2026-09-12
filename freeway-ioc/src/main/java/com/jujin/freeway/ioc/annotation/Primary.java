@@ -23,7 +23,7 @@ import java.lang.annotation.Target;
  *   &#64;Inject &#64;Primary Cache cache;
  * }</pre>
  */
-@Target({ElementType.TYPE, ElementType.METHOD, ElementType.PARAMETER, ElementType.FIELD})
+@Target({ElementType.TYPE, ElementType.PARAMETER, ElementType.FIELD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Primary {
 }

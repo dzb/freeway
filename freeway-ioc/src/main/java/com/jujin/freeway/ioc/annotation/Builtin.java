@@ -18,7 +18,7 @@ import java.lang.annotation.Target;
  *   &#64;Inject &#64;Builtin SymbolSource symbols;
  * }</pre>
  */
-@Target({ElementType.PARAMETER, ElementType.FIELD, ElementType.TYPE})
+@Target({ElementType.PARAMETER, ElementType.FIELD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Builtin {
 }

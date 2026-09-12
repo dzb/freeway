@@ -16,8 +16,13 @@ import java.util.regex.Pattern;
  * Supports literal segments, path parameters ({name}), regex-constrained parameters
  * ({name:\\d+}), and wildcards ({path:.*}).
  * <p>
- * Match complexity is O(L) where L is the number of segments in the request path,
+ * Match complexity is O(L) where L = the number of segments in the request path,
  * independent of the total route count.
+ * <p>
+ * Registration is strict: two routes with the same method and path — a group
+ * route and an explicitly declared one included — fail with
+ * {@link IllegalStateException} instead of one silently winning. The route
+ * count and the failure are startup-visible.
  */
 public final class RouteIndex {
 
@@ -31,14 +36,16 @@ public final class RouteIndex {
      * this class — constructor parameters consume contributions implicitly.
      */
     public RouteIndex(List<Route> routes, List<RouteGroup> groups) {
-        // Phase 1: collect all routes
+        // Phase 1: collect all routes — group-expanded first, so the
+        // duplicate check below reports the explicit route last. A collision
+        // fails either way: nothing overrides silently.
         List<Route> all = new ArrayList<>();
-        if (routes != null) all.addAll(routes);
         if (groups != null) {
             for (RouteGroup group : groups) {
                 all.addAll(group.expand());
             }
         }
+        if (routes != null) all.addAll(routes);
         // Phase 2: insert into trie + exact cache
         for (Route route : all) {
             addRoute(route.method(), route.path(), route.handler());

@@ -55,6 +55,17 @@ public final class CloudEventEnvelope {
      * receives the dispatch is handed the same id, so an event sent over
      * two transports arrives at a peer twice carrying one identity, which is
      * the only thing that makes it deduplicable.
+     *
+     * @param event    the event or topic payload; JSON-encoded into {@code data}
+     * @param topic    the routing topic the sink was called with. Required by
+     *                 the {@link EventSink#send} contract on both channels, and
+     *                 it becomes the CloudEvents {@code type} on the TOPIC
+     *                 channel only — a CLASS frame carries the event class name
+     *                 as its type, so the derived topic is not used there
+     * @param channel  the local dispatch channel the event was published on
+     * @param origin   this node's identity, carried in {@code fworigin}
+     * @param serviceId this service's id, forming the CloudEvents {@code source}
+     * @param eventId  bus-minted identity of this dispatch; never null
      */
     public static String translate(
         Object event,

@@ -33,7 +33,7 @@ import java.lang.annotation.Target;
  *
  * @see com.jujin.freeway.ioc.Container#get(Class, Class[])
  */
-@Target({ElementType.TYPE, ElementType.METHOD})
+@Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Marker {
     /**

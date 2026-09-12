@@ -145,6 +145,26 @@ class EventBusDispatchTest {
     }
 
     @Test
+    void deadEventPayloadOnTheTopicChannelDoesNotSpawnASecondDeadEvent() {
+        // The CLASS channel has this guard already (see deadEventDoesNotSelfLoop);
+        // the TOPIC channel now says the same thing. Publishes ride the CLASS
+        // channel internally, so the subscriber below sees every diagnostic.
+        List<DeadEvent> deads = new ArrayList<>();
+        Container container = Freeway.create(
+            binder -> binder.contribute(EventSubscriber.class).add(
+                EventSubscriber.of(DeadEvent.class, (Consumer<DeadEvent>) deads::add))
+        );
+        EventBus bus = new EventBus(container);
+
+        bus.publish("orphan.topic", "no topic subscribers yet");
+        assertEquals(1, deads.size(), "a zero-subscriber topic publish reports one diagnostic");
+
+        bus.publish("orphan.topic", deads.get(0));
+        assertEquals(1, deads.size(),
+            "publishing the diagnostic itself must not produce a second one");
+    }
+
+    @Test
     void subclassEventReachesSuperclassSubscribers() {
         // A subscriber declared on a parent type receives subtype event.
         List<String> log = new ArrayList<>();

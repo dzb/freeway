@@ -5,16 +5,16 @@ import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.http.route.RouteHandler;
 import com.jujin.freeway.http.route.RouteIndex;
 
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * WebSocket route index backed by the same {@link RouteIndex} trie as HTTP
  * routes, so both route families share one matching implementation (literal
- * segments, path parameters, regex constraints, wildcards) and one
- * specificity rule. Groups are registered first; individual routes with the
- * same path override group-expanded routes.
+ * segments, path parameters, regex constraints, wildcards), one specificity
+ * rule and one registration rule: a repeated method+path fails startup,
+ * whether it comes from a group, from an explicit route, or from both.
+ * Nothing overrides silently.
  */
 public final class WebSocketIndex {
 
@@ -30,20 +30,24 @@ public final class WebSocketIndex {
         List<WebSocketRoute> routes,
         List<WebSocketGroup> groups
     ) {
-        // Groups first, then individuals: individuals override by exact path.
-        Map<String, WebSocketRoute> byPath = new LinkedHashMap<>();
-        for (WebSocketGroup group : groups) {
-            for (WebSocketRoute route : group.expand()) {
-                byPath.put(route.path(), route);
+        List<Route> adapted = new ArrayList<>();
+        if (groups != null) {
+            for (WebSocketGroup group : groups) {
+                for (WebSocketRoute route : group.expand()) {
+                    adapted.add(adapt(route));
+                }
             }
         }
-        for (WebSocketRoute route : routes) {
-            byPath.put(route.path(), route);
+        if (routes != null) {
+            for (WebSocketRoute route : routes) {
+                adapted.add(adapt(route));
+            }
         }
-        List<Route> adapted = byPath.values().stream()
-            .map(r -> Route.get(r.path(), new EndpointHandler(r.endpoint())))
-            .toList();
         this.routes = new RouteIndex(adapted, List.of());
+    }
+
+    private static Route adapt(WebSocketRoute route) {
+        return Route.get(route.path(), new EndpointHandler(route.endpoint()));
     }
 
     public WebSocketMatch match(String method, String path) {
