@@ -60,8 +60,11 @@
 # 日志输出中 MDC 键值以 [key=value] 形式显示在 logger 名之后。
 # 默认显示 code, market, diagId 三个键（优先级最高），其余 MDC 键按字母序排列。
 # 典型场景：在请求入口将 traceId/requestId 放入 MDC，后续所有日志自动携带该上下文。
-# freeway.log.mdc=true
-# freeway.log.mdc.priority=code,market,diagId
+#
+# 注意：以下四项只在类加载期读取，只有 -D / 环境变量生效，写进任何配置文件都无效：
+#   freeway.log.mdc / freeway.log.mdc.priority / freeway.log.color / freeway.log.caller-info
+# -Dfreeway.log.mdc=true
+# -Dfreeway.log.mdc.priority=code,market,diagId
 
 
 # ================================
@@ -286,10 +289,18 @@
 # freeway.cloud.discovery.type=
 # freeway.cloud.registry.type=
 # freeway.cloud.registry.service-id=
-# freeway.cloud.registry.service-host=
-# freeway.cloud.registry.service-scheme=http
+# service-host auto: use the HTTP server's bind address when it is a specific
+# one; on 0.0.0.0/:: prefer POD_IP, then the first routable local address.
+# Name it explicitly on a multi-homed host.
+# freeway.cloud.registry.service-host=auto
+# service-scheme auto: follow the HTTP server (https when TLS is on); it also
+# decides whether the event mesh dials ws:// or wss://.
+# freeway.cloud.registry.service-scheme=auto
 # freeway.cloud.registry.service-port=
 # freeway.cloud.registry.service-instance-id=
+# shutdown-drain auto: the registry answers the window it needs (in-process 0s,
+# a Nacos/K8s-endpoints adapter its own propagation window).
+# freeway.cloud.registry.shutdown-drain=auto
 
 
 # ================================

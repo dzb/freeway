@@ -129,6 +129,14 @@ lookup, so an edit is visible without a restart or a push API. With nothing to
 watch — no override file whose directory exists — the tier is simply static.
 Profile activation is startup-static.
 
+**Two override files carrying the same key** is a silent override (the later
+file wins) whose loser is invisible in either file, so `AppConfigDefault` names
+both in a startup WARN — once per key and file pair, so a hot reload does not
+repeat it. Shadowing a *packaged* baseline value is not reported: that is what
+the file tier is for. Two properties follow for deployments that split config
+per module: name the files in the order they should win, and keep each key in
+one file.
+
 **Bootstrap keys** configure the cascade itself, so they have exactly two
 channels: the JVM system property `-D<key>`, then the fixed
 `FREEWAY_`-spelled environment variable. They are `freeway.env.prefix`

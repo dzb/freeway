@@ -6,16 +6,12 @@
 		"log": {
 			"level": "INFO",
 			"format": "auto",
-			"color": "auto",
-			"caller-info": true,
-			"mdc": true,
-			"mdc.priority": "code,market,diagId",
 			"console": { "enabled": true, "level": "" },
 			"file": "auto",
-			"max-size": 104857600,
-			"max-history": 30,
-			"compress": true,
-			"flush-interval": 250,
+			"file.max-size": 104857600,
+			"file.max-history": 30,
+			"file.compress": true,
+			"file.flush-interval": 250,
 			"files": ""
 		},
 		"http": {
@@ -90,10 +86,11 @@
 			"registry": {
 				"type": "",
 				"service-id": "",
-				"service-host": "",
-				"service-scheme": "http",
+				"service-host": "auto",
+				"service-scheme": "auto",
 				"service-port": 0,
-				"service-instance-id": ""
+				"service-instance-id": "",
+				"shutdown-drain": "auto"
 			},
 			"rpc": {
 				"connect-timeout": 3000,

@@ -31,7 +31,9 @@ Examples below are minimal snippets. They omit imports and app-specific domain t
 
 Freeway bundles a JUL-backed SLF4J 2 provider. Adding Logback to the classpath switches automatically — no code changes.
 
-**Configuration file:** `freeway-logging.properties` on classpath root (not bundled in JAR). All logging keys also work as `-D` flags or env vars (prefix from `freeway.env.prefix`, default `FREEWAY_`).
+**Configuration file:** `freeway-logging.properties` on classpath root (not bundled in JAR; the old `freeway-log.properties` is read as a deprecation fallback with a warning). Every logging key also works as a `-D` flag or env var (prefix from `freeway.env.prefix`, default `FREEWAY_`) — except hyphenated names (`file.max-size`), which need `-D`.
+
+**`-D`/env only (never from a file):** `freeway.log.color`, `freeway.log.mdc`, `freeway.log.mdc.priority`, `freeway.log.caller-info` are read at class-load time, before any config file is parsed.
 
 ```properties
 freeway.log.level=INFO

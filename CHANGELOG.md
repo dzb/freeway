@@ -14,6 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **配置分类规则 + 逐键档位，并修正 16 处文档/样例不一致（docs/freeway-config.md）** — 配置面此前只有"决策键 /
+  默认最优 / 高级"三档，把声明键、机制键和静默调优键混在同一档里。现在写明规则本身：四个判据（没有合理默认？
+  默认只是开发姿态？只在关特性时才写？纯调优数字？）落到六档（**必填 / 决策 / 姿态 / 调优 / 声明 / 机制**），
+  再用形态后缀标注值从哪来（`·auto` / `·presence` / `·哨兵` / `·聚合闸`），126 行键表新增"档"列；新增
+  "配置文件怎么组织"一节：默认单文件 + profile 作环境轴，按模块拆分是可选约定（三条纪律，配 `ConfigMaps`
+  的跨文件重复键告警）。修正的不一致里三处照抄即错：日志文件调优键写成 `freeway.log.max-size`（真名在
+  `log.file.*` 下，静默失效）、prod JSON 样例的 `freeway.cloud.events.*`（真名 `cloud.event.*`，8 个键静默
+  失效）、dev 样例 `allowed-origins=*` 配 `allow-credentials=true`（`CorsFilter` 构造即抛异常）；prod
+  properties 样例的空 `db.username` 改为占位值。其余为类型与标注修正：`cors.max-age` 是 Integer、四个 CORS
+  键是 `List(String)`、`log.file.flush-interval` 是 Long；`ssl.key-store-password` 的"生产是必填"改为
+  "启用 TLS 时"（代码不预检）；删掉重复的 `db.query-timeout` 行；补上 `freeway.app.name` 与三个进程级键
+  （`-D app.name`、`-D slf4j.provider`、`NO_COLOR`）。日志章节改成实话：`log.color` / `log.mdc` /
+  `log.mdc.priority` / `log.caller-info` 只在 `-D`/环境变量生效，写进两个文件家都静默无效。
+- **新增 `ConfigDocsConsistencyTest`（freeway-boot）** — 从两个方向钉住配置面：样例里出现的每个 `freeway.*` 键
+  必须在 `docs/freeway-config.md` 有键行；文档里的每个键必须被某个模块的源码读得到（键的发现方式与框架一致：
+  字符串字面量，加 `PREFIX + "suffix"` 拼接的常量）。前者会在写下 `freeway.log.max-size` 这类名字时失败，
+  后者会在文档承诺一个没人读的旋钮时失败。仓库内运行时生效，模块单独构建时自动跳过。
+
 - **注册身份的 `auto` 推导：scheme / host / drain（freeway-cloud + freeway-http）** — 三个键的默认值都改成
   `auto`，因为它们的正确值在这台机器上才成立、静态写不出来；三者都在启动日志里说明选了哪个：
   - **`registry.service-scheme`**：新增 `WebServer.secure()`（`HttpModule` 传入解析后的 SSL 判决，

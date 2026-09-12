@@ -55,7 +55,7 @@ freeway.http.health.path=/healthz
 # ================================
 # Permissive CORS for local frontend development.
 freeway.http.cors.enabled=true
-freeway.http.cors.allowed-origins=*
+freeway.http.cors.allowed-origins=http://localhost:5173,http://localhost:3000
 freeway.http.cors.allowed-methods=GET, POST, PUT, DELETE, PATCH, OPTIONS
 freeway.http.cors.allowed-headers=Content-Type, Authorization
 freeway.http.cors.allow-credentials=true

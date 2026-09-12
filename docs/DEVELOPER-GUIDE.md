@@ -1744,7 +1744,7 @@ the only file that knows which one it is (see *Remote invocation* below).
 | Event mesh | add `CloudEventModule`; `contribute(EventSubscriber.class)` to subscribe, `EventSink.class` for another transport | `freeway.cloud.event.*` |
 | Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot` for a scrape-ready view. Every application request runs inside a server span and its logs carry that span's `traceId`; `traceparent` + `tracestate` propagate in both directions; probes and `/metrics` are not traced | `GET /metrics` |
 | Resilience | the defaults bind and the RPC client uses them; `@Inject Retryer` / `CircuitBreaker` / `RateLimiter`, or `.primary()` to replace one | `freeway.cloud.rpc.resilience=auto\|off` and the fine-grained keys |
-| Health | `contribute(CloudHealthContributor.class)` for a readiness check of your own dependency. The built-in registry check reports what the heartbeat verified — `ServiceRegistry.renew` answers whether the entry is still held, and a lost one is re-registered — so readiness is not a constant; on shutdown it reports `draining` while `freeway.cloud.registry.shutdown-drain` keeps the process serving | `GET /health/live`, `GET /health/ready` (plus the HTTP module's `/healthz`) |
+| Health | `contribute(CloudHealthContributor.class)` for a readiness check of your own dependency. The built-in registry check reports what the heartbeat verified — `ServiceRegistry.renew` answers whether the entry is still held, and a lost one is re-registered — so readiness is not a constant; on shutdown it reports `draining` while `freeway.cloud.registry.shutdown-drain` (default `auto`, answered by the registry) keeps the process serving | `GET /health/live`, `GET /health/ready` (plus the HTTP module's `/healthz`) |
 | Context propagation | `InvocationContext.current()` reads baggage/principal/trace; nothing to wire | inbound filter + outbound header injection |
 | Secrets | `@Inject SecretStore`; secrets are also symbol-resolvable, so `@Symbol("db.password")` finds them. The file is re-read when it changes (rotation without a restart; unreadable files keep the previous values) | `freeway.cloud.secret.*` (system properties only) |
 | Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published on the bus | `freeway.cloud.storage.*` |
@@ -1767,9 +1767,12 @@ took effect (`BackendTypeGuard`).
 
 **Shutdown is ordered, and it is meant to be.** The registry hook stops before
 the HTTP server: it marks readiness `draining` and deregisters first, then waits
-`freeway.cloud.registry.shutdown-drain` (default `0s`) so a load balancer that
-still holds this endpoint can react, and only then does the server stop
-accepting. Outbound calls already in flight are given
+`freeway.cloud.registry.shutdown-drain` so a load balancer that still holds this
+endpoint can react, and only then does the server stop accepting. Its default is
+`auto`: the bound registry answers the window it needs
+(`ServiceRegistry.drainWindow()`) — zero for the in-process registry, a few
+seconds for a Nacos or Kubernetes-endpoints adapter — so a deployment does not
+have to know its backend's number; an explicit duration still wins. Outbound calls already in flight are given
 `freeway.cloud.rpc.shutdown-grace` (default `5s`) to finish instead of being
 failed — an idle process closes immediately, so the wait is only paid when there
 is something to drain. Event-mesh peers receive a `1001 going away` close frame

@@ -140,7 +140,7 @@ start:
 
 stop（逆序）:
   freeway.cloud.event             摘 sink、关连接（1001 going away）
-  freeway.cloud.registry          先摘流量（deregister），必要时按 shutdown-drain 留传播窗口
+  freeway.cloud.registry          先摘流量（deregister），按 shutdown-drain 留传播窗口（auto = 问注册表后端）
   RPC 传输                         等待在途调用（shutdown-grace）
   freeway.http.server             关服务器
 ```
@@ -222,9 +222,18 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
   其它协议/多端口由模块各自贡献。跨进程发现的后端适配器（Nacos/K8s
   endpoints 等）走 `.primary()`（**未交付**，§8.1）。
 - serviceId 取 `freeway.cloud.registry.service-id` → `freeway.app.name`；
-  host 由 `registry.service-host` 覆盖（0.0.0.0 绑定 / K8s 注入 POD_IP 的
-  场景）；instanceId 默认派生，可用 `registry.service-instance-id` 钉住。
-  注册 bind-all 地址（`0.0.0.0` / `::`）时启动告警。
+  instanceId 默认派生，可用 `registry.service-instance-id` 钉住。
+- **身份的两个 auto**（值写不出来，只能推导，且启动时打一行说明选了哪个）：
+  `registry.service-scheme=auto`（默认）跟随 HTTP 服务器是否启用 TLS
+  （`WebServer.secure()`）——注册的 `http/https` 与网格拨号的 `ws/wss` 出自
+  同一次推导，开 TLS 不会漏改而注册出 `http://`；`registry.service-host=auto`
+  （默认）在服务器绑定具体地址时就用那个地址（它只在那里监听），绑定
+  `0.0.0.0`/`::` 时优先 `POD_IP`、其次首个可路由本地地址，都没有才回落绑定
+  地址并启动告警。多网卡主机显式点名。
+- `registry.shutdown-drain=auto`（默认）由注册表后端回答
+  （`ServiceRegistry.drainWindow()`）：内置进程内注册表答 `0s`（同 JVM 无传播
+  延迟），注册中心适配器答自己的传播窗口（Nacos/K8s endpoints 通常几秒），
+  不必每个部署各写一遍；显式时长优先，负值启动失败。
 - 静态第三方服务（PostgreSQL/Redis 等）由配置给定地址，**不走 discovery**。
 - `LoadBalancerDefault` 是跨虚拟线程安全的 round-robin。zone/weight/canary
   目前只是 metadata：默认策略**不读**它们（§8.2），自定义策略 bind 一个
@@ -558,7 +567,13 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
   （§5.7）。
 - **形态一：行为键**——普通值（超时、阈值、地址、白名单、token）。有默认值，
   默认值以 `CloudConfigKeys` 的 `*_DEFAULT` 常量为唯一来源，模块配置层与
-  库级 fallback 共享。
+  库级 fallback 共享。**布尔键一律走容器 `Coercer`**（接受 `true/false`、
+  `yes/no`、`on/off`、`1/0`），无法识别的值启动失败并点名键与值——静默变
+  `false` 会让 `auth.extract.enabled` 这类开关被悄悄关掉。
+- **形态一之特例：`auto`**——值必须推导、写不出来时才用它，且推导结果必须在
+  启动日志里可见（`registry.service-scheme` / `service-host` /
+  `shutdown-drain`，§5.1）。给常量默认值加 `auto` 只是同一规则的第二种说法，
+  不做。
 - **形态二：声明键**——`freeway.cloud.secret/discovery/registry/storage.type`。
   它们**不选择实现**：框架不做类名反射加载或类路径扫描，真正选择实现的是
   `.primary()` 绑定、`@Local` 标记与装了哪个适配器模块。仍用本地实现而类型键
@@ -666,4 +681,5 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 2026-09-12 | RPC v2：导出改为**申报式**（`RpcExport` 数据贡献 + 一条 `/rpc/{mapping}/{method}` 通配路由 + `.before(HTTP_SERVER)` 装配 hook），`RemoteCaller` 由框架绑定，独立组装改用 `RpcEndpoint.route(...)`；同日 v3 曾设计 `CallBridge` 让 `CallBus` 本地未命中时自动跨进程，**定稿未实施即撤回** |
 | 2026-09-12 | RPC v4：**删除 `CallBus`** 及其卫星类型；`RpcEndpoint` 直接调用容器解析出的 handler（`RpcTarget` 方法表，重载在启动期失败）；`RemoteProxyFactory` 收敛为纯远端；文档由 `freeway-remote-callbus-design.md` 更名 |
 | 2026-09-12 | 审计轮次：失败获得 `kind()`（13 值）；`ServiceRegistry.renew` 返回 boolean 并自愈；readiness 只说框架验证得到的事（3 次失败判不健康、未注册报 `not registered`、关停期不健康）；密钥按 size + 全精度 mtime 轮换；网格出站 TLS 与 RPC 共用一条安全面，明文 + token 启动告警；停机加 `registry.shutdown-drain` / `rpc.shutdown-grace` 与 WS `1001 going away`；contribution id 统一 `freeway.cloud.*`；`@Local` 收敛到参数/字段并覆盖 `Metrics` / `TransportSecurity`；补充可选输入规则与 `Wiring` 兼容构造 |
+| 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `WebServer.secure()` 与 `ServiceRegistry.drainWindow()` |
 | 2026-09-12 | 文档合并：本文取代 `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`；四份文档仍然有效的排除项与能力边界（无应用层心跳、MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项（含 `Advisor` 织入、网格心跳）并入 §5 / §7 / §8；配置键清单移出为对 `docs/freeway-config.md` 的索引 |

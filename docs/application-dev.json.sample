@@ -19,7 +19,7 @@
 			"health": { "enabled": true, "path": "/healthz" },
 			"cors": {
 				"enabled": true,
-				"allowed-origins": "*",
+				"allowed-origins": "http://localhost:5173,http://localhost:3000",
 				"allowed-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
 				"allowed-headers": "Content-Type, Authorization",
 				"allow-credentials": true

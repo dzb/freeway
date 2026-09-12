@@ -3,12 +3,11 @@
 		"profile": "prod",
 		"log": {
 			"level": "INFO",
-			"format": "auto",
 			"file": "auto",
-			"max-size": 104857600,
-			"max-history": 30,
-			"compress": true,
-			"flush-interval": 250
+			"file.max-size": 104857600,
+			"file.max-history": 30,
+			"file.compress": true,
+			"file.flush-interval": 250
 		},
 		"http": {
 			"server": {
@@ -57,7 +56,7 @@
 			}
 		},
 		"cloud": {
-			"events": {
+			"event": {
 				"enabled": false,
 				"peers": "",
 				"subscriptions": "",
