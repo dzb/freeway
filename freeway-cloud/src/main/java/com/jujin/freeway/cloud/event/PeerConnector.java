@@ -35,6 +35,10 @@ public final class PeerConnector implements AutoCloseable {
      *  fallback cannot drift from the lifecycle hook's specs. */
     private static final long BACKOFF_BASE_MS =
         CloudConfigKeys.EVENT_BACKOFF_BASE_MS_DEFAULT;
+    /** WebSocket 1001: the peer is going away (RFC 6455 §7.4.1). */
+    private static final int GOING_AWAY = 1001;
+    /** How long a close frame may take to leave before the socket is aborted. */
+    private static final long CLOSE_FRAME_TIMEOUT_MS = 200;
     private static final long BACKOFF_MAX_MS =
         CloudConfigKeys.EVENT_BACKOFF_MAX_MS_DEFAULT;
     /** A peer that accepts the socket but never answers the hello must not
@@ -186,10 +190,10 @@ public final class PeerConnector implements AutoCloseable {
     @Override
     public void close() {
         closed = true;
-        // Abort live sockets first: abort() → handleDisconnect() → no
-        // reconnect, because closed is already set.
+        // Close live sockets first: closeGracefully() → handleDisconnect() →
+        // no reconnect, because closed is already set.
         for (ClientSessionHandler session : sessions) {
-            session.abort();
+            session.closeGracefully();
         }
         sessions.clear();
         // A dialer parked in Thread.sleep(backoff) must not hold shutdown for
@@ -404,6 +408,28 @@ public final class PeerConnector implements AutoCloseable {
                 return;
             }
             scheduleReconnect();
+        }
+
+        /**
+         * Sends a WebSocket close frame before the socket goes, so the peer
+         * reads a shutdown (1001) instead of a connection reset — the
+         * difference between "this node is leaving" and "something broke",
+         * which decides whether the peer re-dials or waits. Bounded: a
+         * shutdown must not wait on a peer that is already gone, and
+         * {@link #abort()} stays the fallback.
+         */
+        private void closeGracefully() {
+            WebSocket socket = ws;
+            if (socket != null) {
+                try {
+                    socket.sendClose(GOING_AWAY, "shutdown")
+                        .get(CLOSE_FRAME_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                } catch (Exception ignored) {
+                    // Already gone, or the frame never made it out — abort()
+                    // below closes the socket either way.
+                }
+            }
+            abort();
         }
 
         private void abort() {

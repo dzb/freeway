@@ -1,5 +1,7 @@
 package com.jujin.freeway.cloud;
 
+import java.time.Duration;
+
 /**
  * Central config keys and canonical defaults for {@code freeway-cloud}.
  * Keys share the {@code freeway.cloud} prefix; {@code *DEFAULT} constants and
@@ -111,6 +113,18 @@ public final class CloudConfigKeys {
     public static final String REGISTRY_SERVICE_INSTANCE_ID = PREFIX + ".registry.service-instance-id";
     /** Scheme used when {@link #REGISTRY_SERVICE_SCHEME} is unset. */
     public static final String REGISTRY_SERVICE_SCHEME_DEFAULT = "http";
+    /**
+     * Time to keep serving after deregistering, so a load balancer that still
+     * holds this endpoint can notice before the socket closes.
+     *
+     * <p>Default 0: the built-in registry is in-process, where an endpoint
+     * disappears the moment it is unregistered — there is nothing to wait for.
+     * A registry adapter (Nacos, Kubernetes endpoints, ...) has a propagation
+     * window the framework cannot know, so the deployment states it here.</p>
+     */
+    public static final String REGISTRY_SHUTDOWN_DRAIN = PREFIX + ".registry.shutdown-drain";
+    /** Library default for {@link #REGISTRY_SHUTDOWN_DRAIN}. */
+    public static final Duration REGISTRY_SHUTDOWN_DRAIN_DEFAULT = Duration.ZERO;
 
     // ── Advanced: timeouts (NOT governed by resilience — they always apply) ──
     // Listed first because they are the one pair in this block that
@@ -145,6 +159,16 @@ public final class CloudConfigKeys {
     // fallbacks) and CloudHttpClientDefault.Wiring (library fallback when the
     // module is not installed), so the two layers cannot drift apart.
     public static final long RPC_REQUEST_TIMEOUT_DEFAULT = 10_000;
+    /**
+     * How long {@code CloudHttpClient.close()} waits for calls already in
+     * flight before failing them. Cutting a call the server may already have
+     * applied is worse than a slower stop, so the default waits a few seconds —
+     * an idle process still closes immediately (nothing in flight, nothing to
+     * wait for). Bounded by the deployment's termination grace period.
+     */
+    public static final String RPC_SHUTDOWN_GRACE = PREFIX + ".rpc.shutdown-grace";
+    /** Library default for {@link #RPC_SHUTDOWN_GRACE}. */
+    public static final Duration RPC_SHUTDOWN_GRACE_DEFAULT = Duration.ofSeconds(5);
     public static final long RPC_CONNECT_TIMEOUT_DEFAULT = 3_000;
 
     // Canonical retry/breaker defaults — shared by CloudResilienceModule

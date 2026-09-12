@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **停机收尾：drain 窗口 + 在飞调用优雅结束 + 网格告别帧（freeway-cloud）** — 此前摘除注册与关闭
+  socket 之间没有任何间隔，滚动更新时仍持有该端点的负载均衡会打到已关闭的连接；出站在飞调用则被
+  `close()` 直接以异常失败（对端可能已经执行）。现在：
+  - `freeway.cloud.registry.shutdown-drain`（Duration，默认 `0s`）：停机时**先发信号**——readiness 置
+    `draining`（探针驱动的 LB 立刻把实例摘出）并摘除注册（注册中心驱动的 LB 同样立刻停止投递）——
+    然后继续服务这段时间再让 HTTP 服务停止。默认 `0s` 对内置进程内注册表是正确的（同一 JVM 内
+    没有传播延迟），适配器部署把它设成后端传播窗口；
+  - `freeway.cloud.rpc.shutdown-grace`（Duration，默认 `5s`）：`CloudHttpClient.close()` 先停止接纳
+    新调用（同步与异步一视同仁），再等已在飞的调用结束，超过窗口仍未完结的才以
+    `CloudHttpClient is closed` 失败并 WARN 记录剩余数量。空转进程立即关闭——没有在飞调用就没有等待；
+  - 网格客户端停机时先发 WebSocket `1001 going away`（最多等 200ms，对端已消失则由 abort 兜底），
+    对端据此区分"节点要走了"与"连接坏了"（服务端 session 本就发 close 帧）。
+  - 破坏性：无（只新增两个高级档配置键）。
+
 - **`@Local` 去掉类级位置（freeway-cloud，编译期收紧）** — 与 `@Marker`/`@Primary`/`@Builtin` 同一
   判据：`@Local` 的 `TYPE` 没有任何读取方（类上的框架 marker 由 ioc 的 `MarkerIndex` 读取，而它
   不能认识 cloud 的注解），写在实现类上会**编译通过却静默无效**。现只保留注入点位置

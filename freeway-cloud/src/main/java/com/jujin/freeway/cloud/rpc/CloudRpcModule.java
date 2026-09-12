@@ -56,6 +56,11 @@ public final class CloudRpcModule implements ModuleEx {
     private static final SymbolSpec<Boolean> TRACE_ENABLED = SymbolSpec.of(
         CloudConfigKeys.RPC_TRACE_ENABLED, Boolean.class, true, Boolean::parseBoolean);
 
+    /** Shutdown drain for in-flight calls, from the shared default. */
+    private static final SymbolSpec<Duration> SHUTDOWN_GRACE = SymbolSpec.of(
+        CloudConfigKeys.RPC_SHUTDOWN_GRACE, Duration.class,
+        CloudConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT);
+
     // TLS stores: unset (blank) keys mean plaintext development — the module
     // resolves TransportSecurity.NONE when the key store is blank.
     private static final SymbolSpec<String> TLS_KEY_STORE = SymbolSpec.of(
@@ -94,6 +99,7 @@ public final class CloudRpcModule implements ModuleEx {
                 SymbolSource symbols = container.get(SymbolSource.class);
                 long requestMs = symbols.resolve(REQUEST_TIMEOUT_MS);
                 long connectMs = symbols.resolve(CONNECT_TIMEOUT_MS);
+                Duration shutdownGrace = symbols.resolve(SHUTDOWN_GRACE);
                 boolean traceEnabled = symbols.resolve(TRACE_ENABLED);
                 return new CloudHttpClientDefault(
                     container.get(ServiceDiscovery.class),
@@ -109,7 +115,8 @@ public final class CloudRpcModule implements ModuleEx {
                         // without CloudObserveModule calls record into the noop.
                         container.get(Metrics.class),
                         Duration.ofMillis(requestMs),
-                        Duration.ofMillis(connectMs)));
+                        Duration.ofMillis(connectMs),
+                        shutdownGrace));
             })
             .marker(Local.class)
             ;

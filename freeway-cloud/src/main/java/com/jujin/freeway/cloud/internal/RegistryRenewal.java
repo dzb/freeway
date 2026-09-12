@@ -25,10 +25,26 @@ public final class RegistryRenewal {
 
     private final AtomicInteger consecutiveFailures = new AtomicInteger();
     private volatile boolean tracking;
+    private volatile boolean draining;
 
     /** Called once this boot has registered at least one instance. */
     void track() {
         tracking = true;
+    }
+
+    /**
+     * Shutdown has started: the instance is unregistered (or about to be) and
+     * is only finishing work it already accepted. Readiness reports unhealthy
+     * from here on, which is what pulls a probe-driven load balancer out before
+     * the socket closes.
+     */
+    void draining() {
+        draining = true;
+    }
+
+    /** True between the start of shutdown and process exit. */
+    public boolean isDraining() {
+        return draining;
     }
 
     /** A heartbeat that renewed and verified every registered instance. */

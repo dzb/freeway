@@ -469,6 +469,7 @@ OS/JDK 默认或无限制，空表示 JDK 默认。下面各表内已按此顺�
 | `freeway.cloud.registry.service-id` | String | *(空)* | 否 | 注册的逻辑服务名。空 = 回退 `freeway.app.name`（再回退 `freeway-app`） |
 | `freeway.cloud.registry.service-host` | String | *(空)* | 否 | 注册地址主机名。空 = HTTP server 绑定地址（0.0.0.0 等不可路由地址会启动告警，应配置 Pod IP 等外部可达地址） |
 | `freeway.cloud.registry.service-scheme` | String | `http` | 否 | 服务注册协议（`http` 或 `https`） |
+| `freeway.cloud.registry.shutdown-drain` | Duration | `0s` | 否 | **停机 drain 窗口**：摘除注册并置 readiness 为 draining 之后，继续服务这段时间再停。默认 `0s` 对内置进程内注册表是正确的（同一 JVM 内没有传播延迟）；用注册中心适配器（Nacos / Kubernetes endpoints 等）时把它设成该后端的传播窗口（如 `5s`），否则滚动更新期间负载均衡仍会把新请求打到正在关闭的实例 |
 | `freeway.cloud.registry.service-port` | Integer | *(空)* | 否 | 注册端口。空 = HTTP server 实际监听端口 |
 | `freeway.cloud.registry.service-instance-id` | String | *(空)* | 否 | 实例级稳定标识。空 = 派生键 `service-id@host:port` |
 
@@ -478,6 +479,7 @@ OS/JDK 默认或无限制，空表示 JDK 默认。下面各表内已按此顺�
 |----|------|--------|------|------|
 | `freeway.cloud.rpc.connect-timeout` | Long | `3000` | 否 | 连接超时（毫秒） |
 | `freeway.cloud.rpc.request-timeout` | Long | `10000` | 否 | 请求超时（毫秒） |
+| `freeway.cloud.rpc.shutdown-grace` | Duration | `5s` | 否 | **出站调用收尾窗口**：停机时先拒绝新调用，再等已在飞的调用完成，超时仍未有结果的才被以 `CloudHttpClient is closed` 失败。空转进程立即关闭（没有在飞调用就没有等待），所以默认值只在真有调用时付出时间；请压到部署的 terminationGracePeriod 以内 |
 | `freeway.cloud.rpc.trace.enabled` | Boolean | `true` | 否 | 启用 RPC 调用链路追踪 |
 | `freeway.cloud.rpc.resilience` | String | `auto` | 否 | **聚合开关**：`auto` = 下方细项键各自生效；`off` = 总闸（不重试、熔断 NOOP、限流无限），忽略全部细项键。用于 mesh 接管（平台已做重试/熔断，应用层需退位）与故障诊断隔离变量。非法值启动即失败 |
 

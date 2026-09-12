@@ -4,6 +4,9 @@ import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
 import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.ioc.symbol.SymbolSource;
+import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.RuntimeHook;
 
@@ -36,9 +39,15 @@ public final class RegistryLifecycleHook implements RuntimeHook {
 
     private static final Logger LOG = LoggerFactory.getLogger(RegistryLifecycleHook.class);
     private static final Duration RENEW_INTERVAL = Duration.ofSeconds(10);
+    /** Deployment drain window; the default comes from the shared key source. */
+    private static final SymbolSpec<Duration> SHUTDOWN_DRAIN = SymbolSpec.of(
+        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, Duration.class,
+        CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN_DEFAULT);
 
     private final RegistryRenewal renewal;
     private final Duration renewInterval;
+    /** Time to keep serving after deregistering (see the config key). */
+    private volatile Duration shutdownDrain = Duration.ZERO;
     private final List<ServiceInstance> registered = new CopyOnWriteArrayList<>();
     private volatile ScheduledExecutorService scheduler;
     private volatile ServiceRegistry registryRef;
@@ -58,6 +67,7 @@ public final class RegistryLifecycleHook implements RuntimeHook {
     public void start(Container container) throws Exception {
         ServiceRegistry registry = container.get(ServiceRegistry.class);
         registryRef = registry;
+        shutdownDrain = container.get(SymbolSource.class).resolve(SHUTDOWN_DRAIN);
         for (ServiceDeclaration declaration : container.extension(ServiceDeclaration.class).all()) {
             ServiceInstance instance = declaration.resolve(container);
             if (instance == null) {
@@ -117,6 +127,24 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         }
     }
 
+    /**
+     * Keeps the process serving after the signals went out. Requests already
+     * routed here finish instead of hitting a closed socket — the difference
+     * between a rolling update that drops traffic and one that does not.
+     */
+    private void drain(long drainMillis) {
+        if (drainMillis <= 0) {
+            return;
+        }
+        LOG.info("Draining for {} ms before shutdown", drainMillis);
+        try {
+            Thread.sleep(drainMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("Drain interrupted after the signals were sent");
+        }
+    }
+
     /** True when discovery currently lists this exact instance. */
     private boolean listed(ServiceInstance instance) {
         ServiceDiscovery source = discovery;
@@ -140,6 +168,12 @@ public final class RegistryLifecycleHook implements RuntimeHook {
             s.shutdownNow();
             scheduler = null;
         }
+        // Signal first, then wait: readiness turns unhealthy and the entry
+        // leaves the registry at the same moment, so a probe-driven and a
+        // registry-driven load balancer both get the whole window to react.
+        if (!registered.isEmpty()) {
+            renewal.draining();
+        }
         ServiceRegistry registry;
         try {
             registry = container.get(ServiceRegistry.class);
@@ -161,5 +195,6 @@ public final class RegistryLifecycleHook implements RuntimeHook {
             }
         }
         registered.clear();
+        drain(shutdownDrain.toMillis());
     }
 }

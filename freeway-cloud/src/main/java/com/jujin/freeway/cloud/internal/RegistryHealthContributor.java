@@ -51,6 +51,11 @@ public final class RegistryHealthContributor implements CloudHealthContributor {
 
     @Override
     public HealthResult check() {
+        if (renewal.isDraining()) {
+            // Shutdown has begun: answer 503 so a probe-driven load balancer
+            // stops routing here while the drain window runs.
+            return HealthResult.unhealthy("draining");
+        }
         if (!renewal.isTracking()) {
             return new HealthResult(true, "not registered");
         }

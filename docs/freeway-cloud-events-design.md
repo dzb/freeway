@@ -117,6 +117,13 @@ stream:
 拓扑（token 由 mesh 加密），所以框架**不拒绝**这种组合，而是在启动时响亮告警
 一次，提示"要么把 scheme 改成 https，要么确认它在 mesh/可信网络内"。
 
+### 2.3 停机握手
+
+服务端 session 关闭时写 RFC 6455 的 close 帧；客户端连接器停机时同样先发
+`1001 going away`（最多等 200ms，对端已消失则由 abort 兜底），因此对端读到的是
+"这个节点要走了"而不是连接被重置——它据此决定是否重拨。注册表的摘除与
+`/health/ready` 的 draining 信号先于 socket 关闭发出（见 `registry.shutdown-drain`）。
+
 ### 2.3 心跳与保活
 
 v1 未实现应用层心跳（设计里预留过 `keepalive` 键，未落地——`freeway.cloud.event.*` 中没有这个键）：

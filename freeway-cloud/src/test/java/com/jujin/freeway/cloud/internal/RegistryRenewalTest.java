@@ -96,12 +96,78 @@ class RegistryRenewalTest {
     }
 
     @Test
+    void stopSignalsThenDrainsBeforeReturning() throws Exception {
+        List<String> events = new CopyOnWriteArrayList<>();
+        ServiceRegistry registry = new ServiceRegistry() {
+            @Override public void register(ServiceInstance instance) { }
+
+            @Override public void renew(String serviceId, String instanceId) { }
+
+            @Override public void unregister(ServiceInstance instance) {
+                events.add("unregistered");
+            }
+        };
+        ServiceDiscovery discovery = serviceId -> List.of(INSTANCE);
+        RegistryRenewal renewal = new RegistryRenewal();
+        try (Container container = Freeway.create(binder -> {
+            binder.bind(ServiceRegistry.class).to(c -> registry);
+            binder.bind(ServiceDiscovery.class).to(c -> discovery);
+            binder.contribute(ServiceDeclaration.class).add("test", c -> INSTANCE);
+            // 60 ms window: long enough to observe, short enough to keep the suite fast.
+            binder.bind(com.jujin.freeway.ioc.symbol.SymbolSource.class)
+                .to(c -> symbols(com.jujin.freeway.cloud.CloudConfigKeys.REGISTRY_SHUTDOWN_DRAIN, "60ms"))
+                .primary();
+        })) {
+            RegistryLifecycleHook hook =
+                new RegistryLifecycleHook(renewal, Duration.ofMillis(20));
+            hook.start(container);
+            assertTrue(await(() -> renewal.isTracking()));
+            // Wait until the drain window is demonstrably open.
+            long start = System.nanoTime();
+            hook.stop(container);
+            long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+            assertTrue(elapsedMillis >= 50,
+                "stop must keep serving for the configured window, elapsed=" + elapsedMillis);
+            assertEquals(List.of("unregistered"), events,
+                "the entry must leave the registry before the window, not after it");
+            assertTrue(renewal.isDraining(),
+                "readiness must report the drain so a probe-driven LB stops routing here");
+        }
+    }
+
+    @Test
     void nothingRegisteredMeansNothingToGuard() {
         // No declaration resolved: the contributor must not claim a healthy
         // registry it never registered with.
         RegistryRenewal renewal = new RegistryRenewal();
         assertFalse(renewal.isTracking());
         assertTrue(renewal.isHealthy(), "an untracked renewal is not a failure");
+    }
+
+    /**
+     * Minimal symbol source: one key, no cascade. {@code resolve(SymbolSpec)}
+     * is overridden because the container's own source wires a {@link Coercer}
+     * for specs without a parser (duration keys) — the stub substitutes the
+     * library coercer so the spec path under test is the real one.
+     */
+    private static com.jujin.freeway.ioc.symbol.SymbolSource symbols(String key, String value) {
+        return new com.jujin.freeway.ioc.symbol.SymbolSource() {
+            @Override public String resolve(String name) { return resolve(name, null); }
+
+            @Override public <T> T resolve(com.jujin.freeway.ioc.symbol.SymbolSpec<T> spec) {
+                return spec.parse(resolve(spec.key(), null),
+                    new com.jujin.freeway.commons.coercion.CoercerDefault());
+            }
+
+            @Override public String resolve(String name, String fallback) {
+                return key.equals(name) ? value : fallback;
+            }
+
+            @Override public String expand(String input) {
+                return input;
+            }
+        };
     }
 
     private static boolean await(BooleanSupplier condition) throws InterruptedException {

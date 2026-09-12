@@ -27,6 +27,8 @@ import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +60,9 @@ import javax.net.ssl.SSLContext;
  * its own {@link CloudHttpClient} implementation with {@code .primary()}.</p>
  */
 public final class CloudHttpClientDefault implements CloudHttpClient, AutoCloseable {
+
+    private static final Logger LOG =
+        LoggerFactory.getLogger(CloudHttpClientDefault.class);
 
     private final ServiceDiscovery discovery;
     private final LoadBalancer loadBalancer;
@@ -95,6 +100,8 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      *  tasks — their futures would otherwise never complete). */
     private final java.util.Set<java.util.concurrent.CompletableFuture<CloudResponse>> inFlight =
         java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** How long {@link #close()} lets in-flight calls finish before failing them. */
+    private final Duration shutdownGrace;
     private volatile boolean closed;
 
     /** Library fallbacks (no resilience module installed) — the same values
@@ -109,7 +116,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      * Optional wiring for {@link CloudHttpClientDefault}. Every field has a
      * production-safe default, so tests and bare setups omit what they do not
      * use. Bundled into one value (mirroring {@code PeerHub.Wiring}) so the
-     * nine optional inputs cannot drift apart at a call site and the client
+     * optional inputs cannot drift apart at a call site and the client
      * needs no telescoping constructor overloads. Each field also has a
      * wither ({@code withX}) for stepwise customization from
      * {@link #defaults()}.
@@ -123,7 +130,8 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         Tracer tracer,
         Metrics metrics,
         Duration requestTimeout,
-        Duration connectTimeout
+        Duration connectTimeout,
+        Duration shutdownGrace
     ) {
         /** Library-fallback timeouts — one value per timeout with the config
          *  layer (CloudRpcModule), sourced from {@link CloudConfigKeys} and
@@ -132,61 +140,81 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
             Duration.ofMillis(CloudConfigKeys.RPC_REQUEST_TIMEOUT_DEFAULT);
         public static final Duration DEFAULT_CONNECT_TIMEOUT =
             Duration.ofMillis(CloudConfigKeys.RPC_CONNECT_TIMEOUT_DEFAULT);
+        /** How long {@link CloudHttpClientDefault#close()} waits for in-flight
+         *  calls, from the shared config default. */
+        public static final Duration DEFAULT_SHUTDOWN_GRACE =
+            CloudConfigKeys.RPC_SHUTDOWN_GRACE_DEFAULT;
 
         public Wiring {
             propagators = propagators == null ? List.of() : List.copyOf(propagators);
             requestTimeout = requestTimeout == null ? DEFAULT_REQUEST_TIMEOUT : requestTimeout;
             connectTimeout = connectTimeout == null ? DEFAULT_CONNECT_TIMEOUT : connectTimeout;
+            shutdownGrace = shutdownGrace == null ? DEFAULT_SHUTDOWN_GRACE : shutdownGrace;
         }
 
         /** All-default wiring: no propagators, built-in resilience, plaintext. */
         public static Wiring defaults() {
-            return new Wiring(null, null, null, null, null, null, null, null, null);
+            return new Wiring(null, null, null, null, null, null, null, null, null, null);
         }
 
         public Wiring withTracer(Tracer value) {
             return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
-                value, metrics, requestTimeout, connectTimeout);
+                value, metrics, requestTimeout, connectTimeout,
+                shutdownGrace);
         }
 
         public Wiring withMetrics(Metrics value) {
             return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
-                tracer, value, requestTimeout, connectTimeout);
+                tracer, value, requestTimeout, connectTimeout,
+                shutdownGrace);
         }
 
         public Wiring withPropagators(List<Propagator> value) {
             return new Wiring(value, retryer, breaker, rateLimiter, transport,
-                tracer, metrics, requestTimeout, connectTimeout);
+                tracer, metrics, requestTimeout, connectTimeout,
+                shutdownGrace);
         }
 
         public Wiring withRetryer(Retryer value) {
             return new Wiring(propagators, value, breaker, rateLimiter, transport,
-                tracer, metrics, requestTimeout, connectTimeout);
+                tracer, metrics, requestTimeout, connectTimeout,
+                shutdownGrace);
         }
 
         public Wiring withBreaker(CircuitBreaker value) {
             return new Wiring(propagators, retryer, value, rateLimiter, transport,
-                tracer, metrics, requestTimeout, connectTimeout);
+                tracer, metrics, requestTimeout, connectTimeout,
+                shutdownGrace);
         }
 
         public Wiring withRateLimiter(RateLimiter value) {
             return new Wiring(propagators, retryer, breaker, value, transport,
-                tracer, metrics, requestTimeout, connectTimeout);
+                tracer, metrics, requestTimeout, connectTimeout,
+                shutdownGrace);
         }
 
         public Wiring withTransport(TransportSecurity value) {
             return new Wiring(propagators, retryer, breaker, rateLimiter, value,
-                tracer, metrics, requestTimeout, connectTimeout);
+                tracer, metrics, requestTimeout, connectTimeout,
+                shutdownGrace);
         }
 
         public Wiring withRequestTimeout(Duration value) {
             return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
-                tracer, metrics, value, connectTimeout);
+                tracer, metrics, value, connectTimeout,
+                shutdownGrace);
+        }
+
+        public Wiring withShutdownGrace(Duration value) {
+            return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
+                tracer, metrics, requestTimeout, connectTimeout,
+                value);
         }
 
         public Wiring withConnectTimeout(Duration value) {
             return new Wiring(propagators, retryer, breaker, rateLimiter, transport,
-                tracer, metrics, requestTimeout, value);
+                tracer, metrics, requestTimeout, value,
+                shutdownGrace);
         }
     }
 
@@ -215,6 +243,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
             ? wiring.retryer()
             : RetryerDefault.withDefaults();
         this.policy = new ResiliencePolicy(resolvedRetryer, this.tracer, this.metrics);
+        this.shutdownGrace = wiring.shutdownGrace();
         this.requestTimeout = wiring.requestTimeout();
         HttpClient.Builder builder = HttpClient.newBuilder()
             .connectTimeout(wiring.connectTimeout())
@@ -229,8 +258,36 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
 
     @Override
     public CloudResponse call(String serviceId, CloudRequest request) throws CloudException {
+        // Registered while it runs, for the same reason as the async path:
+        // shutdown must see this call and give it a chance to finish.
+        java.util.concurrent.CompletableFuture<CloudResponse> token = enter(serviceId);
+        try {
+            CloudResponse response = orchestrate(serviceId, request, false, 0L);
+            token.complete(response);
+            return response;
+        } catch (RuntimeException e) {
+            token.completeExceptionally(e);
+            throw e;
+        }
+    }
+
+    /**
+     * Admits a call: refuses when the client is closing, otherwise registers a
+     * completion token so {@link #close()} can see it. Shared by both call
+     * paths so "in flight" means the same thing everywhere.
+     */
+    private java.util.concurrent.CompletableFuture<CloudResponse> enter(String serviceId) {
         requireUsable(serviceId);
-        return orchestrate(serviceId, request, false, 0L);
+        java.util.concurrent.CompletableFuture<CloudResponse> token =
+            new java.util.concurrent.CompletableFuture<>();
+        synchronized (this) {
+            if (closed) {
+                throw new IllegalStateException("CloudHttpClient is closed");
+            }
+            inFlight.add(token);
+        }
+        token.whenComplete((response, error) -> inFlight.remove(token));
+        return token;
     }
 
     @Override
@@ -251,19 +308,10 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
         // The work itself runs on a virtual thread, so blocking HttpClient joins
         // do not pin common-pool platform threads.
         InvocationContext ctx = InvocationContext.current().orElse(null);
-        // A task still queued when close() shuts the executor down is dropped
-        // and would never complete on its own — so the future is registered
-        // under close()'s monitor BEFORE the work is submitted: no caller
-        // waits forever on shutdown.
-        java.util.concurrent.CompletableFuture<CloudResponse> future =
-            new java.util.concurrent.CompletableFuture<>();
-        synchronized (this) {
-            if (closed) {
-                throw new IllegalStateException("CloudHttpClient is closed");
-            }
-            inFlight.add(future);
-        }
-        future.whenComplete((response, error) -> inFlight.remove(future));
+        // Registered before the work is submitted: a task dropped by
+        // shutdownNow would never complete on its own, so close() must see it
+        // to settle it — and must see it to drain it first.
+        java.util.concurrent.CompletableFuture<CloudResponse> future = enter(serviceId);
         Runnable work = () -> {
             try {
                 future.complete(ctx == null
@@ -441,17 +489,46 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      *  via {@link PreDestroy}. */
     @PreDestroy
     public synchronized void close() {
-        if (!closed) {
-            closed = true;
-            asyncExecutor.shutdownNow();
-            // Tasks dropped by shutdownNow never complete on their own —
-            // settle them so no caller blocks forever on a dead client.
-            for (java.util.concurrent.CompletableFuture<CloudResponse> future : inFlight) {
-                future.completeExceptionally(
-                    new IllegalStateException("CloudHttpClient is closed"));
+        if (closed) {
+            return;
+        }
+        // Stop admitting: a call that arrives now is told the client is going
+        // away instead of being cut off mid-flight later.
+        closed = true;
+        // Let what is already in flight finish. Cutting it here is the one
+        // shutdown choice that can lose work: the peer may have applied the
+        // call while the reply is still on the wire. Bounded by the deployment
+        // grace, and free when nothing is in flight.
+        waitForInFlight();
+        asyncExecutor.shutdownNow();
+        // Whatever the grace did not drain never completes on its own —
+        // settle it so no caller blocks forever on a dead client.
+        for (java.util.concurrent.CompletableFuture<CloudResponse> future : inFlight) {
+            future.completeExceptionally(
+                new IllegalStateException("CloudHttpClient is closed"));
+        }
+        inFlight.clear();
+        http.close();
+    }
+
+    /** Waits for in-flight calls to settle, up to the configured grace. */
+    private void waitForInFlight() {
+        long graceNanos = shutdownGrace.toNanos();
+        if (graceNanos <= 0 || inFlight.isEmpty()) {
+            return;
+        }
+        long deadline = System.nanoTime() + graceNanos;
+        while (!inFlight.isEmpty() && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(5);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return; // a cancelled shutdown must not keep waiting
             }
-            inFlight.clear();
-            http.close();
+        }
+        if (!inFlight.isEmpty()) {
+            LOG.warn("CloudHttpClient shutdown grace expired with {} call(s) still in flight"
+                + " — failing them", inFlight.size());
         }
     }
 }
