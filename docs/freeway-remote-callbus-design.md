@@ -1,16 +1,20 @@
 # 远程 CallBus 桥接设计（Remote RPC over CloudHttpClient）
 
-> 状态：**已实现（2026-08-27，A–D 阶段完成，见文末状态注）**。
+> 状态：v1/v2 **已实现**（2026-08-27 A–D 阶段 + 2026-09-12 申报式导出）；
+> **v3（CallBus 自然延伸）已定稿，实施状态见文末状态注**。
 > 范围：把 `freeway-ioc` 的 `CallBus` 请求-应答通道接到
 > `freeway-cloud` 的 `CloudHttpClient` 传输面，实现"同一份接口代码，
-> 本地走内存槽位、远端走带韧性的 HTTP"。
+> 本地走内存槽位、远端走带韧性的 HTTP"。v3 进一步把"本地还是远端"从
+> 应用代码里拿掉：装载 cloud 之后，`CallBus` 自己就是跨进程的。
 > 前置阅读：`EventBus`/`CallBus` javadoc（消息域三通道）、
 > `freeway-cloud-unified-design.md`（§5.2 RPC、§10 明确不做）。
 
 ## 0. 设计立场
 
-CallBus 保持**纯本地、零网络感知**。远端化是 cloud 层对
-`DeadCallException` 的消费——一个协议适配器，不是对 CallBus 的改造。
+CallBus 保持**零网络感知**：它不知道 HTTP、序列化或服务发现。
+远端化是"本进程服务不了的调用交给谁"这一跳——v1/v2 把这一跳交给应用
+（`RemoteProxyFactory` 组装），v3 把它收进框架：CallBus 开**一个与传输无关的缝**
+（`CallBridge`，§5），cloud 装载时把自己的 HTTP 桥接进去（§3.3）。
 
 理由：
 
@@ -23,6 +27,11 @@ CallBus 保持**纯本地、零网络感知**。远端化是 cloud 层对
    "wire contract independent of `-parameters`"——HTTP 编码同样受益；
    CallBus javadoc 尾句 "For remote invocation see freeway-cloud"
    承诺的正是本文档。
+4. **缝开在解析上，不开在环绕上**（v3 的关键判断）：`CallBus` 的解析顺序是
+   "本地 handler 槽位 → 桥 → `DeadCallException`"，桥只在本地无人应答时被问到。
+   本地有 handler 的调用永远不出进程，不存在"悄悄改走网络"的翻转；
+   而跨进程必然失效的两条本地语义（事务内联、Throwable 原样传播）因此只在
+   **真的跨了进程**时才不成立，且由 §3.3 的边界写明。
 
 与 `freeway-cloud-unified-design.md` §10 的关系：§10 排除的是
 *透明的*远程 bean / `@CloudClient` 注解代理 / 私有二进制协议。
@@ -41,7 +50,7 @@ CallBus 保持**纯本地、零网络感知**。远端化是 cloud 层对
             └──────┬──────────────────────────────────┘
                    │ 出栈(两者用不同传输,各自独立)
         fact 走 MQ │            question 走 HTTP
-        EventSink  │          RemoteCaller(cloud)
+        EventSink  │     CallBridge(cloud)→CloudHttpClient
         (Kafka 等) │          ┌────────────────┐
                    └─────────→│ 对端进程        │
                               │ fact→EventBus  │
@@ -194,40 +203,126 @@ hook 里解析导出（重复 mapping / 类型未绑定 → 启动失败）、�
 - 安全归属传输层已有的 mTLS 配置（`freeway.cloud.rpc.tls.*`）；本文档
   不引入新的鉴权机制，注明部署面应将 `/rpc/*` 视为内部端点。
 
-### 3.3 便利组合：`RemoteProxyFactory`
+**v3 追加：导出即寻址（mapping 名就是被调地址）**。
+`RpcExport.of("user", UserHandlers.class)` 同时表达两件事：这个 mapping
+在本进程被服务（server 面），以及**本实例可以被名字 `user` 找到**（地址面）。
+做法是让它成为一条注册身份：`ServiceDeclaration` 从"返回一个实例"改为
+"返回本实例可被寻址的**全部身份**"（`List<ServiceInstance>`；接口 javadoc
+原本就写的是 "endpoint(s)"），HTTP 面给出服务名，RPC 面给出它导出的每个
+mapping。`RegistryLifecycleHook` 仍旧是唯一的注册/续租/注销方——它按身份
+列表注册、对每个身份续租、停止时全部摘除，不需要第二套心跳。
+
+- 身份推导仍只有一处：`HttpServiceDeclaration.of(container)` 给出
+  endpoint/host/port/metadata，mapping 身份只换 `serviceId`（`instanceId`
+  取 `<mapping>@<host>:<port>`，同一套派生规则）。
+- 没有 discovery 模块也能导出（只是没人找得到它）——身份声明是 discovery
+  的事，导出是 RPC 的事，两者不互相要求。
+- **mapping 名与 service id 同属一个命名空间**：全局唯一。同一应用的多个
+  副本导出同一个 mapping → 同一逻辑服务的多个实例，consumer 侧负载均衡
+  （§3.3）。不同应用抢同一个 mapping 名与今天抢同一个 app name 是同一类
+  建模错误。
+- 要以"服务名 + mapping"寻址（而不是 mapping 名）时，用显式原语
+  `RemoteCaller.invoke(serviceId, mapping, method, ...)`——身份注册没有取消
+  服务名这条地址，只是多了一种更贴近调用点的叫法。
+
+### 3.3 consumer 侧：`CallBus` 的自然延伸（`CallBridge`）
+
+远程不是第二种调用方式，而是 `CallBus` 在"本进程没有 handler"时的下一跳。
+cloud 装载后贡献一个**调用桥**，此后用户侧只有一种写法：
 
 ```java
-// 用户视角——与本地 consumer() 同款手感:
-UserApi api = RemoteProxyFactory.of(callBus, remoteCaller)
-    .serviceId("user")            // 目标服务的 discovery id（remoteOnly 必需）
-    .mapping("user")              // call topic 前缀
-    .localFirst()                 // 或 .remoteOnly()——显式选模式，无静默缺省
-    .timeout(Duration.ofSeconds(5)) // 可选:端到端预算(重试含内)
-    .build(UserApi.class);
+// 单体：同进程 handler 命中，零序列化
+// 拆分：同进程没有 handler，按 mapping 名跨进程——调用代码一字不改
+@Inject CallBus bus;
+UserApi api = bus.consumer("user", UserApi.class);
+
+// 需要注入而不是就地取值时，一行绑定（CallBus javadoc 既有写法）
+binder.bind(UserApi.class).to(c -> c.get(CallBus.class).consumer("user", UserApi.class));
 ```
 
-两种模式：
-1. **纯远端**：每次调用直接走 `RemoteCaller.invoke`。
-2. **本地优先**：先打本地 CallBus（同进程部署的模块直连，省序列化），
-   `DeadCallException` 才转远端——单体内嵌服务与拆分后形态一致的
-   平滑迁移路径。
+**用户侧对照（v2 → v3）**：
 
-默认要求显式选模式（`localFirst()` / `remoteOnly()`，未选时
-`build()` 抛 `IllegalStateException`）——无静默缺省。
+| 用户动作 | v2 | v3 |
+|---|---|---|
+| 拿到远程能力 | `@Inject RemoteCaller` + `@Inject CallBus` | 不需要（装载 cloud 即生效） |
+| 建代理 | `RemoteProxyFactory.of(bus, caller).serviceId(..).mapping(..).localFirst().build(Api.class)` | `bus.consumer(mapping, Api.class)` |
+| 注入代理 | `binder.bind(Api.class).to(c -> factory.build(Api.class))` | `binder.bind(Api.class).to(c -> c.get(CallBus.class).consumer(mapping, Api.class))` |
+| 指定对端 | `.serviceId("user")` | 无需指定：mapping 名即地址（导出即寻址，§3.2）；要以服务名寻址用 `RemoteCaller` |
+| 强制远端 | `.remoteOnly()` | `RemoteCaller.invoke(...)`（显式原语，见下） |
+| 重放裁定 | `@Idempotent` | `@Idempotent`（不变，由桥转给传输层） |
 
-**每调用超时**（原为 deferred 项，已实现）：`timeout(...)` 经
-`CloudHttpClient.callAsync`（异步传输面，`sendAsync` socket 段）+
-`orTimeout` 收窄等待；到期映射为 `CloudException.timeout`（retryable），
-与传输层超时语义一致。
+**解析顺序（唯一一条规则）**：本地 handler 槽位 → 桥 → `DeadCallException`。
+没有模式开关：`localFirst` 不再是需要显式选择的模式，而是这条规则的结果；
+`remoteOnly` 消失——要强制远端就直接说"调哪个服务"（`RemoteCaller`）。
 
-**幂等标记**（已实现）：proxy 每次派发反射读取接口方法/接口级
-`@Idempotent` 注解，转发给 `RemoteCaller.invoke(..., idempotent)`，
-最终落到 `CloudRequest.idempotentWith(...)`——决定传输层幂等门是否
-放行 timeout/中途 I/O/5xx 的重放。无注解魔法参与路由或注册，
-仅是消费方对重放安全的声明（与 §10 反注解魔法的立场不冲突：
-它不改变派发，只收紧传输层一个默认不安全的行为）。
+**寻址（这个 mapping 由谁提供）**：不需要任何声明——**mapping 名就是地址**。
+server 面导出 mapping 时，框架把本实例也注册成这个名字（§3.2 的"导出即寻址"），
+consumer 面本地没有 handler 时按 mapping 名查同一套 discovery + 负载均衡。
+于是单体与拆分只差"有没有实例注册了这个名字"，调用代码与配置都不变：
 
-## 4. 配置键（无新增）
+```java
+@Inject CallBus bus;
+UserApi api = bus.consumer("user", UserApi.class);
+// 单进程：本地槽位命中
+// 拆出去以后：名字 user 在 mesh 里有实例 → 同一行代码跨进程
+```
+
+**本地未命中就尝试上网——这条要说清**（桥存在时的解析顺序，唯一一条规则）：
+
+| 情形 | 结果 | 说明 |
+|---|---|---|
+| 本地有 handler | 进程内派发 | 永不出进程；mesh 里有同名实例也不影响（先本地） |
+| 本地没有，mesh 里有实例 | HTTP（§2 协议） | 与普通 cloud RPC 完全同路：每次尝试重新选实例（LB），重试/熔断/限流/tracing/传播全部生效 |
+| 本地没有，mesh 里也没有，**方法有 default 实现** | `DeadCallException` → 代理跑 default | 你写了 default，就是声明"这个能力可以缺席"——降级语义与单进程时一致 |
+| 本地没有，mesh 里也没有，**方法无 default** | `CloudException.noInstance(mapping 名)` | 响亮失败；绝不静默返回 null 或假结果 |
+
+所以"未声明的调用会尝试上网"的准确含义是：**凡本地无人应答的调用都会先去
+mesh 里按名字找一次**，找到就跨进程、找不到才回到"没人能服务"（有 default 就
+降级、没有就报错）。代价是一个 discovery 查询（进程内注册表是 map 查找；
+远端注册中心通常在适配器内有本地缓存），收益是调用点不需要知道进程边界。
+
+**"缺席"与"宕机"在消费侧不可区分**（discovery 只返回存活实例）：判据放在
+调用方——接口方法写了 default 视为可选能力（缺席即降级），没写 default 视为
+必需依赖（找不到实例就是故障）。这条不需要新配置，声明就写在方法签名上。
+
+**负载均衡**：桥不是新的调用通道，它就是 `CloudHttpClient` 的一次普通调用——
+`discovery.getInstances(mapping)` → `loadBalancer.choose(...)`（默认轮询；
+weighted/zone/canary 由应用或适配器 `.primary()` 替换），**每个传输尝试重新
+选实例**，所以重试不会反复砸同一个死端点；熔断/限流按 mapping 名分组，
+`@Idempotent` 决定模糊结果是否重放（§6），`InvocationContext` 照常注入出站头。
+
+**桥拿得到什么**：`CallRequest(topic, args, method)`（§5）。带 `method` 是为了让
+`@Idempotent` 继续生效——重放安全是**消费方**的裁定（§6 幂等门），只有消费方
+接口知道，桥必须把这个裁定转给 `RemoteCaller`。裸调用 `bus.call(topic, args)`
+没有接口方法，按非幂等处理（与今天一致）。
+
+**边界（有意不透明化的部分）**：
+
+- 桥仍然是一次普通 cloud RPC：传输超时、mTLS、重试/熔断/限流、tracing 全部
+  沿用 `freeway.cloud.rpc.*` 与韧性三件套，**不新增第二套治理旋钮**。
+- `bus.call(topic, args, timeout)` 的 timeout 仍是**调用方的耐心**（本地/远端
+  一视同仁，语义不变）；需要**每调用端到端预算**时用显式原语
+  `RemoteCaller.invoke(..., timeout, idempotent)`，桥这一跳的预算由传输层
+  `request-timeout` 决定。
+- 本地有 handler 时调用永不出进程（§0 理由 4）：事务内联与 Throwable 原样传播
+  在进程内完整保留，只有真的跨进程时才换成 §6 的错误映射。
+- `CallBus.handles(topic)` 仍然只回答"**本地**有没有 handler"——server 面的
+  门禁（§3.2）不会因为装了桥就放行一个本机不存在的 mapping。
+- 桥只处理"本地没人接"的调用，因此**不做转发/中继**：一个既没导出该 mapping
+  又没实现它的节点不会变成二传手。
+
+**`RemoteCaller` 保留为显式原语**：点名服务、每调用预算、显式幂等开关、裸
+`invoke` —— 需要精确控制那一次远程调用时用它，桥内部也用它。
+`RemoteProxyFactory` 删除（破坏性）：它的三个能力各有归处——本地优先 = 桥本身，
+`serviceId` = mapping 名即地址（§3.2），`mode`/`timeout` = 上面两条边界。
+
+**被否掉的替代方案**：用既有的 `advise(...)` 装远端回落（ioc 零改动）。
+不成立有三条：advice 的 `CallChain` 只有 topic/payload，拿不到接口方法，
+`@Idempotent` 会静默失效；`dead` 计数会把桥已服务的调用记成 dead；
+advice 的注册顺序决定它包住谁，"应用的 tracing advice 与桥谁在外层"没有稳定答案。
+缝要开在**解析**上，不是**环绕**上。
+
+## 4. 配置键
 
 v1 实现**未引入**本节早期草案中的 `rpc.remote.enabled` /
 `remote.path-prefix` / `remote.serialization` 键：导出面由显式的
@@ -237,16 +332,37 @@ JSON。沿用既有的 `rpc.connect-timeout` / `rpc.request-timeout` /
 `rpc.tls.*` / 韧性三件套，**不新增超时或 TLS 键**——远程 CallBus 就是
 一次普通 cloud RPC 调用，不该有自己的第二套治理旋钮。
 
-## 5. 对 freeway-ioc 的最小请求
+**v3 同样不新增键**：寻址由声明（`RpcExport` → 身份注册）与约定（mapping 名即
+地址）给出，不引入 `rpc.peer.*` 之类的映射表——多一个键就多一份"两个地方都要改"
+的负担，而它表达的正是导出声明已经表达过的事实。
 
-**零 API 变更**。需要确认的两点（均为现状核查而非改动）：
 
-1. `CallBus.handles(String)` 已公开，足够做 server 端的
-   "这个 mapping 是否有该方法" 判定。
-2. `targets` map 的遍历面（如果 server 端想做 capability 枚举）
-   目前是 private —— v1 不暴露枚举，server 端严格按用户声明的
-   mapping 工作，问题闭环。（若将来需要，走 ioc 自己的演进，
-   不在 cloud 里求包私有漏洞。）
+## 5. 对 freeway-ioc 的请求（v3：一个缝）
+
+v1/v2 是"零 API 变更"：远端化全在 cloud 侧，应用自己组装 `RemoteProxyFactory`。
+v3 把这一步收进框架，因此需要**一个与传输无关的缝**——它不含网络、序列化或
+发现知识，只回答"本进程服务不了的调用交给谁"：
+
+1. **`CallRequest(String topic, List<Object> args, Method method)`**（新，ioc 顶层）
+   —— 在飞的调用。`method` 是 consumer 接口方法（裸调用为 null），
+   `returnType()` 由它派生（裸调用 `Object.class`）；不做 `Method` 之外的第二份
+   元数据副本。
+2. **`CallBridge`**（新，ioc 顶层 SPI）
+   ```java
+   Object call(CallRequest call) throws Throwable;   // 抛 DeadCallException 表示不接
+   ```
+   以 `binder.contribute(CallBridge.class)` 贡献，`CallBus` **构造时消费**
+   （与 `EventBus` 消费 `EventSubscriber`/`EventSink` 同款，构造发生在所有模块
+   绑定之后）。**至多一个**：两个贡献启动失败并点名双方——路由歧义不静默择一。
+3. **`CallBus.CallChain.method()`**（新增访问器）：advice 与桥看到同一个调用，
+   于是 tracing/重试 advice 对"桥那一跳"同样生效，且不必知道桥的存在。
+4. **`CallBusStats.bridged`**（新增计数）：本地 handler 命中记 `served`，
+   桥服务记 `bridged`，两者都没有才是 `dead`——统计不再把已服务的调用记成
+   dead（"我的调用有多少出了进程"是装载桥之后第一个该能回答的问题）。
+
+不变：`register`/`unregister`/`handles`（server 面门禁依赖它，语义仍为"本地"）、
+`consumer`、`call` 三个公开重载（裸调用不接受 `Method`，桥按非幂等处理）、
+`advise`、`DeadCallException`、close 语义。
 
 ## 6. 错误映射总表（v1 实现）
 
@@ -258,6 +374,8 @@ JSON。沿用既有的 `rpc.connect-timeout` / `rpc.request-timeout` /
 | 4xx 非 2.3 结构 | `CloudException(status)` | no |
 | 回复体无法反序列化为 returnType | `CloudException(deserialization)` | no（确定性失败） |
 | 未知 `X-RPC-Version` | `CloudException(rejected)` | no |
+| **本地无 handler，mesh 无实例，方法有 default** | `DeadCallException` | —（代理回落 default；"可选能力缺席"的既有降级语义） |
+| **本地无 handler，mesh 无实例，方法无 default** | `CloudException.noInstance(mapping 名)` | no（部署态问题，重放无益） |
 
 `RemoteInvocationException extends RuntimeException`，字段：
 `String remoteClass`（对端异常类全名，accessor `remoteClass()`），
@@ -268,8 +386,14 @@ message 为对端消息。**不伪造原类型继承链**
 
 - 分布式事务 / saga 补偿：事务内联失效是不可消除的事实，框架不兜底。
   需要最终一致性的写操作走 EventBus（outbox）不走 RPC。
-- 方法级注解路由（`@RemoteService` 之类）：与 §10 反注解魔法的立场
-  一致，proxy 工厂的 builder 显式声明即可表达。
+- 方法级注解路由（`@RemoteService` / `@CloudClient` 之类）：与 §10 反注解魔法的
+  立场一致——mapping 名已在导出时声明并成为地址（§3.2），消费方按同一个名字
+  调用即可，不需要往业务接口上再挂一层路由注解。
+- **按 metadata 反查导出面**（"哪些实例带 mapping `user`"）：v3 用"导出即注册
+  身份"实现同一效果，且不需要 `ServiceDiscovery` 增加"枚举服务/按 metadata
+  查询"的能力（那会变成每个适配器都要实现的 SPI 扩张）。
+- 消费方的 mapping→服务映射表（`rpc.peer.*` 之类）：导出声明已经表达了这件事，
+  再加一张表就是"同一条规则的第二处定义"。
 - 二进制/多路复用协议（gRPC 桥）：JSON over HTTP/1.1|2 已够；
   待 profile 数据说不够再做。
 - 泛型返回类型的运行期重建：`Class<T>` 单层即可覆盖当前全部内部
@@ -285,8 +409,20 @@ message 为对端消息。**不伪造原类型继承链**
 | B | `RemoteCaller` + `RemoteInvocationException` + `of()` 工厂；consumer 侧单测（MockWebServer 层面） | cloud 1.3.10 |
 | C | `RpcExport` 导出申报 + `RpcEndpoint` server 面 + `RemoteProxyFactory` 双模式；契约测试（真实双容器互调） | B |
 | D | ext `freeway-http-*` 合入验证 + 文档进 DEVELOPER-GUIDE | C |
+| v3 | ioc 开缝（`CallRequest`/`CallBridge`/`CallChain.method()`/`bridged`）+ cloud `HttpCallBridge` + `ServiceDeclaration` 身份列表（导出即寻址）+ 删除 `RemoteProxyFactory`；双容器互调 + "本地命中不出进程" + "别名可被同类发现"契约测试 | C |
 
 > **状态（2026-08-27）**：A–D 全部完成，另含 `callAsync` 异步传输面与
 > 每调用超时的端到端接线（原 deferred 项）。CloudHttpClient 接口新增
 > `callAsync` 默认方法（default 桥接同步形式，Default 覆盖为 sendAsync
 > 真异步 socket 段），resilience 编排语义两种模式完全一致。
+>
+> **状态（2026-09-12，v2）**：导出改为**申报式**（`RpcExport` 数据贡献 +
+> 一条 `/rpc/{mapping}/{method}` 通配路由 + `.before(HTTP_SERVER)` 装配 hook），
+> `RemoteCaller` 由框架绑定；`RpcEndpoint.of(...)` 删除，独立组装改用
+> 容器无关的 `RpcEndpoint.route(export, bus, codec)`。
+>
+> **状态（2026-09-12，v3）**：consumer 侧收敛为 `CallBus` 的自然延伸——
+> §3.2/§3.3/§4/§5 即本次定稿内容：ioc 开一个与传输无关的缝（`CallBridge`），
+> cloud 贡献一个 HTTP 桥，**导出即寻址**（mapping 名就是被调地址，靠身份注册
+> 落到 discovery，不引入任何新的配置键），删除 `RemoteProxyFactory`。
+> 实施状态：**待实施**（设计评审通过后落地，落地时本行改为完成日期与验证结论）。
