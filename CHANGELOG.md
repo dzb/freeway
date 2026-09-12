@@ -27,6 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 破坏性：`RpcEndpoint.of(mapping, bus, codec[, propagateMessage])` 删除；独立组装（ext 引擎的
     `RouteIndex`、自定义挂载）改用容器无关的 `RpcEndpoint.route(RpcExport, CallBus, JsonCodec)`。
     freeway-ext 的 Undertow/Jetty RPC 集成测试同步迁移（各一行）；应用迁移见 DEVELOPER-GUIDE。
+- **路由重复规则统一（freeway-http，行为变更）** — WebSocket 路由此前在 `WebSocketIndex` 里按 path 去重，
+  规则是"显式路由覆盖组展开的同名路由"，而 HTTP 路由在 `RouteIndex` 里对同 method+path 直接
+  **启动失败**——同一个框架、同一棵 trie，两条相反的规则。现统一为**重复即失败**：组展开的与显式声明的
+  路由撞 method+path 时抛 `IllegalStateException`，不再有一方静默胜出（与"启动失败而不是静默跳过"的
+  既有原则、以及 RPC 导出重复 mapping 的处理一致）。`WebSocketIndex` 因此退化为薄适配——组先展开、
+  个体随后，一起进同一个 trie——少一个概念、少一处特例；两侧各加一个测试钉住碰撞行为。
+- **注解 `@Target` 只声明有读取方的位置（freeway-ioc，编译期收紧）** — `@Marker`/`@Primary` 的 METHOD、
+  `@Builtin` 的 TYPE 没有任何读取方（容器没有 producer-method 绑定；`@Builtin` 的落点是模块级
+  `@Marker(Builtin.class)` 或 `.marker(...)`）：写在方法上、类上此前**编译通过但静默无效**。现从
+  `@Target` 移除，误用变成编译错误；新增测试把三个注解的位置集合钉住，避免再长出无读取方的位置。
+- **`StaticAsset` 去掉只写不读的 meta 组件（freeway-http）** — 缓存头来自服务前的 `ResourceSource.meta()`
+  探测，`load()` 返回的 meta 从未被读取；`DirectoryResourceSource.load` 里"文件在探测与读取之间变了就
+  刷新元数据，好让 ETag/Last-Modified 与所发字节一致"的注释因此是假的（刷新出的 meta 立刻被丢弃）。
+  删掉该组件与刷新逻辑，代码不再承诺做不到的事。
+- **`CloudEventEnvelope.translate` 补齐参数文档（freeway-cloud）** — `topic` 在 CLASS 通道不参与组帧
+  （CloudEvents `type` 是事件类名），此前只被 `requireNonNull` 检查而没有任何说明；现按通道写明它的角色，
+  `@param` 覆盖全部参数。
 - **`CorsFilter` 收敛为单一构造器（freeway-http，破坏性）** — 两个 7 参构造器只差元素类型
   （`List<String>` 与逗号字符串），既是"同一条规则的两种说法"，也让传 `null` 的调用点直接编译不过
   （`new CorsFilter(false, null, null, null, null, null, false)` 两个重载都匹配——freeway-ext 的引擎
@@ -127,6 +144,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **topic 通道的 DeadEvent 不再自我触发（freeway-ioc）** — `dispatchEvent`（CLASS 通道）有"`DeadEvent`
+  本身不再产生 DeadEvent"的守卫，`dispatchTopic`（TOPIC 通道）没有：把一条 `DeadEvent` 当 topic 载荷发布
+  时，会先为它报一次"零订阅者"诊断，再为那条诊断报第二次。现在两个通道说同一条规则；新增测试同时钉住
+  "零订阅者的 topic 发布报一次诊断"与"发布诊断本身不再产生第二条"。
 - **框架扩展面的两处契约表述（freeway-cloud）** — `LoadBalancer` 的接口 javadoc 原写
   "Reads routing inputs (zone/weight/canary) from `ServiceInstance#metadata()`"，作为对
   **默认实现**的描述是假的（`LoadBalancerDefault` 是纯轮询，不读任何实例属性），作为对

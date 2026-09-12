@@ -927,6 +927,13 @@ The container instantiates each handler class once at startup via
 `container.create()`, injecting all `@Inject`-annotated constructor
 parameters. The same handler instance is reused for every request.
 
+Registration is strict: two routes with the same method and path fail startup
+with `Duplicate route detected`, whether the collision comes from two explicit
+routes, from a group and an explicit route, or from inside a group — nothing
+overrides silently. WebSocket routes follow the same rule, because both
+families share one `RouteIndex`: matching, path variables and specificity are
+identical, and so is the duplicate check.
+
 **Choosing lambda vs handler class:**
 
 | Style | When to use |
