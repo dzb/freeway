@@ -2194,6 +2194,11 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 
 ### Architecture Baseline
 
+Framework internals — module boundaries, `RuntimeHook` ordering, the config
+cascade mechanics, lifecycle rules — are in
+[ARCHITECTURE.md](ARCHITECTURE.md). What follows is the developer-facing
+summary.
+
 - **`Container`** is the IoC boundary. Created via `Freeway.create()` for tests, received as a parameter in `RuntimeHook` callbacks and provider lambdas. Container is not injectable — use `@Inject` for service dependencies, not for the container itself.
 - **`AppRuntime`** is the application boundary above `Container`. It owns config, profiles, runtime state, startup, shutdown, and runtime hooks. Access services through `app.get(Class)` rather than reaching for the Container.
 - Service ids are **plain strings** and are normalized internally by `ServiceIds`. There is no public `ServiceId` type.
@@ -2206,20 +2211,8 @@ For IoC tests, use `Freeway.create(...)`. For application integration tests, use
 - **`RuntimeHook`** provides start/stop extension points for modules. Ordered via `add(id, value).before()` / `.after()`. HTTP startup uses hook id `"freeway.http.server"` — no longer a side effect of resolving `WebServer`.
 - **`LoggerSource`** is the built-in logger service. Commons registers a JUL-backed SLF4J provider unconditionally via `META-INF/services`; at startup `LogBootstrap.ensureProvider()` probes the classpath for external SLF4J providers (Logback, Log4j, slf4j-simple) and pins the `slf4j.provider` system property so the external provider wins — the JUL provider is the fallback only when no external provider is present (or the user sets `-Dslf4j.provider` explicitly).
 
-### Naming Rules
+### Conventions
 
-- **Public interfaces** use the bare domain name: `Container`, `JsonCodec`, `RequestContext`.
-- **`XDefault`** is the framework's default implementation of a role the **outside can substitute** — an extension module or adapter binds its own implementation via `.primary()`, or an adapter picks the default as its baseline: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`, `ExchangeMetaDefault`, `FlowEngineDefault` (and the twelve cloud defaults).
-- **`XImpl`** marks the **absence of outside substitutability**: a container-internal assembly piece (`ContainerImpl`, `HttpContextImpl`, `LoggerSourceImpl`), or one of several implementations that genuinely coexist per use-site (`PooledConnectionImpl` vs a pool adapter's own connection type).
-- **`DefaultX`** form is avoided — `XDefault` keeps the interface name dominant.
-- **Package location is orthogonal to the suffix** — `internal` is part of Freeway: a `XDefault` may live there (`PoolDefault` in `db/internal` is substituted from outside via `.primary()`, which never references the default class), and an `XImpl` that other modules or adapters construct stays in the feature package. What `internal` means is "no stability promise" for callers that reference its classes across releases.
-- **Internal helpers** stay package-private where possible, e.g., `ServiceIds`.
-
-### Code Style
-
-- **JDK 25+.**
-- **No classpath scanning, no bytecode weaving.**
-- Core modules (`commons`, `ioc`) have **zero external dependencies** beyond SLF4J API. Adapter modules are the exception.
-- **Constructor injection** is preferred for framework internals. **Field injection** is acceptable for concise app code and config values.
-- Prefer **small, explicit APIs** over future-proof abstractions.
-- Keep concepts few: **Module**, **Service**, **Extension**, **Scope**, **Runtime**.
+Naming (`XDefault`/`XImpl`, package visibility), design rules, testing and the
+commit rules are canonical in [AGENTS.md](../AGENTS.md); this guide documents
+usage, not conventions.

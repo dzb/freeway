@@ -76,7 +76,7 @@ freeway-http 的用途：提供 WebServer/路由面——cloud 在其上贡献
 
 ### 3.1 ServiceId —— 统一服务身份（普通字符串）
 
-serviceId 是**普通字符串**，不设计为公开类型（遵循 CLAUDE.md：
+serviceId 是**普通字符串**，不设计为公开类型（遵循 ARCHITECTURE.md：
 "ServiceId is intentionally not a public type"——服务 id 就是字符串，
 由 ioc `ServiceIds.normalize` 内部归一化：trim + 非空守卫）。
 
@@ -729,7 +729,7 @@ public final class CloudConfigKeys {
    `internal/`（AGENTS.md 命名规则）——早期"默认实现在 `internal/`"
    的表述已修正（§1/§4/§8）。
 6. **测试框架**：根 pom `junit.version=6.1.3`（JUnit 6.x，非 5.12）。
-7. **`ServiceId` 不造公开类型**：遵循 CLAUDE.md（"ServiceId is
+7. **`ServiceId` 不造公开类型**：遵循 docs/ARCHITECTURE.md（"ServiceId is
    intentionally not a public type"）——serviceId 是普通字符串，守卫由
    ioc `ServiceIds.normalize`（绑定 id 隐式）承担，cloud 不引入独立
    `ServiceId` record（§3.1）。

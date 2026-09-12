@@ -3,7 +3,7 @@
 > 所有配置项采用点号分隔的层级键，统一在 `freeway.*` 命名空间下。
 > 配置来源优先级（低 → 高）：`application.properties` → `application.json` → `application-{profile}.properties` → `application-{profile}.json` → **工作目录/`freeway.config.file` 覆盖文件**（同名同序，文件系统整体高于类路径基线，可热重载） → **模块贡献的源**（如 cloud secret store，`order()=15`） → 环境变量（`FREEWAY_*`，`order()=10`） → **JVM 系统属性**（主类启动前 `-Dkey=value`，键原样，`order()=5`） → CLI 参数（`--key=value`，`order()=0`）。
 > 优先级由各来源声明的 `SymbolProvider.order()` 决定（升序查找、首个命中即胜），与模块安装顺序无关。
-> 详见 [CLAUDE.md](CLAUDE.md) 配置级联章节。
+> 详见 [ARCHITECTURE.md](ARCHITECTURE.md) 的配置级联章节。
 
 ---
 

@@ -4,7 +4,8 @@ Freeway is a JDK 25+ multi-module Maven project. Keep changes scoped, explicit,
 and convention over configuration. This file is the single home for repo-wide
 conventions: build, module layout, naming, design rules, testing, commit rules.
 Architecture boundaries and framework internals live in
-[CLAUDE.md](CLAUDE.md).
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — read it before changing module
+boundaries, hooks, config resolution or lifecycle.
 
 ## Build
 
@@ -120,8 +121,8 @@ comment.
 
 ## Further Reading
 
-- [CLAUDE.md](CLAUDE.md) — architecture boundaries, injection annotations,
-  config cascade mechanics, lifecycle notes.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries, injection
+  annotations, config cascade mechanics, lifecycle notes.
 - [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) — comprehensive usage
   guide for all modules.
 - [docs/freeway-config.md](docs/freeway-config.md) — every config key, by module.

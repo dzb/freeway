@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **文档：AGENTS.md 成为唯一约定源，架构下沉 docs/ARCHITECTURE.md（仓库根）** — `CLAUDE.md` 与
+  `AGENTS.md` 此前是两份自动加载的指导文件，内容互有重叠。现在分成三层，每层一个家：
+  **`AGENTS.md`**＝仓库级**约定**（构建、模块地图、命名、设计规则、测试、回归清单、提交规则、阅读清单）；
+  **`docs/ARCHITECTURE.md`**＝**架构与内部机制**（依赖图、各模块边界、注入注解、配置级联机制、生命周期），
+  README/AGENTS/指南按需指向它，**不自动加载**以免每次对话都带上；**`CLAUDE.md`** 只剩一行
+  `@AGENTS.md`（Claude Code 的原生 import，它不原生读 AGENTS.md），因此 Claude Code 与其他 agent 读到
+  的是同一份文件。配套清理：DEVELOPER-GUIDE 的 "Naming Rules"/"Code Style" 两节（同一批规则的第三份
+  副本）合并为一行指向 AGENTS.md 的指针，并修掉其中引用的不存在类型 `RequestContext`；设计文档与
+  README 中"遵循 CLAUDE.md"的引用改指 ARCHITECTURE.md/AGENTS.md。
+
 - **API 审计落实：失败判别、注册表心跳契约、网格 TLS（freeway-cloud）** — 三处 API 设计问题与一条
   成文规则：
   - **`CloudException.Kind`**：`noInstance`/`circuitOpen`/`rateLimited` 此前字段完全相同，只有 message
