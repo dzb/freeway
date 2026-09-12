@@ -21,6 +21,11 @@ public final class FrameHeader {
      *  larger than the peer's limit are a connection error at its end. */
     public static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
 
+    /** SETTINGS_MAX_FRAME_SIZE upper bound (RFC 9113 §6.5.2, 2^24-1): a larger
+     *  advertised value is a protocol error, so both the settings validation
+     *  and the send path clamp to it. */
+    public static final int MAX_FRAME_SIZE = 16_777_215;
+
     private final int len;
     private final FrameType type;
     private final FrameFlag.FlagSet flags;

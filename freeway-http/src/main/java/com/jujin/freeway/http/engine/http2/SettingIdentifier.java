@@ -22,7 +22,8 @@ enum SettingIdentifier {
             // decoder, where it would poison the dynamic-table state.
             case SETTINGS_HEADER_TABLE_SIZE -> v >= 0 && v <= 0xFFFFFFFFL;
             case SETTINGS_INITIAL_WINDOW_SIZE -> true;
-            case SETTINGS_MAX_FRAME_SIZE -> v >= 16384 && v <= 16777215;
+            case SETTINGS_MAX_FRAME_SIZE ->
+                v >= FrameHeader.DEFAULT_MAX_FRAME_SIZE && v <= FrameHeader.MAX_FRAME_SIZE;
             case SETTINGS_MAX_HEADER_LIST_SIZE -> v >= 0;
             case SETTINGS_ENABLE_PUSH -> v == 0 || v == 1;
             case SETTINGS_MAX_CONCURRENT_STREAMS -> v >= 0 && v <= 0x7FFFFFFF;

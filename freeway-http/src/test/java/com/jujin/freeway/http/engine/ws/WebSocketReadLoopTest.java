@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -228,10 +229,12 @@ class WebSocketReadLoopTest {
         // (blocking) stream must wake the loop: close() closes the input,
         // the blocked read throws, and readLoop returns instead of hanging
         // until the peer responds.
+        var parked = new CountDownLatch(1);
         var blockingIn = new InputStream() {
             volatile boolean closed;
             @Override
             public int read() throws IOException {
+                parked.countDown();
                 while (!closed) {
                     try {
                         Thread.sleep(10);
@@ -257,8 +260,10 @@ class WebSocketReadLoopTest {
             loopDone.set(true);
         });
 
-        // Give the loop time to park on read(), then close from "another thread".
-        Thread.sleep(100);
+        // Wait for the loop to actually park on read() before closing from
+        // "another thread" — a sleep here would only guess at the interleaving.
+        assertTrue(parked.await(2, java.util.concurrent.TimeUnit.SECONDS),
+            "the read loop must reach its blocking read");
         session.close(1000, "server shutdown");
         loop.join(3000);
         assertTrue(loopDone.get(),
@@ -267,9 +272,11 @@ class WebSocketReadLoopTest {
 
     @Test
     void serverCloseNotifiesListenerWithItsCloseCode() throws Exception {
+        var parked = new CountDownLatch(1);
         var blockingIn = new InputStream() {
             volatile boolean closed;
             @Override public int read() throws IOException {
+                parked.countDown();
                 while (!closed) Thread.onSpinWait();
                 throw new IOException("closed");
             }
@@ -285,7 +292,8 @@ class WebSocketReadLoopTest {
                     closeCode.set(code);
                 }
             }));
-        Thread.sleep(200);
+        assertTrue(parked.await(2, java.util.concurrent.TimeUnit.SECONDS),
+            "the read loop must reach its blocking read");
         session.close(1001, "shutdown");
         loop.join(3000);
         assertEquals(1001, closeCode.get());

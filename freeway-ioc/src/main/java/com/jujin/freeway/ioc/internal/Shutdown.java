@@ -47,9 +47,9 @@ final class Shutdown {
      */
     RuntimeException close() {
         RuntimeException failure = drainRemaining(null);
-        // The message services are the last things to close: every
+        // The message service is the last thing to close: every
         // @PreDestroy/close callback has already run, so no code can publish
-        // into a closed event bus or call into a closed call bus.
+        // into a closed bus.
         for (AutoCloseable service : deferredMessageServices) {
             try {
                 service.close();

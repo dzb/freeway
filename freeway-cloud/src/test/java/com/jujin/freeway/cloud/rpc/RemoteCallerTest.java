@@ -13,11 +13,9 @@ import com.jujin.freeway.cloud.CloudModule;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
-import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.ioc.Binder;
-import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -174,6 +172,19 @@ class RemoteCallerTest {
         CloudException ex = assertThrows(CloudException.class, () ->
             caller.invoke("target", "user", "charge", List.of("9"), String.class));
         assertEquals(404, ex.status());
+    }
+
+    @Test
+    void wrongArgumentCountIsARejectedCallNotAServerError() {
+        // The wire carries a positional array, so arity is part of the contract:
+        // a mismatch is a bad call (400, deterministic, never replayed), not a
+        // handler failure to be retried or a 500 to be investigated as an outage.
+        CloudException ex = assertThrows(CloudException.class, () ->
+            caller.invoke("target", "user", "add", List.of(1), Integer.class));
+        assertFalse(ex.retryable(), "a malformed call is deterministic");
+        assertEquals(400, ex.status());
+        assertTrue(ex.getCause() instanceof RemoteInvocationException,
+            "the failing class still crosses, so the caller can see what was wrong");
     }
 
     @Test

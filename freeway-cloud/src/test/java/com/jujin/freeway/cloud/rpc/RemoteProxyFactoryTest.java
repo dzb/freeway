@@ -30,7 +30,7 @@ class RemoteProxyFactoryTest {
 
     @Test
     void declarationIsValidatedUpFront() {
-        RemoteCaller caller = new RemoteCaller(null, null);
+        RemoteCaller caller = new RemoteCaller(stubClient(), new JsonCodecDefault());
         assertThrows(NullPointerException.class, () -> RemoteProxyFactory.of(null));
         assertThrows(IllegalStateException.class, () ->
             RemoteProxyFactory.of(caller).mapping("x").build(EchoApi.class));   // no serviceId
@@ -49,8 +49,7 @@ class RemoteProxyFactoryTest {
         List<Boolean> seen = new ArrayList<>();
         CloudHttpClient recording = (serviceId, request) -> {
             seen.add(request.idempotent());
-            return new CloudResponse(200, Map.of(),
-                "\"ok\"".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return ok();
         };
         RemoteCaller caller = new RemoteCaller(recording, new JsonCodecDefault());
 
@@ -70,9 +69,19 @@ class RemoteProxyFactoryTest {
         assertEquals(List.of(true), seen, "a type-level marker covers every method");
     }
 
+    /** A transport that answers {@code "ok"} for every call. */
+    private static CloudHttpClient stubClient() {
+        return (serviceId, request) -> ok();
+    }
+
+    private static CloudResponse ok() {
+        return new CloudResponse(200, Map.of(),
+            "\"ok\"".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     @Test
     void objectMethodsAreAnsweredLocally() {
-        RemoteCaller caller = new RemoteCaller(null, null);
+        RemoteCaller caller = new RemoteCaller(stubClient(), new JsonCodecDefault());
         EchoApi api = RemoteProxyFactory.of(caller)
             .serviceId("s").mapping("m").build(EchoApi.class);
 

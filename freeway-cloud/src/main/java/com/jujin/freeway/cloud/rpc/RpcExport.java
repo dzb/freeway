@@ -11,8 +11,8 @@ import java.util.Objects;
  * application declares here are reachable — nothing is discovered from the
  * container or the classpath, and a mapping that was not declared answers 404.
  * That is the design's security posture (see
- * {@code docs/freeway-remote-callbus-design.md} §3.2), and the declaration is
- * the whole configuration: no route, no bus, no codec is named here.
+ * {@code docs/freeway-cloud-rpc-design.md} §3.2), and the declaration is
+ * the whole configuration: no route, no codec, no handler instance is named here.
  *
  * <pre>{@code
  * binder.bind(UserHandlers.class);                              // container-managed, injected

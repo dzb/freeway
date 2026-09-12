@@ -1,7 +1,6 @@
 package com.jujin.freeway.ioc.internal;
 
 import com.jujin.freeway.ioc.AmbiguousBindingException;
-import com.jujin.freeway.ioc.MissingBindingException;
 
 import java.util.ArrayList;
 import java.util.Deque;

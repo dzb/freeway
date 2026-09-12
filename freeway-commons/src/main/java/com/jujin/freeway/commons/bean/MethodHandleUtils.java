@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Caching utility for {@link MethodHandle}, {@link VarHandle}, and
  * constructor handles — the framework-wide home for cached reflective
  * invocation, usable from any module (the IoC container's AOP and lifecycle
- * callbacks, the call bus's handler dispatch, remote proxies, ...).
+ * callbacks, HTTP route handlers, remote invocation dispatch, ...).
  *
  * <p>All handles are lazily created and cached in {@link ClassValue}-keyed
  * concurrent maps: reads are lock-free on every path (including the AOP
@@ -67,7 +67,7 @@ public final class MethodHandleUtils {
     private MethodHandleUtils() {
     }
 
-    // -- public: method + invoke (called by ioc) --
+    // -- public: handles and invocation for reflection-based dispatch --
 
     /**
      * Returns a cached MethodHandle for the given method.

@@ -220,9 +220,6 @@ class RpcExportWiringTest {
                             container.get(WebServer.class);
                         }
 
-                        @Override
-                        public void stop(Container container) {
-                        }
                     })
                     .before(CloudHooks.RPC);
             }

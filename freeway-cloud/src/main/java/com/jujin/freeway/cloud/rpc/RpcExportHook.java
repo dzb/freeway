@@ -25,7 +25,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Handlers are resolved from the container, so they are injected and their
  * lifecycle is the container's; they are invoked directly, without an
- * intermediate registry that could disagree with what was declared.
+ * intermediate registry that could disagree with what was declared. There is
+ * nothing to undo on stop for the same reason, so the default no-op stands.
  */
 final class RpcExportHook implements RuntimeHook {
 
@@ -55,12 +56,6 @@ final class RpcExportHook implements RuntimeHook {
 
         this.targets = Map.copyOf(declared);
         this.codec = json;
-    }
-
-    @Override
-    public void stop(Container container) {
-        // Handlers are container-managed services; the container owns their
-        // lifecycle, so there is nothing to undo here.
     }
 
     /**

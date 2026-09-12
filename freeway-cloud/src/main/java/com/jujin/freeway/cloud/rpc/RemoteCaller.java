@@ -5,12 +5,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Consumer-side transport for remote invocation: turns a
  * {@code mapping.method} call into one request over {@link CloudHttpClient}.
  *
- * <p>Wire shape (see docs/freeway-remote-callbus-design.md §2):
+ * <p>Wire shape (see docs/freeway-cloud-rpc-design.md §2):
  * {@code POST /rpc/{mapping}/{method}} with the positional arguments as a
  * JSON array. A 200 carries the return value as JSON; business failures of
  * the remote handler map to 4xx plus the {@code X-RPC-Exception} /
@@ -43,8 +44,8 @@ public final class RemoteCaller {
     private final JsonCodec codec;
 
     public RemoteCaller(CloudHttpClient http, JsonCodec codec) {
-        this.http = http;
-        this.codec = codec;
+        this.http = Objects.requireNonNull(http, "http");
+        this.codec = Objects.requireNonNull(codec, "codec");
     }
 
     /**

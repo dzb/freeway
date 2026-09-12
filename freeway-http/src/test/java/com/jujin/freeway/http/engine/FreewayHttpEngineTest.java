@@ -3,9 +3,7 @@ package com.jujin.freeway.http.engine;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -592,29 +590,6 @@ class FreewayHttpEngineTest {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
         }
-    }
-
-    private static void readFully(InputStream in, byte[] buffer) throws IOException {
-        int off = 0;
-        while (off < buffer.length) {
-            int n = in.read(buffer, off, buffer.length - off);
-            if (n < 0) {
-                throw new IOException(
-                    "EOF after " + off + " of " + buffer.length + " bytes");
-            }
-            off += n;
-        }
-    }
-
-    /** Like {@link #readFully} but returns false on EOF instead of throwing. */
-    private static boolean readFullyOrEof(InputStream in, byte[] buffer) throws IOException {
-        int off = 0;
-        while (off < buffer.length) {
-            int n = in.read(buffer, off, buffer.length - off);
-            if (n < 0) return false;
-            off += n;
-        }
-        return true;
     }
 
     private static Path generateKeyStore(Path dir) throws Exception {

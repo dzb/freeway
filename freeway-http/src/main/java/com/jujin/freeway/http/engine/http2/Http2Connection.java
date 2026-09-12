@@ -3,7 +3,6 @@ package com.jujin.freeway.http.engine.http2;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -598,7 +597,7 @@ public final class Http2Connection {
                 // SETTINGS can unblock writers without a WINDOW_UPDATE.
                 unparkWindowWaiters();
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_MAX_FRAME_SIZE) {
-                peerMaxFrameSize = (int) Math.min(parameter.value, 16_777_215); // RFC max
+                peerMaxFrameSize = (int) Math.min(parameter.value, FrameHeader.MAX_FRAME_SIZE);
             } else if (parameter.identifier == SettingIdentifier.SETTINGS_HEADER_TABLE_SIZE) {
                 // RFC 7540 §6.5.2: SETTINGS_HEADER_TABLE_SIZE is a 32-bit
                 // unsigned value. The wire parse is unsigned (a wire
