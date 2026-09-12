@@ -2,7 +2,9 @@ package com.jujin.freeway.cloud.observe;
 
 import com.jujin.freeway.cloud.annotation.Local;
 import com.jujin.freeway.cloud.internal.MetricsHandler;
+import com.jujin.freeway.cloud.internal.TracingFilter;
 import com.jujin.freeway.commons.metrics.Metrics;
+import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.Route;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -58,5 +60,9 @@ public final class CloudObserveModule implements ModuleEx {
         b.bind(MetricsSnapshot.class)
             .to((Container container) -> container.get(MetricsDefault.class));
         b.contribute(Route.class).add("metrics", Route.get("/metrics", MetricsHandler.class));
+        // Inbound server spans: this module owns the Tracer, so the filter is
+        // contributed here rather than by the context module (which must stay
+        // installable without a tracer).
+        b.contribute(HttpFilter.class).add(TracingFilter.class);
     }
 }

@@ -8,6 +8,7 @@ import com.jujin.freeway.cloud.internal.DiscoveryConnectionHook;
 import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
 import com.jujin.freeway.cloud.internal.RegistryHealthContributor;
 import com.jujin.freeway.cloud.internal.RegistryLifecycleHook;
+import com.jujin.freeway.cloud.internal.RegistryRenewal;
 import com.jujin.freeway.cloud.internal.RegistryStore;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
@@ -52,6 +53,12 @@ public final class CloudDiscoveryModule implements ModuleEx {
             .to((Container container) -> new ActiveBindingProbe(container))
             ;
 
+        // Shared heartbeat state: the hook publishes it, the readiness
+        // contributor reads it. The module assembles both and hands them the
+        // same instance, so neither collaborator needs the other.
+        RegistryRenewal renewal = new RegistryRenewal();
+        b.bind(RegistryRenewal.class).to(container -> renewal);
+
         b.contribute(ServiceDeclaration.class).add("http", new HttpServiceDeclaration());
         // Readiness contributor for /health/ready — belongs here, not in the
         // health module: it probes the registry store, so standalone health
@@ -62,7 +69,7 @@ public final class CloudDiscoveryModule implements ModuleEx {
             .add(CloudHooks.DISCOVERY, new DiscoveryConnectionHook())
             .before(CloudHooks.HTTP_SERVER);
         b.contribute(RuntimeHook.class)
-            .add(CloudHooks.REGISTRY, new RegistryLifecycleHook())
+            .add(CloudHooks.REGISTRY, new RegistryLifecycleHook(renewal))
             .after(CloudHooks.HTTP_SERVER);
     }
 }

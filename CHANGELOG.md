@@ -158,6 +158,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **入站请求有 span 了，traceId 也进日志（freeway-cloud）** — 此前模块内唯一的 span 是出站调用：
+  入站请求只做上下文提取，于是被调方在链路里是一段平线，且**入站日志没有任何 traceId** 可关联。
+  现在 `TracingFilter`（由 `CloudObserveModule` 贡献，因为它拥有 `Tracer`）为每个应用请求开一个
+  server span，并把它**绑定为请求作用域**——这点是关键：`InvocationContext.current()` 优先
+  scoped 层，只写 ambient 的 span 处理器看不见，于是出站传播会跳过本跳。为此 `Tracer.Span`
+  新增 `context()`（span 建立的调用上下文，默认 null = 该 tracer 不拥有上下文），
+  `TracerDefault` 返回它已算好的子上下文（含继承的 principal/baggage）。框架自身的探针与
+  `/metrics` 不计入追踪。同时补上 W3C `tracestate` 的透传（`TraceContext` 增加 `traceState` 组件，
+  构造时严格校验——CR/LF 注入与超长值直接拒绝；入站侧宽容：非法即丢弃并 debug 记录）。
+- **readiness 不再恒真，且丢失的注册会自愈（freeway-cloud）** — 本地注册表的 readiness
+  contributor 此前无条件返回健康，`/health/ready` 在默认安装下恒 200；而 `RegistryStore.renew`
+  在条目已不存在时静默无操作，被淘汰的实例会一直"运行但不可见"直到重启。现在心跳除了续租还会
+  用**消费者同款的发现查询**校验自身条目是否仍在册，不在则重新注册（WARN 记录），并把结果发布到
+  `RegistryRenewal`：连续 {@code 3} 次（默认约 30s）心跳失败后 `/health/ready` 返回 503 并给出
+  "heartbeat failed N times in a row"。未注册任何实例的进程报 `not registered`，不再给空洞的
+  all-clear。
+- **密钥文件轮换无需重启（freeway-cloud）** — `SecretStoreDefault` 此前只在构造时读一次
+  （`reload()` 私有），k8s 换卷或改写 properties 后进程一直用旧密钥。现在按 size + **全精度
+  mtime** 变化重读，节流 1s；读失败或文件瞬时消失（projected volume 的原子换卷）**保留已加载的
+  值**并告警，绝不会把在用密钥清空。设计文档此前声称的"显式 reload()"并不存在，已同步为真实语义。
+- **网格 token 走明文 ws:// 时启动告警（freeway-cloud）** — `event.token` 在 hello 里明文过线，
+  其保护来自传输；`registry.service-scheme` 非 https 时拨号是 `ws://`。sidecar/mesh 终止 mTLS
+  的部署里这是正常拓扑，因此**不拒绝**，而是启动时响亮告警一次：要么改成 https（wss://），
+  要么确认它在 mesh/可信网络内。
+
 - **topic 通道的 DeadEvent 不再自我触发（freeway-ioc）** — `dispatchEvent`（CLASS 通道）有"`DeadEvent`
   本身不再产生 DeadEvent"的守卫，`dispatchTopic`（TOPIC 通道）没有：把一条 `DeadEvent` 当 topic 载荷发布
   时，会先为它报一次"零订阅者"诊断，再为那条诊断报第二次。现在两个通道说同一条规则；新增测试同时钉住

@@ -7,6 +7,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -48,6 +49,37 @@ class TraceContextTest {
             () -> new TraceContext("abc", "1234567890abcdef", null), "traceId must be 32 hex");
         assertThrows(IllegalArgumentException.class,
             () -> new TraceContext("a".repeat(32), "short", null), "spanId must be 16 hex");
+    }
+
+    @Test
+    void traceStateTravelsWithTheChildAndThroughConstruction() {
+        TraceContext parent = TraceContext.root().withTraceState("vendor=abc");
+        assertEquals("vendor=abc", parent.traceState());
+
+        // W3C: tracestate belongs to the trace, not to one span.
+        assertEquals("vendor=abc", parent.child().traceState());
+        assertEquals(parent.traceId(), parent.child().traceId());
+
+        // Omitted state is the empty string, never null.
+        assertEquals("", TraceContext.root().traceState());
+        assertEquals("", new TraceContext(parent.traceId(), parent.spanId(), null).traceState());
+    }
+
+    @Test
+    void traceStateThatCouldBreakAHeaderIsRejected() {
+        // A CR/LF here would be header injection on the next hop; an oversized
+        // value is a protocol violation. Local construction is strict, inbound
+        // extraction drops instead (TracePropagator).
+        assertThrows(IllegalArgumentException.class,
+            () -> TraceContext.root().withTraceState("vendor=abc\r\nX-Evil: 1"));
+        assertThrows(IllegalArgumentException.class,
+            () -> TraceContext.root().withTraceState("x".repeat(513)));
+        assertThrows(IllegalArgumentException.class,
+            () -> TraceContext.root().withTraceState("vendor=\u00e9"));
+
+        assertTrue(TraceContext.isValidTraceState(""));
+        assertTrue(TraceContext.isValidTraceState("vendor=abc,v=1"));
+        assertFalse(TraceContext.isValidTraceState("bad\u0007"));
     }
 
     @Test

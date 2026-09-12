@@ -41,6 +41,22 @@ public interface Tracer {
             }
         };
 
+        /**
+         * The invocation context this span establishes for its scope: the same
+         * trace, this span as the current span, and the principal/baggage the
+         * tracer inherited. A caller that owns a scope (the inbound tracing
+         * filter, a background job) binds it with
+         * {@link com.jujin.freeway.cloud.context.InvocationContext#runWith} so
+         * everything inside that scope — including outbound propagation —
+         * continues <em>this</em> span rather than its parent.
+         *
+         * @return the context to bind, or {@code null} when the span owns none
+         *         (a no-op tracer)
+         */
+        default com.jujin.freeway.cloud.context.InvocationContext context() {
+            return null;
+        }
+
         void addTag(String key, String value);
 
         void addError(Throwable t);

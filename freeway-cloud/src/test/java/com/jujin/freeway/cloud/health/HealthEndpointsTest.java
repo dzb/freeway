@@ -52,6 +52,9 @@ class HealthEndpointsTest {
             assertTrue(ready.body().contains("\"cloud\""));
             assertTrue(ready.body().contains("registry"),
                 "the built-in registry contributor must be aggregated");
+            assertTrue(ready.body().contains("instances="),
+                "readiness reports what the registry actually holds, not a constant: "
+                    + ready.body());
         }
     }
 

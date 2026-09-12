@@ -1742,11 +1742,11 @@ the only file that knows which one it is (see *Remote invocation* below).
 | Remote invocation (outbound) | `RemoteProxyFactory` for a typed client, `RemoteCaller.invoke(...)` for a direct call, `CloudHttpClient` for plain HTTP against a peer that is not a Freeway RPC provider | `freeway.cloud.rpc.*` |
 | Export (inbound) | an `RpcExport` declaration | see *Remote invocation* |
 | Event mesh | add `CloudEventModule`; `contribute(EventSubscriber.class)` to subscribe, `EventSink.class` for another transport | `freeway.cloud.event.*` |
-| Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot` for a scrape-ready view | `GET /metrics` |
+| Observability | `@Inject Metrics` (counters/timers/gauges), `@Inject Tracer` (`start(name)`), `@Inject MetricsSnapshot` for a scrape-ready view. Every application request runs inside a server span and its logs carry that span's `traceId`; `traceparent` + `tracestate` propagate in both directions; probes and `/metrics` are not traced | `GET /metrics` |
 | Resilience | the defaults bind and the RPC client uses them; `@Inject Retryer` / `CircuitBreaker` / `RateLimiter`, or `.primary()` to replace one | `freeway.cloud.rpc.resilience=auto\|off` and the fine-grained keys |
-| Health | `contribute(CloudHealthContributor.class)` for a readiness check of your own dependency | `GET /health/live`, `GET /health/ready` (plus the HTTP module's `/healthz`) |
+| Health | `contribute(CloudHealthContributor.class)` for a readiness check of your own dependency. The built-in registry check reports what the heartbeat verified (and re-registers an entry the registry lost), so readiness is not a constant | `GET /health/live`, `GET /health/ready` (plus the HTTP module's `/healthz`) |
 | Context propagation | `InvocationContext.current()` reads baggage/principal/trace; nothing to wire | inbound filter + outbound header injection |
-| Secrets | `@Inject SecretStore`; secrets are also symbol-resolvable, so `@Symbol("db.password")` finds them | `freeway.cloud.secret.*` (system properties only) |
+| Secrets | `@Inject SecretStore`; secrets are also symbol-resolvable, so `@Symbol("db.password")` finds them. The file is re-read when it changes (rotation without a restart; unreadable files keep the previous values) | `freeway.cloud.secret.*` (system properties only) |
 | Object storage | `@Inject ObjectStorage`; `ObjectStoredEvent` / `ObjectDeletedEvent` are published on the bus | `freeway.cloud.storage.*` |
 
 Every capability has an in-process default (local registry, env/file secrets,

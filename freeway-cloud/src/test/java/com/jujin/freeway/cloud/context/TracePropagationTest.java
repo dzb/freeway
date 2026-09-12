@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * W3C traceparent end-to-end: inbound extraction binds the context for the
@@ -48,6 +49,8 @@ class TracePropagationTest {
         System.clearProperty(HttpConfigKeys.SERVER_PORT);
     }
 
+    private static final String TRACE_STATE = "vendor=t61rcWkgMzE,other=1";
+
     @Test
     void inboundExtractionAndOutboundInjectionCarryTheSameTrace() throws Exception {
         try (AppRuntime app = FreewayApp.run(
@@ -62,19 +65,28 @@ class TracePropagationTest {
                     URI.create("http://127.0.0.1:" + app.get(com.jujin.freeway.http.WebServer.class).port()
                         + "/api/call"))
                 .header("traceparent", "00-" + TRACE_ID + "-" + SPAN_ID + "-01")
+                .header("tracestate", TRACE_STATE)
                 .GET()
                 .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             assertEquals(200, response.statusCode());
 
-            // Inbound: the entry handler saw the extracted trace.
+            // Inbound: the request runs under a server span that continues the
+            // caller's trace — same traceId, the caller's span as its parent,
+            // and a span id of its own (the callee hop, not a copy).
             TraceContext entry = TraceModule.ENTRY_SEEN.get();
             assertEquals(TRACE_ID, entry.traceId());
-            assertEquals(SPAN_ID, entry.spanId());
+            assertEquals(SPAN_ID, entry.parentSpanId());
+            assertNotEquals(SPAN_ID, entry.spanId());
+            assertEquals(TRACE_STATE, entry.traceState(),
+                "vendor trace state must survive the hop, not be dropped");
 
             // Outbound: the callee handler saw the same trace id (re-injected).
             TraceContext callee = TraceModule.CALLEE_SEEN.get();
             assertEquals(TRACE_ID, callee.traceId());
+            assertEquals(entry.spanId(), callee.parentSpanId(),
+                "the outbound call is a child of the server span");
+            assertEquals(TRACE_STATE, callee.traceState());
         }
     }
 

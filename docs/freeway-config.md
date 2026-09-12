@@ -440,7 +440,7 @@ OS/JDK 默认或无限制，空表示 JDK 默认。下面各表内已按此顺�
 | 键 | 类型 | 默认值 | 必填 | 说明 |
 |----|------|--------|------|------|
 | `freeway.cloud.secret.type` | String | *(空)* | 否 | 密钥后端类型。空（或 `local`）= 内置 env/文件实现；外部后端（Vault 等）由适配器 `.primary()` 接入（freeway-ext 未交付）——配了外部值而本地实现仍生效时启动告警一次 |
-| `freeway.cloud.secret.file` | String | `application-secrets.properties` | 否 | 密钥文件路径（key=value 格式）。**仅 `-D` 系统属性生效**：密钥提供方参与符号解析，其自身配置不能经该链读取，写进配置文件/环境变量无效 |
+| `freeway.cloud.secret.file` | String | `application-secrets.properties` | 否 | 密钥文件路径（key=value 格式）。**仅 `-D` 系统属性生效**：密钥提供方参与符号解析，其自身配置不能经该链读取，写进配置文件/环境变量无效。文件被替换（size/mtime 变化）时**无需重启**即生效（最多 1s 节流）；读失败或文件瞬时消失时保留已加载的值并告警 |
 | `freeway.cloud.secret.keys` | String | *(空)* | 否 | 允许从密钥存储解析的符号名白名单（逗号分隔）。**仅 `-D` 系统属性生效**（同上）。留空即"对任意符号名查环境变量"的锋利默认，启动时打 WARN |
 
 #### 对象存储

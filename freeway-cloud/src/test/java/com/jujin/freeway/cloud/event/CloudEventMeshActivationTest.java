@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -24,6 +25,17 @@ import org.junit.jupiter.api.Test;
  * startup naming the key.
  */
 class CloudEventMeshActivationTest {
+
+    @Test
+    void aTokenOverCleartextWebSocketIsFlaggedButNotRefused() {
+        // Refusing would break the sidecar topology, where this process speaks
+        // ws:// to a mesh that terminates mTLS — so the posture is surfaced
+        // instead of enforced.
+        assertTrue(CloudEventLifecycleHook.tokenOverCleartext("ws", "s3cret"));
+        assertFalse(CloudEventLifecycleHook.tokenOverCleartext("wss", "s3cret"));
+        assertFalse(CloudEventLifecycleHook.tokenOverCleartext("ws", ""));
+        assertFalse(CloudEventLifecycleHook.tokenOverCleartext("ws", null));
+    }
 
     private AppRuntime nodeA;
     private AppRuntime nodeB;

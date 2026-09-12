@@ -109,6 +109,14 @@ stream:
 - 不满足 CE 约束（id/type/source 缺失）的事件出站即失败并记日志，
   不静默丢弃。
 
+### 2.4 网格鉴权与传输
+
+握手 hello 携带 `event.token`；对端比对失败以 WS 1008 关闭连接。token 本身
+**明文过线**，因此它的保护来自传输：`registry.service-scheme=https` 时拨号用
+`wss://`，否则是 `ws://`。在 sidecar/mesh 终止 mTLS 的部署里 `ws://` 是正常
+拓扑（token 由 mesh 加密），所以框架**不拒绝**这种组合，而是在启动时响亮告警
+一次，提示"要么把 scheme 改成 https，要么确认它在 mesh/可信网络内"。
+
 ### 2.3 心跳与保活
 
 v1 未实现应用层心跳（设计里预留过 `keepalive` 键，未落地——`freeway.cloud.event.*` 中没有这个键）：

@@ -358,7 +358,7 @@ rateLimiter.tryAcquire()
 | 维度 | SecretStore（现存） | CloudConfig（已删，§3.5） |
 |---|---|---|
 | `asMap()` | **禁止**（密钥不可批量暴露） | — |
-| 缓存策略 | **启动读入一次**（本地实现构造时读文件后缓存；SPI 无 `reload()`）；轮换需重启进程，或由自定义 `.primary()` 适配器提供 | — |
+| 缓存策略 | 启动读入 + **按文件 mtime/size 变化重读**（节流 1s；读失败或文件瞬时消失时保留旧值并告警，符合 k8s projected volume 的原子换卷）；SPI 无 `reload()`，远端后端（Vault 等）的租约/TTL 由自定义 `.primary()` 适配器自理 | — |
 | 默认值 | **禁止**（密钥必须显式配置） | — |
 | 适配器来源 | 本地：env（键大写、`.`→`_`）→ 密钥文件；外部后端由自定义 `.primary()` 接入，freeway-ext 未交付（§8） | — |
 

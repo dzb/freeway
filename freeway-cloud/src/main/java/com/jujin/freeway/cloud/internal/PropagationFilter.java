@@ -25,6 +25,13 @@ public final class PropagationFilter implements HttpFilter {
         this.propagators = List.copyOf(propagators);
     }
 
+    /** Outermost built-in filter: every later filter and handler must see the
+     *  inbound context. {@code TracingFilter} sits just inside it ({@code -105}). */
+    @Override
+    public int order() {
+        return -110;
+    }
+
     @Override
     public void doFilter(HttpContext ctx, RouteHandler next) throws Exception {
         Map<String, String> headers = flatten(ctx.headers());

@@ -148,6 +148,11 @@ public final class TracerDefault implements Tracer {
         }
 
         @Override
+        public InvocationContext context() {
+            return active.context();
+        }
+
+        @Override
         public void close() {
             if (durationNanos < 0) {
                 durationNanos = System.nanoTime() - startNanos;

@@ -123,6 +123,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         // actually enabled so a disabled module stays cheap.
         String registryScheme = symbols.resolve(SERVICE_SCHEME);
         String wsScheme = "https".equalsIgnoreCase(registryScheme) ? "wss" : "ws";
+        warnIfTokenOverCleartext(wsScheme, hub.token());
         connector = new PeerConnector(hub,
             Duration.ofMillis(symbols.resolve(CONNECT_TIMEOUT_MS)),
             wsScheme,
@@ -141,6 +142,26 @@ final class CloudEventLifecycleHook implements RuntimeHook {
      * mesh. Nothing set leaves the module inert — installing
      * CloudEventModule alone is never a side effect.
      */
+    /**
+     * A mesh token authenticates peers, so it must be encrypted in transit to
+     * mean anything. Dialing {@code ws://} with one configured is worth a loud
+     * startup warning — not a refusal: terminating TLS in a sidecar (a service
+     * mesh) is a normal deployment, and the token is then protected by the
+     * mesh's own mTLS even though this process speaks cleartext.
+     */
+    static boolean tokenOverCleartext(String scheme, String token) {
+        return token != null && !token.isBlank() && "ws".equalsIgnoreCase(scheme);
+    }
+
+    private void warnIfTokenOverCleartext(String scheme, String token) {
+        if (tokenOverCleartext(scheme, token)) {
+            LOG.warn("Event mesh token configured over cleartext {}:// — the token is only"
+                + " protected inside a service mesh or a trusted network; terminate TLS"
+                + " (freeway.cloud.registry.service-scheme=https for wss://) or remove the token",
+                scheme);
+        }
+    }
+
     private static boolean meshOn(String enabledRaw, List<String> peers) {
         return SymbolSpec.activated(CloudConfigKeys.EVENT_ENABLED, enabledRaw, !peers.isEmpty());
     }
