@@ -175,6 +175,43 @@ class RemoteCallerTest {
     }
 
     @Test
+    void failureKindsSeparateWhatTheSharedFlagsCannot() {
+        // No instance / circuit open / rate limited share retryable=false,
+        // outcomeUnknown=false, status=-1, cause=null — only kind() tells them
+        // apart, which is what an operator's next action depends on.
+        assertEquals(CloudException.Kind.NO_INSTANCE,
+            CloudException.noInstance("svc").kind());
+        assertEquals(CloudException.Kind.CIRCUIT_OPEN,
+            CloudException.circuitOpen("svc").kind());
+        assertEquals(CloudException.Kind.RATE_LIMITED,
+            CloudException.rateLimited("svc").kind());
+        assertEquals(CloudException.Kind.CONNECT,
+            CloudException.connect("svc", new java.io.IOException("refused")).kind());
+        assertEquals(CloudException.Kind.TIMEOUT, CloudException.timeout("svc").kind());
+        assertEquals(CloudException.Kind.TRANSPORT,
+            CloudException.transport("svc", new java.io.IOException("reset")).kind());
+    }
+
+    @Test
+    void eachWireFailureCarriesItsOwnKind() {
+        // Business failure: the handler threw (class crosses, wrapped as cause).
+        CloudException business = assertThrows(CloudException.class, () ->
+            caller.invoke("target", "user", "boom", List.of(), String.class));
+        assertEquals(CloudException.Kind.BUSINESS, business.kind());
+        assertTrue(business.getCause() instanceof RemoteInvocationException);
+
+        // Rejected shape: the peer has no such method.
+        CloudException missing = assertThrows(CloudException.class, () ->
+            caller.invoke("target", "user", "missing", List.of(), String.class));
+        assertEquals(CloudException.Kind.REJECTED, missing.kind());
+
+        // Unreadable reply: the declared type does not match the answer.
+        CloudException unreadable = assertThrows(CloudException.class, () ->
+            caller.invoke("target", "user", "greet", List.of("bob"), Integer.class));
+        assertEquals(CloudException.Kind.REPLY_UNREADABLE, unreadable.kind());
+    }
+
+    @Test
     void wrongArgumentCountIsARejectedCallNotAServerError() {
         // The wire carries a positional array, so arity is part of the contract:
         // a mismatch is a bad call (400, deterministic, never replayed), not a

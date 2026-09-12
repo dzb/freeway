@@ -14,6 +14,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **API 审计落实：失败判别、注册表心跳契约、网格 TLS（freeway-cloud）** — 三处 API 设计问题与一条
+  成文规则：
+  - **`CloudException.Kind`**：`noInstance`/`circuitOpen`/`rateLimited` 此前字段完全相同，只有 message
+    文本不同——调用方要区分"服务没部署"与"熔断打开"（运维动作不同）只能做字符串匹配，设计文档 §6
+    那张错误表在代码里不可达。现每个失败带 `kind()`（`NO_INSTANCE`/`CIRCUIT_OPEN`/`RATE_LIMITED`/
+    `CONNECT`/`TIMEOUT`/`TRANSPORT`/`INTERRUPTED`/`HTTP`/`BUSINESS`/`REPLY_UNREADABLE`/`REJECTED`/
+    `DISPATCH`/`OTHER`，一个值对应一种调用方动作），并由 `business(...)`/`unreadableReply(...)`/
+    `rejected(...)` 三个具名工厂取代原先三处 `of(...)` 的通用调用。破坏性：无（新增访问器与工厂，
+    `of(...)` 保留给扩展作者，kind 为 `OTHER`）。
+  - **`ServiceRegistry.renew` 返回 boolean**（SPI 破坏性）：此前返回 void 且在条目已被淘汰时**静默
+    无操作**（契约未说明），于是心跳 hook 只能额外发一次 discovery 查询自检——适配器后端每 10s 多
+    一次网络往返。现 `renew` 回答"注册表是否仍然持有该实例"，hook 据此自愈（不在了就重新注册并计入
+    readiness 打击数），不再发第二次查询。实现者必须如实回答：返回 true 而实际不持有，等于让调用方
+    以为自己可达。ext 无该 SPI 实现，无需改动。
+  - **网格出站 TLS**：`TransportSecurity` 自称 outbound transport security，但此前只有 RPC 客户端
+    遵守它，事件网格自建 `HttpClient` 不接 TLS 配置——于是 wss 拨号拿不到客户端身份。现
+    `PeerConnector` 用同一份 `TransportSecurity` 的 `SSLContext` 建客户端（可选依赖：不装 RPC 模块
+    时退回 JDK 默认），角色文档写明"两条出站腿共用一个身份"与"启动期解析一次，轮换需重启"。
+  - **文档**：CLAUDE.md 新增 API 形状规则——一到两个可选参数用逐级 javadoc 的重载阶梯，三个以上用
+    参数记录（`defaults()` + withers）；记录作为适配器装配点时，新增组件必须保留旧 arity 的委托
+    构造器（ext 引擎测试被这一点打断过一次）。
+
 - **API 一致性：贡献 id 命名空间、网格内部面收窄、`@Local` 覆盖补齐（freeway-cloud）** — 三处
   与框架既有规则不一致的地方：
   - **贡献 id**：控制器/路由 id 此前混用裸名（`metrics`、`health-live`、`health-ready`、

@@ -43,15 +43,18 @@ public final class RegistryStore {
         instances.put(instance.instanceId(), new Entry(instance, Health.up()));
     }
 
-    public void renew(String serviceId, String instanceId) {
+    /** @return false when this store no longer holds the instance (evicted or never seen) */
+    public boolean renew(String serviceId, String instanceId) {
         var instances = byService.get(serviceId);
         if (instances == null) {
-            return;
+            return false;
         }
         Entry entry = instances.get(instanceId);
-        if (entry != null) {
-            entry.touch();
+        if (entry == null) {
+            return false;
         }
+        entry.touch();
+        return true;
     }
 
     public void unregister(ServiceInstance instance) {

@@ -156,9 +156,9 @@ public final class RemoteCaller {
         try {
             return codec.fromJson(new String(reply, StandardCharsets.UTF_8), returnType);
         } catch (RuntimeException e) {
-            throw CloudException.of(
+            throw CloudException.unreadableReply(
                 "Service '" + serviceId + "' returned an unreadable "
-                    + returnType.getName() + ": " + e.getMessage(), false, 200, e);
+                    + returnType.getName() + ": " + e.getMessage(), e);
         }
     }
 
@@ -180,19 +180,19 @@ public final class RemoteCaller {
             exClass = sanitizePeerText(decode(exClass));
             String message = sanitizePeerText(decode(java.util.Objects.requireNonNullElse(
                 header(response, EXCEPTION_MESSAGE_HEADER), "")));
-            return CloudException.of(
+            return CloudException.business(
                 "Remote handler '" + exClass + "' on '" + serviceId + "' failed"
                     + (message.isEmpty() ? "" : ": " + message),
-                false, response.status(),
+                response.status(),
                 new RemoteInvocationException(exClass, message));
         }
         // Only the server-authored reject reason is echoed — never the whole
         // header map, which routinely carries tokens and cookies into logs.
         var reason = header(response, "X-RPC-Reject-Reason");
-        throw CloudException.of(
+        throw CloudException.rejected(
             "Service '" + serviceId + "' rejected rpc call"
                 + (reason == null ? "" : ": " + sanitizePeerText(decode(reason))),
-            false, response.status(), null);
+            response.status(), null);
     }
 
     /**

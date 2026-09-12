@@ -139,6 +139,14 @@ resolve through the same marker index.
 - Core modules keep external dependencies out; adapters with third-party deps
   live in freeway-ext.
 - Prefer small explicit APIs over future-proof abstractions.
+- **Optional inputs**: one or two of them use a documented overload ladder, each
+  step stating what it adds (`RemoteCaller.invoke`); three or more use a
+  parameter record with `defaults()` and per-field withers
+  (`CloudHttpClientDefault.Wiring`), so a call site cannot drift between
+  overloads. A record's canonical constructor changes shape whenever a component
+  is added, so a record used for adapter assembly keeps its previous arity as a
+  delegating constructor — an already-compiled adapter must not break on a new
+  knob (the ext engine tests did, once).
 - Keep concepts few: Module, Service, Extension, Scope, Runtime.
 
 ## Config Cascade

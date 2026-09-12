@@ -84,16 +84,31 @@ final class PeerConnector implements AutoCloseable {
      * {@link com.jujin.freeway.cloud.CloudConfigKeys}.
      */
     public PeerConnector(PeerHub hub, Duration connectTimeout,
-            String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs) {
+            String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs,
+            javax.net.ssl.SSLContext sslContext) {
         this.hub = hub;
         this.connectTimeout = connectTimeout;
         this.scheme = scheme == null || scheme.isBlank() ? "ws" : scheme;
         this.handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
         this.backoffBaseMs = backoffBaseMs <= 0 ? BACKOFF_BASE_MS : backoffBaseMs;
         this.backoffMaxMs = backoffMaxMs <= 0 ? BACKOFF_MAX_MS : backoffMaxMs;
-        this.http = HttpClient.newBuilder()
-            .connectTimeout(connectTimeout)
-            .build();
+        this.http = newClient(connectTimeout, sslContext);
+    }
+
+    /**
+     * The dialer's HTTP client. {@code sslContext} is the outbound transport
+     * security the application configured ({@link
+     * com.jujin.freeway.cloud.rpc.TransportSecurity}) — the mesh is one of the
+     * outbound paths that must honour it, so a {@code wss://} dial presents the
+     * same client identity and trusts the same authorities as an RPC call.
+     * {@code null} means the JDK default (system trust, no client identity).
+     */
+    static HttpClient newClient(Duration connectTimeout, javax.net.ssl.SSLContext sslContext) {
+        HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(connectTimeout);
+        if (sslContext != null) {
+            builder.sslContext(sslContext);
+        }
+        return builder.build();
     }
 
     /** Dials the given peers (virtual threads; failures back off). */

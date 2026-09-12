@@ -242,16 +242,18 @@ binder.contribute(RpcExport.class)
 
 ## 6. 错误映射总表
 
-| 对端情形 | consumer 抛出 | retryable |
+`CloudException.kind()` 是这张表的结构化形态（一个值对应一种调用方动作），下面每一行都点名它：
+
+| 对端情形 | consumer 抛出（`kind()`） | retryable |
 |---|---|---|
 | handler 正常返回 | 返回值 JSON 反序列化 | — |
-| handler 抛业务异常 | `CloudException`(cause=`RemoteInvocationException(classFqn, message)`) | no |
-| 连接/超时/5xx | `CloudException` | connect=是；timeout/中途 I/O/5xx 仅 `@Idempotent` 操作（幂等门） |
-| 4xx 非 2.3 结构 | `CloudException(status)` | no |
-| 回复体无法反序列化为 returnType | `CloudException(deserialization)` | no（确定性失败） |
-| 未知 `X-RPC-Version` | `CloudException(rejected)` | no |
-| 无存活实例 | `CloudException.noInstance(serviceId)` | no（部署态问题，重放无益） |
-| 未导出的 mapping / 未知方法 | `CloudException(404)` | no（声明即边界） |
+| handler 抛业务异常 | `CloudException` `BUSINESS`(cause=`RemoteInvocationException(classFqn, message)`) | no |
+| 连接/超时/5xx | `CloudException` `CONNECT`/`TIMEOUT`/`TRANSPORT`/`HTTP` | connect=是；timeout/中途 I/O/5xx 仅 `@Idempotent` 操作（幂等门） |
+| 4xx 非 2.3 结构 | `CloudException` `REJECTED`(status) | no |
+| 回复体无法反序列化为 returnType | `CloudException` `REPLY_UNREADABLE` | no（确定性失败） |
+| 未知 `X-RPC-Version` | `CloudException` `REJECTED` | no |
+| 无存活实例 | `CloudException` `NO_INSTANCE` | no（部署态问题，重放无益） |
+| 未导出的 mapping / 未知方法 | `CloudException` `REJECTED`(404) | no（声明即边界） |
 
 `RemoteInvocationException extends RuntimeException`，字段：
 `String remoteClass`（对端异常类全名，accessor `remoteClass()`），

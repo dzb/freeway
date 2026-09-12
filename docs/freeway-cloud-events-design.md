@@ -121,7 +121,9 @@ stream:
 
 服务端 session 关闭时写 RFC 6455 的 close 帧；客户端连接器停机时同样先发
 `1001 going away`（最多等 200ms，对端已消失则由 abort 兜底），因此对端读到的是
-"这个节点要走了"而不是连接被重置——它据此决定是否重拨。注册表的摘除与
+"这个节点要走了"而不是连接被重置——它据此决定是否重拨。`wss://` 拨号使用与 RPC
+**同一份** outbound transport security（`TransportSecurity`：客户端证书与信任库
+只配一处），因此网格与 RPC 两条出站腿的身份一致。注册表的摘除与
 `/health/ready` 的 draining 信号先于 socket 关闭发出（见 `registry.shutdown-drain`）。
 
 ### 2.3 心跳与保活

@@ -1,6 +1,7 @@
 package com.jujin.freeway.cloud.event;
 
 import com.jujin.freeway.cloud.CloudConfigKeys;
+import com.jujin.freeway.cloud.rpc.TransportSecurity;
 
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.internal.HttpServiceDeclaration;
@@ -124,12 +125,17 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         String registryScheme = symbols.resolve(SERVICE_SCHEME);
         String wsScheme = "https".equalsIgnoreCase(registryScheme) ? "wss" : "ws";
         warnIfTokenOverCleartext(wsScheme, hub.token());
+        // Outbound TLS material is shared with the RPC client: the mesh is an
+        // outbound path too, and a wss:// dial must present the same identity.
+        // Resolved optionally — the event module installs without the RPC one.
+        TransportSecurity security = optional(container, TransportSecurity.class);
         connector = new PeerConnector(hub,
             Duration.ofMillis(symbols.resolve(CONNECT_TIMEOUT_MS)),
             wsScheme,
             Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)),
             symbols.resolve(BACKOFF_BASE_MS),
-            symbols.resolve(BACKOFF_MAX_MS));
+            symbols.resolve(BACKOFF_MAX_MS),
+            security == null ? null : security.sslContext());
         bus.addEventSink(sink);
         connector.start(peers);
     }
@@ -142,6 +148,15 @@ final class CloudEventLifecycleHook implements RuntimeHook {
      * mesh. Nothing set leaves the module inert — installing
      * CloudEventModule alone is never a side effect.
      */
+    /** A collaborator the mesh can work without (the RPC module not installed). */
+    private static <T> T optional(Container container, Class<T> type) {
+        try {
+            return container.get(type);
+        } catch (com.jujin.freeway.ioc.MissingBindingException e) {
+            return null;
+        }
+    }
+
     /**
      * A mesh token authenticates peers, so it must be encrypted in transit to
      * mean anything. Dialing {@code ws://} with one configured is worth a loud

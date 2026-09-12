@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
-import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.ioc.Container;
@@ -35,17 +34,15 @@ class RegistryRenewalTest {
                 registrations.add(instance);
             }
 
-            @Override public void renew(String serviceId, String instanceId) { }
+            @Override public boolean renew(String serviceId, String instanceId) {
+                return false;   // the registry no longer holds the entry
+            }
 
             @Override public void unregister(ServiceInstance instance) { }
         };
-        // A registry that never lists us — the "entry was evicted" case.
-        ServiceDiscovery blind = serviceId -> List.of();
-
         RegistryRenewal renewal = new RegistryRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
-            binder.bind(ServiceDiscovery.class).to(c -> blind);
             binder.contribute(ServiceDeclaration.class)
                 .add("test", c -> INSTANCE);
         })) {
@@ -71,16 +68,16 @@ class RegistryRenewalTest {
         ServiceRegistry registry = new ServiceRegistry() {
             @Override public void register(ServiceInstance instance) { }
 
-            @Override public void renew(String serviceId, String instanceId) { }
+            @Override public boolean renew(String serviceId, String instanceId) {
+                return true;   // the registry still holds it
+            }
 
             @Override public void unregister(ServiceInstance instance) { }
         };
-        ServiceDiscovery discovery = serviceId -> List.copyOf(live);
 
         RegistryRenewal renewal = new RegistryRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
-            binder.bind(ServiceDiscovery.class).to(c -> discovery);
             binder.contribute(ServiceDeclaration.class).add("test", c -> INSTANCE);
         })) {
             RegistryLifecycleHook hook =
@@ -101,17 +98,17 @@ class RegistryRenewalTest {
         ServiceRegistry registry = new ServiceRegistry() {
             @Override public void register(ServiceInstance instance) { }
 
-            @Override public void renew(String serviceId, String instanceId) { }
+            @Override public boolean renew(String serviceId, String instanceId) {
+                return true;
+            }
 
             @Override public void unregister(ServiceInstance instance) {
                 events.add("unregistered");
             }
         };
-        ServiceDiscovery discovery = serviceId -> List.of(INSTANCE);
         RegistryRenewal renewal = new RegistryRenewal();
         try (Container container = Freeway.create(binder -> {
             binder.bind(ServiceRegistry.class).to(c -> registry);
-            binder.bind(ServiceDiscovery.class).to(c -> discovery);
             binder.contribute(ServiceDeclaration.class).add("test", c -> INSTANCE);
             // 60 ms window: long enough to observe, short enough to keep the suite fast.
             binder.bind(com.jujin.freeway.ioc.symbol.SymbolSource.class)

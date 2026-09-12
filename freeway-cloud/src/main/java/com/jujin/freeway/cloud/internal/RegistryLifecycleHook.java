@@ -1,7 +1,6 @@
 package com.jujin.freeway.cloud.internal;
 
 import com.jujin.freeway.cloud.discovery.ServiceDeclaration;
-import com.jujin.freeway.cloud.discovery.ServiceDiscovery;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
 import com.jujin.freeway.cloud.CloudConfigKeys;
@@ -51,7 +50,6 @@ public final class RegistryLifecycleHook implements RuntimeHook {
     private final List<ServiceInstance> registered = new CopyOnWriteArrayList<>();
     private volatile ScheduledExecutorService scheduler;
     private volatile ServiceRegistry registryRef;
-    private volatile ServiceDiscovery discovery;
 
     public RegistryLifecycleHook(RegistryRenewal renewal) {
         this(renewal, RENEW_INTERVAL);
@@ -80,8 +78,7 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         }
         if (!registered.isEmpty()) {
             renewal.track();
-            discovery = container.get(ServiceDiscovery.class);
-            long intervalMillis = renewInterval.toMillis();
+                long intervalMillis = renewInterval.toMillis();
             scheduler = Executors.newSingleThreadScheduledExecutor(
                 Thread.ofPlatform().daemon().name("cloud-registry-heartbeat").factory());
             scheduler.scheduleWithFixedDelay(this::heartbeat, intervalMillis, intervalMillis,
@@ -90,9 +87,10 @@ public final class RegistryLifecycleHook implements RuntimeHook {
     }
 
     /**
-     * One heartbeat: renew, then verify. Verification uses the same discovery
-     * query a consumer would run, so it sees what the registry actually
-     * publishes — for an adapter backend, that is the backend's own view.
+     * One heartbeat: renew, and re-register whatever the registry no longer
+     * holds. The registry's own answer is the verification — asking discovery
+     * afterwards would be a second, weaker opinion, and for an adapter
+     * backend a second network round trip on every interval.
      */
     private void heartbeat() {
         ServiceRegistry registry = registryRef;
@@ -101,23 +99,26 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         }
         boolean healthy = true;
         for (ServiceInstance instance : registered) {
+            boolean stillHeld;
             try {
-                registry.renew(instance.serviceId(), instance.instanceId());
+                stillHeld = registry.renew(instance.serviceId(), instance.instanceId());
             } catch (Exception ex) {
                 LOG.warn("Heartbeat renew failed for {} instance {}: {}",
                     instance.serviceId(), instance.instanceId(), ex.getMessage());
                 healthy = false;
+                continue;
             }
-            if (!listed(instance)) {
-                healthy = false;
-                try {
-                    registry.register(instance);
-                    LOG.warn("Registration for {} instance {} was gone — re-registered",
-                        instance.serviceId(), instance.instanceId());
-                } catch (Exception ex) {
-                    LOG.warn("Re-registration failed for {} instance {}: {}",
-                        instance.serviceId(), instance.instanceId(), ex.getMessage());
-                }
+            if (stillHeld) {
+                continue;
+            }
+            healthy = false;
+            try {
+                registry.register(instance);
+                LOG.warn("Registration for {} instance {} was gone — re-registered",
+                    instance.serviceId(), instance.instanceId());
+            } catch (Exception ex) {
+                LOG.warn("Re-registration failed for {} instance {}: {}",
+                    instance.serviceId(), instance.instanceId(), ex.getMessage());
             }
         }
         if (healthy) {
@@ -145,21 +146,6 @@ public final class RegistryLifecycleHook implements RuntimeHook {
         }
     }
 
-    /** True when discovery currently lists this exact instance. */
-    private boolean listed(ServiceInstance instance) {
-        ServiceDiscovery source = discovery;
-        if (source == null) {
-            return true; // no discovery in this assembly: nothing to verify against
-        }
-        try {
-            return source.getInstances(instance.serviceId()).stream()
-                .anyMatch(candidate -> candidate.instanceId().equals(instance.instanceId()));
-        } catch (Exception ex) {
-            LOG.warn("Could not verify registration of {} instance {}: {}",
-                instance.serviceId(), instance.instanceId(), ex.getMessage());
-            return true; // a discovery read failure is not evidence of losing the entry
-        }
-    }
 
     @Override
     public void stop(Container container) {

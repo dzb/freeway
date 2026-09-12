@@ -114,7 +114,8 @@ class HealthEndpointsTest {
             }
 
             @Override
-            public void renew(String serviceId, String instanceId) {
+            public boolean renew(String serviceId, String instanceId) {
+                return true;
             }
 
             @Override
