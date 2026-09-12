@@ -70,7 +70,6 @@ public final class Http2Stream {
     }
 
     public boolean isOpen() { return streamOpen; }
-    public boolean isHalfClosed() { return halfClosed; }
 
     /**
      * True once the server committed response bytes for this stream (response
