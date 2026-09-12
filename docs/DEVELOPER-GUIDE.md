@@ -1756,6 +1756,14 @@ needs no backend at all; an external one arrives as an adapter that binds
 key list is in [freeway-config.md](freeway-config.md); the design rationale is
 in [freeway-cloud-unified-design.md](freeway-cloud-unified-design.md).
 
+**Cloud keys are read once, when the component that owns them is built.**
+Hot-reloading a watched config file changes what the symbol chain resolves from
+then on, not what an already-constructed client, registry declaration or
+propagator captured — a changed `freeway.cloud.rpc.request-timeout` needs a
+restart to take effect (per-call values passed to `RemoteCaller`/`RemoteProxyFactory`
+are the exception, and the secret store caches its file until restart). Read a
+value at its point of use only when it is genuinely meant to be live.
+
 ---
 
 ## Remote invocation (`freeway-cloud.rpc`)
