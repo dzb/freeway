@@ -754,6 +754,10 @@ public final class CloudConfigKeys {
 
 ### 12.2 core 可选后续
 
+- **SKILL 文档的 cloud 章节**（`docs/SKILL.zh.md`）：暂缓，**等 cloud 的
+  应用面 API 稳定后再补**——框架侧改动仍会改动调用面，此时写进技能文档
+  会立刻过期。补写时以 DEVELOPER-GUIDE 的 `## Cloud` 一节为骨架（三档
+  接入表 + 能力索引表），不要另起一套说法。
 - `@Retry` / `@CircuitBreak` / `@RateLimit` 注解 + `Advisor` 织入本地接口
   服务（§5.6 后期可选）。
 - 动态配置用法示例文档：`@Symbol` / `@Value` 与符号链见
