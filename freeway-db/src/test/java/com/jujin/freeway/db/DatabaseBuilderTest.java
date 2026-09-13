@@ -285,6 +285,11 @@ class DatabaseBuilderTest {
         }
 
         @Override
+        public void invalidate(PooledConnection conn) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public DatabaseStats stats() {
             return new DatabaseStats(0, 0, 0, 0, Integer.MAX_VALUE, 0, 0, 0);
         }

@@ -1349,7 +1349,7 @@ entity after the insert (boxed types and primitives alike).
 
 ### Connection Pool
 
-`Pool` is the connection pool abstraction — `PoolDefault` (built-in) and `HikariPool` (`freeway-db-hikari`) both implement it.
+`Pool` is the connection pool abstraction — `PoolDefault` (built-in) and `HikariPool` (`freeway-db-hikari`) both implement it. `borrow()` takes a connection out, `release(conn)` returns a healthy one for reuse, and `invalidate(conn)` destroys one that must not reach another borrower. The framework invalidates whenever it cannot restore a connection's state after a transaction or batch — closing `conn.connection()` is not a substitute, since a pool that hands out a proxy recycles the connection on close instead of destroying it. A pool adapter implements `invalidate` as a physical destroy.
 
 **Standalone — built-in pool:**
 

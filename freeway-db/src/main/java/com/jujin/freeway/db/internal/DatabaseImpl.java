@@ -210,16 +210,12 @@ public final class DatabaseImpl implements Database {
                 raw.setAutoCommit(true);
             }
         } catch (SQLException e) {
-            LOG.warn("Failed to restore connection state — closing physical connection", e);
-            closePhysical(conn);
-        }
-    }
-
-    private static void closePhysical(PooledConnection conn) {
-        try {
-            conn.connection().close();
-        } catch (SQLException ignored) {
-            // physical close is best-effort
+            // The connection cannot be handed back in a defined state:
+            // invalidate destroys it instead of recycling it. Releasing the
+            // handle afterwards is a no-op, so transaction()'s finally stays
+            // unchanged.
+            LOG.warn("Failed to restore connection state — destroying connection", e);
+            pool.invalidate(conn);
         }
     }
 

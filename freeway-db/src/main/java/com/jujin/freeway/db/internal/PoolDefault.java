@@ -219,6 +219,31 @@ public final class PoolDefault implements Pool {
     }
 
     @Override
+    public void invalidate(PooledConnection conn) {
+        Objects.requireNonNull(conn, "conn");
+        if (!(conn instanceof PooledConnectionImpl pc)) {
+            throw new SqlException(
+                "Foreign PooledConnection rejected: " +
+                    conn.getClass().getName() +
+                    " does not belong to this PoolDefault — invalidate connections only to the pool that borrowed them"
+            );
+        }
+        if (!active.remove(pc)) {
+            // Already returned, already invalidated, or force-closed during
+            // shutdown — destroying again would double-decrement total.
+            return;
+        }
+        // Destroying inside the lock keeps the accounting atomic with
+        // close()'s drains, exactly like release()'s offer: either the drain
+        // still sees the connection and closes it, or this path removes and
+        // destroys it first.
+        synchronized (lifecycleLock) {
+            destroy(pc);
+            semaphore.release();
+        }
+    }
+
+    @Override
     public DatabaseStats stats() {
         int longLeased = 0;
         for (PooledConnectionImpl conn : active) {

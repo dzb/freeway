@@ -228,6 +228,10 @@ class AutoIncrementTest {
                 }
 
                 @Override
+                public void invalidate(PooledConnection conn) {
+                }
+
+                @Override
                 public DatabaseStats stats() {
                     return new DatabaseStats(0, 0, 0, 0, 1, 0, 0, 0);
                 }

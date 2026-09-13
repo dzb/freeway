@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   class 声明两次与"同 class 两个实例"同样报错（修法：只声明一次，共享请用片段）。
   `bindOrder()` 给出绑定序（前序），`tree()` 给出结构，`classes()` 给 SPI 发现看"哪些
   class 已在树里"，`isApplication()` 让入口复用调用方建好的根。
+- **`Pool.invalidate(PooledConnection)`（freeway-db）** — 连接池 SPI 上的"销毁"语义：池必须物理
+  关闭该连接并释放它占用的槽位，而不是回收给下一个借用者。此前"这个连接不能再用了"无处表达，
+  只能 `conn.connection().close()`：对自建池恰好等于销毁，对交出代理的池（HikariCP）却只是
+  "回滚 + 重置状态 + 回收"，于是"状态无法复原的连接必须销毁"的三条路径（`Database.transaction`
+  的状态复原、`BatchQuery` 的 autoCommit 复原）在适配器下退化为静默回收。现在这三处改调
+  `invalidate`：`PoolDefault` 销毁并释放配额，`HikariPool` 走
+  `HikariDataSource.evictConnection`。已归还/已销毁的句柄是幂等空操作（清理路径可以放心调用），
+  外来句柄与 `release` 同样报错。`Pool` 的替代实现需跟进该方法。
 
 ### Changed
 
