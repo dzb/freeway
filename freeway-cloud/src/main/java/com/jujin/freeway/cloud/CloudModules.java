@@ -27,7 +27,7 @@ import com.jujin.freeway.ioc.ModuleNode;
  * group, take it apart, or leave it out and compose the eight modules yourself:
  *
  * <pre>{@code
- * ModuleNode.of(new CloudRpcModule())      // just this one, configured my way
+ * ModuleNode.leaf(CloudRpcModule.class)    // just this one, declared by class
  * }</pre>
  *
  * <p>{@link com.jujin.freeway.cloud.event.CloudEventModule} is intentionally
@@ -46,13 +46,13 @@ public final class CloudModules {
      */
     public static ModuleNode standard() {
         return ModuleNode.group("freeway-cloud",
-            ModuleNode.leaf(new CloudContextModule()),
-            ModuleNode.leaf(new CloudSecretModule()),
-            ModuleNode.leaf(new CloudDiscoveryModule()),
-            ModuleNode.leaf(new CloudRpcModule()),
-            ModuleNode.leaf(new CloudObserveModule()),
-            ModuleNode.leaf(new CloudResilienceModule()),
-            ModuleNode.leaf(new CloudHealthModule()),
-            ModuleNode.leaf(new CloudStorageModule()));
+            CloudContextModule.class,
+            CloudSecretModule.class,
+            CloudDiscoveryModule.class,
+            CloudRpcModule.class,
+            CloudObserveModule.class,
+            CloudResilienceModule.class,
+            CloudHealthModule.class,
+            CloudStorageModule.class);
     }
 }

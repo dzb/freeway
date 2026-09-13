@@ -87,6 +87,28 @@ public final class ModuleNode {
         return validated(TreeNode.of(new GroupModule(name, true), roots(children)));
     }
 
+    /** The default-named application node with no children yet. */
+    public static ModuleNode app() {
+        return app(DEFAULT_APP_NAME);
+    }
+
+    /** An application node with no children yet. */
+    public static ModuleNode app(String name) {
+        return app(name, new ModuleNode[0]);
+    }
+
+    /** The application node whose children are modules named by class. */
+    @SafeVarargs
+    public static ModuleNode app(String name, Class<? extends ModuleEx>... types) {
+        return app(name, leaves(types));
+    }
+
+    /** The default-named application node over modules named by class. */
+    @SafeVarargs
+    public static ModuleNode app(Class<? extends ModuleEx>... types) {
+        return app(DEFAULT_APP_NAME, leaves(types));
+    }
+
     /**
      * A named grouping node — how a library ships several modules as one
      * fragment ({@code CloudModules.standard()}). It binds nothing; the name is
@@ -94,6 +116,17 @@ public final class ModuleNode {
      */
     public static ModuleNode group(String name, ModuleNode... children) {
         return validated(TreeNode.of(new GroupModule(name, false), roots(children)));
+    }
+
+    /** A named grouping node with no children yet. */
+    public static ModuleNode group(String name) {
+        return group(name, new ModuleNode[0]);
+    }
+
+    /** A named grouping node over modules named by class. */
+    @SafeVarargs
+    public static ModuleNode group(String name, Class<? extends ModuleEx>... types) {
+        return group(name, leaves(types));
     }
 
     /**
@@ -115,10 +148,26 @@ public final class ModuleNode {
         return validated(TreeNode.leaf(Objects.requireNonNull(module, "module")));
     }
 
+    /**
+     * A single module named by class — the normal way to declare one. The class
+     * is instantiated through its no-arg constructor; a module that needs
+     * constructor arguments is passed as an instance instead ({@link #leaf(ModuleEx)}),
+     * since a module's constructor carries configuration, not dependencies
+     * (there is nothing to inject before the container exists).
+     */
+    public static ModuleNode leaf(Class<? extends ModuleEx> type) {
+        return leaf(instantiate(type));
+    }
+
     /** A module that groups others. */
     public static ModuleNode of(ModuleEx module, ModuleNode... children) {
         Objects.requireNonNull(module, "module");
         return validated(TreeNode.of(module, roots(children)));
+    }
+
+    /** A module named by class that groups others. */
+    public static ModuleNode of(Class<? extends ModuleEx> type, ModuleNode... children) {
+        return of(instantiate(type), children);
     }
 
     /**
@@ -187,6 +236,39 @@ public final class ModuleNode {
 
     private static ModuleNode validated(TreeNode<ModuleEx> root) {
         return new ModuleNode(root);
+    }
+
+    private static ModuleNode[] leaves(Class<? extends ModuleEx>[] types) {
+        Objects.requireNonNull(types, "module types");
+        ModuleNode[] nodes = new ModuleNode[types.length];
+        for (int i = 0; i < types.length; i++) {
+            nodes[i] = leaf(Objects.requireNonNull(types[i], "module type"));
+        }
+        return nodes;
+    }
+
+    /**
+     * Instantiates a module named by class. The class is named explicitly in the
+     * composition — nothing is scanned — and must have an accessible no-arg
+     * constructor; a module with constructor arguments fails here, at the
+     * composition, naming itself and the fix.
+     */
+    private static ModuleEx instantiate(Class<? extends ModuleEx> type) {
+        Objects.requireNonNull(type, "module type");
+        try {
+            var constructor = type.getDeclaredConstructor();
+            constructor.trySetAccessible();
+            return constructor.newInstance();
+        } catch (NoSuchMethodException e) {
+            throw new IllegalArgumentException(
+                "Module " + type.getName() + " has no no-arg constructor. A module whose"
+                    + " constructor takes arguments is declared as an instance: ModuleNode"
+                    + ".leaf(new " + type.getSimpleName() + "(…))", e);
+        } catch (ReflectiveOperationException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            throw new IllegalStateException(
+                "Cannot instantiate module " + type.getName() + ": " + cause, cause);
+        }
     }
 
     private static TreeNode<ModuleEx>[] roots(ModuleNode[] children) {

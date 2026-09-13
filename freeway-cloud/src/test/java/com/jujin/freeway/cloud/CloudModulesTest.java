@@ -63,7 +63,7 @@ class CloudModulesTest {
     @Test
     void fragmentIsPlacedInTheApplicationTree() {
         ModuleNode app = ModuleNode.app("order-service",
-            ModuleNode.leaf(new AppMarkerModule()),
+            ModuleNode.leaf(AppMarkerModule.class),
             CloudModules.standard());
 
         try (Container container = Freeway.create(app)) {
@@ -87,7 +87,7 @@ class CloudModulesTest {
     void aModuleCanBePlacedWithoutTheRestOfTheBundle() {
         // The point of a fragment: taking it apart is normal composition, not a
         // workaround — one cloud module, configured by the application.
-        ModuleNode app = ModuleNode.app("test", ModuleNode.leaf(new CloudRpcModule()));
+        ModuleNode app = ModuleNode.app("test", CloudRpcModule.class);
 
         try (Container container = Freeway.create(app)) {
             assertNotNull(container.get(CloudHttpClient.class));

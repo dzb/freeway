@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.jujin.freeway.commons.util.TreeNode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +48,16 @@ class ModuleNodeTest {
         @Override
         public void bind(Binder binder) {
             binder.bind(Other.class).to(c -> new Other());
+        }
+    }
+
+    /** A module that must be declared as an instance: no no-arg constructor. */
+    static final class NeedsArguments implements ModuleEx {
+        NeedsArguments(String label) {
+        }
+
+        @Override
+        public void bind(Binder binder) {
         }
     }
 
@@ -222,9 +233,65 @@ class ModuleNodeTest {
 
     @Test
     void nullModuleOrChildIsRefused() {
-        assertThrows(NullPointerException.class, () -> ModuleNode.leaf(null));
+        assertThrows(NullPointerException.class, () -> ModuleNode.leaf((ModuleEx) null));
         assertThrows(NullPointerException.class, () -> ModuleNode.of(new Marker(), (ModuleNode) null));
         assertThrows(NullPointerException.class, () -> ModuleNode.app("test", (ModuleNode[]) null));
+    }
+
+    // ── loading by class ────────────────────────────────────────
+
+    @Test
+    void modulesAreLoadedByClass() {
+        try (Container container = Freeway.create(Marker.class, Other.class)) {
+            assertNotNull(container.get(Marker.class));
+            assertNotNull(container.get(Other.class));
+            assertEquals(Set.of(Marker.class, Other.class), container.moduleTree().classes());
+        }
+    }
+
+    @Test
+    void classAndInstanceOfOneModuleClassAreRefused() {
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+            () -> ModuleNode.app("test",
+                ModuleNode.leaf(Marker.class), ModuleNode.leaf(new Marker())));
+
+        assertTrue(failure.getMessage().contains(Marker.class.getName()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("one instance per module class"),
+            "the message states the rule: " + failure.getMessage());
+    }
+
+    @Test
+    void declaringTheSameClassTwiceIsRefused() {
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+            () -> ModuleNode.app("test", Marker.class, Marker.class));
+
+        assertTrue(failure.getMessage().contains("declare the class once"),
+            "the message names the fix: " + failure.getMessage());
+    }
+
+    @Test
+    void moduleWithoutANoArgConstructorFailsNamingTheClassAndTheFix() {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+            () -> ModuleNode.leaf(NeedsArguments.class));
+
+        assertTrue(failure.getMessage().contains(NeedsArguments.class.getName()),
+            failure.getMessage());
+        assertTrue(failure.getMessage().contains("declared as an instance"),
+            "the message names the fix: " + failure.getMessage());
+    }
+
+    @Test
+    void classAndInstanceFormsMixInOneTree() {
+        List<String> log = new ArrayList<>();
+        ModuleNode app = ModuleNode.app("test",
+            ModuleNode.leaf(Marker.class),
+            ModuleNode.of(new Other(), ModuleNode.leaf(named("deep", log))));
+
+        try (Container container = Freeway.create(app)) {
+            assertNotNull(container.get(Marker.class));
+            assertNotNull(container.get(Other.class));
+            assertEquals(List.of("deep"), log);
+        }
     }
 
     // ── the flat entry point stays sugar ────────────────────────

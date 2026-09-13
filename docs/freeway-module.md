@@ -28,36 +28,49 @@ public final class OrderModule implements ModuleEx {
 
 ```java
 ModuleNode app = ModuleNode.app("order-service",
-    ModuleNode.leaf(new OrderModule()),
-    ModuleNode.group("web",
-        ModuleNode.leaf(new HttpModule()),
-        ModuleNode.leaf(new WebSocketModule())),
+    OrderModule.class,                 // declare by class — the normal way
+    ModuleNode.group("web", HttpModule.class, WebSocketModule.class),
     CloudModules.standard());          // a fragment built the same way
 
 FreewayApp.run(app);
 ```
 
+### Declaring modules: class by default, instance for configuration
+
+```java
+ModuleNode.leaf(OrderModule.class);          // normal: no-arg constructor
+ModuleNode.leaf(new TenantModule("acme"));  // an instance, when the constructor takes configuration
+FreewayApp.run(OrderModule.class, HttpModule.class);
+FreewayApp.run(ModuleNode.app("orders", OrderModule.class));
+```
+
+Naming the class is still explicit — the composition names it, so nothing is scanned — and the class is instantiated through its **no-arg constructor**. A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails where the tree is built, naming itself and the fix (`ModuleNode.leaf(new X(…))`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
+
+Declaring one class twice is the same mistake as two instances of it — the tree holds one instance per module class, so `run(A.class, A.class)` fails and names the fix: declare the class once. Sharing between branches goes through a **fragment**, not through a repeated declaration.
+
 | Factory | Meaning |
 |---|---|
 | `app(name, …)` | the application root: it names the tree and binds nothing |
 | `group(name, …)` | a named bundle node — how a library ships several modules at once |
-| `leaf(module)` | a single module, no children |
-| `of(module, …)` | a module that groups others |
+| `leaf(class \| module)` | a single module, no children |
+| `of(class \| module, …)` | a module that groups others |
+
+Every factory takes either a module **class** (instantiated through its no-arg constructor) or an **instance** (for a module whose constructor takes arguments); `app` and `group` accept a varargs list of classes, and anything mixed is expressed with `leaf`/`of` children.
 
 The flat entry points stay as sugar for "the application root's children":
 
 ```java
-FreewayApp.run(new HttpModule(), new DbModule());
+FreewayApp.run(HttpModule.class, DbModule.class);
 // ≡ FreewayApp.run(ModuleNode.app("application",
-//       ModuleNode.leaf(new HttpModule()), ModuleNode.leaf(new DbModule())));
+//       ModuleNode.leaf(HttpModule.class), ModuleNode.leaf(DbModule.class)));
 ```
 
 `Freeway.create(...)` (test and standalone usage) takes the same two forms. `FreewayApp.of(...)` + `.add(...)` accepts modules and fragments in any order:
 
 ```java
-FreewayApp.of(new OrderModule())
+FreewayApp.of(OrderModule.class)
     .add(CloudModules.standard())
-    .add(new HttpModule())
+    .add(HttpModule.class)
     .start();
 ```
 
@@ -69,8 +82,8 @@ A library that needs more than one module exposes a **fragment factory** returni
 public final class CloudModules {
     public static ModuleNode standard() {
         return ModuleNode.group("freeway-cloud",
-            ModuleNode.leaf(new CloudContextModule()),
-            ModuleNode.leaf(new CloudRpcModule()),
+            CloudContextModule.class,
+            CloudRpcModule.class,
             /* … */);
     }
 }

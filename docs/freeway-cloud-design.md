@@ -78,10 +78,10 @@ freeway-cloud  (com.jujin.freeway.cloud)
   只取其中一个模块：
   ```java
   FreewayApp.run(ModuleNode.app("order-service",
-      ModuleNode.leaf(new OrderModule()),
+      OrderModule.class,
       CloudModules.standard()));          // 整包
   FreewayApp.run(ModuleNode.app("order-service",
-      ModuleNode.leaf(new CloudRpcModule())));   // 只要一个，按自己的方式配
+      CloudRpcModule.class));             // 只要一个，按自己的方式配
   ```
   旧的 `CloudModule` 做不到这一点：它拥有自己的子模块，而同一个 class 的两个
   实例会被拒绝，所以"替换其中一个"只能整体不用伞模块。

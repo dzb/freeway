@@ -66,6 +66,19 @@ public final class AppBuilder {
     }
 
     /**
+     * Add one or more modules named by class — the normal way; each is
+     * instantiated through its no-arg constructor.
+     */
+    @SafeVarargs
+    public final AppBuilder add(Class<? extends ModuleEx>... types) {
+        Objects.requireNonNull(types, "module types");
+        for (Class<? extends ModuleEx> type : types) {
+            this.children.add(ModuleNode.leaf(Objects.requireNonNull(type, "module type")));
+        }
+        return this;
+    }
+
+    /**
      * Add one or more composed fragments: a fragment is a {@link ModuleNode}
      * built with {@code app/leaf/of}, so grouping and reuse are expressed here
      * rather than inside a module.

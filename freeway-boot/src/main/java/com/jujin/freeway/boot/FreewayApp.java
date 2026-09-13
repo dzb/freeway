@@ -51,6 +51,16 @@ public final class FreewayApp {
      * Config is loaded from the default cascade, ServiceLoader modules
      * are discovered, and a JVM shutdown hook is registered.
      */
+    /** Start an application with no modules and empty arguments. */
+    public static AppRuntime run() {
+        return run(new String[0]);
+    }
+
+    /** Start an application with no modules and the given arguments. */
+    public static AppRuntime run(String[] args) {
+        return of().args(args).start();
+    }
+
     public static AppRuntime run(ModuleEx... modules) {
         return run(new String[0], modules);
     }
@@ -79,6 +89,11 @@ public final class FreewayApp {
         return of(tree).args(args).start();
     }
 
+    /** Create an empty {@link AppBuilder}. */
+    public static AppBuilder of() {
+        return new AppBuilder();
+    }
+
     /** Create an {@link AppBuilder} pre-populated with the given modules. */
     public static AppBuilder of(ModuleEx... modules) {
         AppBuilder b = new AppBuilder();
@@ -91,5 +106,26 @@ public final class FreewayApp {
     /** Create an {@link AppBuilder} over a composed module tree. */
     public static AppBuilder of(ModuleNode tree) {
         return new AppBuilder().add(tree);
+    }
+
+    /**
+     * Start an application whose modules are named by class — the normal form;
+     * an instance is for a module whose constructor takes arguments.
+     */
+    @SafeVarargs
+    public static AppRuntime run(Class<? extends ModuleEx>... types) {
+        return run(new String[0], types);
+    }
+
+    /** @see #run(Class[]) */
+    @SafeVarargs
+    public static AppRuntime run(String[] args, Class<? extends ModuleEx>... types) {
+        return of(types).args(args).start();
+    }
+
+    /** Create an {@link AppBuilder} over modules named by class. */
+    @SafeVarargs
+    public static AppBuilder of(Class<? extends ModuleEx>... types) {
+        return new AppBuilder().add(types);
     }
 }

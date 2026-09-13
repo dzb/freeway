@@ -194,6 +194,23 @@ class FreewayAppTest {
     }
 
     @Test
+    void modulesCanBeNamedByClass() {
+        // The normal way to declare a module: the class is named explicitly in
+        // the composition (nothing is scanned) and instantiated through its
+        // no-arg constructor.
+        AppRuntime app = FreewayApp.of(ValueHolderModule.class)
+            .autoDiscovery(false)
+            .shutdownHook(false)
+            .start();
+        try {
+            assertEquals(AppState.RUNNING, app.state());
+            assertNotNull(app.get(ValueHolder.class));
+        } finally {
+            app.close();
+        }
+    }
+
+    @Test
     void autoDiscoveryCanStartWithoutExplicitModules() {
         AppRuntime app = FreewayApp.of().start();
         try {

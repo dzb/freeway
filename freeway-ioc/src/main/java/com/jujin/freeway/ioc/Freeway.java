@@ -29,6 +29,11 @@ public final class Freeway {
 
     private Freeway() {}
 
+    /** Creates an empty container — no modules, so nothing is bound. */
+    public static Container create() {
+        return create(ModuleNode.app());
+    }
+
     public static Container create(ModuleEx... modules) {
         return create(ModuleNode.app(modules == null ? new ModuleEx[0] : modules));
     }
@@ -50,5 +55,11 @@ public final class Freeway {
      */
     public static Container create(ModuleNode tree) {
         return new ContainerImpl(tree);
+    }
+
+    /** Creates the container over modules named by class — the normal form. */
+    @SafeVarargs
+    public static Container create(Class<? extends ModuleEx>... types) {
+        return create(ModuleNode.app(types));
     }
 }

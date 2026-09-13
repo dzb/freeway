@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   自行判定。它服务模块组合，也可用于任何只读层次结构（配置键树、路由清单）。
 - **`ModuleNode`（freeway-ioc）** — 模块组合的值类型：`app(name, …)` 应用根、`group(name, …)`
   命名分组、`leaf(module)`、`of(module, …)`，外加 `of(TreeNode<ModuleEx>)` 接管已有片段。
+  **常规写法是给 class**：`leaf(OrderModule.class)`、`app("orders", OrderModule.class,
+  HttpModule.class)`、`FreewayApp.run(OrderModule.class)`、`AppBuilder.add(Class…)` —— 类由组合
+  显式点名（没有任何扫描），经**无参构造**实例化；构造器带参数的模块才传实例
+  （`leaf(new TenantModule("acme"))`），因为模块的构造器承载的是配置而不是依赖（容器尚不存在，
+  没有东西可注入）。没有无参构造却按 class 声明时，在构建树处失败并同时点名类与修法；同一个
+  class 声明两次与"同 class 两个实例"同样报错（修法：只声明一次，共享请用片段）。
   `bindOrder()` 给出绑定序（前序），`tree()` 给出结构，`classes()` 给 SPI 发现看"哪些
   class 已在树里"，`isApplication()` 让入口复用调用方建好的根。
 
