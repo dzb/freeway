@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`WebServer` 的构造器阶梯由 4/5/6 收成 4/6** — 包私有的 5 参构造器（只比 4 参多一个
+  `readinessProbe`）在仓库内已无任何调用者：core 的装配点（`HttpModule`、`WebServerBuilder`）都直接走
+  6 参，4 参为外部适配器保留。删掉它不改变任何行为，也让"公开 4 参 / 内部 6 参"的边界更清楚；
+  其余两项复核结论见 docs 审计记录（`HttpContextImpl.reset` 的 10 参与 `ServiceRegistry.drainWindow()`
+  经核实仍应保留）。
+
 ### Added
 
 - **`SslSettings` / `SslContexts`（freeway-http 根包）** — `freeway.http.ssl.*` 现在只声明一次：

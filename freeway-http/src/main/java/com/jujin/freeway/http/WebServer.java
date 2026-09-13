@@ -67,16 +67,6 @@ public final class WebServer implements AutoCloseable {
         HttpServerConfig config,
         Consumer<Object> eventSink,
         RequestComponents pipeline,
-        ReadinessProbe readinessProbe
-    ) {
-        this(engine, config, eventSink, pipeline, readinessProbe, false);
-    }
-
-    WebServer(
-        HttpEngine engine,
-        HttpServerConfig config,
-        Consumer<Object> eventSink,
-        RequestComponents pipeline,
         ReadinessProbe readinessProbe,
         boolean secure
     ) {
