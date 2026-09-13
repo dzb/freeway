@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **给外部适配器复用的三个 core 缝隙** — 两个 HTTP 适配器（Jetty/Undertow）的归一化对比显示，
+  它们的重复里有三块并不含引擎 API，只是 core 对自家公开面缺少支撑，于是同一段逻辑存在三份
+  （含内置引擎一份）。现在下沉到 core：
+  - **`Compression`（freeway-http）** — `acceptsGzip(List<String>)` / `acceptsGzip(String)` +
+    `gzip(byte[])`。放在根包 `MediaTypes` 旁边（同样的理由：让内置引擎与外部适配器共用一份判定，
+    而不是各写一份字符串扫描）。语义统一为：缺头即"无偏好"不压缩、`gzip` 开启、`gzip;q=0` 拒绝、
+    `q` 参数名大小写不敏感、畸形 `q` 视为接受。此前内置引擎、Jetty 适配器、Undertow 适配器各有一份
+    `acceptsGzip`/`qValueIsZero`/`gzip`。
+  - **`AbstractWebSocketSession`（freeway-http.websocket）** — 会话的"请求标识 + exchange 元数据"
+    半边：correlationId/startTime/principal/attributes、method/path/pathVar(s)/queryParam(s)/header(s)，
+    映射一律做不可变深拷贝。实现者只再实现引擎相关的帧操作。与 `AbstractHttpContext` 对 HTTP 交换
+    的分工完全同构；内置引擎的 `WebSocketSessionImpl` 与两个适配器的会话都改继承它。
+  - **`SymbolSource.systemProperties()`（freeway-ioc）** — 只读 JVM 系统属性的独立来源（缺键时严格
+    访问器抛 `UnknownSymbolException`、宽松访问器回落默认值、`expand` 原样返回）。只有机制、不含任何
+    键名，因此放在 `SymbolSource` 上，而不是让每个"既有容器路径又要能独立构造"的适配器各写一遍
+    （此前 Jetty/Undertow/HikariCP 三份）。
+- **修复 `closeReason` 的 UTF-8 截断**：把关闭原因裁到 123 字节时按字节硬切，可能切在多字节字符中间，
+  替换字符（U+FFFD）回编码后是 3 字节，于是"裁到 123"反而可能重新超过 123 字节（实测 125 字节），
+  严格的对端会拒收。现在回退到码点边界，结果保证 ≤123 字节且不出现替换字符。两个适配器此前都有这个
+  缺陷，随共享实现一并修掉。
 - **`TreeNode<T>`（freeway-commons）** — 不可变树值：`value` / `children` + 迭代式
   `preOrder()` / `levelOrder()`（含起始节点、耗尽抛 `NoSuchElementException`）+ `size()` /
   `height()` / `isLeaf()`。深树不递归（显式栈），没有父指针、没有 `add/remove/set`，因此

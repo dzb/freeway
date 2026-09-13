@@ -1,6 +1,5 @@
 package com.jujin.freeway.http.engine;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,7 +11,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.zip.GZIPOutputStream;
@@ -22,6 +20,7 @@ import javax.net.ssl.SSLSession;
 import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.json.JsonCodec;
 import com.jujin.freeway.http.AbstractHttpContext;
+import com.jujin.freeway.http.Compression;
 import com.jujin.freeway.http.HttpResponse;
 import com.jujin.freeway.http.internal.HttpUtils;
 import com.jujin.freeway.http.HttpServerConfig;
@@ -258,7 +257,7 @@ public class HttpContextImpl extends AbstractHttpContext {
         if (ResponseFraming.shouldGzip(compression, responseStatus,
                 allowsResponseBody(), body.length,
                 acceptsGzip(), compressibleContentType())) {
-            body = gzip(body);
+            body = Compression.gzip(body);
             responseHeaders.set("Content-Encoding", "gzip");
             addVaryAcceptEncoding();
             responseHeaders.setValueIfPresent(
@@ -399,33 +398,7 @@ public class HttpContextImpl extends AbstractHttpContext {
     }
 
     private boolean acceptsGzip() {
-        for (String value : requestHeaders.getAll("accept-encoding")) {
-            for (String part : value.split(",")) {
-                String token = part.trim();
-                int q = token.indexOf(';');
-                String name = q < 0 ? token : token.substring(0, q).trim();
-                if ("gzip".equalsIgnoreCase(name)) {
-                    if (q < 0) return true;
-                    String params = token.substring(q + 1).toLowerCase(Locale.ROOT);
-                    return !qValueIsZero(params);
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean qValueIsZero(String params) {
-        for (String part : params.split(";")) {
-            String[] kv = part.trim().split("=", 2);
-            if (kv.length == 2 && "q".equals(kv[0].trim())) {
-                try {
-                    return Double.parseDouble(kv[1].trim()) == 0.0;
-                } catch (NumberFormatException e) {
-                    return false;
-                }
-            }
-        }
-        return false;
+        return Compression.acceptsGzip(requestHeaders.getAll("accept-encoding"));
     }
 
     private boolean compressibleContentType() {
@@ -451,13 +424,6 @@ public class HttpContextImpl extends AbstractHttpContext {
             HttpUtils.mergeVary(responseHeaders.get("Vary"), "Accept-Encoding"));
     }
 
-    private static byte[] gzip(byte[] data) throws IOException {
-        var bos = new ByteArrayOutputStream(Math.max(64, data.length / 2));
-        try (var gzip = new GZIPOutputStream(bos)) {
-            gzip.write(data);
-        }
-        return bos.toByteArray();
-    }
 
     @Override
     public SseEmitter sse() throws IOException {

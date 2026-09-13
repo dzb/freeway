@@ -28,6 +28,37 @@ package com.jujin.freeway.ioc.symbol;
 public interface SymbolSource {
 
     /**
+     * A source backed by JVM system properties alone: the pre-cascade behavior
+     * for standalone construction (tests, benchmarks, direct adapter use). A
+     * missing symbol throws from {@link #resolve(String)} and falls back to the
+     * default from {@link #resolve(String, String)}; {@link #expand(String)}
+     * returns its input unchanged, since there is nothing to expand against.
+     *
+     * <p>This is the mechanism only — no key names — so it lives here rather
+     * than being re-declared by every adapter that also has a container path.
+     */
+    static SymbolSource systemProperties() {
+        return new SymbolSource() {
+            @Override
+            public String resolve(String name) {
+                String value = System.getProperty(name);
+                if (value == null) throw new UnknownSymbolException(name);
+                return value;
+            }
+
+            @Override
+            public String resolve(String name, String defaultValue) {
+                return System.getProperty(name, defaultValue);
+            }
+
+            @Override
+            public String expand(String input) {
+                return input;
+            }
+        };
+    }
+
+    /**
      * Resolves a symbol to its value, or throws if the symbol is unknown.
      *
      * @param name the symbol name (e.g. {@code "server.port"})

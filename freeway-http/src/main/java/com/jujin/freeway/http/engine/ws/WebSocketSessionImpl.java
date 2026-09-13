@@ -4,123 +4,39 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
-import com.jujin.freeway.http.ExchangeMetaDefault;
 import com.jujin.freeway.http.internal.HttpUtils;
-import com.jujin.freeway.http.websocket.WebSocketSession;
+import com.jujin.freeway.http.websocket.AbstractWebSocketSession;
 
-public final class WebSocketSessionImpl implements WebSocketSession {
+public final class WebSocketSessionImpl extends AbstractWebSocketSession {
 
     /** Messages larger than this are sent fragmented, so a single frame
      *  never exceeds the receive-side cap (WebSocketFrame.MAX_FRAME_SIZE)
      *  and peers with per-frame limits accept the message. */
     private static final int MAX_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
-    private final String method;
-    private final String path;
-    private final String rawQuery;
-    private final Map<String, List<String>> headers;
     private final InputStream in;
     private final OutputStream out;
-    private final Map<String, String> pathVariables;
-
-    private final ExchangeMetaDefault exchangeMeta;
     private volatile boolean open = true;
     private volatile int closeCode = 1006;
     private volatile String closeReason = "";
     private final Object writeLock = new Object();
-
-    // lazy
-    private Map<String, List<String>> queryParams;
 
     public WebSocketSessionImpl(String method, String path, String rawQuery,
                          Map<String, List<String>> headers,
                          InputStream in, OutputStream out,
                          Map<String, String> pathVariables,
                          String correlationId) {
-        this.method = method;
-        this.path = path;
-        this.rawQuery = rawQuery;
-        this.headers = headers;
+        super(correlationId, method, path, pathVariables,
+            HttpUtils.parseQueryParams(rawQuery), headers);
         this.in = in;
         this.out = out;
-        this.pathVariables = pathVariables != null ? Map.copyOf(pathVariables) : Map.of();
-        this.exchangeMeta = new ExchangeMetaDefault(correlationId);
     }
 
-    @Override public String correlationId() { return exchangeMeta.correlationId(); }
-    @Override public Instant startTime() { return exchangeMeta.startTime(); }
-    @Override public Object principal() { return exchangeMeta.principal(); }
-    @Override public void setPrincipal(Object principal) {
-        exchangeMeta.setPrincipal(principal);
-    }
-
-    @Override
-    public Object attribute(String key) {
-        return exchangeMeta.attribute(key);
-    }
-
-    @Override
-    public void setAttribute(String key, Object value) {
-        exchangeMeta.setAttribute(key, value);
-    }
-
-    @Override
-    public Map<String, Object> attributes() {
-        return exchangeMeta.attributes();
-    }
-
-    @Override public String method() { return method; }
-    @Override public String path() { return path; }
-    @Override
-    public Optional<String> pathVar(String name) {
-        return Optional.ofNullable(pathVariables.get(name));
-    }
-    @Override public Map<String, String> pathVars() { return pathVariables; }
     @Override public boolean isOpen() { return open; }
-
-    @Override
-    public Optional<String> queryParam(String name) {
-        return ensureQueryParams().getOrDefault(name, List.of()).stream()
-            .findFirst();
-    }
-
-    @Override
-    public List<String> queryParams(String name) {
-        return List.copyOf(ensureQueryParams().getOrDefault(name, List.of()));
-    }
-
-    @Override
-    public Map<String, List<String>> queryParams() {
-        Map<String, List<String>> m = ensureQueryParams();
-        Map<String, List<String>> copy = new LinkedHashMap<>();
-        m.forEach((k, v) -> copy.put(k, List.copyOf(v)));
-        return Collections.unmodifiableMap(copy);
-    }
-
-    @Override
-    public Optional<String> header(String name) {
-        return Optional.ofNullable(HttpUtils.headerValue(headers, name));
-    }
-
-    @Override
-    public List<String> headers(String name) {
-        return HttpUtils.headerValues(headers, name);
-    }
-
-    @Override
-    public Map<String, List<String>> headers() {
-        Map<String, List<String>> copy = new LinkedHashMap<>();
-        headers.forEach((k, v) -> copy.put(k, List.copyOf(v)));
-        return Collections.unmodifiableMap(copy);
-    }
 
     private void checkOpen() throws IOException {
         if (!open) throw new IOException("WebSocket is closed");
@@ -253,13 +169,6 @@ public final class WebSocketSessionImpl implements WebSocketSession {
     String closeReason() { return closeReason; }
 
     // --- internal ---
-
-    private Map<String, List<String>> ensureQueryParams() {
-        if (queryParams == null) {
-            queryParams = HttpUtils.parseQueryParams(rawQuery);
-        }
-        return queryParams;
-    }
 
     private static byte[] buildClosePayload(int code, String reason) {
         if (!WebSocketFrame.isValidWireCloseCode(code)) {
