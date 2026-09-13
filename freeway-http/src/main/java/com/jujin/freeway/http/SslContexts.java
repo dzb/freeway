@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.internal;
+package com.jujin.freeway.http;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -19,20 +19,21 @@ import javax.net.ssl.TrustManagerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jujin.freeway.http.HttpConfigKeys;
-import com.jujin.freeway.http.internal.HttpModuleConfig;
 
 /**
- * Builds the TLS material for the built-in HTTPS engine: keystore/truststore
- * loading, SNI key managers, and protocol/cipher restriction.
+ * Builds TLS material from {@link SslSettings}: keystore/truststore loading, SNI
+ * key managers, and protocol/cipher restriction. Shared by the built-in HTTPS
+ * engine and any adapter that terminates TLS itself (Undertow builds its
+ * {@code SSLContext} from here), so keystore handling — including SNI and the
+ * null-vs-empty password rule — is identical across engines.
  */
-public final class SslContextFactory {
+public final class SslContexts {
 
-    private static final Logger LOG = LoggerFactory.getLogger(SslContextFactory.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SslContexts.class);
 
-    private SslContextFactory() {}
+    private SslContexts() {}
 
-    public static SSLContext buildContext(HttpModuleConfig.Ssl s) {
+    public static SSLContext build(SslSettings s) {
         if (s.keyStorePath() == null || s.keyStorePath().isBlank()) {
             throw new IllegalStateException(HttpConfigKeys.SSL_KEY_STORE
                 + " is required when the HTTPS engine is enabled"
@@ -58,8 +59,11 @@ public final class SslContextFactory {
         }
     }
 
-    public static SSLParameters buildParameters(boolean clientAuth, List<String> protocols,
-                                                List<String> ciphers) {
+    /** Protocol/cipher restriction and client-auth requirement, or null when none applies. */
+    public static SSLParameters parameters(SslSettings s) {
+        boolean clientAuth = s.clientAuth();
+        List<String> protocols = s.protocols();
+        List<String> ciphers = s.ciphers();
         if (!clientAuth && (protocols == null || protocols.isEmpty())
                 && (ciphers == null || ciphers.isEmpty())) {
             return null;
@@ -105,7 +109,7 @@ public final class SslContextFactory {
         return password == null ? null : password.toCharArray();
     }
 
-    private static KeyManager[] buildSniKeyManagers(HttpModuleConfig.Ssl s,
+    private static KeyManager[] buildSniKeyManagers(SslSettings s,
                                                     KeyStore defaultStore)
             throws Exception {
         Path dir = Path.of(s.sniDirectory());
@@ -116,7 +120,7 @@ public final class SslContextFactory {
         Map<String, KeyStore> byHost = new LinkedHashMap<>();
         KeyStore effectiveDefault = defaultStore;
         try (var files = Files.list(dir)) {
-            for (Path file : files.filter(SslContextFactory::isKeystoreFile)
+            for (Path file : files.filter(SslContexts::isKeystoreFile)
                     .sorted().toList()) {
                 String name = file.getFileName().toString();
                 String stem = name.substring(0, name.lastIndexOf('.'));
@@ -138,7 +142,7 @@ public final class SslContextFactory {
             byHost, effectiveDefault, keyStorePasswordChars(s.keyStorePassword()))};
     }
 
-    private static TrustManager[] buildTrustManagers(HttpModuleConfig.Ssl s)
+    private static TrustManager[] buildTrustManagers(SslSettings s)
             throws Exception {
         if (s.trustStorePath() == null) {
             return null;

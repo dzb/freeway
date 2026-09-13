@@ -17,7 +17,8 @@ import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.internal.HttpModuleConfig;
-import com.jujin.freeway.http.internal.SslContextFactory;
+import com.jujin.freeway.http.SslContexts;
+import com.jujin.freeway.http.SslSettings;
 import com.jujin.freeway.http.internal.SslReloader;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
@@ -85,7 +86,7 @@ public final class HttpModule implements ModuleEx {
             var coercer = container.get(Coercer.class);
             var metrics = container.get(Metrics.class);
 
-            HttpModuleConfig.Ssl ssl = container.get(HttpModuleConfig.class).ssl();
+            SslSettings ssl = container.get(HttpModuleConfig.class).ssl();
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
                 return new FreewayHttpEngine(json, coercer, metrics);
@@ -93,9 +94,8 @@ public final class HttpModule implements ModuleEx {
 
             LOG.info("Initializing HTTPS engine from keystore {} (type={}, http2={}, clientAuth={})",
                 ssl.keyStorePath(), ssl.keyStoreType(), ssl.http2(), ssl.clientAuth());
-            SSLContext sslContext = SslContextFactory.buildContext(ssl);
-            SSLParameters sslParameters = SslContextFactory.buildParameters(
-                ssl.clientAuth(), ssl.protocols(), ssl.ciphers());
+            SSLContext sslContext = SslContexts.build(ssl);
+            SSLParameters sslParameters = SslContexts.parameters(ssl);
             LOG.info("HTTPS engine initialized — TLS via JDK SSLContext");
             return new FreewayHttpEngine(
                 json, coercer, sslContext, ssl.http2(), sslParameters, metrics);
@@ -147,7 +147,7 @@ public final class HttpModule implements ModuleEx {
         binder.contribute(RuntimeHook.class).add(SERVER_HOOK, new RuntimeHook() {
             @Override
             public void start(Container container) {
-                HttpModuleConfig.Ssl ssl = container.get(HttpModuleConfig.class).ssl();
+                SslSettings ssl = container.get(HttpModuleConfig.class).ssl();
                 container.get(WebServer.class).start();
                 if (ssl.enabled() && ssl.reloadInterval() != null
                         && !ssl.reloadInterval().isZero()) {
@@ -163,7 +163,7 @@ public final class HttpModule implements ModuleEx {
                             ssl.sniDirectory() != null
                                 ? Path.of(ssl.sniDirectory()) : null,
                             ssl.reloadInterval(),
-                            () -> SslContextFactory.buildContext(ssl));
+                            () -> SslContexts.build(ssl));
                         try {
                             sslReloader.start();
                         } catch (RuntimeException ex) {

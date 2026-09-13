@@ -31,6 +31,17 @@ class SymbolSourceSystemPropertiesTest {
     }
 
     @Test
+    void resolvesSpecsThroughACoercerLikeTheContainer() {
+        System.setProperty(KEY, "42");
+        SymbolSource symbols = SymbolSource.systemProperties();
+
+        // Adapters read typed keys through SymbolSpec; a standalone source must
+        // parse them the same way the container's chain does.
+        assertEquals(42, symbols.resolve(SymbolSpec.of(KEY, Integer.class, 0)));
+        assertEquals(0, symbols.resolve(SymbolSpec.of(KEY + ".absent", Integer.class, 0)));
+    }
+
+    @Test
     void absentSymbolThrowsOnStrictResolveAndFallsBackOnLenientResolve() {
         SymbolSource symbols = SymbolSource.systemProperties();
 

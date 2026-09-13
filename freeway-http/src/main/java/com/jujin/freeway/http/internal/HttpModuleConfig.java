@@ -4,11 +4,11 @@ package com.jujin.freeway.http.internal;
 import com.jujin.freeway.ioc.symbol.SymbolSpec;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpServerConfig;
+import com.jujin.freeway.http.SslSettings;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.function.Function;
 
 /**
  * The {@code HttpModule}'s resolved configuration: one immutable snapshot,
@@ -31,7 +31,7 @@ public record HttpModuleConfig(
     HttpServerConfig server,
     Cors cors,
     Health health,
-    Ssl ssl,
+    SslSettings ssl,
     boolean accessLogEnabled
 ) {
 
@@ -41,27 +41,6 @@ public record HttpModuleConfig(
                        boolean allowCredentials) {}
 
     public record Health(boolean enabled, String path) {}
-
-    public record Ssl(boolean enabled, String keyStorePath,
-                      String keyStorePassword, String keyStoreType,
-                      boolean http2, String trustStorePath,
-                      String trustStorePassword, String trustStoreType,
-                      boolean clientAuth, List<String> protocols,
-                      List<String> ciphers, String sniDirectory,
-                      Duration reloadInterval) {
-
-        /**
-         * Presence-driven activation via {@link SymbolSpec}: an explicit
-         * {@code ssl.enabled} wins — {@code true} or {@code false} (the kill
-         * switch suppressing a configured keystore); unset falls to keystore
-         * presence — a configured keystore is an HTTPS server. Nothing set
-         * is plaintext: installing HttpModule is never a TLS side effect.
-         */
-        static boolean activated(String enabledRaw, String keyStorePath) {
-            return SymbolSpec.activated(HttpConfigKeys.SSL_ENABLED, enabledRaw,
-                keyStorePath != null && !keyStorePath.isBlank());
-        }
-    }
 
     // ── Key declarations: name, type and default stated exactly once ──
 
@@ -119,33 +98,6 @@ public record HttpModuleConfig(
     private static final SymbolSpec<String> HEALTH_PATH =
         SymbolSpec.of(HttpConfigKeys.HEALTH_PATH, String.class, "/healthz");
 
-    private static final SymbolSpec<String> SSL_ENABLED =
-        SymbolSpec.of(HttpConfigKeys.SSL_ENABLED, String.class, null, Function.identity());
-    private static final SymbolSpec<String> SSL_KEY_STORE =
-        SymbolSpec.of(HttpConfigKeys.SSL_KEY_STORE, String.class, null);
-    private static final SymbolSpec<String> SSL_KEY_STORE_PASSWORD =
-        SymbolSpec.of(HttpConfigKeys.SSL_KEY_STORE_PASSWORD, String.class, null);
-    private static final SymbolSpec<String> SSL_KEY_STORE_TYPE =
-        SymbolSpec.of(HttpConfigKeys.SSL_KEY_STORE_TYPE, String.class, "PKCS12");
-    private static final SymbolSpec<Boolean> SSL_HTTP2 =
-        SymbolSpec.of(HttpConfigKeys.SSL_HTTP2, Boolean.class, true);
-    private static final SymbolSpec<String> SSL_TRUST_STORE =
-        SymbolSpec.of(HttpConfigKeys.SSL_TRUST_STORE, String.class, null);
-    private static final SymbolSpec<String> SSL_TRUST_STORE_PASSWORD =
-        SymbolSpec.of(HttpConfigKeys.SSL_TRUST_STORE_PASSWORD, String.class, null);
-    private static final SymbolSpec<String> SSL_TRUST_STORE_TYPE =
-        SymbolSpec.of(HttpConfigKeys.SSL_TRUST_STORE_TYPE, String.class, "PKCS12");
-    private static final SymbolSpec<Boolean> SSL_CLIENT_AUTH =
-        SymbolSpec.of(HttpConfigKeys.SSL_CLIENT_AUTH, Boolean.class, false);
-    private static final SymbolSpec<List<String>> SSL_PROTOCOLS =
-        SymbolSpec.list(HttpConfigKeys.SSL_PROTOCOLS, null);
-    private static final SymbolSpec<List<String>> SSL_CIPHERS =
-        SymbolSpec.list(HttpConfigKeys.SSL_CIPHERS, null);
-    private static final SymbolSpec<String> SSL_SNI_DIRECTORY =
-        SymbolSpec.of(HttpConfigKeys.SSL_SNI_DIRECTORY, String.class, null);
-    private static final SymbolSpec<Duration> SSL_RELOAD_INTERVAL =
-        SymbolSpec.of(HttpConfigKeys.SSL_RELOAD_INTERVAL, Duration.class,
-            Duration.ZERO);
     private static final SymbolSpec<Integer> H2_RESET_BURST_LIMIT =
         SymbolSpec.of(HttpConfigKeys.H2_RESET_BURST_LIMIT, Integer.class,
             HttpServerConfig.DEFAULT_H2_RESET_BURST_LIMIT);
@@ -160,9 +112,6 @@ public record HttpModuleConfig(
      * contract plus the assembly-face records.
      */
     public static HttpModuleConfig from(SymbolSource symbols) {
-        String sslEnabledRaw = symbols.resolve(SSL_ENABLED);
-        String sslKeyStore = symbols.resolve(SSL_KEY_STORE);
-        boolean sslEnabled = Ssl.activated(sslEnabledRaw, sslKeyStore);
         return new HttpModuleConfig(
             new HttpServerConfig(
                 symbols.resolve(SERVER_HOST),
@@ -191,20 +140,7 @@ public record HttpModuleConfig(
             new Health(
                 symbols.resolve(HEALTH_ENABLED),
                 symbols.resolve(HEALTH_PATH)),
-            new Ssl(
-                sslEnabled,
-                sslKeyStore,
-                symbols.resolve(SSL_KEY_STORE_PASSWORD),
-                symbols.resolve(SSL_KEY_STORE_TYPE),
-                symbols.resolve(SSL_HTTP2),
-                symbols.resolve(SSL_TRUST_STORE),
-                symbols.resolve(SSL_TRUST_STORE_PASSWORD),
-                symbols.resolve(SSL_TRUST_STORE_TYPE),
-                symbols.resolve(SSL_CLIENT_AUTH),
-                symbols.resolve(SSL_PROTOCOLS),
-                symbols.resolve(SSL_CIPHERS),
-                symbols.resolve(SSL_SNI_DIRECTORY),
-                symbols.resolve(SSL_RELOAD_INTERVAL)),
+            SslSettings.from(symbols),
             symbols.resolve(ACCESS_LOG_ENABLED)
         );
     }

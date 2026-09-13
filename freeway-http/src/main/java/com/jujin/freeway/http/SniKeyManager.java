@@ -1,4 +1,4 @@
-package com.jujin.freeway.http.internal;
+package com.jujin.freeway.http;
 
 import java.net.Socket;
 import java.security.KeyStore;

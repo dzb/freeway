@@ -1,5 +1,8 @@
 package com.jujin.freeway.ioc.symbol;
 
+import com.jujin.freeway.commons.coercion.Coercer;
+import com.jujin.freeway.commons.coercion.CoercerDefault;
+
 /**
  * Resolves symbolic configuration keys ({@code ${...}}) from config, system
  * properties, environment variables, and other providers.
@@ -38,6 +41,11 @@ public interface SymbolSource {
      * than being re-declared by every adapter that also has a container path.
      */
     static SymbolSource systemProperties() {
+        // Specs declared without a per-key parser resolve through a Coercer, so
+        // this standalone source wires one exactly like the container's chain
+        // does — otherwise an adapter that reads a SymbolSpec would work under
+        // the container and fail when constructed directly.
+        Coercer coercer = new CoercerDefault();
         return new SymbolSource() {
             @Override
             public String resolve(String name) {
@@ -54,6 +62,11 @@ public interface SymbolSource {
             @Override
             public String expand(String input) {
                 return input;
+            }
+
+            @Override
+            public <T> T resolve(SymbolSpec<T> spec) {
+                return spec.parse(resolve(spec.key(), null), coercer);
             }
         };
     }

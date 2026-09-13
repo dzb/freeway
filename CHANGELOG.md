@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SslSettings` / `SslContexts`（freeway-http 根包）** — `freeway.http.ssl.*` 现在只声明一次：
+  `SslSettings.from(SymbolSource)` 读取全部 TLS 键（enabled / key-store(+password/type) /
+  trust-store(+password/type) / client-auth / protocols / ciphers / sni-directory / reload-interval /
+  http2）并做同一个三态判定（显式 true/false 优先，未设则看 keystore 是否存在，全空即明文）；
+  `SslContexts` 由内部 `SslContextFactory` 提升而来，公开 `build(SslSettings)` 与
+  `parameters(SslSettings)`（keystore/truststore 装载、SNI 多证书、协议与密码套件限制）。
+  此前这段"键读取 + 三态"在内置引擎的 `HttpModuleConfig` 与两个适配器里各写一遍；现在内置引擎、
+  Jetty、Undertow 共用同一份，`internal.HttpModuleConfig.Ssl` 与 `internal.SslContextFactory` 删除
+  （`SniKeyManager` 移入根包）。适配器只保留各自独有的键（Jetty 的 `ssl.key-password`/`key-alias`）。
+- **修复 `SymbolSource.systemProperties()` 的 SymbolSpec 解析**：该独立来源此前只有
+  `resolve(String)`，遇到按 `SymbolSpec` 读取的适配器会抛"has no parser"——容器路径正常、直接构造
+  失败。现在与容器链一致，内部接一个 `CoercerDefault` 走 `spec.parse(raw, coercer)`。
 - **给外部适配器复用的三个 core 缝隙** — 两个 HTTP 适配器（Jetty/Undertow）的归一化对比显示，
   它们的重复里有三块并不含引擎 API，只是 core 对自家公开面缺少支撑，于是同一段逻辑存在三份
   （含内置引擎一份）。现在下沉到 core：
