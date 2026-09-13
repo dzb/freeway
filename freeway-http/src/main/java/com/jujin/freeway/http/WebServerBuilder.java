@@ -35,7 +35,7 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
  * Builder for standalone {@link WebServer} usage without the IoC container.
  *
  * <pre>{@code
- * var server = WebServer.builder()
+ * var server = WebServerBuilder.builder()
  *     .config(new HttpServerConfig("0.0.0.0", 8080, 0, Duration.ofSeconds(2)))
  *     .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
  *     .build();
