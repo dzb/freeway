@@ -136,12 +136,12 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         // Resolved optionally — the event module installs without the RPC one.
         TransportSecurity security = optional(container, TransportSecurity.class);
         connector = new PeerConnector(hub,
-            Duration.ofMillis(symbols.resolve(CONNECT_TIMEOUT_MS)),
-            wsScheme,
-            Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)),
-            symbols.resolve(BACKOFF_BASE_MS),
-            symbols.resolve(BACKOFF_MAX_MS),
-            security == null ? null : security.sslContext());
+            PeerConnector.Wiring.defaults()
+                .withConnectTimeout(Duration.ofMillis(symbols.resolve(CONNECT_TIMEOUT_MS)))
+                .withScheme(wsScheme)
+                .withHandshakeTimeout(Duration.ofMillis(symbols.resolve(HANDSHAKE_TIMEOUT_MS)))
+                .withBackoff(symbols.resolve(BACKOFF_BASE_MS), symbols.resolve(BACKOFF_MAX_MS))
+                .withSslContext(security == null ? null : security.sslContext()));
         bus.addEventSink(sink);
         connector.start(peers);
     }

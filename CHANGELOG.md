@@ -44,6 +44,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **批次 B（第四批）：`PeerConnector` 的 7 位置参数收成 `Wiring`，`PoolConfig` 补 wither（freeway-cloud / freeway-db）**：
+  - `PeerConnector(PeerHub, Duration connectTimeout, String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs, SSLContext)`
+    换成 `PeerConnector(PeerHub, Wiring)`。原签名里有**两对相邻同类型参数**（两个 `Duration`、两个 `long`），
+    互换任意一对都能编译，代价是网格按错误的节奏超时或退避。`Wiring.defaults()` 的每个默认值都取自
+    `freeway.cloud.event.*` 的声明默认（新增 `CONNECT_TIMEOUT` 常量，与配置键同源），
+    `withBackoff(base, max)` 一次给两个值——互换在调用点不再可表达；唯一的装配点
+    `CloudEventLifecycleHook` 收敛成一条 wither 链。
+  - `PoolConfig`（12 组件）补 12 个 `withX`，类 javadoc 的示例从"12 个位置参数"改成
+    `defaults(url, user, pass).withMaxSize(20)…`；删掉 `DEFAULT_HEALTH_CHECK_QUERY = null`
+    （"不设查询"不需要一个 null 常量，规范构造器传 `null` 即可，注释说明 `isValid` 决定）。校验仍在紧凑
+    构造器里，所以每个 wither 都会重新校验。
+- **测试补两条契约**：`PeerConnector.Wiring` 的默认值/归一化/`withBackoff`，以及 `PoolConfig` 的
+  "defaults 说全 + wither 只动一个字段 + 每次都重新校验"。反向检查都做了：把 `defaults()` 里两个
+  `Duration` 互换 → 用例红（`expected: <PT3S> but was: <PT10S>`）；让 `withMinIdle` 顺手改 `maxSize` →
+  用例红（`expected: <20> but was: <5>`）。
+
 - **批次 B（第三批）：两处"位置参数矩阵"收成参数记录（freeway-db / freeway-http）**：
   - `MigrationRunner` 的两个构造器（4 参与 5 参，后者只多一个 `lockTtl`）换成
     `MigrationRunner(Database, Options)`；`Options` 记录持有 `enabled`/`path`/`table`/`lockTtl`，

@@ -4,6 +4,7 @@ import com.jujin.freeway.cloud.CloudConfigKeys;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,6 +49,10 @@ final class PeerConnector implements AutoCloseable {
      *  ms→Duration conversion happens at this boundary. */
     private static final Duration HANDSHAKE_TIMEOUT =
         Duration.ofMillis(CloudConfigKeys.EVENT_HANDSHAKE_TIMEOUT_MS_DEFAULT);
+    /** Dial timeout; the config key's own default, so a bare
+     *  {@link Wiring#defaults()} behaves exactly like an unconfigured app. */
+    private static final Duration CONNECT_TIMEOUT =
+        Duration.ofMillis(CloudConfigKeys.EVENT_CONNECT_TIMEOUT_MS_DEFAULT);
     /** Mirrors the server side's inbound message limit
      *  ({@code WebSocket.MAX_MESSAGE_SIZE}): fragment reassembly must not turn
      *  a peer that never sets FIN into unbounded memory. */
@@ -83,16 +88,77 @@ final class PeerConnector implements AutoCloseable {
      * Networking values come from the {@code freeway.cloud.event.*} config via
      * {@link com.jujin.freeway.cloud.CloudConfigKeys}.
      */
-    public PeerConnector(PeerHub hub, Duration connectTimeout,
-            String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs,
-            javax.net.ssl.SSLContext sslContext) {
-        this.hub = hub;
-        this.connectTimeout = connectTimeout;
-        this.scheme = scheme == null || scheme.isBlank() ? "ws" : scheme;
-        this.handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
-        this.backoffBaseMs = backoffBaseMs <= 0 ? BACKOFF_BASE_MS : backoffBaseMs;
-        this.backoffMaxMs = backoffMaxMs <= 0 ? BACKOFF_MAX_MS : backoffMaxMs;
-        this.http = newClient(connectTimeout, sslContext);
+    public PeerConnector(PeerHub hub, Wiring wiring) {
+        this.hub = Objects.requireNonNull(hub, "hub");
+        Objects.requireNonNull(wiring, "wiring");
+        this.connectTimeout = wiring.connectTimeout();
+        this.scheme = wiring.scheme();
+        this.handshakeTimeout = wiring.handshakeTimeout();
+        this.backoffBaseMs = wiring.backoffBaseMs();
+        this.backoffMaxMs = wiring.backoffMaxMs();
+        this.http = newClient(wiring.connectTimeout(), wiring.sslContext());
+    }
+
+    /**
+     * The connector's optional inputs, as one value with named knobs.
+     *
+     * <p>It replaced a seven-position constructor in which
+     * {@code connectTimeout}/{@code handshakeTimeout} (two adjacent
+     * {@link Duration}s) and {@code backoffBaseMs}/{@code backoffMaxMs} (two
+     * adjacent {@code long}s) were silently interchangeable: swapping either
+     * pair compiled and produced a mesh that timed out or backed off on the
+     * wrong schedule. Every default here is the value
+     * {@code freeway.cloud.event.*} declares, applied in the compact
+     * constructor so a {@code null}/non-positive input cannot reach a field.</p>
+     */
+    public record Wiring(
+        Duration connectTimeout,
+        String scheme,
+        Duration handshakeTimeout,
+        long backoffBaseMs,
+        long backoffMaxMs,
+        javax.net.ssl.SSLContext sslContext
+    ) {
+        public Wiring {
+            connectTimeout = connectTimeout == null ? CONNECT_TIMEOUT : connectTimeout;
+            scheme = scheme == null || scheme.isBlank() ? "ws" : scheme;
+            handshakeTimeout = handshakeTimeout == null ? HANDSHAKE_TIMEOUT : handshakeTimeout;
+            backoffBaseMs = backoffBaseMs <= 0 ? BACKOFF_BASE_MS : backoffBaseMs;
+            backoffMaxMs = backoffMaxMs <= 0 ? BACKOFF_MAX_MS : backoffMaxMs;
+        }
+
+        /** Production defaults from the config keys, no outbound TLS material. */
+        public static Wiring defaults() {
+            return new Wiring(CONNECT_TIMEOUT, "ws", HANDSHAKE_TIMEOUT,
+                BACKOFF_BASE_MS, BACKOFF_MAX_MS, null);
+        }
+
+        public Wiring withConnectTimeout(Duration connectTimeout) {
+            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+                backoffMaxMs, sslContext);
+        }
+
+        /** {@code ws} or {@code wss}; blank falls back to {@code ws}. */
+        public Wiring withScheme(String scheme) {
+            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+                backoffMaxMs, sslContext);
+        }
+
+        public Wiring withHandshakeTimeout(Duration handshakeTimeout) {
+            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+                backoffMaxMs, sslContext);
+        }
+
+        public Wiring withBackoff(long backoffBaseMs, long backoffMaxMs) {
+            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+                backoffMaxMs, sslContext);
+        }
+
+        /** Outbound TLS material shared with the RPC client; null = JDK default. */
+        public Wiring withSslContext(javax.net.ssl.SSLContext sslContext) {
+            return new Wiring(connectTimeout, scheme, handshakeTimeout, backoffBaseMs,
+                backoffMaxMs, sslContext);
+        }
     }
 
     /**

@@ -6,14 +6,15 @@ import java.util.Objects;
 /**
  * Configuration for a JDBC connection pool.
  *
- * <p>Create with custom values or use the {@link #defaults(String, String, String)} shortcut:
+ * <p>{@link #defaults(String, String, String)} states every default; the
+ * per-field withers change one knob each, so a call site never has to count
+ * twelve positional arguments (and never has to wonder whether the fourth
+ * {@link Duration} was the lifetime or the idle time):
  * <pre>{@code
- * var config = new PoolConfig(url, user, pass, 20, 5,
- *     Duration.ofSeconds(30), Duration.ofMinutes(30), Duration.ofMinutes(10),
- *     Duration.ofMinutes(2), null, Duration.ofSeconds(5), Duration.ofSeconds(15));
- *
- * // or with defaults:
- * var config = PoolConfig.defaults(url, user, pass);
+ * var config = PoolConfig.defaults(url, user, pass)
+ *     .withMaxSize(20)
+ *     .withMinIdle(5)
+ *     .withMaxLifetime(Duration.ofMinutes(30));
  * }</pre>
  *
  * @param url                JDBC connection URL
@@ -49,7 +50,6 @@ public record PoolConfig(
     public static final Duration DEFAULT_MAX_LIFETIME = Duration.ofMinutes(30);
     public static final Duration DEFAULT_MAX_IDLE_TIME = Duration.ofMinutes(10);
     public static final Duration DEFAULT_CLEAN_INTERVAL = Duration.ofMinutes(2);
-    public static final String DEFAULT_HEALTH_CHECK_QUERY = null;
     public static final Duration DEFAULT_HEALTH_CHECK_TIMEOUT = Duration.ofSeconds(5);
     public static final Duration DEFAULT_QUERY_TIMEOUT = Duration.ofSeconds(15);
 
@@ -81,9 +81,70 @@ public record PoolConfig(
             url, username, password,
             DEFAULT_MAX_SIZE, DEFAULT_MIN_IDLE, DEFAULT_CONNECTION_TIMEOUT,
             DEFAULT_MAX_LIFETIME, DEFAULT_MAX_IDLE_TIME, DEFAULT_CLEAN_INTERVAL,
-            DEFAULT_HEALTH_CHECK_QUERY, DEFAULT_HEALTH_CHECK_TIMEOUT,
+            null, // no health-check query: JDBC isValid decides
+            DEFAULT_HEALTH_CHECK_TIMEOUT,
             DEFAULT_QUERY_TIMEOUT
         );
+    }
+
+    /** Same configuration with {@link #url} replaced. */
+    public PoolConfig withUrl(String url) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #username} replaced. */
+    public PoolConfig withUsername(String username) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #password} replaced. */
+    public PoolConfig withPassword(String password) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #maxSize} replaced. */
+    public PoolConfig withMaxSize(int maxSize) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #minIdle} replaced. */
+    public PoolConfig withMinIdle(int minIdle) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #connectionTimeout} replaced. */
+    public PoolConfig withConnectionTimeout(Duration connectionTimeout) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #maxLifetime} replaced. */
+    public PoolConfig withMaxLifetime(Duration maxLifetime) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #maxIdleTime} replaced. */
+    public PoolConfig withMaxIdleTime(Duration maxIdleTime) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #cleanInterval} replaced. */
+    public PoolConfig withCleanInterval(Duration cleanInterval) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #healthCheckQuery} replaced. */
+    public PoolConfig withHealthCheckQuery(String healthCheckQuery) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #healthCheckTimeout} replaced. */
+    public PoolConfig withHealthCheckTimeout(Duration healthCheckTimeout) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
+    }
+
+    /** Same configuration with {@link #queryTimeout} replaced. */
+    public PoolConfig withQueryTimeout(Duration queryTimeout) {
+        return new PoolConfig(url, username, password, maxSize, minIdle, connectionTimeout, maxLifetime, maxIdleTime, cleanInterval, healthCheckQuery, healthCheckTimeout, queryTimeout);
     }
 
     private static String requireNonBlank(String value, String name) {
