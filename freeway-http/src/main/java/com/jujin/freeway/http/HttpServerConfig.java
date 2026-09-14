@@ -43,6 +43,10 @@ public record HttpServerConfig(
     int h2ResetBurstLimit,
     Duration h2ResetWindow
 ) {
+    public static final String DEFAULT_HOST = "127.0.0.1";
+    public static final int DEFAULT_PORT = 8080;
+    public static final int DEFAULT_BACKLOG = 0;
+    public static final Duration DEFAULT_SHUTDOWN_GRACE = Duration.ofSeconds(2);
     public static final long DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024L; // 10MB
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(30);
     public static final Duration DEFAULT_WRITE_TIMEOUT = Duration.ofSeconds(30);
@@ -105,139 +109,108 @@ public record HttpServerConfig(
         }
     }
 
-    public HttpServerConfig(String host, int port, int backlog,
-                            Duration shutdownGrace, long maxBodySize,
-                            Duration readTimeout, int maxConnections) {
-        this(host, port, backlog, shutdownGrace, maxBodySize, readTimeout,
-            maxConnections, DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0,
-            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
-    }
-
-    public HttpServerConfig(String host, int port, int backlog,
-                            Duration shutdownGrace, long maxBodySize,
-                            Duration readTimeout, int maxConnections,
-                            Duration writeTimeout) {
-        this(host, port, backlog, shutdownGrace, maxBodySize, readTimeout,
-            maxConnections, writeTimeout, CompressionConfig.DEFAULT, 0, 0,
-            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
-    }
-
-    public HttpServerConfig(String host, int port, int backlog,
-                            Duration shutdownGrace, long maxBodySize) {
-        this(host, port, backlog, shutdownGrace, maxBodySize,
-            DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS, DEFAULT_WRITE_TIMEOUT,
-            CompressionConfig.DEFAULT, 0, 0,
-            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
-    }
-
-    public HttpServerConfig(String host, int port, int backlog, Duration shutdownGrace) {
-        this(host, port, backlog, shutdownGrace, DEFAULT_MAX_BODY_SIZE,
-            DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS, DEFAULT_WRITE_TIMEOUT,
-            CompressionConfig.DEFAULT, 0, 0,
-            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
-    }
-
     /**
-     * Fluent builder for configurations with many explicit fields. The long
-     * positional constructors make it easy to mis-bind a {@code Duration} to
-     * the wrong slot (e.g. a read timeout landing on shutdownGrace); the
-     * builder's named setters rule that out. Defaults match the canonical
-     * constructor's, and {@link Builder#build()} runs the same validation.
+     * The HTTP module's defaults: what {@code freeway.http.*} declares when
+     * nothing is configured (host/port/backlog/shutdown grace) plus the library
+     * defaults for every other knob. This is the one place they are stated —
+     * the config keys and {@link WebServerBuilder} read them from here.
      */
-    public static Builder builder() {
-        return new Builder();
+    public static HttpServerConfig defaults() {
+        return new HttpServerConfig(
+            DEFAULT_HOST, DEFAULT_PORT, DEFAULT_BACKLOG, DEFAULT_SHUTDOWN_GRACE,
+            DEFAULT_MAX_BODY_SIZE, DEFAULT_READ_TIMEOUT, DEFAULT_MAX_CONNECTIONS,
+            DEFAULT_WRITE_TIMEOUT, CompressionConfig.DEFAULT, 0, 0,
+            DEFAULT_H2_RESET_BURST_LIMIT, DEFAULT_H2_RESET_WINDOW);
     }
 
-    public static final class Builder {
-        private String host = "127.0.0.1";
-        private int port;
-        private int backlog;
-        private Duration shutdownGrace = Duration.ZERO;
-        private long maxBodySize = DEFAULT_MAX_BODY_SIZE;
-        private Duration readTimeout = DEFAULT_READ_TIMEOUT;
-        private int maxConnections = DEFAULT_MAX_CONNECTIONS;
-        private Duration writeTimeout = DEFAULT_WRITE_TIMEOUT;
-        private CompressionConfig compression = CompressionConfig.DEFAULT;
-        private int receiveBufferSize;
-        private int sendBufferSize;
-        private int h2ResetBurstLimit = DEFAULT_H2_RESET_BURST_LIMIT;
-        private Duration h2ResetWindow = DEFAULT_H2_RESET_WINDOW;
+    /** Same configuration with {@link #host} replaced. */
+    public HttpServerConfig withHost(String host) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder host(String host) {
-            this.host = host;
-            return this;
-        }
+    /** Same configuration with {@link #port} replaced. */
+    public HttpServerConfig withPort(int port) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder port(int port) {
-            this.port = port;
-            return this;
-        }
+    /** Same configuration with {@link #backlog} replaced. */
+    public HttpServerConfig withBacklog(int backlog) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder backlog(int backlog) {
-            this.backlog = backlog;
-            return this;
-        }
+    /** Same configuration with {@link #shutdownGrace} replaced. */
+    public HttpServerConfig withShutdownGrace(Duration shutdownGrace) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        /** Grace period for in-flight requests on shutdown. */
-        public Builder shutdownGrace(Duration shutdownGrace) {
-            this.shutdownGrace = shutdownGrace;
-            return this;
-        }
+    /** Same configuration with {@link #maxBodySize} replaced. */
+    public HttpServerConfig withMaxBodySize(long maxBodySize) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder maxBodySize(long maxBodySize) {
-            this.maxBodySize = maxBodySize;
-            return this;
-        }
+    /** Same configuration with {@link #readTimeout} replaced. */
+    public HttpServerConfig withReadTimeout(Duration readTimeout) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        /** Socket read idle timeout (zero disables). */
-        public Builder readTimeout(Duration readTimeout) {
-            this.readTimeout = readTimeout;
-            return this;
-        }
+    /** Same configuration with {@link #maxConnections} replaced. */
+    public HttpServerConfig withMaxConnections(int maxConnections) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder maxConnections(int maxConnections) {
-            this.maxConnections = maxConnections;
-            return this;
-        }
+    /** Same configuration with {@link #writeTimeout} replaced. */
+    public HttpServerConfig withWriteTimeout(Duration writeTimeout) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        /** Per-socket-write timeout (zero disables). */
-        public Builder writeTimeout(Duration writeTimeout) {
-            this.writeTimeout = writeTimeout;
-            return this;
-        }
+    /** Same configuration with {@link #compression} replaced. */
+    public HttpServerConfig withCompression(CompressionConfig compression) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder compression(CompressionConfig compression) {
-            this.compression = compression;
-            return this;
-        }
+    /** Same configuration with {@link #receiveBufferSize} replaced. */
+    public HttpServerConfig withReceiveBufferSize(int receiveBufferSize) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder receiveBufferSize(int receiveBufferSize) {
-            this.receiveBufferSize = receiveBufferSize;
-            return this;
-        }
+    /** Same configuration with {@link #sendBufferSize} replaced. */
+    public HttpServerConfig withSendBufferSize(int sendBufferSize) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        public Builder sendBufferSize(int sendBufferSize) {
-            this.sendBufferSize = sendBufferSize;
-            return this;
-        }
+    /** Same configuration with {@link #h2ResetBurstLimit} replaced. */
+    public HttpServerConfig withH2ResetBurstLimit(int h2ResetBurstLimit) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
+    }
 
-        /** RST burst guard trip count (0 disables the guard). */
-        public Builder h2ResetBurstLimit(int h2ResetBurstLimit) {
-            this.h2ResetBurstLimit = h2ResetBurstLimit;
-            return this;
-        }
-
-        /** Sliding window for the RST burst guard. */
-        public Builder h2ResetWindow(Duration h2ResetWindow) {
-            this.h2ResetWindow = h2ResetWindow;
-            return this;
-        }
-
-        public HttpServerConfig build() {
-            return new HttpServerConfig(host, port, backlog, shutdownGrace,
-                maxBodySize, readTimeout, maxConnections, writeTimeout,
-                compression, receiveBufferSize, sendBufferSize,
-                h2ResetBurstLimit, h2ResetWindow);
-        }
+    /** Same configuration with {@link #h2ResetWindow} replaced. */
+    public HttpServerConfig withH2ResetWindow(Duration h2ResetWindow) {
+        return new HttpServerConfig(host, port, backlog, shutdownGrace,
+            maxBodySize, readTimeout, maxConnections, writeTimeout, compression,
+            receiveBufferSize, sendBufferSize, h2ResetBurstLimit, h2ResetWindow);
     }
 }

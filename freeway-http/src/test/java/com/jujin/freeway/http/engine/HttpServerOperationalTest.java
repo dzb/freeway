@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.engine;
 
+import com.jujin.freeway.http.TestServerConfig;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -63,9 +65,7 @@ class HttpServerOperationalTest {
     void readTimeoutClosesIdleConnection() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0,
-                Duration.ofSeconds(2), 1024,
-                Duration.ofMillis(500), 0))
+            .config(TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofMillis(500)).withMaxConnections(0))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -82,9 +82,7 @@ class HttpServerOperationalTest {
     void maxConnectionsRejectsExcessConnections() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0,
-                Duration.ofSeconds(2), 1024,
-                Duration.ofMinutes(2), 2))
+            .config(TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofMinutes(2)).withMaxConnections(2))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -106,7 +104,7 @@ class HttpServerOperationalTest {
     void expect100ContinueGetsInterimResponse() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.post("/echo", ctx -> ctx.send(200, ctx.bodyText())))
             .build();
         server.start();
@@ -138,8 +136,7 @@ class HttpServerOperationalTest {
     void oversizedBodyClosesConnectionInsteadOfDrainingNextRequest() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0,
-                Duration.ofSeconds(2), 4, Duration.ofSeconds(2), 0))
+            .config(TestServerConfig.loopback(port).withMaxBodySize(4).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0))
             .route(Route.post("/body", ctx -> ctx.send(200, ctx.bodyText())))
             .route(Route.get("/next", ctx -> ctx.send(200, "next")))
             .build();
@@ -167,7 +164,7 @@ class HttpServerOperationalTest {
         TestMetrics metrics = new TestMetrics();
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .metrics(metrics)
             .route(Route.get("/ok", ctx -> ctx.send(200, "ok")))
             .route(Route.get("/boom", ctx -> {
@@ -235,7 +232,7 @@ class HttpServerOperationalTest {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
             .eventSink(events::add)
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.post("/boom", ctx -> {
                 ctx.setMaxBodySize(1);
                 ctx.body();
@@ -259,7 +256,7 @@ class HttpServerOperationalTest {
     void customErrorHandlerDoesNotReplaceBuiltInMappings() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .errorHandler((ctx, ex) -> {
                 if (ex instanceof IllegalStateException) {
                     ctx.sendJson(418, Map.of("error", "custom"));
@@ -306,7 +303,7 @@ class HttpServerOperationalTest {
     void http11RequiresSingleHostHeader() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -354,7 +351,7 @@ class HttpServerOperationalTest {
     void malformedRequestLineGets400() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -374,7 +371,7 @@ class HttpServerOperationalTest {
     void unknownExpectValueGets417() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -396,7 +393,7 @@ class HttpServerOperationalTest {
     void headerWithoutColonGets400() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -419,9 +416,7 @@ class HttpServerOperationalTest {
         int port = freePort();
         var log = new ByteArrayOutputStream();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0,
-                Duration.ofSeconds(2), 1024,
-                Duration.ofSeconds(2), 0))
+            .config(TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(0))
             .filter(new AccessLogFilter(new PrintStream(log, true)))
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
@@ -449,9 +444,7 @@ class HttpServerOperationalTest {
     void writeTimeoutClosesConnectionWhenPeerStopsReading() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0,
-                Duration.ofSeconds(2), 1024,
-                Duration.ofSeconds(30), 0, Duration.ofMillis(500)))
+            .config(TestServerConfig.loopback(port).withMaxBodySize(1024).withReadTimeout(Duration.ofSeconds(30)).withMaxConnections(0).withWriteTimeout(Duration.ofMillis(500)))
             .route(Route.get("/big", ctx ->
                 ctx.send(200, "x".repeat(16 * 1024 * 1024))))
             .build();

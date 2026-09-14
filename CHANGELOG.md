@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `PlantumlOptions` / `PlantumlDisplayContext` / `PlantumlDisplayResult`、`Graph.toPlantuml(…)` | `PlantUmlOptions` / `PlantUmlDisplayContext` / `PlantUmlDisplayResult`、`toPlantUml(…)` |
 | `CloudHttpClientDefault.Wiring(…, 9 参)` | 规范构造器 10 参（末位 `shutdownGrace`，传 `null` 取默认）；不再保留旧 arity 的委托构造器 |
 | `Sql.insert(…).set("col", v)` / `Sql.update(…).set("expr", v)` | `setColumn("col", v)` / `setExpression("expr", v)`——模式写在方法名上，用错模式抛 `IllegalStateException` 并指名另一个方法 |
+| `new HttpServerConfig(host, port, backlog, grace[, …])` | `HttpServerConfig.defaults().withPort(…).withBacklog(…)…`（测试代码用 `TestServerConfig.loopback()` / ext testkit 的 `EngineFixture.defaultConfig()`） |
+| `HttpServerConfig.builder()…build()` | `HttpServerConfig.defaults().withX(…)` |
+| `new WebServer(engine, config, sink, pipeline)` | `WebServerBuilder.builder().engine(…).config(…).route(…)….build()`（ext 测试经 testkit 的 `TestServers.start(engine, config, pipelines)`） |
 | classpath 根的 `freeway-log.properties` | 不读（启动打一行 stderr 提示改名）；改名为 `freeway-logging.properties` |
 
 行为变化（无需改调用点，但值得知道）：
@@ -40,6 +43,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TreeNode` 随本次收敛删除（Unreleased 新增、从未发布）；应用若直接调 `moduleTree().tree()`，迁移到 `children()` / `render()`。
 
 ### Changed
+
+- **`HttpServerConfig` 收成一种写法：规范构造器 + `defaults()` + 每字段 wither（freeway-http）** — 13 组件
+  记录此前同时挂着**4 级委托构造器阶梯**与一个内嵌 `Builder`，而且默认值声明了三遍并已漂移：`Builder` 说
+  port 0 / grace 0，模块声明的 `freeway.http.*` 与 `WebServerBuilder` 说 8080 / 2s。现在只剩规范构造器
+  （校验仍在一处）+ `defaults()`（host 127.0.0.1、port 8080、backlog 0、grace 2s 加各库默认值）+
+  13 个 `withX`；`HttpModuleConfig` 的键默认与 `WebServerBuilder` 都改为引用它，构造器阶梯、`Builder`
+  与字符启发式判定全部删除。调用点按编译错误迁移（core 测试约 60 处、ext 约 25 处），测试专用形状收进
+  `freeway-http` 测试源的 `TestServerConfig.loopback()` 与 ext testkit 的 `EngineFixture.defaultConfig()`。
+- **`WebServer` 只剩一个构造器，且它按真实判据回答 `secure()`（freeway-http）** — 原来的 public 4 参构造器
+  把 `secure` 写死为 `false`：任何经它建起来的 TLS 服务器，`secure()` 都会回答"不是 TLS"——ext 的 TLS 测试
+  正踩在这条上（生产路径走 `HttpModule` 的 6 参，所以线上没受影响）。现在唯一公开装配路径是
+  `WebServerBuilder`（按传入的 `SSLContext` 判定 `secure`）。ext 的 6 个适配器测试文件随之改为走 testkit 的
+  `TestServers` + `Pipelines`（原先手搭 `RequestComponents`，与真实装配路径不同，也顺带是 ext 审计 §9.4
+  的待办）；`Pipelines` 扩展出 error handler 一档，避免迁移时丢掉 413 映射与异常捕获这两类断言。
 
 - **flow：v1 残留清干净、失败信息给出修法、快照语义对齐（freeway-flow）** — 审计 P1/P2：
   - `NodeType` 的"缺/空 type 默认为 ACTIVITY"删除：v2 解析器先经 `requireString` 保证非空，这个默认

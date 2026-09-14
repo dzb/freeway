@@ -45,14 +45,17 @@ public record HttpModuleConfig(
     // ── Key declarations: name, type and default stated exactly once ──
 
     private static final SymbolSpec<String> SERVER_HOST =
-        SymbolSpec.of(HttpConfigKeys.SERVER_HOST, String.class, "127.0.0.1");
+        SymbolSpec.of(HttpConfigKeys.SERVER_HOST, String.class,
+            HttpServerConfig.DEFAULT_HOST);
     private static final SymbolSpec<Integer> SERVER_PORT =
-        SymbolSpec.of(HttpConfigKeys.SERVER_PORT, Integer.class, 8080);
+        SymbolSpec.of(HttpConfigKeys.SERVER_PORT, Integer.class,
+            HttpServerConfig.DEFAULT_PORT);
     private static final SymbolSpec<Integer> SERVER_BACKLOG =
-        SymbolSpec.of(HttpConfigKeys.SERVER_BACKLOG, Integer.class, 0);
+        SymbolSpec.of(HttpConfigKeys.SERVER_BACKLOG, Integer.class,
+            HttpServerConfig.DEFAULT_BACKLOG);
     private static final SymbolSpec<Duration> SERVER_SHUTDOWN_GRACE =
         SymbolSpec.of(HttpConfigKeys.SERVER_SHUTDOWN_GRACE, Duration.class,
-            Duration.ofSeconds(2));
+            HttpServerConfig.DEFAULT_SHUTDOWN_GRACE);
     private static final SymbolSpec<Duration> SERVER_READ_TIMEOUT =
         SymbolSpec.of(HttpConfigKeys.SERVER_READ_TIMEOUT, Duration.class,
             HttpServerConfig.DEFAULT_READ_TIMEOUT);
@@ -65,7 +68,8 @@ public record HttpModuleConfig(
     private static final SymbolSpec<Boolean> COMPRESSION_ENABLED =
         SymbolSpec.of(HttpConfigKeys.COMPRESSION_ENABLED, Boolean.class, true);
     private static final SymbolSpec<Integer> COMPRESSION_MIN_SIZE =
-        SymbolSpec.of(HttpConfigKeys.COMPRESSION_MIN_SIZE, Integer.class, 256);
+        SymbolSpec.of(HttpConfigKeys.COMPRESSION_MIN_SIZE, Integer.class,
+            HttpServerConfig.CompressionConfig.DEFAULT.minSize());
     private static final SymbolSpec<Integer> SERVER_RECEIVE_BUFFER =
         SymbolSpec.of(HttpConfigKeys.SERVER_RECEIVE_BUFFER, Integer.class, 0);
     private static final SymbolSpec<Integer> SERVER_SEND_BUFFER =

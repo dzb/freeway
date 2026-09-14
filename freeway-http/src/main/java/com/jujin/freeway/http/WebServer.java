@@ -53,15 +53,16 @@ public final class WebServer implements AutoCloseable {
 
     private volatile HttpServerHandle handle;
 
-    public WebServer(
-        HttpEngine engine,
-        HttpServerConfig config,
-        Consumer<Object> eventSink,
-        RequestComponents pipeline
-    ) {
-        this(engine, config, eventSink, pipeline, (host, port) -> port > 0, false);
-    }
-
+    /**
+     * The one public constructor, and the only one that can answer
+     * {@link #secure()} correctly: it takes the transport verdict explicitly.
+     *
+     * <p>The 4-argument form that used to sit here hard-coded {@code secure =
+     * false}, so every caller that built a TLS server through it got a server
+     * whose {@code secure()} lied — which is how the ext TLS tests read it. Use
+     * {@link WebServerBuilder} to assemble a server from outside this package;
+     * it derives {@code secure} from the SSL context it was given.</p>
+     */
     WebServer(
         HttpEngine engine,
         HttpServerConfig config,

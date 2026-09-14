@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.engine;
 
+import com.jujin.freeway.http.TestServerConfig;
+
 import com.jujin.freeway.commons.validation.NotBlank;
 import com.jujin.freeway.commons.validation.NotNull;
 import com.jujin.freeway.commons.validation.Size;
@@ -47,7 +49,7 @@ class TypedRequestApiTest {
 
     private static WebServer server(int port, Route... routes) {
         var builder = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)));
+            .config(TestServerConfig.loopback(port));
         for (Route route : routes) {
             builder.route(route);
         }

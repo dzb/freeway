@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.engine;
 
+import com.jujin.freeway.http.TestServerConfig;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -43,7 +45,7 @@ class HttpServerFeatureTest {
     void filtersRunInAscendingOrderValue() throws Exception {
         var execution = new ArrayList<String>();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .filter(new HttpFilter() {
                 @Override
                 public void doFilter(HttpContext ctx, RouteHandler next)
@@ -94,7 +96,7 @@ class HttpServerFeatureTest {
     void gzipCompressesCompressibleBodiesWhenAccepted() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/text", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
                 ctx.send(200, "A".repeat(1000));
@@ -138,7 +140,7 @@ class HttpServerFeatureTest {
     void unknownLengthStreamingUsesChunkedEncoding() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/stream", ctx ->
                 ctx.output(new ByteArrayInputStream(
                     "hello-chunked-world".getBytes(StandardCharsets.UTF_8)), -1)))
@@ -162,7 +164,7 @@ class HttpServerFeatureTest {
     void emptyUnknownLengthStreamTerminatesChunkedBody() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/empty", ctx ->
                 ctx.output(new ByteArrayInputStream(new byte[0]), -1)))
             .build();
@@ -183,7 +185,7 @@ class HttpServerFeatureTest {
     void gzipStreamingFallsBackToChunkedFraming() throws Exception {
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/gz", ctx -> {
                 ctx.setHeader("Content-Type", "text/plain");
                 ctx.output(new ByteArrayInputStream(
@@ -212,7 +214,7 @@ class HttpServerFeatureTest {
         PrintStream log = new PrintStream(logBytes, true, StandardCharsets.UTF_8);
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .accessLog(log)
             .route(Route.get("/ok", ctx -> ctx.send(200, "ok")))
             .build();
@@ -254,7 +256,7 @@ class HttpServerFeatureTest {
         var metrics = new HttpServerOperationalTest.TestMetrics();
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .metrics(metrics)
             .staticFile(StaticResourceMount.directory("/files", root))
             .build();
@@ -295,7 +297,7 @@ class HttpServerFeatureTest {
 
         int port = freePort();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .staticFile(StaticResourceMount.directory("/static", firstRoot))
             .staticFile(StaticResourceMount.directory("/static", secondRoot))
             .build();

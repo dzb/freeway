@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.engine;
 
+import com.jujin.freeway.http.TestServerConfig;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -144,7 +146,7 @@ class Http2PseudoHeaderValidationTest {
 
     private static WebServer server() {
         return WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
     }

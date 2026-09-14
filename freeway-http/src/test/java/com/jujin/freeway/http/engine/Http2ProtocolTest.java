@@ -1,5 +1,7 @@
 package com.jujin.freeway.http.engine;
 
+import com.jujin.freeway.http.TestServerConfig;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -47,7 +49,7 @@ class Http2ProtocolTest {
         // is malformed: RFC 9113 §8.2.2 requires RST_STREAM(PROTOCOL_ERROR).
         // Only the offending stream is reset — no END_STREAM may follow.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/mismatch", ctx -> {
                 ctx.setHeader("Content-Length", "5");
                 ctx.output(new ByteArrayInputStream(
@@ -133,7 +135,7 @@ class Http2ProtocolTest {
         // RFC 7540 §6.9: a zero increment on the connection flow-control
         // window is a connection error — GOAWAY(PROTOCOL_ERROR).
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -174,7 +176,7 @@ class Http2ProtocolTest {
         // RFC 7540 §6.9: a zero increment on a stream window is a stream
         // error — RST_STREAM(PROTOCOL_ERROR) on that stream only.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> {
                 try {
                     Thread.sleep(3000);
@@ -295,7 +297,7 @@ class Http2ProtocolTest {
     void h2ShutdownClosesStreamWaitingForRequestBody() throws Exception {
         int port = freePort();
         var server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(1)))
+            .config(HttpServerConfig.defaults().withHost("127.0.0.1").withPort(port).withBacklog(0).withShutdownGrace(Duration.ofSeconds(1)))
             .route(Route.post("/upload", ctx -> {
                 ctx.body();
                 ctx.send(200, "ok");
@@ -339,7 +341,7 @@ class Http2ProtocolTest {
         // rejected with RST_STREAM(REFUSED_STREAM). Handlers hold streams open
         // so the cap is actually reached.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> {
                 try {
                     Thread.sleep(3000);
@@ -433,7 +435,7 @@ class Http2ProtocolTest {
         // sync), discarded, and must NOT tear down the connection: a second
         // request on the same connection must still succeed.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> {
                 ctx.body();
                 ctx.send(200, "ok");
@@ -494,7 +496,7 @@ class Http2ProtocolTest {
         // END_STREAM on the first trailer HEADERS frame must survive a
         // fragmented header block and wake the handler blocked on body().
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(1)))
+            .config(HttpServerConfig.defaults().withHost("127.0.0.1").withPort(0).withBacklog(0).withShutdownGrace(Duration.ofSeconds(1)))
             .route(Route.post("/trailer", ctx -> {
                 ctx.body();
                 ctx.send(200, "ok");
@@ -560,7 +562,7 @@ class Http2ProtocolTest {
         // (RFC 7540 §6.5.2 requires the value to be ≥ 16384).
         String big = "x".repeat(50000);
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, big)))
             .build();
         server.start();
@@ -630,7 +632,7 @@ class Http2ProtocolTest {
         // connection with COMPRESSION_ERROR (GOAWAY code 9) instead of being
         // buffered without bound.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -692,7 +694,7 @@ class Http2ProtocolTest {
         // survives for the next request.
         var active = new AtomicInteger();
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> {
                 active.incrementAndGet();
                 try {
@@ -761,7 +763,7 @@ class Http2ProtocolTest {
     @Test
     void h2cPriorKnowledgeGetsServerSettingsFirst() throws Exception {
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -826,9 +828,7 @@ class Http2ProtocolTest {
         // connections. An OPEN request stream that pauses mid-body (client
         // sends no frames for longer than readTimeout) must not be torn down.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0,
-                Duration.ofSeconds(2), 16 * 1024 * 1024,
-                Duration.ofSeconds(2), 64))
+            .config(TestServerConfig.loopback().withMaxBodySize(16 * 1024 * 1024).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(64))
             .route(Route.post("/", ctx ->
                 ctx.send(200, "ok:" + new String(ctx.body(), StandardCharsets.UTF_8))))
             .build();
@@ -922,9 +922,7 @@ class Http2ProtocolTest {
         // The read timeout still applies to a truly idle H2 connection — no
         // open streams — so idle sockets cannot hold resources forever.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0,
-                Duration.ofSeconds(2), 16 * 1024 * 1024,
-                Duration.ofSeconds(2), 64))
+            .config(TestServerConfig.loopback().withMaxBodySize(16 * 1024 * 1024).withReadTimeout(Duration.ofSeconds(2)).withMaxConnections(64))
             .build();
         server.start();
         try {
@@ -956,7 +954,7 @@ class Http2ProtocolTest {
     void h2cUpgradeViaHttp1UpgradeHeader() throws Exception {
         int port = freePort();
         var server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", port, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback(port))
             .route(Route.get("/ping", ctx -> ctx.send(200, "pong")))
             .build();
         server.start();
@@ -983,7 +981,7 @@ class Http2ProtocolTest {
         // RFC 7540 §6.8: after receiving GOAWAY the server must not create
         // new streams — a later HEADERS must be RST'd (REFUSED_STREAM).
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -1060,7 +1058,7 @@ class Http2ProtocolTest {
         // RFC 7540 §4.3: a header block may be interrupted only by
         // CONTINUATION; SETTINGS mid-block must be a connection error.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -1125,7 +1123,7 @@ class Http2ProtocolTest {
         // RFC 7540 §4.3: ANY frame other than CONTINUATION mid-header-block
         // is a connection error — WINDOW_UPDATE included.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -1192,7 +1190,7 @@ class Http2ProtocolTest {
         // would encode as this large positive) are both legal and must not
         // kill the connection or poison the HPACK decoder.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -1229,7 +1227,7 @@ class Http2ProtocolTest {
         // RFC 7540 §6.5.2: SETTINGS_ENABLE_PUSH accepts only 0 or 1;
         // any other value is a connection error.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();
@@ -1289,7 +1287,7 @@ class Http2ProtocolTest {
         // before closing the socket (RFC 7540 §6.8), so they stop creating
         // streams and can retry on a fresh connection.
         WebServer server = WebServerBuilder.builder()
-            .config(new HttpServerConfig("127.0.0.1", 0, 0, Duration.ofSeconds(2)))
+            .config(TestServerConfig.loopback())
             .route(Route.get("/", ctx -> ctx.send(200, "ok")))
             .build();
         server.start();

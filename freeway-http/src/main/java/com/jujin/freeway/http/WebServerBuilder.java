@@ -51,8 +51,7 @@ public final class WebServerBuilder {
     private final List<ErrorHandler> errorHandlers = new ArrayList<>();
     private final List<StaticResourceMount> staticMounts = new ArrayList<>();
 
-    private HttpServerConfig config = new HttpServerConfig(
-        "127.0.0.1", 8080, 0, Duration.ofSeconds(2));
+    private HttpServerConfig config = HttpServerConfig.defaults();
     private HttpEngine engine;
     private SSLContext sslContext;
     private boolean http2OverSsl;
