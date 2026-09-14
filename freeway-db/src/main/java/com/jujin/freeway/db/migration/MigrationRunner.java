@@ -31,6 +31,7 @@ import java.util.jar.JarFile;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,32 +65,64 @@ public final class MigrationRunner {
      */
     private String lockOwner;
 
-    public MigrationRunner(
-        Database database,
-        boolean enabled,
-        String path,
-        String table
-    ) {
-        this(database, enabled, path, table, DEFAULT_LOCK_TTL);
+    /**
+     * The migration settings. This is the one place the defaults are stated —
+     * the config keys ({@code DbModule}) and the tests read them from here, so
+     * "what happens when nothing is configured" cannot drift between layers.
+     *
+     * <p>Normalization and validation happen in the compact constructor: a
+     * {@code path} is made classpath-relative with a trailing slash and a
+     * {@code table} is checked against the identifier alphabet, so every
+     * consumer of {@link #path()} / {@link #table()} sees the usable form.</p>
+     */
+    public record Options(boolean enabled, String path, String table, Duration lockTtl) {
+
+        /** Where migration scripts live when nothing is configured. */
+        public static final String DEFAULT_PATH = "db/migration/";
+        /** The version table's name when nothing is configured. */
+        public static final String DEFAULT_TABLE = "_migrations";
+
+        public Options {
+            path = normalizePath(path);
+            table = normalizeTable(table);
+            lockTtl = lockTtl == null ? DEFAULT_LOCK_TTL : lockTtl;
+        }
+
+        /** Migrations on, default location and table, one-hour lock lease. */
+        public static Options defaults() {
+            return new Options(true, DEFAULT_PATH, DEFAULT_TABLE, DEFAULT_LOCK_TTL);
+        }
+
+        public Options withEnabled(boolean enabled) {
+            return new Options(enabled, path, table, lockTtl);
+        }
+
+        public Options withPath(String path) {
+            return new Options(enabled, path, table, lockTtl);
+        }
+
+        public Options withTable(String table) {
+            return new Options(enabled, path, table, lockTtl);
+        }
+
+        /**
+         * @param lockTtl how long a held lock row may persist before another
+         *                instance treats it as stale and takes it over. Zero or
+         *                negative disables takeover (fail-only, pre-1.4
+         *                behavior); {@code null} restores the default lease.
+         */
+        public Options withLockTtl(Duration lockTtl) {
+            return new Options(enabled, path, table, lockTtl);
+        }
     }
 
-    /**
-     * @param lockTtl how long a held lock row may persist before another
-     *                instance treats it as stale and takes it over. Zero or
-     *                negative disables takeover (fail-only, pre-1.4 behavior).
-     */
-    public MigrationRunner(
-        Database database,
-        boolean enabled,
-        String path,
-        String table,
-        Duration lockTtl
-    ) {
-        this.database = database;
-        this.enabled = enabled;
-        this.path = normalizePath(path);
-        this.table = normalizeTable(table);
-        this.lockTtl = lockTtl == null ? DEFAULT_LOCK_TTL : lockTtl;
+    public MigrationRunner(Database database, Options options) {
+        this.database = Objects.requireNonNull(database, "database");
+        Objects.requireNonNull(options, "options");
+        this.enabled = options.enabled();
+        this.path = options.path();
+        this.table = options.table();
+        this.lockTtl = options.lockTtl();
     }
 
     public synchronized int run() {

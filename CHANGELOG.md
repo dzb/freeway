@@ -44,6 +44,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **批次 B（第三批）：两处"位置参数矩阵"收成参数记录（freeway-db / freeway-http）**：
+  - `MigrationRunner` 的两个构造器（4 参与 5 参，后者只多一个 `lockTtl`）换成
+    `MigrationRunner(Database, Options)`；`Options` 记录持有 `enabled`/`path`/`table`/`lockTtl`，
+    `defaults()` 是**唯一**的默认值出处（此前 `DbModule` 把 `"db/migration/"`、`"_migrations"` 又写了一遍），
+    归一化（反斜杠、尾斜杠、表名白名单）搬进紧凑构造器，`withLockTtl(null)` 恢复默认租约。24 处调用点按
+    编译错误迁移，`new MigrationRunner(db, true, "db/migration", "_migrations")` 变成
+    `new MigrationRunner(db, Options.defaults())`——位置布尔 `enabled` 不再需要读者去数参数。
+  - `FreewayHttpEngine` 的 5 个位置构造器换成 `FreewayHttpEngine.Wiring`：它不是"每步加一项"的梯子，而是
+    可选参数矩阵——第 3 档加 metrics，第 4 档 `(codec, coercer, ssl, http2)` 又把 metrics 悄悄重置成 noop。
+    现在 `Wiring.defaults(jsonCodec, coercer)` + `withSsl`/`withSslParameters`/`withMetrics`，一个 wither 只动
+    一个字段；`WebServerBuilder` 的三元表达式与 `HttpModule` 的两条路径随之收敛成一条链。
+- **测试补两条契约**：`MigrationRunner.Options` 的默认值/归一化/`withLockTtl(null)`，以及 `Wiring` 的
+  "wither 互不覆盖"（用非 noop 的 metrics 替身，否则"被重置"与"被保留"无法区分——这条断言最初正是
+  因为传了 `NoopMetrics` 而形同虚设）。
+
 - **批次 B（第二批）：旧 arity 便捷构造器与只被测试引用的 internal public 类型（freeway-commons / boot / cloud）**：
   - `JULFileHandler(String, long, int, boolean)` 删除：它是"比规范构造器少一个 `flushIntervalMs`"的便捷形态，
     与前面几轮删掉的同类构造器是一回事；21 处测试调用点改传

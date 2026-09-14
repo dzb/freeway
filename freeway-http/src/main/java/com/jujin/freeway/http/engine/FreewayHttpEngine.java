@@ -60,42 +60,65 @@ public final class FreewayHttpEngine implements HttpEngine {
     private final SSLParameters sslParameters;
     private final Metrics metrics;
 
-    /** Plain HTTP engine. */
-    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer) {
-        this(jsonCodec, coercer, null, false, null, NoopMetrics.INSTANCE);
+    /**
+     * Optional wiring for the built-in engine: the four knobs an embedder may
+     * vary, with production-safe defaults. It replaced five positional
+     * constructors whose steps were not a ladder (one step added metrics, the
+     * next silently reset it), so a call site could not tell what it was
+     * leaving out.
+     *
+     * <p>{@code jsonCodec} and {@code coercer} are required and named here;
+     * everything else has a default and a wither. A {@code null} metrics is the
+     * noop implementation — the engine never has "no metrics", only "nobody is
+     * listening".</p>
+     */
+    public record Wiring(
+        JsonCodec jsonCodec,
+        Coercer coercer,
+        SSLContext sslContext,
+        boolean http2OverSsl,
+        SSLParameters sslParameters,
+        Metrics metrics
+    ) {
+        public Wiring {
+            jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
+            coercer = Objects.requireNonNull(coercer, "coercer");
+            metrics = metrics == null ? NoopMetrics.INSTANCE : metrics;
+        }
+
+        /** Plain HTTP engine: no TLS, no HTTP/2 over TLS, noop metrics. */
+        public static Wiring defaults(JsonCodec jsonCodec, Coercer coercer) {
+            return new Wiring(jsonCodec, coercer, null, false, null, NoopMetrics.INSTANCE);
+        }
+
+        /** TLS termination, optionally negotiating HTTP/2 over ALPN. */
+        public Wiring withSsl(SSLContext sslContext, boolean http2OverSsl) {
+            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
+                sslParameters, metrics);
+        }
+
+        /** Per-socket TLS parameters (client auth, cipher/protocol narrowing). */
+        public Wiring withSslParameters(SSLParameters sslParameters) {
+            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
+                sslParameters, metrics);
+        }
+
+        /** Metrics sink; {@code null} restores the noop implementation. */
+        public Wiring withMetrics(Metrics metrics) {
+            return new Wiring(jsonCodec, coercer, sslContext, http2OverSsl,
+                sslParameters, metrics);
+        }
     }
 
-    /** Plain HTTP engine with metrics instrumentation. */
-    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer, Metrics metrics) {
-        this(jsonCodec, coercer, null, false, null,
-            metrics == null ? NoopMetrics.INSTANCE : metrics);
-    }
-
-    /** HTTPS engine with optional HTTP/2 over TLS (ALPN). */
-    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer,
-                              SSLContext sslContext, boolean http2OverSsl) {
-        this(jsonCodec, coercer, sslContext, http2OverSsl, null,
-            NoopMetrics.INSTANCE);
-    }
-
-    /** HTTPS engine with optional HTTP/2 and per-socket TLS parameters. */
-    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer,
-                              SSLContext sslContext, boolean http2OverSsl,
-                              SSLParameters sslParameters) {
-        this(jsonCodec, coercer, sslContext, http2OverSsl, sslParameters,
-            NoopMetrics.INSTANCE);
-    }
-
-    /** Full constructor: HTTPS/HTTP/2 options plus metrics instrumentation. */
-    public FreewayHttpEngine(JsonCodec jsonCodec, Coercer coercer,
-                              SSLContext sslContext, boolean http2OverSsl,
-                              SSLParameters sslParameters, Metrics metrics) {
-        this.jsonCodec = Objects.requireNonNull(jsonCodec, "jsonCodec");
-        this.coercer = Objects.requireNonNull(coercer, "coercer");
-        this.sslContext = sslContext;
-        this.http2OverSsl = http2OverSsl;
-        this.sslParameters = sslParameters;
-        this.metrics = metrics == null ? NoopMetrics.INSTANCE : metrics;
+    /** The engine described by {@code wiring}; see {@link Wiring#defaults}. */
+    public FreewayHttpEngine(Wiring wiring) {
+        Objects.requireNonNull(wiring, "wiring");
+        this.jsonCodec = wiring.jsonCodec();
+        this.coercer = wiring.coercer();
+        this.sslContext = wiring.sslContext();
+        this.http2OverSsl = wiring.http2OverSsl();
+        this.sslParameters = wiring.sslParameters();
+        this.metrics = wiring.metrics();
     }
 
     public SSLContext sslContext() { return sslContext; }

@@ -198,12 +198,17 @@ public final class DbModule implements ModuleEx {
         String lockTtlRaw = s.resolve(DbConfigKeys.MIGRATION_LOCK_TTL, "");
         return new MigrationRunner(
             container.get(Database.class),
-            s.resolve(MIGRATION_ENABLED),
-            s.resolve(DbConfigKeys.MIGRATION_PATH, "db/migration/"),
-            s.resolve(DbConfigKeys.MIGRATION_TABLE, "_migrations"),
-            lockTtlRaw.isBlank()
-                ? null // runner applies its own default
-                : container.get(Coercer.class).coerce(lockTtlRaw.trim(), Duration.class)
+            MigrationRunner.Options.defaults()
+                .withEnabled(s.resolve(MIGRATION_ENABLED))
+                .withPath(s.resolve(
+                    DbConfigKeys.MIGRATION_PATH, MigrationRunner.Options.DEFAULT_PATH))
+                .withTable(s.resolve(
+                    DbConfigKeys.MIGRATION_TABLE, MigrationRunner.Options.DEFAULT_TABLE))
+                .withLockTtl(
+                    lockTtlRaw.isBlank()
+                        ? null // Options restores the default lease
+                        : container.get(Coercer.class)
+                            .coerce(lockTtlRaw.trim(), Duration.class))
         );
     }
 

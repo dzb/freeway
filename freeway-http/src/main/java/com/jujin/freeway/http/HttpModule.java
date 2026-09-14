@@ -88,7 +88,8 @@ public final class HttpModule implements ModuleEx {
             SslSettings ssl = container.get(HttpModuleConfig.class).ssl();
             if (!ssl.enabled()) {
                 LOG.debug("SSL disabled, using plain HTTP engine");
-                return new FreewayHttpEngine(json, coercer, metrics);
+                return new FreewayHttpEngine(
+                    FreewayHttpEngine.Wiring.defaults(json, coercer).withMetrics(metrics));
             }
 
             LOG.info("Initializing HTTPS engine from keystore {} (type={}, http2={}, clientAuth={})",
@@ -97,7 +98,10 @@ public final class HttpModule implements ModuleEx {
             SSLParameters sslParameters = SslContexts.parameters(ssl);
             LOG.info("HTTPS engine initialized — TLS via JDK SSLContext");
             return new FreewayHttpEngine(
-                json, coercer, sslContext, ssl.http2(), sslParameters, metrics);
+                FreewayHttpEngine.Wiring.defaults(json, coercer)
+                    .withSsl(sslContext, ssl.http2())
+                    .withSslParameters(sslParameters)
+                    .withMetrics(metrics));
         });
 
         // HttpEngine — bind to FreewayHttpEngine. Extension modules bind their

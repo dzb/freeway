@@ -158,11 +158,12 @@ public final class WebServerBuilder {
 
     public WebServer build() {
         if (engine == null) {
-            engine = sslContext != null
-                ? new FreewayHttpEngine(
-                    jsonCodec, coercer, sslContext, http2OverSsl,
-                    null, metrics)
-                : new FreewayHttpEngine(jsonCodec, coercer, metrics);
+            var wiring = FreewayHttpEngine.Wiring.defaults(jsonCodec, coercer)
+                .withMetrics(metrics);
+            if (sslContext != null) {
+                wiring = wiring.withSsl(sslContext, http2OverSsl);
+            }
+            engine = new FreewayHttpEngine(wiring);
         }
         // Class-based routes resolve via container.create() — they need the IoC
         // HttpModule. Fail fast here instead of blowing up on the first request.

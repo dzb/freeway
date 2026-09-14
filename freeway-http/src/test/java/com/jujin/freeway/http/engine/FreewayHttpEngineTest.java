@@ -1049,7 +1049,7 @@ class FreewayHttpEngineTest {
         // as started — a dead acceptor would strand new connections in the OS
         // backlog.
         FreewayHttpEngine engine = new FreewayHttpEngine(
-            new JsonCodecDefault(), new CoercerDefault());
+            FreewayHttpEngine.Wiring.defaults(new JsonCodecDefault(), new CoercerDefault()));
         try (ServerSocketChannel listener = ServerSocketChannel.open()) {
             listener.bind(new InetSocketAddress("127.0.0.1", 0));
             int port = ((InetSocketAddress) listener.getLocalAddress()).getPort();
@@ -1138,11 +1138,8 @@ class FreewayHttpEngineTest {
         SSLContext serverSsl = serverSslContext(keystore);
 
         FreewayHttpEngine engine = new FreewayHttpEngine(
-            new JsonCodecDefault(),
-            new CoercerDefault(),
-            serverSsl,
-            false
-        );
+            FreewayHttpEngine.Wiring.defaults(new JsonCodecDefault(), new CoercerDefault())
+                .withSsl(serverSsl, false));
         var handle = engine.start(
             TestServerConfig.loopback(),
             ctx -> ctx.sendJson(200, Map.of(

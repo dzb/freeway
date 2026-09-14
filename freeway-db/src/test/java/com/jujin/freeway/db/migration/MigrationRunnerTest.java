@@ -115,7 +115,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_natural_order")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(2, runner.run());
             assertEquals(List.of(1L), db.query("select id from natural_order order by id").list(Long.class));
@@ -184,7 +184,7 @@ class MigrationRunnerTest {
                  .dialect(new MySqlDialect())
                  .build()) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("transactional DDL"),
@@ -227,7 +227,7 @@ class MigrationRunnerTest {
             // Target table pre-created: the DDL to create it would itself be
             // rejected on this dialect, and this test only exercises DML.
             db.execute("create table dml_target (id bigint primary key, label varchar(64))");
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(1, runner.run());
             assertEquals(List.of(1L), db.query("select id from dml_target").list(Long.class));
@@ -256,7 +256,7 @@ class MigrationRunnerTest {
                  ))
                  .build()) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
 
@@ -278,7 +278,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_cs")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(1, runner.run());
 
@@ -314,7 +314,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_crlf")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(1, runner.run(), "first run applies the LF migration");
 
@@ -347,7 +347,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_crlf_raw")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(1, runner.run());
             assertEquals(0, runner.run(), "unchanged CRLF file validates on the raw track");
@@ -372,7 +372,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_crlf_change")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(1, runner.run());
 
@@ -404,7 +404,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_badver")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("Bad migration version"));
@@ -431,7 +431,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_dupver")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("Duplicate migration version"));
@@ -459,7 +459,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_numdup")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("Duplicate migration version"));
@@ -486,7 +486,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_missing_file")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(2, runner.run());
 
@@ -511,7 +511,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_empty")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("empty"));
@@ -535,7 +535,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_comment_only")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("empty"));
@@ -564,7 +564,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_multi")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(1, runner.run());
 
@@ -602,7 +602,7 @@ class MigrationRunnerTest {
                 "insert into _migrations (version, description, checksum, installed_rank) values ('__LOCK__', '', '', -1)"
             );
 
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("Cannot acquire migration lock"));
@@ -629,7 +629,7 @@ class MigrationRunnerTest {
                 "insert into _migrations (version, description, checksum, installed_rank) values ('__LOCK__', '', '', -1)"
             );
 
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations", Duration.ofSeconds(1));
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults().withLockTtl(Duration.ofSeconds(1)));
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("Cannot acquire migration lock"));
@@ -659,7 +659,7 @@ class MigrationRunnerTest {
                 java.sql.Timestamp.from(java.time.Instant.now().minus(java.time.Duration.ofHours(2)))
             );
 
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations", Duration.ofSeconds(30));
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults().withLockTtl(Duration.ofSeconds(30)));
 
             assertEquals(1, runner.run(), "a lock held far beyond the TTL is taken over");
             assertEquals(0L, db.query(
@@ -690,7 +690,7 @@ class MigrationRunnerTest {
             );
 
             // TTL=0 opts out of takeover entirely (pre-TTL fail-only behavior).
-            MigrationRunner runner = new MigrationRunner(db, true, "db/migration", "_migrations", Duration.ZERO);
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults().withLockTtl(Duration.ZERO));
 
             SqlException ex = assertThrows(SqlException.class, runner::run);
             assertTrue(ex.getMessage().contains("Cannot acquire migration lock"));
@@ -722,7 +722,7 @@ class MigrationRunnerTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_disabled")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(db, false, "db/migration", "_migrations");
+            MigrationRunner runner = new MigrationRunner(db, MigrationRunner.Options.defaults().withEnabled(false));
 
             assertEquals(0, runner.run());
         } finally {
@@ -745,8 +745,8 @@ class MigrationRunnerTest {
                  new URL[] { tempDir.toUri().toURL() }, null);
              Database db = tempDb("freeway_rename")) {
             Thread.currentThread().setContextClassLoader(loader);
-            MigrationRunner runner = new MigrationRunner(
-                db, true, "db/migration", "_migrations");
+            MigrationRunner runner =
+                new MigrationRunner(db, MigrationRunner.Options.defaults());
 
             assertEquals(1, runner.run(), "first run applies V1__step.sql");
 
@@ -771,9 +771,9 @@ class MigrationRunnerTest {
         try (Database db = tempDb("freeway_owner_token")) {
             createMigrationTable(db);
             MigrationRunner runnerA =
-                new MigrationRunner(db, true, "db/migration", "_migrations");
+                new MigrationRunner(db, MigrationRunner.Options.defaults());
             MigrationRunner runnerB = new MigrationRunner(
-                db, true, "db/migration", "_migrations", Duration.ofSeconds(30));
+                db, MigrationRunner.Options.defaults().withLockTtl(Duration.ofSeconds(30)));
 
             invokeLockMethod(runnerA, "acquireLock");
             db.execute(
@@ -865,5 +865,30 @@ class MigrationRunnerTest {
             assertEquals(c.expected(), MigrationRunner.isDuplicateKey(ex),
                 () -> c.desc());
         }
+    }
+
+    @Test
+    void optionsStateTheDefaultsOnceAndNormalizeWhatTheyCarry() {
+        // DbModule reads these constants instead of spelling "db/migration/"
+        // and "_migrations" itself, so this is the one place they are stated.
+        MigrationRunner.Options defaults = MigrationRunner.Options.defaults();
+
+        assertTrue(defaults.enabled());
+        assertEquals("db/migration/", defaults.path());
+        assertEquals("_migrations", defaults.table());
+        assertEquals(MigrationRunner.DEFAULT_LOCK_TTL, defaults.lockTtl(),
+            "a null TTL means the default lease, never 'no lease'");
+
+        // A caller-supplied path is normalized here, so every consumer of
+        // options.path() gets the classpath-relative form.
+        assertEquals("custom/dir/",
+            defaults.withPath("custom\\dir").path());
+        // ...and the optionals are independent: setting one keeps the others.
+        MigrationRunner.Options tuned =
+            defaults.withEnabled(false).withTable("mig").withLockTtl(Duration.ZERO);
+        assertEquals("db/migration/", tuned.path());
+        assertEquals(MigrationRunner.DEFAULT_LOCK_TTL,
+            tuned.withLockTtl(null).lockTtl(),
+            "withLockTtl(null) restores the default lease");
     }
 }
