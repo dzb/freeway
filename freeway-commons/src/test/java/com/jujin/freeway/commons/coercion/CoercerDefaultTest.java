@@ -518,6 +518,19 @@ class CoercerDefaultTest {
     }
 
     @Test
+    void numericBooleanIsDecidedByMagnitudeNotByIntTruncation() {
+        // Regression: intValue() != 0 truncated first, so a non-zero magnitude
+        // whose int part is zero answered "false" — 0.5 and 2^32 were both
+        // silently falsy, while 1.5 only looked right because 1 != 0.
+        assertTrue(coercer.coerce(0.5, Boolean.class));
+        assertTrue(coercer.coerce(0.9, Boolean.class));
+        assertTrue(coercer.coerce(-0.5, Boolean.class));
+        assertTrue(coercer.coerce(4294967296L, Boolean.class));
+        assertTrue(coercer.coerce(new java.math.BigDecimal("0.0001"), Boolean.class));
+        assertTrue(coercer.coerce(new java.math.BigInteger("4294967296"), Boolean.class));
+    }
+
+    @Test
     void coercesDecimalToIntegerWithTruncation() {
         assertEquals(Integer.valueOf(3), coercer.coerce("3.14", Integer.class));
         assertEquals(Long.valueOf(3), coercer.coerce("3.14", Long.class));
@@ -621,14 +634,24 @@ class CoercerDefaultTest {
 
     @Test
     void nanNumberCoercesToFalseBoolean() {
-        // Verified: (int) Double.NaN == 0, so the Number→boolean rule
-        // (intValue() != 0) makes NaN falsy — like any other zero. The string
-        // "NaN" can no longer reach this path (string→Double now rejects it),
-        // but an actual Double.NaN value keeps this documented behavior.
-        // (Infinity is a different case: (int) +Infinity saturates to
-        // Integer.MAX_VALUE, so it is truthy — unchanged by this fix.)
+        // NaN has no magnitude to compare, so the Number→boolean rule answers
+        // false explicitly — like any other zero. The string "NaN" can no
+        // longer reach this path (string→Double now rejects it), but an actual
+        // Double.NaN value keeps this documented behavior.
         assertFalse(coercer.coerce(Double.NaN, boolean.class));
         assertFalse(coercer.coerce(Double.NaN, Boolean.class));
+        assertFalse(coercer.coerce(Float.NaN, Boolean.class));
+    }
+
+    @Test
+    void infiniteMagnitudeIsTruthyBoolean() {
+        // Non-finite sources cannot be compared as decimals, and an infinite
+        // magnitude never reaches zero — pinned so the exact-magnitude rule
+        // cannot silently turn ±Infinity into a comparison failure.
+        assertTrue(coercer.coerce(Double.POSITIVE_INFINITY, Boolean.class));
+        assertTrue(coercer.coerce(Double.NEGATIVE_INFINITY, Boolean.class));
+        assertTrue(coercer.coerce(Float.POSITIVE_INFINITY, Boolean.class));
+        assertTrue(coercer.coerce(Float.NEGATIVE_INFINITY, Boolean.class));
     }
 
     @Test

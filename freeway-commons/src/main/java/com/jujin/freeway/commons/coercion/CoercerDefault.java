@@ -278,7 +278,7 @@ public final class CoercerDefault implements Coercer {
 
     private static Boolean coerceToBoolean(Object value) {
         if (value instanceof Boolean b) return b;
-        if (value instanceof Number n) return n.intValue() != 0;
+        if (value instanceof Number n) return isTruthyNumber(n);
         String text = String.valueOf(value).trim();
         if (
             "true".equalsIgnoreCase(text) ||
@@ -299,6 +299,26 @@ public final class CoercerDefault implements Coercer {
         throw new IllegalArgumentException(
             "Unrecognized boolean value: " + value
         );
+    }
+
+    /**
+     * Non-zero test for numeric sources. {@code intValue() != 0} truncates to
+     * {@code int} first, so {@code 0.5} and {@code 4294967296L} (2^32) both
+     * answered {@code false} — the very corruption the integral path forbids
+     * (see {@link #coerceNumber}). The magnitude is compared exactly instead.
+     * The two non-finite sources keep their documented answers: NaN is falsy,
+     * and an infinite magnitude is truthy (it saturates, never reaching zero).
+     */
+    private static boolean isTruthyNumber(Number n) {
+        if (n instanceof Double d) {
+            if (d.isNaN()) return false;
+            if (d.isInfinite()) return true;
+        }
+        if (n instanceof Float f) {
+            if (f.isNaN()) return false;
+            if (f.isInfinite()) return true;
+        }
+        return coerceToBigDecimal(n).signum() != 0;
     }
 
     private static Character coerceToCharacter(Object value) {
