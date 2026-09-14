@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | class 声明在 `of(Class)` 时实例化 | 加载期（容器创建）实例化；无参构造缺失的报错时机随之推迟，信息不变 |
 | `freeway-flow` 的 52 个属性访问器 `getXxx()` | bare accessor：`getNodes()` → `nodes()`、`getTitle()` → `title()`（Spec 的 `title()` 读 / `title(String)` 写为同名重载）；`FlowContext` 的 keyed lookup 保持 Map 词汇 `get` / `getAs` / `getOrDefault` |
 | `PlantumlOptions` / `PlantumlDisplayContext` / `PlantumlDisplayResult`、`Graph.toPlantuml(…)` | `PlantUmlOptions` / `PlantUmlDisplayContext` / `PlantUmlDisplayResult`、`toPlantUml(…)` |
+| `CloudHttpClientDefault.Wiring(…, 9 参)` | 规范构造器 10 参（末位 `shutdownGrace`，传 `null` 取默认）；不再保留旧 arity 的委托构造器 |
+| classpath 根的 `freeway-log.properties` | 不读（启动打一行 stderr 提示改名）；改名为 `freeway-logging.properties` |
 
 行为变化（无需改调用点，但值得知道）：
 
@@ -37,6 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TreeNode` 随本次收敛删除（Unreleased 新增、从未发布）；应用若直接调 `moduleTree().tree()`，迁移到 `children()` / `render()`。
 
 ### Changed
+
+- **设计规则修订：兼容不是目标（全仓）** — 上一轮写进 `AGENTS.md` 的"记录作为适配器装配点时保留旧 arity 的
+  委托构造器"删除：它保护的是**已编译的调用点**，代价是每个新组件都在规范构造器旁留一条旧路径，读者永远
+  要问"该用哪个"。规则反过来——新增组件直接改变规范构造器的形状，**编译错误就是迁移路径**，`freeway-ext`
+  同批适配。随之清掉两处已发现的残留：
+  - `CloudHttpClientDefault.Wiring` 的 9 参委托构造器（"shutdown grace 之前的那一版形状"）删除，唯一调用点
+    （ext 的 `RemoteRpcContract`）改传 10 参。
+  - `freeway-log.properties` 的过渡读取删除：旧名只被**检测**、不被加载，`JULEnhancer.renamedFileNotice()`
+    在启动时打印改名提示——配置不被采纳，但绝不静默失效。契约由 `JULEnhancerLogSourceTest` 钉住。
+  同时明确**不删**的两处，因为它们不是 API 兼容，而是外部世界里已经存在的事实：迁移校验的双轨 checksum
+  （库里已记录的行、CRLF 检出）、`CoercerDefault` 的时长输入形式。
 
 - **`WebServer` 的构造器阶梯由 4/5/6 收成 4/6** — 包私有的 5 参构造器（只比 4 参多一个
   `readinessProbe`）在仓库内已无任何调用者：core 的装配点（`HttpModule`、`WebServerBuilder`）都直接走
@@ -175,8 +188,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 破坏性：无（三者都是默认值变更 + 新增默认方法与访问器；显式配置行为不变）。
 
 - **日志专用配置文件更名：`freeway-log.properties` → `freeway-logging.properties`（freeway-commons）** — 新名是唯一
-  正式名字，放在 classpath 根；旧名只在新名不存在时作为过渡读入并打一行 stderr 告警（升级不会静默丢掉日志配置），
-  该兼容下一版本移除。参考模板同步更名 `docs/freeway-logging.properties.reference`。同时改正"所有日志键都能住进
+  正式名字，放在 classpath 根；旧名**不再被读取**——文件仍留在 classpath 根时启动打一行 stderr 告警并指明改名
+  （配置不被采纳，但也不静默失效）。参考模板同步更名 `docs/freeway-logging.properties.reference`。同时改正"所有日志键都能住进
   文件"的说法：`freeway.log.color` / `.mdc` / `.mdc.priority` / `.caller-info` 四项只在 `-D`/环境变量生效
   （它们在类加载期读取，早于文件解析），模板与文档都按此标注。
 
@@ -219,8 +232,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `PeerConnector` 用同一份 `TransportSecurity` 的 `SSLContext` 建客户端（可选依赖：不装 RPC 模块
     时退回 JDK 默认），角色文档写明"两条出站腿共用一个身份"与"启动期解析一次，轮换需重启"。
   - **文档**：API 形状规则写入 `AGENTS.md` 的设计规则（当时还在 `CLAUDE.md`）——一到两个可选参数用
-    逐级 javadoc 的重载阶梯，三个以上用参数记录（`defaults()` + withers）；记录作为适配器装配点时，
-    新增组件必须保留旧 arity 的委托构造器（ext 引擎测试被这一点打断过一次）。
+    逐级 javadoc 的重载阶梯，三个以上用参数记录（`defaults()` + withers）。同批写入的"记录作为适配器装配点
+    时保留旧 arity 的委托构造器"（ext 引擎测试被这一点打断过一次）**已被推翻**：保留旧形状的代价是每个新
+    组件都多一条路径，见 Changed 首条的规则修订。
 
 - **API 一致性：贡献 id 命名空间、网格内部面收窄、`@Local` 覆盖补齐（freeway-cloud）** — 三处
   与框架既有规则不一致的地方：

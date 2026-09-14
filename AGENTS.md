@@ -81,9 +81,17 @@ test scope. Anything else belongs in an ext adapter.
   parameter record with `defaults()` and per-field withers
   (`CloudHttpClientDefault.Wiring`), so a call site cannot drift between
   overloads. A record's canonical constructor changes shape whenever a component
-  is added, so a record used for adapter assembly keeps its previous arity as a
-  delegating constructor — an already-compiled adapter must not break on a new
-  knob (the ext engine tests did, once).
+  is added — that is the intended outcome, not an accident: no previous-arity
+  delegating constructor is kept for callers that have already been compiled.
+  Adding a component means updating every call site (in `freeway-ext` too), and
+  the compile error is the migration.
+- **No compatibility shims**: a renamed key, a replaced API shape or a superseded
+  mechanism is deleted, not kept alongside its replacement. Two live names for one
+  thing are two answers to one question, and the reader pays for them forever.
+  The one obligation this leaves is loudness: a deletion that could make existing
+  configuration stop taking effect must report itself at startup and name the fix
+  (`JULEnhancer.renamedFileNotice`). Compatibility is not a goal of this project —
+  adapters and applications are expected to move with it.
 - **Config ownership by layer**: `ioc.symbol` holds resolution mechanisms that
   know no concrete keys — value types (`SymbolSpec.list`, `splitList`) and
   shape rules (`SymbolSpec.activated`/`mode`), parameterized by the caller's

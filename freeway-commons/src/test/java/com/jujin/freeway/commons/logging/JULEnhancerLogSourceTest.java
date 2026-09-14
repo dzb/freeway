@@ -1,7 +1,9 @@
 package com.jujin.freeway.commons.logging;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -29,7 +31,7 @@ class JULEnhancerLogSourceTest {
      * Runs {@code body} with {@code dir} prepended to the classpath — where
      * {@link JULEnhancer} looks for the dedicated config file.
      */
-    private static Properties withClasspath(Path dir, Supplier<Properties> body) throws Exception {
+    private static <T> T withClasspath(Path dir, Supplier<T> body) throws Exception {
         ClassLoader saved = Thread.currentThread().getContextClassLoader();
         ClassLoader temp = new URLClassLoader(new URL[]{dir.toUri().toURL()}, saved);
         Thread.currentThread().setContextClassLoader(temp);
@@ -69,24 +71,50 @@ class JULEnhancerLogSourceTest {
     }
 
     @Test
-    void legacyFileNameStillAppliesAsFallback(@TempDir Path tempDir) throws Exception {
-        // The pre-1.5.2 name is read only when the canonical file is absent —
-        // an upgrade must not drop a logging configuration in silence.
+    void renamedFileNameIsNotRead(@TempDir Path tempDir) throws Exception {
+        // The pre-1.5.2 name is dead: keep it from being a second live name
+        // (two names for one configuration is two answers to one question).
+        // The classpath notice, not a fallback, is what an upgrade gets.
         Files.writeString(
             tempDir.resolve("freeway-log.properties"), "freeway.log.level=WARNING\n");
         Properties merged = withClasspath(tempDir, () -> JULEnhancer.loadLogConfig(null));
-        assertEquals("WARNING", merged.getProperty("freeway.log.level"),
-            "the deprecated name still applies until it is removed");
+        assertNull(merged.getProperty("freeway.log.level"),
+            "a file under the renamed name must not be loaded");
     }
 
     @Test
-    void canonicalFileNameOutranksTheLegacyOne(@TempDir Path tempDir) throws Exception {
+    void renamedFileNameProducesTheRenameNotice(@TempDir Path tempDir) throws Exception {
+        Files.writeString(
+            tempDir.resolve("freeway-log.properties"), "freeway.log.level=WARNING\n");
+        String notice = withClasspath(tempDir, JULEnhancer::renamedFileNotice);
+        assertNotNull(notice, "a leftover renamed file must be reported at startup");
+        assertTrue(notice.contains("freeway-logging.properties"),
+            "the notice names the file to use instead: " + notice);
+    }
+
+    @Test
+    void theNoticeDoesNotDependOnTheCanonicalFileBeingAbsent(@TempDir Path tempDir)
+        throws Exception {
+        // The stale file is dead either way; reporting it only when the
+        // canonical one is missing would leave a live-looking config file that
+        // silently does nothing for whoever edits it next.
+        Files.writeString(
+            tempDir.resolve("freeway-logging.properties"), "freeway.log.level=SEVERE\n");
+        Files.writeString(
+            tempDir.resolve("freeway-log.properties"), "freeway.log.level=WARNING\n");
+        String notice = withClasspath(tempDir, JULEnhancer::renamedFileNotice);
+        assertNotNull(notice,
+            "the renamed file is reported even when the canonical one carries the values");
+    }
+
+    @Test
+    void canonicalFileAppliesRegardlessOfTheRenamedOne(@TempDir Path tempDir) throws Exception {
         Files.writeString(
             tempDir.resolve("freeway-logging.properties"), "freeway.log.level=SEVERE\n");
         Files.writeString(
             tempDir.resolve("freeway-log.properties"), "freeway.log.level=WARNING\n");
         Properties merged = withClasspath(tempDir, () -> JULEnhancer.loadLogConfig(null));
         assertEquals("SEVERE", merged.getProperty("freeway.log.level"),
-            "the canonical file wins; the legacy name is only a fallback");
+            "only the canonical name carries values");
     }
 }

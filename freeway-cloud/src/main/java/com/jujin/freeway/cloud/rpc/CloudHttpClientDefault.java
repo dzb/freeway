@@ -152,32 +152,6 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
             shutdownGrace = shutdownGrace == null ? DEFAULT_SHUTDOWN_GRACE : shutdownGrace;
         }
 
-        /**
-         * The wiring shape from before the shutdown grace existed: every other
-         * field as given, the grace at its default.
-         *
-         * <p>Kept because {@code Wiring} is how an adapter or an engine test
-         * assembles a client, and a record's canonical constructor changes
-         * shape whenever a component is added — without this, every new knob
-         * would break those call sites at compile time and, for an
-         * already-compiled adapter, at runtime. The canonical constructor
-         * remains the one that names everything.</p>
-         */
-        public Wiring(
-            List<Propagator> propagators,
-            Retryer retryer,
-            CircuitBreaker breaker,
-            RateLimiter rateLimiter,
-            TransportSecurity transport,
-            Tracer tracer,
-            Metrics metrics,
-            Duration requestTimeout,
-            Duration connectTimeout
-        ) {
-            this(propagators, retryer, breaker, rateLimiter, transport, tracer, metrics,
-                requestTimeout, connectTimeout, null);
-        }
-
         /** All-default wiring: no propagators, built-in resilience, plaintext. */
         public static Wiring defaults() {
             return new Wiring(null, null, null, null, null, null, null, null, null, null);

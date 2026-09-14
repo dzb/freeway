@@ -131,7 +131,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 
 日志键可以住在两个地方（`-D` 系统属性与环境变量都高于两个文件；专用文件更具体、优先于 app 文件；本节全部键只在 `freeway.log.*` 命名空间内生效）：
 
-1. **专用文件** `freeway-logging.properties`（classpath 根）——日志专属声明，**优先生效**。旧名 `freeway-log.properties` 只在新名不存在时作为过渡读入并打一行告警，下一版本移除
+1. **专用文件** `freeway-logging.properties`（classpath 根）——日志专属声明，**优先生效**。旧名 `freeway-log.properties` **不再被读取**：若它仍留在 classpath 根，启动会打一行 stderr 提示改名（配置不会被采纳，但也不会静默失效）
 2. **应用主配置** `application.properties` / `application.json`（classpath 根 + 工作目录 + 激活 profile 的变体，后读的文件赢）——只取 `freeway.log.*` 键
 
 注意三条边界：

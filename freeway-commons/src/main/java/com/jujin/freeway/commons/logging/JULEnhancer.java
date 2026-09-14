@@ -114,11 +114,13 @@ final class JULEnhancer {
     private static final String LOG_PROPERTIES = "freeway-logging.properties";
 
     /**
-     * The pre-1.5.2 name of {@link #LOG_PROPERTIES}. Read only as a fallback
-     * so an upgrade cannot silently drop a logging configuration; the startup
-     * warning names the rename. Scheduled for removal in the next release.
+     * The pre-1.5.2 name of {@link #LOG_PROPERTIES}. Never read: a file under
+     * this name is only <em>detected</em>, so a classpath still carrying it
+     * gets a startup notice naming the rename instead of losing its logging
+     * configuration in silence. Detection is not a fallback — the renamed file
+     * is the only name this class loads.
      */
-    private static final String LEGACY_LOG_PROPERTIES = "freeway-log.properties";
+    private static final String RENAMED_LOG_PROPERTIES = "freeway-log.properties";
 
     /**
      * Loads the log configuration, merging the app-side source below the
@@ -150,13 +152,6 @@ final class JULEnhancer {
             mergeLogKeys(merged, source.values());
         }
         InputStream in = openStream(LOG_PROPERTIES);
-        if (in == null) {
-            in = openStream(LEGACY_LOG_PROPERTIES);
-            if (in != null) {
-                logEarly(LEGACY_LOG_PROPERTIES + " is being read as a fallback: rename it to "
-                    + LOG_PROPERTIES + " — the old name is deprecated and will be removed");
-            }
-        }
         if (in != null) {
             try (InputStream stream = in) {
                 merged.load(stream);
@@ -164,7 +159,30 @@ final class JULEnhancer {
                 logEarly("Failed to load " + LOG_PROPERTIES + ": " + e.getMessage());
             }
         }
+        // Not a fallback: the renamed file is never loaded, so the two names
+        // cannot both be live. A classpath still carrying it is told so — with
+        // or without the canonical file present, because a dead config file
+        // that looks live is a trap for whoever edits it next.
+        String notice = renamedFileNotice();
+        if (notice != null) {
+            logEarly(notice);
+        }
         return merged;
+    }
+
+    /**
+     * The rename notice for a classpath that still carries the old file name,
+     * or {@code null} when there is nothing to report. Package-visible for
+     * tests: the message is the whole migration path for that file, so it is
+     * pinned by a test rather than left to a log line.
+     */
+    static String renamedFileNotice() {
+        if (openStream(RENAMED_LOG_PROPERTIES) == null) {
+            return null;
+        }
+        return RENAMED_LOG_PROPERTIES + " is on the classpath but is no longer read:"
+            + " the logging configuration file was renamed to " + LOG_PROPERTIES
+            + " — rename the file, otherwise the keys in it do not apply";
     }
 
     private static void mergeLogKeys(Properties merged, Map<String, String> values) {
