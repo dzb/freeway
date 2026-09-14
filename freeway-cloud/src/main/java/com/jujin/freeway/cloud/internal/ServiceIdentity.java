@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * An explicit value always wins; the choice is logged either way, so an
  * operator can see what {@code auto} picked without turning on debug logging.
  */
-public final class ServiceIdentity {
+final class ServiceIdentity {
 
     private static final Logger LOG = LoggerFactory.getLogger(ServiceIdentity.class);
 

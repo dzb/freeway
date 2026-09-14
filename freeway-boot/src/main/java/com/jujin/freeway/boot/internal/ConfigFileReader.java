@@ -35,7 +35,7 @@ import java.util.Properties;
  * ({@code {"db": {"host": "x"}}} → {@code db.host=x}). A blank JSON document
  * means "no config", mirroring an empty {@code application.properties}.
  */
-public final class ConfigFileReader {
+final class ConfigFileReader {
 
     /**
      * Read cap for every config source: a file that exceeds it fails loudly

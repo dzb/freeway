@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **批次 B（第二批）：旧 arity 便捷构造器与只被测试引用的 internal public 类型（freeway-commons / boot / cloud）**：
+  - `JULFileHandler(String, long, int, boolean)` 删除：它是"比规范构造器少一个 `flushIntervalMs`"的便捷形态，
+    与前面几轮删掉的同类构造器是一回事；21 处测试调用点改传
+    `JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS`（语义完全一致，只是把默认值写在调用点上）。
+  - `HookLifecycle`、`ConfigFileReader`（boot）与 `ServiceIdentity`（cloud）由 public 收成包私有：按
+    `AGENTS.md` 的判据（"另一个包必须装配或替换它才是 public"），它们只有同包使用者——先前的引用计数把
+    `AppRuntimeDefaultTest` 里的一句**注释**当成了引用。
+  - `ConfigSources` 保持 public，并在 `boot/internal/package-info.java` 写明理由：跨模块测试
+    （`CloudSymbolPrecedenceTest`）需要直接装配分层来源来钉住级联优先级，这是"测试装配"而非"容器装配"的
+    唯一一处例外。
+
 - **批次 B（第一批）：导出面、别名、bind 期校验、JSON 访问器与缓存泄漏（freeway-cloud / http / ioc / commons）** —
   审计 §6 批次 B 的前五项：
   - **RPC 导出面以申报类型为准**（cloud）：`RpcTarget` 原先进 `handler.getClass().getMethods()`，于是

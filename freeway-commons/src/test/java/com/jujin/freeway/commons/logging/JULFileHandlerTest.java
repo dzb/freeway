@@ -33,7 +33,7 @@ class JULFileHandlerTest {
     void writesLogMessageToFile(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("logs").resolve("app.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 30, false);
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.INFO, "hello world");
         record.setMillis(System.currentTimeMillis());
@@ -92,7 +92,7 @@ class JULFileHandlerTest {
     void createsParentDirectories(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("nested").resolve("deep").resolve("app.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 30, false);
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         assertTrue(Files.exists(logFile.getParent()),
                 "Parent directories should be auto-created");
@@ -103,7 +103,7 @@ class JULFileHandlerTest {
     void usesJULFileFormatterByDefault(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("app.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 30, false);
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         assertNotNull(handler.getFormatter());
         assertInstanceOf(JULFileFormatter.class, handler.getFormatter(),
@@ -116,7 +116,7 @@ class JULFileHandlerTest {
         Path logFile = tempDir.resolve("size-rotate.log");
         // Small maxSize to force rotation quickly
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 200, 30, false);
+                logFile.toString(), 200, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.INFO,
                 "A long message to exceed the size threshold quickly enough");
@@ -144,7 +144,7 @@ class JULFileHandlerTest {
     void rotatesOnDayBoundary(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("day-rotate.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 30, false);
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         // Simulate day change by writing a record with tomorrow's date
         // and checking that the rotation flags are set up.
@@ -171,7 +171,7 @@ class JULFileHandlerTest {
     void compressesRotatedFile(@TempDir Path tempDir) throws IOException, InterruptedException {
         Path logFile = tempDir.resolve("compress.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 150, 30, true);
+                logFile.toString(), 150, 30, true, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.INFO,
                 "Message to fill up the file for compression test");
@@ -202,7 +202,7 @@ class JULFileHandlerTest {
     void logOutputContainsExceptionStackTrace(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("exception.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 30, false);
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.SEVERE, "error occurred");
         record.setMillis(System.currentTimeMillis());
@@ -224,7 +224,7 @@ class JULFileHandlerTest {
     void nullLogRecordPropertiesDoNotThrow(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("nullsafe.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 30, false);
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.INFO, null);
         record.setMillis(System.currentTimeMillis());
@@ -240,7 +240,7 @@ class JULFileHandlerTest {
     void respectsLogLevelFilter(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("level.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 30, false);
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
         handler.setLevel(Level.WARNING);
 
         LogRecord fineRecord = new LogRecord(Level.FINE, "should be filtered");
@@ -265,7 +265,8 @@ class JULFileHandlerTest {
     @Test
     void rotationTriggersReasonablyForExceptionLogs(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("exception-rotate.log");
-        JULFileHandler handler = new JULFileHandler(logFile.toString(), 200, 30, false);
+        JULFileHandler handler = new JULFileHandler(logFile.toString(), 200, 30, false,
+            JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.SEVERE, "error");
         record.setMillis(System.currentTimeMillis());
@@ -290,7 +291,7 @@ class JULFileHandlerTest {
     void rotationOverwritesExistingArchiveFile(@TempDir Path tempDir) throws IOException {
         Path logFile = tempDir.resolve("overwrite.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 150, 30, false);
+                logFile.toString(), 150, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         // Pre-create an archive file with the name rotation would produce
         String today = handler.currentDate();
@@ -321,7 +322,7 @@ class JULFileHandlerTest {
     void compressedFileIsValidGzip(@TempDir Path tempDir) throws IOException, InterruptedException {
         Path logFile = tempDir.resolve("gzip-valid.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 150, 30, true);
+                logFile.toString(), 150, 30, true, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.INFO,
                 "data to compress after rotation");
@@ -359,7 +360,7 @@ class JULFileHandlerTest {
         Path logFile = tempDir.resolve("purge.log");
         // maxHistory=1 so only today's files survive. Small maxSize to force rotation.
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 100, 1, false);
+                logFile.toString(), 100, 1, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         // Create fake old archive files
         String oldDate = LocalDate.now().minusDays(5)
@@ -413,7 +414,7 @@ class JULFileHandlerTest {
 
         // Constructor runs rotateStaleFileOnStartup() → purgeOldFiles().
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 1, false);
+                logFile.toString(), 10 * 1024 * 1024, 1, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         assertTrue(Files.exists(oldTmp),
                 "In-progress .gz.tmp staging file must survive purge");
@@ -442,7 +443,7 @@ class JULFileHandlerTest {
         Files.writeString(oldArchive, "old");
 
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 10 * 1024 * 1024, 2, false);
+                logFile.toString(), 10 * 1024 * 1024, 2, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         assertFalse(Files.exists(oldArchive),
                 "Archive older than maxHistory should be purged at startup");
@@ -465,7 +466,7 @@ class JULFileHandlerTest {
             throws IOException, InterruptedException {
         Path logFile = tempDir.resolve("atomic-gzip.log");
         JULFileHandler handler = new JULFileHandler(
-                logFile.toString(), 150, 30, true);
+                logFile.toString(), 150, 30, true, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
 
         LogRecord record = new LogRecord(Level.INFO,
                 "data that triggers rotation and async compression");

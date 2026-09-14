@@ -169,19 +169,6 @@ public final class JULFileHandler extends StreamHandler {
     }
 
     /**
-     * Programmatic constructor using the default flush interval
-     * ({@link #DEFAULT_FLUSH_INTERVAL_MS}).
-     */
-    public JULFileHandler(
-        String filePath,
-        long maxSize,
-        int maxHistory,
-        boolean compress
-    ) throws IOException {
-        this(filePath, maxSize, maxHistory, compress, DEFAULT_FLUSH_INTERVAL_MS);
-    }
-
-    /**
      * Programmatic constructor.
      *
      * @param filePath        path to the log file (e.g. {@code logs/app.log})
