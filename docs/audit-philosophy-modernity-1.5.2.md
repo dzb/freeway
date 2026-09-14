@@ -323,8 +323,8 @@ javadoc 说"same gates as the streaming path, **plus body-allowed**"，但 `shou
 | B8 `RpcTarget` 导出面按申报类型 | 已落地 | 本轮 |
 | B9 `BeanIntrospector` 缓存泄漏、JSON 写方法命名、类型不符不再静默 | 已落地 | 本轮 |
 | B1 `PoolConfig`/`PeerConnector` wither、`Orm.findAll` 位置哨兵 | 待做 | — |
-| B2 `MigrationRunner`/`FreewayHttpEngine`/`JULFileHandler` 旧 arity 构造器 | 待做 | — |
-| B4 四个只被测试引用的 internal public 类型收窄 | 待做 | — |
+| B2 旧 arity 构造器 | 部分：`JULFileHandler` 已删；`MigrationRunner`、`FreewayHttpEngine` 待做 | core `4d003697` |
+| B4 只被测试引用的 internal public 类型收窄 | 已落地（三处收窄；`ConfigSources` 写明为测试装配例外） | core `4d003697` |
 | B3 入口工厂 `create` vs `of` | **待用户定调** | — |
 
 审计方法上的两次自我纠正也留在正文：`instanceof` 强转计数与 `Sql.Condition` 构造器计数的假阳性（§1），
