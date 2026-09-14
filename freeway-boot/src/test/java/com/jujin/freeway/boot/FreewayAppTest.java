@@ -5,6 +5,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.jujin.freeway.boot.event.AppStartedEvent;
 import com.jujin.freeway.boot.event.AppStoppingEvent;
@@ -16,6 +17,7 @@ import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Value;
+import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -624,5 +626,41 @@ class FreewayAppTest {
             "AppStartedEvent must be published on start");
         assertTrue(events.stream().anyMatch(e -> e instanceof AppStoppingEvent),
             "AppStoppingEvent must be published before shutdown");
+    }
+
+    @Test
+    void compositionFailureClosesTheConfig() {
+        // The loader opens the hot-reload watcher (a thread plus a
+        // WatchService) before composition runs. Declaring the same module
+        // class twice throws during composition, and that path must release
+        // the config exactly like a container failure does — otherwise every
+        // caught-and-retried start leaks one watcher.
+        ClosingAppConfig config = new ClosingAppConfig();
+        assertThrows(IllegalStateException.class, () ->
+            FreewayApp.of(new DupModule("a"), new DupModule("b"))
+                .config(config)
+                .start());
+        assertTrue(config.closed.get(), "a failed start must close the config");
+    }
+
+    /** AppConfig that only records whether it was closed. */
+    static final class ClosingAppConfig implements AppConfig {
+
+        final AtomicBoolean closed = new AtomicBoolean();
+
+        @Override
+        public List<String> profiles() {
+            return List.of();
+        }
+
+        @Override
+        public List<SymbolProvider> providers() {
+            return List.of();
+        }
+
+        @Override
+        public void close() {
+            closed.set(true);
+        }
     }
 }

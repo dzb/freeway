@@ -1,7 +1,12 @@
 package com.jujin.freeway.boot.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Set;
+import org.junit.jupiter.api.Assumptions;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -125,5 +130,71 @@ class OverrideFileTierTest {
             logger.setUseParentHandlers(parentHandlers);
         }
         return messages;
+    }
+
+    @Test
+    void profileVariantCannotRedeclareTheActivationKey(@TempDir Path dir) throws Exception {
+        // A variant's file name IS the selection. If its own freeway.profile
+        // surfaced in the file tier it would outrank everything and the
+        // resolved value would contradict profiles() — the one thing AppConfig
+        // promises cannot happen.
+        Path variant = Files.writeString(
+            dir.resolve("application-dev.properties"),
+            "freeway.profile=prod\napp.name=demo\n");
+        AppConfigDefault config = new AppConfigDefault(
+            new ConfigSources(Map.of(), Map.of(), Map.of(), List.of("dev")),
+            new AppConfigDefault.OverrideFiles(List.of(
+                AppConfigDefault.OverrideFile.variant(variant))));
+        try {
+            assertNull(fileValue(config, "freeway.profile"),
+                "the variant's own activation key must not surface");
+            assertEquals("demo", fileValue(config, "app.name"),
+                "every other key in the variant still applies");
+            assertEquals(List.of("dev"), config.profiles());
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void baseFileKeepsItsActivationKey(@TempDir Path dir) throws Exception {
+        // The mirror image: a base file participates in selection, so its
+        // freeway.profile is a value the app may read.
+        Path base = Files.writeString(
+            dir.resolve("application.properties"), "freeway.profile=dev\n");
+        AppConfigDefault config = of(List.of(base));
+        try {
+            assertEquals("dev", fileValue(config, "freeway.profile"));
+        } finally {
+            config.close();
+        }
+    }
+
+    @Test
+    void unreadableOverrideFileFailsInsteadOfDroppingItsKeys(@TempDir Path dir) throws Exception {
+        Assumptions.assumeFalse("root".equals(System.getProperty("user.name")),
+            "root reads a file with no permissions");
+        Path file = Files.writeString(
+            dir.resolve("application.properties"), "app.name=demo\n");
+        Files.setPosixFilePermissions(file, Set.of());
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> of(List.of(file)));
+        assertTrue(ex.getMessage().contains("Unable to load"), ex.getMessage());
+        assertTrue(ex.getMessage().contains(file.getFileName().toString()), ex.getMessage());
+    }
+
+    @Test
+    void declaredFileThatDoesNotExistIsNamed(@TempDir Path dir) {
+        Path missing = dir.resolve("declared-but-absent.properties");
+        List<String> warnings = captureWarnings(() -> {
+            AppConfigDefault config = new AppConfigDefault(
+                new ConfigSources(Map.of(), Map.of(), Map.of(), List.of()),
+                new AppConfigDefault.OverrideFiles(List.of(
+                    AppConfigDefault.OverrideFile.declared(missing))));
+            config.close();
+        });
+        assertTrue(
+            warnings.stream().anyMatch(w -> w.contains("declared-but-absent.properties")),
+            "a file named by freeway.config.file that is not there must be named: " + warnings);
     }
 }

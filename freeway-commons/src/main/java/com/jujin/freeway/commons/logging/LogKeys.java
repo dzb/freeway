@@ -63,11 +63,16 @@ final class LogKeys {
     static final String SUFFIX_COMPRESS = ".compress";
     static final String SUFFIX_FLUSH_INTERVAL = ".flush-interval";
 
-    /** The default file's rotation/compression keys, spelled once. */
-    static final String FILE_MAX_SIZE = FILE + SUFFIX_MAX_SIZE;
-    static final String FILE_MAX_HISTORY = FILE + SUFFIX_MAX_HISTORY;
-    static final String FILE_COMPRESS = FILE + SUFFIX_COMPRESS;
-    static final String FILE_FLUSH_INTERVAL = FILE + SUFFIX_FLUSH_INTERVAL;
+    /** The default file's rotation/compression keys, spelled out in full rather
+     *  than composed from {@link #FILE} + a suffix: the docs-consistency test
+     *  finds "a documented key no module reads" by scanning literals, and a
+     *  composed name would look like a knob that does nothing. Named files
+     *  ({@code FILE_PREFIX + <name> + SUFFIX_*}) have no such literal by
+     *  construction and are documented by pattern. */
+    static final String FILE_MAX_SIZE = "freeway.log.file.max-size";
+    static final String FILE_MAX_HISTORY = "freeway.log.file.max-history";
+    static final String FILE_COMPRESS = "freeway.log.file.compress";
+    static final String FILE_FLUSH_INTERVAL = "freeway.log.file.flush-interval";
 
     private LogKeys() {}
 }

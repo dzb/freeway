@@ -41,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **boot：配置文件层的读失败只剩一种口径，profile 变体不再能改写激活键，组合期失败也清理 config（freeway-boot）**
+  — 三条审计 P1：
+  - 同一个"读不到文件"此前有三种命运：类路径与工作目录 base 硬失败；工作目录 profile 变体与
+    `freeway.config.file` 附加文件只 WARN、随后整份文件的键消失；显式声明的路径不存在则完全无声。现在：
+    **文件存在但读不出来 → `IllegalStateException`**（点名路径与修法），热重载期由 watcher 保留旧快照；
+    `freeway.config.file` 声明却不存在的路径 → 一行 WARN 点名；可选的工作目录文件缺失仍按常态静默。
+  - `overrideFiles` 改为带**角色**（`BASE` / `PROFILE_VARIANT` / `DECLARED`）：profile 变体的
+    `freeway.profile` 与类路径侧一样被剥离，`profiles()` 与解析值不再可能分叉——`AppConfig` 的
+    "cannot disagree" 承诺此前只兑现了一半（只做了类路径侧）。
+  - `AppBuilder.start()` 的**组合段移进 try**：同模块类声明两次、或坏 SPI provider 抛出时，同样会
+    `config.close()`；否则调用方每次"捕获后重试"都会泄漏一个热重载 watcher（线程 + `WatchService`）。
+
 - **`Coercer`：Number→boolean 不再按 `int` 截断判真假（freeway-commons）** — `0.5`、`0.9`、
   `4294967296L`（2³²）这类"非零但整数部分为零"的值此前静默变成 `false`（实现是 `n.intValue() != 0`），
   而同一文件的整数路径恰好把这个模式列为 corrupting data 并明令禁止。现在按精确十进制量值判定；两个非

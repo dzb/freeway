@@ -100,24 +100,25 @@ public final class ConfigLoaderImpl {
      * the cascade whose order is pure data: the file names, not their
      * contents, decide precedence.
      */
-    static List<Path> overrideFiles(List<String> profiles) {
+    static AppConfigDefault.OverrideFiles overrideFiles(List<String> profiles) {
         Path workDir = Path.of("").toAbsolutePath();
-        List<Path> files = new ArrayList<>();
+        List<AppConfigDefault.OverrideFile> files = new ArrayList<>();
         for (String name : APPLICATION_FILES) {
-            files.add(workDir.resolve(name));
+            files.add(AppConfigDefault.OverrideFile.base(workDir.resolve(name)));
         }
         for (String base : APPLICATION_FILES) {
             for (String profile : profiles) {
-                files.add(workDir.resolve(profileVariant(base, profile)));
+                files.add(AppConfigDefault.OverrideFile.variant(
+                    workDir.resolve(profileVariant(base, profile))));
             }
         }
         String configFiles = EnvKeys.bootstrap(CONFIG_FILE_KEY);
         for (String extra : (configFiles == null ? "" : configFiles).split(",")) {
             if (!extra.isBlank()) {
-                files.add(Path.of(extra.trim()));
+                files.add(AppConfigDefault.OverrideFile.declared(Path.of(extra.trim())));
             }
         }
-        return List.copyOf(files);
+        return new AppConfigDefault.OverrideFiles(files);
     }
 
     /**
@@ -235,7 +236,7 @@ public final class ConfigLoaderImpl {
      * {@code freeway.profile} would otherwise make the merged view contradict
      * {@code profiles()}. Stripped here — the raw form never surfaces.
      */
-    private static Map<String, String> withoutActivationKey(Map<String, String> values) {
+    static Map<String, String> withoutActivationKey(Map<String, String> values) {
         if (!values.containsKey(PROFILE_KEY)) {
             return values;
         }

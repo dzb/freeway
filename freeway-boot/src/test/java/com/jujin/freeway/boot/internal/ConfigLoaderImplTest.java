@@ -466,10 +466,10 @@ class ConfigLoaderImplTest {
         System.setProperty("freeway.config.file",
             " extra.properties , second.properties ");
         try {
-            List<String> names = ConfigLoaderImpl
-                .overrideFiles(List.of("dev", "prod"))
-                .stream()
-                .map(path -> path.getFileName().toString())
+            List<AppConfigDefault.OverrideFile> overrides =
+                ConfigLoaderImpl.overrideFiles(List.of("dev", "prod")).files();
+            List<String> names = overrides.stream()
+                .map(file -> file.path().getFileName().toString())
                 .toList();
 
             assertEquals(List.of(
@@ -477,6 +477,15 @@ class ConfigLoaderImplTest {
                 "application-dev.properties", "application-prod.properties",
                 "application-dev.json", "application-prod.json",
                 "extra.properties", "second.properties"), names);
+            // Roles, not just order: only the variants ignore their own
+            // freeway.profile, and only the declared extras are worth a warning
+            // when the path does not exist.
+            assertEquals(List.of(
+                AppConfigDefault.Role.BASE, AppConfigDefault.Role.BASE,
+                AppConfigDefault.Role.PROFILE_VARIANT, AppConfigDefault.Role.PROFILE_VARIANT,
+                AppConfigDefault.Role.PROFILE_VARIANT, AppConfigDefault.Role.PROFILE_VARIANT,
+                AppConfigDefault.Role.DECLARED, AppConfigDefault.Role.DECLARED),
+                overrides.stream().map(AppConfigDefault.OverrideFile::role).toList());
         } finally {
             System.clearProperty("freeway.config.file");
         }

@@ -161,28 +161,32 @@ public final class AppBuilder {
             ? this.config
             : ConfigLoaderImpl.load(effectiveLoader, args);
 
-        // The composition is built once, here: the application node with every
-        // added module or tree, plus whatever SPI discovery fills in. The
-        // tree — not a per-layer bookkeeping map — is what decides duplicates,
-        // order and (for discovery) which classes are already declared.
-        List<ModuleNode> composed = new ArrayList<>(children.size() + 1);
-        composed.add(ModuleNode.of(new BootModule(config))); // config first: later modules may read it
-        composed.addAll(children);
-        ModuleNode tree = ModuleNode.app(
-            appName != null ? appName : APP_NAME,
-            composed.toArray(ModuleNode[]::new));
-        if (autoDiscovery) {
-            tree = discover(tree, effectiveLoader);
-        }
-
         Container container;
         AppRuntime app;
         try {
+            // The composition is built inside the try because it can fail:
+            // declaring the same module class twice, or an SPI provider that
+            // cannot be instantiated, throws here. Those failures must release
+            // the config exactly like a container failure does — the loader
+            // already opened the hot-reload watcher (a thread plus a
+            // WatchService), and a caller that catches and retries would leak
+            // one per attempt. The tree — not a per-layer bookkeeping map — is
+            // what decides duplicates, order and (for discovery) which classes
+            // are already declared.
+            List<ModuleNode> composed = new ArrayList<>(children.size() + 1);
+            composed.add(ModuleNode.of(new BootModule(config))); // config first: later modules may read it
+            composed.addAll(children);
+            ModuleNode tree = ModuleNode.app(
+                appName != null ? appName : APP_NAME,
+                composed.toArray(ModuleNode[]::new));
+            if (autoDiscovery) {
+                tree = discover(tree, effectiveLoader);
+            }
             container = Freeway.create(tree);
             app = new AppRuntimeDefault(container, config);
         } catch (Throwable ex) {
-            // The container never came up, so no runtime hook will run: release
-            // whatever the config holds open (e.g. the hot-reload watcher).
+            // No runtime hook will run, so release whatever the config holds
+            // open (e.g. the hot-reload watcher).
             try {
                 config.close();
             } catch (RuntimeException closeFailure) {
