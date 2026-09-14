@@ -125,7 +125,7 @@ class UserDemoTest {
             assertEquals(2, all.size());
 
             // ----- R: Read (findAll with order & limit) -----
-            List<User> ordered = orm.findAll(User.class, "age ASC", 1, 0);
+            List<User> ordered = orm.findAll(User.class, Orm.FindOptions.defaults().withOrderBy("age ASC").withLimit(1));
             assertEquals(1, ordered.size());
             assertEquals("闪电", ordered.get(0).name());
 

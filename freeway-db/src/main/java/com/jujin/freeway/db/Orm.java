@@ -67,20 +67,66 @@ public final class Orm {
     }
 
     public <T> List<T> findAll(Class<T> type) {
-        return findAll(type, "", 0, 0);
+        return findAll(type, FindOptions.defaults());
     }
 
     /**
+     * The optional shape of a {@code findAll}: an ORDER BY clause and a
+     * limit/offset window.
+     *
+     * <p>It replaced three positional parameters ({@code String orderBy, int
+     * limit, int offset}) in which the two adjacent {@code int}s were
+     * interchangeable at the call site — {@code findAll(type, "id ASC", 20, 0)}
+     * and {@code findAll(type, "id ASC", 0, 20)} both compiled and meant
+     * opposite things — and {@code 0}/{@code ""} doubled as "unset".</p>
+     *
      * @param orderBy raw SQL ORDER BY clause (e.g. {@code "name ASC"}).
-     *                <b>Warning:</b> this value is interpolated directly into the SQL;
-     *                do not pass unsanitized user input.
+     *                <b>Warning:</b> interpolated directly into the SQL; never
+     *                pass unsanitized user input.
+     * @param limit   maximum rows, {@code 0} = no limit
+     * @param offset  rows to skip, {@code 0} = from the start
      */
-    public <T> List<T> findAll(Class<T> type, String orderBy, int limit, int offset) {
+    public record FindOptions(String orderBy, int limit, int offset) {
+
+        public FindOptions {
+            orderBy = orderBy == null || orderBy.isBlank() ? "" : orderBy.strip();
+            if (limit < 0) {
+                throw new IllegalArgumentException("limit must be >= 0: " + limit);
+            }
+            if (offset < 0) {
+                throw new IllegalArgumentException("offset must be >= 0: " + offset);
+            }
+        }
+
+        /** Everything, unordered: no ORDER BY, no LIMIT, no OFFSET. */
+        public static FindOptions defaults() {
+            return new FindOptions("", 0, 0);
+        }
+
+        public FindOptions withOrderBy(String orderBy) {
+            return new FindOptions(orderBy, limit, offset);
+        }
+
+        public FindOptions withLimit(int limit) {
+            return new FindOptions(orderBy, limit, offset);
+        }
+
+        public FindOptions withOffset(int offset) {
+            return new FindOptions(orderBy, limit, offset);
+        }
+    }
+
+    /** Rows of {@code type} shaped by {@code options}. */
+    public <T> List<T> findAll(Class<T> type, FindOptions options) {
+        Objects.requireNonNull(options, "options");
+        String orderBy = options.orderBy();
+        int limit = options.limit();
+        int offset = options.offset();
         BeanPlan plan = BeanIntrospector.plan(type);
         String table = dialect.quoteName(SqlTypeMapping.tableName(type));
         String columns = columnsClause(plan);
         StringBuilder sql = new StringBuilder("SELECT ").append(columns).append(" FROM ").append(table);
-        if (orderBy != null && !orderBy.isBlank()) {
+        if (!orderBy.isEmpty()) {
             sql.append(" ORDER BY ").append(orderBy);
         }
         if (limit > 0) {

@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **批次 B（第五批）：`Orm.findAll` 的位置哨兵收成 `FindOptions`（freeway-db）** — 原签名
+  `findAll(Class, String orderBy, int limit, int offset)` 的两个相邻 `int` 在调用点可互换：
+  `findAll(type, "id ASC", 20, 0)` 与 `(…, 0, 20)` 都能编译而语义相反；`""`/`0` 还同时兼任"未设置"。
+  现在 `Orm.FindOptions.defaults()` + `withOrderBy`/`withLimit`/`withOffset`（一个 wither 只动一个字段），
+  空白 `orderBy` 归一为"无 ORDER BY"，**负的 limit/offset 当场抛**（旧实现用 `limit > 0` 判断，负值被
+  静默当成"不限"，一次笔误就变成全表返回）。`findAll(Class)` 保留为 `defaults()` 的便捷形态；
+  11 处调用点按编译错误迁移（db 测试 10 处 + ext benchmark 1 处）。
+
 - **批次 B（第四批）：`PeerConnector` 的 7 位置参数收成 `Wiring`，`PoolConfig` 补 wither（freeway-cloud / freeway-db）**：
   - `PeerConnector(PeerHub, Duration connectTimeout, String scheme, Duration handshakeTimeout, long backoffBaseMs, long backoffMaxMs, SSLContext)`
     换成 `PeerConnector(PeerHub, Wiring)`。原签名里有**两对相邻同类型参数**（两个 `Duration`、两个 `long`），
