@@ -31,10 +31,11 @@ import java.util.function.Consumer;
  * db.query(q.sql(), q.args()).list(User.class);
  *
  * // UPDATE
- * Sql.update("users").set("name = ?", name).set("status = ?", status).where("id = ?", id);
+ * Sql.update("users").setExpression("name = ?", name).setExpression("status = ?", status)
+ *     .where("id = ?", id);
  *
  * // INSERT
- * Sql.insert("users").set("name", name).set("status", status);
+ * Sql.insert("users").setColumn("name", name).setColumn("status", status);
  *
  * // DELETE
  * Sql.delete("users").where("id = ?", id);
@@ -98,13 +99,13 @@ public final class Sql {
             false, List.of(), null, List.of(), List.of());
     }
 
-    /** UPDATE:{@code Sql.update("users").set("name = ?", v).where("id = ?", id)} */
+    /** UPDATE:{@code Sql.update("users").setExpression("name = ?", v).where("id = ?", id)} */
     public static Sql update(String tableName) {
         return new Sql("UPDATE " + tableName, List.of(), "", new Object[0],
             false, List.of(), tableName, List.of(), List.of());
     }
 
-    /** INSERT:{@code Sql.insert("users").set("name", v).set("status", v)} */
+    /** INSERT:{@code Sql.insert("users").setColumn("name", v).setColumn("status", v)} */
     public static Sql insert(String tableName) {
         return new Sql(null, List.of(), "", new Object[0],
             false, List.of(), tableName, List.of(), List.of());
@@ -171,14 +172,14 @@ public final class Sql {
     /** {@code WHERE expr} (or {@code AND expr} when a condition already exists). */
     public Sql where(String expr, Object... values) {
         requireWhereAllowed("WHERE");
-        String connector = conditions.isEmpty() ? "" : "AND";
-        return addCondition(connector, expr, values);
+        return addCondition(andConnector(conditions), expr, values);
     }
 
-    /** {@code OR expr} */
+    /** {@code OR expr} — or plain {@code expr} as the first condition,
+     *  where {@code OR} would have nothing to connect. */
     public Sql orWhere(String expr, Object... values) {
         requireWhereAllowed("OR WHERE");
-        return addCondition("OR", expr, values);
+        return addCondition(orConnector(conditions), expr, values);
     }
 
     /** {@code AND NOT expr} */
@@ -194,7 +195,7 @@ public final class Sql {
 
     public Sql orWhereGroup(Consumer<Group> builder) {
         requireWhereAllowed("OR WHERE GROUP");
-        return addGroupedCondition("OR", builder);
+        return addGroupedCondition(orConnector(conditions), builder);
     }
 
     public Sql whereNotGroup(Consumer<Group> builder) {
@@ -349,38 +350,49 @@ public final class Sql {
     // ====================== SET (UPDATE / INSERT) ======================
 
     /**
-    * Used for UPDATE or INSERT.
-     * <p>
-    * <b>UPDATE</b>: {@code .set("name = ?", value)} — full expression
-     * <br>
-    * <b>INSERT</b>: {@code .set("name", value)} — column name + value
+     * One INSERT assignment: a plain column name plus its value
+     * ({@code Sql.insert("users").setColumn("name", name)}).
+     *
+     * <p>INSERT-only, and the name says so — the mode used to be guessed from
+     * the fragment's characters, which rejected legitimate quoted column names
+     * such as {@code "`my col`"} and deferred real misuse to placeholder
+     * counting. The column name is quoted/validated as a name; expressions
+     * belong in {@link #setExpression(String, Object)}.</p>
      */
-    public Sql set(String expr, Object value) {
-        requireUpdateOrInsert("SET");
-        requireNoPendingJoin("SET");
-        if (head == null) {
-            // INSERT mode: set("col", value)
-            if (
-                expr.indexOf('?') >= 0 ||
-                expr.indexOf(':') >= 0 ||
-                expr.indexOf('$') >= 0 ||
-                expr.indexOf('=') >= 0 ||
-                expr.indexOf(' ') >= 0 ||
-                expr.indexOf('(') >= 0
-            ) {
-                throw new IllegalArgumentException(
-                    "INSERT set() takes a plain column name, not an expression: \""
-                        + expr + "\" — use set(\"column\", value)"
-                );
-            }
-            List<String> newTargets = new ArrayList<>(dmlTargets);
-            newTargets.add(expr);
-            List<Object> newValues = new ArrayList<>(dmlValues);
-            newValues.add(value);
-            return new Sql(head, conditions, tail, args,
-                compoundQuery, ctes, dmlTable, newTargets, newValues);
+    public Sql setColumn(String column, Object value) {
+        requireUpdateOrInsert("setColumn");
+        if (!isInsert()) {
+            throw new IllegalStateException(
+                "setColumn() is INSERT-only — use setExpression(\"column = ?\", value)"
+                    + " for UPDATE"
+            );
         }
-        // UPDATE mode: set("col = ?", value)
+        requireNoPendingJoin("setColumn");
+        Objects.requireNonNull(column, "column");
+        List<String> newTargets = new ArrayList<>(dmlTargets);
+        newTargets.add(column);
+        List<Object> newValues = new ArrayList<>(dmlValues);
+        newValues.add(value);
+        return new Sql(head, conditions, tail, args,
+            compoundQuery, ctes, dmlTable, newTargets, newValues);
+    }
+
+    /**
+     * One UPDATE assignment as a full expression
+     * ({@code Sql.update("users").setExpression("name = ?", name)}).
+     *
+     * <p>UPDATE-only; placeholders are normalized like everywhere else
+     * ({@code ?}, {@code :name} and {@code $1} all become {@code ?}).</p>
+     */
+    public Sql setExpression(String expr, Object value) {
+        requireUpdateOrInsert("setExpression");
+        if (!isUpdate()) {
+            throw new IllegalStateException(
+                "setExpression() is UPDATE-only — use setColumn(\"column\", value)"
+                    + " for INSERT"
+            );
+        }
+        requireNoPendingJoin("setExpression");
         NormalizedFragment parsed = normalizeArgs(expr, value);
 
         List<String> newTargets = new ArrayList<>(dmlTargets);
@@ -496,7 +508,7 @@ public final class Sql {
         }
 
         public Group orWhere(String expr, Object... values) {
-            return addCondition("OR", expr, values);
+            return addCondition(orConnector(conditions), expr, values);
         }
 
         public Group whereNot(String expr, Object... values) {
@@ -508,7 +520,7 @@ public final class Sql {
         }
 
         public Group orWhereGroup(Consumer<Group> builder) {
-            return addGroupedCondition("OR", builder);
+            return addGroupedCondition(orConnector(conditions), builder);
         }
 
         public Group whereNotGroup(Consumer<Group> builder) {
@@ -729,6 +741,16 @@ public final class Sql {
 
     private static String andConnector(List<Condition> conditions) {
         return conditions.isEmpty() ? "" : "AND";
+    }
+
+    /**
+     * The first condition carries no connector: an {@code OR} with nothing to
+     * OR against would render {@code WHERE OR expr} — invalid SQL that only the
+     * driver rejects. Same reasoning as {@link #andConnector}, and the two must
+     * stay in step.
+     */
+    private static String orConnector(List<Condition> conditions) {
+        return conditions.isEmpty() ? "" : "OR";
     }
 
     private static String notConnector(List<Condition> conditions) {

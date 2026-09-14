@@ -106,6 +106,25 @@ class SqlTest {
     }
 
     @Test
+    void orWhereAsFirstConditionDropsTheConnector() {
+        // Regression: the OR was hard-coded, so a condition list whose first
+        // entry is an orWhere rendered "WHERE OR role = ?" — invalid SQL that
+        // only the driver rejected. The connector now follows andConnector's
+        // rule: nothing to connect means no connector.
+        Sql q = Sql.select("*").from("users").orWhere("role = ?", "admin");
+        assertEquals("SELECT * FROM users WHERE role = ?", q.sql());
+        assertArrayEquals(new Object[]{"admin"}, q.args());
+    }
+
+    @Test
+    void orWhereGroupAsFirstConditionDropsTheConnector() {
+        Sql q = Sql.select("*").from("users")
+            .orWhereGroup(g -> g.where("role = ?", "admin"));
+        assertEquals("SELECT * FROM users WHERE (role = ?)", q.sql());
+        assertArrayEquals(new Object[]{"admin"}, q.args());
+    }
+
+    @Test
     void selectWithWhereNot() {
         Sql q = Sql.select("*").from("users")
             .where("status = ?", 1)
@@ -287,7 +306,7 @@ class SqlTest {
     @Test
     void selectRejectsSet() {
         assertThrows(IllegalStateException.class, () ->
-            Sql.select("*").from("users").set("name = ?", "john"));
+            Sql.select("*").from("users").setExpression("name = ?", "john"));
     }
 
     @Test
@@ -306,7 +325,7 @@ class SqlTest {
 
     @Test
     void simpleUpdate() {
-        Sql q = Sql.update("users").set("name = ?", "john").where("id = ?", 1);
+        Sql q = Sql.update("users").setExpression("name = ?", "john").where("id = ?", 1);
         assertEquals("UPDATE users SET name = ? WHERE id = ?", q.sql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
@@ -314,8 +333,8 @@ class SqlTest {
     @Test
     void updateWithMultipleSets() {
         Sql q = Sql.update("users")
-            .set("name = ?", "john")
-            .set("status = ?", 1)
+            .setExpression("name = ?", "john")
+            .setExpression("status = ?", 1)
             .where("id = ?", 42);
         assertEquals("UPDATE users SET name = ?, status = ? WHERE id = ?", q.sql());
         assertArrayEquals(new Object[]{"john", 1, 42}, q.args());
@@ -327,8 +346,8 @@ class SqlTest {
         // that binding order follows SQL text order — SET before WHERE — no
         // matter which fluent call came first. Merging the two lists would
         // silently reorder bindings when where() precedes set().
-        Sql setFirst = Sql.update("users").set("name = ?", "john").where("id = ?", 7L);
-        Sql whereFirst = Sql.update("users").where("id = ?", 7L).set("name = ?", "john");
+        Sql setFirst = Sql.update("users").setExpression("name = ?", "john").where("id = ?", 7L);
+        Sql whereFirst = Sql.update("users").where("id = ?", 7L).setExpression("name = ?", "john");
 
         assertEquals(setFirst.sql(), whereFirst.sql());
         assertArrayEquals(new Object[]{"john", 7L}, setFirst.args());
@@ -338,7 +357,7 @@ class SqlTest {
     @Test
     void updateWithNamedParams() {
         Sql q = Sql.update("users")
-            .set("name = :name", "john")
+            .setExpression("name = :name", "john")
             .where("id = :id", 1);
         assertEquals("UPDATE users SET name = ? WHERE id = ?", q.sql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
@@ -347,7 +366,7 @@ class SqlTest {
     @Test
     void updateWithReturning() {
         Sql q = Sql.update("users")
-            .set("name = ?", "john")
+            .setExpression("name = ?", "john")
             .where("id = ?", 1)
             .returning("id");
         assertEquals("UPDATE users SET name = ? WHERE id = ? RETURNING id", q.sql());
@@ -358,21 +377,38 @@ class SqlTest {
 
     @Test
     void simpleInsert() {
-        Sql q = Sql.insert("users").set("name", "john").set("status", 1);
+        Sql q = Sql.insert("users").setColumn("name", "john").setColumn("status", 1);
         assertEquals("INSERT INTO users (name, status) VALUES (?, ?)", q.sql());
         assertArrayEquals(new Object[]{"john", 1}, q.args());
     }
 
     @Test
+    void setColumnTakesAnyColumnName() {
+        // The old set() guessed INSERT-vs-UPDATE by scanning for '?', '=', ' '
+        // and '(' in the fragment, so a legitimately quoted name with a space
+        // was rejected as "an expression". The mode is in the method name now.
+        Sql q = Sql.insert("users").setColumn("`my col`", "john");
+        assertEquals("INSERT INTO users (`my col`) VALUES (?)", q.sql());
+        assertArrayEquals(new Object[]{"john"}, q.args());
+    }
+
+    @Test
+    void setColumnOnUpdateIsRejected() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> Sql.update("users").setColumn("name", "john"));
+        assertTrue(ex.getMessage().contains("setExpression"), ex.getMessage());
+    }
+
+    @Test
     void insertWithReturning() {
-        Sql q = Sql.insert("users").set("name", "john").returning("id");
+        Sql q = Sql.insert("users").setColumn("name", "john").returning("id");
         assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id", q.sql());
         assertArrayEquals(new Object[]{"john"}, q.args());
     }
 
     @Test
     void returningValidatedAgainstDialect() {
-        Sql q = Sql.insert("users").set("name", "john").returning("id");
+        Sql q = Sql.insert("users").setColumn("name", "john").returning("id");
         assertEquals("INSERT INTO users (name) VALUES (?) RETURNING id",
             q.sql(new PostgresDialect()));
         assertThrows(SqlException.class, () ->
@@ -381,7 +417,7 @@ class SqlTest {
 
     @Test
     void onConflictValidatedAgainstDialect() {
-        Sql q = Sql.insert("users").set("id", 1).onConflict("id").doNothing();
+        Sql q = Sql.insert("users").setColumn("id", 1).onConflict("id").doNothing();
         q.sql(new PostgresDialect());
         assertThrows(SqlException.class, () ->
             q.sql(new MySqlDialect()));
@@ -389,7 +425,7 @@ class SqlTest {
 
     @Test
     void insertWithOnConflictDoNothing() {
-        Sql q = Sql.insert("users").set("id", 1).set("name", "john")
+        Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
             .onConflict("id")
             .doNothing();
         assertEquals("INSERT INTO users (id, name) VALUES (?, ?) ON CONFLICT (id) DO NOTHING", q.sql());
@@ -398,7 +434,7 @@ class SqlTest {
 
     @Test
     void insertWithOnConflictDoUpdateSet() {
-        Sql q = Sql.insert("users").set("id", 1).set("name", "john")
+        Sql q = Sql.insert("users").setColumn("id", 1).setColumn("name", "john")
             .onConflict("id")
             .doUpdateSet("name = excluded.name")
             .returning("id");
@@ -410,7 +446,7 @@ class SqlTest {
 
     @Test
     void insertSingleColumn() {
-        Sql q = Sql.insert("logs").set("message", "hello");
+        Sql q = Sql.insert("logs").setColumn("message", "hello");
         assertEquals("INSERT INTO logs (message) VALUES (?)", q.sql());
         assertArrayEquals(new Object[]{"hello"}, q.args());
     }
@@ -449,8 +485,8 @@ class SqlTest {
 
     @Test
     void immutabilityInsert() {
-        Sql q1 = Sql.insert("users").set("name", "john");
-        Sql q2 = q1.set("status", 1);
+        Sql q1 = Sql.insert("users").setColumn("name", "john");
+        Sql q2 = q1.setColumn("status", 1);
 
         assertEquals("INSERT INTO users (name) VALUES (?)", q1.sql());
         assertArrayEquals(new Object[]{"john"}, q1.args());
@@ -599,7 +635,7 @@ class SqlTest {
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
-            Sql q = Sql.insert("t_user").set("id", 1L).set("name", "newguy");
+            Sql q = Sql.insert("t_user").setColumn("id", 1L).setColumn("name", "newguy");
             db.execute(q.sql(), q.args());
 
             var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
@@ -615,7 +651,7 @@ class SqlTest {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
             db.execute("insert into t_user values (1, 'oldname')");
 
-            Sql q = Sql.update("t_user").set("name = ?", "newname").where("id = ?", 1L);
+            Sql q = Sql.update("t_user").setExpression("name = ?", "newname").where("id = ?", 1L);
             db.execute(q.sql(), q.args());
 
             var user = db.query("select id, name from t_user where id = ?", 1L).one(IdName.class);
@@ -663,7 +699,7 @@ class SqlTest {
         try (db) {
             db.execute("create table t_user (id bigint primary key, name varchar(16))");
 
-            ExecuteResult r = db.execute(Sql.insert("t_user").set("id", 1L).set("name", "alpha"));
+            ExecuteResult r = db.execute(Sql.insert("t_user").setColumn("id", 1L).setColumn("name", "alpha"));
             assertEquals(1, r.rows());
 
             String name = db.query(Sql.select("name").from("t_user").where("id = ?", 1L))
@@ -731,9 +767,12 @@ class SqlTest {
     }
 
     @Test
-    void insertSetRejectsExpression() {
-        assertThrows(IllegalArgumentException.class,
-            () -> Sql.insert("t").set("name = ?", "x"));
+    void setExpressionOnInsertIsRejected() {
+        // The mode is in the method name now, so the misuse is a builder-state
+        // error (like every other require* guard), not a character heuristic.
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> Sql.insert("t").setExpression("name = ?", "x"));
+        assertTrue(ex.getMessage().contains("setColumn"), ex.getMessage());
     }
 
     @Test

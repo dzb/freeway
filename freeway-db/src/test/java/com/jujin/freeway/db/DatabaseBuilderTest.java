@@ -217,7 +217,7 @@ class DatabaseBuilderTest {
         Database db = mysqlDb();
         try (db) {
             SqlException ex = assertThrows(SqlException.class,
-                () -> db.execute(Sql.insert("users").set("name", "john").returning("id")));
+                () -> db.execute(Sql.insert("users").setColumn("name", "john").returning("id")));
             assertTrue(ex.getMessage().contains("RETURNING"),
                 "MySQL must reject RETURNING via execute(Sql): " + ex.getMessage());
         }
@@ -228,7 +228,7 @@ class DatabaseBuilderTest {
         Database db = mysqlDb();
         try (db) {
             SqlException ex = assertThrows(SqlException.class,
-                () -> db.query(Sql.insert("users").set("name", "john").returning("id")));
+                () -> db.query(Sql.insert("users").setColumn("name", "john").returning("id")));
             assertTrue(ex.getMessage().contains("RETURNING"),
                 "MySQL must reject RETURNING via query(Sql): " + ex.getMessage());
         }
@@ -239,7 +239,7 @@ class DatabaseBuilderTest {
         Database db = mysqlDb();
         try (db) {
             SqlException ex = assertThrows(SqlException.class,
-                () -> db.execute(Sql.insert("users").set("id", 1).onConflict("id").doNothing()));
+                () -> db.execute(Sql.insert("users").setColumn("id", 1).onConflict("id").doNothing()));
             assertTrue(ex.getMessage().contains("ON CONFLICT"),
                 "MySQL must reject ON CONFLICT via execute(Sql): " + ex.getMessage());
         }
