@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     在启动时打印改名提示——配置不被采纳，但绝不静默失效。契约由 `JULEnhancerLogSourceTest` 钉住。
   同时明确**不删**的两处，因为它们不是 API 兼容，而是外部世界里已经存在的事实：迁移校验的双轨 checksum
   （库里已记录的行、CRLF 检出）、`CoercerDefault` 的时长输入形式。
+  - **稳定的定义随之写明**（`AGENTS.md`）：稳定性落在**语义**上，不落在**形态**上——冻结的签名配上漂移的
+    行为是最坏的不稳定，它绕过编译器直达生产；适配是个"读得见"的问题，使用方（或 agent）只要能看到改了
+    什么就能跟上，所以变更记录属于变更本身。三条判据：行为变化必须在 CHANGELOG 里有"为什么"；形态变化必须
+    在编译器里响（**只有 clean 编译算验证**，陈旧 `target/` 会把它吞掉，`Wiring` 那次就是先假绿）；值得付
+    代价的破坏让调用方代码**更少或不变**，只换名字、加参数、搬概念的破坏是抖动而非进化。
 
 - **`WebServer` 的构造器阶梯由 4/5/6 收成 4/6** — 包私有的 5 参构造器（只比 4 参多一个
   `readinessProbe`）在仓库内已无任何调用者：core 的装配点（`HttpModule`、`WebServerBuilder`）都直接走

@@ -92,6 +92,20 @@ test scope. Anything else belongs in an ext adapter.
   configuration stop taking effect must report itself at startup and name the fix
   (`JULEnhancer.renamedFileNotice`). Compatibility is not a goal of this project —
   adapters and applications are expected to move with it.
+- **Stability means stable semantics, not a frozen shape**: "unchanged" is the usual
+  reading of "stable", but it only holds for behaviour. A frozen signature whose
+  behaviour drifts is the worst case there is — it bypasses the compiler and lands in
+  production. Adaptation is a reading problem: an adapter or an agent moves with a break
+  as soon as it can see what changed, which is why the change record is part of the
+  change rather than paperwork. Three criteria separate evolution from churn:
+  - a behaviour change carries its "why" in the CHANGELOG — an unexplained behaviour
+    change is the real instability, whether or not a signature moved;
+  - a shape change surfaces in the compiler: with source-level consumers the compile
+    error *is* the migration path, and only a clean build proves anything (a stale
+    `target/` swallows it, as it did when `Wiring` lost its previous arity);
+  - a break worth paying for leaves the caller's code smaller or unchanged. Adapting by
+    renaming something, adding an argument or relocating a concept is churn; a break that
+    deletes a concept or a layer is the kind that earns its cost.
 - **Config ownership by layer**: `ioc.symbol` holds resolution mechanisms that
   know no concrete keys — value types (`SymbolSpec.list`, `splitList`) and
   shape rules (`SymbolSpec.activated`/`mode`), parameterized by the caller's
