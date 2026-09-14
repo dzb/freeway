@@ -3,6 +3,9 @@ package com.jujin.freeway.ioc.internal;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Binding;
 import com.jujin.freeway.commons.util.Strings;
+import com.jujin.freeway.ioc.ModuleEx;
+import com.jujin.freeway.ioc.ModuleNode;
+import com.jujin.freeway.ioc.ModuleRef;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
 import com.jujin.freeway.ioc.extension.Extension;
@@ -12,8 +15,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class BinderImpl implements Binder {
+    private static final Logger LOG = LoggerFactory.getLogger(BinderImpl.class);
     private final ContainerImpl container;
     private final List<BindingImpl<?>> pending = new ArrayList<>();
     private final List<Runnable> pendingCreates = new ArrayList<>();
@@ -24,12 +30,23 @@ final class BinderImpl implements Binder {
     }
 
     /**
-     * Sets the module class currently being processed — {@code ContainerImpl}
-     * sets it before {@code module.bind()} and clears it after, since the tree
-     * is flattened before binding and modules never nest.
+     * Binds the composed tree: each leaf declaration is resolved (a class
+     * declaration is instantiated here, not at composition) and the bindings
+     * it declares are registered right after it, so later modules see earlier
+     * ones. Class contributions are instantiated only at the end — every
+     * module's bindings are registered by then, so a contributed class may
+     * depend on services from any module regardless of declaration order.
      */
-    void setCurrentModule(Class<?> moduleClass) {
-        this.currentModule = moduleClass;
+    void load(ModuleNode tree) {
+        for (ModuleRef ref : tree.bindOrder()) {
+            ModuleEx module = ref.resolve();
+            LOG.debug("Installing module: {}", module.name());
+            currentModule = module.getClass();
+            module.bind(this);
+            currentModule = null;
+            flushPending();
+        }
+        flushPendingCreates();
     }
 
     @Override

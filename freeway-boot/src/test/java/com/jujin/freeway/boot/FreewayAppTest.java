@@ -263,6 +263,21 @@ class FreewayAppTest {
             "got: " + ex.getMessage());
     }
 
+    @Test
+    void aSecondApplicationRootIsRefused() {
+        // A builder holds one application root: unwrapping a second one would
+        // silently nest it inside the first, so the mistake surfaces here.
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            FreewayApp.of()
+                .add(ModuleNode.app("first"))
+                .add(ModuleNode.app("second"))
+                .autoDiscovery(false)
+                .shutdownHook(false)
+                .start());
+        assertTrue(ex.getMessage().contains("already set"),
+            "the error names the one-root rule, got: " + ex.getMessage());
+    }
+
     public static class ValueHolder {
         @Value("${server.port}")
         String port;

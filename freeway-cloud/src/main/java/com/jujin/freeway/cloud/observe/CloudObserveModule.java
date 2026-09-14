@@ -36,7 +36,7 @@ import com.jujin.freeway.ioc.annotation.Marker;
  * {@code AmbiguousBindingException} at first resolution). To use a backend,
  * place the modules you want instead: {@code CloudModules.standard()} is a
  * fragment, so leaving this one out is ordinary composition
- * ({@code ModuleNode.of(new CloudRpcModule())} and friends). The backend binds
+ * ({@code ModuleNode.leaf(new CloudRpcModule())} and friends). The backend binds
  * {@code Metrics.class} as {@code primary()} and supplies its own
  * {@code /metrics} route (and its own export view, e.g. a
  * {@link MetricsSnapshot} binding) — nothing in this module is auto-followed.

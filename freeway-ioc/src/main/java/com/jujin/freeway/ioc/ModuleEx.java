@@ -13,10 +13,11 @@ package com.jujin.freeway.ioc;
  * <p><b>A module is a leaf.</b> It knows nothing about how the application is
  * composed: grouping lives in the composition itself, a {@link ModuleNode}
  * tree built at the entry point and handed to the container as a value.
- * Composition therefore has exactly one author (the assembly code), is visible
- * before anything binds, and cannot depend on {@code bind()} call order — the
- * container resolves the whole tree first, then binds it depth first, parents
- * before children and siblings in declaration order.
+ * Composition therefore has exactly one author (the assembly code) and is
+ * visible before anything binds — the container resolves the whole tree first
+ * (a class-declared module is instantiated at load, not at composition), then
+ * binds its leaves in pre-order: a grouping node binds nothing, a leaf binds
+ * before the leaves below it, and siblings bind in declaration order.
  *
  * <pre>{@code
  * ModuleNode app = ModuleNode.app("order-service",

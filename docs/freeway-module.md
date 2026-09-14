@@ -44,18 +44,17 @@ FreewayApp.run(OrderModule.class, HttpModule.class);
 FreewayApp.run(ModuleNode.app("orders", OrderModule.class));
 ```
 
-Naming the class is still explicit — the composition names it, so nothing is scanned — and the class is instantiated through its **no-arg constructor**. A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails where the tree is built, naming itself and the fix (`ModuleNode.leaf(new X(…))`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
+Naming the class is still explicit — the composition names it, so nothing is scanned — and it is instantiated through its **no-arg constructor** when **loading starts**, not while the tree is composed: the tree holds a `ModuleRef` (class or instance) for each leaf. A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails at load, naming itself and the fix (`ModuleNode.leaf(new X(…))`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
 
-Declaring one class twice is the same mistake as two instances of it — the tree holds one instance per module class, so `run(A.class, A.class)` fails and names the fix: declare the class once. Sharing between branches goes through a **fragment**, not through a repeated declaration.
+Declaring one class twice is refused the same way whether it was named by class or given as an instance — the tree holds one declaration per module class, so `run(A.class, A.class)` fails and names the fix: declare the class once. Sharing between branches goes through a **fragment**, not through a repeated declaration. A class-only tree can be loaded by more than one container: each load resolves its own module.
 
 | Factory | Meaning |
 |---|---|
 | `app(name, …)` | the application root: it names the tree and binds nothing |
 | `group(name, …)` | a named bundle node — how a library ships several modules at once |
-| `leaf(class \| module)` | a single module, no children |
-| `of(class \| module, …)` | a module that groups others |
+| `leaf(class \| module)` | a single module declaration, no children |
 
-Every factory takes either a module **class** (instantiated through its no-arg constructor) or an **instance** (for a module whose constructor takes arguments); `app` and `group` accept a varargs list of classes, and anything mixed is expressed with `leaf`/`of` children.
+Every factory takes either a module **class** (resolved through its no-arg constructor at load) or an **instance** (for a module whose constructor takes arguments, and the only form a lambda or anonymous module can take); `app` and `group` accept a varargs list of classes, and anything mixed is expressed with `leaf` children.
 
 The flat entry points stay as sugar for "the application root's children":
 
@@ -97,9 +96,9 @@ This is what the deleted umbrella *module* could not do. `CloudModule` was a `Mo
 
 | Case | Result |
 |---|---|
-| two **instances** of one module class | `IllegalStateException` naming both paths (`app → web → HttpModule`, …) and stating the rule |
+| two **declarations** of one module class | `IllegalStateException` naming both paths (`app → web → HttpModule`, …) and stating the rule |
 | the same **instance** reached twice | collapsed, keeping the first placement — sharing a fragment is normal |
-| anonymous / lambda modules | compared by identity only (no meaningful class) |
+| anonymous / lambda modules | compared by identity only (no meaningful class); they are instance declarations |
 | `app` / `group` nodes | structural: they bind nothing and are exempt from the class rule |
 
 Failures surface where the tree is built — the assembly code — not at container startup.
@@ -109,11 +108,13 @@ Failures surface where the tree is built — the assembly code — not at contai
 ```java
 Container c = Freeway.create(app);
 c.moduleTree();                 // the same ModuleNode the container bound
-c.moduleTree().tree();          // TreeNode<ModuleEx>: preOrder / levelOrder / size / height
-c.moduleTree().bindOrder();     // modules in binding order (pre-order)
+c.moduleTree().render();        // indented structure, as shown in the startup log
+c.moduleTree().children();      // child nodes in order; a leaf has none
+c.moduleTree().bindOrder();     // leaf declarations in binding order (pre-order)
+c.moduleTree().bindOrder().get(0).resolve();  // the module behind a declaration
 ```
 
-**Binding order is the tree's pre-order**: parents before children, siblings in declaration order. It is deterministic but **not a contract** — sequencing belongs to `RuntimeHook` anchors (`before`/`after` ids) and contribution `order()`, not to where a module sits in the tree. `TreeNode.levelOrder()` exists for display.
+**Binding order is the tree's pre-order over leaves**: a grouping node binds nothing, a leaf binds before the leaves below it, and siblings bind in declaration order. It is deterministic but **not a contract** — sequencing belongs to `RuntimeHook` anchors (`before`/`after` ids) and contribution `order()`, not to where a module sits in the tree. Loading resolves each declaration while binding, so a class declaration is constructed only then.
 
 ### Entry points
 

@@ -2,8 +2,6 @@ package com.jujin.freeway.ioc;
 
 import com.jujin.freeway.commons.logging.LogBootstrap;
 import com.jujin.freeway.ioc.internal.ContainerImpl;
-import java.util.Collection;
-import java.util.List;
 
 /**
  * Entry point for creating a lightweight IoC {@link Container}.
@@ -36,11 +34,6 @@ public final class Freeway {
 
     public static Container create(ModuleEx... modules) {
         return create(ModuleNode.app(modules == null ? new ModuleEx[0] : modules));
-    }
-
-    public static Container create(Collection<? extends ModuleEx> modules) {
-        return create(ModuleNode.app(modules == null
-            ? new ModuleEx[0] : modules.toArray(ModuleEx[]::new)));
     }
 
     /**

@@ -1,7 +1,5 @@
 package com.jujin.freeway.ioc;
 
-import com.jujin.freeway.commons.util.TreeNode;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,13 +16,19 @@ import java.util.Set;
  * The module tree the application is composed of — an immutable, validated
  * value that the container binds and holds.
  *
- * <p><b>Composition is data, and this is its type.</b> Grouping used to be a
- * method on the module ({@code subModules()}), so the module graph was
- * something the framework had to ask each module for, more than once per
- * startup, and umbrella modules owned their children — an application could
- * not replace one of them. Now the composition is built once, at the entry
- * point, with {@link #app}, {@link #leaf} and {@link #of}: a value a caller
- * places, inspects, reuses as a fragment or leaves out.
+ * <p><b>Composition is data, and this is its type.</b> A node is either a
+ * module declaration (a {@link ModuleRef}: a class or a configured instance,
+ * see {@link #leaf}) or a named grouping node ({@link #group}, {@link #app})
+ * that declares nothing of its own. Grouping used to be a method on the module
+ * ({@code subModules()}), so the module graph was something the framework had
+ * to ask each module for, more than once per startup, and umbrella modules
+ * owned their children — an application could not replace one of them. Now the
+ * composition is built once, at the entry point, with {@link #app},
+ * {@link #leaf} and {@link #group}: a value a caller places, inspects, reuses
+ * as a fragment or leaves out. A class declaration stays a declaration until
+ * loading starts — the container resolves it while binding, so the same
+ * class-only tree can be loaded by more than one container with a fresh module
+ * each time.
  *
  * <pre>{@code
  * ModuleNode app = ModuleNode.app("order-service",
@@ -32,14 +36,15 @@ import java.util.Set;
  *     CloudModules.standard());          // a fragment built the same way
  * }</pre>
  *
- * <p><b>Construction is validation.</b> {@link TreeNode} makes cycles
- * unrepresentable (a child cannot reference a node that does not exist yet),
- * and the factories additionally refuse a tree that names a module twice:
+ * <p><b>Construction is validation.</b> A node is built from its children, so
+ * cycles are unrepresentable (a child cannot reference a node that does not
+ * exist yet), and the factories additionally refuse a tree that names a module
+ * twice:
  *
  * <ul>
- *   <li>two modules of one class — the tree holds one instance per module
- *       class, so a class copied by two bundles, or declared as a sub-module
- *       and added again, is a mistake worth stopping for;</li>
+ *   <li>two declarations of one module class — the tree holds one declaration
+ *       per module class, so a class copied by two bundles, or declared as a
+ *       sub-module and added again, is a mistake worth stopping for;</li>
  *   <li>the same instance in two places — one module instance belongs to one
  *       place in the tree;</li>
  *   <li>anonymous and lambda modules have no meaningful class, so only their
@@ -47,35 +52,63 @@ import java.util.Set;
  * </ul>
  *
  * Both failures name the paths where the module was found, and they surface
- * where the tree is built — the assembly code — rather than at container
- * startup.
+ * where the tree is built — the assembly code, before any module constructor
+ * runs — rather than at container startup.
  *
- * <p><b>Binding order</b> is the tree's pre-order: parents before children,
- * siblings in declaration order. It is deterministic but not a contract —
- * sequencing belongs to {@link RuntimeHook} anchors and contribution
- * {@code order()}, not to where a module sits in the tree.
+ * <p><b>Binding order</b> is the tree's pre-order over leaves: a grouping node
+ * binds nothing, a leaf binds before the leaves below it, and siblings bind in
+ * declaration order. It is deterministic but not a contract — sequencing
+ * belongs to {@link RuntimeHook} anchors and contribution {@code order()}, not
+ * to where a module sits in the tree.
  */
 public final class ModuleNode {
 
-    private final TreeNode<ModuleEx> root;
-    private final List<ModuleEx> bindOrder;
-    private final Set<Class<?>> classes;
+    private static final String DEFAULT_APP_NAME = "application";
 
-    private ModuleNode(TreeNode<ModuleEx> root) {
-        this.root = normalize(root);
-        List<ModuleEx> order = new ArrayList<>();
+    /** The leaf's declaration, or {@code null} for a grouping node. */
+    private final ModuleRef ref;
+    /** The group name, or {@code null} for a leaf. */
+    private final String groupName;
+    /** Whether this node is the application root. */
+    private final boolean application;
+    private final List<ModuleNode> children;
+    /** Every leaf declaration, pre-order — literally the order the container binds. */
+    private final List<ModuleRef> bindOrder;
+    /** The module classes the tree declares, for SPI discovery dedup. */
+    private final Set<Class<?>> classes;
+    private final int size;
+
+    private ModuleNode(
+        ModuleRef ref,
+        String groupName,
+        boolean application,
+        List<ModuleNode> children
+    ) {
+        this.ref = ref;
+        this.groupName = groupName;
+        this.application = application;
+        this.children = List.copyOf(children);
+
+        List<ModuleRef> order = new ArrayList<>();
         Set<Class<?>> declared = new LinkedHashSet<>();
-        for (TreeNode<ModuleEx> node : this.root.preOrder()) {
-            ModuleEx module = node.value();
-            order.add(module);
-            Class<?> type = module.getClass();
-            if (!isNameless(type) && !(module instanceof GroupModule)) {
-                declared.add(type); // a structural node is never discovered
+        if (ref != null) {
+            order.add(ref);
+            if (!isNameless(ref.type())) {
+                declared.add(ref.type());
             }
+        }
+        int count = 1;
+        for (ModuleNode child : this.children) {
+            order.addAll(child.bindOrder);
+            declared.addAll(child.classes);
+            count += child.size;
         }
         this.bindOrder = List.copyOf(order);
         this.classes = Set.copyOf(declared);
+        this.size = count;
     }
+
+    // ── factories ───────────────────────────────────────────────
 
     /**
      * The application node: a named structural root whose children are the
@@ -84,7 +117,7 @@ public final class ModuleNode {
      * the one it is given instead of nesting a second root around it.
      */
     public static ModuleNode app(String name, ModuleNode... children) {
-        return validated(TreeNode.of(new GroupModule(name, true), roots(children)));
+        return normalize(new ModuleNode(null, groupName(name), true, List.of(children)));
     }
 
     /** The default-named application node with no children yet. */
@@ -110,26 +143,6 @@ public final class ModuleNode {
     }
 
     /**
-     * A named grouping node — how a library ships several modules as one
-     * fragment ({@code CloudModules.standard()}). It binds nothing; the name is
-     * what the startup tree shows for the bundle.
-     */
-    public static ModuleNode group(String name, ModuleNode... children) {
-        return validated(TreeNode.of(new GroupModule(name, false), roots(children)));
-    }
-
-    /** A named grouping node with no children yet. */
-    public static ModuleNode group(String name) {
-        return group(name, new ModuleNode[0]);
-    }
-
-    /** A named grouping node over modules named by class. */
-    @SafeVarargs
-    public static ModuleNode group(String name, Class<? extends ModuleEx>... types) {
-        return group(name, leaves(types));
-    }
-
-    /**
      * The application node with the default name, one child per module —
      * the shape {@code Freeway.create(a, b)} and {@code FreewayApp.run(a, b)}
      * build for a flat entry list.
@@ -143,66 +156,73 @@ public final class ModuleNode {
         return app(DEFAULT_APP_NAME, leaves);
     }
 
+    /**
+     * A named grouping node — how a library ships several modules as one
+     * fragment ({@code CloudModules.standard()}). It binds nothing; the name is
+     * what the startup tree shows for the bundle.
+     */
+    public static ModuleNode group(String name, ModuleNode... children) {
+        return normalize(new ModuleNode(null, groupName(name), false, List.of(children)));
+    }
+
+    /** A named grouping node over modules named by class. */
+    @SafeVarargs
+    public static ModuleNode group(String name, Class<? extends ModuleEx>... types) {
+        return group(name, leaves(types));
+    }
+
     /** A single module, with no children. */
     public static ModuleNode leaf(ModuleEx module) {
-        return validated(TreeNode.leaf(Objects.requireNonNull(module, "module")));
+        return new ModuleNode(ModuleRef.of(module), null, false, List.of());
     }
 
     /**
      * A single module named by class — the normal way to declare one. The class
-     * is instantiated through its no-arg constructor; a module that needs
-     * constructor arguments is passed as an instance instead ({@link #leaf(ModuleEx)}),
-     * since a module's constructor carries configuration, not dependencies
-     * (there is nothing to inject before the container exists).
+     * is instantiated through its no-arg constructor when loading starts; a
+     * module that needs constructor arguments is passed as an instance instead
+     * ({@link #leaf(ModuleEx)}), since a module's constructor carries
+     * configuration, not dependencies (there is nothing to inject before the
+     * container exists).
      */
     public static ModuleNode leaf(Class<? extends ModuleEx> type) {
-        return leaf(instantiate(type));
+        return new ModuleNode(ModuleRef.of(type), null, false, List.of());
     }
 
-    /** A module that groups others. */
-    public static ModuleNode of(ModuleEx module, ModuleNode... children) {
-        Objects.requireNonNull(module, "module");
-        return validated(TreeNode.of(module, roots(children)));
-    }
-
-    /** A module named by class that groups others. */
-    public static ModuleNode of(Class<? extends ModuleEx> type, ModuleNode... children) {
-        return of(instantiate(type), children);
-    }
+    // ── shape ───────────────────────────────────────────────────
 
     /**
-     * A fragment over an existing tree value — the shape used when a composed
-     * tree is placed inside another one. Validated like any other fragment.
+     * The name this node is shown under: the group (application) name for a
+     * grouping node, {@link ModuleRef#name()} for a leaf.
      */
-    public static ModuleNode of(TreeNode<ModuleEx> tree) {
-        return new ModuleNode(Objects.requireNonNull(tree, "tree"));
+    public String name() {
+        return ref != null ? ref.name() : groupName;
     }
 
-    /** The tree value — structure and traversal, shared by logs, diagnostics and tests. */
-    public TreeNode<ModuleEx> tree() {
-        return root;
+    /** The declaration of a leaf, or {@code null} for a grouping node. */
+    public ModuleRef ref() {
+        return ref;
     }
 
-    /** This tree's root's children, in order. */
-    public List<TreeNode<ModuleEx>> children() {
-        return root.children();
+    /** This node's children, in order; a leaf has none. */
+    public List<ModuleNode> children() {
+        return children;
     }
 
     /**
-     * Whether this tree's root is an application (group) node — the named root
-     * {@link #app} creates. The entry point reuses one if the caller passed
-     * it, instead of nesting a second root around it.
+     * Whether this node is an application ({@link #app}) root. The entry point
+     * reuses one if the caller passed it, instead of nesting a second root
+     * around it.
      */
     public boolean isApplication() {
-        return root.value() instanceof GroupModule group && group.application();
+        return application;
     }
 
     /**
-     * Every module in the tree, pre-order — literally the order the container
-     * binds them in. Includes the application node when the composition
-     * declared one: it is a module like any other node, it just binds nothing.
+     * Every leaf declaration in the tree, pre-order — literally the order the
+     * container binds them in. Grouping nodes are absent: they bind nothing,
+     * and class declarations are resolved (instantiated) by the loader.
      */
-    public List<ModuleEx> bindOrder() {
+    public List<ModuleRef> bindOrder() {
         return bindOrder;
     }
 
@@ -215,14 +235,35 @@ public final class ModuleNode {
         return classes;
     }
 
-    /** The name of this tree's root: the application name for {@link #app}. */
-    public String name() {
-        return root.value().name();
+    /** How many nodes the tree holds, grouping nodes included. */
+    public int size() {
+        return size;
     }
 
-    /** How many nodes the tree holds. */
-    public int size() {
-        return bindOrder.size();
+    /**
+     * The tree as indented lines, for the startup log and diagnostics —
+     * rendered from the same value the container bound, so the lines describe
+     * exactly what was loaded.
+     */
+    public String render() {
+        record Frame(ModuleNode node, int depth) {}
+        StringBuilder out = new StringBuilder();
+        Deque<Frame> pending = new ArrayDeque<>();
+        pending.push(new Frame(this, 0));
+        while (!pending.isEmpty()) {
+            Frame frame = pending.pop();
+            if (!out.isEmpty()) {
+                out.append('\n');
+            }
+            out.append("  ".repeat(frame.depth()))
+                .append("- ")
+                .append(frame.node().name());
+            List<ModuleNode> kids = frame.node().children;
+            for (int i = kids.size() - 1; i >= 0; i--) {
+                pending.push(new Frame(kids.get(i), frame.depth() + 1));
+            }
+        }
+        return out.toString();
     }
 
     @Override
@@ -232,10 +273,12 @@ public final class ModuleNode {
 
     // ── construction ────────────────────────────────────────────
 
-    private static final String DEFAULT_APP_NAME = "application";
-
-    private static ModuleNode validated(TreeNode<ModuleEx> root) {
-        return new ModuleNode(root);
+    private static String groupName(String name) {
+        String value = Objects.requireNonNull(name, "name").trim();
+        if (value.isEmpty()) {
+            throw new IllegalArgumentException("A group name must not be blank");
+        }
+        return value;
     }
 
     private static ModuleNode[] leaves(Class<? extends ModuleEx>[] types) {
@@ -248,151 +291,85 @@ public final class ModuleNode {
     }
 
     /**
-     * Instantiates a module named by class. The class is named explicitly in the
-     * composition — nothing is scanned — and must have an accessible no-arg
-     * constructor; a module with constructor arguments fails here, at the
-     * composition, naming itself and the fix.
-     */
-    private static ModuleEx instantiate(Class<? extends ModuleEx> type) {
-        Objects.requireNonNull(type, "module type");
-        try {
-            var constructor = type.getDeclaredConstructor();
-            constructor.trySetAccessible();
-            return constructor.newInstance();
-        } catch (NoSuchMethodException e) {
-            throw new IllegalArgumentException(
-                "Module " + type.getName() + " has no no-arg constructor. A module whose"
-                    + " constructor takes arguments is declared as an instance: ModuleNode"
-                    + ".leaf(new " + type.getSimpleName() + "(…))", e);
-        } catch (ReflectiveOperationException e) {
-            Throwable cause = e.getCause() == null ? e : e.getCause();
-            throw new IllegalStateException(
-                "Cannot instantiate module " + type.getName() + ": " + cause, cause);
-        }
-    }
-
-    private static TreeNode<ModuleEx>[] roots(ModuleNode[] children) {
-        Objects.requireNonNull(children, "children");
-        @SuppressWarnings("unchecked")
-        TreeNode<ModuleEx>[] trees = new TreeNode[children.length];
-        for (int i = 0; i < children.length; i++) {
-            trees[i] = Objects.requireNonNull(children[i], "child").root;
-        }
-        return trees;
-    }
-
-    /**
      * Normalizes the candidate tree in one iterative pass: the same module
-     * instance reached twice is collapsed (keep the first placement — that is
-     * what sharing a fragment means), a second instance of one module class is
-     * refused with both paths named, and the survivors are rebuilt
-     * bottom-up. Iterative throughout: a tree is data, and its size must not
-     * become call depth.
+     * instance (or the same group or class-declaration node) reached twice is
+     * collapsed — keep the first placement, that is what sharing a fragment
+     * means — a second declaration of one module class is refused with both
+     * paths named, and the survivors are rebuilt bottom-up so every node holds
+     * only surviving children and its own pre-order caches. Iterative
+     * throughout: a tree is data, and its size must not become call depth.
      */
-    private static TreeNode<ModuleEx> normalize(TreeNode<ModuleEx> root) {
-        Set<ModuleEx> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+    private static ModuleNode normalize(ModuleNode candidate) {
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Map<Class<?>, String> byClass = new HashMap<>();
-        List<ModuleEx> modules = new ArrayList<>();
+        List<ModuleNode> sources = new ArrayList<>();
         List<List<Integer>> keptChildren = new ArrayList<>();
 
-        Deque<PathNode> pending = new ArrayDeque<>();
-        pending.push(new PathNode(root, -1, List.of()));
+        Deque<Pending> pending = new ArrayDeque<>();
+        pending.push(new Pending(candidate, -1, List.of()));
         while (!pending.isEmpty()) {
-            PathNode current = pending.pop();
-            ModuleEx module = current.node().value();
-            List<String> path = new ArrayList<>(current.path());
-            path.add(module.name());
-            String here = String.join(" → ", path);
-
-            if (!seen.add(module)) {
-                continue; // the same instance reached twice: keep the first placement
+            Pending current = pending.pop();
+            ModuleNode node = current.node();
+            // An instance declaration is identified by its instance (two leaves
+            // wrapping one instance are one placement), a class declaration and
+            // a group by the node itself (each factory call is a new value).
+            Object identity = refIdentity(node);
+            if (!seen.add(identity)) {
+                continue; // reached twice: keep the first placement
             }
-            Class<?> type = module.getClass();
-            if (!isNameless(type) && !isStructural(type)) {
-                String sameClass = byClass.putIfAbsent(type, here);
+            List<String> path = new ArrayList<>(current.path());
+            path.add(node.name());
+            String here = String.join(" → ", path);
+            if (node.ref != null && !isNameless(node.ref.type())) {
+                String sameClass = byClass.putIfAbsent(node.ref.type(), here);
                 if (sameClass != null) {
                     throw new IllegalStateException(
-                        "Module " + type.getName() + " is declared twice in the module tree, at ["
-                            + sameClass + "] and [" + here + "]. The tree holds one instance per"
+                        "Module " + node.ref.type().getName()
+                            + " is declared twice in the module tree, at ["
+                            + sameClass + "] and [" + here + "]. The tree holds one declaration per"
                             + " module class; share the single instance, or declare the class once."
                     );
                 }
             }
 
-            int index = modules.size();
-            modules.add(module);
+            int index = sources.size();
+            sources.add(node);
             keptChildren.add(new ArrayList<>());
             if (current.parent() >= 0) {
                 keptChildren.get(current.parent()).add(index);
             }
-            List<TreeNode<ModuleEx>> children = current.node().children();
+            List<ModuleNode> children = node.children;
             for (int i = children.size() - 1; i >= 0; i--) {
-                pending.push(new PathNode(children.get(i), index, List.copyOf(path)));
+                pending.push(new Pending(children.get(i), index, List.copyOf(path)));
             }
         }
 
-        // Rebuild: pre-order guarantees a parent is built after its children
-        // are known, so walking the survivors backwards assembles every node
-        // with the children that survived.
-        TreeNode<ModuleEx>[] built = newTreeArray(modules.size());
-        for (int i = modules.size() - 1; i >= 0; i--) {
-            List<TreeNode<ModuleEx>> children = new ArrayList<>(keptChildren.get(i).size());
-            for (int child : keptChildren.get(i)) {
+        // Rebuild: pre-order guarantees a parent is known after its children,
+        // so walking the survivors backwards assembles every node with the
+        // children that survived.
+        ModuleNode[] built = new ModuleNode[sources.size()];
+        for (int i = sources.size() - 1; i >= 0; i--) {
+            ModuleNode source = sources.get(i);
+            List<Integer> kept = keptChildren.get(i);
+            List<ModuleNode> children = new ArrayList<>(kept.size());
+            for (int child : kept) {
                 children.add(built[child]);
             }
-            built[i] = new TreeNode<>(modules.get(i), children);
+            built[i] = new ModuleNode(
+                source.ref, source.groupName, source.application, children);
         }
         return built[0];
     }
 
-    @SuppressWarnings("unchecked")
-    private static TreeNode<ModuleEx>[] newTreeArray(int size) {
-        return new TreeNode[size];
+    private static Object refIdentity(ModuleNode node) {
+        return node.ref instanceof ModuleRef.OfInstance instanceRef
+            ? instanceRef.instance() : node;
     }
 
     private static boolean isNameless(Class<?> type) {
         return type.isAnonymousClass() || type.isSynthetic();
     }
 
-    /** The structural group node: several may nest, each merely naming a level. */
-    private static boolean isStructural(Class<?> type) {
-        return type == GroupModule.class;
-    }
-
     /** One node, its parent's index in the survivor list, and the path that reached it. */
-    private record PathNode(TreeNode<ModuleEx> node, int parent, List<String> path) {}
-
-    /**
-     * A structural node: it names a level and declares nothing. A module rather
-     * than a marker so every tree node holds a module and the traversal stays
-     * uniform.
-     */
-    private static final class GroupModule implements ModuleEx {
-
-        private final String name;
-        private final boolean application;
-
-        GroupModule(String name, boolean application) {
-            String value = Objects.requireNonNull(name, "name").trim();
-            if (value.isEmpty()) {
-                throw new IllegalArgumentException("A group name must not be blank");
-            }
-            this.name = value;
-            this.application = application;
-        }
-
-        boolean application() {
-            return application;
-        }
-
-        @Override
-        public void bind(Binder binder) {
-            // Structural node: the children declare the bindings.
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-    }
+    private record Pending(ModuleNode node, int parent, List<String> path) {}
 }

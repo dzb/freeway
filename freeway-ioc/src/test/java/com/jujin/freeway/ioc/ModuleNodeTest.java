@@ -4,20 +4,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.jujin.freeway.commons.util.TreeNode;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.StreamSupport;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
  * The module tree is a value built at the entry point: the container binds its
- * pre-order, and construction refuses a tree that names a module twice.
+ * leaves in pre-order, and construction refuses a tree that names a module
+ * twice.
  */
 class ModuleNodeTest {
 
@@ -61,9 +65,32 @@ class ModuleNodeTest {
         }
     }
 
-    private static List<String> names(TreeNode<ModuleEx> tree) {
+    /** Counts constructions and binds itself, to observe when a class resolves. */
+    static final class CountingModule implements ModuleEx {
+        static final AtomicInteger constructions = new AtomicInteger();
+
+        CountingModule() {
+            constructions.incrementAndGet();
+        }
+
+        @Override
+        public void bind(Binder binder) {
+            binder.bind(CountingModule.class).to(c -> this);
+        }
+    }
+
+    /** The names of every node, pre-order. */
+    private static List<String> nodeNames(ModuleNode root) {
         List<String> names = new ArrayList<>();
-        tree.preOrder().forEach(node -> names.add(node.value().name()));
+        Deque<ModuleNode> pending = new ArrayDeque<>(List.of(root));
+        while (!pending.isEmpty()) {
+            ModuleNode node = pending.pop();
+            names.add(node.name());
+            List<ModuleNode> children = node.children();
+            for (int i = children.size() - 1; i >= 0; i--) {
+                pending.push(children.get(i));
+            }
+        }
         return names;
     }
 
@@ -76,8 +103,8 @@ class ModuleNodeTest {
 
         assertEquals("orders", app.name());
         assertEquals(2, app.size());
-        assertIterableEquals(List.of("orders", "a"),
-            names(app.tree()), "the application node is the first line of the tree");
+        assertEquals(List.of("orders", "a"), nodeNames(app),
+            "the application node is the first line of the tree");
         try (Container container = Freeway.create(app)) {
             assertEquals(List.of("a"), log, "the structural root declares no bindings");
             assertSame(app, container.moduleTree());
@@ -85,48 +112,46 @@ class ModuleNodeTest {
     }
 
     @Test
-    void bindOrderIsPreOrderDepthFirst() {
+    void bindOrderIsPreOrderOverLeaves() {
         List<String> log = new ArrayList<>();
         ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.of(named("a", log), ModuleNode.leaf(named("a1", log))),
+            ModuleNode.group("a", ModuleNode.leaf(named("a1", log))),
             ModuleNode.leaf(named("b", log)));
 
         try (Container container = Freeway.create(tree)) {
-            assertEquals(List.of("a", "a1", "b"), log);
-            assertEquals(4, container.moduleTree().bindOrder().size());
-            assertIterableEquals(List.of("test", "a", "a1", "b"),
-                container.moduleTree().bindOrder().stream().map(ModuleEx::name).toList());
+            assertEquals(List.of("a1", "b"), log);
+            assertEquals(4, container.moduleTree().size(), "a group binds nothing but is a node");
+            assertIterableEquals(List.of("a1", "b"),
+                container.moduleTree().bindOrder().stream().map(ModuleRef::name).toList(),
+                "binding order is the leaves' pre-order");
         }
     }
 
     @Test
-    void neitherTraversalOrderIsABindingContract() {
-        List<String> log = new ArrayList<>();
+    void renderShowsThePreOrderStructure() {
         ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.of(named("a", log), ModuleNode.leaf(named("a1", log))),
-            ModuleNode.leaf(named("b", log)));
+            ModuleNode.group("web",
+                ModuleNode.leaf(named("http", new ArrayList<>())),
+                ModuleNode.leaf(named("ws", new ArrayList<>()))),
+            ModuleNode.leaf(named("db", new ArrayList<>())));
 
-        assertEquals(List.of("test", "a", "a1", "b"),
-            StreamSupport.stream(tree.tree().preOrder().spliterator(), false)
-                .map(node -> node.value().name()).toList());
-        assertEquals(List.of("test", "a", "b", "a1"),
-            StreamSupport.stream(tree.tree().levelOrder().spliterator(), false)
-                .map(node -> node.value().name()).toList(),
-            "level order exists for display; the container binds pre-order");
+        assertEquals("- test\n  - web\n    - http\n    - ws\n  - db", tree.render());
     }
 
     @Test
     void treeValueExposesShapeAndIsImmutable() {
         ModuleNode tree = ModuleNode.app("test",
             ModuleNode.leaf(new Marker()),
-            ModuleNode.of(new Other(), ModuleNode.leaf(named("leaf", new ArrayList<>()))));
-        TreeNode<ModuleEx> root = tree.tree();
+            ModuleNode.group("g", ModuleNode.leaf(named("leaf", new ArrayList<>()))));
 
-        assertEquals("test", root.value().name());
-        assertFalse(root.isLeaf());
-        assertEquals(2, root.children().size());
-        assertTrue(root.children().get(0).isLeaf());
-        assertEquals(3, root.height());
+        assertEquals("test", tree.name());
+        assertEquals(4, tree.size());
+        assertNull(tree.ref(), "a grouping node carries no declaration");
+        assertEquals(2, tree.children().size());
+        assertNotNull(tree.children().get(0).ref(), "a leaf carries its declaration");
+        assertTrue(tree.children().get(0).children().isEmpty());
+        assertEquals("g", tree.children().get(1).name());
+        assertThrows(UnsupportedOperationException.class, () -> tree.children().clear());
         assertThrows(UnsupportedOperationException.class, () -> tree.bindOrder().clear());
         assertTrue(tree.toString().contains("test"));
     }
@@ -141,7 +166,10 @@ class ModuleNodeTest {
         try (Container container = Freeway.create(ModuleNode.app("app", bundle))) {
             assertEquals(List.of("http", "ws"), log);
             assertEquals(List.of("app", "acme-web", "http", "ws"),
-                container.moduleTree().bindOrder().stream().map(ModuleEx::name).toList());
+                nodeNames(container.moduleTree()),
+                "a bundle is shown in the tree but is not a binding node");
+            assertIterableEquals(List.of("http", "ws"),
+                container.moduleTree().bindOrder().stream().map(ModuleRef::name).toList());
             assertFalse(bundle.isApplication(), "a bundle is a fragment, not the app root");
             assertTrue(ModuleNode.app("app").isApplication());
         }
@@ -159,8 +187,7 @@ class ModuleNodeTest {
 
     @Test
     void fragmentIsAValueAndMayBePlacedInDifferentTrees() {
-        List<String> log = new ArrayList<>();
-        ModuleNode fragment = ModuleNode.of(named("shared", log), ModuleNode.leaf(new Marker()));
+        ModuleNode fragment = ModuleNode.group("shared", ModuleNode.leaf(new Marker()));
 
         try (Container first = Freeway.create(ModuleNode.app("one", fragment));
              Container second = Freeway.create(ModuleNode.app("two", fragment))) {
@@ -183,13 +210,13 @@ class ModuleNodeTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
             () -> ModuleNode.app("test",
                 ModuleNode.leaf(new Marker()),
-                ModuleNode.of(new Other(), ModuleNode.leaf(new Marker()))));
+                ModuleNode.group("other", ModuleNode.leaf(new Marker()))));
 
         assertTrue(failure.getMessage().contains(Marker.class.getName()), failure.getMessage());
-        assertTrue(failure.getMessage().contains("one instance per module class"),
+        assertTrue(failure.getMessage().contains("one declaration per module class"),
             "the message states the rule: " + failure.getMessage());
         assertTrue(failure.getMessage().contains("test → Marker")
-                && failure.getMessage().contains("test → Other → Marker"),
+                && failure.getMessage().contains("test → other → Marker"),
             "both paths are named: " + failure.getMessage());
     }
 
@@ -207,12 +234,14 @@ class ModuleNodeTest {
     }
 
     @Test
-    void sharedInstanceNestedUnderItselfIsCollapsed() {
+    void aGroupWhoseModuleLeavesAreSharedKeepsItsShape() {
         List<String> log = new ArrayList<>();
         ModuleEx module = named("once", log);
-        ModuleNode tree = ModuleNode.of(module, ModuleNode.leaf(module));
+        ModuleNode tree = ModuleNode.app("test",
+            ModuleNode.leaf(module),
+            ModuleNode.group("nested", ModuleNode.leaf(module)));
 
-        assertEquals(1, tree.size());
+        assertEquals(3, tree.size(), "the duplicate leaf is dropped, its group is not");
         try (Container container = Freeway.create(tree)) {
             assertEquals(List.of("once"), log);
         }
@@ -234,7 +263,7 @@ class ModuleNodeTest {
     @Test
     void nullModuleOrChildIsRefused() {
         assertThrows(NullPointerException.class, () -> ModuleNode.leaf((ModuleEx) null));
-        assertThrows(NullPointerException.class, () -> ModuleNode.of(new Marker(), (ModuleNode) null));
+        assertThrows(NullPointerException.class, () -> ModuleNode.group("g", (ModuleNode) null));
         assertThrows(NullPointerException.class, () -> ModuleNode.app("test", (ModuleNode[]) null));
     }
 
@@ -256,7 +285,7 @@ class ModuleNodeTest {
                 ModuleNode.leaf(Marker.class), ModuleNode.leaf(new Marker())));
 
         assertTrue(failure.getMessage().contains(Marker.class.getName()), failure.getMessage());
-        assertTrue(failure.getMessage().contains("one instance per module class"),
+        assertTrue(failure.getMessage().contains("one declaration per module class"),
             "the message states the rule: " + failure.getMessage());
     }
 
@@ -270,9 +299,11 @@ class ModuleNodeTest {
     }
 
     @Test
-    void moduleWithoutANoArgConstructorFailsNamingTheClassAndTheFix() {
+    void moduleWithoutANoArgConstructorFailsWhenLoadingNamingTheClassAndTheFix() {
+        ModuleNode leaf = ModuleNode.leaf(NeedsArguments.class);
+
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-            () -> ModuleNode.leaf(NeedsArguments.class));
+            () -> Freeway.create(leaf));
 
         assertTrue(failure.getMessage().contains(NeedsArguments.class.getName()),
             failure.getMessage());
@@ -281,11 +312,28 @@ class ModuleNodeTest {
     }
 
     @Test
+    void classDeclarationsResolveWhenLoadingStarts() {
+        CountingModule.constructions.set(0);
+        ModuleNode tree = ModuleNode.app("test", CountingModule.class);
+
+        assertEquals(0, CountingModule.constructions.get(),
+            "composition declares, it does not construct");
+        try (Container first = Freeway.create(tree);
+             Container second = Freeway.create(tree)) {
+            assertEquals(2, CountingModule.constructions.get(),
+                "each container resolves its own module");
+            assertNotSame(first.get(CountingModule.class), second.get(CountingModule.class),
+                "a class declaration is not shared between containers");
+        }
+    }
+
+    @Test
     void classAndInstanceFormsMixInOneTree() {
         List<String> log = new ArrayList<>();
         ModuleNode app = ModuleNode.app("test",
             ModuleNode.leaf(Marker.class),
-            ModuleNode.of(new Other(), ModuleNode.leaf(named("deep", log))));
+            ModuleNode.leaf(new Other()),
+            ModuleNode.group("g", ModuleNode.leaf(named("deep", log))));
 
         try (Container container = Freeway.create(app)) {
             assertNotNull(container.get(Marker.class));
@@ -302,7 +350,7 @@ class ModuleNodeTest {
         try (Container container = Freeway.create(named("a", log), named("b", log))) {
             assertEquals(List.of("a", "b"), log);
             assertEquals("application", container.moduleTree().name());
-            assertEquals(3, container.moduleTree().bindOrder().size());
+            assertEquals(2, container.moduleTree().bindOrder().size());
         }
     }
 

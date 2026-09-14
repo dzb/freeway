@@ -10,7 +10,6 @@ import com.jujin.freeway.ioc.ModuleNode;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.Objects;
@@ -40,8 +39,8 @@ public final class AppBuilder {
 
     /** The application's children: one node per added module or fragment. */
     private final List<ModuleNode> children = new ArrayList<>();
-    /** The application node the caller already composed, if any. */
-    private ModuleNode applicationTree;
+    /** The name of the application root, once a caller composed one. */
+    private String appName;
     private String[] args = new String[0];
     private AppConfig config;
     private boolean autoDiscovery = true;
@@ -80,20 +79,26 @@ public final class AppBuilder {
 
     /**
      * Add one or more composed fragments: a fragment is a {@link ModuleNode}
-     * built with {@code app/leaf/of}, so grouping and reuse are expressed here
-     * rather than inside a module.
+     * built with {@code app/leaf/group}, so grouping and reuse are expressed
+     * here rather than inside a module. Adding an application root contributes
+     * its name (once) and its children; a fragment is added as a child.
      */
     public AppBuilder add(ModuleNode... trees) {
         Objects.requireNonNull(trees, "trees");
         for (ModuleNode tree : trees) {
             ModuleNode node = Objects.requireNonNull(tree, "tree");
-            if (node.isApplication() && applicationTree == null) {
-                // The caller composed the application root: reuse it (name and
-                // children) instead of nesting a second root around it.
-                applicationTree = node;
-            } else {
+            if (!node.isApplication()) {
                 this.children.add(node);
+                continue;
             }
+            if (appName != null) {
+                throw new IllegalStateException(
+                    "The application root is already set to '" + appName + "' — a builder"
+                        + " holds one application root. Nest the second tree with"
+                        + " ModuleNode.group(...) instead");
+            }
+            appName = node.name();
+            this.children.addAll(node.children());
         }
         return this;
     }
@@ -160,17 +165,14 @@ public final class AppBuilder {
         // added module or fragment, plus whatever SPI discovery fills in. The
         // tree — not a per-layer bookkeeping map — is what decides duplicates,
         // order and (for discovery) which classes are already declared.
-        List<ModuleNode> composed = new ArrayList<>();
-        String appName = APP_NAME;
-        if (applicationTree != null) {
-            appName = applicationTree.name();
-            applicationTree.children().forEach(child -> composed.add(ModuleNode.of(child)));
-        }
-        composed.add(ModuleNode.leaf(new BootModule(config)));
+        List<ModuleNode> composed = new ArrayList<>(children.size() + 1);
+        composed.add(ModuleNode.leaf(new BootModule(config))); // config first: later modules may read it
         composed.addAll(children);
-        ModuleNode tree = ModuleNode.app(appName, composed.toArray(ModuleNode[]::new));
+        ModuleNode tree = ModuleNode.app(
+            appName != null ? appName : APP_NAME,
+            composed.toArray(ModuleNode[]::new));
         if (autoDiscovery) {
-            tree = discover(tree, effectiveLoader, composed);
+            tree = discover(tree, effectiveLoader);
         }
 
         Container container;
@@ -237,34 +239,33 @@ public final class AppBuilder {
     /**
      * Fills the gaps with ServiceLoader-discovered modules: a class the tree
      * already declares — anywhere, fragments included — is not added again, so
-     * an author's declaration always wins over discovery.
+     * an author's declaration always wins over discovery. The whole iteration
+     * is guarded: a broken provider surfaces from {@code hasNext()/next()},
+     * not from the loop body, and must get the same classloader context.
      */
-    private static ModuleNode discover(
-        ModuleNode tree, ClassLoader loader, List<ModuleNode> composed
-    ) {
-        String appName = tree.name();
+    private static ModuleNode discover(ModuleNode tree, ClassLoader loader) {
         Set<Class<?>> declared = new HashSet<>(tree.classes());
         List<ModuleNode> discovered = new ArrayList<>();
-        for (ModuleEx module : ServiceLoader.load(ModuleEx.class, loader)) {
-            try {
+        try {
+            for (ModuleEx module : ServiceLoader.load(ModuleEx.class, loader)) {
                 if (!declared.add(module.getClass())) {
                     LOG.debug("Ignoring discovered module already declared in the module "
                             + "tree: {}", module.getClass().getSimpleName());
                     continue;
                 }
                 discovered.add(ModuleNode.leaf(module));
-            } catch (ServiceConfigurationError ex) {
-                throw new IllegalStateException(
-                    "Failed to load a ServiceLoader-discovered ModuleEx provider (classloader: "
-                        + loader + ")", ex);
             }
+        } catch (ServiceConfigurationError ex) {
+            throw new IllegalStateException(
+                "Failed to load a ServiceLoader-discovered ModuleEx provider (classloader: "
+                    + loader + ")", ex);
         }
         if (discovered.isEmpty()) {
             return tree;
         }
-        List<ModuleNode> all = new ArrayList<>(composed);
+        List<ModuleNode> all = new ArrayList<>(tree.children());
         all.addAll(discovered);
-        return ModuleNode.app(appName, all.toArray(ModuleNode[]::new));
+        return ModuleNode.app(tree.name(), all.toArray(ModuleNode[]::new));
     }
 
     private ClassLoader resolveClassLoader() {

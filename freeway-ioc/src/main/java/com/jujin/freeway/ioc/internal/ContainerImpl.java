@@ -8,12 +8,10 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.metrics.NoopMetrics;
 import com.jujin.freeway.commons.scoped.ScopedCache;
-import com.jujin.freeway.commons.util.TreeNode;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.EventBus;
 import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.MissingBindingException;
-import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.Scoping;
 import com.jujin.freeway.ioc.annotation.Builtin;
@@ -25,15 +23,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -140,33 +133,8 @@ public final class ContainerImpl implements Container {
         // builtin. Their close is deferred past every lifecycle callback
         // (see Shutdown); a bus that was never resolved has nothing to close.
         registerBuiltinLazy(EventBus.class, EventBus::new, "EventBus");
-        loadAll();
-        LOG.info("Loaded {} module(s):{}", moduleTree.bindOrder().size(), moduleTreeLog());
-    }
-
-    /**
-     * The composition as an indented tree, for the startup log — rendered from
-     * the tree value the container bound, so the lines describe exactly what
-     * was loaded. Iterative: a tree is data, and its depth must not become
-     * call depth.
-     */
-    private String moduleTreeLog() {
-        record Frame(TreeNode<ModuleEx> node, int depth) {}
-        StringBuilder tree = new StringBuilder();
-        Deque<Frame> pending = new ArrayDeque<>();
-        pending.push(new Frame(moduleTree.tree(), 0));
-        while (!pending.isEmpty()) {
-            Frame frame = pending.pop();
-            tree.append('\n')
-                .append("  ".repeat(frame.depth()))
-                .append("- ")
-                .append(frame.node().value().name());
-            List<TreeNode<ModuleEx>> children = frame.node().children();
-            for (int i = children.size() - 1; i >= 0; i--) {
-                pending.push(new Frame(children.get(i), frame.depth() + 1));
-            }
-        }
-        return tree.toString();
+        new BinderImpl(this).load(moduleTree);
+        LOG.info("Loaded {} module(s):\n{}", moduleTree.bindOrder().size(), moduleTree.render());
     }
 
     BindingIndex bindingIndex() {
@@ -204,27 +172,6 @@ public final class ContainerImpl implements Container {
         binding.id(id).to(factory);
         binding.addMarkers(Set.of(Builtin.class));
         register(binding);
-    }
-
-    private void loadAll() {
-        BinderImpl binder = new BinderImpl(this);
-        for (ModuleEx module : moduleTree.bindOrder()) {
-            bindModule(module, binder);
-        }
-        // Instantiate class contributions only now — every module's bindings
-        // are registered, so a contributed class may depend on services from
-        // any module regardless of declaration order.
-        binder.flushPendingCreates();
-    }
-
-    /** Binds one resolved module and registers the bindings it declared. */
-    private void bindModule(ModuleEx module, BinderImpl binder) {
-        Class<?> moduleClass = module.getClass();
-        LOG.debug("Installing module: {}", module.name());
-        binder.setCurrentModule(moduleClass);
-        module.bind(binder);
-        binder.setCurrentModule(null);
-        binder.flushPending();
     }
 
     /**

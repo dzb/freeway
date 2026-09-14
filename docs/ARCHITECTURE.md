@@ -26,19 +26,24 @@ freeway-commons         zero deps
 
 - **`Container`** — IoC boundary only: `get(type[, id | markers])`,
   `isActiveBinding`, `extension`, `create` (a factory — full injection without
-  caching), `moduleTree()` (the loaded `ModuleNode`: structure via `tree()`,
-  bind order via `bindOrder()`), `close()`.
+  caching), `moduleTree()` (the loaded `ModuleNode`: structure via `children()`
+  / `render()`, bind order via `bindOrder()`), `close()`.
   Created via `Freeway.create(ModuleEx...)` or `Freeway.create(ModuleNode)`.
 - **`AppRuntime`** — application boundary above Container: owns config,
   profiles, startup/shutdown and runtime hooks. Created via
   `FreewayApp.run(args, ModuleEx...)`.
 - **`ModuleEx`** — a leaf: it declares its bindings in `bind(Binder)` and
   nothing about composition. **`ModuleNode`** is the composition — an immutable
-  tree built at the entry point (`app` / `group` / `leaf` / `of`), validated
-  while it is built: the same instance reached twice collapses, two instances of
-  one module class fail with both paths named, cycles are unrepresentable. The
-  container binds its pre-order (parents before children, siblings in
-  declaration order) and holds the value it bound.
+  tree built at the entry point (`app` / `group` / `leaf`), validated
+  while it is built: the same instance reached twice collapses, two declarations
+  of one module class fail with both paths named, cycles are unrepresentable.
+  Each leaf holds a **`ModuleRef`** — a class to instantiate at load time, or a
+  configured instance (the only form a lambda/anonymous module can take) — so
+  composition runs no module constructor and the same class-only tree can be
+  loaded by more than one container. The container resolves and binds the
+  tree's leaves in pre-order (a grouping node binds nothing, a leaf binds
+  before the leaves below it, siblings in declaration order) and holds the
+  value it bound.
 - **`ServiceId`** is intentionally not a public type — service ids are plain
   strings, normalized internally by `ServiceIds`.
 - **Scopes** are declared only through `bind().scope(...)`: `SINGLETON`,
