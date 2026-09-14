@@ -121,7 +121,7 @@ class BeanValidatorTest {
         holder.address = Optional.of(new Address());  // city is @NotBlank null
         ValidationResult result = BeanValidator.validate(holder);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream()
+        assertTrue(result.errors().stream()
             .anyMatch(e -> e.field().equals("address.city")));
     }
 
@@ -134,9 +134,9 @@ class BeanValidatorTest {
         holder.addresses = List.of(good, bad);
         ValidationResult result = BeanValidator.validate(holder);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream()
+        assertTrue(result.errors().stream()
             .anyMatch(e -> e.field().equals("addresses[1].city")));
-        assertTrue(result.getErrors().stream()
+        assertTrue(result.errors().stream()
             .noneMatch(e -> e.field().equals("addresses[0].city")));
     }
 
@@ -153,7 +153,7 @@ class BeanValidatorTest {
         }
         ValidationResult result = BeanValidator.validate(root);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream()
+        assertTrue(result.errors().stream()
             .anyMatch(e -> e.message().contains("depth")));
     }
 
@@ -175,9 +175,9 @@ class BeanValidatorTest {
         req.password = "secure123";
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertEquals(1, result.getErrors().size());
-        assertEquals("username", result.getErrors().get(0).field());
-        assertTrue(result.getErrors().get(0).message().contains("blank"));
+        assertEquals(1, result.errors().size());
+        assertEquals("username", result.errors().get(0).field());
+        assertTrue(result.errors().get(0).message().contains("blank"));
     }
 
     @Test
@@ -186,7 +186,7 @@ class BeanValidatorTest {
         assertTrue(result.hasErrors());
         // null username -> NotBlank fires; null password -> NotNull fires;
         // @Size ignores null (Bean Validation convention)
-        assertEquals(2, result.getErrors().size());
+        assertEquals(2, result.errors().size());
     }
 
     @Test
@@ -202,8 +202,8 @@ class BeanValidatorTest {
         bean.name = "a";
         var result = BeanValidator.validate(bean);
         assertTrue(result.hasErrors());
-        assertEquals(1, result.getErrors().size());
-        assertEquals("name", result.getErrors().get(0).field());
+        assertEquals(1, result.errors().size());
+        assertEquals("name", result.errors().get(0).field());
     }
 
     @Test
@@ -213,7 +213,7 @@ class BeanValidatorTest {
         req.password = "123";
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertEquals("password", result.getErrors().get(0).field());
+        assertEquals("password", result.errors().get(0).field());
     }
 
     @Test
@@ -232,7 +232,7 @@ class BeanValidatorTest {
         req.age = 0;
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("age")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().equals("age")));
     }
 
     @Test
@@ -253,7 +253,7 @@ class BeanValidatorTest {
         req.address.city = "";
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("address.city")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().equals("address.city")));
     }
 
     @Test
@@ -275,7 +275,7 @@ class BeanValidatorTest {
         req.tag = "too-long-tag-value";
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("tag")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().equals("tag")));
     }
 
     @Test
@@ -289,8 +289,8 @@ class BeanValidatorTest {
     void nullBean() {
         var result = BeanValidator.validate(null);
         assertTrue(result.hasErrors());
-        assertEquals(1, result.getErrors().size());
-        assertEquals("(root)", result.getErrors().get(0).field());
+        assertEquals(1, result.errors().size());
+        assertEquals("(root)", result.errors().get(0).field());
     }
 
     // --- Record tests (BeanPlan introspection path) ---
@@ -314,8 +314,8 @@ class BeanValidatorTest {
         var req = new LoginRecord("   ", "secure123");
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertEquals(1, result.getErrors().size());
-        assertEquals("username", result.getErrors().get(0).field());
+        assertEquals(1, result.errors().size());
+        assertEquals("username", result.errors().get(0).field());
     }
 
     @Test
@@ -323,14 +323,14 @@ class BeanValidatorTest {
         var req = new LoginRecord(null, null);
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertEquals(2, result.getErrors().size()); // null username → NotBlank + null password → NotNull; @Size ignores null
+        assertEquals(2, result.errors().size()); // null username → NotBlank + null password → NotNull; @Size ignores null
     }
 
     @Test
     void recordMinViolation() {
         var result = BeanValidator.validate(new UserRecord("Alice", 0));
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("age")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().equals("age")));
     }
 
     @Test
@@ -338,7 +338,7 @@ class BeanValidatorTest {
         var req = new NestedRecord(new AddressRecord(""));
         var result = BeanValidator.validate(req);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().equals("address.city")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().equals("address.city")));
     }
 
     @Test
@@ -377,7 +377,7 @@ class BeanValidatorTest {
 
         var result = BeanValidator.validate(order);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().startsWith("items[0]")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().startsWith("items[0]")));
     }
 
     @Test
@@ -387,7 +387,7 @@ class BeanValidatorTest {
 
         var result = BeanValidator.validate(order);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().contains(".a")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().contains(".a")));
     }
 
     @Test
@@ -397,7 +397,7 @@ class BeanValidatorTest {
 
         var result = BeanValidator.validate(order);
         assertTrue(result.hasErrors());
-        assertTrue(result.getErrors().stream().anyMatch(e -> e.field().startsWith("tags[0]")));
+        assertTrue(result.errors().stream().anyMatch(e -> e.field().startsWith("tags[0]")));
     }
 
     static class MapSized {
@@ -429,12 +429,12 @@ class BeanValidatorTest {
 
         var result = BeanValidator.validate(obj);
         assertTrue(result.hasErrors(),
-                "empty Map should fail @Size(min=1): " + result.getErrors());
+                "empty Map should fail @Size(min=1): " + result.errors());
 
         obj.entries = Map.of("a", "1", "b", "2", "c", "3", "d", "4");
         result = BeanValidator.validate(obj);
         assertTrue(result.hasErrors(),
-                "4-entry Map should fail @Size(max=3): " + result.getErrors());
+                "4-entry Map should fail @Size(max=3): " + result.errors());
     }
 
     @Test
@@ -445,6 +445,6 @@ class BeanValidatorTest {
         order.items.add(new OrderItem() {{ name = "ok"; quantity = 1; }});
 
         var result = BeanValidator.validate(order);
-        assertFalse(result.hasErrors(), "null elements should be skipped: " + result.getErrors());
+        assertFalse(result.hasErrors(), "null elements should be skipped: " + result.errors());
     }
 }

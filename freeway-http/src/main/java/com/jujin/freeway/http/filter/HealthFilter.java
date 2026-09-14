@@ -1,10 +1,8 @@
 package com.jujin.freeway.http.filter;
 
 import com.jujin.freeway.http.HttpStatus;
-import java.nio.charset.StandardCharsets;
 
 import com.jujin.freeway.http.HttpContext;
-import com.jujin.freeway.http.MediaTypes;
 import com.jujin.freeway.http.route.PathPattern;
 import com.jujin.freeway.http.route.RouteHandler;
 
@@ -21,13 +19,10 @@ public final class HealthFilter implements HttpFilter {
     private final boolean enabled;
     private final String healthPath;
     private final HealthCheck healthCheck;
-    // Pre-computed response body for the default health check
-    private static final byte[] DEFAULT_RESPONSE =
-        "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
 
     /** Default: enabled, /healthz path, default health check. */
     public static final HealthFilter DEFAULT = new HealthFilter(
-        true, "/healthz", new HealthCheck.Default());
+        true, "/healthz", HealthCheck.ALWAYS_OK);
 
     public HealthFilter(boolean enabled, String healthPath, HealthCheck healthCheck) {
         this.enabled = enabled;
@@ -50,13 +45,7 @@ public final class HealthFilter implements HttpFilter {
         if (enabled && "GET".equalsIgnoreCase(ctx.method())
                 && healthPath.equals(PathPattern.normalizePath(
                     ctx.path()))) {
-            if (healthCheck instanceof HealthCheck.Default) {
-                ctx.setStatus(HttpStatus.OK).setHeader(
-                        "Content-Type", MediaTypes.JSON_UTF8)
-                    .output(DEFAULT_RESPONSE);
-            } else {
-                ctx.sendJson(HttpStatus.OK, healthCheck.check());
-            }
+            ctx.sendJson(HttpStatus.OK, healthCheck.check());
             return;
         }
         next.handle(ctx);

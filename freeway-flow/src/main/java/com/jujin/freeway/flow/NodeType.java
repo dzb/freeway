@@ -28,7 +28,7 @@ public enum NodeType {
         this.code = code;
     }
 
-    public int getCode() {
+    public int code() {
         return code;
     }
 

@@ -143,7 +143,7 @@ class ModuleNodeTest {
     @Test
     void appNodeNamesTheRootAndBindsNothing() {
         List<String> log = new ArrayList<>();
-        ModuleNode app = ModuleNode.app("orders", ModuleNode.leaf(named("a", log)));
+        ModuleNode app = ModuleNode.app("orders", ModuleNode.of(named("a", log)));
 
         assertEquals("orders", app.name());
         assertEquals(2, app.size());
@@ -157,7 +157,7 @@ class ModuleNodeTest {
 
     @Test
     void bundlePlacesItsSubModulesAfterItInDeclarationOrder() {
-        ModuleNode tree = ModuleNode.app("test", ModuleNode.leaf(WebBundle.class));
+        ModuleNode tree = ModuleNode.app("test", ModuleNode.of(WebBundle.class));
 
         assertEquals(List.of("test", "WebBundle", "Middle"), nodeNames(tree));
         assertEquals(3, tree.size(), "root + bundle + submodule");
@@ -171,8 +171,8 @@ class ModuleNodeTest {
     @Test
     void renderShowsThePreOrderStructure() {
         ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.leaf(WebBundle.class),
-            ModuleNode.leaf(new Other()));
+            ModuleNode.of(WebBundle.class),
+            ModuleNode.of(new Other()));
 
         assertEquals("- test\n  - WebBundle\n    - Middle\n  - Other", tree.render());
     }
@@ -180,8 +180,8 @@ class ModuleNodeTest {
     @Test
     void treeValueExposesShapeAndIsImmutable() {
         ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.leaf(Marker.class),
-            ModuleNode.leaf(WebBundle.class));
+            ModuleNode.of(Marker.class),
+            ModuleNode.of(WebBundle.class));
 
         assertEquals("test", tree.name());
         assertEquals(4, tree.size());
@@ -189,10 +189,10 @@ class ModuleNodeTest {
         assertNull(tree.type(), "the application root declares no module");
         assertEquals(2, tree.children().size());
 
-        ModuleNode leaf = tree.children().get(0);
-        assertNotNull(leaf.type(), "a leaf carries its declaration");
-        assertNull(leaf.instance(), "a class declaration carries no instance");
-        assertTrue(leaf.children().isEmpty());
+        ModuleNode node = tree.children().get(0);
+        assertNotNull(node.type(), "a module node carries its declaration");
+        assertNull(node.instance(), "a class declaration carries no instance");
+        assertTrue(node.children().isEmpty());
 
         ModuleNode bundle = tree.children().get(1);
         assertEquals("WebBundle", bundle.name());
@@ -215,7 +215,7 @@ class ModuleNodeTest {
 
     @Test
     void nestedBundlesExpandRecursively() {
-        ModuleNode tree = ModuleNode.leaf(TopBundle.class);
+        ModuleNode tree = ModuleNode.of(TopBundle.class);
 
         assertEquals(List.of("TopBundle", "WebBundle", "Middle"), nodeNames(tree));
         assertEquals(Set.of(TopBundle.class, WebBundle.class, Middle.class), tree.classes());
@@ -224,37 +224,37 @@ class ModuleNodeTest {
     @Test
     void classesExposeWhatDiscoveryMustNotAddAgain() {
         ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.leaf(new Marker()),
-            ModuleNode.leaf(named("anonymous", new ArrayList<>())),
-            ModuleNode.leaf(WebBundle.class));
+            ModuleNode.of(new Marker()),
+            ModuleNode.of(named("anonymous", new ArrayList<>())),
+            ModuleNode.of(WebBundle.class));
 
         assertEquals(Set.of(Marker.class, Middle.class, WebBundle.class), tree.classes(),
             "bundles contribute their submodule classes; anonymous modules are absent");
     }
 
     @Test
-    void leafCarriesItsDeclarationAndResolvesIt() {
-        ModuleNode classLeaf = ModuleNode.leaf(Marker.class);
+    void ofCarriesItsDeclarationAndResolvesIt() {
+        ModuleNode classLeaf = ModuleNode.of(Marker.class);
         assertEquals(Marker.class, classLeaf.type());
         assertNull(classLeaf.instance());
         assertTrue(classLeaf.children().isEmpty());
         assertTrue(classLeaf.resolve() instanceof Marker);
 
         Marker instance = new Marker();
-        ModuleNode instanceLeaf = ModuleNode.leaf(instance);
+        ModuleNode instanceLeaf = ModuleNode.of(instance);
         assertEquals(Marker.class, instanceLeaf.type());
         assertSame(instance, instanceLeaf.instance());
         assertSame(instance, instanceLeaf.resolve(),
             "an instance declaration resolves to itself, not a copy");
 
-        ModuleNode bundle = ModuleNode.leaf(WebBundle.class);
+        ModuleNode bundle = ModuleNode.of(WebBundle.class);
         assertTrue(bundle.resolve() instanceof WebBundle);
         assertEquals(1, bundle.children().size());
     }
 
     @Test
     void applicationRootDeclaresNothingToResolve() {
-        ModuleNode root = ModuleNode.app("app", ModuleNode.leaf(Marker.class));
+        ModuleNode root = ModuleNode.app("app", ModuleNode.of(Marker.class));
 
         assertTrue(root.isApplication());
         assertNull(root.type());
@@ -264,7 +264,7 @@ class ModuleNodeTest {
 
     @Test
     void fragmentIsAValueAndMayBePlacedInDifferentTrees() {
-        ModuleNode fragment = ModuleNode.leaf(WebBundle.class);
+        ModuleNode fragment = ModuleNode.of(WebBundle.class);
 
         try (Container first = Freeway.create(ModuleNode.app("one", fragment));
              Container second = Freeway.create(ModuleNode.app("two", fragment))) {
@@ -287,8 +287,8 @@ class ModuleNodeTest {
     void twoInstancesOfOneModuleClassAreRefusedNamingBothPaths() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
             () -> ModuleNode.app("test",
-                ModuleNode.leaf(new Marker()),
-                ModuleNode.leaf(MarkerBundle.class)));
+                ModuleNode.of(new Marker()),
+                ModuleNode.of(MarkerBundle.class)));
 
         assertTrue(failure.getMessage().contains(Marker.class.getName()), failure.getMessage());
         assertTrue(failure.getMessage().contains("one declaration per module class"),
@@ -301,7 +301,7 @@ class ModuleNodeTest {
     @Test
     void subModuleCycleIsRefused() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-            () -> ModuleNode.leaf(CycleA.class));
+            () -> ModuleNode.of(CycleA.class));
 
         assertTrue(failure.getMessage().contains("Cycle in @SubModule"),
             failure.getMessage());
@@ -312,7 +312,7 @@ class ModuleNodeTest {
         List<String> log = new ArrayList<>();
         ModuleEx module = named("once", log);
         ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.leaf(module), ModuleNode.leaf(module));
+            ModuleNode.of(module), ModuleNode.of(module));
 
         assertEquals(2, tree.size(), "the repeated instance keeps its first placement");
         try (Container container = Freeway.create(tree)) {
@@ -322,7 +322,7 @@ class ModuleNodeTest {
 
     @Test
     void aSharedBundleValueIsCollapsed() {
-        ModuleNode bundle = ModuleNode.leaf(WebBundle.class);
+        ModuleNode bundle = ModuleNode.of(WebBundle.class);
         ModuleNode tree = ModuleNode.app("test", bundle, bundle);
 
         assertEquals(3, tree.size(), "the repeated bundle value keeps its first placement");
@@ -335,8 +335,8 @@ class ModuleNodeTest {
     void anonymousModulesAreComparedByIdentityOnly() {
         List<String> log = new ArrayList<>();
         ModuleNode tree = ModuleNode.app("test",
-            ModuleNode.leaf(named("first", log)),
-            ModuleNode.leaf(named("second", log)));
+            ModuleNode.of(named("first", log)),
+            ModuleNode.of(named("second", log)));
 
         try (Container container = Freeway.create(tree)) {
             assertEquals(List.of("first", "second"), log,
@@ -346,7 +346,7 @@ class ModuleNodeTest {
 
     @Test
     void nullModuleOrChildIsRefused() {
-        assertThrows(NullPointerException.class, () -> ModuleNode.leaf((ModuleEx) null));
+        assertThrows(NullPointerException.class, () -> ModuleNode.of((ModuleEx) null));
         assertThrows(NullPointerException.class, () -> ModuleNode.app("test", (ModuleNode) null));
         assertThrows(NullPointerException.class, () -> ModuleNode.app("test", (ModuleNode[]) null));
     }
@@ -366,7 +366,7 @@ class ModuleNodeTest {
     void classAndInstanceOfOneModuleClassAreRefused() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
             () -> ModuleNode.app("test",
-                ModuleNode.leaf(Marker.class), ModuleNode.leaf(new Marker())));
+                ModuleNode.of(Marker.class), ModuleNode.of(new Marker())));
 
         assertTrue(failure.getMessage().contains(Marker.class.getName()), failure.getMessage());
         assertTrue(failure.getMessage().contains("one declaration per module class"),
@@ -384,10 +384,10 @@ class ModuleNodeTest {
 
     @Test
     void moduleWithoutANoArgConstructorFailsWhenLoadingNamingTheClassAndTheFix() {
-        ModuleNode leaf = ModuleNode.leaf(NeedsArguments.class);
+        ModuleNode node = ModuleNode.of(NeedsArguments.class);
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-            () -> Freeway.create(leaf));
+            () -> Freeway.create(node));
 
         assertTrue(failure.getMessage().contains(NeedsArguments.class.getName()),
             failure.getMessage());
@@ -414,9 +414,9 @@ class ModuleNodeTest {
     @Test
     void classAndInstanceFormsMixInOneTree() {
         ModuleNode app = ModuleNode.app("test",
-            ModuleNode.leaf(Marker.class),
-            ModuleNode.leaf(new Other()),
-            ModuleNode.leaf(WebBundle.class));
+            ModuleNode.of(Marker.class),
+            ModuleNode.of(new Other()),
+            ModuleNode.of(WebBundle.class));
 
         try (Container container = Freeway.create(app)) {
             assertNotNull(container.get(Marker.class));

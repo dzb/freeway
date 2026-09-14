@@ -690,7 +690,7 @@ binder.contribute(ErrorHandler.class).add((ctx, ex) -> {
 内置 `/healthz` 端点，可插拔：
 
 ```java
-// 默认：HealthCheck.Default 返回 {"status": "ok"}
+// 默认：HealthCheck.ALWAYS_OK 返回 {"status": "ok"}
 // 自定义：绑定 HealthCheck 实现
 binder.bind(HealthCheck.class).to(c -> () -> {
     Database db = c.get(Database.class);

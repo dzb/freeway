@@ -124,7 +124,7 @@ class HealthEndpointsTest {
         };
         private final ServiceDiscovery discovery = new ServiceDiscovery() {
             @Override
-            public List<ServiceInstance> getInstances(String serviceId) {
+            public List<ServiceInstance> instances(String serviceId) {
                 return List.of();
             }
         };

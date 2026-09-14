@@ -17,7 +17,7 @@ public class FlowOptions {
     // build one internally).
     private final List<RankedInterceptor> interceptorList = new ArrayList<>();
 
-    public List<RankedInterceptor> getInterceptorList() {
+    public List<RankedInterceptor> interceptorList() {
         return interceptorList;
     }
 

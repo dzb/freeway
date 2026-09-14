@@ -673,7 +673,7 @@ Flow 模块不提供外部化配置键。所有配置通过编程式 API 完成�
 - **节点类型**：START / END / ACTIVITY / EXCLUSIVE / INCLUSIVE / PARALLEL / LOOP
 - **图版本**：v2 DAG 格式（`GraphSpec.VERSION = 2`）
 - **执行约束**：最大递归深度 `1000`，最大 LOOP 迭代 `100_000`
-- **PlantUML**：`PlantumlOptions` 控制输出格式
+- **PlantUML**：`PlantUmlOptions` 控制输出格式
 
 ---
 

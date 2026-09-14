@@ -21,7 +21,7 @@ import java.util.UUID;
  *
  * <p>Supports coercion from the raw JDBC value to common Java types:
  * {@link #string(String)}, {@link #integer(String)}, {@link #longValue(String)},
- * {@link #bool(String)}, {@link #decimal(String)}, {@link #date(String)},
+ * {@link #booleanValue(String)}, {@link #decimal(String)}, {@link #date(String)},
  * {@link #dateTime(String)}, {@link #instant(String)}, {@link #uuid(String)},
  * and more.
  *

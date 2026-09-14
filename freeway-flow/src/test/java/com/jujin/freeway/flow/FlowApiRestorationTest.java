@@ -72,19 +72,19 @@ class FlowApiRestorationTest {
             spec.addEnd("end");
         });
         FlowTrace trace = new FlowTrace();
-        trace.recordNode(graph, graph.getStart());
-        trace.recordNode(graph, graph.getNodeOrThrow("end"));
+        trace.recordNode(graph, graph.start());
+        trace.recordNode(graph, graph.nodeOrThrow("end"));
 
         List<NodeRecord> snapshot = List.copyOf(trace.lastRecords());
         assertEquals(1, snapshot.size());
-        assertEquals("g", snapshot.getFirst().getGraphId());
-        assertEquals("end", snapshot.getFirst().getId());
+        assertEquals("g", snapshot.getFirst().graphId());
+        assertEquals("end", snapshot.getFirst().id());
         assertTrue(trace.isEnd("g"),
             "isEnd() must report the END node as the last record");
         assertFalse(trace.isEnd("missing"));
 
         trace.clear();
-        assertTrue(snapshot.getFirst().getTimestamp() > 0,
+        assertTrue(snapshot.getFirst().timestamp() > 0,
             "record timestamp must be readable after the trace is cleared");
     }
 
@@ -108,10 +108,10 @@ class FlowApiRestorationTest {
             spec.addStart("start").title("The Start").linkAdd("end");
             spec.addEnd("end");
         });
-        NodeRecord record = new NodeRecord(graph.getNodeOrThrow("start"));
-        assertEquals("g", record.getGraphId());
-        assertEquals("The Start", record.getTitle());
-        assertTrue(record.getTimestamp() > 0);
+        NodeRecord record = new NodeRecord(graph.nodeOrThrow("start"));
+        assertEquals("g", record.graphId());
+        assertEquals("The Start", record.title());
+        assertTrue(record.timestamp() > 0);
     }
 
     @Test
@@ -123,7 +123,7 @@ class FlowApiRestorationTest {
         FlowEngine engine = FlowEngine.newInstance();
         FlowContext context = FlowContext.of();
         FlowExchanger ex = new FlowExchanger(graph, engine,
-            engine.getDriver(graph), context, 0, new AtomicInteger(0));
+            engine.driver(graph), context, 0, new AtomicInteger(0));
 
         ex.recordClear();
         assertTrue(ex.steps() >= 0);
@@ -133,7 +133,7 @@ class FlowApiRestorationTest {
         assertSame(engine, copy.engine());
 
         // runTask reaches the driver's task handling; an empty task is a no-op.
-        ex.runTask(graph.getNodeOrThrow("b"), null);
+        ex.runTask(graph.nodeOrThrow("b"), null);
     }
 
     @Test
@@ -148,25 +148,25 @@ class FlowApiRestorationTest {
                 .linkAdd("end");
             spec.addEnd("end");
         });
-        Node mid = graph.getNodeOrThrow("mid");
+        Node mid = graph.nodeOrThrow("mid");
         assertTrue(mid.hasMeta("flag"));
-        assertTrue(mid.getMetaAsBool("flag"));
-        assertEquals(42.0, mid.getMetaAsNumber("num").doubleValue());
-        assertEquals("x", mid.<String>getMetaAs("label"));
-        assertEquals("fallback", mid.getMetaOrDefault("absent", "fallback"));
+        assertTrue(mid.metaAsBool("flag"));
+        assertEquals(42.0, mid.metaAsNumber("num").doubleValue());
+        assertEquals("x", mid.<String>metaAs("label"));
+        assertEquals("fallback", mid.metaOrDefault("absent", "fallback"));
         assertThrows(UnsupportedOperationException.class,
-            () -> mid.getMetaAsBool("blob"),
+            () -> mid.metaAsBool("blob"),
             "a non-coercible meta value must fail with a diagnostic, not coerce silently");
         assertThrows(UnsupportedOperationException.class,
-            () -> mid.getMetaAsNumber("blob"),
+            () -> mid.metaAsNumber("blob"),
             "a non-coercible meta value must fail with a diagnostic, not coerce silently");
 
         mid.attachment = "tag";
         assertEquals("tag", mid.attachment);
 
-        List<Node> prev = mid.getPrevNodes();
-        assertEquals(List.of("start"), prev.stream().map(Node::getId).toList());
-        assertEquals("start", mid.getPrevLinks().getFirst().getPrevNode().getId());
+        List<Node> prev = mid.prevNodes();
+        assertEquals(List.of("start"), prev.stream().map(Node::id).toList());
+        assertEquals("start", mid.prevLinks().getFirst().prevNode().id());
     }
 
     @Test
@@ -176,14 +176,14 @@ class FlowApiRestorationTest {
                 .linkAdd("b", l -> l.metaPut("lk", "lv"));
             spec.addEnd("b");
         });
-        assertEquals("v", graph.<String>getMetaAs("k"));
-        assertEquals("fallback", graph.getMetaOrDefault("absent", "fallback"));
-        assertEquals("v", graph.getMetaOrDefault("k", "default"),
+        assertEquals("v", graph.<String>metaAs("k"));
+        assertEquals("fallback", graph.metaOrDefault("absent", "fallback"));
+        assertEquals("v", graph.metaOrDefault("k", "default"),
             "an existing key must return its value, not the default");
 
-        Link link = graph.getStart().getNextLinks().getFirst();
-        assertEquals("lv", link.<String>getMetaAs("lk"));
-        assertEquals("fallback", link.getMetaOrDefault("absent", "fallback"));
+        Link link = graph.start().nextLinks().getFirst();
+        assertEquals("lv", link.<String>metaAs("lk"));
+        assertEquals("fallback", link.metaOrDefault("absent", "fallback"));
     }
 
     @Test
@@ -210,10 +210,10 @@ class FlowApiRestorationTest {
             spec.addEnd("b");
         });
         Graph copy = Graph.copy(original, spec -> spec.addEnd("c"));
-        assertNotNull(copy.getNodeOrThrow("c"),
+        assertNotNull(copy.nodeOrThrow("c"),
             "Graph.copy must apply the modification to the copy");
         assertThrows(IllegalArgumentException.class,
-            () -> original.getNodeOrThrow("c"),
+            () -> original.nodeOrThrow("c"),
             "the original graph must not be touched");
     }
 

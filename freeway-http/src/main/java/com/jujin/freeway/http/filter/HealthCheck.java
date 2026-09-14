@@ -14,13 +14,6 @@ public interface HealthCheck {
 
     Object check();
 
-    /**
-     * Default health check that always returns {@code {"status":"ok"}}.
-     */
-    final class Default implements HealthCheck {
-        @Override
-        public Object check() {
-            return Map.of("status", "ok");
-        }
-    }
+    /** The default health check: always {@code {"status":"ok"}}. */
+    HealthCheck ALWAYS_OK = () -> Map.of("status", "ok");
 }

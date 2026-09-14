@@ -29,7 +29,7 @@ class CloudEventBusTest {
 
     record GreetEvent(String name) {}
 
-    @com.jujin.freeway.ioc.Topic("order.created")
+    @com.jujin.freeway.ioc.annotation.Topic("order.created")
     record OrderedEvent(String id) implements EventBus.Keyed {
         @Override public String key() { return id; }
     }

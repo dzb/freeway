@@ -74,31 +74,31 @@ public final class LinkSpec {
         return this;
     }
 
-    public String getFrom() {
+    public String from() {
         return from;
     }
 
-    public String getTo() {
+    public String to() {
         return to;
     }
 
-    public String getTitle() {
+    public String title() {
         return title;
     }
 
-    public Map<String, Object> getMeta() {
+    public Map<String, Object> meta() {
         return Collections.unmodifiableMap(meta);
     }
 
-    public String getWhen() {
+    public String when() {
         return when;
     }
 
-    public ConditionComponent getWhenComponent() {
+    public ConditionComponent whenComponent() {
         return whenComponent;
     }
 
-    public int getPriority() {
+    public int priority() {
         return priority;
     }
 

@@ -36,7 +36,7 @@ solon-flow 核心引擎对外部库有较多依赖，移植过程对每一处做
 - **条件表达式求值**：`ExprEvaluator` 支持 `>`, `<`, `>=`, `<=`, `==`, `!=`, `&&`, `||`, `!`, 括号，变量路径
 - **拦截器链**：`FlowInterceptor` + `FlowInvocation`，完整责任链 + 节点生命周期回调
 - **事件总线**：`FlowEventBus`，topic 主题式 pub/sub，作用域限定单次执行
-- **PlantUML 导出**：`Graph.toPlantuml()`，完整保留，纯字符串拼接无外部依赖
+- **PlantUML 导出**：`Graph.toPlantUml()`，完整保留，纯字符串拼接无外部依赖
 - **执行痕迹**：`FlowTrace` + `NodeRecord`，支持暂停/恢复
 - **子图调用**：`#graphId` 嵌套流程
 - **编程构建**：`Graph.create(id, spec -> { ... })` Builder API

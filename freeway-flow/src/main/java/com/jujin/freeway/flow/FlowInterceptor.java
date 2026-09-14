@@ -13,14 +13,14 @@ package com.jujin.freeway.flow;
  * engine.addInterceptor(new FlowInterceptor() {
  *     @Override
  *     public void interceptFlow(FlowInvocation inv) {
- *         System.out.println("started: " + inv.getGraph().getId());
+ *         System.out.println("started: " + inv.graph().id());
  *         inv.invoke();
  *         System.out.println("execution complete");
  *     }
  *
  *     @Override
  *     public void onNodeStart(FlowContext ctx, Node node) {
- *         System.out.println("→ " + node.getId());
+ *         System.out.println("→ " + node.id());
  *     }
  * });
  * }</pre>

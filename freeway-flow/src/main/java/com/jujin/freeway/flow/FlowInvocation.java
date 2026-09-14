@@ -22,22 +22,22 @@ public class FlowInvocation {
         this.exchanger = exchanger;
         this.options = options;
         this.startNode = startNode;
-        this.interceptorList = options.getInterceptorList();
+        this.interceptorList = options.interceptorList();
         this.lastHandler = lastHandler;
         this.index = 0;
     }
 
     /** Gets the exchanger */
-    public FlowExchanger getExchanger() { return exchanger; }
+    public FlowExchanger exchanger() { return exchanger; }
 
     /** Gets the context */
-    public FlowContext getContext() { return exchanger.context(); }
+    public FlowContext context() { return exchanger.context(); }
 
     /** Gets the graph */
-    public Graph getGraph() { return startNode.getGraph(); }
+    public Graph graph() { return startNode.graph(); }
 
     /** Gets the start node (or the resume node) */
-    public Node getStartNode() { return startNode; }
+    public Node startNode() { return startNode; }
 
     /**
      * Invokes the next interceptor; if it is the last one, runs the actual evalDo

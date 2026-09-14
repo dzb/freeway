@@ -55,11 +55,11 @@ public final class AppBuilder {
     AppBuilder() {
     }
 
-    /** Add one or more modules to the application — each becomes a leaf of the tree. */
+    /** Add one or more modules to the application — each becomes a module node of the tree. */
     public AppBuilder add(ModuleEx... modules) {
         Objects.requireNonNull(modules, "modules");
         for (ModuleEx m : modules) {
-            this.children.add(ModuleNode.leaf(Objects.requireNonNull(m, "module")));
+            this.children.add(ModuleNode.of(Objects.requireNonNull(m, "module")));
         }
         return this;
     }
@@ -72,14 +72,14 @@ public final class AppBuilder {
     public final AppBuilder add(Class<? extends ModuleEx>... types) {
         Objects.requireNonNull(types, "module types");
         for (Class<? extends ModuleEx> type : types) {
-            this.children.add(ModuleNode.leaf(Objects.requireNonNull(type, "module type")));
+            this.children.add(ModuleNode.of(Objects.requireNonNull(type, "module type")));
         }
         return this;
     }
 
     /**
      * Add one or more composed trees: a tree is a {@link ModuleNode} built with
-     * {@code app/leaf}, so bundling and reuse are expressed here rather than
+     * {@code app/of}, so bundling and reuse are expressed here rather than
      * inside a module. Adding an application root contributes its name (once)
      * and its children; any other node is added as a child.
      */
@@ -166,7 +166,7 @@ public final class AppBuilder {
         // tree — not a per-layer bookkeeping map — is what decides duplicates,
         // order and (for discovery) which classes are already declared.
         List<ModuleNode> composed = new ArrayList<>(children.size() + 1);
-        composed.add(ModuleNode.leaf(new BootModule(config))); // config first: later modules may read it
+        composed.add(ModuleNode.of(new BootModule(config))); // config first: later modules may read it
         composed.addAll(children);
         ModuleNode tree = ModuleNode.app(
             appName != null ? appName : APP_NAME,
@@ -253,7 +253,7 @@ public final class AppBuilder {
                             + "tree: {}", module.getClass().getSimpleName());
                     continue;
                 }
-                discovered.add(ModuleNode.leaf(module));
+                discovered.add(ModuleNode.of(module));
             }
         } catch (ServiceConfigurationError ex) {
             throw new IllegalStateException(

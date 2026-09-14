@@ -208,8 +208,8 @@ class ContributionWiringTest {
         // after every module has bound, so this must resolve regardless of
         // declaration order.
         Container container = Freeway.create(ModuleNode.app("test",
-            ModuleNode.leaf(outer -> outer.bind(NestedDep.class).to(NestedDepImpl.class)),
-            ModuleNode.leaf(inner ->
+            ModuleNode.of(outer -> outer.bind(NestedDep.class).to(NestedDepImpl.class)),
+            ModuleNode.of(inner ->
                 inner.contribute(NestedDepConsumer.class).add(NestedDepConsumerImpl.class))));
         var consumers = container.extension(NestedDepConsumer.class).all();
         assertEquals(1, consumers.size());

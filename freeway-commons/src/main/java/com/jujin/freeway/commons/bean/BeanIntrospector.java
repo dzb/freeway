@@ -13,7 +13,7 @@ import java.util.WeakHashMap;
  *
  * <p>Produces {@link BeanPlan} metadata (properties, constructor, annotations)
  * for any class. Results are cached via {@link ClassValue} and
- * {@link ConcurrentHashMap}.
+ * {@link java.util.concurrent.ConcurrentHashMap}.
  *
  * <p><b>Module-access contract:</b> application classes (unnamed module) are
  * fully introspectable — private constructors, fields and setters are reached

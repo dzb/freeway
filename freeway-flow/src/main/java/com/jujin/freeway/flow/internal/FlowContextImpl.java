@@ -128,7 +128,7 @@ public class FlowContextImpl implements FlowContext {
         oNode.put("data", dataObj);
         if (trace != null) {
             oNode.put("trace", JsonUtils.coerce(trace, JsonObject.class));
-            oNode.put("rootGraphId", trace.getRootGraphId());
+            oNode.put("rootGraphId", trace.rootGraphId());
         }
         return JsonUtils.stringify(oNode);
     }

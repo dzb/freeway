@@ -31,9 +31,9 @@ public class ConditionDesc {
         this.component = component;
     }
 
-    public Graph getGraph() { return graph; }
-    public String getDescription() { return description; }
-    public ConditionComponent getComponent() { return component; }
+    public Graph graph() { return graph; }
+    public String description() { return description; }
+    public ConditionComponent component() { return component; }
 
     public boolean isEmpty() {
         return (description == null || description.isEmpty()) && component == null;

@@ -27,12 +27,12 @@ class GraphSpecTest {
             bp.addEnd("end");
         });
 
-        assertEquals(2, blueprint.getVersion());
-        assertEquals("start", blueprint.getEntry());
+        assertEquals(2, blueprint.version());
+        assertEquals("start", blueprint.entry());
 
         Graph graph = blueprint.create();
-        assertEquals("blueprint_v2", graph.getId());
-        assertEquals("start", graph.getStart().getId());
+        assertEquals("blueprint_v2", graph.id());
+        assertEquals("start", graph.start().id());
 
         AtomicInteger counter = new AtomicInteger();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
@@ -77,14 +77,14 @@ class GraphSpecTest {
 
         String json = blueprint.toJson();
         GraphSpec parsed = GraphSpec.fromText(json);
-        assertEquals(2, parsed.getVersion());
-        assertEquals("start", parsed.getEntry());
-        assertEquals(3, parsed.getNodes().size());
+        assertEquals(2, parsed.version());
+        assertEquals("start", parsed.entry());
+        assertEquals(3, parsed.nodes().size());
 
         Graph graph = blueprint.create();
-        assertEquals("v2_graph", graph.getId());
-        assertEquals("start", graph.getStart().getId());
-        assertEquals(3, graph.getNodes().size());
+        assertEquals("v2_graph", graph.id());
+        assertEquals("start", graph.start().id());
+        assertEquals(3, graph.nodes().size());
     }
 
     @Test
@@ -131,9 +131,9 @@ class GraphSpecTest {
                 }
                 """;
         Graph graph = Graph.fromText(json);
-        assertEquals("via_graph_api", graph.getId());
-        assertEquals("start", graph.getStart().getId());
-        assertEquals(2, graph.getNodes().size());
+        assertEquals("via_graph_api", graph.id());
+        assertEquals("start", graph.start().id());
+        assertEquals(2, graph.nodes().size());
     }
 
     @Test
@@ -148,14 +148,14 @@ class GraphSpecTest {
         });
 
         Graph graph = blueprint.create();
-        assertEquals("entry_promote", graph.getId());
-        assertEquals("entry promote", graph.getTitle());
-        assertEquals("default", graph.getDriver());
-        assertEquals("demo", graph.getMeta("kind"));
-        assertEquals("task", graph.getStart().getId());
-        assertEquals(NodeType.ACTIVITY, graph.getNode("task").getType());
-        assertEquals("@counter", graph.getNode("task").getTask().getDescription());
-        assertEquals(7, graph.getNode("task").getNextLinks().get(0).getPriority());
+        assertEquals("entry_promote", graph.id());
+        assertEquals("entry promote", graph.title());
+        assertEquals("default", graph.driver());
+        assertEquals("demo", graph.meta("kind"));
+        assertEquals("task", graph.start().id());
+        assertEquals(NodeType.ACTIVITY, graph.node("task").type());
+        assertEquals("@counter", graph.node("task").task().description());
+        assertEquals(7, graph.node("task").nextLinks().get(0).priority());
     }
 
     @Test
@@ -178,20 +178,20 @@ class GraphSpecTest {
                 """;
 
         GraphSpec blueprint = GraphSpec.fromText(json);
-        assertEquals("compat", blueprint.getId());
-        assertEquals("start", blueprint.getEntry());
-        assertEquals("score > 0", blueprint.getNode("task").getWhen());
-        assertEquals("score > 0", blueprint.getLinks().get(0).getWhen());
-        assertEquals(3, blueprint.getLinks().get(0).getPriority());
-        assertEquals("start", blueprint.getLinks().get(0).getFrom());
-        assertEquals("task", blueprint.getLinks().get(0).getTo());
-        assertEquals("task", blueprint.getLinks().get(1).getFrom());
-        assertEquals("end", blueprint.getLinks().get(1).getTo());
+        assertEquals("compat", blueprint.id());
+        assertEquals("start", blueprint.entry());
+        assertEquals("score > 0", blueprint.node("task").when());
+        assertEquals("score > 0", blueprint.links().get(0).when());
+        assertEquals(3, blueprint.links().get(0).priority());
+        assertEquals("start", blueprint.links().get(0).from());
+        assertEquals("task", blueprint.links().get(0).to());
+        assertEquals("task", blueprint.links().get(1).from());
+        assertEquals("end", blueprint.links().get(1).to());
 
         Graph graph = blueprint.create();
-        assertEquals(2, graph.getLinks().size());
-        assertTrue(graph.getLinks().stream().anyMatch(link ->
-                "start".equals(link.getPrevId()) && "task".equals(link.getNextId()) && link.getPriority() == 3));
+        assertEquals(2, graph.links().size());
+        assertTrue(graph.links().stream().anyMatch(link ->
+                "start".equals(link.prevId()) && "task".equals(link.nextId()) && link.priority() == 3));
     }
 
     @Test
@@ -203,14 +203,14 @@ class GraphSpecTest {
         });
 
         GraphSpec blueprint = GraphSpec.copy(graph);
-        assertEquals("s", blueprint.getEntry());
-        assertEquals(2, blueprint.getLinks().size());
-        assertTrue(blueprint.getLinks().stream().anyMatch(link ->
-                "s".equals(link.getFrom()) && "task".equals(link.getTo()) && link.getPriority() == 5));
+        assertEquals("s", blueprint.entry());
+        assertEquals(2, blueprint.links().size());
+        assertTrue(blueprint.links().stream().anyMatch(link ->
+                "s".equals(link.from()) && "task".equals(link.to()) && link.priority() == 5));
 
         Graph rebuilt = blueprint.create();
-        assertTrue(rebuilt.getLinks().stream().anyMatch(link ->
-                "s".equals(link.getPrevId()) && "task".equals(link.getNextId()) && link.getPriority() == 5));
+        assertTrue(rebuilt.links().stream().anyMatch(link ->
+                "s".equals(link.prevId()) && "task".equals(link.nextId()) && link.priority() == 5));
     }
 
     @Test
@@ -245,7 +245,7 @@ class GraphSpecTest {
                 .build());
 
         engine.load(blueprint);
-        assertNotNull(engine.getGraph("engine_blueprint"));
+        assertNotNull(engine.graph("engine_blueprint"));
         engine.eval("engine_blueprint", FlowContext.of());
         assertEquals(1, counter.get());
     }
@@ -295,7 +295,7 @@ class GraphSpecTest {
         });
 
         bp.toMap(); // prime cached normalization/BFS order
-        bp.getNode("s").linkAdd("x");
+        bp.node("s").linkAdd("x");
 
         Map<String, Object> map = bp.toMap();
         @SuppressWarnings("unchecked")
@@ -318,7 +318,7 @@ class GraphSpecTest {
             spec.addEnd("e");
         });
         Graph g = bp.create();
-        assertEquals(3, g.getNodes().size());
+        assertEquals(3, g.nodes().size());
     }
 
     @Test
@@ -401,7 +401,7 @@ class GraphSpecTest {
             spec.addEnd("e");
         });
         Graph graph = bp.create();
-        assertEquals("a", graph.getStart().getId(),
+        assertEquals("a", graph.start().id(),
             "the explicit entry must be the runtime start");
     }
 

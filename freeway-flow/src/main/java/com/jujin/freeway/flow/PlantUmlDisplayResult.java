@@ -6,24 +6,24 @@ package com.jujin.freeway.flow;
  * @author noear
  * @since 3.10
  */
-public class PlantumlDisplayResult {
-    public static final PlantumlDisplayResult HIDDEN = new PlantumlDisplayResult(false, null);
+public class PlantUmlDisplayResult {
+    public static final PlantUmlDisplayResult HIDDEN = new PlantUmlDisplayResult(false, null);
 
-    public static PlantumlDisplayResult of(String text) {
+    public static PlantUmlDisplayResult of(String text) {
         if (text == null || text.isEmpty()) {
             return HIDDEN;
         }
-        return new PlantumlDisplayResult(true, text);
+        return new PlantUmlDisplayResult(true, text);
     }
 
-    public static PlantumlDisplayResult ofDefault() {
-        return new PlantumlDisplayResult(true, null);
+    public static PlantUmlDisplayResult ofDefault() {
+        return new PlantUmlDisplayResult(true, null);
     }
 
     private final boolean visible;
     private final String text;
 
-    private PlantumlDisplayResult(boolean visible, String text) {
+    private PlantUmlDisplayResult(boolean visible, String text) {
         this.visible = visible;
         this.text = text;
     }
@@ -32,7 +32,7 @@ public class PlantumlDisplayResult {
         return visible;
     }
 
-    public String getText() {
+    public String text() {
         return text;
     }
 

@@ -13,9 +13,9 @@ import com.jujin.freeway.http.HttpServerHandle;
 /**
  * Lifecycle handle for the built-in HTTP engine.
  */
-final class HttpServerHandleDefault implements HttpServerHandle {
+final class HttpServerHandleImpl implements HttpServerHandle {
 
-    private static final Logger LOG = LoggerFactory.getLogger(HttpServerHandleDefault.class);
+    private static final Logger LOG = LoggerFactory.getLogger(HttpServerHandleImpl.class);
 
     private final ServerSocket serverSocket;
     private final Thread acceptor;
@@ -25,7 +25,7 @@ final class HttpServerHandleDefault implements HttpServerHandle {
     private final String host;
     private final int port;
 
-    public HttpServerHandleDefault(ServerSocket serverSocket, Thread acceptor,
+    public HttpServerHandleImpl(ServerSocket serverSocket, Thread acceptor,
                  Duration shutdownGrace, AtomicBoolean finished,
                  ConnectionRegistry registry,
                  String host, int port) {

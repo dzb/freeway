@@ -30,48 +30,48 @@ public class Link implements Comparable<Link> {
         this.graph = graph;
         this.prevId = prevId;
 
-        this.nextId = spec.getTo();
-        this.title = spec.getTitle();
-        this.priority = spec.getPriority();
-        this.when = new ConditionDesc(graph, spec.getWhen(), spec.getWhenComponent());
+        this.nextId = spec.to();
+        this.title = spec.title();
+        this.priority = spec.priority();
+        this.when = new ConditionDesc(graph, spec.when(), spec.whenComponent());
 
-        if (spec.getMeta() == null) {
+        if (spec.meta() == null) {
             this.metas = Collections.emptyMap();
         } else {
-            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.getMeta()));
+            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.meta()));
         }
     }
 
-    public Graph getGraph() { return graph; }
-    public String getTitle() { return title; }
-    public Map<String, Object> getMetas() { return metas; }
-    public Object getMeta(String key) { return metas.get(key); }
+    public Graph graph() { return graph; }
+    public String title() { return title; }
+    public Map<String, Object> metas() { return metas; }
+    public Object meta(String key) { return metas.get(key); }
 
     /** Returns the meta value cast to the requested type. */
     @SuppressWarnings("unchecked")
-    public <T> T getMetaAs(String key) { return (T) metas.get(key); }
+    public <T> T metaAs(String key) { return (T) metas.get(key); }
 
     /** Returns the meta value cast to the requested type, or {@code def}. */
     @SuppressWarnings("unchecked")
-    public <T> T getMetaOrDefault(String key, T def) {
+    public <T> T metaOrDefault(String key, T def) {
         return (T) metas.getOrDefault(key, def);
     }
 
-    public ConditionDesc getWhen() { return when; }
-    public String getPrevId() { return prevId; }
-    public String getNextId() { return nextId; }
-    public int getPriority() { return priority; }
+    public ConditionDesc when() { return when; }
+    public String prevId() { return prevId; }
+    public String nextId() { return nextId; }
+    public int priority() { return priority; }
 
-    public Node getNextNode() {
+    public Node nextNode() {
         if (nextNode == null) {
-            nextNode = graph.getNode(getNextId());
+            nextNode = graph.node(nextId());
         }
         return nextNode;
     }
 
-    public Node getPrevNode() {
+    public Node prevNode() {
         if (prevNode == null) {
-            prevNode = graph.getNode(getPrevId());
+            prevNode = graph.node(prevId());
         }
         return prevNode;
     }
@@ -86,8 +86,8 @@ public class Link implements Comparable<Link> {
         StringBuilder buf = new StringBuilder();
         buf.append("{");
         buf.append("priority=").append(priority);
-        buf.append(", prevId='").append(getPrevId()).append('\'');
-        buf.append(", nextId='").append(getNextId()).append('\'');
+        buf.append(", prevId='").append(prevId()).append('\'');
+        buf.append(", nextId='").append(nextId()).append('\'');
         if (title != null && !title.isEmpty()) {
             buf.append(", title='").append(title).append('\'');
         }
@@ -95,10 +95,10 @@ public class Link implements Comparable<Link> {
             buf.append(", meta=").append(metas);
         }
         if (when != null && !when.isEmpty()) {
-            buf.append(", when=").append(when.getDescription());
+            buf.append(", when=").append(when.description());
         }
-        if (when.getComponent() != null) {
-            buf.append(", whenComponent=").append(when.getComponent());
+        if (when.component() != null) {
+            buf.append(", whenComponent=").append(when.component());
         }
         buf.append("}");
         return buf.toString();

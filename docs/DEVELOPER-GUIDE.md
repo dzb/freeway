@@ -837,7 +837,7 @@ Three-layer architecture: **engine layer** handles transport (socket I/O, protoc
 | Category | Main Types |
 |----------|------------|
 | Core | `HttpEngine`, `HttpContext`, `HttpFilter`, `HttpModule`, `WebServer`, `JsonCodec` |
-| Engine (shared) | `FreewayHttpEngine`, `HttpContextImpl`, `HttpSession`, `HttpServerHandleDefault`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
+| Engine (shared) | `FreewayHttpEngine`, `HttpContextImpl`, `HttpSession`, `HttpServerHandleImpl`, `SessionBufferedInputStream/OutputStream`, `FixedLengthInputStream`, `ChunkedInputStream` |
 | Engine (HTTP/1.x) | `HttpConnection`, `Http1xSession`, `Http1xParser` in `engine/` |
 | Engine (HTTP/2) | `Http2Connection`, `Http2Stream`, `FrameSerializer`, `HPackContext` etc in `engine/http2/` |
 | Engine (WebSocket) | `WebSocketFrame`, `WebSocketSessionImpl`, `WebSocketUtil` etc in `engine/ws/` |
@@ -1707,11 +1707,11 @@ taking a subset is placing the modules you want:
 
 ```java
 FreewayApp.run(ModuleNode.app("order-service",
-    ModuleNode.leaf(new OrderModule()),
+    ModuleNode.of(new OrderModule()),
     CloudModule.class));                              // the whole bundle
 
 FreewayApp.run(ModuleNode.app("order-service",
-    ModuleNode.leaf(new CloudRpcModule())));          // just the client
+    ModuleNode.of(new CloudRpcModule())));          // just the client
 ```
 
 **Three ways an application touches the module:**

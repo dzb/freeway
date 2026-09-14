@@ -10,7 +10,7 @@ import java.util.Objects;
  * contributed groups and executes {@link Schema#ensure}
  * at startup (before migration SQL files), logged by group name.
  *
- * <p>The schema dialect always comes from the {@link Database} — a group is a
+ * <p>The schema dialect always comes from the {@link com.jujin.freeway.db.Database} — a group is a
  * logical label (typically the domain or module that owns the entities), not
  * a dialect boundary.
  *

@@ -1,6 +1,6 @@
 package demo;
 
-import com.jujin.freeway.ioc.Topic;
+import com.jujin.freeway.ioc.annotation.Topic;
 
 /** Shared event contract for the cross-JVM demo (both nodes compile against it). */
 public final class Events {

@@ -6,21 +6,21 @@ package com.jujin.freeway.flow;
  * @author noear
  * @since 3.10
  */
-public class PlantumlDisplayContext {
+public class PlantUmlDisplayContext {
     private final Node node;
     private final Link link;
 
-    protected PlantumlDisplayContext(Node node, Link link) {
+    protected PlantUmlDisplayContext(Node node, Link link) {
         this.node = node;
         this.link = link;
     }
 
-    public static PlantumlDisplayContext ofNode(Node node) {
-        return new PlantumlDisplayContext(node, null);
+    public static PlantUmlDisplayContext ofNode(Node node) {
+        return new PlantUmlDisplayContext(node, null);
     }
 
-    public static PlantumlDisplayContext ofLink(Link link) {
-        return new PlantumlDisplayContext(null, link);
+    public static PlantUmlDisplayContext ofLink(Link link) {
+        return new PlantUmlDisplayContext(null, link);
     }
 
     public boolean isNode() {
@@ -31,41 +31,41 @@ public class PlantumlDisplayContext {
         return link != null;
     }
 
-    public Node getNode() {
+    public Node node() {
         return node;
     }
 
-    public Link getLink() {
+    public Link link() {
         return link;
     }
 
-    public String getId() {
+    public String id() {
         if (node != null) {
-            return node.getId();
+            return node.id();
         }
         return null;
     }
 
-    public String getTitle() {
+    public String title() {
         if (node != null) {
-            return node.getTitle();
+            return node.title();
         }
         if (link != null) {
-            return link.getTitle();
+            return link.title();
         }
         return null;
     }
 
-    public String getTask() {
+    public String task() {
         if (node != null) {
-            return node.getTask().getDescription();
+            return node.task().description();
         }
         return null;
     }
 
-    public String getWhen() {
+    public String when() {
         if (link != null) {
-            return link.getWhen().getDescription();
+            return link.when().description();
         }
         return null;
     }

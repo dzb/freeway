@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  *
  * <p><b>Composition is data, and this is its type.</b> A node is either the
  * application root ({@link #app}, a name that binds nothing) or a module node
- * ({@link #leaf}: a class to resolve at load time, or a configured instance).
+ * ({@link #of}: a class to resolve at load time, or a configured instance).
  * A module whose class declares {@link SubModule} is a bundle: its declared
  * submodules follow it in the tree, so the unit a library ships and the unit
  * the startup tree shows are the same thing — the module class itself.
@@ -35,8 +35,8 @@ import java.util.stream.Collectors;
  *
  * <pre>{@code
  * ModuleNode app = ModuleNode.app("order-service",
- *     ModuleNode.leaf(new OrderModule()),
- *     ModuleNode.leaf(CloudModule.class));   // a bundle: CloudModule + @SubModule
+ *     ModuleNode.of(new OrderModule()),
+ *     ModuleNode.of(CloudModule.class));   // a bundle: CloudModule + @SubModule
  * }</pre>
  *
  * <p><b>Construction is validation.</b> A node is built from its children, so
@@ -161,33 +161,33 @@ public final class ModuleNode {
         Objects.requireNonNull(modules, "modules");
         ModuleNode[] nodes = new ModuleNode[modules.length];
         for (int i = 0; i < modules.length; i++) {
-            nodes[i] = leaf(modules[i]);
+            nodes[i] = of(modules[i]);
         }
         return app(DEFAULT_APP_NAME, nodes);
     }
 
     /**
-     * A single module instance. A class that declares {@link SubModule} is a
-     * bundle: its declared submodules follow it in the tree, so placing the
-     * bundle is placing the whole group. A submodule is an ordinary module and
-     * can always be placed on its own instead — taking a subset is composing
-     * the modules you want.
+     * The module node for a single module instance. A class that declares
+     * {@link SubModule} is a bundle: its declared submodules follow it in the
+     * tree, so placing the bundle is placing the whole group. A submodule is an
+     * ordinary module and can always be placed on its own instead — taking a
+     * subset is composing the modules you want.
      */
-    public static ModuleNode leaf(ModuleEx module) {
+    public static ModuleNode of(ModuleEx module) {
         Objects.requireNonNull(module, "module");
         return expand(module, null, new LinkedHashSet<>());
     }
 
     /**
-     * A single module named by class — the normal way to declare one. The class
-     * is instantiated through its no-arg constructor when loading starts; a
-     * module that needs constructor arguments is passed as an instance instead
-     * ({@link #leaf(ModuleEx)}), since a module's constructor carries
-     * configuration, not dependencies (there is nothing to inject before the
-     * container exists). Submodules declared with {@link SubModule} are placed
-     * with the module.
+     * The module node for a single module named by class — the normal way to
+     * declare one. The class is instantiated through its no-arg constructor when
+     * loading starts; a module that needs constructor arguments is passed as an
+     * instance instead ({@link #of(ModuleEx)}), since a module's constructor
+     * carries configuration, not dependencies (there is nothing to inject before
+     * the container exists). Submodules declared with {@link SubModule} are
+     * placed with the module.
      */
-    public static ModuleNode leaf(Class<? extends ModuleEx> type) {
+    public static ModuleNode of(Class<? extends ModuleEx> type) {
         Objects.requireNonNull(type, "module type");
         return expand(null, type, new LinkedHashSet<>());
     }
@@ -244,7 +244,7 @@ public final class ModuleNode {
             throw new IllegalArgumentException(
                 "Module " + moduleType.getName() + " has no no-arg constructor. A module whose"
                     + " constructor takes arguments is declared as an instance: ModuleNode"
-                    + ".leaf(new " + moduleType.getSimpleName() + "(…))", e);
+                    + ".of(new " + moduleType.getSimpleName() + "(…))", e);
         } catch (ReflectiveOperationException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             throw new IllegalStateException(
@@ -252,7 +252,7 @@ public final class ModuleNode {
         }
     }
 
-    /** This node's children, in order; a leaf has none. */
+    /** This node's children, in order; a plain module has none. */
     public List<ModuleNode> children() {
         return children;
     }
@@ -334,7 +334,7 @@ public final class ModuleNode {
         Objects.requireNonNull(types, "module types");
         ModuleNode[] nodes = new ModuleNode[types.length];
         for (int i = 0; i < types.length; i++) {
-            nodes[i] = leaf(Objects.requireNonNull(types[i], "module type"));
+            nodes[i] = of(Objects.requireNonNull(types[i], "module type"));
         }
         return nodes;
     }

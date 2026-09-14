@@ -166,7 +166,7 @@ public class GraphSpec {
         return addNode(id, NodeType.LOOP);
     }
 
-    public NodeSpec getNode(String id) {
+    public NodeSpec node(String id) {
         return nodes.get(id);
     }
 
@@ -189,7 +189,7 @@ public class GraphSpec {
     void drainNodeLinks() {
         for (NodeSpec node : nodes.values()) {
             for (var pending : node.drainPendingLinks()) {
-                LinkSpec link = link(node.getId(), pending.to());
+                LinkSpec link = link(node.id(), pending.to());
                 if (pending.configure() != null) {
                     pending.configure().accept(link);
                 }
@@ -360,79 +360,79 @@ public class GraphSpec {
     }
 
     public static GraphSpec copy(Graph graph) {
-        GraphSpec blueprint = new GraphSpec(graph.getId(), graph.getTitle(), graph.getDriver());
+        GraphSpec blueprint = new GraphSpec(graph.id(), graph.title(), graph.driver());
 
-        if (graph.getStart() != null) {
-            blueprint.entry(graph.getStart().getId());
+        if (graph.start() != null) {
+            blueprint.entry(graph.start().id());
         }
-        blueprint.meta(graph.getMetas());
+        blueprint.meta(graph.metas());
 
-        for (Node node : graph.getNodes().values()) {
-            NodeSpec nodeBlueprint = blueprint.addNode(node.getId(), node.getType());
-            nodeBlueprint.title(node.getTitle());
-            nodeBlueprint.meta(node.getMetas());
-            if (node.getWhen() != null) {
-                if (node.getWhen().getComponent() != null) {
-                    nodeBlueprint.when(node.getWhen().getComponent());
+        for (Node node : graph.nodes().values()) {
+            NodeSpec nodeBlueprint = blueprint.addNode(node.id(), node.type());
+            nodeBlueprint.title(node.title());
+            nodeBlueprint.meta(node.metas());
+            if (node.when() != null) {
+                if (node.when().component() != null) {
+                    nodeBlueprint.when(node.when().component());
                 } else {
-                    nodeBlueprint.when(node.getWhen().getDescription());
+                    nodeBlueprint.when(node.when().description());
                 }
             }
-            if (node.getTask() != null) {
-                if (node.getTask().getComponent() != null) {
-                    nodeBlueprint.task(node.getTask().getComponent());
+            if (node.task() != null) {
+                if (node.task().component() != null) {
+                    nodeBlueprint.task(node.task().component());
                 } else {
-                    nodeBlueprint.task(node.getTask().getDescription());
+                    nodeBlueprint.task(node.task().description());
                 }
             }
         }
 
-        for (Link link : graph.getLinks()) {
-            LinkSpec linkBlueprint = blueprint.link(link.getPrevId(), link.getNextId());
-            linkBlueprint.title(link.getTitle());
-            linkBlueprint.meta(link.getMetas());
-            if (link.getWhen() != null) {
-                if (link.getWhen().getComponent() != null) {
-                    linkBlueprint.when(link.getWhen().getComponent());
+        for (Link link : graph.links()) {
+            LinkSpec linkBlueprint = blueprint.link(link.prevId(), link.nextId());
+            linkBlueprint.title(link.title());
+            linkBlueprint.meta(link.metas());
+            if (link.when() != null) {
+                if (link.when().component() != null) {
+                    linkBlueprint.when(link.when().component());
                 } else {
-                    linkBlueprint.when(link.getWhen().getDescription());
+                    linkBlueprint.when(link.when().description());
                 }
             }
-            linkBlueprint.priority(link.getPriority());
+            linkBlueprint.priority(link.priority());
         }
 
         return blueprint;
     }
 
-    public String getId() {
+    public String id() {
         return id;
     }
 
-    public String getTitle() {
+    public String title() {
         return title;
     }
 
-    public String getDriver() {
+    public String driver() {
         return driver;
     }
 
-    public int getVersion() {
+    public int version() {
         return VERSION;
     }
 
-    public String getEntry() {
+    public String entry() {
         return resolveEntry();
     }
 
-    public Map<String, Object> getMeta() {
+    public Map<String, Object> meta() {
         return Collections.unmodifiableMap(meta);
     }
 
-    public Map<String, NodeSpec> getNodes() {
+    public Map<String, NodeSpec> nodes() {
         return Collections.unmodifiableMap(nodes);
     }
 
-    public List<LinkSpec> getLinks() {
+    public List<LinkSpec> links() {
         return Collections.unmodifiableList(links);
     }
 

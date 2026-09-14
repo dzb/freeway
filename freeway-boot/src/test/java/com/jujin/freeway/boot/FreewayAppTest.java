@@ -226,7 +226,7 @@ class FreewayAppTest {
     /** A fragment that places the SPI-discoverable module in the tree. */
     static final class AutoFragment {
         static ModuleNode standard() {
-            return ModuleNode.app("auto-fragment", ModuleNode.leaf(new AutoModule()));
+            return ModuleNode.app("auto-fragment", ModuleNode.of(new AutoModule()));
         }
     }
 
@@ -253,7 +253,7 @@ class FreewayAppTest {
         // causes it.
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
             FreewayApp.of(ModuleNode.app("bundle",
-                    AutoFragment.standard(), ModuleNode.leaf(new AutoModule())))
+                    AutoFragment.standard(), ModuleNode.of(new AutoModule())))
                 .autoDiscovery(false)
                 .shutdownHook(false)
                 .start());

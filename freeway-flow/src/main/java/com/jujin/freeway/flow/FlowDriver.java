@@ -11,7 +11,7 @@ import java.util.concurrent.ExecutorService;
 public interface FlowDriver {
 
     /** Async executor (for PARALLEL node concurrency) */
-    default ExecutorService getExecutor() {
+    default ExecutorService executor() {
         return null;
     }
 

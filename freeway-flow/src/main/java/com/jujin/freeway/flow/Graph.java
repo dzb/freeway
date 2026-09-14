@@ -32,35 +32,35 @@ public class Graph {
         blueprint.drainNodeLinks();
         blueprint.normalize();
 
-        this.id = blueprint.getId();
-        this.title = blueprint.getTitle();
-        this.driver = blueprint.getDriver();
+        this.id = blueprint.id();
+        this.title = blueprint.title();
+        this.driver = blueprint.driver();
 
-        String entryId = blueprint.getEntry();
-        if (entryId != null && !blueprint.getNodes().containsKey(entryId)) {
+        String entryId = blueprint.entry();
+        if (entryId != null && !blueprint.nodes().containsKey(entryId)) {
             throw new IllegalStateException("Entry node not found: " + entryId);
         }
 
-        Map<String, Node> nodeMap = new LinkedHashMap<>(blueprint.getNodes().size());
-        List<Link> linkAry = new ArrayList<>(blueprint.getLinks().size());
+        Map<String, Node> nodeMap = new LinkedHashMap<>(blueprint.nodes().size());
+        List<Link> linkAry = new ArrayList<>(blueprint.links().size());
         Map<String, List<LinkSpec>> outgoing = new LinkedHashMap<>();
-        for (LinkSpec link : blueprint.getLinks()) {
-            outgoing.computeIfAbsent(link.getFrom(), k -> new ArrayList<>()).add(link);
+        for (LinkSpec link : blueprint.links()) {
+            outgoing.computeIfAbsent(link.from(), k -> new ArrayList<>()).add(link);
         }
 
-        for (Map.Entry<String, NodeSpec> kv : blueprint.getNodes().entrySet()) {
+        for (Map.Entry<String, NodeSpec> kv : blueprint.nodes().entrySet()) {
             doAddNode(kv.getValue(), entryId, outgoing, nodeMap, linkAry);
         }
 
         this.nodes = Collections.unmodifiableMap(nodeMap);
         this.links = List.copyOf(linkAry);
-        this.metas = blueprint.getMeta().isEmpty()
+        this.metas = blueprint.meta().isEmpty()
                 ? Map.of()
-                : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.getMeta()));
+                : Collections.unmodifiableMap(new LinkedHashMap<>(blueprint.meta()));
 
         if (start == null) {
             for (Node node : nodes.values()) {
-                if (node.getPrevLinks().isEmpty()) {
+                if (node.prevLinks().isEmpty()) {
                     start = node;
                     break;
                 }
@@ -68,7 +68,7 @@ public class Graph {
         }
 
         if (start == null) {
-            throw new IllegalStateException("No start node found, graph: " + blueprint.getId());
+            throw new IllegalStateException("No start node found, graph: " + blueprint.id());
         }
     }
 
@@ -80,27 +80,27 @@ public class Graph {
     }
 
     // --- getters ---
-    public String getId() { return id; }
-    public String getTitle() { return title; }
-    public String getDriver() { return driver; }
-    public Map<String, Object> getMetas() { return metas; }
-    public Object getMeta(String key) { return metas.get(key); }
+    public String id() { return id; }
+    public String title() { return title; }
+    public String driver() { return driver; }
+    public Map<String, Object> metas() { return metas; }
+    public Object meta(String key) { return metas.get(key); }
 
     /** Returns the meta value cast to the requested type. */
     @SuppressWarnings("unchecked")
-    public <T> T getMetaAs(String key) { return (T) metas.get(key); }
+    public <T> T metaAs(String key) { return (T) metas.get(key); }
 
     /** Returns the meta value cast to the requested type, or {@code def}. */
     @SuppressWarnings("unchecked")
-    public <T> T getMetaOrDefault(String key, T def) { return (T) metas.getOrDefault(key, def); }
+    public <T> T metaOrDefault(String key, T def) { return (T) metas.getOrDefault(key, def); }
 
-    public Node getStart() { return start; }
-    public Map<String, Node> getNodes() { return nodes; }
-    public List<Link> getLinks() { return links; }
-    public Node getNode(String id) { return nodes.get(id); }
+    public Node start() { return start; }
+    public Map<String, Node> nodes() { return nodes; }
+    public List<Link> links() { return links; }
+    public Node node(String id) { return nodes.get(id); }
 
-    public Node getNodeOrThrow(String id) {
-        Node node = getNode(id);
+    public Node nodeOrThrow(String id) {
+        Node node = node(id);
         if (node == null) {
             throw new IllegalArgumentException("Node not found, id: " + id);
         }
@@ -119,21 +119,21 @@ public class Graph {
 
     // --- PlantUML ---
 
-    public String toPlantuml() {
-        return toPlantuml(PlantumlOptions.DEFAULT, null);
+    public String toPlantUml() {
+        return toPlantUml(PlantUmlOptions.DEFAULT, null);
     }
 
-    public String toPlantuml(PlantumlOptions options) {
-        return toPlantuml(options != null ? options : PlantumlOptions.DEFAULT, null);
+    public String toPlantUml(PlantUmlOptions options) {
+        return toPlantUml(options != null ? options : PlantUmlOptions.DEFAULT, null);
     }
 
-    public String toPlantuml(Function<PlantumlDisplayContext, PlantumlDisplayResult> displayMappingFunc) {
-        return toPlantuml(PlantumlOptions.DEFAULT, displayMappingFunc);
+    public String toPlantUml(Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+        return toPlantUml(PlantUmlOptions.DEFAULT, displayMappingFunc);
     }
 
-    public String toPlantuml(PlantumlOptions options,
-                              Function<PlantumlDisplayContext, PlantumlDisplayResult> displayMappingFunc) {
-        if (options == null) options = PlantumlOptions.DEFAULT;
+    public String toPlantUml(PlantUmlOptions options,
+                              Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+        if (options == null) options = PlantUmlOptions.DEFAULT;
 
         StringBuilder sb = new StringBuilder();
         sb.append("@startuml\n");
@@ -147,41 +147,41 @@ public class Graph {
                 .append("}\n");
 
         if (title != null && !title.isEmpty()) {
-            String safeTitle = escapePlantumlText(title);
+            String safeTitle = escapePlantUmlText(title);
             if (options.isShowIdInTitle()) {
                 sb.append("title ").append(safeTitle).append(" (").append(id).append(")\n");
             } else {
                 sb.append("title ").append(safeTitle).append("\n");
             }
         } else if (options.isShowIdInTitle()) {
-            sb.append("title ").append(escapePlantumlText(id)).append("\n");
+            sb.append("title ").append(escapePlantUmlText(id)).append("\n");
         }
 
         // declare nodes
         for (Node node : nodes.values()) {
-            String nodeId = node.getId();
+            String nodeId = node.id();
             // PlantUML state ids must be bare identifiers — a raw id with
             // spaces or special chars produces an invalid/ambiguous diagram.
-            requirePlantumlId(nodeId);
-            switch (node.getType()) {
+            requirePlantUmlId(nodeId);
+            switch (node.type()) {
                 case START:
                     sb.append("state ").append(nodeId).append(" <<start>>\n");
-                    appendNodeTitle(sb, nodeId, node.getTitle());
+                    appendNodeTitle(sb, nodeId, node.title());
                     break;
                 case END:
                     sb.append("state ").append(nodeId).append(" <<end>>\n");
-                    appendNodeTitle(sb, nodeId, node.getTitle());
+                    appendNodeTitle(sb, nodeId, node.title());
                     break;
                 case EXCLUSIVE, INCLUSIVE, PARALLEL, LOOP:
                     sb.append("state ").append(nodeId).append(" <<choice>> <<Gateway>>\n");
-                    appendNodeTitle(sb, nodeId, node.getTitle());
+                    appendNodeTitle(sb, nodeId, node.title());
                     if (options.isShowGatewayType()) {
-                        sb.append(nodeId).append(" : ").append(node.getType().name()).append("\n");
+                        sb.append(nodeId).append(" : ").append(node.type().name()).append("\n");
                     }
                     break;
                 default:
                     sb.append("state ").append(nodeId).append("\n");
-                    appendNodeTitle(sb, nodeId, node.getTitle());
+                    appendNodeTitle(sb, nodeId, node.title());
                     appendNodeTask(sb, nodeId, node, displayMappingFunc);
                     break;
             }
@@ -189,10 +189,10 @@ public class Graph {
 
         // declare links
         for (Link link : links) {
-            sb.append(link.getPrevId()).append(" --> ").append(link.getNextId());
+            sb.append(link.prevId()).append(" --> ").append(link.nextId());
             List<String> labels = new ArrayList<>();
-            if (link.getTitle() != null && !link.getTitle().isEmpty()) {
-                labels.add(link.getTitle());
+            if (link.title() != null && !link.title().isEmpty()) {
+                labels.add(link.title());
             }
             String whenText = buildLinkWhenText(link, displayMappingFunc);
             if (whenText != null && !whenText.isEmpty()) {
@@ -208,7 +208,7 @@ public class Graph {
         return sb.toString();
     }
 
-    private static void requirePlantumlId(String nodeId) {
+    private static void requirePlantUmlId(String nodeId) {
         if (!nodeId.matches("[A-Za-z_][A-Za-z0-9_]*")) {
             throw new IllegalArgumentException(
                 "Node id '" + nodeId + "' is not a valid PlantUML identifier "
@@ -221,7 +221,7 @@ public class Graph {
      * a newline would otherwise inject diagram statements, and an unescaped
      * quote breaks the label.
      */
-    private static String escapePlantumlText(String s) {
+    private static String escapePlantUmlText(String s) {
         return s.replace("\r", " ")
                 .replace("\n", "\\n")
                 .replace("\"", "\\\"");
@@ -229,24 +229,24 @@ public class Graph {
 
     private void appendNodeTitle(StringBuilder sb, String nodeId, String title) {
         if (title != null && !title.isEmpty()) {
-            sb.append(nodeId).append(" : ").append(escapePlantumlText(title)).append("\n");
+            sb.append(nodeId).append(" : ").append(escapePlantUmlText(title)).append("\n");
         }
     }
 
     private void appendNodeTask(StringBuilder sb, String nodeId, Node node,
-                                 Function<PlantumlDisplayContext, PlantumlDisplayResult> displayMappingFunc) {
-        String task = node.getTask().getDescription();
+                                 Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+        String task = node.task().description();
         if (task == null || task.isEmpty()) return;
 
         if (displayMappingFunc != null) {
             try {
-                PlantumlDisplayResult result = displayMappingFunc.apply(PlantumlDisplayContext.ofNode(node));
+                PlantUmlDisplayResult result = displayMappingFunc.apply(PlantUmlDisplayContext.ofNode(node));
                 if (result != null) {
                     if (!result.isVisible()) return;
                     if (result.isUseDefault()) {
-                        sb.append(nodeId).append(" : ").append(escapePlantumlText(task)).append("\n");
+                        sb.append(nodeId).append(" : ").append(escapePlantUmlText(task)).append("\n");
                     } else {
-                        sb.append(nodeId).append(" : ").append(escapePlantumlText(result.getText())).append("\n");
+                        sb.append(nodeId).append(" : ").append(escapePlantUmlText(result.text())).append("\n");
                     }
                     return;
                 }
@@ -254,27 +254,27 @@ public class Graph {
                 // on exception, fall back to default handling
             }
         }
-        sb.append(nodeId).append(" : ").append(escapePlantumlText(task)).append("\n");
+        sb.append(nodeId).append(" : ").append(escapePlantUmlText(task)).append("\n");
     }
 
     private String buildLinkWhenText(Link link,
-                                      Function<PlantumlDisplayContext, PlantumlDisplayResult> displayMappingFunc) {
-        String when = link.getWhen().getDescription();
+                                      Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
+        String when = link.when().description();
         if (when == null || when.isEmpty()) return null;
 
         if (displayMappingFunc != null) {
             try {
-                PlantumlDisplayResult result = displayMappingFunc.apply(PlantumlDisplayContext.ofLink(link));
+                PlantUmlDisplayResult result = displayMappingFunc.apply(PlantUmlDisplayContext.ofLink(link));
                 if (result != null) {
                     if (!result.isVisible()) return null;
-                    if (result.isUseDefault()) return escapePlantumlText(when);
-                    return escapePlantumlText(result.getText());
+                    if (result.isUseDefault()) return escapePlantUmlText(when);
+                    return escapePlantUmlText(result.text());
                 }
             } catch (Exception ignored) {
                 // on exception, fall back to default handling
             }
         }
-        return escapePlantumlText(when);
+        return escapePlantUmlText(when);
     }
 
     // --- static factories ---
@@ -310,16 +310,16 @@ public class Graph {
     private void doAddNode(NodeSpec nodeSpec, String entryId,
                            Map<String, List<LinkSpec>> outgoing,
                            Map<String, Node> nodeMap, List<Link> linkAry) {
-        List<LinkSpec> nodeLinks = outgoing.getOrDefault(nodeSpec.getId(), Collections.emptyList());
+        List<LinkSpec> nodeLinks = outgoing.getOrDefault(nodeSpec.id(), Collections.emptyList());
         List<Link> tmp = new ArrayList<>(nodeLinks.size());
         for (LinkSpec linkSpec : nodeLinks) {
-            tmp.add(new Link(this, nodeSpec.getId(), linkSpec));
+            tmp.add(new Link(this, nodeSpec.id(), linkSpec));
         }
         linkAry.addAll(tmp);
 
-        Node node = new Node(this, nodeSpec, nodeSpec.getType(), tmp);
-        nodeMap.put(node.getId(), node);
-        if (entryId != null && entryId.equals(nodeSpec.getId())) {
+        Node node = new Node(this, nodeSpec, nodeSpec.type(), tmp);
+        nodeMap.put(node.id(), node);
+        if (entryId != null && entryId.equals(nodeSpec.id())) {
             start = node;
         }
     }

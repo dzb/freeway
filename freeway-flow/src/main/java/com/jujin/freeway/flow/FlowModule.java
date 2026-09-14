@@ -78,7 +78,7 @@ public class FlowModule implements ModuleEx {
         }
 
         @Override
-        public Object getComponent(String componentName) {
+        public Object component(String componentName) {
             // TaskComponent first (most common), then ConditionComponent —
             // a @beanName condition reference must resolve components bound
             // as ConditionComponent, not only TaskComponent.

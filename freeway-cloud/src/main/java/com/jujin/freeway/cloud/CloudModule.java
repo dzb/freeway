@@ -19,8 +19,8 @@ import com.jujin.freeway.ioc.annotation.SubModule;
  *
  * <pre>{@code
  * FreewayApp.run(ModuleNode.app("order-service",
- *     ModuleNode.leaf(new OrderModule()),
- *     ModuleNode.leaf(CloudModule.class)));   // the whole bundle
+ *     ModuleNode.of(new OrderModule()),
+ *     ModuleNode.of(CloudModule.class)));   // the whole bundle
  * }</pre>
  *
  * <p>Any module below is an ordinary module, so taking a subset is placing it
@@ -28,7 +28,7 @@ import com.jujin.freeway.ioc.annotation.SubModule;
  *
  * <pre>{@code
  * FreewayApp.run(ModuleNode.app("order-service",
- *     ModuleNode.leaf(CloudRpcModule.class)));   // just the client
+ *     ModuleNode.of(CloudRpcModule.class)));   // just the client
  * }</pre>
  *
  * <p>{@code bind(Binder)} is the shared cloud surface: cross-cutting bindings

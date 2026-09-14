@@ -42,8 +42,8 @@ public final class Freeway {
      *
      * <pre>{@code
      * Container c = Freeway.create(ModuleNode.app("orders",
-     *     ModuleNode.leaf(new OrderModule()),
-     *     ModuleNode.leaf(CloudModule.class)));
+     *     ModuleNode.of(new OrderModule()),
+     *     ModuleNode.of(CloudModule.class)));
      * }</pre>
      */
     public static Container create(ModuleNode tree) {

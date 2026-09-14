@@ -34,9 +34,9 @@ public class TaskDesc {
         this.component = component;
     }
 
-    public Node getNode() { return node; }
-    public String getDescription() { return description; }
-    public TaskComponent getComponent() { return component; }
+    public Node node() { return node; }
+    public String description() { return description; }
+    public TaskComponent component() { return component; }
 
     public boolean isEmpty() {
         return (description == null || description.isEmpty()) && component == null;
@@ -61,7 +61,7 @@ public class TaskDesc {
      * {@code {"channel:notification", "priority:high"}}
      * Syntax was already validated by {@link #isMarkerRef()}.
      */
-    public Set<String> getMarkerNames() {
+    public Set<String> markerNames() {
         if (!isMarkerRef()) {
             return Set.of();
         }
@@ -92,9 +92,9 @@ public class TaskDesc {
     @Override
     public String toString() {
         if (isEmpty()) {
-            return "{nodeId='" + node.getId() + "', description=null}";
+            return "{nodeId='" + node.id() + "', description=null}";
         } else {
-            return "{nodeId='" + node.getId() + "', description='" + description + "'}";
+            return "{nodeId='" + node.id() + "', description='" + description + "'}";
         }
     }
 }

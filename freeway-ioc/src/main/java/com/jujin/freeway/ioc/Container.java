@@ -122,7 +122,7 @@ public interface Container extends AutoCloseable {
      * The module tree this container loaded — the same value the container
      * bound, not a second walk of the composition. Structure comes from
      * {@link ModuleNode#children()} and {@link ModuleNode#render()}, binding
-     * order from {@link ModuleNode#bindOrder()}: leaf nodes in
+     * order from {@link ModuleNode#bindOrder()}: module nodes in
      * pre-order, parents before children, siblings in declaration order.
      *
      * @return the loaded composition, never null

@@ -26,8 +26,8 @@ package com.jujin.freeway.ioc;
  *
  * <pre>{@code
  * ModuleNode app = ModuleNode.app("order-service",
- *     ModuleNode.leaf(new OrderModule()),
- *     ModuleNode.leaf(CloudModule.class));    // a bundle
+ *     ModuleNode.of(new OrderModule()),
+ *     ModuleNode.of(CloudModule.class));    // a bundle
  * FreewayApp.run(app);
  * }</pre>
  *

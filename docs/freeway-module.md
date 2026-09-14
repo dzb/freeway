@@ -9,7 +9,7 @@ Module is the unit of composition in Freeway. `ModuleEx` is the Java type name u
 
 `bind()` declares. It does not start work. Initialization happens when services are resolved or when runtime hooks fire.
 
-A module is a **leaf**: it knows nothing about how the application is composed. Grouping lives in the composition itself — a `ModuleNode` tree built at the entry point and handed to the container as a value.
+A module declares its bindings and nothing about how the application is composed; grouping lives in the composition itself — a `ModuleNode` tree built at the entry point and handed to the container as a value. A library that ships several modules declares them on a bundle class with `@SubModule`.
 
 ```java
 public final class OrderModule implements ModuleEx {
@@ -38,29 +38,29 @@ FreewayApp.run(app);
 ### Declaring modules: class by default, instance for configuration
 
 ```java
-ModuleNode.leaf(OrderModule.class);          // normal: no-arg constructor
-ModuleNode.leaf(new TenantModule("acme"));  // an instance, when the constructor takes configuration
+ModuleNode.of(OrderModule.class);          // normal: no-arg constructor
+ModuleNode.of(new TenantModule("acme"));  // an instance, when the constructor takes configuration
 FreewayApp.run(OrderModule.class, HttpModule.class);
 FreewayApp.run(ModuleNode.app("orders", OrderModule.class));
 ```
 
-Naming the class is still explicit — the composition names it, so nothing is scanned — and it is instantiated through its **no-arg constructor** when **loading starts**, not while the tree is composed: each node holds its declaration (a class, or an instance for a configured module). A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails at load, naming itself and the fix (`ModuleNode.leaf(new X(…))`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
+Naming the class is still explicit — the composition names it, so nothing is scanned — and it is instantiated through its **no-arg constructor** when **loading starts**, not while the tree is composed: each node holds its declaration (a class, or an instance for a configured module). A module's constructor carries configuration, not dependencies: there is nothing to inject before the container exists, so dependencies are declared in `bind(Binder)` as always. A class without a no-arg constructor fails at load, naming itself and the fix (`ModuleNode.of(new X(…))`) — inside the framework the only such module is the internal `BootModule`, which the boot layer constructs itself.
 
 Declaring one class twice is refused the same way whether it was named by class or given as an instance — the tree holds one declaration per module class, so `run(A.class, A.class)` fails and names the fix: declare the class once. Sharing between branches goes through a **shared node value**, not through a repeated declaration. A class-only tree can be loaded by more than one container: each load resolves its own module.
 
 | Factory | Meaning |
 |---|---|
 | `app(name, …)` | the application root: it names the tree and binds nothing |
-| `leaf(class \| module)` | a module node — a single module, or a bundle's subtree when its class declares `@SubModule` |
+| `of(class \| module)` | a module node — a single module, or a bundle's subtree when its class declares `@SubModule` |
 
-Every factory takes either a module **class** (resolved through its no-arg constructor at load) or an **instance** (for a module whose constructor takes arguments, and the only form a lambda or anonymous module can take); `app` accepts a varargs list of classes, and anything mixed is expressed with `leaf` children.
+Every factory takes either a module **class** (resolved through its no-arg constructor at load) or an **instance** (for a module whose constructor takes arguments, and the only form a lambda or anonymous module can take); `app` accepts a varargs list of classes, and anything mixed is expressed with `of` children.
 
 The flat entry points stay as sugar for "the application root's children":
 
 ```java
 FreewayApp.run(HttpModule.class, DbModule.class);
 // ≡ FreewayApp.run(ModuleNode.app("application",
-//       ModuleNode.leaf(HttpModule.class), ModuleNode.leaf(DbModule.class)));
+//       ModuleNode.of(HttpModule.class), ModuleNode.of(DbModule.class)));
 ```
 
 `Freeway.create(...)` (test and standalone usage) takes the same two forms. `FreewayApp.of(...)` + `.add(...)` accepts modules and composed trees in any order:
@@ -89,7 +89,7 @@ public final class CloudModule implements ModuleEx {
 }
 ```
 
-The declaration is static data read while the composition tree is built — not a method the framework calls back into — so the entry point still decides what is placed. A submodule is an ordinary module: placing `ModuleNode.leaf(CloudRpcModule.class)` alone is the subset form, and no exclusion list exists because taking the bundle apart is just composing the modules you want.
+The declaration is static data read while the composition tree is built — not a method the framework calls back into — so the entry point still decides what is placed. A submodule is an ordinary module: placing `ModuleNode.of(CloudRpcModule.class)` alone is the subset form, and no exclusion list exists because taking the bundle apart is just composing the modules you want.
 
 ### What construction guarantees
 

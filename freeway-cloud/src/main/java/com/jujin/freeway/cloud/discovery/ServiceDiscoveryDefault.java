@@ -18,7 +18,7 @@ public final class ServiceDiscoveryDefault implements ServiceDiscovery {
     }
 
     @Override
-    public List<ServiceInstance> getInstances(String serviceId) {
+    public List<ServiceInstance> instances(String serviceId) {
         return store.liveReady(serviceId, RegistryStore.DEFAULT_EVICTION);
     }
 }

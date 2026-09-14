@@ -268,7 +268,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 ## Subgraph Driver Re-resolution
 
-**Decision:** `FlowExchanger.runGraph()` calls `engine.getDriver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
+**Decision:** `FlowExchanger.runGraph()` calls `engine.driver(graph)` to resolve the subgraph's own driver, rather than reusing the parent's.
 
 **Why:** Subgraphs define their own `"driver"` field. Blindly propagating the parent's driver meant subgraphs with custom drivers would silently use the wrong one. The fix creates a new `FlowExchanger` with the correctly resolved driver. The same `ExecState` instance is shared between parent and subgraph for parallel/inclusive node state tracking.
 
@@ -282,7 +282,7 @@ JSON → GraphSpec.normalize() → new Graph
 
 **Why:** Configuration errors (missing FlowContainer, unknown driver id) carry clear diagnostic messages. Wrapping them in a generic `FlowException("The task handle failed: g / a")` buried the root cause. The stratification preserves diagnostic clarity for setup errors while still wrapping unexpected runtime failures with graph context.
 
-**See also:** `FlowEngineDefault.java:task_exec()`, `FlowDriverDefault.java:getContainer()` (`freeway-flow`)
+**See also:** `FlowEngineDefault.java:task_exec()`, `FlowDriverDefault.java:container()` (`freeway-flow`)
 
 ---
 

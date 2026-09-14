@@ -18,8 +18,8 @@ import com.jujin.freeway.ioc.ModuleNode;
  * // Grouping is part of the composition, not of a module: the tree is a value
  * // built here, named here, and handed to the container.
  * AppRuntime app = FreewayApp.run(ModuleNode.app("order-service",
- *     ModuleNode.leaf(new OrderModule()),
- *     ModuleNode.leaf(CloudModule.class)));
+ *     ModuleNode.of(new OrderModule()),
+ *     ModuleNode.of(CloudModule.class)));
  * }</pre>
  *
  * <h3>Builder usage</h3>

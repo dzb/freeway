@@ -23,7 +23,6 @@ import com.jujin.freeway.http.internal.SslReloader;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ErrorHandler;
-import com.jujin.freeway.http.filter.ErrorHandlers;
 import com.jujin.freeway.http.filter.HealthCheck;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
@@ -190,7 +189,7 @@ public final class HttpModule implements ModuleEx {
             }
         });
 
-        binder.bind(HealthCheck.class).to(HealthCheck.Default.class);
+        binder.bind(HealthCheck.class).to(container -> HealthCheck.ALWAYS_OK);
         binder.bind(HealthFilter.class).to(container -> {
             HttpModuleConfig.Health health = container.get(HttpModuleConfig.class).health();
             HealthCheck check = container.get(HealthCheck.class);
@@ -198,7 +197,7 @@ public final class HttpModule implements ModuleEx {
         });
 
         binder.contribute(ErrorHandler.class)
-            .add(ErrorHandlers.defaultHandler());
+            .add(ErrorHandler.defaults());
     }
 
     /** Resolves a {@link LazyHandler} (class-based route) against the

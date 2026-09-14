@@ -20,10 +20,10 @@ public class NodeRecord implements Serializable {
     }
 
     public NodeRecord(Node node) {
-        this.graphId = node.getGraph().getId();
-        this.id = node.getId();
-        this.title = node.getTitle();
-        this.type = node.getType();
+        this.graphId = node.graph().id();
+        this.id = node.id();
+        this.title = node.title();
+        this.type = node.type();
         this.timestamp = System.currentTimeMillis();
     }
 
@@ -31,23 +31,23 @@ public class NodeRecord implements Serializable {
         return NodeType.END == type;
     }
 
-    public String getGraphId() {
+    public String graphId() {
         return graphId;
     }
 
-    public String getId() {
+    public String id() {
         return id;
     }
 
-    public String getTitle() {
+    public String title() {
         return title;
     }
 
-    public NodeType getType() {
+    public NodeType type() {
         return type;
     }
 
-    public long getTimestamp() {
+    public long timestamp() {
         return timestamp;
     }
 

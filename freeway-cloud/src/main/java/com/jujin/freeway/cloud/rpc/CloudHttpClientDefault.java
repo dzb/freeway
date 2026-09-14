@@ -434,7 +434,7 @@ public final class CloudHttpClientDefault implements CloudHttpClient, AutoClosea
      */
     private CloudResponse attempt(String serviceId, CloudRequest request, boolean async) {
         try {
-            List<ServiceInstance> instances = discovery.getInstances(serviceId);
+            List<ServiceInstance> instances = discovery.instances(serviceId);
             ServiceInstance instance = loadBalancer.choose(instances)
                 .orElseThrow(() -> CloudException.noInstance(serviceId));
             return doCall(instance, request, async);

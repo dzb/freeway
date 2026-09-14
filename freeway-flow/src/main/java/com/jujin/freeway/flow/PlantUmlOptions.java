@@ -6,8 +6,8 @@ package com.jujin.freeway.flow;
  * @author noear
  * @since 3.10
  */
-public class PlantumlOptions {
-    public static final PlantumlOptions DEFAULT = new PlantumlOptions();
+public class PlantUmlOptions {
+    public static final PlantUmlOptions DEFAULT = new PlantUmlOptions();
 
     private boolean showGatewayType = true;
     private boolean showIdInTitle = false;
@@ -16,7 +16,7 @@ public class PlantumlOptions {
         return showGatewayType;
     }
 
-    public PlantumlOptions showGatewayType(boolean showGatewayType) {
+    public PlantUmlOptions showGatewayType(boolean showGatewayType) {
         this.showGatewayType = showGatewayType;
         return this;
     }
@@ -25,7 +25,7 @@ public class PlantumlOptions {
         return showIdInTitle;
     }
 
-    public PlantumlOptions showIdInTitle(boolean showIdInTitle) {
+    public PlantUmlOptions showIdInTitle(boolean showIdInTitle) {
         this.showIdInTitle = showIdInTitle;
         return this;
     }

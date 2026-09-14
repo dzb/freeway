@@ -224,7 +224,7 @@ public record Health(boolean live, boolean ready, Instant lastSeen) {
 | 角色 | 契约 |
 |---|---|
 | `ServiceRegistry` | `register(instance)` / `renew(serviceId, instanceId)` / `unregister(instance)`（生命周期） |
-| `ServiceDiscovery` | `getInstances(serviceId)`；`getInstance` 是无次序的 default 便捷方法 |
+| `ServiceDiscovery` | `instances(serviceId)`；`instance` 是无次序的 default 便捷方法 |
 | `ServiceDeclaration` | 扩展点：任何模块声明"本次启动要注册什么端点" |
 | `LoadBalancer` | `choose(List<ServiceInstance>)`，只做出站前的实例选择 |
 
@@ -451,7 +451,7 @@ peer 都可连）。
 ```
 rateLimiter.tryAcquire()
   → breaker.allowRequest()
-  → 传输尝试： discovery.getInstances → loadBalancer.choose → 拼 URL
+  → 传输尝试： discovery.instances → loadBalancer.choose → 拼 URL
               → 注入 InvocationContext → httpClient.send
   → CloudResponse / CloudException
 （重试从 rate-limit 步重新开始，每次尝试重新选实例）

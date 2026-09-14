@@ -126,12 +126,12 @@ class FlowEngineTest {
                 }""";
 
         Graph graph = Graph.fromText(json);
-        assertEquals("json_test", graph.getId());
-        assertEquals(3, graph.getNodes().size());
-        assertNotNull(graph.getNode("s"));
-        assertNotNull(graph.getNode("a"));
-        assertNotNull(graph.getNode("e"));
-        assertEquals(NodeType.START, graph.getStart().getType());
+        assertEquals("json_test", graph.id());
+        assertEquals(3, graph.nodes().size());
+        assertNotNull(graph.node("s"));
+        assertNotNull(graph.node("a"));
+        assertNotNull(graph.node("e"));
+        assertEquals(NodeType.START, graph.start().type());
 
         // 执行
         AtomicInteger counter = new AtomicInteger(0);
@@ -294,7 +294,7 @@ class FlowEngineTest {
     // --- PlantUML ---
 
     @Test
-    void testPlantuml() {
+    void testPlantUml() {
         Graph graph = Graph.create("plantuml_test", "测试图", spec -> {
             spec.addStart("s").linkAdd("a");
             spec.addActivity("a").task("@task1").linkAdd("gw");
@@ -306,7 +306,7 @@ class FlowEngineTest {
             spec.addEnd("e");
         });
 
-        String puml = graph.toPlantuml();
+        String puml = graph.toPlantUml();
         assertNotNull(puml);
         assertTrue(puml.contains("@startuml"));
         assertTrue(puml.contains("@enduml"));
@@ -356,11 +356,11 @@ class FlowEngineTest {
             .container(name -> {
                 if ("mainTask".equals(name)) {
                     return (TaskComponent) (ctx, node) ->
-                        events.add("main:" + node.getGraph().getId() + ":" + node.getId());
+                        events.add("main:" + node.graph().id() + ":" + node.id());
                 }
                 if ("subTask".equals(name)) {
                     return (TaskComponent) (ctx, node) ->
-                        events.add("main:" + node.getGraph().getId() + ":" + node.getId());
+                        events.add("main:" + node.graph().id() + ":" + node.id());
                 }
                 return null;
             })
@@ -370,11 +370,11 @@ class FlowEngineTest {
             .container(name -> {
                 if ("mainTask".equals(name)) {
                     return (TaskComponent) (ctx, node) ->
-                        events.add("sub:" + node.getGraph().getId() + ":" + node.getId());
+                        events.add("sub:" + node.graph().id() + ":" + node.id());
                 }
                 if ("subTask".equals(name)) {
                     return (TaskComponent) (ctx, node) ->
-                        events.add("sub:" + node.getGraph().getId() + ":" + node.getId());
+                        events.add("sub:" + node.graph().id() + ":" + node.id());
                 }
                 return null;
             })
@@ -400,8 +400,8 @@ class FlowEngineTest {
 
         engine.load(subGraph);
         engine.load(mainGraph);
-        assertSame(mainDriver, engine.getDriver(mainGraph));
-        assertSame(subDriver, engine.getDriver(subGraph));
+        assertSame(mainDriver, engine.driver(mainGraph));
+        assertSame(subDriver, engine.driver(subGraph));
         engine.eval("main", FlowContext.of());
 
         assertEquals(List.of(
@@ -417,7 +417,7 @@ class FlowEngineTest {
         FlowExchanger exchanger = new FlowExchanger(
             graph,
             engine,
-            engine.getDriver(graph),
+            engine.driver(graph),
             FlowContext.of(),
             -1,
             new AtomicInteger(0)
@@ -538,26 +538,26 @@ class FlowEngineTest {
         FlowInterceptor auditor = new FlowInterceptor() {
             @Override
             public void interceptFlow(FlowInvocation inv) {
-                events.add("flow:before:" + inv.getGraph().getId());
+                events.add("flow:before:" + inv.graph().id());
                 inv.invoke();
-                events.add("flow:after:" + inv.getGraph().getId());
+                events.add("flow:after:" + inv.graph().id());
             }
 
             @Override
             public void onNodeStart(FlowContext ctx, Node node) {
-                events.add("node:enter:" + node.getId());
+                events.add("node:enter:" + node.id());
             }
 
             @Override
             public void onNodeEnd(FlowContext ctx, Node node) {
-                events.add("node:leave:" + node.getId());
+                events.add("node:leave:" + node.id());
             }
         };
 
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .container(name -> {
                     if ("taskA".equals(name)) {
-                        return (TaskComponent) (ctx, node) -> events.add("task:exec:" + node.getId());
+                        return (TaskComponent) (ctx, node) -> events.add("task:exec:" + node.id());
                     }
                     return null;
                 })
@@ -852,7 +852,7 @@ class FlowEngineTest {
         Graph g = GraphSpec.create("g", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
-        assertSame(driver, engine.getDriver(g));
+        assertSame(driver, engine.driver(g));
     }
 
     @Test
@@ -862,7 +862,7 @@ class FlowEngineTest {
         Graph g = GraphSpec.create("g", "", "", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
-        assertSame(driver, engine.getDriver(g));
+        assertSame(driver, engine.driver(g));
     }
 
     @Test
@@ -872,7 +872,7 @@ class FlowEngineTest {
         Graph g = GraphSpec.create("g", "", "   ", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
-        assertSame(driver, engine.getDriver(g));
+        assertSame(driver, engine.driver(g));
     }
 
     @Test
@@ -880,7 +880,7 @@ class FlowEngineTest {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
         Graph g = graphWithDriver("default");
-        assertSame(driver, engine.getDriver(g));
+        assertSame(driver, engine.driver(g));
     }
 
     @Test
@@ -892,7 +892,7 @@ class FlowEngineTest {
             "custom", customDriver
         ));
         Graph g = graphWithDriver("custom");
-        assertSame(customDriver, engine.getDriver(g));
+        assertSame(customDriver, engine.driver(g));
     }
 
     @Test
@@ -900,7 +900,7 @@ class FlowEngineTest {
         FlowDriver driver = new FlowDriverDefault(null, null);
         FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
         Graph g = graphWithDriver("nonexistent");
-        assertThrows(IllegalArgumentException.class, () -> engine.getDriver(g));
+        assertThrows(IllegalArgumentException.class, () -> engine.driver(g));
     }
 
     @Test
@@ -914,8 +914,8 @@ class FlowEngineTest {
 
         FlowEngine engine = FlowEngine.newInstance(Map.of("a", driverA, "b", driverB));
 
-        assertSame(driverA, engine.getDriver(graphWithDriver("a")));
-        assertSame(driverB, engine.getDriver(graphWithDriver("b")));
+        assertSame(driverA, engine.driver(graphWithDriver("a")));
+        assertSame(driverB, engine.driver(graphWithDriver("b")));
     }
 
     // ── FlowContainer binding + custom driver integration ────
@@ -1041,8 +1041,8 @@ class FlowEngineTest {
 
     @Test
     void nullContainerThrowsClearErrorForBeanName() {
-        // FlowDriverDefault.getInstance() has container=null
-        FlowEngine engine = FlowEngine.newInstance(); // uses getInstance()
+        // FlowDriverDefault.instance() has container=null
+        FlowEngine engine = FlowEngine.newInstance(); // uses instance()
         Graph g = GraphSpec.create("g", spec -> {
             spec.entry("s"); spec.addStart("s").linkAdd("a");
             spec.addActivity("a").task("@counter").linkAdd("e");
@@ -1121,7 +1121,7 @@ class FlowEngineTest {
     void inclusiveGatewayViaV2() {
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("inc", spec -> {
             spec.entry("s");
@@ -1143,7 +1143,7 @@ class FlowEngineTest {
     void exclusiveGatewayDefaultPathViaV2() {
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("ex", spec -> {
             spec.entry("s");
@@ -1171,7 +1171,7 @@ class FlowEngineTest {
         // default link: the run previously "succeeded" without reaching END.
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("ex_dead", spec -> {
             spec.entry("s");
@@ -1196,7 +1196,7 @@ class FlowEngineTest {
         // The same gateway shape with a default link must complete normally.
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("ex_default", spec -> {
             spec.entry("s");
@@ -1220,7 +1220,7 @@ class FlowEngineTest {
         // skipped. It must now fail the run.
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("inc_dead", spec -> {
             spec.entry("s");
@@ -1249,7 +1249,7 @@ class FlowEngineTest {
         // Same shape for a PARALLEL join node with multiple incoming links.
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("par_dead", spec -> {
             spec.entry("s");
@@ -1277,7 +1277,7 @@ class FlowEngineTest {
         // provisional dead-end — the graph completes normally.
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("join_ok", spec -> {
             spec.entry("s");
@@ -1344,7 +1344,7 @@ class FlowEngineTest {
                     return (TaskComponent) (ctx, node) -> {
                         int cur = active.incrementAndGet();
                         maxConcurrent.accumulateAndGet(cur, Math::max);
-                        executed.add(node.getId());
+                        executed.add(node.id());
                         barrier.countDown();
                         // Hold the branch open until all branches are inside —
                         // proves concurrent execution rather than sequential.
@@ -1385,7 +1385,7 @@ class FlowEngineTest {
     void pauseAndResumeContinuesFromTrace() {
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("chain", spec -> {
             spec.entry("s");
@@ -1442,7 +1442,7 @@ class FlowEngineTest {
     void inclusiveGatewayJoinsMultipleIncomingBranches() {
         var executed = new ConcurrentLinkedQueue<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph g = GraphSpec.create("incjoin", spec -> {
             spec.entry("s");
@@ -1492,7 +1492,7 @@ class FlowEngineTest {
     void subgraphTaskInvokesLoadedGraph() {
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph child = GraphSpec.create("child", spec -> {
             spec.entry("cs");
@@ -1520,7 +1520,7 @@ class FlowEngineTest {
         // skipped the body.
         var executed = new ArrayList<String>();
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
-            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.getId()))
+            .container(name -> (TaskComponent) (ctx, node) -> executed.add(node.id()))
             .build());
         Graph child = GraphSpec.create("child2", spec -> {
             spec.entry("cs");
@@ -1643,7 +1643,7 @@ class FlowEngineTest {
             FlowEngine engine = newEngine(FlowDriverDefault.builder()
                 .executor(executor)
                 .container(name -> (TaskComponent) (ctx, node) -> {
-                    if ("gw".equals(node.getId())) gatewayExecutions.incrementAndGet();
+                    if ("gw".equals(node.id())) gatewayExecutions.incrementAndGet();
                 })
                 .build());
             Graph g = GraphSpec.create("parinc", spec -> {
@@ -1771,7 +1771,7 @@ class FlowEngineTest {
                             return (TaskComponent) (ctx, node) -> loopTaskCount.incrementAndGet();
                         }
                         return (TaskComponent) (ctx, node) -> {
-                            if ("body".equals(node.getId())) {
+                            if ("body".equals(node.id())) {
                                 bodyCount.incrementAndGet();
                                 // Keep the claiming branch inside the loop so
                                 // the other branch arrives while it is live.
@@ -1816,7 +1816,7 @@ class FlowEngineTest {
         FlowInterceptor engineLevel = new FlowInterceptor() {
             @Override
             public void onNodeStart(FlowContext ctx, Node node) {
-                engineVisits.add(node.getGraph().getId() + ":" + node.getId());
+                engineVisits.add(node.graph().id() + ":" + node.id());
             }
         };
 
@@ -1825,13 +1825,13 @@ class FlowEngineTest {
         FlowInterceptor perEval = new FlowInterceptor() {
             @Override
             public void interceptFlow(FlowInvocation inv) {
-                flowWraps.add(inv.getGraph().getId());
+                flowWraps.add(inv.graph().id());
                 inv.invoke();
             }
 
             @Override
             public void onNodeStart(FlowContext ctx, Node node) {
-                evalVisits.add(node.getGraph().getId() + ":" + node.getId());
+                evalVisits.add(node.graph().id() + ":" + node.id());
             }
         };
 
@@ -1857,7 +1857,7 @@ class FlowEngineTest {
 
         FlowContext ctx = FlowContext.of();
         FlowExchanger exchanger = new FlowExchanger(
-            main, engine, engine.getDriver(main), ctx, -1, new AtomicInteger(0));
+            main, engine, engine.driver(main), ctx, -1, new AtomicInteger(0));
         engine.eval(main, exchanger, new FlowOptions().interceptorAdd(perEval));
 
         assertEquals(Set.of("mainI:s", "mainI:call", "mainI:e", "subI:cs", "subI:ca", "subI:ce"),
@@ -1960,14 +1960,14 @@ class FlowEngineTest {
         engine.addInterceptor(new FlowInterceptor() {
             @Override
             public void onNodeStart(FlowContext ctx, Node node) {
-                if ("a".equals(node.getId())) {
-                    throw new IllegalStateException("boom at " + node.getId());
+                if ("a".equals(node.id())) {
+                    throw new IllegalStateException("boom at " + node.id());
                 }
             }
 
             @Override
             public void onNodeEnd(FlowContext ctx, Node node) {
-                events.add("end:" + node.getId());
+                events.add("end:" + node.id());
             }
         });
         Graph g = GraphSpec.create("startThrow", spec -> {
@@ -1998,14 +1998,14 @@ class FlowEngineTest {
         engine.addInterceptor(new FlowInterceptor() {
             @Override
             public void onNodeStart(FlowContext ctx, Node node) {
-                if ("a".equals(node.getId())) {
+                if ("a".equals(node.id())) {
                     ctx.stop(); // makes the engine's onNodeStart return false
                 }
             }
 
             @Override
             public void onNodeEnd(FlowContext ctx, Node node) {
-                events.add("end:" + node.getId());
+                events.add("end:" + node.id());
             }
         });
         Graph g = GraphSpec.create("stopStart", spec -> {
@@ -2033,7 +2033,7 @@ class FlowEngineTest {
         var joinExecutions = new AtomicInteger(0);
         FlowEngine engine = newEngine(FlowDriverDefault.builder()
             .container(name -> (TaskComponent) (ctx, node) -> {
-                if ("join".equals(node.getId())) joinExecutions.incrementAndGet();
+                if ("join".equals(node.id())) joinExecutions.incrementAndGet();
             })
             .build());
         Graph g = GraphSpec.create("loopjoin", spec -> {

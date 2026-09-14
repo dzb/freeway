@@ -137,7 +137,7 @@ public final class DatabaseImpl implements Database {
      *
      * <p>The transaction covers only this {@code Database}'s connection: SQL
      * executed on other {@code Database} instances (e.g. obtained from a
-     * {@link DatabaseHub}) commits independently and is not rolled back when
+     * {@link com.jujin.freeway.db.DatabaseHub}) commits independently and is not rolled back when
      * this transaction fails.
      */
     @Override

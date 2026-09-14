@@ -18,15 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `ModuleNode.children()` → `List<TreeNode<ModuleEx>>` | `List<ModuleNode>` |
 | `ModuleNode.module()` | 节点自带声明：`type()` / `instance()` / `resolve()` |
 | `ModuleNode.bindOrder()` → `List<ModuleEx>` | `List<ModuleNode>`（模块节点），只含模块，应用根不再出现 |
-| `ModuleNode.group(name, …)` | 删除；bundle 用 `@SubModule`（子模块仍可单独 `leaf(...)` 放置取子集） |
-| `ModuleNode.of(module, children…)` / `of(Class, children…)` | 删除；bundle 用 `@SubModule` |
+| `ModuleNode.group(name, …)` | 删除；bundle 用 `@SubModule`（子模块仍可单独 `of(...)` 放置取子集） |
+| `ModuleNode.of(module, children…)`（显式带子节点） | 删除；模块节点用 `ModuleNode.of(class \| module)`，bundle 由 `@SubModule` 声明 |
 | `ModuleNode.of(TreeNode<ModuleEx>)` | 删除；树值本身就是 `ModuleNode` |
-| `CloudModules.standard()` | `ModuleNode.leaf(CloudModule.class)`（或 `.add(CloudModule.class)`） |
+| `CloudModules.standard()` | `ModuleNode.of(CloudModule.class)`（或 `.add(CloudModule.class)`） |
 | `Freeway.create(Collection<? extends ModuleEx>)` | `Freeway.create(modules.toArray(ModuleEx[]::new))` |
 | `EventBus.enableInboundDeduplication(int)` / `disableInboundDeduplication()` | `EventBus.inboundDeduplication(int)`（容量 ≤0 即关闭） |
 | `FreewayApp.run()` | `FreewayApp.run(new String[0])` |
 | `AppBuilder` 中第二个应用根被静默嵌套 | `IllegalStateException`；要合并请显式构造单个 `ModuleNode.app(...)` |
-| class 声明在 `leaf(Class)` 时实例化 | 加载期（容器创建）实例化；无参构造缺失的报错时机随之推迟，信息不变 |
+| class 声明在 `of(Class)` 时实例化 | 加载期（容器创建）实例化；无参构造缺失的报错时机随之推迟，信息不变 |
+| `freeway-flow` 的 52 个属性访问器 `getXxx()` | bare accessor：`getNodes()` → `nodes()`、`getTitle()` → `title()`（Spec 的 `title()` 读 / `title(String)` 写为同名重载）；`FlowContext` 的 keyed lookup 保持 Map 词汇 `get` / `getAs` / `getOrDefault` |
+| `PlantumlOptions` / `PlantumlDisplayContext` / `PlantumlDisplayResult`、`Graph.toPlantuml(…)` | `PlantUmlOptions` / `PlantUmlDisplayContext` / `PlantUmlDisplayResult`、`toPlantUml(…)` |
 
 行为变化（无需改调用点，但值得知道）：
 
@@ -45,8 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`@SubModule`（freeway-ioc）** — bundle 声明：模块类上列出随它一起放置的子模块（前序、按声明
-  顺序），构建树时展开成 `ModuleNode` 子树。`ModuleNode.leaf(Bundle.class)` 即整包；子模块是普通
-  模块，`ModuleNode.leaf(SubModule.class)` 即子集，因此不需要排除 API。`@SubModule` 成环在构建树
+  顺序），构建树时展开成 `ModuleNode` 子树。`ModuleNode.of(Bundle.class)` 即整包；子模块是普通
+  模块，`ModuleNode.of(SubModule.class)` 即子集，因此不需要排除 API。`@SubModule` 成环在构建树
   时报错。`CloudModule`（freeway-cloud）用它声明 8 个标准云模块，取代 `CloudModules.standard()`
   工厂。
 - **`SslSettings` / `SslContexts`（freeway-http 根包）** — `freeway.http.ssl.*` 现在只声明一次：
@@ -81,13 +83,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   替换字符（U+FFFD）回编码后是 3 字节，于是"裁到 123"反而可能重新超过 123 字节（实测 125 字节），
   严格的对端会拒收。现在回退到码点边界，结果保证 ≤123 字节且不出现替换字符。两个适配器此前都有这个
   缺陷，随共享实现一并修掉。
-- **`ModuleNode`（freeway-ioc）** — 模块组合的值类型：`app(name, …)` 应用根、`leaf(class | module)`
-  模块节点（自带声明：class 或实例）；一个模块类用 `@SubModule` 声明子模块时，`leaf` 展开为 bundle
-  子树，子模块仍可单独 `leaf` 放置取子集。
-  **常规写法是给 class**：`leaf(OrderModule.class)`、`app("orders", OrderModule.class,
+- **`ModuleNode`（freeway-ioc）** — 模块组合的值类型：`app(name, …)` 应用根、`of(class | module)`
+  模块节点（自带声明：class 或实例）；一个模块类用 `@SubModule` 声明子模块时，`of` 展开为 bundle
+  子树，子模块仍可单独 `of` 放置取子集。
+  **常规写法是给 class**：`of(OrderModule.class)`、`app("orders", OrderModule.class,
   HttpModule.class)`、`FreewayApp.run(OrderModule.class)`、`AppBuilder.add(Class…)` —— 类由组合
   显式点名（没有任何扫描），经**无参构造在加载时**实例化；构造器带参数的模块才传实例
-  （`leaf(new TenantModule("acme"))`），因为模块的构造器承载的是配置而不是依赖（容器尚不存在，
+  （`of(new TenantModule("acme"))`），因为模块的构造器承载的是配置而不是依赖（容器尚不存在，
   没有东西可注入）。没有无参构造却按 class 声明时，在加载时报错并同时点名类与修法；同一个
   class 声明两次与"同 class 两个实例"同样报错（修法：只声明一次，共享请用同一棵节点值）。
   `bindOrder()` 给出模块节点的前序（节点自带 `type()` / `instance()` / `resolve()`），
@@ -108,7 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   （freeway-ioc + freeway-boot + freeway-cloud）** — 此前同一棵树有三套表示：
   `ModuleNode` 包装通用 `TreeNode<ModuleEx>`，结构节点由实现 `ModuleEx` 的假模块 `GroupModule`
   充当（`isStructural`、`classes()` 剔除、`bindOrder` 计入分组等补丁随之而来）；且 class 形态在
-  `leaf(Class)` 当场实例化，树里存的永远是实例。现在 `ModuleNode`
+  `of(Class)` 当场实例化，树里存的永远是实例。现在 `ModuleNode`
   自己就是不可变树，只有两种节点：应用根（命名、不绑定）与模块节点（自带声明：class 或实例，
   `type()` / `instance()` / `resolve()`），不再经过 `TreeNode`，也不再有假模块与"命名分组"——
   一个库要打包多个模块时，bundle 类用 `@SubModule` 声明子模块，构建树时展开（静态元数据，不是
@@ -126,6 +128,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ServiceConfigurationError`
   捕获范围同时修正：过去只包住循环体，而 provider 加载失败发生在 `hasNext()` / `next()`，带
   classloader 上下文的报错在最常见失败路径上不会生效。
+- **`freeway-flow` 访问器命名 Freeway 化（破坏性）** — 移植自 solon-flow 的 52 个属性
+  JavaBean `getXxx()` 改为 bare accessor：`graph.nodes()` / `spec.title()` /
+  `node.meta(key)`；`FlowContext` 的 keyed lookup 保持 JDK `Map` 词汇
+  （`get` / `getAs` / `getOrDefault`）；`Plantuml*` 统一为
+  `PlantUml*`（含 `Graph.toPlantUml`）。JSON/图定义格式与运行时行为不变，纯命名对齐；上游
+  来源与署名保留在 `package-info`，并在其中注明"属性访问器已 Freeway 化"的有意分叉。
 - **公共面边缘清理（freeway-commons + freeway-ioc + freeway-boot）** — 随模块树收敛一起删掉
   已无角色的公开成员：`TreeNode`（Unreleased 新增，模块树改值后 core 与 freeway-ext 零引用）
   及其测试；`EventBus` 的 `enableInboundDeduplication(int)` / `disableInboundDeduplication()`
@@ -138,7 +146,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   再用形态后缀标注值从哪来（`·auto` / `·presence` / `·哨兵` / `·聚合闸`），126 行键表新增"档"列；新增
   "配置文件怎么组织"一节：默认单文件 + profile 作环境轴，按模块拆分是可选约定（三条纪律，配 `ConfigMaps`
   的跨文件重复键告警）。修正的不一致里三处照抄即错：日志文件调优键写成 `freeway.log.max-size`（真名在
-  `log.file.*` 下，静默失效）、prod JSON 样例的 `freeway.cloud.events.*`（真名 `cloud.event.*`，8 个键静默
+  `log.file.*` 下，静默失效）、prod JSON 样例的 `freeway.cloud.events.*`（真名
+  `freeway.cloud.event.*`，8 个键静默
   失效）、dev 样例 `allowed-origins=*` 配 `allow-credentials=true`（`CorsFilter` 构造即抛异常）；prod
   properties 样例的空 `db.username` 改为占位值。其余为类型与标注修正：`cors.max-age` 是 Integer、四个 CORS
   键是 `List(String)`、`log.file.flush-interval` 是 Long；`ssl.key-store-password` 的"生产是必填"改为
@@ -383,11 +392,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   （装配校验、SPI 去重、启动日志、测试）都看不到真实的模块集合。期间一度改为
   `ModuleEx.subModules()`，最终定为**入口构建的 `ModuleNode` 树**（见下一条）。
 - **`ModuleEx.subModules()` 与 `ModuleTree` 移除：模块组合成为入口构建的树（freeway-ioc，
-  破坏性）** — `ModuleEx` 只剩 `bind(Binder)`（外加展示用的 `name()` 默认方法），模块是
-  叶子；组合由入口代码构建：`ModuleNode.app("order-service", ModuleNode.leaf(new
-  OrderModule()), CloudModules.standard())`，容器绑定它的前序并持有它。迁移：
+  破坏性）** — `ModuleEx` 只剩 `bind(Binder)`（外加展示用的 `name()` 默认方法），模块只声明绑定；
+  组合由入口代码构建：`ModuleNode.app("order-service", ModuleNode.of(new
+  OrderModule()), CloudModule.class)`，容器绑定它的前序并持有它。迁移：
   `b.install(new HttpModule())` / `subModules()` → `ModuleNode.app("app",
-  ModuleNode.leaf(new HttpModule()))`（`FreewayApp.run(new HttpModule())` 是同一件事的扁平
+  ModuleNode.of(new HttpModule()))`（`FreewayApp.run(new HttpModule())` 是同一件事的扁平
   写法：应用根的直接孩子）。动机：`subModules()` 让组合成为框架**回调用户代码**的方法
   （每次启动被读多次，于是要靠"必须是稳定视图、请用字段 + getter"的契约去约束），而且伞
   模块因此拥有自己的子模块、应用无法替换其中一个；树是值——构建一次、装配处可见、片段可
@@ -396,11 +405,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ＝前序，确定性但**不再是契约**：需要时序请用 `RuntimeHook` 锚点或贡献自己的 `order()`。
   启动日志与 `Container.moduleTree()` 读的是同一份值，`Container.modules()`（同轮引入，未
   发布）随之删除。
-- **`CloudModule` 删除，改为 `CloudModules.standard()` 片段（freeway-cloud，破坏性）** —
-  片段是 `ModuleNode`，可以整包放进树、嵌进自己的分组，或者只取其中一个模块（`ModuleNode
-  .leaf(new CloudRpcModule())`）——这是伞模块做不到的。迁移：`new CloudModule()` →
-  `CloudModules.standard()`；与普通模块混装用 `FreewayApp.of(a).add(CloudModules.standard())
-  .start()`。
+- **`CloudModule` 改为 bundle 模块（freeway-cloud，破坏性）** — 伞模块 → 片段工厂
+  `CloudModules.standard()` → `CloudModule` + `@SubModule`：整包用
+  `ModuleNode.of(CloudModule.class)`，只取其中一个模块就单独
+  `ModuleNode.of(CloudRpcModule.class)`（这是伞模块做不到的）。迁移：
+  `new CloudModule()` / `CloudModules.standard()` → `ModuleNode.of(CloudModule.class)`
+  （或 `FreewayApp.of(...).add(CloudModule.class)`）。
 - **`AppConfig.snapshot()` 移除（freeway-boot，破坏性）** — 级联不再对外暴露 map 形态：
   `SymbolSource` 是唯一读取入口，`AppConfig` 收窄为 `profiles()` / `providers()` /
   `close()`。迁移：`config.snapshot().get(k)` →

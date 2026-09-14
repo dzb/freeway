@@ -31,7 +31,7 @@ public class FlowDriverDefault implements FlowDriver {
         this.executor = executor;
     }
 
-    public static FlowDriverDefault getInstance() {
+    public static FlowDriverDefault instance() {
         return INSTANCE;
     }
 
@@ -62,7 +62,7 @@ public class FlowDriverDefault implements FlowDriver {
     }
 
     @Override
-    public ExecutorService getExecutor() {
+    public ExecutorService executor() {
         return executor;
     }
 
@@ -70,13 +70,13 @@ public class FlowDriverDefault implements FlowDriver {
 
     @Override
     public boolean handleCondition(FlowExchanger exchanger, ConditionDesc condition) throws Throwable {
-        return handleConditionDo(exchanger, condition, condition.getDescription());
+        return handleConditionDo(exchanger, condition, condition.description());
     }
 
     protected boolean handleConditionDo(FlowExchanger exchanger, ConditionDesc condition, String description) throws Throwable {
         // inline component
-        if (condition.getComponent() != null) {
-            return condition.getComponent().test(exchanger.context());
+        if (condition.component() != null) {
+            return condition.component().test(exchanger.context());
         }
 
         // @beanName component reference
@@ -107,8 +107,8 @@ public class FlowDriverDefault implements FlowDriver {
     protected void handleTaskDo(FlowExchanger exchanger, TaskDesc task) throws Throwable {
         try {
             // inline component
-            if (task.getComponent() != null) {
-                task.getComponent().run(exchanger.context(), task.getNode());
+            if (task.component() != null) {
+                task.component().run(exchanger.context(), task.node());
                 return;
             }
 
@@ -119,24 +119,24 @@ public class FlowDriverDefault implements FlowDriver {
             }
 
             // #graphId sub-graph call
-            if (isGraph(task.getDescription())) {
-                tryAsGraphTask(exchanger, task, task.getDescription());
+            if (isGraph(task.description())) {
+                tryAsGraphTask(exchanger, task, task.description());
                 return;
             }
 
             // @beanName component reference
-            if (isComponent(task.getDescription())) {
-                tryAsComponentTask(exchanger, task, task.getDescription());
+            if (isComponent(task.description())) {
+                tryAsComponentTask(exchanger, task, task.description());
                 return;
             }
 
             // $metaKey meta reference
-            if (task.getDescription().startsWith("$")) {
-                tryAsMetaTask(exchanger, task, task.getDescription());
+            if (task.description().startsWith("$")) {
+                tryAsMetaTask(exchanger, task, task.description());
                 return;
             }
 
-            throw new FlowException("Unsupported task description: '" + task.getDescription()
+            throw new FlowException("Unsupported task description: '" + task.description()
                     + "'. Supported: @beanName, #graphId, $metaKey, !markerName");
         } finally {
             exchanger.context().exchanger(exchanger);
@@ -150,28 +150,28 @@ public class FlowDriverDefault implements FlowDriver {
      */
     protected void tryAsMarkerTask(FlowExchanger exchanger, TaskDesc task) throws Throwable {
         FlowMarkerIndex index = exchanger.engine().markerIndex();
-        TaskComponent handler = index.resolve(task.getMarkerNames());
+        TaskComponent handler = index.resolve(task.markerNames());
         if (handler == null) {
             throw new FlowException(
-                    "No TaskComponent matches markers " + task.getMarkerNames()
+                    "No TaskComponent matches markers " + task.markerNames()
             );
         }
-        handler.run(exchanger.context(), task.getNode());
+        handler.run(exchanger.context(), task.node());
     }
 
     protected void tryAsGraphTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
         String graphId = description.substring(1);
-        Graph graph = exchanger.engine().getGraphOrThrow(graphId);
+        Graph graph = exchanger.engine().graphOrThrow(graphId);
         exchanger.runGraph(graph);
     }
 
     protected void tryAsComponentTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
-        resolveComponent(description, TaskComponent.class, "task").run(exchanger.context(), task.getNode());
+        resolveComponent(description, TaskComponent.class, "task").run(exchanger.context(), task.node());
     }
 
     protected void tryAsMetaTask(FlowExchanger exchanger, TaskDesc task, String description) throws Throwable {
         String metaName = description.substring(1);
-        Object val = getDepthMeta(task.getNode().getGraph().getMetas(), metaName);
+        Object val = depthMeta(task.node().graph().metas(), metaName);
 
         if (val instanceof String strVal && !strVal.isEmpty()) {
             // if it is a string, set it as a simple value on the context
@@ -183,7 +183,7 @@ public class FlowDriverDefault implements FlowDriver {
         }
     }
 
-    protected Object getDepthMeta(Map<String, Object> metas, String key) {
+    protected Object depthMeta(Map<String, Object> metas, String key) {
         String[] fragments = key.split("\\.");
         Object rst = null;
 
@@ -212,7 +212,7 @@ public class FlowDriverDefault implements FlowDriver {
      */
     protected <T> T resolveComponent(String description, Class<T> type, String kind) throws Throwable {
         String beanName = description.substring(1);
-        Object component = getContainer().getComponent(beanName);
+        Object component = container().component(beanName);
 
         if (component == null) {
             throw new IllegalStateException("The " + kind + " component '" + beanName + "' not exist");
@@ -227,7 +227,7 @@ public class FlowDriverDefault implements FlowDriver {
      * Returns the FlowContainer for {@code @beanName} resolution.
      * Throws a clear error when no container was configured (standalone usage).
      */
-    protected FlowContainer getContainer() {
+    protected FlowContainer container() {
         if (container == null) {
             throw new IllegalStateException(
                 "No FlowContainer configured — @beanName task/condition resolution requires one. " +

@@ -12,7 +12,7 @@ import java.util.function.Function;
  * Per-execution working state of a {@link FlowExchanger}: stacks, counters,
  * and variables used while a flow (or sub-graph call) is running.
  *
- * <p>Shared across {@link FlowExchanger#copy()} boundaries so loop and
+ * <p>Shared across {@link FlowExchanger#copy(Graph)} boundaries so loop and
  * inclusive-gateway bookkeeping survives sub-graph switches.
  *
  * <p>Freeway-specific — no counterpart in solon-flow (which carries similar
@@ -63,7 +63,7 @@ public class ExecState {
      * stop/interrupt.
      */
     public void deadEnd(Graph graph, String nodeId) {
-        deadEnds.add(new DeadEnd(graph.getId(), nodeId));
+        deadEnds.add(new DeadEnd(graph.id(), nodeId));
     }
 
     /**
@@ -72,7 +72,7 @@ public class ExecState {
      * only a provisional wait.
      */
     public void deadEndClear(Graph graph, String nodeId) {
-        deadEnds.remove(new DeadEnd(graph.getId(), nodeId));
+        deadEnds.remove(new DeadEnd(graph.id(), nodeId));
     }
 
     /**
@@ -100,28 +100,28 @@ public class ExecState {
      */
     @SuppressWarnings("unchecked")
     public <T> Stack<T> stack(Graph graph, String key) {
-        return (Stack<T>) stacks.computeIfAbsent(graph.getId() + "/" + key, k -> new Stack<>());
+        return (Stack<T>) stacks.computeIfAbsent(graph.id() + "/" + key, k -> new Stack<>());
     }
 
     /**
      * Gets a count
      */
     public int count(Graph graph, String key) {
-        return counter(graph.getId() + "/" + key).get();
+        return counter(graph.id() + "/" + key).get();
     }
 
     /**
      * Sets a count
      */
     public void countSet(Graph graph, String key, int value) {
-        counter(graph.getId() + "/" + key).set(value);
+        counter(graph.id() + "/" + key).set(value);
     }
 
     /**
      * Increments a count
      */
     public int countIncr(Graph graph, String key) {
-        return counter(graph.getId() + "/" + key).incrementAndGet();
+        return counter(graph.id() + "/" + key).incrementAndGet();
     }
 
     /** Gets a root-level count (not graph-scoped). */

@@ -18,7 +18,7 @@ class HealthFilterTest {
 
     @Test
     void interceptsGetOnHealthPath() throws Exception {
-        HealthFilter filter = new HealthFilter(true, "/healthz", new HealthCheck.Default());
+        HealthFilter filter = new HealthFilter(true, "/healthz", HealthCheck.ALWAYS_OK);
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
@@ -32,7 +32,7 @@ class HealthFilterTest {
 
     @Test
     void passesThroughNonHealthPath() throws Exception {
-        HealthFilter filter = new HealthFilter(true, "/healthz", new HealthCheck.Default());
+        HealthFilter filter = new HealthFilter(true, "/healthz", HealthCheck.ALWAYS_OK);
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
@@ -44,7 +44,7 @@ class HealthFilterTest {
 
     @Test
     void passesThroughNonGetMethod() throws Exception {
-        HealthFilter filter = new HealthFilter(true, "/healthz", new HealthCheck.Default());
+        HealthFilter filter = new HealthFilter(true, "/healthz", HealthCheck.ALWAYS_OK);
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
@@ -56,7 +56,7 @@ class HealthFilterTest {
 
     @Test
     void disabledHealthCheckPassesThrough() throws Exception {
-        HealthFilter filter = new HealthFilter(false, "/healthz", new HealthCheck.Default());
+        HealthFilter filter = new HealthFilter(false, "/healthz", HealthCheck.ALWAYS_OK);
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
@@ -68,7 +68,7 @@ class HealthFilterTest {
 
     @Test
     void usesCustomHealthPath() throws Exception {
-        HealthFilter filter = new HealthFilter(true, "/ping", new HealthCheck.Default());
+        HealthFilter filter = new HealthFilter(true, "/ping", HealthCheck.ALWAYS_OK);
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
@@ -81,7 +81,7 @@ class HealthFilterTest {
 
     @Test
     void normalizesPathWithoutLeadingSlash() throws Exception {
-        HealthFilter filter = new HealthFilter(true, "healthz", new HealthCheck.Default());
+        HealthFilter filter = new HealthFilter(true, "healthz", HealthCheck.ALWAYS_OK);
         AtomicBoolean nextCalled = new AtomicBoolean(false);
         RouteHandler next = ctx -> nextCalled.set(true);
 
@@ -106,7 +106,7 @@ class HealthFilterTest {
 
     @Test
     void defaultHealthCheckReturnsStatusOk() {
-        HealthCheck health = new HealthCheck.Default();
+        HealthCheck health = HealthCheck.ALWAYS_OK;
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) health.check();
         assertEquals("ok", result.get("status"));

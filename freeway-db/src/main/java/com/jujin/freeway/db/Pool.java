@@ -7,7 +7,7 @@ package com.jujin.freeway.db;
  * {@link #invalidate(PooledConnection)} when they must not be reused.
  *
  * @see PoolConfig
- * @see PoolDefault
+ * @see com.jujin.freeway.db.internal.PoolDefault
  */
 public interface Pool extends AutoCloseable {
 

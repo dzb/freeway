@@ -34,7 +34,7 @@ freeway-commons         zero deps
   `FreewayApp.run(args, ModuleEx...)`.
 - **`ModuleEx`** — declares its bindings in `bind(Binder)`; how it is placed is
   not its concern. **`ModuleNode`** is the composition — an immutable tree built
-  at the entry point (`app` / `leaf`), validated while it is built: the same
+  at the entry point (`app` / `of`), validated while it is built: the same
   instance reached twice collapses, two declarations of one module class fail
   with both paths named, cycles are refused (through values and through
   `@SubModule`). A module whose class declares `@SubModule` is a **bundle**: its

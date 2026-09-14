@@ -4,12 +4,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/** Collects the field errors produced by {@link BeanValidator}. */
 public class ValidationResult {
     private final List<ValidationError> errors = new ArrayList<>();
 
     public boolean hasErrors() { return !errors.isEmpty(); }
 
-    public List<ValidationError> getErrors() {
+    public List<ValidationError> errors() {
         return Collections.unmodifiableList(errors);
     }
 

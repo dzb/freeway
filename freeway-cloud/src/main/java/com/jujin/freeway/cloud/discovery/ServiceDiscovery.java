@@ -10,10 +10,10 @@ import java.util.Optional;
 public interface ServiceDiscovery {
 
     /** Live and ready instances for the logical service; empty when unknown or all evicted. */
-    List<ServiceInstance> getInstances(String serviceId);
+    List<ServiceInstance> instances(String serviceId);
 
     /** First live/ready instance, if any. */
-    default Optional<ServiceInstance> getInstance(String serviceId) {
-        return getInstances(serviceId).stream().findFirst();
+    default Optional<ServiceInstance> instance(String serviceId) {
+        return instances(serviceId).stream().findFirst();
     }
 }

@@ -21,7 +21,7 @@ public class FlowTrace implements Serializable {
     public boolean isEnabled() { return enabled; }
     public void enable(boolean enabled) { this.enabled = enabled; }
 
-    public String getRootGraphId() { return rootGraphId; }
+    public String rootGraphId() { return rootGraphId; }
     public void setRootGraphId(String rootGraphId) { this.rootGraphId = rootGraphId; }
 
     public void clear() {
@@ -46,9 +46,9 @@ public class FlowTrace implements Serializable {
         if (!enabled) return;
         Objects.requireNonNull(graph, "graph");
         if (nodeId == null) {
-            lastRecords.remove(graph.getId());
+            lastRecords.remove(graph.id());
         } else {
-            recordNode(graph, graph.getNodeOrThrow(nodeId));
+            recordNode(graph, graph.nodeOrThrow(nodeId));
         }
     }
 
@@ -56,12 +56,12 @@ public class FlowTrace implements Serializable {
         if (!enabled) return;
         Objects.requireNonNull(graph, "graph");
         if (rootGraphId == null) {
-            rootGraphId = graph.getId();
+            rootGraphId = graph.id();
         }
         if (node == null) {
-            lastRecords.remove(graph.getId());
+            lastRecords.remove(graph.id());
         } else {
-            lastRecords.put(graph.getId(), new NodeRecord(node));
+            lastRecords.put(graph.id(), new NodeRecord(node));
         }
     }
 
@@ -73,14 +73,14 @@ public class FlowTrace implements Serializable {
     }
 
     public Node lastNode(Graph graph) {
-        NodeRecord tmp = lastRecord(graph.getId());
-        if (tmp == null) return graph.getStart();
-        return graph.getNodeOrThrow(tmp.getId());
+        NodeRecord tmp = lastRecord(graph.id());
+        if (tmp == null) return graph.start();
+        return graph.nodeOrThrow(tmp.id());
     }
 
     public String lastNodeId(String graphId) {
         NodeRecord tmp = lastRecord(graphId);
-        return tmp != null ? tmp.getId() : null;
+        return tmp != null ? tmp.id() : null;
     }
 
     /**

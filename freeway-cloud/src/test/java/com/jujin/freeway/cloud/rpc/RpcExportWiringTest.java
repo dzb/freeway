@@ -86,10 +86,10 @@ class RpcExportWiringTest {
     private AppRuntime run(ModuleEx... modules) {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
         List<ModuleNode> children = new ArrayList<>();
-        children.add(ModuleNode.leaf(new HttpModule()));
-        children.add(ModuleNode.leaf(CloudModule.class));
+        children.add(ModuleNode.of(new HttpModule()));
+        children.add(ModuleNode.of(CloudModule.class));
         for (ModuleEx module : modules) {
-            children.add(ModuleNode.leaf(module));
+            children.add(ModuleNode.of(module));
         }
         return FreewayApp.run(ModuleNode.app("test", children.toArray(ModuleNode[]::new)));
     }

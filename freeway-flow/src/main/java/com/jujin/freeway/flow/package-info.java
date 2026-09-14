@@ -12,6 +12,14 @@
  * {@code FlowMarkerIndex} (the {@code !marker} task syntax), and
  * {@code FlowModule}.</p>
  *
+ * <p><b>Naming:</b> property accessors follow Freeway's bare-property
+ * convention ({@code graph.nodes()}, {@code spec.title()}) instead of the
+ * upstream JavaBean {@code getX()} style — a deliberate divergence from
+ * solon-flow so the module reads like every other Freeway module. Keyed
+ * lookups on the map-shaped {@link com.jujin.freeway.flow.FlowContext} keep
+ * the JDK {@code Map} vocabulary
+ * ({@code get} / {@code getAs} / {@code getOrDefault}).</p>
+ *
  * <h3>Core entry points</h3>
  * <ul>
  *   <li>{@link com.jujin.freeway.flow.FlowEngine} — the engine; create an instance and execute graphs</li>
@@ -34,8 +42,8 @@
  *
  * <h3>PlantUML export</h3>
  * <ul>
- *   <li>{@link com.jujin.freeway.flow.Graph#toPlantuml()} — generates PlantUML state diagram text</li>
- *   <li>{@link com.jujin.freeway.flow.PlantumlOptions} / {@link com.jujin.freeway.flow.PlantumlDisplayContext} / {@link com.jujin.freeway.flow.PlantumlDisplayResult}</li>
+ *   <li>{@link com.jujin.freeway.flow.Graph#toPlantUml()} — generates PlantUML state diagram text</li>
+ *   <li>{@link com.jujin.freeway.flow.PlantUmlOptions} / {@link com.jujin.freeway.flow.PlantUmlDisplayContext} / {@link com.jujin.freeway.flow.PlantUmlDisplayResult}</li>
  * </ul>
  *
  * <h3>Stability</h3>

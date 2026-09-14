@@ -6,7 +6,7 @@ freeway-flow 的任务解析通过四种策略匹配图中 `task` 字段到实�
 
 | 优先级 | 策略 | 语法 | 说明 |
 |--------|------|------|------|
-| 1 | 内联组件 | `task.getComponent()` | 代码中直接 set 的 `TaskComponent` |
+| 1 | 内联组件 | `task.component()` | 代码中直接 set 的 `TaskComponent` |
 | 2 | Marker 匹配 | `!marker` | `FlowMarkerIndex` 交集匹配，最具体者胜出 |
 | 3 | 子图调用 | `#graph` | 调用命名子图 |
 | 4 | Bean 引用 | `@bean` | 容器 `get(TaskComponent.class, id)` |

@@ -134,7 +134,7 @@ public class FlowExchanger {
         context.trace().recordNode(graph, null);
         // Resolve the sub-graph's own driver — don't blindly reuse the parent's driver
         FlowExchanger subEx = new FlowExchanger(graph, engine,
-            engine.getDriver(graph), context, steps, stepCount, execState, depth);
+            engine.driver(graph), context, steps, stepCount, execState, depth);
         // Sub-graph evals share the live event bus and trace — mark them so
         // eval() neither clears the parent's subscriptions nor treats the
         // (record-reset) subgraph as a fresh run.
@@ -147,7 +147,7 @@ public class FlowExchanger {
         if (!isStopped()) {
             // Completion is tracked on the exchanger (markEnded), not the
             // trace: trace may be disabled, and is reset per invocation.
-            if (!subEx.isGraphEnded(graph.getId())) {
+            if (!subEx.isGraphEnded(graph.id())) {
                 interrupt(); // sub-graph did not end, interrupt the current branch
             }
         }
@@ -155,7 +155,7 @@ public class FlowExchanger {
 
     /** Marks a graph as having reached its END node (see {@link FlowEngineDefault#end_run}). */
     void markEnded(Graph graph) {
-        graphEnded.add(graph.getId());
+        graphEnded.add(graph.id());
     }
 
     /**
@@ -167,11 +167,11 @@ public class FlowExchanger {
     public void runTask(Node node, String description) throws FlowException {
         Objects.requireNonNull(node, "node");
         try {
-            engine.getDriver(node.getGraph()).handleTask(this, new TaskDesc(node, description));
+            engine.driver(node.graph()).handleTask(this, new TaskDesc(node, description));
         } catch (FlowException e) {
             throw e;
         } catch (Throwable e) {
-            throw new FlowException(FlowException.TASK_FAILED + ": " + node.getGraph().getId() + " / " + node.getId(), e);
+            throw new FlowException(FlowException.TASK_FAILED + ": " + node.graph().id() + " / " + node.id(), e);
         }
     }
 

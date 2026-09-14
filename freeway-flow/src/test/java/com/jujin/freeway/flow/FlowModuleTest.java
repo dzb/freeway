@@ -18,8 +18,8 @@ class FlowModuleTest {
     void iocAdapterReturnsNullForMissingBeanButPropagatesRealFailures() {
         Container container = mockContainer(null);
         FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
-        assertNull(adapter.getComponent("missing"));
-        assertThrows(RuntimeException.class, () -> adapter.getComponent("boom"));
+        assertNull(adapter.component("missing"));
+        assertThrows(RuntimeException.class, () -> adapter.component("boom"));
     }
 
     @Test
@@ -30,7 +30,7 @@ class FlowModuleTest {
         Container container = mockContainer(condition);
         FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
 
-        Object component = adapter.getComponent("isReady");
+        Object component = adapter.component("isReady");
         assertTrue(component instanceof ConditionComponent);
         assertSame(condition, component);
     }
@@ -47,7 +47,7 @@ class FlowModuleTest {
         try {
             FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
             IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> adapter.getComponent("dup"));
+                () -> adapter.component("dup"));
             assertTrue(ex.getMessage().contains("Multiple services match type"),
                 "got: " + ex.getMessage());
         } finally {
@@ -62,7 +62,7 @@ class FlowModuleTest {
         Container container = mockContainer(null);
         FlowModule.IocContainerAdapter adapter = new FlowModule.IocContainerAdapter(container);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-            () -> adapter.getComponent("ambiguous"));
+            () -> adapter.component("ambiguous"));
         assertTrue(ex.getMessage().contains("Multiple services match type"));
     }
 

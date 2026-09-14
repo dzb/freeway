@@ -111,7 +111,7 @@ class ErrorHandlerTest {
     void defaultHandlerMapsUnsupportedMediaTypeTo415() throws Exception {
         StubHttpContext ctx = new StubHttpContext();
 
-        boolean handled = ErrorHandlers.defaultHandler().handle(
+        boolean handled = ErrorHandler.defaults().handle(
             ctx, new UnsupportedMediaTypeException(
                 "Expected application/json Content-Type"));
 

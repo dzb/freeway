@@ -27,7 +27,7 @@ public interface FlowEngine {
      * container and contributed drivers.
      */
     static FlowEngine newInstance() {
-        return new FlowEngineDefault(Map.of("default", FlowDriverDefault.getInstance()));
+        return new FlowEngineDefault(Map.of("default", FlowDriverDefault.instance()));
     }
 
     /**
@@ -42,7 +42,7 @@ public interface FlowEngine {
 
     // --- driver ---
 
-    FlowDriver getDriver(Graph graph);
+    FlowDriver driver(Graph graph);
 
     // --- task component ---
 
@@ -73,12 +73,12 @@ public interface FlowEngine {
 
     void unload(String graphId);
 
-    Collection<Graph> getGraphs();
+    Collection<Graph> graphs();
 
-    Graph getGraph(String graphId);
+    Graph graph(String graphId);
 
-    default Graph getGraphOrThrow(String graphId) {
-        Graph graph = getGraph(graphId);
+    default Graph graphOrThrow(String graphId) {
+        Graph graph = graph(graphId);
         if (graph == null) {
             throw new FlowException("Flow graph not found: " + graphId);
         }
@@ -105,7 +105,7 @@ public interface FlowEngine {
     }
 
     default void eval(String graphId, int steps, FlowContext context) throws FlowException {
-        Graph graph = getGraphOrThrow(graphId);
+        Graph graph = graphOrThrow(graphId);
         eval(graph, steps, context);
     }
 
@@ -122,7 +122,7 @@ public interface FlowEngine {
     default void eval(Graph graph, int steps, FlowContext context) throws FlowException {
         // steps: -1 = unlimited (default), 0 = stop before the first node,
         // n = run at most n nodes.
-        FlowDriver driver = getDriver(graph);
+        FlowDriver driver = driver(graph);
         eval(graph, new FlowExchanger(graph, this, driver, context, steps, new AtomicInteger(0)), null);
     }
 

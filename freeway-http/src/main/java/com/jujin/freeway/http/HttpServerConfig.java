@@ -142,7 +142,7 @@ public record HttpServerConfig(
      * positional constructors make it easy to mis-bind a {@code Duration} to
      * the wrong slot (e.g. a read timeout landing on shutdownGrace); the
      * builder's named setters rule that out. Defaults match the canonical
-     * constructor's, and {@link #build()} runs the same validation.
+     * constructor's, and {@link Builder#build()} runs the same validation.
      */
     public static Builder builder() {
         return new Builder();

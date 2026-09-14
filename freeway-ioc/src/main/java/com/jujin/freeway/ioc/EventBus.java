@@ -3,6 +3,7 @@ package com.jujin.freeway.ioc;
 import com.jujin.freeway.commons.metrics.Metrics;
 import com.jujin.freeway.commons.scoped.Defer;
 import com.jujin.freeway.ioc.annotation.Inject;
+import com.jujin.freeway.ioc.annotation.Topic;
 
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -388,7 +389,7 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
      * so an unconsumed stream holds nothing.
      *
      * <p>Backpressure: downstream demand is honored via
-     * {@link SubmissionPublisher}; a consumer that cannot keep up
+     * {@link java.util.concurrent.SubmissionPublisher}; a consumer that cannot keep up
      * overflow-drops event (non-blocking) rather than stalling bus
      * dispatch for everyone else. Dropped event are logged at debug level.</p>
      *

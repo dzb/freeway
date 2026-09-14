@@ -29,7 +29,7 @@ final class BinderImpl implements Binder {
     }
 
     /**
-     * Binds the composed tree: each leaf declaration is resolved (a class
+     * Binds the composed tree: each module node is resolved (a class
      * declaration is instantiated here, not at composition) and the bindings
      * it declares are registered right after it, so later modules see earlier
      * ones. Class contributions are instantiated only at the end — every
@@ -37,8 +37,8 @@ final class BinderImpl implements Binder {
      * depend on services from any module regardless of declaration order.
      */
     void load(ModuleNode tree) {
-        for (ModuleNode leaf : tree.bindOrder()) {
-            ModuleEx module = leaf.resolve();
+        for (ModuleNode node : tree.bindOrder()) {
+            ModuleEx module = node.resolve();
             LOG.debug("Installing module: {}", module.name());
             currentModule = module.getClass();
             module.bind(this);

@@ -52,7 +52,7 @@ class CloudModuleTest {
 
     @Test
     void bundleDeclaresEveryStandardCloudModule() {
-        ModuleNode bundle = ModuleNode.leaf(CloudModule.class);
+        ModuleNode bundle = ModuleNode.of(CloudModule.class);
 
         assertEquals("CloudModule", bundle.name());
         assertEquals(STANDARD.size() + 1, bundle.size(), "the bundle node plus one submodule each");
@@ -64,8 +64,8 @@ class CloudModuleTest {
     @Test
     void bundleIsPlacedInTheApplicationTree() {
         ModuleNode app = ModuleNode.app("order-service",
-            ModuleNode.leaf(AppMarkerModule.class),
-            ModuleNode.leaf(CloudModule.class));
+            ModuleNode.of(AppMarkerModule.class),
+            ModuleNode.of(CloudModule.class));
 
         try (Container container = Freeway.create(app)) {
             assertSame(app, container.moduleTree());
@@ -102,8 +102,8 @@ class CloudModuleTest {
     void placingABundleAndASubmoduleOfItIsRefused() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
             () -> ModuleNode.app("test",
-                ModuleNode.leaf(CloudModule.class),
-                ModuleNode.leaf(CloudRpcModule.class)));
+                ModuleNode.of(CloudModule.class),
+                ModuleNode.of(CloudRpcModule.class)));
 
         assertTrue(failure.getMessage().contains(CloudRpcModule.class.getName()),
             "the duplicate names the submodule and the fix (place the class once): "
@@ -115,7 +115,7 @@ class CloudModuleTest {
         for (Class<?> module : STANDARD) {
             ModuleEx instance = newModule(module);
             try (Container container = Freeway.create(ModuleNode.app("test",
-                    ModuleNode.leaf(instance)))) {
+                    ModuleNode.of(instance)))) {
                 // Every module must be installable on its own (subset assembly).
             }
         }
@@ -146,7 +146,7 @@ class CloudModuleTest {
         // resolved limiter must be the no-op singleton, not a 100 req/s
         // token bucket from the library fallback.
         try (Container container = Freeway.create(
-                ModuleNode.app("test", ModuleNode.leaf(new CloudResilienceModule())))) {
+                ModuleNode.app("test", ModuleNode.of(new CloudResilienceModule())))) {
             RateLimiter limiter = container.get(RateLimiter.class);
             assertTrue(limiter.tryAcquire());
             assertTrue(limiter.tryAcquire());

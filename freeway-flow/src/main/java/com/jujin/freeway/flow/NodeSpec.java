@@ -127,35 +127,35 @@ public final class NodeSpec {
      */
     record PendingLink(String to, Consumer<LinkSpec> configure) {}
 
-    public String getId() {
+    public String id() {
         return id;
     }
 
-    public NodeType getType() {
+    public NodeType type() {
         return type;
     }
 
-    public String getTitle() {
+    public String title() {
         return title;
     }
 
-    public Map<String, Object> getMeta() {
+    public Map<String, Object> meta() {
         return Collections.unmodifiableMap(meta);
     }
 
-    public String getWhen() {
+    public String when() {
         return when;
     }
 
-    public ConditionComponent getWhenComponent() {
+    public ConditionComponent whenComponent() {
         return whenComponent;
     }
 
-    public String getTask() {
+    public String task() {
         return task;
     }
 
-    public TaskComponent getTaskComponent() {
+    public TaskComponent taskComponent() {
         return taskComponent;
     }
 }

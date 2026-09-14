@@ -19,7 +19,6 @@ import com.jujin.freeway.http.engine.FreewayHttpEngine;
 import com.jujin.freeway.http.filter.AccessLogFilter;
 import com.jujin.freeway.http.filter.CorsFilter;
 import com.jujin.freeway.http.filter.ErrorHandler;
-import com.jujin.freeway.http.filter.ErrorHandlers;
 import com.jujin.freeway.http.filter.HealthFilter;
 import com.jujin.freeway.http.filter.HttpFilter;
 import com.jujin.freeway.http.route.LazyHandler;
@@ -184,7 +183,7 @@ public final class WebServerBuilder {
         // the HttpModule contribution semantics
         // (container.extension() + built-in default).
         var handlers = new ArrayList<>(this.errorHandlers);
-        handlers.add(ErrorHandlers.defaultHandler());
+        handlers.add(ErrorHandler.defaults());
         var pipeline = new RequestComponents(
             routeIndex, wsIndex, corsFilter, healthFilter,
             List.copyOf(staticMounts),

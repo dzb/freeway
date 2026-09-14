@@ -10,5 +10,5 @@ public interface FlowContainer {
     /**
      * Gets a component
      */
-    Object getComponent(String componentName);
+    Object component(String componentName);
 }

@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * HTTP protocol helpers shared across the module: token validation, Vary
  * merging, and query-string parsing. These are protocol utilities, not
- * request/response API — keep {@link HttpContext} focused on the exchange.
+ * request/response API — keep {@link com.jujin.freeway.http.HttpContext} focused on the exchange.
  */
 public final class HttpUtils {
 

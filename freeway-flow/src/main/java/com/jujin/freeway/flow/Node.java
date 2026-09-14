@@ -38,21 +38,21 @@ public class Node {
     public Object attachment;
 
     public Node(Graph graph, NodeSpec spec, List<Link> links) {
-        this(graph, spec, spec.getType(), links);
+        this(graph, spec, spec.type(), links);
     }
 
     public Node(Graph graph, NodeSpec spec, NodeType type, List<Link> links) {
         this.graph = graph;
-        this.id = spec.getId();
-        this.title = spec.getTitle();
+        this.id = spec.id();
+        this.title = spec.title();
         this.type = type;
-        this.when = new ConditionDesc(graph, spec.getWhen(), spec.getWhenComponent());
-        this.task = new TaskDesc(this, spec.getTask(), spec.getTaskComponent());
+        this.when = new ConditionDesc(graph, spec.when(), spec.whenComponent());
+        this.task = new TaskDesc(this, spec.task(), spec.taskComponent());
 
-        if (spec.getMeta() == null || spec.getMeta().isEmpty()) {
+        if (spec.meta() == null || spec.meta().isEmpty()) {
             this.metas = Map.of();
         } else {
-            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.getMeta()));
+            this.metas = Collections.unmodifiableMap(new LinkedHashMap<>(spec.meta()));
         }
 
         if (links == null || links.isEmpty()) {
@@ -66,15 +66,15 @@ public class Node {
         }
     }
 
-    public Graph getGraph() { return graph; }
-    public String getId() { return id; }
-    public String getTitle() { return title; }
-    public NodeType getType() { return type; }
-    public Map<String, Object> getMetas() { return metas; }
+    public Graph graph() { return graph; }
+    public String id() { return id; }
+    public String title() { return title; }
+    public NodeType type() { return type; }
+    public Map<String, Object> metas() { return metas; }
 
-    public Object getMeta(String key) { return metas.get(key); }
+    public Object meta(String key) { return metas.get(key); }
 
-    public String getMetaAsString(String key) {
+    public String metaAsString(String key) {
         Object tmp = metas.get(key);
         if (tmp == null) return null;
         if (tmp instanceof String) return (String) tmp;
@@ -83,13 +83,13 @@ public class Node {
 
     /** Returns the meta value cast to the requested type. */
     @SuppressWarnings("unchecked")
-    public <T> T getMetaAs(String key) {
+    public <T> T metaAs(String key) {
         return (T) metas.get(key);
     }
 
     /** Returns the meta value cast to the requested type, or {@code def}. */
     @SuppressWarnings("unchecked")
-    public <T> T getMetaOrDefault(String key, T def) {
+    public <T> T metaOrDefault(String key, T def) {
         return (T) metas.getOrDefault(key, def);
     }
 
@@ -97,7 +97,7 @@ public class Node {
         return metas.containsKey(key);
     }
 
-    public Boolean getMetaAsBool(String key) {
+    public Boolean metaAsBool(String key) {
         Object tmp = metas.get(key);
         if (tmp == null) return null;
         if (tmp instanceof Boolean) return (Boolean) tmp;
@@ -107,7 +107,7 @@ public class Node {
             "Cannot read meta '" + key + "' as boolean: " + tmp.getClass().getName());
     }
 
-    public Number getMetaAsNumber(String key) {
+    public Number metaAsNumber(String key) {
         Object tmp = metas.get(key);
         if (tmp == null) return null;
         if (tmp instanceof String) return Double.parseDouble((String) tmp);
@@ -116,12 +116,12 @@ public class Node {
             "Cannot read meta '" + key + "' as number: " + tmp.getClass().getName());
     }
 
-    public List<Link> getPrevLinks() {
+    public List<Link> prevLinks() {
         if (prevLinks == null) {
             List<Link> tmp = new ArrayList<>();
-            if (getType() != NodeType.START) {
-                for (Link l : graph.getLinks()) {
-                    if (getId().equals(l.getNextId())) {
+            if (type() != NodeType.START) {
+                for (Link l : graph.links()) {
+                    if (id().equals(l.nextId())) {
                         tmp.add(l);
                     }
                 }
@@ -132,14 +132,14 @@ public class Node {
         return prevLinks;
     }
 
-    public List<Link> getNextLinks() { return nextLinks; }
+    public List<Link> nextLinks() { return nextLinks; }
 
-    public List<Node> getNextNodes() {
+    public List<Node> nextNodes() {
         if (nextNodes == null) {
             List<Node> tmp = new ArrayList<>();
-            if (getType() != NodeType.END) {
-                for (Link l : this.getNextLinks()) {
-                    tmp.add(graph.getNode(l.getNextId()));
+            if (type() != NodeType.END) {
+                for (Link l : this.nextLinks()) {
+                    tmp.add(graph.node(l.nextId()));
                 }
             }
             nextNodes = List.copyOf(tmp);
@@ -147,20 +147,20 @@ public class Node {
         return nextNodes;
     }
 
-    public Node getNextNode() {
-        if (getNextNodes().size() > 0) {
-            return getNextNodes().get(0);
+    public Node nextNode() {
+        if (nextNodes().size() > 0) {
+            return nextNodes().get(0);
         }
         return null;
     }
 
-    public List<Node> getPrevNodes() {
+    public List<Node> prevNodes() {
         if (prevNodes == null) {
             List<Node> tmp = new ArrayList<>();
-            if (getType() != NodeType.START) {
-                for (Link l : graph.getLinks()) {
-                    if (getId().equals(l.getNextId())) {
-                        tmp.add(graph.getNode(l.getPrevId()));
+            if (type() != NodeType.START) {
+                for (Link l : graph.links()) {
+                    if (id().equals(l.nextId())) {
+                        tmp.add(graph.node(l.prevId()));
                     }
                 }
             }
@@ -169,19 +169,19 @@ public class Node {
         return prevNodes;
     }
 
-    public ConditionDesc getWhen() { return when; }
-    public TaskDesc getTask() { return task; }
+    public ConditionDesc when() { return when; }
+    public TaskDesc task() { return task; }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, graph.getId());
+        return Objects.hash(id, graph.id());
     }
 
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof Node other) {
-            return other.getId().equals(getId())
-                    && other.getGraph().getId().equals(getGraph().getId());
+            return other.id().equals(id())
+                    && other.graph().id().equals(graph().id());
         }
         return false;
     }
@@ -196,16 +196,16 @@ public class Node {
             buf.append(", title='").append(title).append('\'');
         }
         if (when != null && !when.isEmpty()) {
-            buf.append(", when='").append(when.getDescription()).append('\'');
+            buf.append(", when='").append(when.description()).append('\'');
         }
-        if (when.getComponent() != null) {
-            buf.append(", whenComponent=").append(when.getComponent());
+        if (when.component() != null) {
+            buf.append(", whenComponent=").append(when.component());
         }
         if (task != null && !task.isEmpty()) {
-            buf.append(", task='").append(task.getDescription()).append('\'');
+            buf.append(", task='").append(task.description()).append('\'');
         }
-        if (task.getComponent() != null) {
-            buf.append(", taskComponent=").append(task.getComponent());
+        if (task.component() != null) {
+            buf.append(", taskComponent=").append(task.component());
         }
         if (!nextLinks.isEmpty()) {
             buf.append(", link=").append(nextLinks);

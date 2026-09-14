@@ -62,7 +62,7 @@ public interface FlowContext {
     Map<String, Object> data();
 
     /** Gets the flow instance id */
-    default String getInstanceId() {
+    default String instanceId() {
         return getAs("instanceId");
     }
 

@@ -87,8 +87,8 @@ class MetricsAssemblyTest {
     @Test
     void coexistingSecondMetricsPrimaryFailsLoudly() {
         try (Container container = Freeway.create(ModuleNode.app("test",
-                ModuleNode.leaf(CloudModule.class),
-                ModuleNode.leaf(new SecondMetricsPrimaryModule())))) {
+                ModuleNode.of(CloudModule.class),
+                ModuleNode.of(new SecondMetricsPrimaryModule())))) {
             assertThrows(AmbiguousBindingException.class,
                 () -> container.get(Metrics.class),
                 "two primary Metrics bindings must fail loudly at first resolution — "
