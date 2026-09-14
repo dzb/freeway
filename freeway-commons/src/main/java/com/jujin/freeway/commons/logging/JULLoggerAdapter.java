@@ -47,7 +47,7 @@ final class JULLoggerAdapter extends LegacyAbstractLogger {
     static volatile boolean callerInfoEnabled = loadCallerInfoFlag();
 
     private static boolean loadCallerInfoFlag() {
-        String value = JULEnhancer.sysOrEnv("freeway.log.caller-info");
+        String value = JULEnhancer.sysOrEnv(LogKeys.CALLER_INFO);
         if (value != null) {
             return !("false".equalsIgnoreCase(value) || "0".equals(value));
         }

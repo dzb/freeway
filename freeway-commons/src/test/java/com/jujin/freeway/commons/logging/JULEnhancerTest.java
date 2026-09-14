@@ -9,9 +9,13 @@ import java.util.logging.LogManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -414,5 +418,32 @@ class JULEnhancerTest {
         assertNotEquals("freeway.log.file.max-size",
             JULEnhancer.envToConfigKey("FREEWAY_LOG_FILE_MAX_SIZE"),
             "the underscore spelling addresses max.size, a different key");
+    }
+
+    @Test
+    void invalidValueIsReportedAndReplacedByTheDefault() {
+        // One policy for both readers (bootstrap cascade and a natively
+        // registered JULFileHandler): a value that does not parse never throws —
+        // that would lose the handler during LogManager instantiation — and is
+        // never silent, which is how a typo survives for a week.
+        String key = "freeway.log.file.max-size";
+        PrintStream originalErr = System.err;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setProperty(key, "100MB");
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        long resolved;
+        try {
+            resolved = JULEnhancer.propertyValue(
+                new Properties(), key, 100L, Long::parseLong);
+        } finally {
+            System.setErr(originalErr);
+            System.clearProperty(key);
+        }
+        assertEquals(100L, resolved, "an unparsable value falls back to the default");
+        String notice = captured.toString(StandardCharsets.UTF_8);
+        assertTrue(
+            notice.contains(key) && notice.contains("100MB") && notice.contains("100"),
+            "the notice names the key, the value and the default used: " + notice
+        );
     }
 }

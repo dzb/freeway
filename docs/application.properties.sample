@@ -58,13 +58,13 @@
 
 # MDC (Mapped Diagnostic Context) — 每线程级上下文键值对，用于分布式链路追踪和请求关联。
 # 日志输出中 MDC 键值以 [key=value] 形式显示在 logger 名之后。
-# 默认显示 code, market, diagId 三个键（优先级最高），其余 MDC 键按字母序排列。
+# 默认不预设优先级：所有 MDC 键按字母序；要突出的键由应用自己声明。
 # 典型场景：在请求入口将 traceId/requestId 放入 MDC，后续所有日志自动携带该上下文。
 #
 # 注意：以下四项只在类加载期读取，只有 -D / 环境变量生效，写进任何配置文件都无效：
 #   freeway.log.mdc / freeway.log.mdc.priority / freeway.log.color / freeway.log.caller-info
 # -Dfreeway.log.mdc=true
-# -Dfreeway.log.mdc.priority=code,market,diagId
+# -Dfreeway.log.mdc.priority=traceId,requestId
 
 
 # ================================

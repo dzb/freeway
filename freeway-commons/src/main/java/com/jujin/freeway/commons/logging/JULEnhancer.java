@@ -187,7 +187,7 @@ final class JULEnhancer {
 
     private static void mergeLogKeys(Properties merged, Map<String, String> values) {
         values.forEach((key, value) -> {
-            if (key.startsWith("freeway.log.")) {
+            if (key.startsWith(LogKeys.PREFIX)) {
                 merged.setProperty(key, value);
             }
         });
@@ -292,7 +292,7 @@ final class JULEnhancer {
     private static void configureLevels(Properties fileConfig) {
         // Root logger level — on failure log and skip, don't abort
         String rootLevel = readProperty(
-            fileConfig, "freeway.log.level", "INFO"
+            fileConfig, LogKeys.LEVEL, "INFO"
         );
         try {
             Logger.getLogger("").setLevel(parseLogLevel(rootLevel));
@@ -345,8 +345,8 @@ final class JULEnhancer {
         for (String key : keys) {
             if (
                 key.endsWith(".level")
-                    && !key.equals("freeway.log.level")
-                    && !key.startsWith("freeway.log.")
+                    && !key.equals(LogKeys.LEVEL)
+                    && !key.startsWith(LogKeys.PREFIX)
             ) {
                 target.add(key);
             }
@@ -424,7 +424,7 @@ final class JULEnhancer {
 
     private static void configureConsole(Properties fileConfig) {
         String enabled = readProperty(
-            fileConfig, "freeway.log.console.enabled", "true"
+            fileConfig, LogKeys.CONSOLE_ENABLED, "true"
         );
 
         Logger root = Logger.getLogger("");
@@ -445,7 +445,7 @@ final class JULEnhancer {
         // Ensure at least one ConsoleHandler exists
         boolean hasConsole = false;
         String level = readProperty(
-            fileConfig, "freeway.log.console.level", null
+            fileConfig, LogKeys.CONSOLE_LEVEL, null
         );
         for (Handler h : root.getHandlers()) {
             if (h instanceof ConsoleHandler) {
@@ -548,7 +548,7 @@ final class JULEnhancer {
      * ({@code FREEWAY_LOG_FORMAT}), and {@code freeway-logging.properties}.
      */
     private static String formatMode(Properties fileConfig) {
-        String v = readProperty(fileConfig, "freeway.log.format", "auto");
+        String v = readProperty(fileConfig, LogKeys.FORMAT, "auto");
         if ("auto".equalsIgnoreCase(v) || "simple".equalsIgnoreCase(v)) {
             return v.toLowerCase(Locale.ROOT);
         }
@@ -751,7 +751,7 @@ final class JULEnhancer {
      * }</pre>
      */
     private static void activateFileLogging(Properties fileConfig) {
-        String raw = readProperty(fileConfig, "freeway.log.file", "auto");
+        String raw = readProperty(fileConfig, LogKeys.FILE, "auto");
 
         if (!"off".equalsIgnoreCase(raw)) {
             String path;
@@ -763,7 +763,7 @@ final class JULEnhancer {
 
             try {
                 FileSettings settings = fileSettings(
-                    "freeway.log.file", fileConfig);
+                    LogKeys.FILE, fileConfig);
                 JULFileHandler fh = obtainFileHandler(
                     path, settings.maxSize(), settings.maxHistory(),
                     settings.compress(), settings.flushIntervalMs());
@@ -778,7 +778,7 @@ final class JULEnhancer {
         }
 
         // ── additional named files ──────────────────────────────
-        String files = readProperty(fileConfig, "freeway.log.files", null);
+        String files = readProperty(fileConfig, LogKeys.FILES, null);
         if (files == null) return;
         for (String name : files.split(",")) {
             name = name.strip();
@@ -792,8 +792,8 @@ final class JULEnhancer {
      * the target logger.
      */
     private static void activateNamedFile(Properties fileConfig, String name) {
-        String prefix = "freeway.log.file." + name;
-        String path = readProperty(fileConfig, prefix + ".path", null);
+        String prefix = LogKeys.FILE_PREFIX + name;
+        String path = readProperty(fileConfig, prefix + LogKeys.SUFFIX_PATH, null);
 
         if (path == null) {
             logEarly(
@@ -804,7 +804,7 @@ final class JULEnhancer {
         }
 
         Level level = null;
-        String levelStr = readProperty(fileConfig, prefix + ".level", null);
+        String levelStr = readProperty(fileConfig, prefix + LogKeys.SUFFIX_LEVEL, null);
         if (levelStr != null) {
             try {
                 level = parseLogLevel(levelStr);
@@ -813,7 +813,7 @@ final class JULEnhancer {
             }
         }
 
-        String loggerName = readProperty(fileConfig, prefix + ".logger", null);
+        String loggerName = readProperty(fileConfig, prefix + LogKeys.SUFFIX_LOGGER, null);
         FileSettings settings = fileSettings(prefix, fileConfig);
         NamedFileConfig cfg = new NamedFileConfig(
             path,
@@ -847,17 +847,17 @@ final class JULEnhancer {
     private static FileSettings fileSettings(String prefix, Properties fileConfig) {
         return new FileSettings(
             propertyValue(fileConfig,
-                prefix + ".max-size", JULFileHandler.DEFAULT_MAX_SIZE,
-                Long::parseLong, true),
+                prefix + LogKeys.SUFFIX_MAX_SIZE, JULFileHandler.DEFAULT_MAX_SIZE,
+                Long::parseLong),
             propertyValue(fileConfig,
-                prefix + ".max-history", JULFileHandler.DEFAULT_MAX_HISTORY,
-                Integer::parseInt, true),
+                prefix + LogKeys.SUFFIX_MAX_HISTORY, JULFileHandler.DEFAULT_MAX_HISTORY,
+                Integer::parseInt),
             propertyValue(fileConfig,
-                prefix + ".compress", JULFileHandler.DEFAULT_COMPRESS,
-                JULEnhancer::strictBoolean, true),
+                prefix + LogKeys.SUFFIX_COMPRESS, JULFileHandler.DEFAULT_COMPRESS,
+                JULEnhancer::strictBoolean),
             propertyValue(fileConfig,
-                prefix + ".flush-interval", JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS,
-                Long::parseLong, true)
+                prefix + LogKeys.SUFFIX_FLUSH_INTERVAL,
+                JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong)
         );
     }
 
@@ -889,32 +889,38 @@ final class JULEnhancer {
 
     /**
      * Reads a config value via the full cascade ({@link #cascadeReader}) and
-     * parses it with {@code parser}, falling back to {@code defaultValue}
-     * when the value is absent or blank.
+     * parses it with {@code parser}. An absent or blank value yields
+     * {@code defaultValue}; a value that does not parse is <em>reported and
+     * replaced</em> by {@code defaultValue}.
      *
-     * @param lenient when true, a parse error also falls back to
-     *                {@code defaultValue} (the bootstrap cascade); when false
-     *                the error propagates (a system-property reader fails
-     *                loudly)
+     * <p>One policy, because the same key resolves through two paths — the
+     * framework's bootstrap ({@link #fileSettings}) and a natively registered
+     * handler ({@code JULFileHandler()}) — and they used to disagree: one fell
+     * back in silence, the other threw. Neither is right on its own: throwing
+     * during {@code LogManager} instantiation loses the handler, and silence is
+     * how a typo becomes a wrong log level for a week. The notice names the key,
+     * the value and the default actually used, so the fix needs no source
+     * reading.</p>
      */
     static <T> T propertyValue(
         Properties fileConfig,
         String key,
         T defaultValue,
-        Function<String, T> parser,
-        boolean lenient
+        Function<String, T> parser
     ) {
         String raw = readProperty(fileConfig, key, null);
         if (raw == null || raw.isBlank()) {
             return defaultValue;
         }
+        String value = raw.strip();
         try {
-            return parser.apply(raw.strip());
+            return parser.apply(value);
         } catch (RuntimeException e) {
-            if (lenient) {
-                return defaultValue;
-            }
-            throw e;
+            logEarly(
+                key + "='" + value + "' is not a valid value (" + e.getMessage()
+                    + ") — using " + defaultValue
+            );
+            return defaultValue;
         }
     }
 }

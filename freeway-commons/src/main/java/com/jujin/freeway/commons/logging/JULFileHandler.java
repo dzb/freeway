@@ -153,18 +153,18 @@ public final class JULFileHandler extends StreamHandler {
         // not the raw merged map: the map alone omits system properties and
         // environment variables, and a natively registered handler must
         // resolve the same values the framework-managed path does — same
-        // keys, same precedence, strict (lenient=false).
+        // keys, same precedence, same "report and use the default" policy.
         Properties config = JULEnhancer.loadLogConfig();
         this(
             requiredProperty(config),
-            JULEnhancer.propertyValue(config, "freeway.log.file.max-size",
-                DEFAULT_MAX_SIZE, Long::parseLong, false),
-            JULEnhancer.propertyValue(config, "freeway.log.file.max-history",
-                DEFAULT_MAX_HISTORY, Integer::parseInt, false),
-            JULEnhancer.propertyValue(config, "freeway.log.file.compress",
-                DEFAULT_COMPRESS, JULEnhancer::strictBoolean, false),
-            JULEnhancer.propertyValue(config, "freeway.log.file.flush-interval",
-                DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong, false)
+            JULEnhancer.propertyValue(config, LogKeys.FILE_MAX_SIZE,
+                DEFAULT_MAX_SIZE, Long::parseLong),
+            JULEnhancer.propertyValue(config, LogKeys.FILE_MAX_HISTORY,
+                DEFAULT_MAX_HISTORY, Integer::parseInt),
+            JULEnhancer.propertyValue(config, LogKeys.FILE_COMPRESS,
+                DEFAULT_COMPRESS, JULEnhancer::strictBoolean),
+            JULEnhancer.propertyValue(config, LogKeys.FILE_FLUSH_INTERVAL,
+                DEFAULT_FLUSH_INTERVAL_MS, Long::parseLong)
         );
     }
 
@@ -248,7 +248,7 @@ public final class JULFileHandler extends StreamHandler {
     // ── property helpers ─────────────────────────────────────────────
 
     private static String requiredProperty(Properties config) {
-        String val = JULEnhancer.cascadeReader(config).apply("freeway.log.file");
+        String val = JULEnhancer.cascadeReader(config).apply(LogKeys.FILE);
         if (val == null || val.isBlank()) {
             throw new IllegalArgumentException(
                 "freeway.log.file is required to activate JULFileHandler"

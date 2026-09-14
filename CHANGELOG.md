@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `freeway-flow` 的 52 个属性访问器 `getXxx()` | bare accessor：`getNodes()` → `nodes()`、`getTitle()` → `title()`（Spec 的 `title()` 读 / `title(String)` 写为同名重载）；`FlowContext` 的 keyed lookup 保持 Map 词汇 `get` / `getAs` / `getOrDefault` |
 | `PlantumlOptions` / `PlantumlDisplayContext` / `PlantumlDisplayResult`、`Graph.toPlantuml(…)` | `PlantUmlOptions` / `PlantUmlDisplayContext` / `PlantUmlDisplayResult`、`toPlantUml(…)` |
 | `CloudHttpClientDefault.Wiring(…, 9 参)` | 规范构造器 10 参（末位 `shutdownGrace`，传 `null` 取默认）；不再保留旧 arity 的委托构造器 |
+| `Sql.insert(…).set("col", v)` / `Sql.update(…).set("expr", v)` | `setColumn("col", v)` / `setExpression("expr", v)`——模式写在方法名上，用错模式抛 `IllegalStateException` 并指名另一个方法 |
 | classpath 根的 `freeway-log.properties` | 不读（启动打一行 stderr 提示改名）；改名为 `freeway-logging.properties` |
 
 行为变化（无需改调用点，但值得知道）：
@@ -39,6 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TreeNode` 随本次收敛删除（Unreleased 新增、从未发布）；应用若直接调 `moduleTree().tree()`，迁移到 `children()` / `render()`。
 
 ### Changed
+
+- **`Coercer`：Number→boolean 不再按 `int` 截断判真假（freeway-commons）** — `0.5`、`0.9`、
+  `4294967296L`（2³²）这类"非零但整数部分为零"的值此前静默变成 `false`（实现是 `n.intValue() != 0`），
+  而同一文件的整数路径恰好把这个模式列为 corrupting data 并明令禁止。现在按精确十进制量值判定；两个非
+  有限来源保持已声明行为（NaN 为 false、±Infinity 为 true，后者原先靠饱和恰好为 true，现在显式写出）。
+  **行为变化**：`0.5` 由 `false` 变 `true`——这是一次静默错值的修正，不是口味调整。
+- **日志：读值策略统一、键名集中、MDC 不再预设应用字段（freeway-commons）** — 三处：
+  - 同一批 `freeway.log.file.*` 键此前在两条读路径上策略相反：框架路径把非法值静默换成默认值，原生注册的
+    `JULFileHandler` 直接抛。现统一为"**报出并回落**"：一行 `logEarly` 点名键名、原值与实际采用的默认值；
+    既不抛（抛会在 `LogManager` 实例化时丢掉整个 handler），也不静默（静默是笔误活过一周的方式）。
+  - `freeway.log.*` 的键名集中到 package-private `LogKeys`：此前 23 处字面量散在五个类，改名只会静默失配，
+    现在改一处、漏改即编译失败。
+  - `freeway.log.mdc.priority` 的默认值清空：框架不再把某个应用的字段名（`code,market,diagId`）当作自己的
+    默认值发布进文档；未配置时所有 MDC 键按字母序，要突出的键由应用用 `-D`/env 声明。
 
 - **设计规则修订：兼容不是目标（全仓）** — 上一轮写进 `AGENTS.md` 的"记录作为适配器装配点时保留旧 arity 的
   委托构造器"删除：它保护的是**已编译的调用点**，代价是每个新组件都在规范构造器旁留一条旧路径，读者永远

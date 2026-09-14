@@ -44,15 +44,24 @@ final class JULLogFormatterSupport {
     private static final Set<String> MDC_PRIORITY_SET = Set.of(MDC_PRIORITY_KEYS);
 
     private static String[] loadMdcPriorityKeys() {
-        String override = JULEnhancer.sysOrEnv("freeway.log.mdc.priority");
-        if (override != null && !override.isBlank()) {
-            String[] keys = override.split(",");
-            for (int i = 0; i < keys.length; i++) {
-                keys[i] = keys[i].strip();
-            }
-            return keys;
+        return parseMdcPriorityKeys(JULEnhancer.sysOrEnv(LogKeys.MDC_PRIORITY));
+    }
+
+    /**
+     * Turns the {@code freeway.log.mdc.priority} value into the display order.
+     * Blank or absent means <em>no priority</em>: every MDC key then sorts
+     * alphabetically. The framework names no application's fields — the order
+     * belongs to the application that puts those keys in the context.
+     */
+    static String[] parseMdcPriorityKeys(String override) {
+        if (override == null || override.isBlank()) {
+            return new String[0];
         }
-        return new String[] { "code", "market", "diagId" };
+        String[] keys = override.split(",");
+        for (int i = 0; i < keys.length; i++) {
+            keys[i] = keys[i].strip();
+        }
+        return keys;
     }
 
     record FormatConfig(

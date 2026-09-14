@@ -157,7 +157,7 @@ CLI 参数（`--freeway.config.file=...`）同样无效——启动时会打 WAR
 | `freeway.log.color` | 调优·auto·-D | String | `auto` | 否 | 颜色模式：`auto`（跟随 format）、`always`（强制 ANSI）、`never`（强制无色）。遵循 `NO_COLOR` 规范 |
 | `freeway.log.caller-info` | 调优·-D | Boolean | `true` | 否 | 每条日志解析 source class/method。日志量大时可设为 `false` 提升吞吐 |
 | `freeway.log.mdc` | 调优·-D | Boolean | `true` | 否 | 日志输出是否包含 MDC 上下文。MDC（Mapped Diagnostic Context）是每线程级的上下文键值对，用于分布式链路追踪、请求关联等场景 |
-| `freeway.log.mdc.priority` | 调优·-D | String | `code,market,diagId` | 否 | MDC 键的显示优先级顺序（逗号分隔），其余键按字母序排列。`code`=业务码、`market`=市场、`diagId`=诊断ID，用于跨服务请求关联 |
+| `freeway.log.mdc.priority` | 调优·-D | String | 未设（全部按字母序） | 否 | MDC 键的显示优先级顺序（逗号分隔），未列出的键按字母序排列。**框架不预设任何键名**——要突出的键（如 `traceId`/`requestId`）由应用自己声明 |
 
 #### 控制台输出
 

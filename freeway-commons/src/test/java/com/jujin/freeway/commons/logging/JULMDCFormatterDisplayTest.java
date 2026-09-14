@@ -7,6 +7,7 @@ import org.slf4j.MDC;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,8 +24,11 @@ class JULMDCFormatterDisplayTest {
     }
 
     @Test
-    void displaysPriorityKeysFirstThenAlphabetical() {
-        // Insert out of priority order to prove sorting, not insertion order.
+    void displaysMdcKeysAlphabeticallyByDefault() {
+        // Insert out of order to prove sorting, not insertion order. With no
+        // configured priority every key sorts alphabetically: the framework
+        // names no application's fields (code/market/diagId was one app's
+        // vocabulary, published as if it were the framework's).
         MDC.put("user", "alice");
         MDC.put("diagId", "abc-123");
         MDC.put("market", "SH");
@@ -36,9 +40,17 @@ class JULMDCFormatterDisplayTest {
 
         String out = formatter.format(record);
         assertTrue(
-            out.contains("[code=600519 market=SH diagId=abc-123 user=alice]"),
-            "priority keys (code, market, diagId) must lead, rest alphabetical: " + out
+            out.contains("[code=600519 diagId=abc-123 market=SH user=alice]"),
+            "without a configured priority all MDC keys sort alphabetically: " + out
         );
+    }
+
+    @Test
+    void mdcPriorityIsConfigurationOnly() {
+        assertArrayEquals(new String[0], JULLogFormatterSupport.parseMdcPriorityKeys(null));
+        assertArrayEquals(new String[0], JULLogFormatterSupport.parseMdcPriorityKeys("   "));
+        assertArrayEquals(new String[]{"traceId", "requestId"},
+            JULLogFormatterSupport.parseMdcPriorityKeys(" traceId , requestId "));
     }
 
     @Test
