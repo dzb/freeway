@@ -64,11 +64,6 @@ public interface HttpResponse {
     HttpResponse output(byte[] data) throws IOException;
 
     /**
-     * Streams a response body from an input stream, writing the response head
-     * first. {@code contentLength} must be known (or a Content-Length header
-     * pre-set) so HTTP/1.1 can frame the response.
-     */
-    /**
      * Sends the remaining bytes of the given stream as the response body.
      * {@code contentLength} is advisory for implementations that can stream
      * with a known length; the default buffers the stream and delegates to
@@ -79,11 +74,6 @@ public interface HttpResponse {
         return output(in.readAllBytes());
     }
 
-    /**
-     * Sends a byte range of a file. Uses the OS sendfile path when the
-     * transport supports it (plain HTTP/1.1 socket with a channel and no
-     * compression); otherwise falls back to buffered streaming.
-     */
     /**
      * Sends a byte range of a file. The default buffers the range and
      * delegates to {@link #output(byte[])}; transports with a zero-copy or
@@ -131,7 +121,7 @@ public interface HttpResponse {
 
     /**
      * Sends a response with the given status code and text body.
-     * Convenience shorthand for {@code status(s).output(t)}.
+     * Convenience shorthand for {@code setStatus(s).output(t)}.
      *
      * @return this response for chaining
      */
@@ -139,7 +129,7 @@ public interface HttpResponse {
 
     /**
      * Sends a JSON response with the given status code.
-     * Convenience shorthand for {@code status(s).outputJson(v)}.
+     * Convenience shorthand for {@code setStatus(s).outputJson(v)}.
      *
      * @return this response for chaining
      */

@@ -9,8 +9,9 @@ import java.util.function.Supplier;
 
 /**
  * Manages service lifetime: caching, scope enforcement, proxy wrapping,
- * and advice application. Uses lock striping (64 stripes) to reduce
- * contention while preventing duplicate realization of the same binding.
+ * and advice application. First-time realization is serialized by a single
+ * lock (see {@code REALIZE_LOCK}) — striping was removed because cross-stripe
+ * deadlock is reachable when two singletons depend on each other.
  */
 final class ServiceRuntime {
     /**

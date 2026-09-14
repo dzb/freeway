@@ -4,8 +4,10 @@ import com.jujin.freeway.http.HttpContext;
 
 /**
  * Handles a matched HTTP route. Implementations work against the combined
- * exchange context, using its convenience methods or the {@code request()}/
- * {@code response()} faces for deeper access.
+ * exchange context: the convenience methods on {@link HttpContext} cover the
+ * common cases, and the request/response faces are
+ * {@link com.jujin.freeway.http.HttpRequest} and
+ * {@link com.jujin.freeway.http.HttpResponse}.
  */
 @FunctionalInterface
 public interface RouteHandler {

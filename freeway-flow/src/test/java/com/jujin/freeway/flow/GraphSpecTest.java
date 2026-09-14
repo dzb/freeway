@@ -222,7 +222,11 @@ class GraphSpecTest {
         });
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, blueprint::create);
-        assertTrue(ex.getMessage().contains("Entry node not found"));
+        // The message names the entry, the graph and what entry must be —
+        // the old "Entry node not found" left the reader to find both.
+        assertTrue(ex.getMessage().contains("missing"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("broken"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("not declared"), ex.getMessage());
     }
 
     @Test

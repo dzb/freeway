@@ -22,6 +22,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -2055,5 +2059,44 @@ class FlowEngineTest {
         assertEquals(1, joinExecutions.get(),
             "the join must activate exactly once (iteration 2, after both arrivals), got "
                 + joinExecutions.get());
+    }
+
+    @Test
+    void registeringWithoutMarkersIsReportedAndResolvesNothing() {
+        // A lambda cannot carry @FlowMarker, so this is the usual way to lose a
+        // handler. The failure must be reported where it happens (registration)
+        // instead of only as "no component matches" at eval time.
+        List<String> warnings = new ArrayList<>();
+        Logger logger = Logger.getLogger(FlowMarkerIndex.class.getName());
+        boolean parentHandlers = logger.getUseParentHandlers();
+        Handler capture = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getLevel().intValue() >= Level.WARNING.intValue()
+                        && record.getMessage() != null) {
+                    warnings.add(record.getMessage());
+                }
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        logger.setUseParentHandlers(false);
+        logger.addHandler(capture);
+        try {
+            FlowEngine engine = FlowEngine.newInstance();
+            engine.register((TaskComponent) (ctx, node) -> { });
+        } finally {
+            logger.removeHandler(capture);
+            logger.setUseParentHandlers(parentHandlers);
+        }
+        assertTrue(
+            warnings.stream().anyMatch(w -> w.contains("without markers")),
+            "registration without markers must be reported: " + warnings);
     }
 }

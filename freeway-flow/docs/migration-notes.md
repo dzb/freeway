@@ -49,10 +49,12 @@
 
 ### 2.5 `GraphSpec`
 
-- 保留 legacy 字段兼容：`layout` / `nodes`、`when` / `condition`、`link` 的多种形态。
-- 序列化输出统一收敛到当前的 `layout` 结构。
-- 解析时保留 start 节点推断能力，确保旧图可继续运行。
-- 这是兼容策略，不是新建模默认。
+> **本节已作废（1.5.2）**：v1 图定义连同 legacy 字段兼容一并删除。以下描述的是 v1→v2 过渡期的
+> 历史策略，不再是现状；现状是 `version=2` 唯一门禁（`GraphSpec.fromText`），v1 文档直接报错。
+
+- ~~保留 legacy 字段兼容：`layout` / `nodes`、`when` / `condition`、`link` 的多种形态。~~
+- 序列化输出统一收敛到当前的 `nodes` + `links` 结构。
+- ~~解析时保留 start 节点推断能力，确保旧图可继续运行。~~（entry 必须显式声明）
 
 ### 2.6 `FlowExchanger`
 

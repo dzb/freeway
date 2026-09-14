@@ -130,7 +130,11 @@ public class FlowEngineDefault implements FlowEngine {
     public void unload(String graphId) { graphMap.remove(graphId); }
 
     @Override
-    public Collection<Graph> graphs() { return graphMap.values(); }
+    public Collection<Graph> graphs() {
+        // A snapshot, like FlowTrace/FlowMarkerIndex return: a live view would
+        // let a caller's iteration see graphs load/unload mid-flight.
+        return List.copyOf(graphMap.values());
+    }
 
     @Override
     public Graph graph(String graphId) { return graphMap.get(graphId); }
@@ -678,12 +682,21 @@ public class FlowEngineDefault implements FlowEngine {
                 inObj = Stepper.from(inKeyStr);
             }
         } else {
-            throw new FlowException("The '$in' must be a list or a string");
+            throw new FlowException(
+                "Node '" + node.id() + "' has $in=" + inKey
+                    + " — expected a list, a context key holding one, or a"
+                    + " \"start...end\" / \"start:end:step\" range string"
+            );
         }
 
         if (inObj instanceof Iterator) return (Iterator<?>) inObj;
         if (inObj instanceof Iterable) return ((Iterable<?>) inObj).iterator();
-        throw new FlowException(inKey + " is not a collection");
+        throw new FlowException(
+            "Node '" + node.id() + "' resolves $in=" + inKey + " to "
+                + (inObj == null ? "nothing" : inObj.getClass().getName())
+                + " — the context key must hold a List/Iterable, or $in must be a"
+                + " list literal or a range string"
+        );
     }
 
     protected void loop_run_out(FlowExchanger exchanger, FlowOptions options, Node node, Node startNode) {

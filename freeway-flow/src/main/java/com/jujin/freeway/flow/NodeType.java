@@ -3,11 +3,11 @@ package com.jujin.freeway.flow;
 /**
  * Node types.
  *
- * <p>Migration notes:
- * <ul>
- *   <li>Missing/empty type names fall back to {@link #ACTIVITY} (migration compatibility); unknown type names throw an error.</li>
- *   <li>{@link #UNKNOWN} is an internal migration value; explicitly declaring UNKNOWN in a v2 graph definition is rejected.</li>
- * </ul>
+ * <p>Names come from the graph definition and are matched case-insensitively by
+ * {@link #of(String)}; an unknown name throws with the valid list, and a missing
+ * or blank one never reaches here (the v2 parser requires a non-blank
+ * {@code type}). {@link #UNKNOWN} is reserved: declaring it in a graph
+ * definition is rejected, and the engine throws if such a node ever appears.
  *
  * @author noear
  * @since 3.0
@@ -28,18 +28,28 @@ public enum NodeType {
         this.code = code;
     }
 
+    /** Stable numeric code of this type (0/1/2/11/21/31/32/33) — the value
+     *  carried by the plan/trace documents, so it survives enum reordering. */
     public int code() {
         return code;
     }
 
     /**
-     * Gets the type by name (case-insensitive)
+     * Resolves a node type by name, case-insensitively.
+     *
+     * @throws IllegalArgumentException when the name matches no type; the message
+     *                                  lists the valid ones
      */
-    public static NodeType nameOf(String name) {
+    public static NodeType of(String name) {
         if (name == null || name.isEmpty()) {
-            return ACTIVITY; // defaults to an activity node
+            // The v2 parser requires a non-blank type before calling this, so a
+            // blank name is a programmatic caller's mistake — not an invitation
+            // to guess ACTIVITY (a silently wrong node type is worse than none).
+            throw new IllegalArgumentException(
+                "Node type name must not be blank. Valid types: "
+                    + "START, END, ACTIVITY, EXCLUSIVE, INCLUSIVE, PARALLEL, LOOP."
+            );
         }
-
         for (NodeType v : values()) {
             if (v.name().equalsIgnoreCase(name)) {
                 return v;

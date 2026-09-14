@@ -154,6 +154,8 @@ public class FlowDriverDefault implements FlowDriver {
         if (handler == null) {
             throw new FlowException(
                     "No TaskComponent matches markers " + task.markerNames()
+                        + " — annotate the component class with @FlowMarker or register it"
+                        + " with explicit markers"
             );
         }
         handler.run(exchanger.context(), task.node());
@@ -215,10 +217,18 @@ public class FlowDriverDefault implements FlowDriver {
         Object component = container().component(beanName);
 
         if (component == null) {
-            throw new IllegalStateException("The " + kind + " component '" + beanName + "' not exist");
+            throw new IllegalStateException(
+                "No " + kind + " component is bound with id '" + beanName
+                    + "' — bind one with binder.bind(" + type.getSimpleName()
+                    + ".class).id(\"" + beanName + "\")"
+            );
         }
         if (!type.isInstance(component)) {
-            throw new IllegalStateException("The component '" + beanName + "' is not " + type.getSimpleName());
+            throw new IllegalStateException(
+                "The component '" + beanName + "' is " + component.getClass().getName()
+                    + ", not a " + type.getSimpleName()
+                    + " — point the binding at an implementation of " + type.getSimpleName()
+            );
         }
         return type.cast(component);
     }

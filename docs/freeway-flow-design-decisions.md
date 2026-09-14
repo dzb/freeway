@@ -41,9 +41,27 @@ synchronized (lock) {
 
 ---
 
+## Flow-state trace: the one dual-shape read that stays
+
+**Decision:** `FlowContextImpl` reads the serialized `trace` field as an object, and — only if that
+fails — as a JSON **string** containing the object.
+
+**Why:** the string shape is what earlier versions wrote into flow-state documents. Those documents
+live outside the framework (persisted by applications, handed between nodes), so this is not API
+compatibility but data that already exists: the same category as a migration table holding rows
+written by an older release. Both shapes are read, and the object shape is written.
+
+**Removal condition:** when no deployment can still hold a pre-1.5.2 state document. Until then the
+branch stays, and the graph-definition side deliberately has no such branch (v1 documents are
+rejected, never converted).
+
 ## AST Caching for ExprEvaluator
 
-**Decision:** Cache compiled expression ASTs in a `LinkedHashMap` LRU cache (max 512 entries) with `ReentrantReadWriteLock` for concurrent access.
+**Decision:** Cache compiled expression ASTs in a `LinkedHashMap` LRU cache (max 512 entries, access
+order) wrapped in `Collections.synchronizedMap`. A `ReentrantReadWriteLock` was tried first and
+**removed**: with `accessOrder=true` every read is a structural modification (the entry moves in the
+linked list), so a shared read lock is unsound — the cache corrupted under concurrency. `synchronizedMap`
+serializes the whole operation and is the honest shape for an LRU.
 
 **Why:** The flow engine evaluates the same condition expression repeatedly across graph traversals. Previously, every `evalCondition()` call re-parsed the expression from scratch. The cache stores the AST after first parse; subsequent evaluations skip parsing entirely.
 

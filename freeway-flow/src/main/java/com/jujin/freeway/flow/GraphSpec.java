@@ -302,7 +302,9 @@ public class GraphSpec {
                 + (dom.containsKey("links") ? "" : ", missing 'links'"));
     }
 
-    public static GraphSpec fromDom(JsonObject dom) {
+    /** Package-private: {@link #fromText(String)} owns the version gate, and a
+     *  second public entry point would let a caller build a spec that skips it. */
+    static GraphSpec fromDom(JsonObject dom) {
         GraphSpec blueprint = new GraphSpec(
                 dom.getString("id"),
                 dom.getString("title"),
@@ -323,7 +325,7 @@ public class GraphSpec {
 
             String nodeId = requireString(nodeDom, "id", "Node at index " + i);
             String typeStr = requireString(nodeDom, "type", "Node '" + nodeId + "'");
-            NodeType nodeType = NodeType.nameOf(typeStr);
+            NodeType nodeType = NodeType.of(typeStr);
             if (nodeType == NodeType.UNKNOWN) {
                 throw new IllegalArgumentException(
                     "Unknown node type '" + typeStr + "' for node '" + nodeId
@@ -649,7 +651,10 @@ public class GraphSpec {
 
     private void validateEntry() {
         if (entry != null && !entry.isEmpty() && !nodes.containsKey(entry)) {
-            throw new IllegalStateException("Entry node not found: " + entry);
+            throw new IllegalStateException(
+                "Entry node '" + entry + "' is not declared in graph '" + id
+                    + "' — entry must name one of the graph's nodes"
+            );
         }
     }
 

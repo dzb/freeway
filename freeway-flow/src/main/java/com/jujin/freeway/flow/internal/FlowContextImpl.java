@@ -107,7 +107,7 @@ public class FlowContextImpl implements FlowContext {
             if (oNode.containsKey("rootGraphId")) {
                 String rootGraphId = oNode.getString("rootGraphId");
                 if (rootGraphId != null && ctx.trace != null) {
-                    ctx.trace.setRootGraphId(rootGraphId);
+                    ctx.trace.rootGraphId(rootGraphId);
                 }
             }
         }
@@ -169,7 +169,7 @@ public class FlowContextImpl implements FlowContext {
 
     @Override
     public FlowContext enableTrace(boolean enable) {
-        trace.enable(enable);
+        trace.enabled(enable);
         return this;
     }
 

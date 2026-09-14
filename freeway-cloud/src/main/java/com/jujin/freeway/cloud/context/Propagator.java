@@ -8,8 +8,8 @@ import java.util.Map;
  * <p>Contributed like {@code Route}/{@code HttpFilter} (same extension-point
  * pattern). Adding a new cross-boundary concern = contributing a
  * {@code Propagator}, never touching core: inbound {@code extract} →
- * {@code InvocationContext.enter}, outbound {@code inject} of the current
- * context.
+ * {@code InvocationContext.runWith} (that is the only write face), outbound
+ * {@code inject} of the current context.
  */
 public interface Propagator {
 

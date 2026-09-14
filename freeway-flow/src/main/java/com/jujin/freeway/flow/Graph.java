@@ -102,7 +102,10 @@ public class Graph {
     public Node nodeOrThrow(String id) {
         Node node = node(id);
         if (node == null) {
-            throw new IllegalArgumentException("Node not found, id: " + id);
+            throw new IllegalArgumentException(
+                "Graph '" + this.id + "' has no node '" + id
+                    + "' — ids are declared in the graph definition (Graph.nodes())"
+            );
         }
         return node;
     }

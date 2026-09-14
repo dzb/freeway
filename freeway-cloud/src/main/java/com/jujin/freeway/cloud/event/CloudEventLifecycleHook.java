@@ -20,8 +20,10 @@ import org.slf4j.LoggerFactory;
 /**
  * CloudEventBus lifecycle hook: arms bus-level inbound deduplication, wires
  * the hub, installs the outbound sink and starts the peer connector. Runs
- * before the HTTP server so the hub is wired before the first connection can
- * arrive; stop removes the sink and releases the connector's threads.
+ * <em>after</em> the HTTP server, because the mesh origin needs the port the
+ * node actually serves on; peers that dial during the short window before
+ * wiring are closed with 1013 and reconnect on their backoff. Stop removes the
+ * sink and releases the connector's threads.
  *
  * <p>Dedup is a property of the bus, not of the mesh: it also suppresses a
  * single transport's own redeliveries (Kafka hands a record back after a

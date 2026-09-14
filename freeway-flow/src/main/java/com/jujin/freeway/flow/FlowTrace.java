@@ -19,10 +19,14 @@ public class FlowTrace implements Serializable {
     private final Map<String, NodeRecord> lastRecords = new ConcurrentHashMap<>();
 
     public boolean isEnabled() { return enabled; }
-    public void enable(boolean enabled) { this.enabled = enabled; }
+
+    /** Turns trace recording on or off; {@link #isEnabled()} reads it back. */
+    public void enabled(boolean enabled) { this.enabled = enabled; }
 
     public String rootGraphId() { return rootGraphId; }
-    public void setRootGraphId(String rootGraphId) { this.rootGraphId = rootGraphId; }
+
+    /** Sets the root graph id recorded with every trace entry. */
+    public void rootGraphId(String rootGraphId) { this.rootGraphId = rootGraphId; }
 
     public void clear() {
         rootGraphId = null;

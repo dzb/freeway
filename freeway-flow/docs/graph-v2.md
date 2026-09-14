@@ -2,7 +2,8 @@
 
 > 目标：定义一套适合 Freeway 的 canonical graph 格式。v2 为 Freeway 原生设计，不来自 solon-flow。
 >
-> 约束：旧图（v1，移植自 solon-flow）继续可读，v2 只走一套字段和一套运行模型。
+> 约束（1.5.2 起）：**只认 v2**——`version=2` + `nodes` + `links` 是唯一门禁，v1 已删除，
+> 不再有第二种读法。本文其余部分描述 v2 的字段与运行模型。
 
 ## 1. 设计目标
 

@@ -6,6 +6,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Maintains a reverse index from marker names to {@link TaskComponent}
@@ -21,6 +23,8 @@ import java.util.Set;
  */
 public class FlowMarkerIndex {
 
+    private static final Logger LOG = LoggerFactory.getLogger(FlowMarkerIndex.class);
+
     private final Map<String, List<Entry>> markerToEntries = new HashMap<>();
 
     /**
@@ -28,6 +32,18 @@ public class FlowMarkerIndex {
      */
     public void register(TaskComponent component, Set<String> markers) {
         if (markers.isEmpty()) {
+            // A component that reaches no marker resolves nothing, and the
+            // failure would otherwise surface at eval time as "no component
+            // matches" — far from the registration that caused it. Lambdas and
+            // other anonymous classes cannot carry @FlowMarker, so this is the
+            // usual way to lose a handler.
+            LOG.warn(
+                "TaskComponent {} was registered without markers and cannot be"
+                    + " resolved — annotate its class with @FlowMarker(\"name\"), or register"
+                    + " it with explicit markers: engine.markerIndex()"
+                    + ".register(component, Set.of(\"name\"))",
+                component.getClass().getName()
+            );
             return;
         }
         // Defensive copy: the caller's set may be mutated after registration,

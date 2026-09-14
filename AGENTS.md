@@ -37,9 +37,9 @@ adapters (Undertow/Jetty engines, HikariCP, Kafka) live in
 | `freeway-flow` | Graph workflow engine — 7 node types, v2 DAG format, task resolution | ioc + commons |
 | `freeway-cloud` | Cloud-native foundation — discovery, remote invocation (JDK HttpClient), observability, resilience, health, secrets, storage | ioc + commons + http (+ boot, test) |
 
-No module adds an external dependency beyond SLF4J 2.0.18 (declared by
-`commons`, `http` and `cloud`; the rest inherit it transitively) plus JUnit at
-test scope. Anything else belongs in an ext adapter.
+No module adds an external dependency beyond SLF4J 2.0.18 (declared explicitly
+by every module that logs — currently all but `ioc`, which inherits it
+transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
 
 ## Naming
 

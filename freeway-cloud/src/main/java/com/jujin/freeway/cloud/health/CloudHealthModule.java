@@ -13,12 +13,13 @@ import com.jujin.freeway.ioc.annotation.Marker;
  *   <li>{@code /health/live} — process liveness (always ok while serving).</li>
  *   <li>{@code /health/ready} — dependency readiness, aggregating
  *       {@link CloudHealthContributor} contributions. The registry
- *       contributor ships with {@code CloudDiscoveryModule} (in-process
- *       store: always healthy, reports the instance count); external-backend
- *       connectivity is contributed by custom registry adapters bound primary
- *       (freeway-ext ships no cloud adapters yet). Installing this module
- *       standalone yields an
- *       empty (always-ok) aggregation.</li>
+ *       contributor ships with {@code CloudDiscoveryModule} and answers
+ *       {@code not registered} before registration, 503 while the drain window
+ *       runs, 503 after three consecutive heartbeat failures, and otherwise the
+ *       instance count; external-backend connectivity is contributed by custom
+ *       registry adapters bound primary (freeway-ext ships no cloud adapters
+ *       yet). Installing this module standalone yields an empty (always-ok)
+ *       aggregation.</li>
  * </ul>
  */
 @Marker(Builtin.class)

@@ -15,8 +15,10 @@ import com.jujin.freeway.http.websocket.WebSocketRoute;
  * turns {@code EventBus.publish} into a cross-node CloudEvents 1.0 broadcast.
  *
  * <p>Requires {@link com.jujin.freeway.http.HttpModule} (the WS endpoint rides
- * the HTTP server). The hook is ordered before {@code freeway.http.server} so
- * the hub is wired before the first connection can arrive.</p>
+ * the HTTP server). The hook runs <em>after</em> {@code freeway.http.server}:
+ * the mesh origin is the node identity, which needs the port the node actually
+ * serves on. A peer that dials during the short window before wiring is closed
+ * with 1013 and reconnects on its backoff, which the mesh treats as normal.</p>
  *
  * <pre>{@code
  * FreewayApp.run(new String[0],

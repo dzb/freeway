@@ -41,6 +41,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **flow：v1 残留清干净、失败信息给出修法、快照语义对齐（freeway-flow）** — 审计 P1/P2：
+  - `NodeType` 的"缺/空 type 默认为 ACTIVITY"删除：v2 解析器先经 `requireString` 保证非空，这个默认
+    分支不可达，留着只会让未来的调用方得到一个静默错误的节点类型；同时按工厂命名把 `nameOf` 改名为
+    `of`（未知类型抛错并列出合法值），`code()` 补上用途说明。
+  - `FlowMarkerIndex.register` 对**空标记集**从静默 `return` 改为一行 WARN 并点名修法：lambda 与匿名类
+    拿不到 `@FlowMarker`，这正是丢 handler 的常见方式，而失败原本要到 eval 才以"没有组件匹配"暴露。
+    `freeway-flow/README.md` 的示例也据此改成 `engine.markerIndex().register(component, Set.of(...))`
+    ——原示例用 lambda 注册却引用 `!marker` 任务，照抄必然失败。
+  - 组件解析、`$in` 解析、`Graph.nodeOrThrow`、`GraphSpec.validateEntry` 的错误信息补上节点/图上下文与
+    期望形态（原先有 `"The task component 'x' not exist"` 这类不成句且不给修法的消息）。
+  - `GraphSpec.fromDom` 收成包私有（`fromText` 是唯一版本门禁）；`FlowEngineDefault.graphs()` 返回
+    `List.copyOf` 快照，与 `FlowTrace`/`FlowMarkerIndex` 的快照约定一致；`FlowTrace` 的
+    `setRootGraphId`/`enable` 改为 `rootGraphId(...)`/`enabled(...)`，与模块内 bare 写方法一致。
+  - 文档：README 的快速开始补 `version: 2`（原示例缺该字段，门禁直接拒绝）并删掉"v1 仍兼容"的说法；
+    `migration-notes.md`、`graph-v2.md` 标注 v1 已删除；`docs/freeway-flow-design-decisions.md` 的 AST
+    缓存条目改为现状（`synchronizedMap`，并写明为什么读写锁被撤回）。
+  - **有意保留并写进设计决策**：flow 状态文档里 `trace` 的字符串形态仍可读——那是应用已经持久化的
+    历史数据（与迁移表里旧版本写入的行同类），不是 API 兼容；附了移除条件。
+
+- **文档：改正与实现相反的 17 处说明（全仓）** — 审计里最普遍的一类问题不是设计错误而是"文档说假话"，
+  逐条改正：http 的 `HttpResponse` 两处叠置 javadoc（悬空那段声称 `contentLength` 必须已知，实际允许
+  `-1` 走 chunked）与指向不存在方法（`request()`/`response()`/`status(s)`）的引用；cloud 的事件网格
+  hook **排序三处说反**（注释说 before，代码是 after，且理由写在代码里）与 readiness 的"always healthy"
+  （实现有三种非健康答案）；db 的 `DatabaseHub` "unmodifiable view"（实际是构造期快照）；ioc 的
+  `ServiceRuntime` "64 段锁条带化"（实际单锁，同文件自述相反）与 `Contributions` 的 id 形态（实际
+  `snake@package`）；boot 的级联 javadoc 少列 `-D` 层、`AppRuntime`/`AppState` 补上生命周期契约；
+  commons 的 `JsonUtils` 补契约（含"会关闭入参流"这条隐式副作用）；`AGENTS.md` 的 SLF4J 声明口径与实测
+  对齐（6/7 模块显式声明，只有 ioc 继承）。
+
 - **boot：配置文件层的读失败只剩一种口径，profile 变体不再能改写激活键，组合期失败也清理 config（freeway-boot）**
   — 三条审计 P1：
   - 同一个"读不到文件"此前有三种命运：类路径与工作目录 base 硬失败；工作目录 profile 变体与

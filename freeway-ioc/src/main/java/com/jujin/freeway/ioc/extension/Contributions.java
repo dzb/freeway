@@ -28,8 +28,10 @@ public interface Contributions<T> {
     /**
      * Adds a contribution by implementation class. The container instantiates
      * the class, injects dependencies, and invokes {@code @PostConstruct}.
-     * An id is auto-generated from the class simple name via camel-to-snake
-     * conversion, enabling {@code before/after} ordering.
+     * An id is auto-generated as {@code snake_name@package} — the class simple
+     *  name in camel-to-snake form, plus the package it lives in, because two
+     *  packages may contribute the same simple name. {@code before/after}
+     *  ordering matches on that full id (e.g. {@code .after("core_bean@com.acme")}).
      *
      * @param implClass the implementation class
      * @return a Contribution handle for declaring before/after constraints

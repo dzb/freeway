@@ -30,6 +30,11 @@ import org.slf4j.LoggerFactory;
  *   <li>CLI arguments ({@code --key=value})</li>
  * </ol>
  *
+ * <p>JVM system properties ({@code -Dkey=value}) sit between the CLI and the
+ * environment in the full chain the container assembles (orders 0/5/10/20:
+ * CLI, {@code -D}, env, files). This loader does not read them — the symbol
+ * chain does — so a {@code -D} value outranks every file.</p>
+ *
  * <p>Returns an {@link AppConfigDefault} built from the loaded
  * {@link ConfigSources}: the file tier is watched and re-read on change, so
  * config edits are visible to later symbol lookups without a restart.

@@ -4,6 +4,24 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import java.io.InputStream;
 import java.lang.reflect.Type;
 
+/**
+ * Static JSON entry points: parsing, serializing and coercing.
+ *
+ * <p><b>Stream ownership.</b> Every {@code parse*(InputStream)} overload
+ * <em>closes</em> the stream it is given (the parser wraps it in
+ * try-with-resources). Callers that need the stream afterwards must hand over a
+ * wrapper, or use a {@code String} overload.</p>
+ *
+ * <p><b>Failure.</b> Malformed input throws {@link JsonException}; a
+ * {@code parseObject}/{@code parseArray} on a different top-level shape throws
+ * the same. Absent keys never throw — the getters on {@link JsonObject} /
+ * {@link JsonArray} return {@code null}/empty, while a type mismatch inside a
+ * typed getter throws {@code IllegalArgumentException}.</p>
+ *
+ * <p><b>Coercion.</b> {@code coerce} uses a built-in {@link Coercer}; an
+ * application that registers its own coercion rules must pass its container's
+ * coercer explicitly ({@link JsonCodecDefault} does).</p>
+ */
 public final class JsonUtils {
 
     private JsonUtils() {}

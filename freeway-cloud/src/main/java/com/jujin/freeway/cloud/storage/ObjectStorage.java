@@ -15,7 +15,8 @@ public interface ObjectStorage {
     /** Reads an object; empty when absent. */
     Optional<byte[]> get(String bucket, String key) throws StorageException;
 
-    /** Writes an object; returns its etag and version id. */
+    /** Writes an object; returns its etag (there is no version addressing, so
+     *  no version id is returned). */
     PutResult put(String bucket, String key, byte[] data, ObjectMetadata metadata) throws StorageException;
 
     /** Deletes an object; absent keys are a no-op. */

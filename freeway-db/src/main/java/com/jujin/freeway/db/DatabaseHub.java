@@ -38,7 +38,9 @@ public interface DatabaseHub {
     Database primary();
 
     /**
-     * Returns an unmodifiable view of all registered databases.
+     * Returns the registered databases as they were when this hub was
+     *  assembled — an immutable snapshot, not a live view: later contributions
+     *  do not appear.
      */
     Map<String, Database> all();
 }

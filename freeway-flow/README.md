@@ -23,7 +23,7 @@ solon-flow 核心引擎对外部库有较多依赖，移植过程对每一处做
 | `snakeyaml` | YAML 图定义解析 | **移除** — 仅支持 JSON |
 | `snack4` (ONode) | JSON 序列化 | `freeway-commons` JsonObject / JsonArray / JsonUtils |
 | `dami2` (DamiBus) | 执行级事件总线 | **自写** `FlowEventBus`（~90行，ConcurrentHashMap + CopyOnWriteArrayList） |
-| `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅支持 @bean / #graph / $meta 三种引用 |
+| `liquor-eval` (Scripts) | 脚本/任务求值 | **移除** — task 仅支持 @bean / #graph / $meta / !marker 四种引用 |
 | `solon-expression` (SnelParser) | 条件表达式解析 | **自写** `ExprEvaluator`（~600行递归下降解析器） |
 | `solon.Utils` / `solon.core.util.Assert` | 工具/断言 | JDK: `Objects.requireNonNull` / `str == null \|\| str.isEmpty()` |
 | `solon.lang.*` | 注解标记 (@Preview 等) | **移除** |
@@ -66,6 +66,7 @@ solon-flow 核心引擎对外部库有较多依赖，移植过程对每一处做
 // 1. 定义图（v2 JSON — 显式entry + 分离的nodes/links）
 String json = """
 {
+  "version": 2,
   "id": "demo", "entry": "s",
   "nodes": [
     { "id": "s",  "type": "start" },
@@ -83,19 +84,23 @@ String json = """
   ]
 }""";
 
-// 2. 构建引擎
+// 2. 构建引擎：!marker 任务必须带标记注册 —— lambda 拿不到 @FlowMarker 注解，
+//    所以走 markerIndex() 的显式标记形式（类实现则直接 engine.register(实例)）
 FlowEngine engine = FlowEngine.newInstance();
-engine.register((TaskComponent) (ctx, node) -> System.out.println("高分"));
-engine.register((TaskComponent) (ctx, node) -> System.out.println("低分"));
+engine.markerIndex().register(
+    (TaskComponent) (ctx, node) -> System.out.println("高分"), Set.of("handler:high"));
+engine.markerIndex().register(
+    (TaskComponent) (ctx, node) -> System.out.println("低分"), Set.of("handler:low"));
 
 // 3. 执行
-Graph graph = Graph.fromText(json);  // 自动检测 v1/v2 格式
+Graph graph = Graph.fromText(json);  // v2 格式：version=2 必填，缺了直接报错
 FlowContext ctx = FlowContext.of();
 ctx.put("score", 95);
 engine.eval(graph, ctx);  // 输出: 高分
 ```
 
-v1 (`layout`) 格式仍兼容——`Graph.fromText()` 自动检测并转换为统一运行时。
+图定义只认 v2：`version` 必须是 `2`，且 `nodes` / `links` 齐备。v1（`layout`）已在 1.5.2 删除，
+`Graph.fromText()` 对它直接抛 `IllegalArgumentException` 并说明缺什么。
 
 ## 版权声明
 
