@@ -318,14 +318,17 @@ javadoc 说"same gates as the streaming path, **plus body-allowed**"，但 `shou
 | A6 boot 三条 P1（读失败口径、profile 变体、组合期清理） | 已落地 | core `dc23a6e5` |
 | A7 文档 17 处 + flow v1 残留 | 已落地 | core `f278117e` |
 | A8 `AGENTS.md` 判据 + ioc 改名与贡献链回放 | 已落地 | core `f910701f` |
-| B5 `ResponseFraming` 纯别名 | 已落地 | 本轮 |
-| B7 `advise` bind 期校验 + `Scoping.within(Runnable)` | 已落地 | 本轮 |
-| B8 `RpcTarget` 导出面按申报类型 | 已落地 | 本轮 |
-| B9 `BeanIntrospector` 缓存泄漏、JSON 写方法命名、类型不符不再静默 | 已落地 | 本轮 |
-| B1 `PoolConfig`/`PeerConnector` wither、`Orm.findAll` 位置哨兵 | 已落地（三项） | 本轮 |
-| B2 旧 arity 构造器 | 已落地：`JULFileHandler` 便捷构造器删除（`4d003697`）、`MigrationRunner.Options` 与 `FreewayHttpEngine.Wiring` 替换位置参数矩阵 | core `4d003697` + 本轮 |
+| B5 `ResponseFraming` 纯别名 | 已落地 | core `4441850b` |
+| B7 `advise` bind 期校验 + `Scoping.within(Runnable)` | 已落地 | core `4441850b` |
+| B8 `RpcTarget` 导出面按申报类型 | 已落地 | core `4441850b` |
+| B9 `BeanIntrospector` 缓存泄漏、JSON 写方法命名、类型不符不再静默 | 已落地 | core `4441850b` |
+| B1 `PoolConfig`/`PeerConnector` wither、`Orm.findAll` 位置哨兵 | 已落地（三项） | core `d6a2cd14` + `64f85975` / ext `c541ca1` |
+| B2 旧 arity 构造器 | 已落地：`JULFileHandler` 便捷构造器删除、`MigrationRunner.Options` 与 `FreewayHttpEngine.Wiring` 替换位置参数矩阵 | core `4d003697` / `6f2f0d24` + ext `b175ecb` |
 | B4 只被测试引用的 internal public 类型收窄 | 已落地（三处收窄；`ConfigSources` 写明为测试装配例外） | core `4d003697` |
-| B3 入口工厂 `create` vs `of` | **待用户定调** | — |
+| B3 入口工厂 `create` vs `of` | **待用户定调**（`Freeway.create` 曝光度最高，需在一处改名并迁移调用点） | — |
+| C1 `sealed` | 观察项：唯一有说服力的候选（`ExprEvaluator.AstNode`）用多态分派，收益有限 | — |
+| C2 大文件职责拆分（`JULEnhancer`/`StaticResourceMount`/`Sql` 等） | 未做：属"整文件一次改到位"的判断，建议单独一轮 | — |
+| C3 默认值归属统一（`DbModule` 与 `MigrationRunner`） | 已随 B2 落地（`Options.defaults()` 是唯一出处） | core `6f2f0d24` |
 
 审计方法上的两次自我纠正也留在正文：`instanceof` 强转计数与 `Sql.Condition` 构造器计数的假阳性（§1），
 以及一条被模块反例撤回的结论（`Dialect` 命名，§5 第 1 条）。
