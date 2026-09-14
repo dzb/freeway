@@ -219,36 +219,31 @@ public final class EventBus implements EventBusInbound, AutoCloseable {
     }
 
     /**
-     * Drops inbound event whose wire id has already been claimed, so an
-     * event that reaches this node over two transports is delivered once.
+     * Configures inbound deduplication: an inbound event whose wire id has
+     * already been claimed is dropped, so an event that reaches this node over
+     * two transports is delivered once.
      *
      * <p>Off by default: dedup changes delivery semantics and costs memory,
      * so it is a deliberate opt-in rather than a side effect of installing a
-     * second transport. {@code capacity} bounds the window — the last
-     * {@code capacity} ids are remembered, roughly "how far back two copies
+     * second transport. A positive {@code capacity} bounds the window — the
+     * last {@code capacity} ids are remembered, roughly "how far back two copies
      * of the same event may be spread". Too small a window lets a slow
-     * second copy through; too large one costs memory for nothing.
+     * second copy through; too large one costs memory for nothing. Zero or
+     * negative turns deduplication off and releases the window.
      *
      * <p>Ids are claimed at publish time, so the two copies race freely —
      * whichever arrives first wins and the other is dropped.</p>
      *
-     * @param capacity positive bound on the number of remembered ids
+     * @param capacity bound on the number of remembered ids; zero or negative
+     *                 disables deduplication
      */
-    public void enableInboundDeduplication(int capacity) {
-        if (capacity <= 0) {
-            throw new IllegalArgumentException("capacity must be positive: " + capacity);
-        }
+    public void inboundDeduplication(int capacity) {
         synchronized (this) {
-            if (inboundIds == null || inboundIds.capacity() != capacity) {
+            if (capacity <= 0) {
+                inboundIds = null;
+            } else if (inboundIds == null || inboundIds.capacity() != capacity) {
                 inboundIds = new IdWindow(capacity);
             }
-        }
-    }
-
-    /** Turns deduplication off and releases the window. */
-    public void disableInboundDeduplication() {
-        synchronized (this) {
-            inboundIds = null;
         }
     }
 

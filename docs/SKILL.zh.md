@@ -1086,7 +1086,7 @@ freeway.log.file.compress=true                # GZIP
 
 **Late re-attach：** 如果命名文件 handler 被 JUL LogManager 清掉：
 ```java
-LogBootstrap.applyNamedFileLoggers();  // 在 FreewayApp.run() 之后
+LogBootstrap.applyNamedFileLoggers();  // 在应用启动之后
 ```
 
 **环境变量：** 所有 `freeway.log.*` 键支持 `FREEWAY_` 前缀——`FREEWAY_LOG_LEVEL=DEBUG` 等同 `-Dfreeway.log.level=DEBUG`。

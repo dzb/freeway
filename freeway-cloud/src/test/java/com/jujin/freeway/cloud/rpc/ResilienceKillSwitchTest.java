@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.cloud.CloudModules;
+import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -48,7 +48,7 @@ class ResilienceKillSwitchTest {
         // A generous retry budget that the kill switch must ignore.
         System.setProperty(CloudConfigKeys.RPC_RETRY_MAX_ATTEMPTS, "5");
         System.setProperty(CloudConfigKeys.RPC_RETRY_BACKOFF_BASE, "10");
-        try (AppRuntime app = FreewayApp.of(new CloudHttpClientTest.CountingFailModule(), new HttpModule()).add(CloudModules.standard()).start()) {
+        try (AppRuntime app = FreewayApp.of(new CloudHttpClientTest.CountingFailModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServerHolder.register(app, "failing");
 
             CloudException ex = assertThrows(CloudException.class, () ->
@@ -65,7 +65,7 @@ class ResilienceKillSwitchTest {
         // counting successes/failures) — under the kill switch neither fires.
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_ENABLED, "true");
         System.setProperty(CloudConfigKeys.RPC_RATE_LIMIT_PER_SECOND, "1");
-        try (AppRuntime app = FreewayApp.of(new CloudHttpClientTest.EchoModule(), new HttpModule()).add(CloudModules.standard()).start()) {
+        try (AppRuntime app = FreewayApp.of(new CloudHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServerHolder.register(app, "echo");
             CloudHttpClient client = app.get(CloudHttpClient.class);
 
@@ -83,7 +83,7 @@ class ResilienceKillSwitchTest {
         // The startup hook validates the mode before anything can use it —
         // run() itself must fail, naming the key and the offending value.
         IllegalStateException failure = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.of(new CloudHttpClientTest.EchoModule(), new HttpModule()).add(CloudModules.standard()).start());
+            FreewayApp.of(new CloudHttpClientTest.EchoModule(), new HttpModule()).add(CloudModule.class).start());
         assertTrue(rootMessage(failure).contains("rpc.resilience"),
             "the failure must name the key: " + rootMessage(failure));
         assertTrue(rootMessage(failure).contains("yolo"),

@@ -10,7 +10,7 @@ package com.jujin.freeway.cloud.event;
  * arriving over a second transport — which is the case that actually
  * produces duplicates. Dedup lives at the one funnel every transport passes
  * through: {@code EventBus.publishInbound(..., eventId)} plus {@code
- * EventBus.enableInboundDeduplication(capacity)}.
+ * EventBus.inboundDeduplication(capacity)}.
  */
 public interface CloudEventInterceptor {
 

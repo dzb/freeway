@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.secret;
 
-import com.jujin.freeway.cloud.CloudModules;
+import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.AppConfig;
 import com.jujin.freeway.boot.internal.AppConfigDefault;
@@ -52,7 +52,7 @@ class CloudSymbolPrecedenceTest {
             KEY + "=from-secret\n");
         System.setProperty("freeway.config.file", configFile.toString());
         System.setProperty(CloudConfigKeys.SECRET_FILE, secretFile.toString());
-        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModule.class).start()) {
             SymbolSource symbols = app.get(SymbolSource.class);
             assertEquals("from-secret", symbols.resolve(KEY),
                 "secrets (order 15) must outrank the framework file tier (order 20)");
@@ -95,7 +95,7 @@ class CloudSymbolPrecedenceTest {
                 cli, env, Map.of(KEY, "from-file", HttpConfigKeys.SERVER_PORT, "0"),
                 List.of()),
             List.of());
-        try (AppRuntime app = FreewayApp.of(CloudModules.standard())
+        try (AppRuntime app = FreewayApp.of(CloudModule.class)
                 .config(config)
                 .shutdownHook(false)
                 .start()) {

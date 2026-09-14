@@ -35,7 +35,7 @@ the delivery counter in B's log proves both paths end-to-end.
 - JDK 25
 - Freeway artifacts in the local Maven repo:
   ```bash
-  cd freeway && mvn install -DskipTests -Dgpg.skip=true     # core (incl. freeway-cloud)
+  cd freeway-2 && mvn install -DskipTests -Dgpg.skip=true     # core (incl. freeway-cloud)
   cd freeway-ext && mvn install -DskipTests -Dgpg.skip=true -pl freeway-mq-kafka -am
   ```
 - (Kafka channel only) a broker at `127.0.0.1:9092`. Podman one-liner:
@@ -53,8 +53,12 @@ the delivery counter in B's log proves both paths end-to-end.
     -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
     docker.io/apache/kafka:4.1.2
   ```
-  Without a broker the WS-mesh channel still works; the Kafka subscriber
-  simply logs connect retries.
+  Without a broker the WS-mesh channel still delivers, but the Kafka sink's
+  first `producer.send` blocks the publishing thread until Kafka metadata
+  times out (`max.block.ms`, 60s by default) — Node A appears to hang after
+  its publish. To keep both channels responsive while running broker-less,
+  bound it: `-Dfreeway.kafka.properties=max.block.ms=200`. The Kafka
+  subscriber then simply logs connect retries.
 
   ### Kafka without a container (Windows)
 

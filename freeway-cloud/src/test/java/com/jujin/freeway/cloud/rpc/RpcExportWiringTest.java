@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.rpc;
 
-import com.jujin.freeway.cloud.CloudModules;
+import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -87,7 +87,7 @@ class RpcExportWiringTest {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
         List<ModuleNode> children = new ArrayList<>();
         children.add(ModuleNode.leaf(new HttpModule()));
-        children.add(CloudModules.standard());
+        children.add(ModuleNode.leaf(CloudModule.class));
         for (ModuleEx module : modules) {
             children.add(ModuleNode.leaf(module));
         }

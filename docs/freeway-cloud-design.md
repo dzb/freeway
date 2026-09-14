@@ -65,36 +65,38 @@ freeway-cloud  (com.jujin.freeway.cloud)
 `WS /cloud/event` 端点，并以 `HttpFilter` 扩展点接入传播与追踪。依赖方向
 单向（cloud → http），http 零外部依赖。
 
-### 3.1 模块与片段
+### 3.1 模块与 bundle
 
-`CloudModules.standard()` 返回一个**组合片段**（`ModuleNode`）：命名节点
-`freeway-cloud` 下挂 8 个叶子模块 `CloudContextModule` / `CloudSecretModule` /
+`CloudModule` 是**标准云 bundle**：类上用 `@SubModule` 声明 8 个标准模块
+`CloudContextModule` / `CloudSecretModule` /
 `CloudDiscoveryModule` / `CloudRpcModule` / `CloudObserveModule` /
-`CloudResilienceModule` / `CloudHealthModule` / `CloudStorageModule`。绑定全在
-叶子模块里，片段本身不绑定任何东西，容器在 bind 之前就拿到整棵树。
+`CloudResilienceModule` / `CloudHealthModule` / `CloudStorageModule`；放置
+`CloudModule` 就放置它们（前序，在 bundle 之后）。绑定全在各模块的 `bind()`
+里，`CloudModule.bind()` 是 bundle 的共享面（当前为空），容器在 bind 之前就拿到
+整棵树。
 
-- **片段是值，不是伞模块**：`ModuleEx` 不再有 `subModules()`（见
-  `docs/freeway-module.md`）。应用可以把它整体放进树、嵌进自己的分组，或者
-  只取其中一个模块：
+- **bundle 是声明，子模块仍是普通模块**：`@SubModule` 是构建树时读取的静态
+  元数据（见 `docs/freeway-module.md`），不是框架回调模块要子模块。应用可以放
+  整包，也可以逐个放子模块取子集——没有排除 API，兜底就是"单独加载每一个
+  module"：
   ```java
   FreewayApp.run(ModuleNode.app("order-service",
       OrderModule.class,
-      CloudModules.standard()));          // 整包
+      CloudModule.class));                // 整包
   FreewayApp.run(ModuleNode.app("order-service",
       CloudRpcModule.class));             // 只要一个，按自己的方式配
   ```
-  旧的 `CloudModule` 做不到这一点：它拥有自己的子模块，而同一个 class 的两个
-  实例会被拒绝，所以"替换其中一个"只能整体不用伞模块。
-- `CloudEventModule` 是**可选 add-on，不在片段内**：它会打开自己的监听与出站
+- `CloudEventModule` 是**可选 add-on，不在 bundle 内**：它会打开自己的监听与出站
   拨号，需要 WebSocket 事件网格时显式安装。
-- **装配校验在构建树时完成**：同一实例重复到达折叠（共享片段是正常用法），
-  同 class 的第二个实例直接 `IllegalStateException` 并把两条路径都点出来。
+- **装配校验在构建树时完成**：同一实例重复到达折叠（共享节点值是正常用法），
+  同 class 的第二个声明直接 `IllegalStateException` 并把两条路径都点出来；
+  `@SubModule` 成环同样在构建树时报错。
 
 ### 3.2 包结构
 
 ```
 com.jujin.freeway.cloud
-├── CloudConfigKeys / CloudModules / CloudHooks
+├── CloudConfigKeys / CloudModule / CloudHooks
 ├── annotation/   @Local 后端标记
 ├── context/      InvocationContext, TraceContext, PrincipalContext, Baggage,
 │                 Propagator, CloudContextModule
@@ -127,7 +129,7 @@ com.jujin.freeway.cloud
 
 ### 3.3 后端标记与装配协议
 
-- 组合单元是 `ModuleNode`（ioc），云侧只提供片段工厂 `CloudModules.standard()`。
+- 组合单元是 `ModuleNode`（ioc），云侧提供 bundle 类 `CloudModule`（`@SubModule` 声明标准模块）。
 - 本地默认实现统一经 `.marker(Local.class)` 绑定，装配面可以
   `@Inject @Local ServiceDiscovery` 明确点名"内置的那个"。`@Local` 只允许
   用在**参数与字段**上——没有任何代码从类上读它，标在实现类上会编译通过
@@ -694,5 +696,6 @@ API**，遵循 `Database`/`Pool` 模式，并发交给虚拟线程。
 | 2026-09-12 | RPC v4：**删除 `CallBus`** 及其卫星类型；`RpcEndpoint` 直接调用容器解析出的 handler（`RpcTarget` 方法表，重载在启动期失败）；`RemoteProxyFactory` 收敛为纯远端；文档由 `freeway-remote-callbus-design.md` 更名 |
 | 2026-09-12 | 审计轮次：失败获得 `kind()`（13 值）；`ServiceRegistry.renew` 返回 boolean 并自愈；readiness 只说框架验证得到的事（3 次失败判不健康、未注册报 `not registered`、关停期不健康）；密钥按 size + 全精度 mtime 轮换；网格出站 TLS 与 RPC 共用一条安全面，明文 + token 启动告警；停机加 `registry.shutdown-drain` / `rpc.shutdown-grace` 与 WS `1001 going away`；contribution id 统一 `freeway.cloud.*`；`@Local` 收敛到参数/字段并覆盖 `Metrics` / `TransportSecurity`；补充可选输入规则与 `Wiring` 兼容构造 |
 | 2026-09-13 | 模块组合改树：`ModuleEx.subModules()` 与 `ModuleTree` 删除，组合成为入口构建的 `ModuleNode` 值（容器持有，`Container.moduleTree()`）；伞模块 `CloudModule` 改为片段工厂 `CloudModules.standard()`，应用可替换或取出其中任一模块 |
+| 2026-09-14 | 结构节点由"命名分组"改为"bundle 模块"：`group` 概念删除，`ModuleEx` 的 bundle 类用 `@SubModule` 声明子模块（构建树时展开，非回调）；`CloudModules.standard()` 工厂删除，恢复为 `CloudModule` + `@SubModule`，子模块仍可单独放置取子集（无排除 API） |
 | 2026-09-12 | 配置面审计：`registry.service-scheme` / `service-host` / `shutdown-drain` 默认改为 `auto`（分别跟随 HTTP 服务器 TLS、推导可路由地址、由注册表后端回答），网格拨号方案改读解析出的实例端点；布尔键统一 `Coercer` 解析（垃圾值启动失败，不再静默 `false`）；override 文件重复键启动告警点名两个文件；新增 `WebServer.secure()` 与 `ServiceRegistry.drainWindow()` |
 | 2026-09-12 | 文档合并：本文取代 `freeway-cloud-unified-design.md` / `freeway-cloud-events-design.md` / `freeway-cloud-rpc-design.md` / `freeway-cloud-implementation-plan.md`；四份文档仍然有效的排除项与能力边界（无应用层心跳、MQ 语义、全局成员视图、webhook 出站、`@CloudEvent` 注解实体）与 core 后续项（含 `Advisor` 织入、网格心跳）并入 §5 / §7 / §8；配置键清单移出为对 `docs/freeway-config.md` 的索引 |

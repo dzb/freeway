@@ -5,7 +5,6 @@ import com.jujin.freeway.ioc.Binding;
 import com.jujin.freeway.commons.util.Strings;
 import com.jujin.freeway.ioc.ModuleEx;
 import com.jujin.freeway.ioc.ModuleNode;
-import com.jujin.freeway.ioc.ModuleRef;
 import com.jujin.freeway.ioc.extension.Contribution;
 import com.jujin.freeway.ioc.extension.Contributions;
 import com.jujin.freeway.ioc.extension.Extension;
@@ -38,8 +37,8 @@ final class BinderImpl implements Binder {
      * depend on services from any module regardless of declaration order.
      */
     void load(ModuleNode tree) {
-        for (ModuleRef ref : tree.bindOrder()) {
-            ModuleEx module = ref.resolve();
+        for (ModuleNode leaf : tree.bindOrder()) {
+            ModuleEx module = leaf.resolve();
             LOG.debug("Installing module: {}", module.name());
             currentModule = module.getClass();
             module.bind(this);

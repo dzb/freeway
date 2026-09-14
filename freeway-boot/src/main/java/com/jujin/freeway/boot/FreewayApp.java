@@ -19,7 +19,7 @@ import com.jujin.freeway.ioc.ModuleNode;
  * // built here, named here, and handed to the container.
  * AppRuntime app = FreewayApp.run(ModuleNode.app("order-service",
  *     ModuleNode.leaf(new OrderModule()),
- *     CloudModules.standard()));
+ *     ModuleNode.leaf(CloudModule.class)));
  * }</pre>
  *
  * <h3>Builder usage</h3>
@@ -51,11 +51,6 @@ public final class FreewayApp {
      * Config is loaded from the default cascade, ServiceLoader modules
      * are discovered, and a JVM shutdown hook is registered.
      */
-    /** Start an application with no modules and empty arguments. */
-    public static AppRuntime run() {
-        return run(new String[0]);
-    }
-
     /** Start an application with no modules and the given arguments. */
     public static AppRuntime run(String[] args) {
         return of().args(args).start();
@@ -77,7 +72,7 @@ public final class FreewayApp {
 
     /**
      * Start an application from an explicitly composed module tree — the form
-     * that expresses grouping and fragment reuse. Discovery still fills the
+     * that expresses bundle placement and tree reuse. Discovery still fills the
      * gaps: a module class the tree already declares is not added again.
      */
     public static AppRuntime run(ModuleNode tree) {

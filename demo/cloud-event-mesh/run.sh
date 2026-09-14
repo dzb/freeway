@@ -5,11 +5,13 @@
 #   ./run.sh            # build + start node B (subscriber) + node A (publisher)
 #   ./run.sh --no-build # skip the maven package step
 #
-# Requires: JDK 25, local Maven repo with freeway 1.3.10 artifacts installed
-# (mvn install in the repo root first), and — for the Kafka channel — a
-# broker reachable at 127.0.0.1:9092 (e.g. podman run -d --name kafka-test
-# -p 9092:9092 ... apache/kafka:4.1.2). Without a broker the WS mesh channel
-# still works; the Kafka subscriber logs connection retries.
+# Requires: JDK 25, local Maven repo with freeway 1.5.2-SNAPSHOT artifacts
+# installed (mvn install in the freeway-2 repo root first), and — for the
+# Kafka channel — a broker reachable at 127.0.0.1:9092 (e.g. podman run -d
+# --name kafka-test -p 9092:9092 ... apache/kafka:4.1.2). Without a broker the
+# WS mesh channel still delivers, but Node A's first publish blocks until the
+# Kafka producer metadata times out unless max.block.ms is bounded — see
+# README "Kafka without a broker".
 set -euo pipefail
 # The JVM inherits the Windows console code page (GBK on a zh-CN host), which
 # makes the log invalid UTF-8 and GNU grep degrade to "Binary file matches".

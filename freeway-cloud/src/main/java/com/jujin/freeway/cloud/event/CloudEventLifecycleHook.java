@@ -80,7 +80,7 @@ final class CloudEventLifecycleHook implements RuntimeHook {
         EventBus bus = container.get(EventBus.class);
 
         if (symbols.resolve(DEDUP_ENABLED)) {
-            bus.enableInboundDeduplication(
+            bus.inboundDeduplication(
                 symbols.resolve(DEDUP_CAPACITY));
         }
 

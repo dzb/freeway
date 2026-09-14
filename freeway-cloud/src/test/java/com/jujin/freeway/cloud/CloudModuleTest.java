@@ -34,11 +34,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The cloud bundle is a composition fragment: one value holding the eight
- * standard modules, placed in an application tree like any other node — and
- * every module still installs on its own (subset assembly).
+ * {@link CloudModule} is the cloud bundle: placing it places the eight
+ * standard modules, and every module still installs on its own (subset
+ * assembly) — taking a subset is placing the modules you want.
  */
-class CloudModulesTest {
+class CloudModuleTest {
 
     private static final List<Class<?>> STANDARD = List.of(
         CloudContextModule.class,
@@ -51,20 +51,21 @@ class CloudModulesTest {
         CloudStorageModule.class);
 
     @Test
-    void standardFragmentHoldsEveryCloudModule() {
-        ModuleNode bundle = CloudModules.standard();
+    void bundleDeclaresEveryStandardCloudModule() {
+        ModuleNode bundle = ModuleNode.leaf(CloudModule.class);
 
-        assertEquals("freeway-cloud", bundle.name());
-        assertEquals(STANDARD.size() + 1, bundle.size(), "the group node plus one leaf per module");
+        assertEquals("CloudModule", bundle.name());
+        assertEquals(STANDARD.size() + 1, bundle.size(), "the bundle node plus one submodule each");
         assertTrue(bundle.classes().containsAll(STANDARD),
             "discovery must not add a second instance of any bundled class");
+        assertTrue(bundle.classes().contains(CloudModule.class));
     }
 
     @Test
-    void fragmentIsPlacedInTheApplicationTree() {
+    void bundleIsPlacedInTheApplicationTree() {
         ModuleNode app = ModuleNode.app("order-service",
             ModuleNode.leaf(AppMarkerModule.class),
-            CloudModules.standard());
+            ModuleNode.leaf(CloudModule.class));
 
         try (Container container = Freeway.create(app)) {
             assertSame(app, container.moduleTree());
@@ -85,8 +86,8 @@ class CloudModulesTest {
 
     @Test
     void aModuleCanBePlacedWithoutTheRestOfTheBundle() {
-        // The point of a fragment: taking it apart is normal composition, not a
-        // workaround — one cloud module, configured by the application.
+        // The subset form: taking the bundle apart is placing the individual
+        // module — one cloud module, configured by the application.
         ModuleNode app = ModuleNode.app("test", CloudRpcModule.class);
 
         try (Container container = Freeway.create(app)) {
@@ -95,6 +96,18 @@ class CloudModulesTest {
                 () -> container.get(SecretStore.class),
                 "the rest of the bundle is absent because it was never placed");
         }
+    }
+
+    @Test
+    void placingABundleAndASubmoduleOfItIsRefused() {
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+            () -> ModuleNode.app("test",
+                ModuleNode.leaf(CloudModule.class),
+                ModuleNode.leaf(CloudRpcModule.class)));
+
+        assertTrue(failure.getMessage().contains(CloudRpcModule.class.getName()),
+            "the duplicate names the submodule and the fix (place the class once): "
+                + failure.getMessage());
     }
 
     @Test
@@ -140,7 +153,7 @@ class CloudModulesTest {
         }
     }
 
-    /** A tiny application module, to prove the fragment sits beside app modules. */
+    /** A tiny application module, to prove the bundle sits beside app modules. */
     static final class AppMarkerModule implements ModuleEx {
 
         record Marker() {}

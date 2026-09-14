@@ -80,7 +80,7 @@ class HttpModuleEngineSelectionTest {
         System.setProperty(HttpConfigKeys.SSL_HTTP2, "false");
         System.setProperty(HttpConfigKeys.SSL_RELOAD_INTERVAL, "200ms");
 
-        app = FreewayApp.run(); // HttpModule is ServiceLoader-discovered
+        app = FreewayApp.run(new String[0]); // HttpModule is ServiceLoader-discovered
 
         assertTrue(awaitReloadThread(3000),
             "the built-in engine serving HTTPS must run the keystore reloader");

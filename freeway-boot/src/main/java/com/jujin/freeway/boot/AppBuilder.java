@@ -37,7 +37,7 @@ public final class AppBuilder {
     /** The application node's name — what the startup log shows as its root line. */
     private static final String APP_NAME = "application";
 
-    /** The application's children: one node per added module or fragment. */
+    /** The application's children: one node per added module or composed tree. */
     private final List<ModuleNode> children = new ArrayList<>();
     /** The name of the application root, once a caller composed one. */
     private String appName;
@@ -78,10 +78,10 @@ public final class AppBuilder {
     }
 
     /**
-     * Add one or more composed fragments: a fragment is a {@link ModuleNode}
-     * built with {@code app/leaf/group}, so grouping and reuse are expressed
-     * here rather than inside a module. Adding an application root contributes
-     * its name (once) and its children; a fragment is added as a child.
+     * Add one or more composed trees: a tree is a {@link ModuleNode} built with
+     * {@code app/leaf}, so bundling and reuse are expressed here rather than
+     * inside a module. Adding an application root contributes its name (once)
+     * and its children; any other node is added as a child.
      */
     public AppBuilder add(ModuleNode... trees) {
         Objects.requireNonNull(trees, "trees");
@@ -94,8 +94,8 @@ public final class AppBuilder {
             if (appName != null) {
                 throw new IllegalStateException(
                     "The application root is already set to '" + appName + "' — a builder"
-                        + " holds one application root. Nest the second tree with"
-                        + " ModuleNode.group(...) instead");
+                        + " holds one application root; combine the trees under a single"
+                        + " ModuleNode.app(...) instead");
             }
             appName = node.name();
             this.children.addAll(node.children());
@@ -162,7 +162,7 @@ public final class AppBuilder {
             : ConfigLoaderImpl.load(effectiveLoader, args);
 
         // The composition is built once, here: the application node with every
-        // added module or fragment, plus whatever SPI discovery fills in. The
+        // added module or tree, plus whatever SPI discovery fills in. The
         // tree — not a per-layer bookkeeping map — is what decides duplicates,
         // order and (for discovery) which classes are already declared.
         List<ModuleNode> composed = new ArrayList<>(children.size() + 1);
@@ -238,7 +238,7 @@ public final class AppBuilder {
 
     /**
      * Fills the gaps with ServiceLoader-discovered modules: a class the tree
-     * already declares — anywhere, fragments included — is not added again, so
+     * already declares — anywhere, bundles included — is not added again, so
      * an author's declaration always wins over discovery. The whole iteration
      * is guarded: a broken provider surfaces from {@code hasNext()/next()},
      * not from the loop body, and must get the same classloader context.

@@ -6,7 +6,6 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Inbound deduplication — the reason an event carries one identity across
@@ -25,7 +24,7 @@ class EventBusInboundDedupTest {
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.enableInboundDeduplication(16);
+        bus.inboundDeduplication(16);
 
         // One event, two transports, one id — one delivery.
         bus.publishInbound("hello", "evt-1");
@@ -42,7 +41,7 @@ class EventBusInboundDedupTest {
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.enableInboundDeduplication(16);
+        bus.inboundDeduplication(16);
 
         bus.publishInbound("one", "evt-1");
         bus.publishInbound("two", "evt-2");
@@ -77,9 +76,9 @@ class EventBusInboundDedupTest {
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
 
-        bus.enableInboundDeduplication(16);
+        bus.inboundDeduplication(16);
         bus.publishInbound("hello", "evt-1");
-        bus.disableInboundDeduplication();
+        bus.inboundDeduplication(0);
         bus.publishInbound("hello", "evt-1");
 
         assertEquals(List.of("hello", "hello"), received);
@@ -94,7 +93,7 @@ class EventBusInboundDedupTest {
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.enableInboundDeduplication(16);
+        bus.inboundDeduplication(16);
 
         bus.publishInbound("a", null);
         bus.publishInbound("a", null);
@@ -112,7 +111,7 @@ class EventBusInboundDedupTest {
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.enableInboundDeduplication(2);
+        bus.inboundDeduplication(2);
 
         bus.publishInbound("a", "id-a");
         bus.publishInbound("b", "id-b");
@@ -130,7 +129,7 @@ class EventBusInboundDedupTest {
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe("orders", payload -> received.add(String.valueOf(payload)));
-        bus.enableInboundDeduplication(16);
+        bus.inboundDeduplication(16);
 
         bus.publishInbound("orders", "first", "evt-1");
         bus.publishInbound("orders", "second", "evt-1");
@@ -148,7 +147,7 @@ class EventBusInboundDedupTest {
         EventBus bus = container.get(EventBus.class);
         List<String> received = new ArrayList<>();
         bus.subscribe(String.class, received::add);
-        bus.enableInboundDeduplication(16);
+        bus.inboundDeduplication(16);
 
         bus.publish("local");
         bus.publish("local");
@@ -158,13 +157,20 @@ class EventBusInboundDedupTest {
     }
 
     @Test
-    void nonPositiveCapacityIsRejected() {
+    void nonPositiveCapacityDisablesInsteadOfRejecting() {
         Container container = Freeway.create(binder -> { });
         EventBus bus = container.get(EventBus.class);
-        assertThrows(IllegalArgumentException.class,
-            () -> bus.enableInboundDeduplication(0));
-        assertThrows(IllegalArgumentException.class,
-            () -> bus.enableInboundDeduplication(-1));
+        List<String> received = new ArrayList<>();
+        bus.subscribe(String.class, received::add);
+
+        bus.inboundDeduplication(16);
+        bus.inboundDeduplication(-1);
+
+        bus.publishInbound("hello", "evt-1");
+        bus.publishInbound("hello", "evt-1");
+
+        assertEquals(List.of("hello", "hello"), received,
+            "a non-positive capacity releases the window and delivers both copies");
         container.close();
     }
 }

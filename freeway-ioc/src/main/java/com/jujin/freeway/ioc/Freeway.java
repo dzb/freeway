@@ -43,7 +43,7 @@ public final class Freeway {
      * <pre>{@code
      * Container c = Freeway.create(ModuleNode.app("orders",
      *     ModuleNode.leaf(new OrderModule()),
-     *     CloudModules.standard()));
+     *     ModuleNode.leaf(CloudModule.class)));
      * }</pre>
      */
     public static Container create(ModuleNode tree) {

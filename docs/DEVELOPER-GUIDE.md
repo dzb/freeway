@@ -667,7 +667,7 @@ AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
 AppRuntime runtime = FreewayApp.run(new String[0], new AppModule(), new HttpModule());
 ```
 
-`FreewayApp.run()` accepts command-line args and module instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
+`FreewayApp.run(...)` accepts command-line args and module instances. It loads config, discovers SPI modules, creates the container, starts hooks, logs startup time, and registers a JVM shutdown hook.
 
 Adding the **same module class twice with two different instances** (e.g.
 `add(new DbModule(), new DbModule())`, or an explicit module that SPI
@@ -1696,18 +1696,19 @@ bus.publish(new PostCreatedEvent(1L, "Hello"));
 
 ## Cloud (`freeway-cloud`)
 
-**Placing the bundle in the tree is the integration.** `CloudModules.standard()`
-is a composition fragment holding context propagation, secrets, discovery,
-remote invocation, observability, resilience, health and object storage; the
-event mesh is the one capability you add explicitly (`new CloudEventModule()`),
+**Placing the bundle in the tree is the integration.** `CloudModule` is the
+cloud bundle: the class declares the standard modules with `@SubModule`
+(context propagation, secrets, discovery, remote invocation, observability,
+resilience, health and object storage), and placing it places them. The event
+mesh is the one capability you add explicitly (`new CloudEventModule()`),
 because it opens a network listener of its own. Everything below is then wired
-without further application code — and because a fragment is data, taking one
-module out of it is ordinary composition:
+without further application code — and since a submodule is an ordinary module,
+taking a subset is placing the modules you want:
 
 ```java
 FreewayApp.run(ModuleNode.app("order-service",
     ModuleNode.leaf(new OrderModule()),
-    CloudModules.standard()));                       // the whole bundle
+    CloudModule.class));                              // the whole bundle
 
 FreewayApp.run(ModuleNode.app("order-service",
     ModuleNode.leaf(new CloudRpcModule())));          // just the client
@@ -1996,7 +1997,7 @@ rather than each bridge minting its own. When inbound dedup is armed, the
 second copy is recognized and dropped:
 
 ```java
-bus.enableInboundDeduplication(4096);   // remember the last 4096 inbound ids
+bus.inboundDeduplication(4096);   // remember the last 4096 inbound ids
 ```
 
 or declaratively, which `CloudEventModule` does on your behalf:

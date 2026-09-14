@@ -11,7 +11,6 @@ Commons provides the small, shared runtime utilities used across Freeway.
 - `MethodHandleUtils` — cached `MethodHandle`/`VarHandle`/constructor handles for reflective invocation hot paths (`methodHandle`, `defaultMethodHandle`, `invokeOn`)
 - `SymbolSpec` — typed, defaulted `AppConfig` keys with per-key parsers
 - `ContextExecutor` — explicit cross-thread propagation of `ScopedValue`-based context
-- `TreeNode` — an immutable tree value (`value` / `children`, iterative `preOrder()` / `levelOrder()`, `size()` / `height()`); no parent pointers, no mutation, cycles unrepresentable
 - `JULFileHandler`
 - `LogBootstrap`
 

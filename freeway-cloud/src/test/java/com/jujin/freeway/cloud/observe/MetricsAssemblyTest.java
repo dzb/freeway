@@ -1,6 +1,6 @@
 package com.jujin.freeway.cloud.observe;
 
-import com.jujin.freeway.cloud.CloudModules;
+import com.jujin.freeway.cloud.CloudModule;
 
 import com.jujin.freeway.boot.AppRuntime;
 import com.jujin.freeway.boot.FreewayApp;
@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Metrics wiring under assembly: the standard {@code CloudModules.standard()} bundle must serve
+ * Metrics wiring under assembly: the standard {@code CloudModule} bundle must serve
  * {@code /metrics} from the same registry the {@code Metrics} SPI records
  * into (both roles bound to one instance — the snapshot view is never derived
  * from a container proxy by instanceof), and a replacement backend installs
@@ -51,7 +51,7 @@ class MetricsAssemblyTest {
 
     @Test
     void standardCloudModuleServesMetricsFromTheActiveRegistry() throws Exception {
-        try (AppRuntime app = FreewayApp.of().add(CloudModules.standard()).start()) {
+        try (AppRuntime app = FreewayApp.of().add(CloudModule.class).start()) {
             app.get(Metrics.class).counter("hits").increment();
 
             HttpResponse<String> metrics = get(app, "/metrics");
@@ -63,7 +63,7 @@ class MetricsAssemblyTest {
 
     @Test
     void metricsSnapshotResolvesAndRendersTheModuleRegistry() {
-        try (Container container = Freeway.create(CloudModules.standard())) {
+        try (Container container = Freeway.create(CloudModule.class)) {
             container.get(Metrics.class).counter("hits").add(2);
             String text = container.get(MetricsSnapshot.class).prometheusText();
             assertTrue(text.contains("hits 2"),
@@ -87,7 +87,7 @@ class MetricsAssemblyTest {
     @Test
     void coexistingSecondMetricsPrimaryFailsLoudly() {
         try (Container container = Freeway.create(ModuleNode.app("test",
-                CloudModules.standard(),
+                ModuleNode.leaf(CloudModule.class),
                 ModuleNode.leaf(new SecondMetricsPrimaryModule())))) {
             assertThrows(AmbiguousBindingException.class,
                 () -> container.get(Metrics.class),
