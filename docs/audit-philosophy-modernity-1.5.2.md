@@ -305,6 +305,31 @@ javadoc 说"same gates as the streaming path, **plus body-allowed**"，但 `shou
 - C2 大文件职责：`JULEnhancer` 8 节、`StaticResourceMount` 6 策略、`MigrationRunner`、`Sql` 的拆分——按"一次改到位"的原则整文件拆，不做局部挪动。
 - C3 `DbModule` 与 `MigrationRunner` 的默认值归属统一到一处。
 
+## 6.1 实施状态（滚动更新）
+
+| 项 | 状态 | 提交 |
+|---|---|---|
+| A0 `Coercer` Number→boolean 静默错值 | 已落地 | core `961987be` |
+| A1 `HttpServerConfig` 三种构造收敛 | 已落地 | core `361efd4c` + ext `1325338` |
+| A2 `WebServer` 4 参构造器（`secure` 写死 false） | 已落地 | 同上 |
+| A3 `Sql.orWhere` 首条件 + `set` 拆名 | 已落地 | core `eac5551a` |
+| A4 日志键集中 + MDC 默认值清空 | 已落地 | core `c51a9bb1` |
+| A5 日志非法值统一"报出并回落" | 已落地 | 同上 |
+| A6 boot 三条 P1（读失败口径、profile 变体、组合期清理） | 已落地 | core `dc23a6e5` |
+| A7 文档 17 处 + flow v1 残留 | 已落地 | core `f278117e` |
+| A8 `AGENTS.md` 判据 + ioc 改名与贡献链回放 | 已落地 | core `f910701f` |
+| B5 `ResponseFraming` 纯别名 | 已落地 | 本轮 |
+| B7 `advise` bind 期校验 + `Scoping.within(Runnable)` | 已落地 | 本轮 |
+| B8 `RpcTarget` 导出面按申报类型 | 已落地 | 本轮 |
+| B9 `BeanIntrospector` 缓存泄漏、JSON 写方法命名、类型不符不再静默 | 已落地 | 本轮 |
+| B1 `PoolConfig`/`PeerConnector` wither、`Orm.findAll` 位置哨兵 | 待做 | — |
+| B2 `MigrationRunner`/`FreewayHttpEngine`/`JULFileHandler` 旧 arity 构造器 | 待做 | — |
+| B4 四个只被测试引用的 internal public 类型收窄 | 待做 | — |
+| B3 入口工厂 `create` vs `of` | **待用户定调** | — |
+
+审计方法上的两次自我纠正也留在正文：`instanceof` 强转计数与 `Sql.Condition` 构造器计数的假阳性（§1），
+以及一条被模块反例撤回的结论（`Dialect` 命名，§5 第 1 条）。
+
 ## 7. 附：复现命令与口径
 
 ```bash

@@ -362,7 +362,7 @@ public class HttpContextImpl extends AbstractHttpContext {
             channel.close();
             return this;
         }
-        boolean gzip = ResponseFraming.shouldGzipFile(
+        boolean gzip = ResponseFraming.shouldGzipStream(
             compression, responseStatus, allowsResponseBody(),
             acceptsGzip(), compressibleContentType());
         if (gzip || fileSender == null || length < MIN_SENDFILE_BYTES) {

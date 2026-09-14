@@ -44,6 +44,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **批次 B（第一批）：导出面、别名、bind 期校验、JSON 访问器与缓存泄漏（freeway-cloud / http / ioc / commons）** —
+  审计 §6 批次 B 的前五项：
+  - **RPC 导出面以申报类型为准**（cloud）：`RpcTarget` 原先进 `handler.getClass().getMethods()`，于是
+    `bind(窄接口).to(宽实现)` 会把实现类多出来的 public 方法一并导出——与"导出即申报"的姿态相反。现在读
+    `export.type()` 的方法面；`RpcExport` 的 javadoc 统一成"类型即边界"（想要更小的面就声明 facade 类型）。
+    新增用例直接断言"不在申报类型上的方法不进方法表"。
+  - **`ResponseFraming.shouldGzipFile` 删除**（http）：它是 `shouldGzipStream` 的纯转发，而 javadoc 声称
+    多一道 `body-allowed` 闸门（`shouldGzipStream` 本来就查）——一个没有行为的别名配一段不成立的说明。
+    唯一 core 调用点改名，测试里重复的那组断言删除。
+  - **`.advise()` 在 bind 期校验接口约束**（ioc）：约束在 `bind(GreeterImpl.class).advise(...)` 当场就已知，
+    原先拖到首次 `get()` 才抛，错误信息落在一个与起因无关的调用点上；现在抛在 binding 调用处并给出修法
+    （"bind X to an interface to use .advise()"）。`Scoping` 补 `default void within(Runnable)`，测试里 8 处
+    `within(() -> { …; return null; })` 的尾巴随之消失。
+  - **构造器缓存不再钉住类加载器**（commons）：`BeanIntrospector` 用
+    `WeakHashMap<Constructor, BeanConstructor>` 存包装器，而 value 强引用 key——条目永不回收，凡走过的类
+    与其类加载器都被静态 map 钉住。改为按声明类分片的 `ClassValue<Map<…>>`（与 `JsonCoercions` 的做法一致），
+    类加载器卸载即可回收；新增用例钉住"同一 Constructor 只包装一次"。
+  - **JSON 写方法改名、类型不符不再静默**（commons）：`JsonObject.object(key)`/`array(key)` 与
+    `JsonArray.object()`/`array()` 是**写**操作（建子节点并挂上去），却与读方法 `getObject`/`getArray` 只差
+    一个 `get`；改为 `newObject`/`newArray`/`addObject`/`addArray`。`JsonAccessors.object/array` 原先在
+    "键不存在"与"键存在但类型不符"两种情况下都返回 `null`，现在只有缺失返回 `null`，类型不符抛
+    `IllegalArgumentException`（与其数值/布尔兄弟一致，错误信息用 `JsonUtils.typeName` 说出实际类型）。
+
 - **ioc：可替换的角色按"外部能否 `.primary()` 替换"命名，贡献链也按被解析的实例走（freeway-ioc）** — 审计 A8：
   - `SymbolSourceImpl` → `SymbolSourceDefault`，`LoggerSourceImpl` → `LoggerSourceDefault`：两者都能被模块用
     `.primary()` 顶掉（`InjectionResolver` 的注释原本就这么写着），按判据它们是 `XDefault`，不是 `XImpl`。

@@ -3,10 +3,9 @@ package com.jujin.freeway.commons.bean;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
-import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Cached bean/record introspection engine.
@@ -38,8 +37,25 @@ public final class BeanIntrospector {
             return BeanPlan.of(type);
         }
     };
-    private static final Map<Constructor<?>, BeanConstructor> CONSTRUCTORS =
-        Collections.synchronizedMap(new WeakHashMap<>());
+    /**
+     * Constructor wrappers, keyed by declaring class and held by a
+     * {@link ClassValue}.
+     *
+     * <p>This used to be a {@code synchronized WeakHashMap<Constructor,
+     * BeanConstructor>}, which could never release anything: the value holds the
+     * {@link Constructor}, so every key was strongly reachable from its own
+     * entry and the map pinned every class — and class loader — that ever passed
+     * through. {@code ClassValue} is the shape that actually releases with the
+     * class, exactly as {@link com.jujin.freeway.commons.json.JsonCoercions}
+     * does for its own caches.</p>
+     */
+    private static final ClassValue<Map<Constructor<?>, BeanConstructor>> CONSTRUCTORS =
+        new ClassValue<>() {
+            @Override
+            protected Map<Constructor<?>, BeanConstructor> computeValue(Class<?> type) {
+                return new ConcurrentHashMap<>();
+            }
+        };
 
     private BeanIntrospector() {
     }
@@ -64,7 +80,8 @@ public final class BeanIntrospector {
         Objects.requireNonNull(constructor, "constructor");
         // Atomic check-and-create: a race must not produce two wrappers for
         // the same Constructor.
-        return CONSTRUCTORS.computeIfAbsent(constructor, BeanConstructor::of);
+        return CONSTRUCTORS.get(constructor.getDeclaringClass())
+            .computeIfAbsent(constructor, BeanConstructor::of);
     }
 
     /**

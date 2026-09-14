@@ -24,24 +24,17 @@ public final class ResponseFraming {
             && acceptsGzip && compressible;
     }
 
-    /** Streaming variant: the body length is unknown until consumed, so the
-     *  min-size gate cannot apply. */
+    /** Streaming variant (also the file path — an unknown-at-decision-time
+     *  length cannot be tested against the min-size gate): the body length is
+     *  not known here, so the min-size gate cannot apply. There used to be a
+     *  separate {@code shouldGzipFile} that only forwarded to this method while
+     *  its javadoc claimed an extra gate this one already applies. */
     public static boolean shouldGzipStream(
             HttpServerConfig.CompressionConfig compression,
             int status, boolean bodyAllowed,
             boolean acceptsGzip, boolean compressible) {
         return compression.enabled() && status != 206 && bodyAllowed
             && acceptsGzip && compressible;
-    }
-
-    /** File variant: same gates as the streaming path, plus body-allowed so
-     *  a bodyless status (204/304) never advertises Content-Encoding. */
-    public static boolean shouldGzipFile(
-            HttpServerConfig.CompressionConfig compression,
-            int status, boolean bodyAllowed,
-            boolean acceptsGzip, boolean compressible) {
-        return shouldGzipStream(compression, status, bodyAllowed,
-            acceptsGzip, compressible);
     }
 
     /** True when the wire must not carry body bytes: HEAD requests and

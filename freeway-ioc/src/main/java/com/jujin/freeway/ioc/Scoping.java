@@ -26,4 +26,19 @@ public interface Scoping {
      * @return the value returned by {@code work}
      */
     <T> T within(Supplier<T> work);
+
+    /**
+     * Runs {@code work} inside a new thread scope, for work that returns
+     * nothing. Without it a side-effecting block had to be written as
+     * {@code within(() -> { ...; return null; })} — the same run/call pair
+     * {@link java.lang.ScopedValue} offers.
+     *
+     * @param work the code to run inside the scope
+     */
+    default void within(Runnable work) {
+        within(() -> {
+            work.run();
+            return null;
+        });
+    }
 }

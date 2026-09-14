@@ -3,6 +3,8 @@ package com.jujin.freeway.cloud.rpc;
 import com.jujin.freeway.cloud.CloudModule;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -63,6 +65,20 @@ class RpcExportWiringTest {
         public InjectedHandlers(Counter counter) { this.counter = counter; }
 
         public String hit() { return counter.next(); }
+    }
+
+    /** The declared surface: one method. */
+    public interface Greeter {
+        String greet(String name);
+    }
+
+    /** The bound implementation, whose public surface is wider than the declaration. */
+    public static class WideGreeter implements Greeter {
+        @Override
+        public String greet(String name) { return "hi " + name; }
+
+        /** Not on {@link Greeter}: declaring the mapping must not expose it. */
+        public String internal(String secret) { return "leaked:" + secret; }
     }
 
     /** Two public methods with one name: the positional wire cannot split them. */
@@ -248,5 +264,19 @@ class RpcExportWiringTest {
             all.append(current.getMessage()).append(" | ");
         }
         return all.toString();
+    }
+
+    @Test
+    void surfaceComesFromTheDeclaredTypeNotFromTheInstanceClass() {
+        // Direct check, because an interface binding is handed over as a JDK
+        // proxy (which implements only the interface) and would hide the
+        // difference: RpcTarget must read the declared type's methods, so a
+        // wider implementation cannot widen the exported surface. Reading
+        // handler.getClass() exported `internal` here.
+        RpcTarget target = RpcTarget.of(RpcExport.of("greet", Greeter.class), new WideGreeter());
+
+        assertNotNull(target.method("greet"), "the declared method is served");
+        assertNull(target.method("internal"),
+            "a method that is not on the declared type must not be exported");
     }
 }

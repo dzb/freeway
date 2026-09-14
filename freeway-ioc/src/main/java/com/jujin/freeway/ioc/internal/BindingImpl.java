@@ -162,6 +162,17 @@ final class BindingImpl<T> implements Binding<T> {
 
     @Override
     public Binding<T> advise(Consumer<Advisor> advisor) {
+        // Advice is applied through a JDK proxy, so only interfaces can carry it.
+        // The constraint is known right here — failing at first get() instead
+        // pushed a wiring mistake to an unrelated request (and made the message
+        // arrive far from the line that caused it).
+        if (!type.isInterface()) {
+            throw new IllegalArgumentException(
+                "Advice is not supported on non-interface type " + type.getName()
+                    + " — bind " + type.getName()
+                    + " to an interface to use .advise(), or drop the advisor"
+            );
+        }
         AdvisorImpl builder = new AdvisorImpl();
         Objects.requireNonNull(advisor, "advisor").accept(builder);
         this.advices.addAll(builder.entries());

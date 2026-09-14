@@ -44,7 +44,6 @@ class ScopeProxyAdvisorTest {
 
         ScopedCache.within(() -> {
             ScopedCache.get("k", () -> (AutoCloseable) () -> closed.add(null));
-            return null;
         });
 
         container.close();
@@ -319,7 +318,6 @@ class ScopeProxyAdvisorTest {
             assertSame(first, second);
             assertEquals(1, ScopedCounter.created.get());
             assertEquals(0, ScopedCounter.destroyed.get());
-            return null;
         });
         ScopedCounter first = firstHolder.get();
 
@@ -329,7 +327,6 @@ class ScopeProxyAdvisorTest {
             ScopedCounter third = container.get(ScopedCounter.class);
             assertNotSame(first, third);
             assertEquals(2, ScopedCounter.created.get());
-            return null;
         });
 
         assertEquals(2, ScopedCounter.destroyed.get());
@@ -361,7 +358,6 @@ class ScopeProxyAdvisorTest {
         scoping.within(() -> {
             ScopedCounter third = container.get(ScopedCounter.class);
             assertEquals(2, ScopedCounter.created.get());
-            return null;
         });
 
         assertEquals(2, ScopedCounter.destroyed.get());
@@ -388,7 +384,6 @@ class ScopeProxyAdvisorTest {
                 assertNotSame(outer, inner);
                 assertEquals(2, ScopedCounter.created.get());
                 assertEquals(0, ScopedCounter.destroyed.get()); // outer not yet destroyed
-                return null;
             });
 
             assertEquals(1, ScopedCounter.destroyed.get()); // inner destroyed
@@ -396,7 +391,6 @@ class ScopeProxyAdvisorTest {
             // Outer session still alive
             ScopedCounter stillOuter = container.get(ScopedCounter.class);
             assertSame(outer, stillOuter);
-            return null;
         });
 
         assertEquals(2, ScopedCounter.destroyed.get()); // outer destroyed
@@ -447,7 +441,6 @@ class ScopeProxyAdvisorTest {
 
         scoping.within(() -> {
             container.get(ScopedCounter.class);
-            return null;
         });
 
         assertEquals(1, ScopedCounter.destroyed.get());
@@ -491,7 +484,6 @@ class ScopeProxyAdvisorTest {
             assertTrue(ex.getMessage().contains("Container is closed"),
                 "a THREAD proxy invoked after close must report the sealed container, got: "
                     + ex.getMessage());
-            return null;
         });
 
         assertEquals(0, ScopedCounter.created.get(),
@@ -594,15 +586,19 @@ class ScopeProxyAdvisorTest {
 
     @Test
     void rejectsAdvisorOnNonInterfaceType() {
-        Container container = Freeway.create(binder ->
-            binder.bind(GreeterImpl.class)
-                .to(GreeterImpl.class)
-                .advise(advisor -> advisor.wrap(
-                    invocation -> true,
-                    invocation -> invocation.proceed()
-                ))
+        // The failure belongs to the binding call, not to the first lookup: the
+        // proxy that applies advice only exists for interfaces, and the binder
+        // knows the type then.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            Freeway.create(binder ->
+                binder.bind(GreeterImpl.class)
+                    .to(GreeterImpl.class)
+                    .advise(advisor -> advisor.wrap(
+                        invocation -> true,
+                        invocation -> invocation.proceed()
+                    ))
+            )
         );
-        assertThrows(IllegalArgumentException.class,
-            () -> container.get(GreeterImpl.class));
+        assertTrue(ex.getMessage().contains("interface"), ex.getMessage());
     }
 }

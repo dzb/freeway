@@ -2,6 +2,7 @@ package com.jujin.freeway.commons.bean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.annotation.Retention;
@@ -53,5 +54,17 @@ class BeanConstructorTest {
         int count() {
             return count;
         }
+    }
+
+    @Test
+    void wrapperIsCachedPerConstructor() throws Exception {
+        // The cache is the reason this method exists (it is not a factory):
+        // one wrapper per Constructor, so a caller compares handles and pays
+        // introspection once. It lives in a ClassValue keyed by declaring class
+        // — a value-holds-key WeakHashMap could never release a class.
+        var constructor = Sample.class.getDeclaredConstructor(String.class, int.class);
+
+        assertSame(BeanIntrospector.constructor(constructor),
+            BeanIntrospector.constructor(constructor));
     }
 }

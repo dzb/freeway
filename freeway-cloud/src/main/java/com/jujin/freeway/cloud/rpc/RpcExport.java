@@ -20,12 +20,14 @@ import java.util.Objects;
  *       .add(RpcExport.of("user", UserHandlers.class));         // expose user.*
  * }</pre>
  *
- * <p><b>By type, not by instance.</b> The handler is resolved from the
- * container when the application starts, so its dependencies are injected and
- * its lifecycle is the container's. A type that is not bound fails startup with
- * an actionable message rather than answering 404 later. Export a <em>facade</em>
- * class when the service's public surface is wider than what should be exposed:
- * the exported surface is exactly the resolved instance's public methods.
+ * <p><b>By type, not by instance — and the type is the boundary.</b> The handler
+ * is resolved from the container when the application starts, so its dependencies
+ * are injected and its lifecycle is the container's. A type that is not bound
+ * fails startup with an actionable message rather than answering 404 later. The
+ * exported surface is exactly {@code type}'s public methods: binding a wide
+ * implementation to a narrow interface exports only the interface, so an
+ * application that wants a smaller surface declares a facade type instead of
+ * relying on which class happens to be bound.
  *
  * @param mapping           call-topic prefix, e.g. {@code "user"} — one path
  *                          segment, {@code [A-Za-z0-9_.]} only

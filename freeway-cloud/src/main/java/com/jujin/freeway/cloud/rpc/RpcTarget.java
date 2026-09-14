@@ -18,6 +18,13 @@ import java.util.Objects;
  * array, so an overload fails the boot instead of silently serving the wrong
  * shape. Eligible methods follow the same rule the wire contract implies —
  * public, instance, non-synthetic, nothing inherited from {@link Object}.</p>
+ *
+ * <p><b>The surface is the declared type's</b>, not the resolved instance's
+ * class: iterating {@code handler.getClass()} meant that binding a narrow
+ * interface to a wide implementation silently exported the extra public
+ * methods, which contradicts the whole point of declaring the mapping. The
+ * declared type is the boundary, and a wider implementation changes nothing;
+ * the container still guarantees the resolved instance is assignable to it.</p>
  */
 final class RpcTarget {
 
@@ -35,7 +42,7 @@ final class RpcTarget {
         Objects.requireNonNull(export, "export");
         Objects.requireNonNull(handler, "handler");
         Map<String, MethodHandle> methods = new HashMap<>();
-        for (Method method : handler.getClass().getMethods()) {
+        for (Method method : export.type().getMethods()) {
             int mods = method.getModifiers();
             if (method.getDeclaringClass() == Object.class
                     || Modifier.isStatic(mods)
@@ -45,8 +52,8 @@ final class RpcTarget {
             if (methods.putIfAbsent(method.getName(),
                     MethodHandleUtils.methodHandle(method)) != null) {
                 throw new IllegalStateException(
-                    "Mapping '" + export.mapping() + "' handler "
-                        + handler.getClass().getName() + " declares method '"
+                    "Mapping '" + export.mapping() + "' type "
+                        + export.type().getName() + " declares method '"
                         + method.getName() + "' more than once — the positional wire"
                         + " contract cannot tell overloads apart: keep one name per shape");
             }

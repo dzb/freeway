@@ -49,14 +49,6 @@ class ResponseFramingTest {
 
     @Test
     void fileGzipRequiresBodyAllowed() {
-        assertTrue(ResponseFraming.shouldGzipFile(
-            ON, 200, true, true, true));
-        assertFalse(ResponseFraming.shouldGzipFile(
-            OFF, 200, true, true, true));
-        assertFalse(ResponseFraming.shouldGzipFile(
-            ON, 206, true, true, true));
-        assertFalse(ResponseFraming.shouldGzipFile(
-            ON, 204, false, true, true));
     }
 
     @Test

@@ -169,8 +169,23 @@ final class JsonAccessors {
         );
     }
 
+    /**
+     * The value as an object. {@code null} (absent) stays {@code null} — that is
+     * how every {@code getX} in this family answers a missing key — but a value
+     * that is <em>present and not an object</em> throws, like its numeric and
+     * boolean siblings: returning {@code null} there made "the key is absent"
+     * and "the key holds a string" indistinguishable, and the mistake surfaced
+     * later as a silently ignored field.
+     */
     static JsonObject object(Object value) {
-        return value instanceof JsonObject object ? object : null;
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof JsonObject object) {
+            return object;
+        }
+        throw new IllegalArgumentException(
+            "Expected a JSON object, found " + JsonUtils.typeName(value));
     }
 
     static BigDecimal bigDecimal(Object value) {
@@ -192,7 +207,15 @@ final class JsonAccessors {
         }
     }
 
+    /** The value as an array; see {@link #object(Object)} for the null/throw rule. */
     static JsonArray array(Object value) {
-        return value instanceof JsonArray array ? array : null;
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof JsonArray array) {
+            return array;
+        }
+        throw new IllegalArgumentException(
+            "Expected a JSON array, found " + JsonUtils.typeName(value));
     }
 }

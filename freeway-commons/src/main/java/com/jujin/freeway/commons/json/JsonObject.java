@@ -37,13 +37,18 @@ public final class JsonObject {
         return this;
     }
 
-    public JsonObject object(String key) {
+    /** Creates a child object under {@code key} (replacing any existing value)
+     *  and returns it for filling in. A write, hence the name: the read face is
+     *  {@link #getObject(String)}. */
+    public JsonObject newObject(String key) {
         JsonObject value = new JsonObject();
         put(key, value);
         return value;
     }
 
-    public JsonArray array(String key) {
+    /** Creates a child array under {@code key} (replacing any existing value)
+     *  and returns it for filling in — the write face of {@link #getArray(String)}. */
+    public JsonArray newArray(String key) {
         JsonArray value = new JsonArray();
         put(key, value);
         return value;

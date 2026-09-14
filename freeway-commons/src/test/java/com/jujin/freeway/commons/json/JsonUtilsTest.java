@@ -109,11 +109,11 @@ class JsonUtilsTest {
     @Test
     void buildsChainableObjectsAndArrays() {
         JsonObject root = JsonUtils.object();
-        JsonObject app = root.object("app");
+        JsonObject app = root.newObject("app");
         app.put("name", "Freeway");
-        JsonArray tags = app.array("tags");
+        JsonArray tags = app.newArray("tags");
         tags.add("a").add("b");
-        root.object("server").put("port", 8080);
+        root.newObject("server").put("port", 8080);
 
         assertEquals("Freeway", ((JsonObject) root.get("app")).get("name"));
         assertEquals(8080, ((JsonObject) root.get("server")).get("port"));
@@ -187,7 +187,7 @@ class JsonUtilsTest {
     void stringifiesObjectsAndArrays() {
         JsonObject value = JsonUtils.object();
         value.put("name", "Freeway");
-        value.array("tags")
+        value.newArray("tags")
             .add("a")
             .add("b");
 
@@ -1037,8 +1037,30 @@ class JsonUtilsTest {
             return type;
         }
     }
+
+    @Test
+    void absentKeyReadsAsNullButAWrongTypeThrows() {
+        // Every getX in this family answers a missing key with null; a value that
+        // IS there but is not the requested shape must not be mistaken for it —
+        // that made "the key is absent" and "the key holds a string"
+        // indistinguishable, and the mistake surfaced as a silently ignored field.
+        JsonObject root = JsonUtils.object().put("name", "alice").put("tags", JsonUtils.array());
+
+        assertNull(root.getObject("missing"), "an absent key reads as null");
+        assertNull(root.getArray("missing"), "an absent key reads as null");
+
+        IllegalArgumentException objectEx = assertThrows(IllegalArgumentException.class,
+            () -> root.getObject("name"));
+        assertTrue(objectEx.getMessage().contains("a string"), objectEx.getMessage());
+
+        IllegalArgumentException arrayEx = assertThrows(IllegalArgumentException.class,
+            () -> root.getArray("name"));
+        assertTrue(arrayEx.getMessage().contains("a string"), arrayEx.getMessage());
+    }
+
 }
 
 class BeanTarget {
     public String title;
+
 }

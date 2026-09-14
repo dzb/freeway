@@ -17,13 +17,17 @@ public final class JsonArray {
         return this;
     }
 
-    public JsonObject object() {
+    /** Appends a new object and returns it for filling in — the write face of
+     *  {@link #getObject(int)}. */
+    public JsonObject addObject() {
         JsonObject value = new JsonObject();
         values.add(value);
         return value;
     }
 
-    public JsonArray array() {
+    /** Appends a new array and returns it for filling in — the write face of
+     *  {@link #getArray(int)}. */
+    public JsonArray addArray() {
         JsonArray value = new JsonArray();
         values.add(value);
         return value;

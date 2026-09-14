@@ -26,6 +26,29 @@ public final class JsonUtils {
 
     private JsonUtils() {}
 
+    /** The JSON-facing type name of a value, for accessor error messages. */
+    static String typeName(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        if (value instanceof JsonObject) {
+            return "an object";
+        }
+        if (value instanceof JsonArray) {
+            return "an array";
+        }
+        if (value instanceof CharSequence || value instanceof Character) {
+            return "a string";
+        }
+        if (value instanceof Boolean) {
+            return "a boolean";
+        }
+        if (value instanceof Number) {
+            return "a number";
+        }
+        return value.getClass().getSimpleName();
+    }
+
     public static JsonObject object() {
         return new JsonObject();
     }
