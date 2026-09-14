@@ -45,7 +45,10 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
 
 - Public interfaces use the domain name: `Container`, `JsonCodec`, `Route`.
 - **`XDefault` vs `XImpl`** — the deciding question is whether the *outside can
-  substitute* the implementation for that role:
+  substitute* the implementation for that role. The operational test is one
+  line: **can a module bind an alternative with `.primary()` and have the
+  container honor it?** If yes the type is `XDefault`, no matter how concretely
+  the framework itself wires it, and no matter that it lives in `internal`:
   - `XDefault` — it can: an extension binds an alternative with `.primary()`,
     an adapter builds on the default, or config activates another one.
     Examples: `AppRuntimeDefault`, `JsonCodecDefault`, `PoolDefault`,
@@ -56,6 +59,13 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
     (`HttpContextImpl`), or per-owner types that coexist with other
     implementations (`PooledConnectionImpl`). A type stays `XDefault` even
     where the framework wires it concretely.
+  - Substituting a role means honoring its whole seam, not just its lookups:
+    a replacement `SymbolSource` must implement `register(SymbolProvider)`,
+    because the container replays every module's contributed providers into
+    whatever source is bound. The interface's default implementation throws —
+    a replacement that cannot take contributions is reported at startup rather
+    than silently serving a chain without boot's tiers (`SymbolSourceReplacementTest`
+    pins both halves).
 - `DefaultX` is avoided — `XDefault` keeps the interface name dominant.
 - Package location is orthogonal to the suffix: `internal` is part of Freeway
   and marks "no stability promise" for callers, not a visibility gate — classes

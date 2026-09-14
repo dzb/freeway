@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-final class SymbolSourceImpl implements SymbolSource {
+final class SymbolSourceDefault implements SymbolSource {
     private static final int MAX_EXPAND_DEPTH = 40;
 
     /** All providers — the framework's own tiers (CLI, JVM system properties,
@@ -32,7 +32,7 @@ final class SymbolSourceImpl implements SymbolSource {
      *  container wires it. */
     private volatile Coercer coercer;
 
-    SymbolSourceImpl(List<SymbolProvider> providers) {
+    SymbolSourceDefault(List<SymbolProvider> providers) {
         this.providers.addAll(Objects.requireNonNull(providers, "providers"));
     }
 
@@ -46,8 +46,8 @@ final class SymbolSourceImpl implements SymbolSource {
      * declared prefix mapping, so an unknown symbol fails instead of
      * silently matching an unrelated variable.
      */
-    static SymbolSourceImpl standard() {
-        return new SymbolSourceImpl(List.of(
+    static SymbolSourceDefault standard() {
+        return new SymbolSourceDefault(List.of(
             new SymbolProvider() {
                 @Override
                 public String lookup(String name) {
@@ -61,7 +61,8 @@ final class SymbolSourceImpl implements SymbolSource {
             }));
     }
 
-    void register(SymbolProvider provider) {
+    @Override
+    public void register(SymbolProvider provider) {
         // Every provider sits in one ordered list — the declared order()
         // decides, never the install order of the contributing module.
         providers.add(Objects.requireNonNull(provider, "provider"));

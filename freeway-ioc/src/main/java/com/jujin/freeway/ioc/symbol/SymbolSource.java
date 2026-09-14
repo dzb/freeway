@@ -72,6 +72,34 @@ public interface SymbolSource {
     }
 
     /**
+     * Adds one provider to this source's chain.
+     *
+     * <p>The container calls this for every {@code SymbolProvider} a module
+     * contributes — boot contributes the application's tiers (CLI, environment,
+     * config files) that way, cloud contributes its secret store. An
+     * implementation that replaces the built-in source therefore has to accept
+     * them, or the whole cascade disappears in silence and surfaces much later
+     * as "my config file is ignored".</p>
+     *
+     * <p>A contributed provider carries its own {@link SymbolProvider#order()};
+     * ordering across providers is the implementation's job (the built-in one
+     * sorts stably by order). The default implementation throws, because a
+     * replacement that cannot take contributions is a configuration mistake
+     * that must be reported at startup rather than at the first missing key.</p>
+     *
+     * @param provider the provider to add
+     * @throws UnsupportedOperationException when this source cannot take part
+     *         in the container's contribution chain
+     */
+    default void register(SymbolProvider provider) {
+        throw new UnsupportedOperationException(
+            getClass().getName() + " cannot accept SymbolProvider contributions — override"
+                + " SymbolSource.register(SymbolProvider) to keep the container's configuration"
+                + " chain, or stop binding this source as the primary SymbolSource"
+        );
+    }
+
+    /**
      * Resolves a symbol to its value, or throws if the symbol is unknown.
      *
      * @param name the symbol name (e.g. {@code "server.port"})

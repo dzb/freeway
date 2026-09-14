@@ -10,11 +10,11 @@ import org.slf4j.LoggerFactory;
  * {@link ContainerImpl} wires one stable instance ({@link #INSTANCE}) for
  * the {@code LoggerSource} builtin.
  */
-final class LoggerSourceImpl implements LoggerSource {
+final class LoggerSourceDefault implements LoggerSource {
 
-    static final LoggerSourceImpl INSTANCE = new LoggerSourceImpl();
+    static final LoggerSourceDefault INSTANCE = new LoggerSourceDefault();
 
-    private LoggerSourceImpl() {
+    private LoggerSourceDefault() {
     }
 
     @Override

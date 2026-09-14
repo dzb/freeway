@@ -44,6 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **ioc：可替换的角色按"外部能否 `.primary()` 替换"命名，贡献链也按被解析的实例走（freeway-ioc）** — 审计 A8：
+  - `SymbolSourceImpl` → `SymbolSourceDefault`，`LoggerSourceImpl` → `LoggerSourceDefault`：两者都能被模块用
+    `.primary()` 顶掉（`InjectionResolver` 的注释原本就这么写着），按判据它们是 `XDefault`，不是 `XImpl`。
+    `AGENTS.md` 把这把尺子写成一句话——"模块 `.primary()` 绑定后容器是否认账"，并明确"框架自己具体装配它"
+    不构成 `XImpl` 的理由。
+  - **替换 `SymbolSource` 不再静默丢掉配置链**：容器原先把 `SymbolProvider` 贡献注册进自己的内建实例，而
+    注入端走 `container.get(SymbolSource.class)`——模块一旦替换源，boot 的整条级联（CLI/env/文件）就落进
+    一个没人读的实例。现在贡献会记入一份有序清单，并在**所有模块绑定完成后**（模块自己的绑定要等 `bind`
+    体跑完才注册，声明期看不到）回放进真正被解析的那个源；内建实例仍在声明期即时收到，bind 期查询不受影响。
+  - `SymbolSource.register(SymbolProvider)` 成为接口上的贡献 seam，默认实现**抛错**：接不了贡献的替换实现
+    在启动时就报出来，而不是安静地少一条链。`SymbolSourceReplacementTest` 两半都钉住。
+
 - **`HttpServerConfig` 收成一种写法：规范构造器 + `defaults()` + 每字段 wither（freeway-http）** — 13 组件
   记录此前同时挂着**4 级委托构造器阶梯**与一个内嵌 `Builder`，而且默认值声明了三遍并已漂移：`Builder` 说
   port 0 / grace 0，模块声明的 `freeway.http.*` 与 `WebServerBuilder` 说 8080 / 2s。现在只剩规范构造器

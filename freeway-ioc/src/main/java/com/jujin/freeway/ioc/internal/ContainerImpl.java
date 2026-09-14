@@ -27,8 +27,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -82,7 +84,7 @@ public final class ContainerImpl implements Container {
     }
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
     private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
-    private final SymbolSourceImpl symbolSource;
+    private final SymbolSourceDefault symbolSource;
     private final CoercerDefault coercer;
     private final LoggerSource loggerSource;
     private final ProxyFactoryImpl proxyFactory;
@@ -104,20 +106,33 @@ public final class ContainerImpl implements Container {
     private final Map<Class<?>, Consumer<Object>> infrastructureWiring =
         new HashMap<>();
 
+    /** Every {@link SymbolProvider} a module contributed, in declaration order —
+     *  replayed into a replacing {@link SymbolSource} once loading finishes. */
+    private final List<SymbolProvider> contributedProviders = new CopyOnWriteArrayList<>();
+
     public ContainerImpl(ModuleNode moduleTree) {
         this.moduleTree = Objects.requireNonNull(moduleTree, "moduleTree");
-        this.symbolSource = SymbolSourceImpl.standard();
+        this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
         // The chain's coercer lets one-step resolve(spec) parse coercer-backed
         // types (Duration, user rules) — no two-step idiom anywhere.
         this.symbolSource.coercer(this.coercer);
-        this.loggerSource = LoggerSourceImpl.INSTANCE;
+        this.loggerSource = LoggerSourceDefault.INSTANCE;
         this.proxyFactory = new ProxyFactoryImpl();
         this.injectResolver = new InjectionResolver(this);
         this.shutdown = new Shutdown(targetCache);
         this.serviceRuntime = new ServiceRuntime(this, proxyFactory, serviceCache, targetCache);
-        infrastructureWiring.put(SymbolProvider.class,
-            v -> symbolSource.register((SymbolProvider) v));
+        // Two steps, because a module may replace SymbolSource and because a
+        // module's own bindings only register after its bind body has run: the
+        // built-in instance is fed immediately (so a lookup during binding still
+        // sees earlier contributions), and the same list is replayed into
+        // whichever source wins once every module has bound — otherwise boot's
+        // whole config cascade lands in an instance nobody reads from.
+        infrastructureWiring.put(SymbolProvider.class, v -> {
+            SymbolProvider provider = (SymbolProvider) v;
+            contributedProviders.add(provider);
+            symbolSource.register(provider);
+        });
         infrastructureWiring.put(CoerceRule.class,
             v -> coercer.register((CoerceRule) v));
         registerBuiltin(SymbolSource.class, symbolSource, "SymbolSource");
@@ -134,6 +149,7 @@ public final class ContainerImpl implements Container {
         // (see Shutdown); a bus that was never resolved has nothing to close.
         registerBuiltinLazy(EventBus.class, EventBus::new, "EventBus");
         new BinderImpl(this).load(moduleTree);
+        registerContributionsIntoFinalSymbolSource();
         LOG.info("Loaded {} module(s):\n{}", moduleTree.bindOrder().size(), moduleTree.render());
     }
 
@@ -172,6 +188,30 @@ public final class ContainerImpl implements Container {
         binding.id(id).to(factory);
         binding.addMarkers(Set.of(Builtin.class));
         register(binding);
+    }
+
+    /**
+     * Hands every contributed {@link SymbolProvider} to the {@link SymbolSource}
+     * the container actually resolves.
+     *
+     * <p>Nothing to do when no module replaced the source — the built-in got
+     * them as they were declared. When one did, this is the first moment its
+     * binding is visible (a module's own bindings register after its {@code bind}
+     * body ran, so the declaration-time wiring above cannot see them yet). A
+     * replacement that does not implement {@link SymbolSource#register} fails
+     * here, at startup, instead of silently serving a chain without boot's tiers.
+     */
+    private void registerContributionsIntoFinalSymbolSource() {
+        if (contributedProviders.isEmpty()) {
+            return;
+        }
+        SymbolSource resolved = get(SymbolSource.class);
+        if (resolved == symbolSource) {
+            return;
+        }
+        for (SymbolProvider provider : contributedProviders) {
+            resolved.register(provider);
+        }
     }
 
     /**
