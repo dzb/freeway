@@ -64,6 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **审计记录：`docs/audit-philosophy-modernity-1.5.2.md`（理念一致性 + 现代性）** — 七个核心模块的量化
+  普查（访问器风格、JDK 25 惯用法、公共面无死代码、internal 收口、单文件规模）+ 跨模块与分模块的分级
+  发现：29 条 P1 全部带 `文件:行`，其中 22 条经二次复核（另标出三处量化假阳性与一处被模块反例撤回的
+  结论）。**全轮唯一正确性缺陷**是 `CoercerDefault` 的 Number→boolean 先 `intValue()` 再判真假
+  （`0.5`/`4294967296L` 静默变 `false`）；其余集中在"文档说假话"（17 处）与"同一件事两套策略"。
+  文档末尾给三批修复清单（A 一处改到位 / B 形态统一 / C 观察择机）与可复现的统计口径。
+
 - **`@SubModule`（freeway-ioc）** — bundle 声明：模块类上列出随它一起放置的子模块（前序、按声明
   顺序），构建树时展开成 `ModuleNode` 子树。`ModuleNode.of(Bundle.class)` 即整包；子模块是普通
   模块，`ModuleNode.of(SubModule.class)` 即子集，因此不需要排除 API。`@SubModule` 成环在构建树
