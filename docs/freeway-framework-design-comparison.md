@@ -119,7 +119,7 @@ public class App { }
 设计语言天生是显式的：
 
 ```java
-FreewayApp.of(new HttpModule(), new DbModule(), new MyModule())
+FreewayApp.create(new HttpModule(), new DbModule(), new MyModule())
     .start();
 ```
 

@@ -77,7 +77,7 @@ class RemoteCallerTest {
     void startApps() {
         System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
         System.setProperty(CloudConfigKeys.RPC_REQUEST_TIMEOUT, "2000");
-        server = FreewayApp.of(new HttpModule()).add(CloudModule.class).add(new RpcExportModule()).start();
+        server = FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new RpcExportModule()).start();
         var webServer = server.get(com.jujin.freeway.http.WebServer.class);
         caller = server.get(RemoteCaller.class);   // framework-bound, not hand-wired
 

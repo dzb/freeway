@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Flow engine (general-purpose graph orchestration engine)
  *
  * <pre>{@code
- * FlowEngine engine = FlowEngine.newInstance();
+ * FlowEngine engine = FlowEngine.create();
  * engine.load(Graph.fromText(json));
  * engine.eval("graphId", FlowContext.of());
  * }</pre>
@@ -26,7 +26,7 @@ public interface FlowEngine {
      * applications, let {@code FlowModule} build the engine with a proper
      * container and contributed drivers.
      */
-    static FlowEngine newInstance() {
+    static FlowEngine create() {
         return new FlowEngineDefault(Map.of("default", FlowDriverDefault.instance()));
     }
 
@@ -36,7 +36,7 @@ public interface FlowEngine {
      * driver or {@code driver=""}. {@code FlowModule} uses this entry
      * point after assembling drivers from contributions.
      */
-    static FlowEngine newInstance(Map<String, FlowDriver> drivers) {
+    static FlowEngine create(Map<String, FlowDriver> drivers) {
         return new FlowEngineDefault(drivers);
     }
 

@@ -103,7 +103,7 @@ class AppRuntimeDefaultTest {
         // removed and the app closed (container closed) even when start()
         // failed with an Error — previously the Error skipped that cleanup.
         assertThrows(IllegalStateException.class,
-            () -> FreewayApp.of(module).start());
+            () -> FreewayApp.create(module).start());
 
         assertEquals(
             List.of("first:start", "second:start", "second:stop", "first:stop"),

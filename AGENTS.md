@@ -66,6 +66,15 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
     a replacement that cannot take contributions is reported at startup rather
     than silently serving a chain without boot's tiers (`SymbolSourceReplacementTest`
     pins both halves).
+- **Factory verbs**: `of` builds a *value* from the parts you hand it — the
+  records do this (`Endpoint.of`, `ServiceInstance.of`, `SymbolSpec.of`,
+  `ModuleNode.of`), mirroring `List.of`. `create` is the framework *entry
+  point* that hands you something to configure or run (`Freeway.create`,
+  `FreewayApp.create`, `FlowEngine.create`, `Graph.create`), and `.builder()`
+  is fluent assembly of a configured object (`WebServerBuilder.builder()`).
+  One verb per role: `FreewayApp.create` replaced `FreewayApp.of` and
+  `FlowEngine.create` replaced `FlowEngine.newInstance`, so the entry points no
+  longer disagree with `Freeway.create` next to them.
 - `DefaultX` is avoided — `XDefault` keeps the interface name dominant.
 - Package location is orthogonal to the suffix: `internal` is part of Freeway
   and marks "no stability promise" for callers, not a visibility gate — classes
@@ -85,6 +94,13 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   app code and config values.
 - Keep core modules free of external dependencies.
 - Prefer small explicit APIs over future-proof abstractions.
+- **File size is not a reason to split.** A long file is a prompt to ask whether its
+  responsibilities are cohesive and what the split would actually buy — not an
+  instruction. `JULEnhancer` (920 lines, one lifecycle: bootstrap config → handlers →
+  formatting → rotation) and `Sql` (45 methods, one grammar) are long *and* cohesive;
+  splitting them would spread one idea across files and make every reader pay for the
+  index. Split when a part has its own reason to change, its own tests, or a consumer
+  that wants it without the rest — judge by cohesion and ROI, never by line count.
 - Keep concepts few: Module, Service, Extension, Scope, Runtime.
 - **Optional inputs**: one or two of them use a documented overload ladder, each
   step stating what it adds (`RemoteCaller.invoke`); three or more use a

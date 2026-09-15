@@ -36,7 +36,7 @@ AppRuntime runtime = FreewayApp.run(new String[0], new AppModule());
 AppRuntime runtime = FreewayApp.run(new String[0], new AppModule(), new HttpModule(), new DbModule());
 
 // Fluent builder（精细控制）
-AppRuntime app = FreewayApp.of(new MyModule())
+AppRuntime app = FreewayApp.create(new MyModule())
     .add(new HttpModule(), new DbModule())
     .args("--freeway.profile=dev")
     .classLoader(customLoader)

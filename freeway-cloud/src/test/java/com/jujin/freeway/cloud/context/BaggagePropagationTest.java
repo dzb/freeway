@@ -61,7 +61,7 @@ class BaggagePropagationTest {
 
     @Test
     void inboundExtractionAndOutboundInjectionCarryTheSameBaggage() throws Exception {
-        try (AppRuntime app = FreewayApp.of(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
                     Endpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.WebServer.class).port()),
@@ -91,7 +91,7 @@ class BaggagePropagationTest {
 
     @Test
     void noBaggageHeaderLeavesTheContextAbsent() throws Exception {
-        try (AppRuntime app = FreewayApp.of(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new BaggageModule(), new HttpModule()).add(CloudModule.class).start()) {
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1",
                     Endpoint.of("http", "127.0.0.1", app.get(com.jujin.freeway.http.WebServer.class).port()),

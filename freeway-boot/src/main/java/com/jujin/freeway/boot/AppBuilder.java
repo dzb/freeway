@@ -20,10 +20,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Fluent builder for {@link FreewayApp}, created via {@link FreewayApp#of(ModuleEx...)}.
+ * Fluent builder for {@link FreewayApp}, created via {@link FreewayApp#create(ModuleEx...)}.
  *
  * <pre>{@code
- * AppRuntime app = FreewayApp.of(new MyModule())
+ * AppRuntime app = FreewayApp.create(new MyModule())
  *     .args("--freeway.profile=dev")
  *     .autoDiscovery(false)
  *     .shutdownHook(false)

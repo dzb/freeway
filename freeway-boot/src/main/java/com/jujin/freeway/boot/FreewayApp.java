@@ -24,11 +24,11 @@ import com.jujin.freeway.ioc.ModuleNode;
  *
  * <h3>Builder usage</h3>
  * <pre>{@code
- * AppRuntime app = FreewayApp.of(new MyModule())
+ * AppRuntime app = FreewayApp.create(new MyModule())
  *     .args("--freeway.profile=dev")
  *     .start();
  *
- * AppRuntime app = FreewayApp.of()
+ * AppRuntime app = FreewayApp.create()
  *     .add(new HttpModule())
  *     .add(new DbModule())
  *     .autoDiscovery(false)       // disable SPI scanning
@@ -53,7 +53,7 @@ public final class FreewayApp {
      */
     /** Start an application with no modules and the given arguments. */
     public static AppRuntime run(String[] args) {
-        return of().args(args).start();
+        return create().args(args).start();
     }
 
     public static AppRuntime run(ModuleEx... modules) {
@@ -64,10 +64,10 @@ public final class FreewayApp {
      * Start an application with the given modules and command-line arguments.
      * Config is loaded from the default cascade, ServiceLoader modules
      * are discovered, and a JVM shutdown hook is registered.
-     * Use {@link #of(ModuleEx...)} for more control.
+     * Use {@link #create(ModuleEx...)} for more control.
      */
     public static AppRuntime run(String[] args, ModuleEx... modules) {
-        return of(modules).args(args).start();
+        return create(modules).args(args).start();
     }
 
     /**
@@ -81,16 +81,16 @@ public final class FreewayApp {
 
     /** @see #run(ModuleNode) */
     public static AppRuntime run(String[] args, ModuleNode tree) {
-        return of(tree).args(args).start();
+        return create(tree).args(args).start();
     }
 
     /** Create an empty {@link AppBuilder}. */
-    public static AppBuilder of() {
+    public static AppBuilder create() {
         return new AppBuilder();
     }
 
     /** Create an {@link AppBuilder} pre-populated with the given modules. */
-    public static AppBuilder of(ModuleEx... modules) {
+    public static AppBuilder create(ModuleEx... modules) {
         AppBuilder b = new AppBuilder();
         if (modules != null) {
             b.add(modules);
@@ -99,7 +99,7 @@ public final class FreewayApp {
     }
 
     /** Create an {@link AppBuilder} over a composed module tree. */
-    public static AppBuilder of(ModuleNode tree) {
+    public static AppBuilder create(ModuleNode tree) {
         return new AppBuilder().add(tree);
     }
 
@@ -115,12 +115,12 @@ public final class FreewayApp {
     /** @see #run(Class[]) */
     @SafeVarargs
     public static AppRuntime run(String[] args, Class<? extends ModuleEx>... types) {
-        return of(types).args(args).start();
+        return create(types).args(args).start();
     }
 
     /** Create an {@link AppBuilder} over modules named by class. */
     @SafeVarargs
-    public static AppBuilder of(Class<? extends ModuleEx>... types) {
+    public static AppBuilder create(Class<? extends ModuleEx>... types) {
         return new AppBuilder().add(types);
     }
 }

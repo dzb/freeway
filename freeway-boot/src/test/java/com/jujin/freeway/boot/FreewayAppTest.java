@@ -88,7 +88,7 @@ class FreewayAppTest {
 
     @Test
     void autoDiscoveryEnabledIncludesSPI() {
-        AppRuntime app = FreewayApp.of()
+        AppRuntime app = FreewayApp.create()
             .add(new TestBootApp())
             .args("--freeway.profile=dev", "--app.name=Overridden")
             .start();
@@ -102,7 +102,7 @@ class FreewayAppTest {
 
     @Test
     void autoDiscoveryDisabledExcludesSPI() {
-        AppRuntime app = FreewayApp.of()
+        AppRuntime app = FreewayApp.create()
             .add(new TestBootApp())
             .args("--app.name=Default")
             .autoDiscovery(false)
@@ -132,7 +132,7 @@ class FreewayAppTest {
 
     @Test
     void builderWithShutdownHookDisabled() {
-        AppRuntime app = FreewayApp.of()
+        AppRuntime app = FreewayApp.create()
             .add(new InstancePrimaryModule())
             .shutdownHook(false)
             .start();
@@ -148,7 +148,7 @@ class FreewayAppTest {
     void builderIsSingleUse() {
         // Regression: a second start() silently registered another shutdown
         // hook and built an independent container — no guard existed.
-        AppBuilder builder = FreewayApp.of().shutdownHook(false);
+        AppBuilder builder = FreewayApp.create().shutdownHook(false);
         AppRuntime first = builder.start();
         first.close();
         IllegalStateException ex = assertThrows(
@@ -164,7 +164,7 @@ class FreewayAppTest {
         // two containers and registering two shutdown hooks. The guard must
         // be atomic: exactly one call succeeds, the other throws the same
         // single-use error.
-        AppBuilder builder = FreewayApp.of(new TestBootApp()).shutdownHook(false);
+        AppBuilder builder = FreewayApp.create(new TestBootApp()).shutdownHook(false);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
             List<Future<AppRuntime>> futures = new ArrayList<>();
@@ -200,7 +200,7 @@ class FreewayAppTest {
         // The normal way to declare a module: the class is named explicitly in
         // the composition (nothing is scanned) and instantiated through its
         // no-arg constructor.
-        AppRuntime app = FreewayApp.of(ValueHolderModule.class)
+        AppRuntime app = FreewayApp.create(ValueHolderModule.class)
             .autoDiscovery(false)
             .shutdownHook(false)
             .start();
@@ -214,7 +214,7 @@ class FreewayAppTest {
 
     @Test
     void autoDiscoveryCanStartWithoutExplicitModules() {
-        AppRuntime app = FreewayApp.of().start();
+        AppRuntime app = FreewayApp.create().start();
         try {
             assertEquals(AppState.RUNNING, app.state());
             AutoMarker marker = app.get(AutoMarker.class);
@@ -237,7 +237,7 @@ class FreewayAppTest {
         // AutoModule is also on the SPI classpath. A fragment that places it in
         // the tree must not collide with discovery: the declared instance wins,
         // exactly as an explicitly added module beats a discovered one.
-        AppRuntime app = FreewayApp.of(AutoFragment.standard())
+        AppRuntime app = FreewayApp.create(AutoFragment.standard())
             .args("--app.name=Bundle")
             .shutdownHook(false)
             .start();
@@ -254,7 +254,7 @@ class FreewayAppTest {
         // module class, so this stays an error even though discovery no longer
         // causes it.
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.of(ModuleNode.app("bundle",
+            FreewayApp.create(ModuleNode.app("bundle",
                     AutoFragment.standard(), ModuleNode.of(new AutoModule())))
                 .autoDiscovery(false)
                 .shutdownHook(false)
@@ -270,7 +270,7 @@ class FreewayAppTest {
         // A builder holds one application root: unwrapping a second one would
         // silently nest it inside the first, so the mistake surfaces here.
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            FreewayApp.of()
+            FreewayApp.create()
                 .add(ModuleNode.app("first"))
                 .add(ModuleNode.app("second"))
                 .autoDiscovery(false)
@@ -379,7 +379,7 @@ class FreewayAppTest {
         // Regression: add(new DbModule("ds1"), new DbModule("ds2")) silently
         // dropped the second instance (and its configuration).
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> FreewayApp.of(new DupModule("a"), new DupModule("b")).start());
+            () -> FreewayApp.create(new DupModule("a"), new DupModule("b")).start());
 
         assertTrue(ex.getMessage().contains("declared twice"),
             "got: " + ex.getMessage());
@@ -392,7 +392,7 @@ class FreewayAppTest {
         // Re-adding the identical instance is a harmless user mistake — keep
         // a single copy instead of failing (mirrors ContainerImpl).
         var module = new DupModule("a");
-        AppRuntime app = FreewayApp.of(module, module).start();
+        AppRuntime app = FreewayApp.create(module, module).start();
         try {
             assertEquals("a", app.get(DupMarker.class).value());
         } finally {
@@ -404,7 +404,7 @@ class FreewayAppTest {
     void explicitModuleWinsOverSpiDiscoveredSameClass() {
         // FreewayAppTest$SpiDupModule is registered as an SPI ModuleEx; the
         // explicitly added instance must win over the discovered one.
-        AppRuntime app = FreewayApp.of().add(new SpiDupModule("explicit")).start();
+        AppRuntime app = FreewayApp.create().add(new SpiDupModule("explicit")).start();
         try {
             assertEquals("explicit", app.get(SpiDupMarker.class).value(),
                 "the explicit instance must win over the SPI-discovered one");
@@ -415,7 +415,7 @@ class FreewayAppTest {
 
     @Test
     void builderWithCustomConfig() {
-        AppRuntime app = FreewayApp.of()
+        AppRuntime app = FreewayApp.create()
             .add(new InstancePrimaryModule())
             .config(AppConfigDefault.of(
                 Map.of("custom.key", "custom-value"), List.of()))
@@ -602,7 +602,7 @@ class FreewayAppTest {
 
     @Test
     void startAfterStopIsRejected() {
-        AppRuntime app = FreewayApp.of(new TestBootApp()).start();
+        AppRuntime app = FreewayApp.create(new TestBootApp()).start();
         app.close();
         assertEquals(AppState.STOPPED, app.state());
         assertThrows(IllegalStateException.class, app::start,
@@ -612,7 +612,7 @@ class FreewayAppTest {
     @Test
     void lifecycleEventsArePublished() {
         var events = new CopyOnWriteArrayList<Object>();
-        AppRuntime app = FreewayApp.of(new ModuleEx() {
+        AppRuntime app = FreewayApp.create(new ModuleEx() {
             @Override
             public void bind(Binder binder) {
                 binder.contribute(EventSubscriber.class)
@@ -637,7 +637,7 @@ class FreewayAppTest {
         // caught-and-retried start leaks one watcher.
         ClosingAppConfig config = new ClosingAppConfig();
         assertThrows(IllegalStateException.class, () ->
-            FreewayApp.of(new DupModule("a"), new DupModule("b"))
+            FreewayApp.create(new DupModule("a"), new DupModule("b"))
                 .config(config)
                 .start());
         assertTrue(config.closed.get(), "a failed start must close the config");

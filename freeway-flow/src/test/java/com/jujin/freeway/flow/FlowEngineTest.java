@@ -384,7 +384,7 @@ class FlowEngineTest {
             })
             .build();
 
-        FlowEngine engine = FlowEngine.newInstance(Map.of(
+        FlowEngine engine = FlowEngine.create(Map.of(
             "default", mainDriver,
             "sub", subDriver
         ));
@@ -416,7 +416,7 @@ class FlowEngineTest {
 
     @Test
     void exchangerCopyKeepsExecState() {
-        FlowEngine engine = FlowEngine.newInstance();
+        FlowEngine engine = FlowEngine.create();
         Graph graph = graphWithDriver("default");
         FlowExchanger exchanger = new FlowExchanger(
             graph,
@@ -638,7 +638,7 @@ class FlowEngineTest {
             }
         };
 
-        FlowEngine engine = FlowEngine.newInstance();
+        FlowEngine engine = FlowEngine.create();
         engine.addInterceptor(a);
         engine.addInterceptor(b);
         engine.eval(graph, FlowContext.of());
@@ -740,7 +740,7 @@ class FlowEngineTest {
             spec.addEnd("e");
         });
 
-        FlowEngine engine = FlowEngine.newInstance();
+        FlowEngine engine = FlowEngine.create();
         // Register handlers — they get auto-indexed in markerIndex
         engine.register(new EmailTask());
         engine.register(new SmsTask());
@@ -764,7 +764,7 @@ class FlowEngineTest {
             spec.addEnd("e");
         });
 
-        FlowEngine engine = FlowEngine.newInstance();
+        FlowEngine engine = FlowEngine.create();
         engine.register(new EmailTask());
         engine.load(graph);
 
@@ -782,7 +782,7 @@ class FlowEngineTest {
             spec.addEnd("e");
         });
 
-        FlowEngine engine = FlowEngine.newInstance();
+        FlowEngine engine = FlowEngine.create();
         engine.register(new SmsTask());
         engine.register(new EmailTask());
         engine.load(graph);
@@ -794,7 +794,7 @@ class FlowEngineTest {
     }
 
     private static FlowEngine newEngine(FlowDriver driver) {
-        return FlowEngine.newInstance(Map.of("default", driver));
+        return FlowEngine.create(Map.of("default", driver));
     }
 
     // ── regression: deep-graph stack safety ───────────────────────
@@ -852,7 +852,7 @@ class FlowEngineTest {
     @Test
     void driverDefaultWhenNull() {
         FlowDriver driver = new FlowDriverDefault(null, null);
-        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = GraphSpec.create("g", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
@@ -862,7 +862,7 @@ class FlowEngineTest {
     @Test
     void driverDefaultWhenEmpty() {
         FlowDriver driver = new FlowDriverDefault(null, null);
-        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = GraphSpec.create("g", "", "", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
@@ -872,7 +872,7 @@ class FlowEngineTest {
     @Test
     void driverDefaultWhenBlank() {
         FlowDriver driver = new FlowDriverDefault(null, null);
-        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = GraphSpec.create("g", "", "   ", s -> {
             s.entry("s"); s.addStart("s").linkAdd("e"); s.addEnd("e");
         }).create();
@@ -882,7 +882,7 @@ class FlowEngineTest {
     @Test
     void driverDefaultWhenLiteralDefault() {
         FlowDriver driver = new FlowDriverDefault(null, null);
-        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = graphWithDriver("default");
         assertSame(driver, engine.driver(g));
     }
@@ -891,7 +891,7 @@ class FlowEngineTest {
     void driverCustomById() {
         FlowDriver defaultDriver = new FlowDriverDefault(null, null);
         FlowDriver customDriver = new FlowDriverDefault(null, null);
-        FlowEngine engine = FlowEngine.newInstance(Map.of(
+        FlowEngine engine = FlowEngine.create(Map.of(
             "default", defaultDriver,
             "custom", customDriver
         ));
@@ -902,7 +902,7 @@ class FlowEngineTest {
     @Test
     void driverUnknownThrows() {
         FlowDriver driver = new FlowDriverDefault(null, null);
-        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = graphWithDriver("nonexistent");
         assertThrows(IllegalArgumentException.class, () -> engine.driver(g));
     }
@@ -916,7 +916,7 @@ class FlowEngineTest {
         FlowDriver driverB = FlowDriverDefault.builder()
             .container(name -> { b.incrementAndGet(); return null; }).build();
 
-        FlowEngine engine = FlowEngine.newInstance(Map.of("a", driverA, "b", driverB));
+        FlowEngine engine = FlowEngine.create(Map.of("a", driverA, "b", driverB));
 
         assertSame(driverA, engine.driver(graphWithDriver("a")));
         assertSame(driverB, engine.driver(graphWithDriver("b")));
@@ -973,7 +973,7 @@ class FlowEngineTest {
         assertNotNull(fc);
 
         var driver = new FlowDriverDefault(fc, null);
-        FlowEngine engine = FlowEngine.newInstance(Map.of("default", driver));
+        FlowEngine engine = FlowEngine.create(Map.of("default", driver));
         Graph g = GraphSpec.create("g", s -> {
             s.entry("s"); s.addStart("s").linkAdd("a");
             s.addActivity("a").task("@counter").linkAdd("e");
@@ -1000,7 +1000,7 @@ class FlowEngineTest {
         driverMap.put("default", new FlowDriverDefault(
             container.get(FlowContainer.class), null));
         driverMap.putAll(container.extension(FlowDriver.class).asMap());
-        FlowEngine engine = FlowEngine.newInstance(driverMap);
+        FlowEngine engine = FlowEngine.create(driverMap);
 
         Graph g = GraphSpec.create("g", "", "fast", s -> {
             s.entry("s"); s.addStart("s").linkAdd("a");
@@ -1026,7 +1026,7 @@ class FlowEngineTest {
         driverMap.put("default", new FlowDriverDefault(
             container.get(FlowContainer.class), null));
         driverMap.putAll(container.extension(FlowDriver.class).asMap());
-        FlowEngine engine = FlowEngine.newInstance(driverMap);
+        FlowEngine engine = FlowEngine.create(driverMap);
 
         // add(Class) generates canonical id: injected_driver@package
         String generatedId = driverMap.keySet().stream()
@@ -1046,7 +1046,7 @@ class FlowEngineTest {
     @Test
     void nullContainerThrowsClearErrorForBeanName() {
         // FlowDriverDefault.instance() has container=null
-        FlowEngine engine = FlowEngine.newInstance(); // uses instance()
+        FlowEngine engine = FlowEngine.create(); // uses instance()
         Graph g = GraphSpec.create("g", spec -> {
             spec.entry("s"); spec.addStart("s").linkAdd("a");
             spec.addActivity("a").task("@counter").linkAdd("e");
@@ -1110,7 +1110,7 @@ class FlowEngineTest {
 
     @Test
     void standaloneDriverErrorMessageIsGeneric() {
-        FlowEngine engine = FlowEngine.newInstance(Map.of("a", new FlowDriverDefault(null, null)));
+        FlowEngine engine = FlowEngine.create(Map.of("a", new FlowDriverDefault(null, null)));
         Graph g = graphWithDriver("nonexistent");
         engine.load(g);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
@@ -2089,7 +2089,7 @@ class FlowEngineTest {
         logger.setUseParentHandlers(false);
         logger.addHandler(capture);
         try {
-            FlowEngine engine = FlowEngine.newInstance();
+            FlowEngine engine = FlowEngine.create();
             engine.register((TaskComponent) (ctx, node) -> { });
         } finally {
             logger.removeHandler(capture);

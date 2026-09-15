@@ -86,7 +86,7 @@ String json = """
 
 // 2. 构建引擎：!marker 任务必须带标记注册 —— lambda 拿不到 @FlowMarker 注解，
 //    所以走 markerIndex() 的显式标记形式（类实现则直接 engine.register(实例)）
-FlowEngine engine = FlowEngine.newInstance();
+FlowEngine engine = FlowEngine.create();
 engine.markerIndex().register(
     (TaskComponent) (ctx, node) -> System.out.println("高分"), Set.of("handler:high"));
 engine.markerIndex().register(

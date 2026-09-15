@@ -51,7 +51,7 @@ class MetricsAssemblyTest {
 
     @Test
     void standardCloudModuleServesMetricsFromTheActiveRegistry() throws Exception {
-        try (AppRuntime app = FreewayApp.of().add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create().add(CloudModule.class).start()) {
             app.get(Metrics.class).counter("hits").increment();
 
             HttpResponse<String> metrics = get(app, "/metrics");

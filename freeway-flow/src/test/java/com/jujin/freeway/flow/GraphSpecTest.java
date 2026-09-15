@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GraphSpecTest {
 
     private static FlowEngine newEngine(FlowDriver driver) {
-        return FlowEngine.newInstance(Map.of("default", driver));
+        return FlowEngine.create(Map.of("default", driver));
     }
 
     @Test

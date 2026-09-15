@@ -39,7 +39,7 @@ Freeway is a JDK 25+ Java framework built around compose-first modules, explicit
 
 - `Freeway.create(ModuleEx...)` - container only; modules are the unit of composition
 - `FreewayApp.run(String[] args, ModuleEx...)` - full application startup; accepts module instances
-- `FreewayApp.of(ModuleEx...)` - builder for advanced startup control; compose modules explicitly
+- `FreewayApp.create(ModuleEx...)` - builder for advanced startup control; compose modules explicitly
 - `DatabaseBuilder` - standalone database construction without IoC
 - `WebServerBuilder.builder()` - standalone HTTP server construction without IoC
 

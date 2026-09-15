@@ -54,7 +54,7 @@ class PrincipalPropagationTest {
 
     @Test
     void principalPropagatesAcrossTheCall() throws Exception {
-        try (AppRuntime app = FreewayApp.of(new IdentityModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new IdentityModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));
@@ -81,7 +81,7 @@ class PrincipalPropagationTest {
         // Regression: roles were joined with a bare ",", so a role like
         // "admin,root" arrived as two roles on the receiving side — silent
         // permission drift. Roles share the baggage percent codec now.
-        try (AppRuntime app = FreewayApp.of(new IdentityModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new IdentityModule(), new HttpModule()).add(CloudModule.class).start()) {
             WebServer server = app.get(WebServer.class);
             app.get(ServiceRegistry.class).register(
                 ServiceInstance.of("svc", "i1", Endpoint.of("http", server.host(), server.port()), Map.of()));

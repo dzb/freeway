@@ -42,7 +42,7 @@ class HealthEndpointsTest {
 
     @Test
     void liveAndReadyAreOkByDefault() throws Exception {
-        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).start()) {
             HttpResponse<String> live = get(app, "/health/live");
             assertEquals(200, live.statusCode());
             assertTrue(live.body().contains("\"ok\""));
@@ -61,7 +61,7 @@ class HealthEndpointsTest {
 
     @Test
     void readyFailsWhenAContributorIsUnhealthy() throws Exception {
-        try (AppRuntime app = FreewayApp.of(new FailingContributorModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new FailingContributorModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(503, ready.statusCode());
             assertTrue(ready.body().contains("unhealthy"));
@@ -71,7 +71,7 @@ class HealthEndpointsTest {
 
     @Test
     void localRegistryContributorIsOmittedWhenAnExternalBackendIsPrimary() throws Exception {
-        try (AppRuntime app = FreewayApp.of(new ExternalRegistryModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new ExternalRegistryModule(), new HttpModule()).add(CloudModule.class).start()) {
             HttpResponse<String> ready = get(app, "/health/ready");
             assertEquals(200, ready.statusCode());
             assertTrue(ready.body().contains("external-registry"),

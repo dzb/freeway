@@ -120,7 +120,7 @@ class FlowApiRestorationTest {
             spec.addStart("a").linkAdd("b");
             spec.addEnd("b");
         });
-        FlowEngine engine = FlowEngine.newInstance();
+        FlowEngine engine = FlowEngine.create();
         FlowContext context = FlowContext.of();
         FlowExchanger ex = new FlowExchanger(graph, engine,
             engine.driver(graph), context, 0, new AtomicInteger(0));

@@ -63,10 +63,10 @@ FreewayApp.run(HttpModule.class, DbModule.class);
 //       ModuleNode.of(HttpModule.class), ModuleNode.of(DbModule.class)));
 ```
 
-`Freeway.create(...)` (test and standalone usage) takes the same two forms. `FreewayApp.of(...)` + `.add(...)` accepts modules and composed trees in any order:
+`Freeway.create(...)` (test and standalone usage) takes the same two forms. `FreewayApp.create(...)` + `.add(...)` accepts modules and composed trees in any order:
 
 ```java
-FreewayApp.of(OrderModule.class)
+FreewayApp.create(OrderModule.class)
     .add(CloudModule.class)       // the whole cloud bundle
     .add(HttpModule.class)
     .start();
@@ -153,7 +153,7 @@ AppRuntime app = FreewayApp.run(new AppModule());
 Auto-discovery is enabled by default. Disable it when you want only the modules you placed:
 
 ```java
-AppRuntime app = FreewayApp.of(app).autoDiscovery(false).start();
+AppRuntime app = FreewayApp.create(app).autoDiscovery(false).start();
 ```
 
 `Freeway.create` performs no discovery at all.

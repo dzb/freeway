@@ -61,7 +61,7 @@ public class FlowModule implements ModuleEx {
                     }
                     driverMap.putAll(contributed);
 
-                    FlowEngine engine = FlowEngine.newInstance(driverMap);
+                    FlowEngine engine = FlowEngine.create(driverMap);
                     for (var handler : container.extension(TaskComponent.class).all()) {
                         engine.register(handler);
                     }

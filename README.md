@@ -220,7 +220,7 @@ The IoC module provides the framework core:
 
 Boot turns a composed container into an application runtime:
 
-- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.of(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
+- `FreewayApp.run(args, ModuleEx...)` - accepts command-line args and module instances. Loads config, discovers SPI modules, starts the full application lifecycle. Use `FreewayApp.create(...)` for fine-grained control over autoDiscovery, shutdown hook, and more.
 - Module dedup - installing two **distinct** instances of the same module class fails fast with an actionable error: in `Freeway.create(...)` (e.g. an explicit install plus SPI auto-discovery) and in `FreewayApp`/`AppBuilder` (e.g. two explicitly configured instances). The same instance added twice is tolerated; in `AppBuilder` an explicit instance wins over an SPI-discovered one.
 - `AppRuntime` - owns config, profiles, runtime state, and runtime hooks.
 - Shutdown hook - closes the runtime on JVM shutdown.

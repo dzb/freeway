@@ -45,7 +45,7 @@ class ServiceLifecycleTest {
     void autoRegistersHttpEndpointAndDeregistersOnStop() {
         System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_ID, "lifecycle-svc");
         RegistryStore store;
-        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).start()) {
             store = app.get(RegistryStore.class);
             List<ServiceInstance> instances = store.liveReady("lifecycle-svc", Duration.ofMinutes(1));
             assertEquals(1, instances.size(), "HTTP endpoint must auto-register");
@@ -59,7 +59,7 @@ class ServiceLifecycleTest {
     void serviceHostOverrideWinsOverBoundAddress() {
         System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_ID, "host-svc");
         System.setProperty(CloudConfigKeys.REGISTRY_SERVICE_HOST, "myhost.example");
-        try (AppRuntime app = FreewayApp.of(new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new HttpModule()).add(CloudModule.class).start()) {
             RegistryStore store = app.get(RegistryStore.class);
             List<ServiceInstance> instances = store.liveReady("host-svc", Duration.ofMinutes(1));
             assertEquals("myhost.example", instances.get(0).endpoint().host());
@@ -68,7 +68,7 @@ class ServiceLifecycleTest {
 
     @Test
     void customServiceDeclarationIsCollected() {
-        try (AppRuntime app = FreewayApp.of(new AdminDeclarationModule(), new HttpModule()).add(CloudModule.class).start()) {
+        try (AppRuntime app = FreewayApp.create(new AdminDeclarationModule(), new HttpModule()).add(CloudModule.class).start()) {
             RegistryStore store = app.get(RegistryStore.class);
             List<ServiceInstance> instances = store.liveReady("admin-svc", Duration.ofMinutes(1));
             assertEquals(1, instances.size());
@@ -84,7 +84,7 @@ class ServiceLifecycleTest {
         // reference is missing — startup must fail (validateOrdering), not
         // silently skip.
         assertThrows(IllegalStateException.class,
-            () -> FreewayApp.of(CloudModule.class).autoDiscovery(false).start());
+            () -> FreewayApp.create(CloudModule.class).autoDiscovery(false).start());
     }
 
     /** A module contributing its own endpoint declaration. */

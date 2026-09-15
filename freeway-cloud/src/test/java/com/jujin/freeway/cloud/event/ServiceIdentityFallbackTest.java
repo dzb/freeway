@@ -77,7 +77,7 @@ class ServiceIdentityFallbackTest {
     /** Events enabled so the lifecycle hook wires the hub with the mesh origin. */
     private static AppRuntime appWithEvents() {
         System.setProperty(CloudConfigKeys.EVENT_ENABLED, "true");
-        return FreewayApp.of(new HttpModule()).add(CloudModule.class).add(new CloudEventModule()).start();
+        return FreewayApp.create(new HttpModule()).add(CloudModule.class).add(new CloudEventModule()).start();
     }
 
     /** Reads the identity HttpServiceDeclaration registered for this app. */

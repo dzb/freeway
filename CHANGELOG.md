@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `new HttpServerConfig(host, port, backlog, grace[, …])` | `HttpServerConfig.defaults().withPort(…).withBacklog(…)…`（测试代码用 `TestServerConfig.loopback()` / ext testkit 的 `EngineFixture.defaultConfig()`） |
 | `HttpServerConfig.builder()…build()` | `HttpServerConfig.defaults().withX(…)` |
 | `new WebServer(engine, config, sink, pipeline)` | `WebServerBuilder.builder().engine(…).config(…).route(…)….build()`（ext 测试经 testkit 的 `TestServers.start(engine, config, pipelines)`） |
+| `FreewayApp.of(…)` | `FreewayApp.create(…)`（入口点统一用 `create`；`of` 留给"由给定部件造值"的记录工厂） |
+| `FlowEngine.newInstance(…)` | `FlowEngine.create(…)` |
 | classpath 根的 `freeway-log.properties` | 不读（启动打一行 stderr 提示改名）；改名为 `freeway-logging.properties` |
 
 行为变化（无需改调用点，但值得知道）：
@@ -43,6 +45,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TreeNode` 随本次收敛删除（Unreleased 新增、从未发布）；应用若直接调 `moduleTree().tree()`，迁移到 `children()` / `render()`。
 
 ### Changed
+
+- **批次 B（第六批）：入口工厂统一到 `create`（freeway-boot / freeway-flow）** — 审计 B3。框架入口此前用两个
+  动词：`Freeway.create(...)` 与 `FreewayApp.of(...)` 是并列入口却各叫各的，`FlowEngine.newInstance()` 又是
+  第三种。现在按角色分工并把规则写进 `AGENTS.md`：**`of` 造"值"**（记录工厂：`Endpoint.of`、
+  `ServiceInstance.of`、`SymbolSpec.of`、`ModuleNode.of`，对齐 `List.of`）；**`create` 是框架入口**，交给你
+  一个待配置或待运行的东西（`Freeway.create`、`FreewayApp.create`、`FlowEngine.create`、`Graph.create`）；
+  **`.builder()`** 是配置型对象的流式装配（`WebServerBuilder.builder()`）。
+  改名：`FreewayApp.of(...)` → `FreewayApp.create(...)`（4 个重载 + 69 处调用点）、
+  `FlowEngine.newInstance(...)` → `FlowEngine.create(...)`（2 个重载 + 24 处）。选这一侧而不是把
+  `Freeway.create`（306 处调用点）改名为 `of`：同样的结果，三分之一的改动量，而且 `Graph.create`/
+  `GraphSpec.create` 本来就已是"入口用 create"。
 
 - **批次 B（第五批）：`Orm.findAll` 的位置哨兵收成 `FindOptions`（freeway-db）** — 原签名
   `findAll(Class, String orderBy, int limit, int offset)` 的两个相邻 `int` 在调用点可互换：

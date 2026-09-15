@@ -107,7 +107,7 @@ freeway-boot        freeway-http        freeway-db
 > **Auto-discovery**: `FreewayApp.run(...)` / `AppBuilder.start()` load additional
 > `ModuleEx` implementations declared via `META-INF/services/com.jujin.freeway.ioc.ModuleEx`
 > (ServiceLoader SPI) **by default**. This is opt-out — call
-> `FreewayApp.of(...).autoDiscovery(false)` (or `.shutdownHook(false)` for the JVM
+> `FreewayApp.create(...).autoDiscovery(false)` (or `.shutdownHook(false)` for the JVM
 > shutdown hook) when you want purely explicit wiring.
 
 Module is the central organizing concept in Freeway. A module declares services, contributions, and composition. `ModuleEx` is only the Java type name used to avoid a conflict with `java.lang.Module`; conceptually, Freeway talks about modules.
@@ -679,7 +679,7 @@ module are dropped in favor of the explicit one.
 For more control, use `AppBuilder`:
 
 ```java
-AppRuntime app = FreewayApp.of(new MyModule())
+AppRuntime app = FreewayApp.create(new MyModule())
     .add(new HttpModule(), new DbModule())   // additional modules
     .args("--freeway.profile=dev")            // config overrides
     .classLoader(customLoader)               // custom class loader for SPI/resources
