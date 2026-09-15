@@ -348,7 +348,7 @@ HTTP 语义——但今天只有两个来源、且安全用例已被覆盖，提
 | C1 `sealed` | 观察项：唯一有说服力的候选（`ExprEvaluator.AstNode`）用多态分派，收益有限 | — |
 | C2 大文件职责拆分（`JULEnhancer`/`StaticResourceMount`/`Sql` 等） | **按用户判据不做**：文件大小不是拆分理由，看职责是否内聚与拆分 ROI；该判据已写入 `AGENTS.md` | — |
 | C3 默认值归属统一（`DbModule` 与 `MigrationRunner`） | 已随 B2 落地（`Options.defaults()` 是唯一出处） | core `6f2f0d24` |
-| D1 §3.8.3：tier 与链各只有一处实现（`SymbolProvider.systemProperties()` + `SymbolSource.of`，删 `SymbolSource.systemProperties()`） | 已落地（ext 三个无容器构造器各改一行） | 本轮 |
+| D1 §3.8.3：tier 与链各只有一处实现（`SymbolProvider.systemProperties()` + `SymbolSource.of`，删 `SymbolSource.systemProperties()`） | 已落地（ext 三个无容器构造器各改一行） | core `0ad6ffe5` + ext `aafa2ab` |
 
 审计方法上的两次自我纠正也留在正文：`instanceof` 强转计数与 `Sql.Condition` 构造器计数的假阳性（§1），
 以及一条被模块反例撤回的结论（`Dialect` 命名，§5 第 1 条）。
