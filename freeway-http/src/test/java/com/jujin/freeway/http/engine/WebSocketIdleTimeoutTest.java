@@ -36,6 +36,7 @@ class WebSocketIdleTimeoutTest {
         WebServer server = WebServerBuilder.builder()
             .config(HttpServerConfig.defaults()
                 .withHost("127.0.0.1")
+                .withPort(0)
                 .withReadTimeout(Duration.ofSeconds(1))
                 )
             .webSocketRoute(WebSocketRoute.of("/ws", session -> WebSocketListener.NOOP))
@@ -87,6 +88,7 @@ class WebSocketIdleTimeoutTest {
         WebServer server = WebServerBuilder.builder()
             .config(HttpServerConfig.defaults()
                 .withHost("127.0.0.1")
+                .withPort(0)
                 .withReadTimeout(Duration.ofSeconds(1))
                 )
             .webSocketRoute(WebSocketRoute.of("/ws", session -> new WebSocketListener() {
