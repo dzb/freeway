@@ -166,7 +166,11 @@ into the `freeway.*` namespace (`FREEWAY_HTTP_SERVER_PORT` →
 **Reading:** `SymbolSource` is the single read entry, returning raw strings.
 Typed reading is explicit post-processing — declare a `SymbolSpec` and parse
 the resolved value (`spec.parse(symbols.resolve(spec.key(), null))`, or the
-one-step `resolve(spec)` once the container `Coercer` is wired). `AppConfig` is
+one-step `resolve(spec)`, which parses through the chain's `Coercer`). There is one
+chain implementation, and the container builds it with its own system-properties
+tier and its own `Coercer`; a caller without a container (an adapter, a test)
+assembles the same chain itself and gets the same semantics —
+`SymbolSource.of(coercer, SymbolProvider.systemProperties())`. `AppConfig` is
 not a reader and exposes no value map: it owns the active profiles, the symbol
 sources it contributes (`providers()`) and the hot-reload lifecycle. A module
 with a domain-specific source (secrets, ...) contributes a `SymbolProvider`

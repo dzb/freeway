@@ -1,15 +1,22 @@
-package com.jujin.freeway.ioc.internal;
+package com.jujin.freeway.ioc.symbol;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.ioc.symbol.SymbolProvider;
-import com.jujin.freeway.ioc.symbol.SymbolSource;
-import com.jujin.freeway.ioc.symbol.SymbolSpec;
-import com.jujin.freeway.ioc.symbol.UnknownSymbolException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+/**
+ * The built-in {@link SymbolSource}: one chain over {@link SymbolProvider}
+ * tiers, assembled by {@link SymbolSource#of(Coercer, SymbolProvider...)}.
+ *
+ * <p>The container builds the chain with its own system-properties tier and
+ * its own {@code Coercer}, then {@link #register(SymbolProvider) registers} the
+ * boot cascade (CLI, mapped env, config files) and every module contribution on
+ * top. There is deliberately no raw-env fallback: environment variables reach
+ * the chain only through the declared prefix mapping, so an unknown symbol
+ * fails instead of silently matching an unrelated variable.
+ */
 final class SymbolSourceDefault implements SymbolSource {
     private static final int MAX_EXPAND_DEPTH = 40;
 
@@ -25,40 +32,15 @@ final class SymbolSourceDefault implements SymbolSource {
      *  facades to materialize at bind time otherwise. */
     private volatile List<SymbolProvider> ordered;
 
-    /** The container's {@link Coercer} — lets the one-step
-     *  {@code resolve(spec)} parse coercer-backed types (Duration, Boolean,
-     *  user {@code CoerceRule}s) without the two-step
-     *  {@code spec.parse(resolve(key), coercer)} idiom. Null until the
-     *  container wires it. */
-    private volatile Coercer coercer;
+    /** The chain's {@link Coercer} — lets the one-step {@code resolve(spec)}
+     *  parse coercer-backed types (Duration, Boolean, user {@code CoerceRule}s)
+     *  without the two-step {@code spec.parse(resolve(key), coercer)} idiom.
+     *  The container passes its own, so contributed rules apply here too. */
+    private final Coercer coercer;
 
-    SymbolSourceDefault(List<SymbolProvider> providers) {
+    SymbolSourceDefault(Coercer coercer, List<SymbolProvider> providers) {
+        this.coercer = Objects.requireNonNull(coercer, "coercer");
         this.providers.addAll(Objects.requireNonNull(providers, "providers"));
-    }
-
-    /**
-     * Creates a standard symbol source with the JVM system-properties tier —
-     * the process-level override available to every container, including
-     * bare containers without the boot cascade. The boot cascade (CLI,
-     * mapped env, config files) registers on top through
-     * {@link #register(SymbolProvider)}. There is deliberately no raw-env
-     * fallback: environment variables reach the chain only through the
-     * declared prefix mapping, so an unknown symbol fails instead of
-     * silently matching an unrelated variable.
-     */
-    static SymbolSourceDefault standard() {
-        return new SymbolSourceDefault(List.of(
-            new SymbolProvider() {
-                @Override
-                public String lookup(String name) {
-                    return System.getProperty(name);
-                }
-
-                @Override
-                public int order() {
-                    return TIER_SYS_PROPS;
-                }
-            }));
     }
 
     @Override
@@ -69,15 +51,9 @@ final class SymbolSourceDefault implements SymbolSource {
         ordered = null; // invalidate the sorted snapshot
     }
 
-    /** Wires the container's {@link Coercer} so the one-step
-     *  {@code resolve(SymbolSpec)} parses coercer-backed specs. */
-    void coercer(Coercer coercer) {
-        this.coercer = Objects.requireNonNull(coercer, "coercer");
-    }
-
     @Override
     public <T> T resolve(SymbolSpec<T> spec) {
-        // The chain's coercer (when wired) also covers specs that declare a
+        // The chain's coercer also covers specs that declare a
         // per-key parser — SymbolSpec.parse prefers the explicit parser.
         return spec.parse(resolve(spec.key(), null), coercer);
     }

@@ -37,14 +37,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `FreewayApp.of(…)` | `FreewayApp.create(…)`（入口点统一用 `create`；`of` 留给"由给定部件造值"的记录工厂） |
 | `FlowEngine.newInstance(…)` | `FlowEngine.create(…)` |
 | classpath 根的 `freeway-log.properties` | 不读（启动打一行 stderr 提示改名）；改名为 `freeway-logging.properties` |
+| `SymbolSource.systemProperties()`（无容器的独立来源） | 删除；独立装配用同一条链 `SymbolSource.of(coercer, SymbolProvider.systemProperties())`（`coercer` 自备 `new CoercerDefault()`），系统属性这一 tier 用 `SymbolProvider.systemProperties()` |
 
 行为变化（无需改调用点，但值得知道）：
 
 - class 声明是**声明**：同一棵 class-only 树加载进多个容器，每个容器得到新模块；实例/lambda 声明仍是组合期已有的那一个，跨容器共享。
 - 模块节点的 `name()` 在 resolve 前是 class 的 simple name，覆盖了 `name()` 的模块只在实例放置时显示自定义名。
 - `TreeNode` 随本次收敛删除（Unreleased 新增、从未发布）；应用若直接调 `moduleTree().tree()`，迁移到 `children()` / `render()`。
+- 独立装配（无容器）现在是真正的链：`SymbolSource.of(...)` 会展开 `${...}`，`SymbolSpec` 用你传入的 `Coercer`
+  解析，`register(SymbolProvider)` 可用 —— 旧的扁平来源三项都不是。含未知 `${...}` 的 `-D` 值现在与容器路径
+  一致地报错，而不是原样返回。
 
 ### Changed
+
+- **SymbolSource 收敛为一条链，系统属性成为一个 SymbolProvider（freeway-ioc）** — 此前 SYS tier 在 ioc 内部
+  有两个实现，而且语义不同：容器链里是一个 `SymbolProvider`（`order()=TIER_SYS_PROPS`，由
+  `SymbolSourceDefault.standard()` 匿名构造），独立来源 `SymbolSource.systemProperties()` 则是另一份扁平实现
+  —— 它不展开 `${...}`（javadoc 还把这个差异写成"没有可展开的对象"，可一条只有一个 tier 的链照样能对 `-D`
+  做展开）、自带一个与容器无关的 `CoercerDefault`、`register()` 直接抛异常。现在 tier 只有一处定义：
+  `SymbolProvider.systemProperties()`；链也只有一处实现：`SymbolSource.of(Coercer, SymbolProvider...)`
+  （`SymbolSourceDefault` 随之从 `ioc.internal` 移入 `ioc.symbol`，保持包私有，改为构造时接收 `Coercer`，
+  删掉事后注入的 `coercer(...)` setter 与只服务于它的 `standard()`）。
+  `ContainerImpl` 用 `SymbolSource.of(coercer, SymbolProvider.systemProperties())` 起链，传入的就是容器自己
+  那个 `Coercer`，于是模块贡献的 `CoerceRule` 对 `resolve(SymbolSpec)` 同样生效（这条路径此前没有任何测试，
+  新增 `SymbolSourceSpecTest`：容器路径的 `resolve(SymbolSpec)` 与贡献规则各一例）。
+  独立装配不再有第二种语义，ext 的 Jetty / Undertow / Hikari 三个无容器构造器各改一行，API 面因此变小而不是
+  变大 —— 删掉一个"看起来像 source、其实关掉了半条链"的入口。
 
 - **批次 B（第六批）：入口工厂统一到 `create`（freeway-boot / freeway-flow）** — 审计 B3。框架入口此前用两个
   动词：`Freeway.create(...)` 与 `FreewayApp.of(...)` 是并列入口却各叫各的，`FlowEngine.newInstance()` 又是

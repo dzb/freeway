@@ -1,5 +1,6 @@
 package com.jujin.freeway.ioc;
 
+import com.jujin.freeway.commons.coercion.CoercerDefault;
 import com.jujin.freeway.ioc.symbol.SymbolProvider;
 import com.jujin.freeway.ioc.symbol.SymbolSource;
 import com.jujin.freeway.ioc.symbol.UnknownSymbolException;
@@ -29,7 +30,8 @@ class SymbolSourceReplacementTest {
     private static final class RecordingSource implements SymbolSource {
 
         final List<SymbolProvider> accepted = new CopyOnWriteArrayList<>();
-        private final SymbolSource delegate = SymbolSource.systemProperties();
+        private final SymbolSource delegate =
+            SymbolSource.of(new CoercerDefault(), SymbolProvider.systemProperties());
 
         @Override
         public void register(SymbolProvider provider) {

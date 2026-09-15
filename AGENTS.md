@@ -140,6 +140,14 @@ transitively) plus JUnit at test scope. Anything else belongs in an ext adapter.
   keys' declarations, token tables and presence criteria. A mechanism with
   application data in it moves down only when it carries no key names; data
   about specific keys moves up to their owner.
+- **One chain, one tier definition**: a configuration tier *is* a
+  `SymbolProvider` (JVM system properties is `SymbolProvider.systemProperties()`
+  at `TIER_SYS_PROPS`), and a source *is* the chain over them
+  (`SymbolSource.of(coercer, providers…)`) — never a per-caller re-implementation
+  of lookup, expansion or typing. The container builds the chain with its own
+  `Coercer` so contributed `CoerceRule`s reach `resolve(SymbolSpec)`; a caller
+  without a container (an adapter, a test) builds the same chain with the
+  coercer it has and gets the same semantics.
 
 ## Testing
 

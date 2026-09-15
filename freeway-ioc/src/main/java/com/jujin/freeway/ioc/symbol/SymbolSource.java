@@ -1,7 +1,7 @@
 package com.jujin.freeway.ioc.symbol;
 
 import com.jujin.freeway.commons.coercion.Coercer;
-import com.jujin.freeway.commons.coercion.CoercerDefault;
+import java.util.List;
 
 /**
  * Resolves symbolic configuration keys ({@code ${...}}) from config, system
@@ -31,44 +31,27 @@ import com.jujin.freeway.commons.coercion.CoercerDefault;
 public interface SymbolSource {
 
     /**
-     * A source backed by JVM system properties alone: the pre-cascade behavior
-     * for standalone construction (tests, benchmarks, direct adapter use). A
-     * missing symbol throws from {@link #resolve(String)} and falls back to the
-     * default from {@link #resolve(String, String)}; {@link #expand(String)}
-     * returns its input unchanged, since there is nothing to expand against.
+     * Assembles a symbol chain over the given tiers, in one step: providers are
+     * consulted in ascending {@link SymbolProvider#order()} (equal orders keep
+     * the given order), {@code ${...}} references are expanded, and
+     * {@link SymbolSpec}s parse through {@code coercer}.
      *
-     * <p>This is the mechanism only — no key names — so it lives here rather
-     * than being re-declared by every adapter that also has a container path.
+     * <p>This is the mechanism the container itself uses — it seeds the chain
+     * with its system-properties tier and its own {@code Coercer} (so
+     * contributed {@code CoerceRule}s reach {@link #resolve(SymbolSpec)}), then
+     * registers the boot cascade on top. Build a chain directly only where
+     * there is no container: a standalone adapter
+     * ({@code SymbolSource.of(coercer, SymbolProvider.systemProperties())}),
+     * a test, a benchmark. In-container code reads
+     * {@code container.get(SymbolSource.class)} — the same chain plus whatever
+     * the application configured.
+     *
+     * @param coercer   parses coercer-backed specs (no per-key parser); the
+     *                  container passes its own
+     * @param providers the tiers, consulted by declared order
      */
-    static SymbolSource systemProperties() {
-        // Specs declared without a per-key parser resolve through a Coercer, so
-        // this standalone source wires one exactly like the container's chain
-        // does — otherwise an adapter that reads a SymbolSpec would work under
-        // the container and fail when constructed directly.
-        Coercer coercer = new CoercerDefault();
-        return new SymbolSource() {
-            @Override
-            public String resolve(String name) {
-                String value = System.getProperty(name);
-                if (value == null) throw new UnknownSymbolException(name);
-                return value;
-            }
-
-            @Override
-            public String resolve(String name, String defaultValue) {
-                return System.getProperty(name, defaultValue);
-            }
-
-            @Override
-            public String expand(String input) {
-                return input;
-            }
-
-            @Override
-            public <T> T resolve(SymbolSpec<T> spec) {
-                return spec.parse(resolve(spec.key(), null), coercer);
-            }
-        };
+    static SymbolSource of(Coercer coercer, SymbolProvider... providers) {
+        return new SymbolSourceDefault(coercer, List.of(providers));
     }
 
     /**

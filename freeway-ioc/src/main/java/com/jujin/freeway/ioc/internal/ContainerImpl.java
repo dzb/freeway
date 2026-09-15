@@ -84,7 +84,7 @@ public final class ContainerImpl implements Container {
     }
     private final Map<ServiceKey, Object> serviceCache = new ConcurrentHashMap<>();
     private final Map<ServiceKey, Object> targetCache = new ConcurrentHashMap<>();
-    private final SymbolSourceDefault symbolSource;
+    private final SymbolSource symbolSource;
     private final CoercerDefault coercer;
     private final LoggerSource loggerSource;
     private final ProxyFactoryImpl proxyFactory;
@@ -112,11 +112,12 @@ public final class ContainerImpl implements Container {
 
     public ContainerImpl(ModuleNode moduleTree) {
         this.moduleTree = Objects.requireNonNull(moduleTree, "moduleTree");
-        this.symbolSource = SymbolSourceDefault.standard();
         this.coercer = new CoercerDefault();
         // The chain's coercer lets one-step resolve(spec) parse coercer-backed
-        // types (Duration, user rules) — no two-step idiom anywhere.
-        this.symbolSource.coercer(this.coercer);
+        // types (Duration, user rules) — no two-step idiom anywhere. It is the
+        // container's own instance, so a contributed CoerceRule reaches the
+        // source's resolve(SymbolSpec) as well.
+        this.symbolSource = SymbolSource.of(this.coercer, SymbolProvider.systemProperties());
         this.loggerSource = LoggerSourceDefault.INSTANCE;
         this.proxyFactory = new ProxyFactoryImpl();
         this.injectResolver = new InjectionResolver(this);

@@ -166,6 +166,7 @@ javadoc 说"same gates as the streaming path, **plus body-allowed**"，但 `shou
 
 1. **`SymbolSourceImpl` / `LoggerSourceImpl` 命名与替换能力矛盾**：两者都在 `internal`，但 `InjectionResolver.java:242-244` 的注释明说"a module that binds its own primary LoggerSource must be honored here too"，即它们**可被外部 `.primary()` 替换**——按 `AGENTS.md` 的判据（外部能否替换）应为 `XDefault`（`PoolDefault` 有先例）。**已复核**。
 2. **替换 `SymbolSource` 会静默丢掉整条贡献链**：`ContainerImpl.java:119` 的 wiring 把 `SymbolProvider` 贡献注册进**容器内部的 `symbolSource` 实例**，而注入端走 `container.get(SymbolSource.class)`（`InjectionResolver.java:269-270`）。boot（CLI/env/files 全链）与 cloud（`CloudSecretModule.java:38`）都走 contribute；cloud 测试确实用 `.primary()` 替换过 `SymbolSource`。**已复核**。
+3. **同一个 tier 有两份实现（用户复核时提出，P1）**：JVM 系统属性这一层在 `ioc` 内部被实现了两次 —— 容器链里是 `SymbolSourceDefault.standard()` 的匿名 `SymbolProvider`（`order()=TIER_SYS_PROPS`），无容器的 `SymbolSource.systemProperties()` 则是另一份扁平 `SymbolSource`，**且两者语义不同**：后者不展开 `${...}`（javadoc 把差异解释成"没有可展开的对象"，但一条只有一个 tier 的链照样能对 `-D` 展开）、自带一个与容器无关的 `CoercerDefault`（贡献的 `CoerceRule` 在此不生效）、`register()` 走接口默认实现直接抛异常。差异不是设计取舍，而是"链实现放在 `ioc.internal`、`symbol` 包够不着"的产物。**已复核**。
 
 ### 3.9 现代性观察：`sealed` 全仓为 0
 
@@ -317,6 +318,12 @@ HTTP 语义——但今天只有两个来源、且安全用例已被覆盖，提
   判断，不按行数**（用户口径，已写入 `AGENTS.md`）；`StaticResourceMount` 复核后判定不拆，见 §4.4。
 - C3 `DbModule` 与 `MigrationRunner` 的默认值归属统一到一处。
 
+### 批次 D：复核中新发现（用户提问触发）
+
+- D1 §3.8.3：一个 tier 两份实现、两种语义。修法是把 tier 定义成 `SymbolProvider.systemProperties()`、把链
+  收成一个工厂 `SymbolSource.of(Coercer, SymbolProvider...)`（`SymbolSourceDefault` 随之移入 `ioc.symbol`，
+  构造时接收 `Coercer`），无容器的调用方装配同一条链而不是另一份实现。
+
 ## 6.1 实施状态（滚动更新）
 
 | 项 | 状态 | 提交 |
@@ -341,6 +348,7 @@ HTTP 语义——但今天只有两个来源、且安全用例已被覆盖，提
 | C1 `sealed` | 观察项：唯一有说服力的候选（`ExprEvaluator.AstNode`）用多态分派，收益有限 | — |
 | C2 大文件职责拆分（`JULEnhancer`/`StaticResourceMount`/`Sql` 等） | **按用户判据不做**：文件大小不是拆分理由，看职责是否内聚与拆分 ROI；该判据已写入 `AGENTS.md` | — |
 | C3 默认值归属统一（`DbModule` 与 `MigrationRunner`） | 已随 B2 落地（`Options.defaults()` 是唯一出处） | core `6f2f0d24` |
+| D1 §3.8.3：tier 与链各只有一处实现（`SymbolProvider.systemProperties()` + `SymbolSource.of`，删 `SymbolSource.systemProperties()`） | 已落地（ext 三个无容器构造器各改一行） | 本轮 |
 
 审计方法上的两次自我纠正也留在正文：`instanceof` 强转计数与 `Sql.Condition` 构造器计数的假阳性（§1），
 以及一条被模块反例撤回的结论（`Dialect` 命名，§5 第 1 条）。

@@ -36,6 +36,33 @@ public interface SymbolProvider {
     }
 
     /**
+     * The JVM system-properties tier ({@code -Dkey=value}) — the process-level
+     * ops override, declared at {@link #TIER_SYS_PROPS}.
+     *
+     * <p>One definition serves both assemblies: the container seeds its chain
+     * with this provider, and a standalone chain — an adapter without a
+     * container, a test, a benchmark — chains exactly it
+     * ({@code SymbolSource.of(coercer, SymbolProvider.systemProperties())}), so
+     * {@code -D} precedence is the same answer on both paths.
+     *
+     * <p>Values come back verbatim: {@code ${...}} expansion and typing are the
+     * chain's job, not a tier's.
+     */
+    static SymbolProvider systemProperties() {
+        return new SymbolProvider() {
+            @Override
+            public String lookup(String name) {
+                return System.getProperty(name);
+            }
+
+            @Override
+            public int order() {
+                return TIER_SYS_PROPS;
+            }
+        };
+    }
+
+    /**
      * Looks up a symbol by name.
      *
      * @param name the symbol name
