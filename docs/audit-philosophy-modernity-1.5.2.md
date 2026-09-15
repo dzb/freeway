@@ -68,7 +68,7 @@
 | 920 | `commons/logging/JULEnhancer.java` | 8 节：配置加载、级别、console handler 所有权、formatter 安装、文件日志激活、具名文件持久化、附加文件、属性助手 |
 | 854 | `db/migration/MigrationRunner.java` | 扫描（文件/JAR）、版本比较与归一化、校验和（含 CRLF 双轨）、锁与接管、DDL 应用、多方言路径归一 |
 | 848 | `db/Sql.java` | SQL 构建（45 个公共方法：WHERE/JOIN/CTE/DML/UNION/条件组） |
-| 793 | `http/staticfile/StaticResourceMount.java` | 挂载范围解析、条件请求、RFC 7233 范围、Content-Type 表、两条安全打开路径、发送 |
+| 793 | `http/staticfile/StaticResourceMount.java` | 6 个阶段、一个职责：挂载匹配 → 条件请求 → Range → 媒体类型 → 资源访问（两条来源）→ 发送（复核结论：不拆，见 §4.4） |
 | 779 | `flow/FlowEngineDefault.java` | 引擎生命周期、节点分派、表达式求值、死路/深度/步数上限 |
 | 685 | `http/engine/http2/Http2Connection.java` | 连接状态机（子审计核查为内聚，不计） |
 
@@ -222,7 +222,18 @@ javadoc 说"same gates as the streaming path, **plus body-allowed**"，但 `shou
 4. **javadoc 指向不存在的方法**（子审计，§3.7）。
 5. **SPI 收口残留**：`engine/http2/hpack/Huffman.java:17`、`StaticHeaderTable.java:8` 在 main 树里只有同包引用却 public，与 `internal/package-info.java:10-12` 自述规则相抵（CHANGELOG 记录过同类收紧 21 个类型，漏了这两个）。
 
-**P2**：`StaticResourceMount.java` 793 行承担 6 种策略，且内建 Content-Type 表与 `MediaTypes.java:5-8` 的自述（"单一来源"）相抵；`WebServer.stop()`（`:164`）与 `close()`（`:185`）字节级同义、文档只教 `stop()`；`SseEmitter.complete()` 与 `close()` 同义；`FreewayHttpEngine` 5 个位置构造器应是参数记录；全模块 `withX` wither 0 个，而 `StaticResourceMount` 的 `cacheMaxAgeSeconds(n)/immutable(b)` 返回**新实例**、`WebServerBuilder` 的同名形态返回 **this**，调用点无法从名字分辨；`RequestComponents`（public record）不拷贝三个 List，`WebServer.java:77-78` 按引用保存。
+**P2（已复核并更正）**：`StaticResourceMount.java` 793 行，791 行里是 **6 个阶段、一个职责**——挂载归一化与
+匹配（`:94/:540`）、条件请求（`:349/:361/:379`）、RFC 7233 范围（`:400/:409/:452`）、Content-Type 表
+（`:502-538`）、资源访问（`:544-788`，目录/类路径两条来源 + `SecureDirectoryStream` 安全遍历 +
+`BoundedInputStream`）、以及发送（`:180/:243/:259`）。它们是同一条流水线的相邻步骤，顺序上互相依赖
+（不知道 etag 就答不出 304，不知道 size 就答不出 Range），拆开只会把一段对话摊到多个文件；三份专门的测试
+（`StaticResourceMountTest`/`StaticResourceConditionalTest`/`ClasspathResourceSourceTest`，含符号链接穿越
+用例 `StaticResourceMountTest:253`）已经把值得单独验证的部分隔离开了。**唯一真正可分离的是资源访问层**
+（`ResourceSource` 与两个实现 + `BoundedInputStream`）：它的变更理由是文件系统/符号链接安全模型，而不是
+HTTP 语义——但今天只有两个来源、且安全用例已被覆盖，提取的 ROI 不足，等第三个来源（例如对象存储）出现
+时再抽。**同时更正原报告的一处过度结论**：原先说"内建 Content-Type 表与 `MediaTypes` 的单一来源自述相抵"
+不成立——`MediaTypes` 只有常量与谓词（`isJson`/`isMultipartFormData`/`isCompressibleContentType`），没有
+扩展名映射，扩展名表只此一处且复用了它的常量，**不存在重复**。`WebServer.stop()`（`:164`）与 `close()`（`:185`）字节级同义、文档只教 `stop()`；`SseEmitter.complete()` 与 `close()` 同义；`FreewayHttpEngine` 5 个位置构造器应是参数记录；全模块 `withX` wither 0 个，而 `StaticResourceMount` 的 `cacheMaxAgeSeconds(n)/immutable(b)` 返回**新实例**、`WebServerBuilder` 的同名形态返回 **this**，调用点无法从名字分辨；`RequestComponents`（public record）不拷贝三个 List，`WebServer.java:77-78` 按引用保存。
 
 ### 4.5 db（51 文件 / 8147 行）
 
@@ -302,7 +313,8 @@ javadoc 说"same gates as the streaming path, **plus body-allowed**"，但 `shou
 ### 批次 C：观察与择机
 
 - C1 `sealed`（唯一候选 `ExprEvaluator.AstNode`，收益有限）。
-- C2 大文件职责：`JULEnhancer` 8 节、`StaticResourceMount` 6 策略、`MigrationRunner`、`Sql` 的拆分——按"一次改到位"的原则整文件拆，不做局部挪动。
+- C2 大文件职责：`JULEnhancer` 8 节、`StaticResourceMount` 6 阶段、`MigrationRunner`、`Sql`——**按内聚与 ROI
+  判断，不按行数**（用户口径，已写入 `AGENTS.md`）；`StaticResourceMount` 复核后判定不拆，见 §4.4。
 - C3 `DbModule` 与 `MigrationRunner` 的默认值归属统一到一处。
 
 ## 6.1 实施状态（滚动更新）
