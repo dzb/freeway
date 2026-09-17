@@ -75,7 +75,7 @@ public final class PoolDefault implements Pool {
      * no queueing or degradation — matching Freeway's explicit-failure style.
      */
     @Override
-    public PooledConnectionImpl borrow() {
+    public PooledConnection borrow() {
         ensureOpen();
         long waitStart = System.nanoTime();
         try {
@@ -115,7 +115,7 @@ public final class PoolDefault implements Pool {
                 ) {
                     handOut(conn, waitStart);
                     success = true;
-                    return conn;
+                    return new Handle(this, conn);
                 }
                 // Replace the stale connection BEFORE destroying it, so the
                 // pool never transiently drops to zero connections. Databases
@@ -147,7 +147,7 @@ public final class PoolDefault implements Pool {
             }
             handOut(conn, waitStart);
             success = true;
-            return conn;
+            return new Handle(this, conn);
         } finally {
             if (!success) {
                 semaphore.release();
@@ -188,18 +188,64 @@ public final class PoolDefault implements Pool {
         recordBorrow(waitStart);
     }
 
-    @Override
-    public void release(PooledConnection conn) {
+    /**
+     * Per-borrow handle — the proxy-isolation reason HikariCP gives a borrow
+     * its own object: the pool tracks the connection in {@link #active} as a
+     * {@link PooledConnectionImpl}, and every {@code release()}/{@code
+     * invalidate()} consumes exactly the handle that borrowed it. A late or
+     * duplicated call through a spent handle is therefore indistinguishable
+     * from the benign repeat-close and is dropped — it can never recycle or
+     * destroy a connection another thread currently holds.
+     */
+    static final class Handle implements PooledConnection {
+        private final PoolDefault pool;
+        final PooledConnectionImpl pooled;
+        /** Guarded by {@code this}: consumed by the first release/invalidate. */
+        private boolean settled;
+
+        Handle(PoolDefault pool, PooledConnectionImpl pooled) {
+            this.pool = pool;
+            this.pooled = pooled;
+        }
+
+        @Override
+        public Connection connection() {
+            return pooled.connection();
+        }
+    }
+
+    /**
+     * Resolves {@code conn} to the pooled entity this handle borrowed,
+     * consuming the handle. Returns null when nothing is to be done: a spent
+     * handle (benign repeat) or an entity already force-closed during pool
+     * shutdown (no longer active).
+     */
+    private PooledConnectionImpl claim(PooledConnection conn, String verb) {
         Objects.requireNonNull(conn, "conn");
-        if (!(conn instanceof PooledConnectionImpl pc)) {
+        if (!(conn instanceof Handle h) || h.pool != this) {
             throw new SqlException(
                 "Foreign PooledConnection rejected: " +
                     conn.getClass().getName() +
-                    " does not belong to this PoolDefault — release connections only to the pool that borrowed them"
+                    " does not belong to this PoolDefault — " + verb +
+                    " connections only to the pool that borrowed them"
             );
         }
-        if (!active.remove(pc)) {
-            // Already removed (e.g. force-closed during shutdown)
+        synchronized (h) {
+            if (h.settled) {
+                return null;
+            }
+            h.settled = true;
+        }
+        if (!active.remove(h.pooled)) {
+            return null;
+        }
+        return h.pooled;
+    }
+
+    @Override
+    public void release(PooledConnection conn) {
+        PooledConnectionImpl pc = claim(conn, "release");
+        if (pc == null) {
             return;
         }
         // The closed-check and the offer must be atomic with close()'s drain
@@ -220,15 +266,8 @@ public final class PoolDefault implements Pool {
 
     @Override
     public void invalidate(PooledConnection conn) {
-        Objects.requireNonNull(conn, "conn");
-        if (!(conn instanceof PooledConnectionImpl pc)) {
-            throw new SqlException(
-                "Foreign PooledConnection rejected: " +
-                    conn.getClass().getName() +
-                    " does not belong to this PoolDefault — invalidate connections only to the pool that borrowed them"
-            );
-        }
-        if (!active.remove(pc)) {
+        PooledConnectionImpl pc = claim(conn, "invalidate");
+        if (pc == null) {
             // Already returned, already invalidated, or force-closed during
             // shutdown — destroying again would double-decrement total.
             return;

@@ -7,9 +7,6 @@ import java.util.function.Function;
 
 /**
  * Flow context, representing the context data of a flow instance
- *
- * @author noear
- * @since 3.0
  */
 public interface FlowContext {
 

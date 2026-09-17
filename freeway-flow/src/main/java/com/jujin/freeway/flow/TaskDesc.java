@@ -5,9 +5,6 @@ import java.util.Set;
 
 /**
  * Task description (expression reference: '@beanName' / '#graphId' / '$metaKey' / '!markerName')
- *
- * @author noear
- * @since 3.0
  */
 public class TaskDesc {
     /** True when the descriptor is non-null and carries a task. */

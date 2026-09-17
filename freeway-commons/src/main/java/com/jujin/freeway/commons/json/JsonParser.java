@@ -35,12 +35,14 @@ final class JsonParser {
     private static final int MAX_STRING_LENGTH = 10 * 1024 * 1024;
 
     /**
-     * Maximum length for a single JSON number token.
-     * {@link #parseNumber} would otherwise let an unbounded run of digits
-     * reach {@link BigInteger}/{@link BigDecimal} (super-linear cost),
-     * causing CPU/memory spikes. Matches {@link #MAX_STRING_LENGTH}.
+     * Maximum length for a single JSON number token. {@link #parseNumber}
+     * would otherwise let an unbounded run of digits reach
+     * {@link BigInteger}/{@link BigDecimal}, whose decimal parsing is
+     * super-linear: measured on this JDK, 1M digits costs ~11s and 10M never
+     * returns. A few thousand digits is generous for real payloads (the
+     * longest useful double literal is ~1085 chars) and parses instantly.
      */
-    private static final int MAX_NUMBER_LENGTH = MAX_STRING_LENGTH;
+    private static final int MAX_NUMBER_LENGTH = 1_000;
 
     /**
      * Maximum size for JSON input streams.

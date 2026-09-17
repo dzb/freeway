@@ -2,9 +2,6 @@ package com.jujin.freeway.flow;
 
 /**
  * Task component
- *
- * @author noear
- * @since 3.0
  */
 @FunctionalInterface
 public interface TaskComponent {

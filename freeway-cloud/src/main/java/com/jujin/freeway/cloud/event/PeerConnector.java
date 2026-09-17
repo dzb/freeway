@@ -211,25 +211,22 @@ final class PeerConnector implements AutoCloseable {
         }
     }
 
-    /** Connect-retry loop: dials, then parks for backoff on every failure. */
+    /**
+     * Connect-retry loop: sleeps per the peer's current backoff, dials once,
+     * and hands the session to the listener. The backoff is advanced by the
+     * listener when a session ends without a completed handshake (the peer
+     * rejected the hello, the watchdog fired) and by this loop on open
+     * failures; it is reset only by a successful handshake — an accepted TCP
+     * upgrade says nothing about mesh health, and resetting here was what let
+     * two token-mismatched peers re-dial each other at full speed forever.
+     */
     private void dialLoop(PeerAddress peer) {
         AtomicInteger backoff = backoffByPeer.computeIfAbsent(peer,
             k -> new AtomicInteger(0));
         while (!closed) {
-            try {
-                connect(peer).get();
-                backoff.set(0); // healthy connection — reset on next disconnect
-                return; // connection lifecycle now owned by the session listener
-            } catch (Exception e) {
-                if (closed) {
-                    return;
-                }
-                long sleep = Math.min(
-                    backoffBaseMs * (1L << Math.min(backoff.get(), 5)),
-                    backoffMaxMs);
-                backoff.incrementAndGet();
-                LOG.debug("Peer {} connect failed ({}ms backoff): {}",
-                    peer, sleep, String.valueOf(e.getCause() == null ? e : e.getCause()));
+            long sleep = backoffSleepMs(backoff.get());
+            if (sleep > 0) {
+                LOG.debug("Peer {} re-dial in {}ms (backoff)", peer, sleep);
                 try {
                     Thread.sleep(sleep);
                 } catch (InterruptedException ie) {
@@ -237,7 +234,34 @@ final class PeerConnector implements AutoCloseable {
                     return;
                 }
             }
+            try {
+                connect(peer, backoff).get();
+                return; // connection lifecycle now owned by the session listener
+            } catch (Exception e) {
+                if (closed) {
+                    return;
+                }
+                backoff.incrementAndGet();
+                LOG.debug("Peer {} connect failed: {}",
+                    peer, String.valueOf(e.getCause() == null ? e : e.getCause()));
+            }
         }
+    }
+
+    /** Exponential backoff capped at {@code backoffMaxMs} for the given attempt count. */
+    private long backoffSleepMs(int attempts) {
+        if (attempts <= 0) {
+            return 0;
+        }
+        return Math.min(backoffBaseMs * (1L << Math.min(attempts, 5)), backoffMaxMs);
+    }
+
+    /** Package-visible for the reconnect-pacing test: the failed-attempt
+     *  count driving the next dial's backoff. A completed mesh handshake
+     *  resets it; a socket open no longer does. */
+    int backoffAttempts(PeerAddress peer) {
+        AtomicInteger count = backoffByPeer.get(peer);
+        return count == null ? 0 : count.get();
     }
 
     /** Starts a dial/retry thread and tracks it for interruptible shutdown. */
@@ -254,8 +278,9 @@ final class PeerConnector implements AutoCloseable {
     }
 
     /** One dial: build the WebSocket; the listener takes over after onOpen. */
-    private java.util.concurrent.CompletableFuture<WebSocket> connect(PeerAddress peer) {
-        var handler = new ClientSessionHandler(peer);
+    private java.util.concurrent.CompletableFuture<WebSocket> connect(PeerAddress peer,
+            AtomicInteger backoff) {
+        var handler = new ClientSessionHandler(peer, backoff);
         sessions.add(handler);
         return http.newWebSocketBuilder()
             .subprotocols("freeway.event.v1")
@@ -297,6 +322,8 @@ final class PeerConnector implements AutoCloseable {
      */
     private final class ClientSessionHandler implements WebSocket.Listener {
         private final PeerAddress peer;
+        /** Shared with the dial loop: advanced on a failed attempt, cleared on handshake. */
+        private final AtomicInteger backoff;
         private volatile WebSocket ws;
         private volatile ScheduledFuture<?> handshakeTimer;
         private volatile PeerConnection connection;
@@ -309,8 +336,9 @@ final class PeerConnector implements AutoCloseable {
          *  for one socket; abort() adds its own schedule on top). */
         private final AtomicBoolean reconnectScheduled = new AtomicBoolean();
 
-        ClientSessionHandler(PeerAddress peer) {
+        ClientSessionHandler(PeerAddress peer, AtomicInteger backoff) {
             this.peer = peer;
+            this.backoff = backoff;
         }
 
         @Override
@@ -449,8 +477,11 @@ final class PeerConnector implements AutoCloseable {
                 // the connector to dial again.
                 this::abort);
             // Ack accepted — from here on frames are CE, and a second hello
-            // is rejected by the state machine in onText.
+            // is rejected by the state machine in onText. The mesh handshake
+            // completing is the health signal the backoff keys on: clear it
+            // only here, not at socket open.
             handshaken = true;
+            backoff.set(0);
             hub.register(connection);
             if (connection.isClosed()) {
                 return; // duplicate resolution closed this outbound connection
@@ -477,6 +508,12 @@ final class PeerConnector implements AutoCloseable {
                 hub.unregister(connection);
                 LOG.info("Peer connection lost: {} ({})", connection.remoteOrigin(), cause);
             } else {
+                // Opened but never handshaked (rejected hello, watchdog abort,
+                // protocol violation before the ack): count it as a failed
+                // attempt so the next dial parks — resetting only on socket
+                // open was what let a permanently-rejected peer dial at full
+                // speed forever.
+                backoff.incrementAndGet();
                 LOG.debug("Peer {} not established: {}", peer, cause);
             }
             if (closed) {

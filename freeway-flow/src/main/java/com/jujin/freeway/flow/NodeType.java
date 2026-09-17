@@ -8,9 +8,6 @@ package com.jujin.freeway.flow;
  * or blank one never reaches here (the v2 parser requires a non-blank
  * {@code type}). {@link #UNKNOWN} is reserved: declaring it in a graph
  * definition is rejected, and the engine throws if such a node ever appears.
- *
- * @author noear
- * @since 3.0
  */
 public enum NodeType {
     UNKNOWN(0),

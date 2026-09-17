@@ -2,9 +2,6 @@ package com.jujin.freeway.flow;
 
 /**
  * Flow exception
- *
- * @author noear
- * @since 3.0
  */
 public class FlowException extends RuntimeException {
 

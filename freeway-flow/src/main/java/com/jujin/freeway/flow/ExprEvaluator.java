@@ -37,7 +37,6 @@ import java.util.Map;
  *
  * Expressions are compiled to an AST (abstract syntax tree) on first use; later the same
  * expression is evaluated directly, avoiding repeated parsing.
- *
  */
 public final class ExprEvaluator {
 

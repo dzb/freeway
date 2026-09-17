@@ -5,9 +5,6 @@ import java.util.NoSuchElementException;
 
 /**
  * Stepper iterator (range: [start, end), step: step)
- *
- * @author noear 2025/10/19 created
- * @since 3.6
  */
 public class Stepper implements Iterator<Integer> {
 

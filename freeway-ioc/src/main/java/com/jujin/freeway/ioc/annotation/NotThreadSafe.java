@@ -12,10 +12,13 @@ import java.lang.annotation.Target;
  * <p>A marker annotation — apply it directly on the implementation class
  * (like {@code @Primary}), or list it via {@link Marker}. Bindings created
  * with {@code binder.bind(X.class).to(Impl.class)} inherit the contract
- * automatically; the container rejects injection of a {@code @NotThreadSafe}
- * concrete class into a singleton holder (a thread-scoped or prototype
- * holder is fine — each thread/request gets its own instance). Resolve by
- * marker via {@code container.get(X.class, NotThreadSafe.class)}.
+ * automatically; the container rejects injecting a {@code @NotThreadSafe}
+ * implementation into a singleton holder, behind the concrete class or
+ * behind its interface (a singleton proxy caches exactly one target, so
+ * proxying does not launder the marker). Holders that are safe: prototype
+ * and thread-scoped (each resolution gets its own instance), and a
+ * THREAD-scoped interface binding (its proxy resolves per scope). Resolve
+ * by marker via {@code container.get(X.class, NotThreadSafe.class)}.
  *
  * <p>This is a declaration, not a proof. An implementation annotated with
  * both {@link ThreadSafe} and {@link NotThreadSafe} is rejected at binding

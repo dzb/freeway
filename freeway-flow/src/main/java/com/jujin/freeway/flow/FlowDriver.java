@@ -4,9 +4,6 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Flow driver
- *
- * @author noear
- * @since 3.0
  */
 public interface FlowDriver {
 

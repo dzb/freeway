@@ -24,9 +24,6 @@ package com.jujin.freeway.flow;
  *     }
  * });
  * }</pre>
- *
- * @author noear
- * @since 3.1
  */
 public interface FlowInterceptor {
 

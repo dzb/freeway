@@ -77,17 +77,27 @@ final class BindingImpl<T> implements Binding<T> {
     }
 
     T directInstance() {
+        T created;
         if (instance != null) {
             // Instance bindings run the same lifecycle as every other
             // binding: field injection + @PostConstruct at realization, so
             // "has @PreDestroy on close" does not come without "has
             // @PostConstruct on start".
-            return materialize(instance);
+            created = instance;
+        } else if (provider != null) {
+            created = provider.apply(container);
+        } else {
+            return instantiateDefault();
         }
-        if (provider != null) {
-            return materialize(provider.apply(container));
+        if (created == null) {
+            throw new IllegalStateException(
+                "Provider returned null for " + type.getName() + "@" + id
+                    + " — bind a non-null value, or throw when the value is"
+                    + " legitimately absent (a null would otherwise surface as"
+                    + " an anonymous NullPointerException far from here)"
+            );
         }
-        return instantiateDefault();
+        return materialize(created);
     }
 
     @Override

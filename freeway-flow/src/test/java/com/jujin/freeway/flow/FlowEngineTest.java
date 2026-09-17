@@ -1116,7 +1116,9 @@ class FlowEngineTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
             () -> engine.eval("g", FlowContext.of()));
         assertTrue(ex.getMessage().contains("No driver found"));
-        assertTrue(ex.getMessage().contains("newInstance"));
+        assertTrue(ex.getMessage().contains("FlowEngine.create(Map.of"));
+        assertFalse(ex.getMessage().contains("newInstance"),
+            "guidance must not name a deleted API");
     }
 
     // ── node types via v2 ─────────────────────────────────────────

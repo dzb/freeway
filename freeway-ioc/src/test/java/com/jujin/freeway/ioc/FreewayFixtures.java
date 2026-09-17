@@ -611,6 +611,28 @@ final class ScopedSingleton {
 final class UnsafeShared {
 }
 
+final class SlowSingleton {
+    SlowSingleton() {
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+
+interface SharedContract {
+}
+
+@NotThreadSafe
+final class UnsafeSharedImpl implements SharedContract {
+}
+
+final class SingletonHoldingUnsafeViaInterface {
+    @Inject
+    private SharedContract shared;
+}
+
 final class SingletonHoldingUnsafe {
     @Inject
     private UnsafeShared shared;

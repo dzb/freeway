@@ -5,9 +5,6 @@ import java.util.function.BiConsumer;
 
 /**
  * Flow invocation (chain-of-responsibility: invokes interceptors in turn, finally reaching the engine's evalDo)
- *
- * @author noear
- * @since 3.1
  */
 public class FlowInvocation {
     private final FlowExchanger exchanger;

@@ -9,9 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Flow trace (lightweight tracking, supports persistence-based resume)
- *
- * @author noear
- * @since 3.8.1
  */
 public class FlowTrace implements Serializable {
     private volatile boolean enabled = true;

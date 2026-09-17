@@ -23,9 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Serialization explicitly excludes the {@code context} self-reference and supports both historical {@code trace} formats (object and string).</li>
  * </ul>
  * This preserves controlled resume capability while keeping runtime objects out of the stable protocol.</p>
- *
- * @author noear
- * @since 3.5
  */
 public class FlowContextImpl implements FlowContext {
     private static final VarHandle EVENT_BUS;

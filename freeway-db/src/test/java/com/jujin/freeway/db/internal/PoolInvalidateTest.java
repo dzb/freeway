@@ -27,7 +27,9 @@ import java.util.logging.Logger;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +38,52 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 槽位归还，且释放后（或关闭后）重复调用是幂等的。
  */
 class PoolInvalidateTest {
+
+    @Test
+    void lateReleaseOfSpentHandleCannotHijackLiveBorrow() throws Exception {
+        // Regression: a borrow used to hand out the pooled entity itself, so
+        // a late second release through a spent handle removed that entity
+        // from the active set — recycling a connection while another thread
+        // was mid-use on it (verified pre-fix: borrower C received B's
+        // still-in-use connection). Per-borrow handles make a spent handle
+        // inert.
+        AtomicInteger opens = new AtomicInteger();
+        AtomicInteger closes = new AtomicInteger();
+        Driver driver = countingDriver("jdbc:freeway-late-release:", opens, closes);
+        DriverManager.registerDriver(driver);
+        try {
+            PoolDefault pool = new PoolDefault(
+                config("jdbc:freeway-late-release:test", 1)
+            );
+            try {
+                PooledConnection a = pool.borrow();
+                pool.release(a);                    // entity returns to idle
+                PooledConnection b = pool.borrow();  // same entity, new handle
+                assertSame(a.connection(), b.connection(),
+                    "precondition: maxSize=1 reuses the pooled entity");
+
+                pool.release(a);                    // A's late double release
+                assertEquals(1, pool.stats().active(),
+                    "a spent handle must not recycle B's in-use connection");
+
+                pool.invalidate(a);                 // ...nor destroy it
+                assertEquals(1, pool.stats().active());
+                assertEquals(0, closes.get());
+
+                pool.release(b);                    // the real release works
+                assertEquals(0, pool.stats().active());
+                pool.release(b);                    // benign repeat
+
+                PooledConnection c = pool.borrow(); // pool still functional
+                assertNotNull(c.connection());
+                pool.release(c);
+            } finally {
+                pool.close();
+            }
+        } finally {
+            DriverManager.deregisterDriver(driver);
+        }
+    }
 
     @Test
     void invalidateDestroysPhysicalConnectionAndFreesSlot() throws Exception {

@@ -114,7 +114,7 @@ final class BatchQueryImpl implements BatchQuery {
                         }
                         stmt.clearParameters();
                         for (int i = 0; i < row.length; i++) {
-                            stmt.setObject(i + 1, row[i]);
+                            stmt.setObject(i + 1, StatementValues.bindValue(row[i]));
                         }
                         stmt.addBatch();
                     }
@@ -223,7 +223,7 @@ final class BatchQueryImpl implements BatchQuery {
             }
         }
         for (int i = 0; i < parsed.names().size(); i++) {
-            stmt.setObject(i + 1, row.get(parsed.names().get(i)));
+            stmt.setObject(i + 1, StatementValues.bindValue(row.get(parsed.names().get(i))));
         }
     }
 }

@@ -15,9 +15,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>{@code copy()} is provided to reuse the same execution state when switching sub-graphs, but with a different {@link Graph} or {@link FlowContext}.</li>
  * </ul>
  * This keeps the execution state controllable and replayable, and avoids polluting the model layer with runtime control flags.</p>
- *
- * @author noear
- * @since 3.0
  */
 public class FlowExchanger {
     private final Graph graph;

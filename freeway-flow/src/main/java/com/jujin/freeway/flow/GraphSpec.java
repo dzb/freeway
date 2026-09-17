@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Canonical graph blueprint — the single DAG authoring surface.
@@ -25,7 +27,7 @@ import java.util.function.Consumer;
  */
 public class GraphSpec {
     public static final int VERSION = 2;
-    private static final System.Logger LOG = System.getLogger(GraphSpec.class.getName());
+    private static final Logger LOG = LoggerFactory.getLogger(GraphSpec.class);
 
     private final String id;
     private String title;
@@ -558,10 +560,8 @@ public class GraphSpec {
         if (bfsOrder.size() < nodes.size()) {
             for (String nodeId : nodes.keySet()) {
                 if (!bfsOrder.contains(nodeId)) {
-                    LOG.log(System.Logger.Level.WARNING,
-                            "Unreachable node '" + nodeId
-                            + "' (not reachable from entry '" + resolvedEntry
-                            + "') in graph: " + id);
+                    LOG.warn("Unreachable node '{}' (not reachable from entry '{}') in graph: {}",
+                            nodeId, resolvedEntry, id);
                 }
             }
         }

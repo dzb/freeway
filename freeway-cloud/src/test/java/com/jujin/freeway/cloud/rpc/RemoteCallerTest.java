@@ -216,13 +216,15 @@ class RemoteCallerTest {
     void wrongArgumentCountIsARejectedCallNotAServerError() {
         // The wire carries a positional array, so arity is part of the contract:
         // a mismatch is a bad call (400, deterministic, never replayed), not a
-        // handler failure to be retried or a 500 to be investigated as an outage.
+        // handler failure to be retried or a 500 to be investigated as an
+        // outage — and because it is caught before dispatch, it is a rejection
+        // (the caller's mistake), not a business exception (the handler's).
         CloudException ex = assertThrows(CloudException.class, () ->
             caller.invoke("target", "user", "add", List.of(1), Integer.class));
         assertFalse(ex.retryable(), "a malformed call is deterministic");
         assertEquals(400, ex.status());
-        assertTrue(ex.getCause() instanceof RemoteInvocationException,
-            "the failing class still crosses, so the caller can see what was wrong");
+        assertEquals(CloudException.Kind.REJECTED, ex.kind(),
+            "an arity mismatch is the caller's contract violation, got: " + ex.kind());
     }
 
     @Test

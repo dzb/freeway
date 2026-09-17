@@ -2,9 +2,6 @@ package com.jujin.freeway.flow;
 
 /**
  * PlantUML display mapping result
- *
- * @author noear
- * @since 3.10
  */
 public class PlantUmlDisplayResult {
     public static final PlantUmlDisplayResult HIDDEN = new PlantUmlDisplayResult(false, null);

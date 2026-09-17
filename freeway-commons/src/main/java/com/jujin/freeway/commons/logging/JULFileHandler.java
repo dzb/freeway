@@ -16,6 +16,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Properties;
 import java.util.Set;
 import java.util.logging.ErrorManager;
@@ -597,10 +599,19 @@ public final class JULFileHandler extends StreamHandler {
     }
 
     private static long estimateThrowableSize(Throwable t) {
+        // Identity-based visited set, like JULLogFormatterSupport and the JSON
+        // writers: A.initCause(B); B.initCause(A) is legal and would otherwise
+        // spin this loop while publish() holds the handler monitor, deadlocking
+        // every thread logging through this handler.
+        return estimateThrowableSize(t,
+            Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    private static long estimateThrowableSize(Throwable t, Set<Throwable> visited) {
         long size = 0;
         for (
             Throwable current = t;
-            current != null;
+            current != null && visited.add(current);
             current = current.getCause()
         ) {
             size += 80 + current.toString().length();
@@ -608,7 +619,7 @@ public final class JULFileHandler extends StreamHandler {
                 size += 60 + frame.toString().length();
             }
             for (Throwable suppressed : current.getSuppressed()) {
-                size += estimateThrowableSize(suppressed);
+                size += estimateThrowableSize(suppressed, visited);
             }
         }
         return size;

@@ -761,6 +761,77 @@ class Http2ProtocolTest {
     }
 
     @Test
+    void h2cHeadersThenImmediateRstDoesNotFreezeTheConnection() throws Exception {
+        // The canonical rapid-reset frame pair: HEADERS (open a stream with a
+        // body) followed immediately by RST_STREAM, before the handler has
+        // touched the body. Regression: the live RST path closed the stream
+        // without marking it ended, so DataIn.close()'s drain — running on the
+        // connection's OWN reader thread, with no reader parked yet — waited
+        // for bytes that could never arrive, freezing every stream on the
+        // connection. The follow-up request on stream 3 is the probe: it only
+        // succeeds if the frame loop survived.
+        var active = new AtomicInteger();
+        WebServer server = WebServerBuilder.builder()
+            .config(TestServerConfig.loopback())
+            .route(Route.get("/", ctx -> {
+                active.incrementAndGet();
+                try {
+                    ctx.body();
+                } catch (IOException ignored) {
+                    // reset closes the body — expected on stream 1
+                } finally {
+                    active.decrementAndGet();
+                }
+                try {
+                    ctx.send(200, "ok");
+                } catch (IOException ignored) {
+                    // writing to a reset stream must fail cleanly — expected
+                }
+            }))
+            .build();
+        server.start();
+        try {
+            byte[] preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
+            try (var socket = new Socket("127.0.0.1", server.port())) {
+                socket.setSoTimeout(5000);
+                var out = socket.getOutputStream();
+                out.write(preface);
+                out.flush();
+                byte[] settingsHeader = new byte[9];
+                readFully(socket.getInputStream(), settingsHeader);
+                int settingsLen = ((settingsHeader[0] & 0xff) << 16)
+                    | ((settingsHeader[1] & 0xff) << 8)
+                    | (settingsHeader[2] & 0xff);
+                readFully(socket.getInputStream(), new byte[settingsLen]);
+
+                byte[] headerBlock = new byte[] {
+                    (byte) 0x82, (byte) 0x84, (byte) 0x86, (byte) 0x41, 0x09,
+                    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'
+                };
+                // No END_STREAM on the HEADERS, then the RST in the same flush —
+                // the window the old code died in.
+                writeFrame(out, headerBlock.length, 0x1, 0x4, 1, headerBlock);
+                writeFrame(out, 4, 0x3, 0x0, 1, new byte[]{0, 0, 0, 0});
+                out.flush();
+
+                long deadline = System.currentTimeMillis() + 3000;
+                while (active.get() > 0 && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(10);
+                }
+                assertEquals(0, active.get(),
+                    "the handler of a stream reset at once must not stay parked");
+
+                writeFrame(out, headerBlock.length, 0x1, 0x5, 3, headerBlock);
+                out.flush();
+                assertTrue(waitForStatus200(socket.getInputStream(), 3, 5000),
+                    "the frame loop must survive HEADERS+immediate RST");
+            }
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void h2cPriorKnowledgeGetsServerSettingsFirst() throws Exception {
         WebServer server = WebServerBuilder.builder()
             .config(TestServerConfig.loopback())

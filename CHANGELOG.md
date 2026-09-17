@@ -38,8 +38,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `FlowEngine.newInstance(…)` | `FlowEngine.create(…)` |
 | classpath 根的 `freeway-log.properties` | 不读（启动打一行 stderr 提示改名）；改名为 `freeway-logging.properties` |
 | `SymbolSource.systemProperties()`（无容器的独立来源） | 删除；独立装配用同一条链 `SymbolSource.of(coercer, SymbolProvider.systemProperties())`（`coercer` 自备 `new CoercerDefault()`），系统属性这一 tier 用 `SymbolProvider.systemProperties()` |
+| `PlantUmlOptions.DEFAULT` + `isShowGatewayType()` / `showGatewayType(boolean)`（可变） | `PlantUmlOptions.defaults()`（record 值）；读 `showGatewayType()` / `showIdInTitle()`，改 `withShowGatewayType(…)` / `withShowIdInTitle(…)` |
+| flow "No driver found" 的修法文字指向 `newInstance(Map…)` | 指向 `FlowEngine.create(Map…)`（该测试断言同步钉住"不得指向已删 API"） |
+| RPC 以 POJO / List / Map 作 handler 参数 | 直接可调用：服务端按声明参数类型重绑定（此前以 `ClassCastException` 出现，且被当作业务异常回报） |
+| RPC 参数个数与导出签名不符 | 派发前判为 `Kind.REJECTED`（400 + reject reason）；此前落到业务异常分类 |
+| singleton holder 经接口注入 `@NotThreadSafe` 实现 | 启动期拒绝（与直接注入具体类同等）：单例代理恰好缓存一个 target，隔一层接口并不洗掉标记 |
 
 行为变化（无需改调用点，但值得知道）：
+
+- 接口单例代理的稳态方法调用不再争抢 JVM 级 realize 锁：锁只护首次构造与关闭密封，命中缓存即无锁返回——注释里
+  的"cached lookups are lock-free"自此为真（实测此前一次无关慢构造可阻塞其它容器已建单例的调用 1.2s）。
+- `Pool.borrow()` 每次返回新的借出句柄（池内对象不变）：对已消费句柄的迟到 `release`/`invalidate` 是静默 no-op，
+  不再从当前持有者手里拿走连接；foreign 对象仍拒绝，文案不变。
+- enum 参数按 `name()` 绑定（读侧本就 `valueOf`）；此前写侧把原始 enum 交给 `setObject`，H2/PostgreSQL 抛类型转换错误。
+- mesh 重连的指数退避按"握手失败"推进、只在 hello ack 通过后清零——接受 socket 但拒绝 hello 的对等节点不再全速重拨。
+- 负载均衡器读 `ServiceInstance.weight()`：权重即周期份额，0/负值按 1；zone/canary 仍属自定义策略。
+- JSON 数字 token 上限 1000 字符（原 ≤10MiB 合法，而 BigDecimal 解析超线性，单个 token 可占核数分钟）；
+  JUL 大小估算对环形 cause 链不再在 handler monitor 内死循环。
+- hook 在自己的 `start()` 中调用 `close()`：该 hook 停干净后中止启动，其后的 hook 不再启动（此前 closer 不被停、
+  后续 hook 在已关容器上启动且无人再停）。
+- provider 返回 null 报 `Provider returned null for X@id`（此前是 `targetCache.put` 的匿名 NPE）。
+- HTTP/2 对 HEADERS 后立即到来的 RST_STREAM：流输入先标记结束再拆除，连接读循环不再停摆；stream dispatch 里的
+  死 RST 分支删除，复位只有一条路径。
 
 - class 声明是**声明**：同一棵 class-only 树加载进多个容器，每个容器得到新模块；实例/lambda 声明仍是组合期已有的那一个，跨容器共享。
 - 模块节点的 `name()` 在 resolve 前是 class 的 simple name，覆盖了 `name()` 的模块只在实例放置时显示自定义名。
@@ -651,6 +671,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"声称与实现脱钩"清扫（全仓）** — 本轮审计把每一处"注释/报错/文档承诺了实现没有的东西"补成真的，或把话改对：
+  flow 的驱动报错与 javadoc 指向早已删除的 `newInstance`（且被测试断言钉死）→ 改指 `FlowEngine.create`，断言反向
+  钉住"不得指向已删 API"；`GraphSpec` 的 `System.Logger` → SLF4J，`@author noear`/上游 `@since` 移植残留清除，
+  `PlantUmlOptions.DEFAULT` 可变静态全局按 FlowOptions 自家原则改为 record 值 + wither；`JsonUtils` javadoc 承诺的
+  `JsonException` 类不存在 → 文档改为写明真实契约（`IllegalArgumentException` 带位置）；`HPackContext` 编码器 javadoc
+  声称"编码器动态表逐块推进"而表根本不存在 → 删谎，锁要求的真实理由（帧序连续）写进注释；`ServiceRuntime` 的
+  "cached lookups are lock-free"注释由下方实现兑现。`@NotThreadSafe` 的错误建议"改用接口（代理）"治不了它展示的病
+  （代理共享一个 target）→ 改为给出真正可行的三个修法。
+- **接口单例热路径的 JVM 级锁（freeway-ioc）** — 接口单例代理每次方法调用都重进 `realize()` 抢静态 `REALIZE_LOCK`，
+  即使命中缓存——一个容器的慢构造可阻塞无关容器已建单例的调用（实测 1.2s），且与"锁只护首次构造"的注释相反。
+  现在目标完整构造后才发布进 CHM，缓存读走锁前快路径；关闭密封协议（sealed-then-clear 不得留下孤儿单例）不变。
+  同轮：`@NotThreadSafe` 隔着接口绑定不被执法（校验对接口目标直接早退）→ 校验所选绑定的 impl 标记，THREAD 作用域
+  的接口代理豁免（每线程各得实例）；provider 返回 null 以绑定标识的明确报错出现，不再是缓存 put 里的匿名 NPE。
+- **HEADERS+立即 RST 冻结连接读循环（freeway-http）** — 活跃的 RST_STREAM 路径只 `close()` 流而不标记输入结束：
+  reader 线程自身落入 `DataIn.close()` 的 drain 分支时在空队列上永久 park（无唤醒源），一条连接两帧即可打停；
+  dispatch 里真正设 `peerReset/halfClosed` 的 RST 分支是死代码。现在复位只经 `resetByPeer()`（标记→结束→拆除一条
+  路径），`wakeupReader` 补 null 守卫（unpark(null) 会在 reader 线程上抛 NPE）。回归测试钉住"复位后连接还能接下一
+  个请求"。
+- **枚举写路径与池的迟到释放（freeway-db）** — DDL 侧把 enum 映射为 VARCHAR、读侧 `valueOf`，写侧却把原始 enum 交给
+  `setObject`：H2/PostgreSQL 抛转换错误，枚举"可读不可写"且零往返测试。现在所有绑定点（位置/命名/展开集合/批处理）
+  统一过 `StatementValues.bindValue`。连接池复用同一个 wrapper 对象，跨线程迟到的 `release()`/`invalidate()` 会把
+  别人正在用的连接拿走/销毁（实测复现）：现在每次 borrow 给新句柄，已消费句柄上的迟到调用是无害 no-op。
+- **RPC 参数绑定、重连风暴、权重（freeway-cloud）** — `decodeArgs` 注释声称容器参数"由 handler 自己的强制转换重绑"，
+  而派发并不做：DTO 参数一律以 `ClassCastException` 出现并被伪装成业务失败。现在按声明参数类型经 codec 重绑
+  （`JsonCodec` 新增 `convert` 缝：节点直转，默认实现文本往返，第三方实现不破坏），varargs 尾部真正组装数组，参数
+  个数在派发前判定（调用方错误 = `Kind.REJECTED`，不再是 handler 异常）。mesh 重拨的退避计数从"socket 打开"移到
+  "hello ack"：token 配错的两个节点不再全速互拨；`LoadBalancerDefault` 读自家 `ServiceInstance` 暴露的 `weight()`
+  （权重=周期份额，0/负按 1）——此前"配置了但不读"。
+- **数字守卫与 cause 环（freeway-commons）** — `MAX_NUMBER_LENGTH` 抄自字符串上限（10MiB）而非成本界：10M 位数
+  token 合法通过而 BigDecimal 解析超线性（实测 1M 位 ≈11s，10M 位 60s+ 未归）。上限改为 1000 字符并给出理由，
+  测试同时钉住"拒绝快"与"边界内能解析"。`JULFileHandler.estimateThrowableSize` 对 cause/suppressed 环无访问集
+  （同库另三处都有）→ 补上：它运行在 handler monitor 内，一个中毒记录即可锁死整个 logger。
+- **hook 启动中的重入 close（freeway-boot）** — 第一个 hook 调 `close()` 时嵌套停止只看得见"已登记"的 hook：closer
+  自己（登记在 start 返回之后）永不被停，其后的 hook 继续在已关容器上启动且无人再停。现在 start 循环逐 hook 检查
+  封存标记，closer 在自己的 start 返回后补一次 stop，其余 hook 不再启动。
 - **入站请求有 span 了，traceId 也进日志（freeway-cloud）** — 此前模块内唯一的 span 是出站调用：
   入站请求只做上下文提取，于是被调方在链路里是一段平线，且**入站日志没有任何 traceId** 可关联。
   现在 `TracingFilter`（由 `CloudObserveModule` 贡献，因为它拥有 `Tracer`）为每个应用请求开一个

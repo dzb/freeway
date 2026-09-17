@@ -164,6 +164,72 @@ class AppRuntimeDefaultTest {
         }
     }
 
+    @Test
+    void closeDuringHookStartStopsCloserAndSkipsLaterHooks() {
+        // Regression: with more than one hook, the nested close() stopped the
+        // hooks recorded before it and then the start loop kept going — the
+        // closing hook itself never got stop(), and later hooks started
+        // against a closed container (or succeeded and were never stopped).
+        var events = new CopyOnWriteArrayList<String>();
+        var module = new MultiHookCloseModule(events);
+        AppRuntime app = runtime(module);
+        module.runtime = app;
+
+        assertDoesNotThrow(app::start);
+
+        assertEquals(
+            List.of("first:start", "closer:start", "first:stop", "closer:stop"),
+            events,
+            "the nested close stops the fully-started hooks; the closing hook is "
+                + "stopped once its own start() returns; later hooks must not start");
+        assertEquals(AppState.STOPPED, app.state());
+    }
+
+    /** First hook starts, second calls close() from start(), third must never start. */
+    public static final class MultiHookCloseModule implements ModuleEx {
+        volatile AppRuntime runtime;
+        private final List<String> events;
+
+        MultiHookCloseModule(List<String> events) {
+            this.events = events;
+        }
+
+        @Override
+        public void bind(Binder binder) {
+            binder.contribute(RuntimeHook.class)
+                .add(new RuntimeHook() {
+                    @Override
+                    public void start(Container container) {
+                        events.add("first:start");
+                    }
+
+                    @Override
+                    public void stop(Container container) {
+                        events.add("first:stop");
+                    }
+                })
+                .add(new RuntimeHook() {
+                    @Override
+                    public void start(Container container) {
+                        events.add("closer:start");
+                        runtime.close();
+                    }
+
+                    @Override
+                    public void stop(Container container) {
+                        events.add("closer:stop");
+                    }
+                })
+                .add(new RuntimeHook() {
+                    @Override
+                    public void start(Container container) {
+                        events.add("never:start");
+                        throw new IllegalStateException("must not start");
+                    }
+                });
+        }
+    }
+
     /** Hook calls {@link AppRuntime#close()} reentrantly from start(). */
     public static final class ReentrantCloseModule implements ModuleEx {
         volatile AppRuntime runtime;

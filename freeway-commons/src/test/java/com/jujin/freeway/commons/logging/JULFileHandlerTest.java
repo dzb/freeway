@@ -9,6 +9,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -218,6 +220,40 @@ class JULFileHandlerTest {
                 "Should contain exception message: " + content);
         assertTrue(content.contains("at "),
                 "Should contain stack frames: " + content);
+    }
+
+    @Test
+    void cyclicCauseChainDoesNotHangPublish(@TempDir Path tempDir) throws IOException {
+        // Regression: estimateThrowableSize walked getCause()/getSuppressed()
+        // without a visited set, so a legal cause cycle (A.cause=B, B.cause=A)
+        // looped forever inside publish() while holding the handler monitor —
+        // deadlocking every thread logging through this handler.
+        Path logFile = tempDir.resolve("cyclic.log");
+        JULFileHandler handler = new JULFileHandler(
+                logFile.toString(), 10 * 1024 * 1024, 30, false, JULFileHandler.DEFAULT_FLUSH_INTERVAL_MS);
+
+        Exception a = new Exception("a");
+        Exception b = new Exception("b");
+        a.initCause(b);
+        try {
+            b.initCause(a); // legal in the JDK; produces a two-node cycle
+        } catch (IllegalArgumentException expectedCycleGuard) {
+            // initCause rejects self-cycle with `this`; A->B->A passes.
+            throw new AssertionError("A->B->A cycle should be constructible", expectedCycleGuard);
+        }
+        a.addSuppressed(b); // mutual suppression — a second cycle edge
+        b.addSuppressed(a);
+
+        LogRecord record = new LogRecord(Level.SEVERE, "poisoned");
+        record.setMillis(System.currentTimeMillis());
+        record.setLoggerName("com.example.Cyclic");
+        record.setThrown(a);
+
+        assertTimeout(Duration.ofSeconds(5), () -> {
+            handler.publish(record);
+            handler.close();
+        });
+        assertTrue(Files.readString(logFile).contains("poisoned"));
     }
 
     @Test

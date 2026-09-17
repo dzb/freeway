@@ -15,16 +15,18 @@ import com.jujin.freeway.cloud.CloudHooks;
 import com.jujin.freeway.cloud.discovery.Endpoint;
 import com.jujin.freeway.cloud.discovery.ServiceInstance;
 import com.jujin.freeway.cloud.discovery.ServiceRegistry;
+import com.jujin.freeway.commons.json.JsonCodecDefault;
 import com.jujin.freeway.http.HttpConfigKeys;
 import com.jujin.freeway.http.HttpModule;
 import com.jujin.freeway.http.WebServer;
 import com.jujin.freeway.ioc.Binder;
 import com.jujin.freeway.ioc.Container;
 import com.jujin.freeway.ioc.ModuleEx;
-import java.util.ArrayList;
 import com.jujin.freeway.ioc.ModuleNode;
 import com.jujin.freeway.ioc.RuntimeHook;
 import com.jujin.freeway.ioc.annotation.Inject;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -44,6 +46,23 @@ class RpcExportWiringTest {
 
     public static class UserHandlers {
         public String greet(String name) { return "hi " + name; }
+    }
+
+    public record UserDto(String name, int age) {}
+
+    /** Non-scalar parameters: the endpoint must re-bind them per declaration. */
+    public static class ProfileHandlers {
+        public String save(UserDto user) { return "saved:" + user.name() + ":" + user.age(); }
+
+        public int totalAge(List<UserDto> users) {
+            return users.stream().mapToInt(UserDto::age).sum();
+        }
+
+        public UserDto birthday(UserDto user) {
+            return new UserDto(user.name(), user.age() + 1);
+        }
+
+        public String join(String... parts) { return String.join("+", parts); }
     }
 
     public static class OtherHandlers {
@@ -168,6 +187,45 @@ class RpcExportWiringTest {
         String reply = app.get(RemoteCaller.class)
             .invoke("target", "user", "greet", List.of("bob"), String.class);
         assertEquals("hi bob", reply);
+    }
+
+    @Test
+    void nonScalarArgumentsReBindToTheDeclaredParameterTypes() throws Exception {
+        // Regression: decodeArgs passed container arguments through as raw
+        // Map/List and its comment claimed a coercion the dispatch did not
+        // perform — every DTO parameter died as a ClassCastException reported
+        // as a *business* failure, indistinguishable from the handler's own.
+        app = run(new ModuleEx() {
+            @Override
+            public void bind(Binder binder) {
+                binder.bind(ProfileHandlers.class);
+                binder.contribute(RpcExport.class)
+                    .add(RpcExport.of("profile", ProfileHandlers.class));
+            }
+        });
+        pointDiscoveryAt(app, "target");
+        var caller = app.get(RemoteCaller.class);
+
+        assertEquals("saved:bob:42", caller.invoke("target", "profile", "save",
+            List.of(new UserDto("bob", 42)), String.class));
+        assertEquals(90, caller.invoke("target", "profile", "totalAge",
+            List.of(List.of(new UserDto("a", 40), new UserDto("b", 50))), Integer.class));
+        assertEquals(new UserDto("bob", 43), caller.invoke("target", "profile", "birthday",
+            List.of(new UserDto("bob", 42)), UserDto.class));
+        assertEquals("a+b", caller.invoke("target", "profile", "join",
+            List.of("a", "b"), String.class));
+    }
+
+    @Test
+    void argumentArityMismatchIsAProtocolRejection() {
+        // The decode happens before dispatch: a mismatch is the caller and
+        // the export disagreeing, not the handler failing — it must not
+        // reach the business-failure boundary.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> RpcEndpoint.decodeArgs("[\"a\",\"b\"]",
+                new Type[] {String.class}, false, new JsonCodecDefault()));
+        assertTrue(ex.getMessage().contains("the caller and the export disagree"),
+            "got: " + ex.getMessage());
     }
 
     @Test

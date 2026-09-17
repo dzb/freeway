@@ -42,6 +42,7 @@ import com.jujin.freeway.commons.coercion.Coercer;
 import com.jujin.freeway.commons.coercion.CoercerDefault;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -604,8 +605,6 @@ class JsonUtilsTest {
         // Regression: parseNumber had no token-length limit, so an unbounded
         // digit run reached BigInteger/BigDecimal (super-linear cost) — a
         // 20MB number caused a CPU/memory spike instead of a fast error.
-        // 20MB digits pass the 32MB input cap but must trip the 10MB
-        // number-token limit immediately.
         String huge = "9".repeat(20 * 1024 * 1024);
 
         IllegalArgumentException ex = assertThrows(
@@ -615,6 +614,22 @@ class JsonUtilsTest {
 
         assertTrue(ex.getMessage().contains("JSON number too long"),
             "must fail via the number-token limit, got: " + ex.getMessage());
+    }
+
+    @Test
+    void numberTokenCapIsCheapNotJustLoud() {
+        // The cap must be a *cost* bound, not a token that still lets
+        // super-linear parsing run: 10M digits were legal under the old
+        // "matches MAX_STRING_LENGTH" limit and pinned a core for minutes.
+        // One over the cap must fail in milliseconds; at the cap must parse.
+        long start = System.nanoTime();
+        assertThrows(IllegalArgumentException.class,
+            () -> JsonUtils.parse("9".repeat(5000)));
+        assertTrue((System.nanoTime() - start) < 1_000_000_000L,
+            "rejection of a 5000-digit token must be immediate");
+        assertInstanceOf(BigInteger.class,
+            JsonUtils.parse("9".repeat(999)),
+            "a maximal-precision integer stays parseable");
     }
 
     @Test

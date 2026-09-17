@@ -17,6 +17,13 @@ final class HookLifecycle {
     private final Container container;
     private final List<RuntimeHook> started = new ArrayList<>();
     private List<RuntimeHook> hooks;
+    /** Set once a stop pass has run. A reentrant close() from inside a
+     *  hook's own start() re-enters stop() on this thread (the monitor is
+     *  reentrant); {@link #start()} observes the seal and aborts the loop —
+     *  later hooks must not start against a sealed runtime, and the closer
+     *  itself (not yet in {@code started} when the nested stop ran) still
+     *  gets its stop. */
+    private boolean sealed;
 
     public HookLifecycle(Container container) {
         this.container = container;
@@ -38,7 +45,7 @@ final class HookLifecycle {
     }
 
     public synchronized void start() {
-        if (!started.isEmpty()) {
+        if (!started.isEmpty() || sealed) {
             return;
         }
         List<RuntimeHook> list = resolveHooks();
@@ -48,6 +55,20 @@ final class HookLifecycle {
                 current = hook;
                 LOG.debug("Starting hook: {}", hook.getClass().getSimpleName());
                 hook.start(container);
+                if (sealed) {
+                    // THIS hook's start() called close() (the only thread that
+                    // can seal during the loop is this one, and it does so
+                    // inside start()): the nested stop pass could not see it —
+                    // it is recorded only after a clean start — so give it its
+                    // stop now, and do not start the rest against a sealed
+                    // runtime.
+                    LOG.info(
+                        "Hook startup aborted — shutdown requested by hook: {}",
+                        hook.getClass().getSimpleName());
+                    stopQuietly(hook);
+                    return;
+                }
+                current = null;
                 started.add(hook);
             }
         } catch (Throwable ex) {
@@ -90,6 +111,19 @@ final class HookLifecycle {
         }
     }
 
+    /** Stop a hook whose own start() requested the shutdown: the nested stop
+     *  pass ran before this hook was recorded, so it never saw it. Failures
+     *  are logged, not propagated — the shutdown the hook requested is the
+     *  caller's concern, not a reason to fail the aborted start. */
+    private void stopQuietly(RuntimeHook hook) {
+        try {
+            hook.stop(container);
+        } catch (Throwable ex) {
+            LOG.warn("Hook stop failed after requesting shutdown: {}",
+                ex.getMessage(), ex);
+        }
+    }
+
     /** The one failure-merge rule for hook shutdown: first failure wins,
      *  later ones ride along as suppressed. */
     private static RuntimeException merge(
@@ -108,6 +142,7 @@ final class HookLifecycle {
     }
 
     private RuntimeException stopStarted() {
+        sealed = true;
         if (started.isEmpty()) {
             return null;
         }

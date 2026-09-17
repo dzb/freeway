@@ -442,9 +442,11 @@ public final class HPackContext {
      * written contiguously — no other frame may be interleaved into a header
      * block.
      *
-     * <p>Must be invoked under the connection lock: the encoder's dynamic table
-     * state advances with each block, so encode order must equal frame send
-     * order.
+     * <p>Must be invoked under the connection lock: the block must reach the
+     * wire contiguously, and the shared codec runs beside the decoder on one
+     * connection object. The encoder itself is stateless — static-table
+     * lookups and Huffman only; it keeps no dynamic table, every value goes
+     * out as a literal.
      */
     public List<byte[]> encodeResponseHeaders(
             Map<String, List<String>> headers, int streamId, boolean endStream,

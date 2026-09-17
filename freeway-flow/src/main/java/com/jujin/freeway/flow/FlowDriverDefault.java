@@ -6,8 +6,6 @@ import java.util.concurrent.ExecutorService;
 /**
  * Default flow driver
  *
- * @author noear
- * @since 3.0
  *
  * <p>Task descriptor resolution rules (consistent with solon-flow):
  * <ul>

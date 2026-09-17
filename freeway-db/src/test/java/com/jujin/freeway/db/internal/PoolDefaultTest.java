@@ -134,13 +134,13 @@ class PoolDefaultTest {
         DatabaseStats after = pool.stats();
 
         assertEquals(1, after.active());
-        assertNotNull(((PooledConnectionImpl) conn).borrowedAt());
+        assertNotNull(((PoolDefault.Handle) conn).pooled.borrowedAt());
 
         pool.release(conn);
         // 归还后：active 归零，borrowedAt 已清除
         DatabaseStats released = pool.stats();
         assertEquals(0, released.active());
-        assertNull(((PooledConnectionImpl) conn).borrowedAt());
+        assertNull(((PoolDefault.Handle) conn).pooled.borrowedAt());
 
         pool.close();
     }
@@ -188,17 +188,17 @@ class PoolDefaultTest {
         PooledConnection c2 = pool.borrow();
 
         assertEquals(2, pool.stats().active());
-        assertNotNull(((PooledConnectionImpl) c1).borrowedAt());
-        assertNotNull(((PooledConnectionImpl) c2).borrowedAt());
+        assertNotNull(((PoolDefault.Handle) c1).pooled.borrowedAt());
+        assertNotNull(((PoolDefault.Handle) c2).pooled.borrowedAt());
 
         pool.release(c1);
         assertEquals(1, pool.stats().active());
-        assertNull(((PooledConnectionImpl) c1).borrowedAt());
-        assertNotNull(((PooledConnectionImpl) c2).borrowedAt());
+        assertNull(((PoolDefault.Handle) c1).pooled.borrowedAt());
+        assertNotNull(((PoolDefault.Handle) c2).pooled.borrowedAt());
 
         pool.release(c2);
         assertEquals(0, pool.stats().active());
-        assertNull(((PooledConnectionImpl) c2).borrowedAt());
+        assertNull(((PoolDefault.Handle) c2).pooled.borrowedAt());
 
         pool.close();
     }

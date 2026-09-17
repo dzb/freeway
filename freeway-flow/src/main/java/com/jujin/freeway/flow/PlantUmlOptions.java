@@ -1,32 +1,20 @@
 package com.jujin.freeway.flow;
 
 /**
- * PlantUML output options
- *
- * @author noear
- * @since 3.10
+ * PlantUML output options — an immutable value with per-field withers, in
+ * line with the repo's optional-input rule (no mutable shared default).
  */
-public class PlantUmlOptions {
-    public static final PlantUmlOptions DEFAULT = new PlantUmlOptions();
+public record PlantUmlOptions(boolean showGatewayType, boolean showIdInTitle) {
 
-    private boolean showGatewayType = true;
-    private boolean showIdInTitle = false;
-
-    public boolean isShowGatewayType() {
-        return showGatewayType;
+    public static PlantUmlOptions defaults() {
+        return new PlantUmlOptions(true, false);
     }
 
-    public PlantUmlOptions showGatewayType(boolean showGatewayType) {
-        this.showGatewayType = showGatewayType;
-        return this;
+    public PlantUmlOptions withShowGatewayType(boolean value) {
+        return showGatewayType == value ? this : new PlantUmlOptions(value, showIdInTitle);
     }
 
-    public boolean isShowIdInTitle() {
-        return showIdInTitle;
-    }
-
-    public PlantUmlOptions showIdInTitle(boolean showIdInTitle) {
-        this.showIdInTitle = showIdInTitle;
-        return this;
+    public PlantUmlOptions withShowIdInTitle(boolean value) {
+        return showIdInTitle == value ? this : new PlantUmlOptions(showGatewayType, value);
     }
 }

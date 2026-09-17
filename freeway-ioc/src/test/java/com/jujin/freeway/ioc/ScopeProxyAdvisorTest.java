@@ -552,6 +552,75 @@ class ScopeProxyAdvisorTest {
     }
 
     @Test
+    void singletonRejectsNotThreadSafeImplementationBehindInterface() {
+        // Regression: validateScopeBeforeResolution returned early for
+        // interface targets, so an interface bound to a @NotThreadSafe impl
+        // slipped through — yet the singleton proxy caches exactly one target
+        // and shares it across threads all the same.
+        Container container = Freeway.create(binder -> {
+            binder.bind(SharedContract.class).to(UnsafeSharedImpl.class);
+            binder.bind(SingletonHoldingUnsafeViaInterface.class)
+                .to(SingletonHoldingUnsafeViaInterface.class);
+        });
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+            () -> container.get(SingletonHoldingUnsafeViaInterface.class));
+        assertInstanceOf(IllegalStateException.class, ex.getCause());
+        assertTrue(ex.getCause().getMessage().contains("@NotThreadSafe"),
+            "the interface seam must not launder the marker, got: "
+                + ex.getCause().getMessage());
+    }
+
+    @Test
+    void cachedSingletonCallDoesNotQueueBehindUnrelatedRealization() throws Exception {
+        // Regression: interface singleton proxies re-entered realize() on
+        // every method call and realize() took the JVM-wide REALIZE_LOCK even
+        // for a cache hit — so a call on an already-realized singleton of one
+        // container blocked behind an unrelated slow constructor of another
+        // container (measured ~1.2s for a 500ms sleep). The target is fully
+        // published before it lands in the CHM, so a cached read is safe
+        // lock-free.
+        Container fast = Freeway.create(binder ->
+            binder.bind(Greeter.class).to(ThreadSafeGreeterImpl.class));
+        Greeter greeter = fast.get(Greeter.class);
+        greeter.greet(); // warm the target cache
+
+        Container slow = Freeway.create(binder ->
+            binder.bind(SlowSingleton.class).to(SlowSingleton.class));
+        Thread realizer = new Thread(() -> slow.get(SlowSingleton.class));
+        realizer.start();
+        try {
+            Thread.sleep(50); // the 500ms constructor is now in flight
+            long start = System.nanoTime();
+            greeter.greet();
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            assertTrue(ms < 400,
+                "cached dispatch must not queue behind an unrelated "
+                    + "first-time realization, blocked " + ms + "ms");
+        } finally {
+            realizer.join();
+            fast.close();
+            slow.close();
+        }
+    }
+
+    @Test
+    void nullProviderSurfacesAtRealizationNamingTheBinding() {
+        // Regression: a provider returning null died as an anonymous
+        // NullPointerException inside targetCache.put — no key, no type.
+        Container container = Freeway.create(binder ->
+            binder.bind(Greeter.class).to(ignored -> null));
+
+        Greeter greeter = container.get(Greeter.class); // lazy proxy, no construction yet
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+            () -> greeter.greet());
+        assertTrue(ex.getMessage().contains("returned null"),
+            "got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("Greeter"),
+            "the message must name the binding, got: " + ex.getMessage());
+    }
+
+    @Test
     void prototypeHolderMayInjectNotThreadSafeConcrete() {
         Container container = Freeway.create(binder -> {
             binder.bind(UnsafeShared.class).to(UnsafeShared.class);

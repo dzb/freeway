@@ -2,9 +2,6 @@ package com.jujin.freeway.flow;
 
 /**
  * PlantUML display mapping context
- *
- * @author noear
- * @since 3.10
  */
 public class PlantUmlDisplayContext {
     private final Node node;

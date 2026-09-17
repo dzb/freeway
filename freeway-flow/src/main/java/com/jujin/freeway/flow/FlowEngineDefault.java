@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The default {@link FlowEngine} implementation — the engine returned by
- * {@link FlowEngine#newInstance()} and bound as a singleton by
+ * {@link FlowEngine#create()} and bound as a singleton by
  * {@link FlowModule}.
  *
  * <p>Migration notes:
@@ -33,9 +33,6 @@ import org.slf4j.LoggerFactory;
  *   <li>Pause, stop and revert flags belong to a single execution's state, enabling resume and continued execution after brief interruptions.</li>
  * </ul>
  * This keeps the ported engine's original behavior while satisfying Freeway's explicit assembly model.</p>
- *
- * @author noear
- * @since 3.0
  */
 public class FlowEngineDefault implements FlowEngine {
 
@@ -81,7 +78,7 @@ public class FlowEngineDefault implements FlowEngine {
         if (driver == null) {
             throw new IllegalArgumentException(
                 "No driver found for: '" + lookup + "'. " +
-                "Register drivers via newInstance(Map.of(\"id\", driver)) or " +
+                "Register drivers via FlowEngine.create(Map.of(\"id\", driver)) or " +
                 "binder.contribute(FlowDriver.class).add(id, driver)");
         }
         return driver;

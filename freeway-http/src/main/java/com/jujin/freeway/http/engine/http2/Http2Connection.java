@@ -369,7 +369,7 @@ public final class Http2Connection {
                     var resetTarget = streams.get(streamId);
                     if (resetTarget != null) {
                         notePeerReset(resetTarget);
-                        resetTarget.close();
+                        resetTarget.resetByPeer();
                     } else if (streamId > lastSeenStreamId) {
                         throw new Http2Exception(Http2ErrorCode.PROTOCOL_ERROR);
                     }

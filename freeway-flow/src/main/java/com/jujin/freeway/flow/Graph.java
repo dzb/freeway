@@ -12,9 +12,6 @@ import java.util.function.Function;
 
 /**
  * Graph (immutable runtime model)
- *
- * @author noear
- * @since 3.0
  */
 public class Graph {
     private final String id;
@@ -123,20 +120,20 @@ public class Graph {
     // --- PlantUML ---
 
     public String toPlantUml() {
-        return toPlantUml(PlantUmlOptions.DEFAULT, null);
+        return toPlantUml(PlantUmlOptions.defaults(), null);
     }
 
     public String toPlantUml(PlantUmlOptions options) {
-        return toPlantUml(options != null ? options : PlantUmlOptions.DEFAULT, null);
+        return toPlantUml(options != null ? options : PlantUmlOptions.defaults(), null);
     }
 
     public String toPlantUml(Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
-        return toPlantUml(PlantUmlOptions.DEFAULT, displayMappingFunc);
+        return toPlantUml(PlantUmlOptions.defaults(), displayMappingFunc);
     }
 
     public String toPlantUml(PlantUmlOptions options,
                               Function<PlantUmlDisplayContext, PlantUmlDisplayResult> displayMappingFunc) {
-        if (options == null) options = PlantUmlOptions.DEFAULT;
+        if (options == null) options = PlantUmlOptions.defaults();
 
         StringBuilder sb = new StringBuilder();
         sb.append("@startuml\n");
@@ -151,12 +148,12 @@ public class Graph {
 
         if (title != null && !title.isEmpty()) {
             String safeTitle = escapePlantUmlText(title);
-            if (options.isShowIdInTitle()) {
+            if (options.showIdInTitle()) {
                 sb.append("title ").append(safeTitle).append(" (").append(id).append(")\n");
             } else {
                 sb.append("title ").append(safeTitle).append("\n");
             }
-        } else if (options.isShowIdInTitle()) {
+        } else if (options.showIdInTitle()) {
             sb.append("title ").append(escapePlantUmlText(id)).append("\n");
         }
 
@@ -178,7 +175,7 @@ public class Graph {
                 case EXCLUSIVE, INCLUSIVE, PARALLEL, LOOP:
                     sb.append("state ").append(nodeId).append(" <<choice>> <<Gateway>>\n");
                     appendNodeTitle(sb, nodeId, node.title());
-                    if (options.isShowGatewayType()) {
+                    if (options.showGatewayType()) {
                         sb.append(nodeId).append(" : ").append(node.type().name()).append("\n");
                     }
                     break;

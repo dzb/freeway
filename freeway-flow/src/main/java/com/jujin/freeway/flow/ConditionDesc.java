@@ -2,9 +2,6 @@ package com.jujin.freeway.flow;
 
 /**
  * Condition description (typically used for branch conditions)
- *
- * @author noear
- * @since 3.0
  */
 public class ConditionDesc {
     /** True when the descriptor is non-null and carries a condition. */

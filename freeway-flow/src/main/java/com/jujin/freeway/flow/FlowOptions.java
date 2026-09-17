@@ -6,9 +6,6 @@ import java.util.List;
 
 /**
  * Flow execution options
- *
- * @author noear
- * @since 3.8.1
  */
 public class FlowOptions {
     // NOTE: no shared DEFAULT instance on purpose — a mutable static would

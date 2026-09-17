@@ -97,6 +97,15 @@ final class ServiceRuntime {
             return realizeThreadScoped(binding);
         }
         ServiceKey key = new ServiceKey(binding.type(), binding.id());
+        // Fast path: an interface proxy re-enters realize() on EVERY method
+        // call, so a published singleton must be read without the lock. The
+        // target is fully constructed before its CHM publish, so a cached
+        // read is safe; REALIZE_LOCK serializes only first-time construction
+        // and the close-seal race below.
+        Object ready = targetCache.get(key);
+        if (ready != null) {
+            return binding.type().cast(ready);
+        }
         return withCycleGuard(key, () -> {
             synchronized (REALIZE_LOCK) {
                 // A get() that passed the closed check before close() may

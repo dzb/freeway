@@ -11,6 +11,7 @@ import com.jujin.freeway.ioc.LoggerSource;
 import com.jujin.freeway.ioc.Scope;
 import com.jujin.freeway.ioc.annotation.Inject;
 import com.jujin.freeway.ioc.annotation.IntermediateType;
+import com.jujin.freeway.ioc.AmbiguousBindingException;
 import com.jujin.freeway.ioc.annotation.NotThreadSafe;
 import com.jujin.freeway.ioc.annotation.Symbol;
 import com.jujin.freeway.ioc.annotation.Value;
@@ -354,7 +355,8 @@ final class InjectionResolver {
         }
         String id = resolveId(lookup);
         if (id != null) {
-            validateScopeBeforeResolution(ownerType, targetType);
+            validateScopeBeforeResolution(
+                ownerType, container.bindingIndex().find(targetType, id));
             return container.get(targetType, id);
         }
         // No explicit id — try marker-based resolution
@@ -366,13 +368,18 @@ final class InjectionResolver {
         // Validate before realization: a singleton owner directly injecting a
         // thread-scoped concrete class must get the dedicated diagnostic even
         // when no scope is open (otherwise "No open scope" from realize() masks
-        // the real contract violation).
-        validateScopeBeforeResolution(ownerType, targetType);
+        // the real contract violation). The binding validated is the one the
+        // selection below will actually pick — markers choose for a
+        // multi-binding interface.
+        @SuppressWarnings("unchecked")
+        Class<? extends Annotation>[] markerArr =
+                markers.toArray(new Class[0]);
+        BindingImpl<?> selected = markers.isEmpty()
+            ? uniqueOrNull(targetType)
+            : container.markerIndex().findByMarker(targetType, markerArr);
+        validateScopeBeforeResolution(ownerType, selected);
         Object service;
         if (!markers.isEmpty()) {
-            @SuppressWarnings("unchecked")
-            Class<? extends Annotation>[] markerArr =
-                    markers.toArray(new Class[0]);
             service = container.get(targetType, markerArr);
         } else {
             service = container.get(targetType);
@@ -420,7 +427,7 @@ final class InjectionResolver {
     }
 
     private BindingImpl<?> findOwnerBinding(Class<?> ownerType) {
-        BindingImpl<?> exact = container.bindingIndex().findUnique(ownerType);
+        BindingImpl<?> exact = uniqueOrNull(ownerType);
         if (exact != null) return exact;
         // Check full interface hierarchy (direct + super-interfaces)
         BindingImpl<?> b = findSingletonInterface(ownerType, new HashSet<>());
@@ -429,7 +436,7 @@ final class InjectionResolver {
         for (Class<?> sup = ownerType.getSuperclass();
              sup != null && sup != Object.class;
              sup = sup.getSuperclass()) {
-            b = container.bindingIndex().findUnique(sup);
+            b = uniqueOrNull(sup);
             if (b != null && b.scope() == Scope.SINGLETON) return b;
         }
         return null;
@@ -438,7 +445,7 @@ final class InjectionResolver {
     private BindingImpl<?> findSingletonInterface(Class<?> type, Set<Class<?>> visited) {
         for (Class<?> iface : type.getInterfaces()) {
             if (!visited.add(iface)) continue;
-            BindingImpl<?> b = container.bindingIndex().findUnique(iface);
+            BindingImpl<?> b = uniqueOrNull(iface);
             if (b != null && b.scope() == Scope.SINGLETON) return b;
             b = findSingletonInterface(iface, visited);
             if (b != null) return b;
@@ -446,34 +453,67 @@ final class InjectionResolver {
         return null;
     }
 
-    private void validateScopeBeforeResolution(Class<?> ownerType, Class<?> targetType) {
-        if (targetType.isInterface()) {
-            return;
+    /**
+     * The validator's heuristic lookups must not be louder than the thing they
+     * validate: an interface implemented by several bindings (a contributed
+     * {@code HttpFilter}, say) is simply {@code null} here — the real
+     * selection happens at the {@code get} below and reports ambiguity in
+     * its own terms.
+     */
+    @SuppressWarnings("unchecked")
+    private BindingImpl<?> uniqueOrNull(Class<?> type) {
+        try {
+            return container.bindingIndex().findUnique((Class<Object>) type);
+        } catch (AmbiguousBindingException ambiguous) {
+            return null;
         }
-        BindingImpl<?> targetBinding = container.bindingIndex().findUnique(targetType);
+    }
+
+    private void validateScopeBeforeResolution(
+        Class<?> ownerType,
+        BindingImpl<?> targetBinding
+    ) {
         if (targetBinding == null) {
             return;
         }
+        Class<?> targetType = targetBinding.type();
         BindingImpl<?> ownerBinding = findOwnerBinding(ownerType);
         if (ownerBinding == null || ownerBinding.scope() != Scope.SINGLETON) {
             return;
         }
+        boolean targetIsInterface = targetType.isInterface();
         if (targetBinding.scope() == Scope.THREAD) {
-            throw new IllegalStateException(
-                "Singleton service " + ownerType.getName()
-                    + " cannot directly inject thread-scoped concrete class "
-                    + targetType.getName()
-                    + ". Use an interface with proxy support instead."
-            );
+            if (!targetIsInterface) {
+                throw new IllegalStateException(
+                    "Singleton service " + ownerType.getName()
+                        + " cannot directly inject thread-scoped concrete class "
+                        + targetType.getName()
+                        + ". Use an interface with proxy support instead."
+                );
+            }
+            // A THREAD-scoped interface binding is genuinely safe in a
+            // singleton: the proxy resolves per-scope, so each thread gets
+            // its own target.
+            return;
         }
+        // @NotThreadSafe is enforced through the interface too. A singleton-scoped
+        // proxy caches exactly one target, and a PROTOTYPE instance injected into
+        // a singleton holder is held by that one holder — declaring an interface
+        // does not launder the marker. (.to(impl) copies the impl's class
+        // markers onto the interface-keyed binding, so the binding is the
+        // source of truth here.)
         if (targetBinding.markers().contains(NotThreadSafe.class)) {
             throw new IllegalStateException(
-                "Singleton service " + ownerType.getName()
-                    + " cannot inject @NotThreadSafe concrete class "
-                    + targetType.getName() + " — the singleton shares it "
-                    + "across threads. Declare the implementation "
-                    + "@ThreadSafe, use an interface (proxy), or inject it "
-                    + "into a prototype/thread-scoped holder."
+                "Singleton service " + ownerType.getName() + " cannot inject "
+                    + "@NotThreadSafe " + targetType.getName()
+                    + (targetIsInterface
+                        ? " (bound to a @NotThreadSafe implementation)" : "")
+                    + " — the singleton shares it across threads, and the "
+                    + "interface proxy holds one target, so proxying does not "
+                    + "change that. Declare the implementation @ThreadSafe, "
+                    + "bind it Scope.THREAD (then the proxy resolves per "
+                    + "thread), or inject it into a prototype/thread-scoped "
+                    + "holder."
             );
         }
     }

@@ -4,9 +4,6 @@ import java.io.Serializable;
 
 /**
  * Node record
- *
- * @author noear
- * @since 3.8.1
  */
 public class NodeRecord implements Serializable {
     private String graphId;

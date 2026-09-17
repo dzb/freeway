@@ -38,4 +38,12 @@ public final class JsonCodecDefault implements JsonCodec {
         );
         return value;
     }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T convert(Object node, Type type) {
+        // Direct node coercion: no stringify/parse round trip, and the
+        // codec's own coercer rules apply at every decode site.
+        return (T) JsonUtils.coerce(node, type, coercer);
+    }
 }

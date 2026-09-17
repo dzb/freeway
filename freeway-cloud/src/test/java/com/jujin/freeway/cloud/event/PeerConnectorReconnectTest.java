@@ -40,6 +40,7 @@ class PeerConnectorReconnectTest {
         System.clearProperty(CloudConfigKeys.EVENT_ENABLED);
         System.clearProperty(CloudConfigKeys.EVENT_PEERS);
         System.clearProperty(CloudConfigKeys.EVENT_SUBSCRIPTIONS);
+        System.clearProperty(CloudConfigKeys.EVENT_TOKEN);
     }
 
     private static AppRuntime startEventsNode(String peers, String subscriptions) {
@@ -103,6 +104,51 @@ class PeerConnectorReconnectTest {
                 + "resolution close must not re-dial (A="
                 + nodeA.get(PeerHub.class).connections().size()
                 + ", B=" + nodeB.get(PeerHub.class).connections().size() + ")");
+    }
+
+    /**
+     * A peer that answers the socket but rejects the hello must be re-dialed
+     * with advancing backoff. Regression: the backoff was reset on socket
+     * open, so two token-mismatched nodes dialed each other at full network
+     * speed forever — a reconnect storm by design.
+     */
+    @Test
+    void rejectedHandshakeAdvancesBackoffInsteadOfStorming() throws Exception {
+        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(CloudConfigKeys.EVENT_TOKEN, "right");
+        nodeB = startEventsNode("", "greet.");
+        int bPort = port(nodeB);
+
+        // A wired with the WRONG token and no auto-peers; the connector is
+        // standalone so the test can read its pacing state.
+        System.setProperty(HttpConfigKeys.SERVER_PORT, "0");
+        System.setProperty(CloudConfigKeys.EVENT_TOKEN, "wrong");
+        nodeA = startEventsNode("", "");
+        PeerConnector connector = new PeerConnector(nodeA.get(PeerHub.class),
+            PeerConnector.Wiring.defaults().withBackoff(200, 3000));
+        try {
+            var peer = "127.0.0.1:" + bPort;
+            connector.start(List.of(peer));
+
+            long deadline = System.currentTimeMillis() + 5000;
+            while (System.currentTimeMillis() < deadline
+                    && connector.backoffAttempts(PeerAddress.parse(peer)) == 0) {
+                Thread.sleep(25);
+            }
+            assertTrue(connector.backoffAttempts(PeerAddress.parse(peer)) >= 1,
+                "a rejected hello must advance the backoff — socket open is not health");
+            assertTrue(nodeA.get(PeerHub.class).connections().isEmpty(),
+                "the mismatched mesh must not establish");
+
+            // Pacing bound: with a 200ms base over ~2s of rejection a full-speed
+            // storm would register hundreds of attempts; backed off, a handful.
+            Thread.sleep(2000);
+            int attempts = connector.backoffAttempts(PeerAddress.parse(peer));
+            assertTrue(attempts <= 10,
+                "re-dials must be paced, got " + attempts + " attempts in ~2s");
+        } finally {
+            connector.close();
+        }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────

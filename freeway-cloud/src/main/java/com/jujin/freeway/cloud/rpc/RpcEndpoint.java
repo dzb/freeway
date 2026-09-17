@@ -2,13 +2,16 @@ package com.jujin.freeway.cloud.rpc;
 
 import com.jujin.freeway.commons.bean.MethodHandleUtils;
 import com.jujin.freeway.commons.json.JsonCodec;
+import com.jujin.freeway.commons.json.JsonArray;
+import com.jujin.freeway.commons.json.JsonObject;
+import com.jujin.freeway.commons.json.JsonUtils;
 import com.jujin.freeway.http.HttpContext;
 import com.jujin.freeway.http.route.Route;
 import java.io.IOException;
-import java.lang.invoke.MethodHandle;
+import java.lang.reflect.Array;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -76,8 +79,8 @@ public final class RpcEndpoint {
         // The export table is the authority on what is reachable: an unexported
         // mapping never gets here, and an unsupported method name is a 404 —
         // the same answer as "nobody exports that name".
-        MethodHandle handle = target.method(method);
-        if (handle == null) {
+        RpcTarget.Exported entry = target.method(method);
+        if (entry == null) {
             reject(ctx, codec, 404, "no handler for topic " + mapping + "." + method);
             return;
         }
@@ -85,13 +88,14 @@ public final class RpcEndpoint {
         Object[] args;
         try {
             byte[] rawBody = ctx.body();
-            args = decodeArgs(new String(rawBody, StandardCharsets.UTF_8));
+            args = decodeArgs(new String(rawBody, StandardCharsets.UTF_8),
+                entry.parameterTypes(), entry.method().isVarArgs(), codec);
         } catch (RuntimeException e) {
             reject(ctx, codec, 400, "malformed argument array: " + e.getMessage());
             return;
         }
         try {
-            Object result = MethodHandleUtils.invokeOn(handle, target.handler(), args);
+            Object result = MethodHandleUtils.invokeOn(entry.handle(), target.handler(), args);
             if (result == null) {
                 ctx.send(200, "");
             } else {
@@ -105,19 +109,54 @@ public final class RpcEndpoint {
         }
     }
 
-    /** Positional JSON array → arguments; the element decoder never guesses types. */
-    private static Object[] decodeArgs(String json) {
-        var elements = com.jujin.freeway.commons.json.JsonUtils.parseArray(json);
-        List<Object> args = new ArrayList<>(elements.size());
-        for (int i = 0; i < elements.size(); i++) {
-            Object element = elements.get(i);
-            // Scalar leaves stay as primitives/strings; containers are passed
-            // as Map/List and re-bound by the handler's own coercion on invoke.
-            args.add(element instanceof com.jujin.freeway.commons.json.JsonObject o
-                ? o.toMap()
-                : element instanceof com.jujin.freeway.commons.json.JsonArray a ? a.toList() : element);
+    /**
+     * Positional JSON array → arguments re-bound to the handler's declared
+     * parameter types; the element decoder never guesses types. A container
+     * argument (a DTO serialized as an object, a list as an array) arrives as
+     * a parsed node and is coerced per the declared type — without this the
+     * method handle would receive a raw {@code Map}/{@code List} and fail as
+     * a {@link ClassCastException} indistinguishable from the handler's own.
+     */
+    static Object[] decodeArgs(String json, Type[] parameterTypes, boolean isVarArgs,
+            JsonCodec codec) {
+        var elements = JsonUtils.parseArray(json);
+        // A varargs tail arrives as separate wire elements and is assembled
+        // into the array the fixed-arity handle wants — Method.isVarArgs is
+        // the authority (its last parameter type is always an array), so an
+        // array parameter of a non-varargs method stays a plain parameter.
+        int fixed = isVarArgs ? parameterTypes.length - 1 : parameterTypes.length;
+        if (isVarArgs ? elements.size() < fixed : elements.size() != parameterTypes.length) {
+            throw new IllegalArgumentException(
+                "argument array carries " + elements.size() + " element(s) but the "
+                    + "handler declares " + Arrays.toString(parameterTypes)
+                    + (isVarArgs ? " (varargs tail)" : "")
+                    + " — the caller and the export disagree");
         }
-        return args.toArray();
+        Object[] args = new Object[parameterTypes.length];
+        for (int i = 0; i < fixed; i++) {
+            args[i] = rebind(elements.get(i), parameterTypes[i], codec);
+        }
+        if (isVarArgs) {
+            Class<?> component =
+                ((Class<?>) parameterTypes[parameterTypes.length - 1]).getComponentType();
+            Object tail = Array.newInstance(component, elements.size() - fixed);
+            for (int i = fixed; i < elements.size(); i++) {
+                Array.set(tail, i - fixed, rebind(elements.get(i), component, codec));
+            }
+            args[fixed] = tail;
+        }
+        return args;
+    }
+
+    private static Object rebind(Object element, Type declared, JsonCodec codec) {
+        // Scalar leaves stay as primitives/strings; Object parameters keep
+        // the pre-typed wire shape (Map/List); anything else is coerced.
+        if (element == null || declared == Object.class) {
+            return element instanceof JsonObject o
+                ? o.toMap()
+                : element instanceof JsonArray a ? a.toList() : element;
+        }
+        return codec.convert(element, declared);
     }
 
     private static void encodeBusinessFailure(

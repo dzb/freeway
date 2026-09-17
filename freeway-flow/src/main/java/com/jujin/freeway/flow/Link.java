@@ -7,9 +7,6 @@ import java.util.Map;
 
 /**
  * Link
- *
- * @author noear
- * @since 3.0
  */
 public class Link implements Comparable<Link> {
     private final Graph graph;

@@ -207,7 +207,7 @@ final class QueryImpl implements Query {
         ensureExpanded();
         if (expandedFlatParams != null) {
             for (int i = 0; i < expandedFlatParams.length; i++) {
-                stmt.setObject(i + 1, expandedFlatParams[i]);
+                stmt.setObject(i + 1, StatementValues.bindValue(expandedFlatParams[i]));
             }
             return;
         }
@@ -235,7 +235,7 @@ final class QueryImpl implements Query {
         }
 
         for (int i = 0; i < positionalParams.length; i++) {
-            stmt.setObject(i + 1, positionalParams[i]);
+            stmt.setObject(i + 1, StatementValues.bindValue(positionalParams[i]));
         }
     }
 
@@ -268,7 +268,7 @@ final class QueryImpl implements Query {
     private void bindNamed(PreparedStatement stmt) throws SQLException {
         var p = parsed();
         for (int i = 0; i < p.names().size(); i++) {
-            stmt.setObject(i + 1, namedParams.get(p.names().get(i)));
+            stmt.setObject(i + 1, StatementValues.bindValue(namedParams.get(p.names().get(i))));
         }
     }
 

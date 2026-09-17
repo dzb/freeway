@@ -13,9 +13,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  * engine.load(Graph.fromText(json));
  * engine.eval("graphId", FlowContext.of());
  * }</pre>
- *
- * @author noear
- * @since 3.0
  */
 public interface FlowEngine {
 

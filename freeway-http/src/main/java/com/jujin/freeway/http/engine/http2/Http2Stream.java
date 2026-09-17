@@ -141,6 +141,23 @@ public final class Http2Stream {
         if (t != null) t.interrupt();
     }
 
+    /**
+     * The peer cancelled this stream (RST_STREAM) — the single state transition
+     * every live-reset path funnels through. Mark the stream dead on both
+     * sides (writes fail cleanly, {@link #close()} emits no response frames)
+     * AND end the input <em>before</em> closing: {@code DataIn.close()}'s drain
+     * runs on this connection-reader thread, and with no reader parked yet an
+     * unterminated input would park it waiting for bytes that can never arrive
+     * — freezing the whole connection (the HEADERS-then-immediate-RST shape).
+     * With the input ended, the drain reads EOF and any parked handler is
+     * released by the unpark/interrupt in {@link #close()}.
+     */
+    void resetByPeer() {
+        peerReset = true;
+        halfClosed = true;
+        close();
+    }
+
     public void dispatch(BaseFrame frame, ExecutorService executor) throws IOException {
         switch (frame.header().type()) {
             case HEADERS, CONTINUATION -> {
@@ -176,7 +193,6 @@ public final class Http2Stream {
                     dataIn.wakeupReader();
                 }
             }
-            case RST_STREAM -> { halfClosed = true; peerReset = true; close(); }
             case WINDOW_UPDATE -> {
                 int increment = ((WindowUpdateFrame) frame).increment();
                 Http2FrameValidator.requirePositiveWindowIncrement(increment);
@@ -320,9 +336,18 @@ public final class Http2Stream {
 
         void enqueue(byte[] data, int flowLength) {
             queue.add(new InboundData(data, flowLength));
-            LockSupport.unpark(reader);
+            wakeupReader();
         }
-        void wakeupReader() { LockSupport.unpark(reader); }
+
+        /** Null-safe: the handler may not have entered read() yet, and an
+         *  unpark of a null thread would NPE the connection's reader thread
+         *  right out of the frame loop. */
+        void wakeupReader() {
+            Thread r = reader;
+            if (r != null) {
+                LockSupport.unpark(r);
+            }
+        }
 
         @Override
         public void close() throws IOException {
